@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -16,6 +17,7 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Stateless;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -171,6 +173,24 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public void Inclusion_list_committed_state_marks_missing_code_unavailable([Values] bool codeAvailable)
+    {
+        byte[] expected = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressA.Bytes];
+        ValueHash256 hash = ValueKeccak.Compute(expected);
+        IReadOnlyStateProvider committed = Substitute.For<IReadOnlyStateProvider>();
+        committed.GetCode(in hash).Returns(codeAvailable ? new ReadOnlyMemory<byte>(expected) : default);
+        InclusionListCommittedState state = new(committed, 2, () => new(), () => null);
+
+        ReadOnlyMemory<byte> code = state.GetCode(in hash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(code.ToArray(), Is.EqualTo(codeAvailable ? expected : Array.Empty<byte>()));
+            Assert.That(state.Available, Is.EqualTo(codeAvailable));
+        }
+    }
+
+    [Test]
     public void Inclusion_list_committed_state_keeps_accounts_deleted_before_finalization_absent()
     {
         IReadOnlyStateProvider committed = Substitute.For<IReadOnlyStateProvider>();
@@ -218,7 +238,8 @@ public partial class EngineModuleTests
             configurer: builder => builder.UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton(unavailable)));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(rpc, chain.BlockTree.HeadHash, 2);
-        chain.BlockTree.FindBlock(payload.BlockHash, BlockTreeLookupOptions.None)!.BlockAccessList = null;
+        chain.BlockTree.FindBlock(payload.BlockHash, BlockTreeLookupOptions.None)!.BlockAccessList = reason == UnavailableBal.CarriedMismatch
+            ? new ReadOnlyBlockAccessList([], 0, Keccak.Zero) : null;
         byte[][] list = omittedEntry ? [Rlp.Encode(BuildInclusionListTransfer()).Bytes] : [];
 
         bool? result = chain.Container.Resolve<IInclusionListComplianceEvaluator>().TryEvaluate(payload.BlockHash, list);
@@ -226,7 +247,37 @@ public partial class EngineModuleTests
         Assert.That(result, Is.EqualTo(omittedEntry ? (bool?)null : true));
     }
 
-    public enum UnavailableBal { Missing, Corrupt, Mismatched }
+    public enum UnavailableBal { Missing, Corrupt, Mismatched, CarriedMismatch }
+
+    [Test]
+    public async Task NewPayloadV6_ignores_blob_entries_without_hiding_ordinary_omissions([Values] bool ordinaryOmitted)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 parent = chain.BlockTree.HeadHash;
+        ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(parent, Keccak.Zero, parent), BuildBogotaPayloadAttributes(inclusionList: []));
+        ResultWrapper<GetPayloadV6Result?> built = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
+        ExecutionPayloadV4 payload = built.Data!.ExecutionPayload;
+        Assert.That(payload.Transactions, Is.Empty);
+        Transaction blob = Build.A.Transaction.WithType(TxType.Blob).WithNonce(0).WithGasLimit(100_000)
+            .WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithMaxFeePerBlobGas(1.GWei)
+            .WithBlobVersionedHashes(1).WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        byte[][] list = ordinaryOmitted
+            ? [Rlp.Encode(blob).Bytes, Rlp.Encode(BuildInclusionListTransfer()).Bytes] : [Rlp.Encode(blob).Bytes];
+
+        ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, built.Data.ExecutionRequests, list);
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash), payloadAttributes: null);
+        bool? rechecked = chain.Container.Resolve<IInclusionListComplianceEvaluator>().TryEvaluate(payload.BlockHash, list);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.InclusionListSatisfied, Is.EqualTo(!ordinaryOmitted));
+            Assert.That(rechecked, Is.EqualTo(!ordinaryOmitted));
+        }
+    }
 
     [Test]
     public async Task Inclusion_list_recheck_requires_executed_block([Values] bool executed)
@@ -354,6 +405,8 @@ public partial class EngineModuleTests
             Assert.That(newPayload.Data.LatestValidHash, Is.EqualTo(executionPayload.BlockHash));
         }
 
+        // VALID comes before the commit, which the forkchoice waits for only a bounded time before answering SYNCING.
+        await chain.WaitForCommitted(executionPayload.BlockHash);
         ResultWrapper<ForkchoiceUpdatedV2Result> finalFcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash),
             payloadAttributes: null);
@@ -923,8 +976,7 @@ public partial class EngineModuleTests
         }
     }
 
-    // The fallback payload has to satisfy the inclusion list, but must not pay for a mempool selection:
-    // it is produced synchronously on the engine thread while every other engine call waits.
+    // The fallback payload has to satisfy the inclusion list, but must not pay for a mempool selection.
     [Test]
     public async Task Empty_block_fallback_carries_the_inclusion_list_without_the_mempool()
     {
@@ -948,6 +1000,54 @@ public partial class EngineModuleTests
             chain.BlockTree.Head!.Header, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock);
 
         Assert.That(emptyBlock!.Transactions.Select(t => t.Hash), Is.EqualTo(new[] { inclusionListTx.Hash }));
+    }
+
+    // A late payload id makes the consensus client propose the payload of its previous update, built for an older list.
+    [Test]
+    [CancelAfter(30000)]
+    public async Task ForkchoiceUpdatedV5_returns_the_payload_id_before_the_inclusion_list_is_executed()
+    {
+        using ManualResetEventSlim inclusionListRelease = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddDecorator<IInclusionListTxSource>((_, source) => new GatedInclusionListTxSource(source, inclusionListRelease)));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Transaction inclusionListTx = BuildInclusionListTransfer();
+        PayloadAttributes payloadAttributes = BuildBogotaPayloadAttributes(inclusionList: [Rlp.Encode(inclusionListTx).Bytes]);
+
+        try
+        {
+            ResultWrapper<ForkchoiceUpdatedV2Result> forkchoiceUpdated = await Task.Run(() => rpc.engine_forkchoiceUpdatedV5(
+                new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead), payloadAttributes)).WaitAsync(TimeSpan.FromSeconds(5));
+
+            Task<ResultWrapper<GetPayloadV6Result?>> getPayload = rpc.engine_getPayloadV6(Bytes.FromHexString(forkchoiceUpdated.Data.PayloadId!));
+            bool waitedForBuild = !getPayload.IsCompleted;
+            inclusionListRelease.Set();
+            ExecutionPayloadV4 payload = (await getPayload).Data!.ExecutionPayload;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(waitedForBuild, Is.True);
+                Assert.That(payload.TryGetTransactions().Data!.Select(t => t.Hash), Does.Contain(inclusionListTx.Hash));
+            }
+        }
+        finally
+        {
+            inclusionListRelease.Set();
+        }
+    }
+
+    private sealed class GatedInclusionListTxSource(IInclusionListTxSource inner, ManualResetEventSlim release) : IInclusionListTxSource
+    {
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+        {
+            release.Wait();
+            return inner.GetTransactions(parent, targetBlock, gasLimit, payloadAttributes, filterSource);
+        }
+
+        public bool SupportsBlobs => inner.SupportsBlobs;
+
+        public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec) => inner.Set(inclusionListTransactions, spec);
     }
 
     // bogota.md newPayloadV6 (2.1): a VALID response must carry a compliance answer. A canonical block this node ran
@@ -1749,6 +1849,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 first = payloadResult.Data!.ExecutionPayload;
 
         await rpc.engine_newPayloadV6(first, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, firstList);
+        await chain.WaitForCommitted(first.BlockHash);
         await BuildAndInsertEmptyBlock(rpc, first.BlockHash, slot: 3, finalize: !resendHead);
 
         Block executed = chain.BlockTree.FindBlock(first.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!;

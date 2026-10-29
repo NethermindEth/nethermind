@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Validation;
 using Nethermind.Crypto;
@@ -91,9 +92,9 @@ public sealed class TxValidator : ITxValidator
             new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
             NonceCapTxValidator.Instance,
             expectedChainIdTxValidator,
-            GasFieldsTxValidator.Instance,
-            // The frame-tx decoder always populates both blob fields, so the presence-based
-            // NonBlobFieldsTxValidator would reject every frame tx; this one checks them by value.
+            // EIP-8141 fees are [max_fee, max_priority_fee_per_gas]: there is no per-gas cap to order the tip against.
+            // The frame-tx decoder always populates blob_versioned_hashes, so the presence-based
+            // NonBlobFieldsTxValidator would reject every frame tx; this one checks it by value.
             FrameTxFieldsTxValidator.Instance,
             FrameTxNonceKeysTxValidator.Instance,
             MempoolBlobTxProofVersionValidator.Instance,
@@ -278,11 +279,6 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
         byte[]?[]? blobVersionedHashes = transaction.BlobVersionedHashes;
         if (blobVersionedHashes is { Length: > 0 })
         {
-            if (transaction.MaxFeePerBlobGas is null)
-            {
-                return TxErrorMessages.BlobTxMissingMaxFeePerBlobGas;
-            }
-
             ValidationResult blobGasLimitResult = BlobFieldsTxValidator.ValidateBlobGasLimits(blobVersionedHashes.Length, releaseSpec);
             return !blobGasLimitResult ? blobGasLimitResult : BlobFieldsTxValidator.ValidateBlobVersionedHashes(blobVersionedHashes);
         }
@@ -609,8 +605,8 @@ public abstract class BaseSignatureTxValidator : ITxValidator
             return TxErrorMessages.InvalidTxSignature;
         }
 
-        UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
-        UInt256 rValue = new(signature.RAsSpan, isBigEndian: true);
+        UInt256 sValue = Bytes.ReadUInt256BigEndian(signature.SAsSpan);
+        UInt256 rValue = Bytes.ReadUInt256BigEndian(signature.RAsSpan);
 
         UInt256 sMax = releaseSpec.IsEip2Enabled ? SecP256k1Curve.HalfNPlusOne : SecP256k1Curve.N;
         return sValue.IsZero || sValue >= sMax ? TxErrorMessages.InvalidTxSignature

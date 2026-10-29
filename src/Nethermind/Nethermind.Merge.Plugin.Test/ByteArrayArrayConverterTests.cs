@@ -23,10 +23,13 @@ public class ByteArrayArrayConverterTests
         byte[][]? decoded = JsonSerializer.Deserialize("""["0x0102","0x",null,"0x0f"]"""u8, typeInfo) as byte[][];
         Assert.That(decoded, Is.Not.Null);
         Assert.That(decoded!, Has.Length.EqualTo(4));
-        Assert.That(decoded![0], Is.EqualTo(new byte[] { 0x01, 0x02 }));
-        Assert.That(decoded[1], Is.EqualTo(System.Array.Empty<byte>()));
-        Assert.That(decoded[2], Is.Null);
-        Assert.That(decoded[3], Is.EqualTo(new byte[] { 0x0f }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded![0], Is.EqualTo(new byte[] { 0x01, 0x02 }));
+            Assert.That(decoded[1], Is.EqualTo(System.Array.Empty<byte>()));
+            Assert.That(decoded[2], Is.Null);
+            Assert.That(decoded[3], Is.EqualTo(new byte[] { 0x0f }));
+        }
 
         string json = JsonSerializer.Serialize((object)decoded, typeInfo);
         Assert.That(json, Is.EqualTo("""["0x0102","0x",null,"0x0f"]"""));
@@ -57,7 +60,9 @@ public class ByteArrayArrayConverterTests
         ExecutionPayloadV3? decoded = JsonSerializer.Deserialize<ExecutionPayloadV3>(json, options);
 
         Assert.That(decoded, Is.Not.Null);
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
         Assert.That(decoded!.Transactions, Has.Length.EqualTo(2));
+#pragma warning restore NUnit2045
         Assert.That(decoded.Transactions[0], Is.EqualTo(new byte[] { 0x01, 0x02 }));
         Assert.That(decoded.Transactions[1], Is.EqualTo(System.Array.Empty<byte>()));
     }

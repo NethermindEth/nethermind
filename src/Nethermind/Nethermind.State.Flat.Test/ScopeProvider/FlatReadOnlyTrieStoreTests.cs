@@ -3,10 +3,11 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using NSubstitute;
@@ -62,20 +63,22 @@ public class FlatReadOnlyTrieStoreTests
     public void BeginScope_EnablesStateAndStorageNodeLookup()
     {
         TreePath path = TreePath.FromHexString("12");
-        TrieNode stateNode = new(NodeType.Leaf, [0xc1, 0x01]);
         Hash256 storageAddress = TestItem.KeccakA;
-        TrieNode storageNode = new(NodeType.Leaf, [0xc1, 0x02]);
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
 
-        _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(FlatTestHelpers.MakeBundle(_pool, c =>
+        _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(FlatTestHelpers.MakeBundle(_pool, buffer, c =>
         {
-            c.StateNodes[new HashedKey<TreePath>(path)] = stateNode;
-            c.StorageNodes[new HashedKey<(Hash256, TreePath)>((storageAddress, path))] = storageNode;
+            c.SetStateNodeRlp(buffer, path, FlatTestHelpers.LeafRlpA);
+            c.SetStorageNodeRlp(buffer, storageAddress, path, FlatTestHelpers.LeafRlpB);
         }));
 
         using IDisposable scope = _store.BeginScope(Build.A.BlockHeader.TestObject);
 
-        Assert.That(_store.FindCachedOrUnknown(null, path, Keccak.Zero), Is.SameAs(stateNode));
-        Assert.That(_store.FindCachedOrUnknown(storageAddress, path, Keccak.Zero), Is.SameAs(storageNode));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.FindCachedOrUnknown(null, path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpA))).FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
+            Assert.That(_store.FindCachedOrUnknown(storageAddress, path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpB))).FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+        }
     }
 
     [Test]
@@ -107,15 +110,21 @@ public class FlatReadOnlyTrieStoreTests
     [Test]
     public void BeginCommit_ReturnsNullCommitter_NoOps()
     {
-        Assert.That(_store.BeginBlockCommit(1), Is.Not.Null);
-        Assert.That(_store.BeginCommit(null, null, WriteFlags.None), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.BeginBlockCommit(1), Is.Not.Null);
+            Assert.That(_store.BeginCommit(null, null, WriteFlags.None), Is.Not.Null);
+        }
     }
 
     [Test]
     public void GetTrieStore_ReturnsScopedAdapter()
     {
-        Assert.That(_store.GetTrieStore(TestItem.KeccakA), Is.Not.Null);
-        Assert.That(_store.GetTrieStore(null), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.GetTrieStore(TestItem.KeccakA), Is.Not.Null);
+            Assert.That(_store.GetTrieStore(null), Is.Not.Null);
+        }
     }
 
     [Test]

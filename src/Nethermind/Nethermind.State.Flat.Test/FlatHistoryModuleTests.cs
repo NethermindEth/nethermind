@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api.Monitoring;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat.History;
 using Nethermind.State.Flat.Persistence;
 using NSubstitute;
@@ -34,7 +34,6 @@ public class FlatHistoryModuleTests
             .AddSingleton<ISyncConfig>(new SyncConfig())
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IPersistenceManager>(_ => Substitute.For<IPersistenceManager>())
-            .AddSingleton<ITrieNodeCache>(_ => Substitute.For<ITrieNodeCache>())
             .AddSingleton<IResourcePool>(_ => Substitute.For<IResourcePool>())
             .AddSingleton<IMetricsConfig>(_ => Substitute.For<IMetricsConfig>())
             .Build();
@@ -74,7 +73,6 @@ public class FlatHistoryModuleTests
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IPersistence>(persistence)
             .AddSingleton<IPersistenceManager>(_ => Substitute.For<IPersistenceManager>())
-            .AddSingleton<ITrieNodeCache>(_ => Substitute.For<ITrieNodeCache>())
             .AddSingleton<IResourcePool>(_ => Substitute.For<IResourcePool>())
             .AddSingleton<IMetricsConfig>(_ => Substitute.For<IMetricsConfig>())
             .Build();

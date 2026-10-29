@@ -138,6 +138,10 @@ namespace Nethermind.Trie
         /// <returns>Whether it did; when not, the caller walks the key's nibbles.</returns>
         private partial bool TryGetByRawKey(ReadOnlySpan<byte> rawKey, Hash256? rootHash, out ReadOnlySpan<byte> value);
 
+        /// <summary>Writes <paramref name="value"/> at <paramref name="rawKey"/> straight from its bytes, where this build does.</summary>
+        /// <returns>Whether it did; when not, the caller walks the key's nibbles.</returns>
+        private partial bool TrySetByRawKey(ReadOnlySpan<byte> rawKey, CappedArray<byte> value);
+
         public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
         {
             if (!_allowCommits)
@@ -383,44 +387,6 @@ namespace Nethermind.Trie
             }
         }
 
-        /// <summary>Resolves the nodes on the path to <paramref name="rawKey"/>, so a later write to that key finds them loaded.</summary>
-        /// <param name="rawKey">The key whose path is warmed.</param>
-        /// <param name="forDelete">
-        /// The key is being deleted. Deleting a leaf from a branch that has one other child collapses the branch into
-        /// that child, which <see cref="MaybeCombineNode"/> has to resolve; the path alone never reaches it, so this
-        /// also resolves the child the delete would leave behind.
-        /// </param>
-        [SkipLocalsInit]
-        [DebuggerStepThrough]
-        public void WarmUpPath(ReadOnlySpan<byte> rawKey, bool forDelete = false)
-        {
-            byte[]? array = null;
-            try
-            {
-                int nibblesCount = 2 * rawKey.Length;
-                Span<byte> nibbles = (nibblesCount <= MaxKeyStackAlloc
-                        ? stackalloc byte[MaxKeyStackAlloc]
-                        : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
-                    [..nibblesCount]; // Slice to exact size;
-
-                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-
-                TreePath emptyPath = TreePath.Empty;
-                TrieNode? root = RootRef;
-
-                DoWarmUpPath(nibbles, ref emptyPath, root, forDelete);
-            }
-            catch (TrieException e)
-            {
-                EnhanceException(rawKey, RootHash, e);
-                throw;
-            }
-            finally
-            {
-                if (array is not null) ArrayPool<byte>.Shared.Return(array);
-            }
-        }
-
         [DebuggerStepThrough]
         public byte[]? GetNodeByPath(byte[] nibbles, Hash256? rootHash = null)
         {
@@ -534,6 +500,26 @@ namespace Nethermind.Trie
 
             _writeBeforeCommit++;
 
+            try
+            {
+                if (!TrySetByRawKey(rawKey, value)) SetByNibbles(rawKey, value);
+            }
+            finally
+            {
+                Volatile.Write(ref _isWriteInProgress, 0);
+            }
+
+            void Trace(in ReadOnlySpan<byte> rawKey, CappedArray<byte> value) => _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.AsSpan().ToHexString(withZeroX: true)}")}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowNonConcurrentWrites() => throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
+        }
+
+        /// <remarks>Apart from <see cref="Set(ReadOnlySpan{byte}, CappedArray{byte})"/>, so a write by raw key skips this
+        /// frame's nibble buffer.</remarks>
+        [SkipLocalsInit]
+        private void SetByNibbles(ReadOnlySpan<byte> rawKey, CappedArray<byte> value)
+        {
             byte[]? array = null;
             try
             {
@@ -554,14 +540,8 @@ namespace Nethermind.Trie
             }
             finally
             {
-                Volatile.Write(ref _isWriteInProgress, 0);
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
-
-            void Trace(in ReadOnlySpan<byte> rawKey, CappedArray<byte> value) => _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.AsSpan().ToHexString(withZeroX: true)}")}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowNonConcurrentWrites() => throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
         }
 
         [DebuggerStepThrough]
@@ -602,8 +582,8 @@ namespace Nethermind.Trie
                 if (!node.IsBranch)
                 {
                     Span<byte> remainingKey = key[(int)consumed..];
-                    int commonPrefixLength = 0;
-                    if (IsLeafWithKey(node, remainingKey) || (commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key)) == node.Key!.Length)
+                    int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
+                    if (commonPrefixLength == node.Key!.Length)
                     {
                         if (node.IsExtension)
                         {
@@ -619,7 +599,7 @@ namespace Nethermind.Trie
                             });
 
                             // Continue loop with the child as current node
-                            consumed += node!.Key!.Length;
+                            consumed += node!.Key.Length;
                             node = extensionChild;
 
                             continue;
@@ -705,6 +685,15 @@ namespace Nethermind.Trie
                 consumed++;
             }
 
+            return ClimbToRoot(traverseStack, node, ref path, originalPathLength, originalNode);
+        }
+
+        /// <summary>Applies <paramref name="node"/>, what a write walk left at its deepest level, to each level on
+        /// <paramref name="traverseStack"/> up to the walk's start.</summary>
+        /// <returns>The node at the walk's start, or <paramref name="originalNode"/> where nothing above changes.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private TrieNode? ClimbToRoot(TraverseStack traverseStack, TrieNode? node, ref TreePath path, int originalPathLength, TrieNode? originalNode)
+        {
             while (traverseStack.TryPop(out TraverseStackFrame cStack))
             {
                 TrieNode? child = node;
@@ -1021,101 +1010,6 @@ namespace Nethermind.Trie
             {
                 if (TracksPath) path.TruncateMut(originalPathLength);
             }
-        }
-
-        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool forDelete)
-        {
-            int originalPathLength = path.Length;
-            // The branch the current node hangs from, while the walk is still at that branch's child.
-            TrieNode? parentBranch = null;
-
-            try
-            {
-                while (true)
-                {
-                    if (node is null)
-                    {
-                        // If node read, then missing node. If value read.... what is it suppose to be then?
-                        return;
-                    }
-
-                    // Best effort: a path-keyed store may hold another version of the node, which just ends the warm-up.
-                    if (!TryResolveForWarmUp(ref node, ref path)) return;
-
-                    if (node.IsLeaf || node.IsExtension)
-                    {
-                        int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
-                        if (commonPrefixLength == node.Key!.Length)
-                        {
-                            if (node.IsLeaf)
-                            {
-                                if (forDelete && parentBranch is not null) WarmUpDeleteSibling(parentBranch, ref path);
-                                return;
-                            }
-
-                            // Continue traversal to the child of the extension
-                            path.AppendMut(node.Key);
-                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0, keepChildRef: true);
-                            remainingKey = remainingKey[node!.Key.Length..];
-                            node = extensionChild;
-                            parentBranch = null;
-
-                            continue;
-                        }
-
-                        // No node match
-                        return;
-                    }
-
-                    int nextNib = remainingKey[0];
-
-                    path.AppendMut(nextNib);
-                    TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nextNib, keepChildRef: true);
-
-                    // Continue loop with child as current node
-                    parentBranch = node;
-                    node = child;
-                    remainingKey = remainingKey[1..];
-                }
-            }
-            finally
-            {
-                path.TruncateMut(originalPathLength);
-            }
-        }
-
-        /// <summary>
-        /// Resolves the child that <paramref name="branch"/> is left with once the leaf at the last nibble of
-        /// <paramref name="leafPath"/> is deleted: the node <see cref="MaybeCombineNode"/> collapses the branch into.
-        /// </summary>
-        /// <remarks>
-        /// Nothing is resolved when the branch keeps two or more children, since it then stays a branch. Each delete is
-        /// checked on its own against the trie before the block, so only a single delete per branch is covered: two
-        /// deletes under one three-child branch, or a branch left with no children (collapsing its parent), still read
-        /// in the commit.
-        /// </remarks>
-        private void WarmUpDeleteSibling(TrieNode branch, ref TreePath leafPath)
-        {
-            int deletedNibble = leafPath[leafPath.Length - 1];
-            int siblingNibble = branch.FindOnlyChild(ignoredChild: deletedNibble);
-            if (siblingNibble < 0) return;
-
-            leafPath.TruncateOne();
-            leafPath.AppendMut(siblingNibble);
-            TrieNode? sibling = branch.GetChildWithChildPath(TrieStore, ref leafPath, siblingNibble, keepChildRef: true);
-            if (sibling is null) return;
-
-            TryResolveForWarmUp(ref sibling, ref leafPath);
-        }
-
-        /// <summary>
-        /// Resolves <paramref name="node"/> for a warm-up walk, first swapping it for the store's cached copy when
-        /// <paramref name="path"/> is odd, since an odd path is cached in the store rather than only under its parent.
-        /// </summary>
-        private bool TryResolveForWarmUp(ref TrieNode node, ref TreePath path)
-        {
-            if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node.Keccak);
-            return node.TryResolveNode(TrieStore, ref path);
         }
 
         /// <summary>

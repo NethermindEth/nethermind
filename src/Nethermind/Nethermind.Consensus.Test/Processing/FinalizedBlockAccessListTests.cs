@@ -160,6 +160,39 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
     }
 
     [Test]
+    public void Inclusion_list_releases_parent_scope_after_verdict_or_read_failure([Values] bool readFails)
+    {
+        IWorldStateScopeProvider.IScope parentScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        parentScope.Get(TestItem.AddressA).Returns(_ => readFails
+            ? throw new InvalidOperationException("Injected parent read failure") : new Account(0, 100));
+        IWorldStateScopeProvider parentProvider = Substitute.For<IWorldStateScopeProvider>();
+        parentProvider.TryBeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope?>())
+            .Returns(call => { call[2] = parentScope; return true; });
+        IWorldStateManager parentReader = Substitute.For<IWorldStateManager>();
+        parentReader.CreateResettableWorldState().Returns(parentProvider);
+        using TestEnvironment env = new(useFlatDb, releaseSpec: Bogota.Instance, parentReader: parentReader);
+        Block block = env.CreateBlock();
+        block.InclusionListTransactions = [Build.A.Transaction.WithNonce(0).WithGasPrice(0).WithGasLimit(100_000)
+            .WithValue(50).WithTo(TestItem.AddressB).SignedAndResolved(TestItem.PrivateKeyA).TestObject];
+        env.Beacon.GetFinalizedHash().Returns(block.Hash);
+
+        try
+        {
+            if (readFails)
+                Assert.Throws<InvalidOperationException>(() => env.Branch.Process(env.Genesis.Header, [block], ProcessingOptions.None, NullBlockTracer.Instance));
+            else
+                Assert.That(env.Branch.Process(env.Genesis.Header, [block], ProcessingOptions.None, NullBlockTracer.Instance)[0].IsInclusionListSatisfied, Is.False);
+
+            parentScope.Received(1).Get(TestItem.AddressA);
+            parentScope.Received(1).Dispose();
+        }
+        finally
+        {
+            block.DisposeAccountChanges();
+        }
+    }
+
+    [Test]
     public void Inclusion_list_uses_generated_bal_without_reading_unchanged_parent()
     {
         IWorldStateManager parentReader = Substitute.For<IWorldStateManager>();
@@ -329,11 +362,17 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         Assert.That(policy.CanReconstruct(first.Header), Is.True);
         tree.ClearReceivedCalls();
         env.Beacon.GetFinalizedHash().Returns(third.Hash);
-        Assert.That(policy.CanReconstruct(first.Header), Is.True);
-        Assert.That(policy.CanReconstruct(second.Header), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.CanReconstruct(first.Header), Is.True);
+            Assert.That(policy.CanReconstruct(second.Header), Is.True);
+        }
         tree.Head.Returns(first);
-        Assert.That(policy.CanReconstruct(first.Header), Is.False);
-        Assert.That(policy.CanReconstruct(second.Header), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.CanReconstruct(first.Header), Is.False);
+            Assert.That(policy.CanReconstruct(second.Header), Is.True);
+        }
         tree.DidNotReceive().FindHeader(env.Genesis.Hash!, BlockTreeLookupOptions.None);
         tree.DidNotReceive().FindHeader(first.Hash!, BlockTreeLookupOptions.None);
         tree.Received(1).FindHeader(second.Hash!, BlockTreeLookupOptions.None);
@@ -343,8 +382,11 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         Block fourth = env.CreateBlock(parent: third);
         tree.FindHeader(fourth.Hash!, BlockTreeLookupOptions.None).Returns(fourth.Header);
         env.Beacon.GetFinalizedHash().Returns(fourth.Hash);
-        Assert.That(policy.CanReconstruct(fourth.Header), Is.True);
-        Assert.That(policy.CanReconstruct(third.Header), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.CanReconstruct(fourth.Header), Is.True);
+            Assert.That(policy.CanReconstruct(third.Header), Is.False);
+        }
     }
 
     private static long Fallbacks(BalCatchUpFallbackReason reason) => MergeMetrics.BalCatchUpFallbacks.GetValueOrDefault(reason);

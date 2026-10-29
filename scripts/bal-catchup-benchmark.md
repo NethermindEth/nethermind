@@ -39,7 +39,7 @@ Synthetic cases cover flat and trie state; fixtures use flat state.
 | `NETHERMIND_BALCATCHUP_FIXTURE` | Export directory containing `segment.jsonl`; requires DB and chainspec. |
 | `NETHERMIND_BALCATCHUP_CHAINSPEC` | Fixture chainspec file. |
 | `NETHERMIND_BALCATCHUP_BLOCKS` | Segment length; defaults to 64 synthetic blocks or the whole fixture. |
-| `NETHERMIND_BALCATCHUP_COLD=1` | Reopen a fresh disk copy each iteration; required for flat segments beyond `FlatDb.MinReorgDepth`. |
+| `NETHERMIND_BALCATCHUP_COLD=1` | Reopen a fresh disk copy and reset process caches each iteration; required for flat segments beyond `FlatDb.MinReorgDepth`. Does not clear the OS page cache. |
 | `NETHERMIND_BALCATCHUP_DROP_CACHES=1` | Linux/root only: write back and clear the OS page cache before each iteration. |
 
 Both arms process the whole segment through `IBranchProcessor` with receipts.
@@ -47,4 +47,12 @@ BAL-off uses normal execution and validation, including parallel execution when
 enabled. Setup rejects fallback in BAL-on or reconstruction in BAL-off.
 One operation is the entire segment. Cleanup prints median blocks/s and Mgas/s,
 splitting processing from state commit; disk runs also report final persistence.
+Fixture cases measure five iterations; synthetic cases measure ten. Both use two
+warmups. Every cold iteration copies the complete datadir, so large fixtures can
+spend most of the run in setup. File copying warms the OS page cache; use
+`NETHERMIND_BALCATCHUP_DROP_CACHES=1` when measuring cold disk reads.
+Synthetic warm segments are checked before creating database copies. Fixtures
+check the actual segment above the persisted head after opening a working copy;
+failed setup deletes that copy. `NETHERMIND_BALCATCHUP_BLOCKS` is an upper limit,
+so a shorter fixture remains valid even when its limit exceeds the warm window.
 Compare timings only from the same runner and cache mode.

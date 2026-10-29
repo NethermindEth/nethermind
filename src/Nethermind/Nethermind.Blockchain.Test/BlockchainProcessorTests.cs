@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -278,6 +279,7 @@ public class BlockchainProcessorTests
 
         private Hash256? _headBefore;
         private int _processingQueueEmptyFired;
+        private readonly ConcurrentDictionary<Hash256, TaskCompletionSource<ProcessingResult>> _removedBlocks = new();
         private const int ProcessingWait = 10_000;
         private const int MockRecheckInterval = 200;
 
@@ -295,6 +297,7 @@ public class BlockchainProcessorTests
                 new BlockchainProcessor.Options { BlockProcessingTimeoutMs = blockProcessingTimeoutMs, TimeProvider = timeProvider ?? TimeProvider.System }, Substitute.For<IProcessingStats>(), new BlockTreeMutationLock());
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
+            _processor.BlockRemoved += (_, args) => Removal(args.BlockHash).TrySetResult(args.ProcessingResult);
 
             _processor.ProcessingQueueEmpty += (_, _) =>
             {
@@ -316,6 +319,9 @@ public class BlockchainProcessorTests
                     _processor.Start();
             }
         }
+
+        private TaskCompletionSource<ProcessingResult> Removal(Hash256 blockHash) =>
+            _removedBlocks.GetOrAdd(blockHash, static _ => new TaskCompletionSource<ProcessingResult>(TaskCreationOptions.RunContinuationsAsynchronously));
 
         public async ValueTask DisposeAsync()
         {
@@ -339,8 +345,10 @@ public class BlockchainProcessorTests
 
         public ProcessingTestContext InclusionListPreservedFor(Block block)
         {
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
             Assert.That(_branchProcessor.ProcessedBlockByHash.TryGetValue(block.Hash!, out Block? processed), Is.True,
                 $"Block {block.ToString(Block.Format.Short)} was not processed");
+#pragma warning restore NUnit2045
             Assert.That(processed!.InclusionListTransactions, Is.Not.Null,
                 "Inclusion list was dropped before validation (recovery-queue re-resolve stripped it)");
             Assert.That(processed.InclusionListTransactions!, Has.Length.EqualTo(block.InclusionListTransactions!.Length));
@@ -394,8 +402,11 @@ public class BlockchainProcessorTests
             _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to fail processing");
             _branchProcessor.AllowToFail(block.Hash!);
             processedEvent.WaitOne(ProcessingWait);
-            Assert.That(wasProcessed, Is.True, $"Block was never processed {block.ToString(Block.Format.Short)}");
-            Assert.That(_blockTree.Head?.Hash, Is.EqualTo(_headBefore), $"Processing did not fail - {block.ToString(Block.Format.Short)} became a new head block");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(wasProcessed, Is.True, $"Block was never processed {block.ToString(Block.Format.Short)}");
+                Assert.That(_blockTree.Head?.Hash, Is.EqualTo(_headBefore), $"Processing did not fail - {block.ToString(Block.Format.Short)} became a new head block");
+            }
             _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} to fail processing");
             return new AfterBlock(_logManager, this, block);
         }
@@ -700,29 +711,17 @@ public class BlockchainProcessorTests
             {
                 _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to be deleted as invalid");
 
-                // BlockchainProcessor.BlockRemoved fires after ProcessBranch's finally
-                // block runs DeleteInvalidBlocks, so waiting on it guarantees the block
-                // is gone from the tree with no polling needed.
-                // Subscribe before checking to avoid missing the event if it fires
-                // between the check and the subscription.
-                ManualResetEventSlim deletedEvent = new(false);
-                void OnBlockRemoved(object? sender, BlockRemovedEventArgs args)
+                // BlockchainProcessor.BlockRemoved fires after ProcessBranch's finally block runs DeleteInvalidBlocks,
+                // and the context records it from the start, so an earlier removal counts too. The block missing from
+                // the tree is not enough: the processing thread deletes it long before the tree accepts blocks again,
+                // and a block suggested in between is refused.
+                Task<ProcessingResult> removal = processingTestContext.Removal(block.Hash!).Task;
+                Assert.That(removal.Wait(ProcessingWait), Is.True, $"block {block.ToString(Block.Format.Short)} should be deleted as invalid");
+                using (Assert.EnterMultipleScope())
                 {
-                    if (args.BlockHash == block.Hash) deletedEvent.Set();
-                }
-
-                processingTestContext._processor.BlockRemoved += OnBlockRemoved;
-                try
-                {
-                    // Handle the case where BlockRemoved already fired before we subscribed.
-                    if (processingTestContext._blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None) is null)
-                        deletedEvent.Set();
-
-                    Assert.That(deletedEvent.Wait(ProcessingWait), Is.True, $"block {block.ToString(Block.Format.Short)} should be deleted as invalid");
-                }
-                finally
-                {
-                    processingTestContext._processor.BlockRemoved -= OnBlockRemoved;
+                    Assert.That(removal.Result, Is.Not.EqualTo(ProcessingResult.Success), $"block {block.ToString(Block.Format.Short)} should not have been processed");
+                    // Safe to read now: the deletion is over by the time the block leaves the queue.
+                    Assert.That(processingTestContext._blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None), Is.Null, $"block {block.ToString(Block.Format.Short)} should be gone from the tree");
                 }
 
                 Assert.That(processingTestContext._blockTree.Head?.Hash, Is.EqualTo(processingTestContext._headBefore), "head");
@@ -890,6 +889,112 @@ public class BlockchainProcessorTests
 
         context.Processed(_block2D4).BecomesNewHead();
         await second.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [Test]
+    public async Task Last_copy_removal_completes_all_removed_before_executed_copy_waiters([Values] bool processed)
+    {
+        (Func<bool, bool> removeCopy, Task removed, Task<bool> removedWhenExecutedCopyCompletes) = ObserveInFlightRemoval(copies: 1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removed.IsCompleted, Is.False);
+            Assert.That(removedWhenExecutedCopyCompletes.IsCompleted, Is.False);
+        }
+
+        bool lastCopyRemoved = removeCopy(processed);
+
+        bool removedWhenExecutedCopyCompleted = await removedWhenExecutedCopyCompletes.WaitAsync(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lastCopyRemoved, Is.True);
+            Assert.That(removedWhenExecutedCopyCompleted, Is.True,
+                "a last-copy executed waiter must already observe all copies removed when it resumes");
+        }
+    }
+
+    [Test]
+    public async Task Processed_copy_removal_releases_executed_waiters_while_another_copy_remains()
+    {
+        (Func<bool, bool> removeCopy, Task removed, Task<bool> removedWhenExecutedCopyCompletes) = ObserveInFlightRemoval(copies: 2);
+
+        Assert.That(removeCopy(true), Is.False);
+
+        bool removedWhenExecutedCopyCompleted = await removedWhenExecutedCopyCompletes.WaitAsync(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removedWhenExecutedCopyCompleted, Is.False,
+                "the processed copy releases its waiter without waiting for the duplicate");
+            Assert.That(removed.IsCompleted, Is.False);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removeCopy(false), Is.True);
+            Assert.That(removed.IsCompleted, Is.True);
+        }
+    }
+
+    [Test]
+    public void Removal_without_a_tracked_copy_preserves_the_count([Values] bool completed)
+    {
+        (Func<bool, bool> removeCopy, Task removed, Task<bool> observation) = ObserveInFlightRemoval(copies: completed ? 1 : 0);
+        if (completed) Assert.That(removeCopy(false), Is.True);
+
+        Assert.That(removeCopy(true), Is.False);
+
+        object inFlight = removeCopy.Target!;
+        FieldInfo copies = inFlight.GetType().GetField("_copies", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int)copies.GetValue(inFlight)!, Is.EqualTo(completed ? -1 : 0));
+            Assert.That(removed.IsCompleted, Is.EqualTo(completed));
+            Assert.That(observation.IsCompleted, Is.EqualTo(completed));
+        }
+
+        Func<bool> addCopy = inFlight.GetType().GetMethod("TryAddCopy")!.CreateDelegate<Func<bool>>(inFlight);
+        Assert.That(addCopy(), Is.EqualTo(!completed));
+    }
+
+    [Test]
+    public async Task Last_copy_removal_keeps_late_executed_waiters_parked_until_release()
+    {
+        (Func<bool, bool> removeCopy, Task removed, Task<bool> lateGetterWaited) = ObserveInFlightRemoval(copies: 1, observeLateGetter: true);
+
+        Assert.That(removeCopy(true), Is.True);
+
+        bool lateGetterWasWaiting = await lateGetterWaited.WaitAsync(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lateGetterWasWaiting, Is.True,
+                "a getter arriving before the executed source is released must still wait on that source");
+            Assert.That(removed.IsCompleted, Is.True);
+        }
+    }
+
+    private static (Func<bool, bool> RemoveCopy, Task Removed, Task<bool> Observation) ObserveInFlightRemoval(int copies, bool observeLateGetter = false)
+    {
+        Type type = typeof(BlockchainProcessor).GetNestedType("InFlightBlock", BindingFlags.NonPublic)!;
+        object inFlight = Activator.CreateInstance(type, nonPublic: true)!;
+        Func<bool> addCopy = type.GetMethod("TryAddCopy")!.CreateDelegate<Func<bool>>(inFlight);
+        for (int i = 0; i < copies; i++) Assert.That(addCopy(), Is.True);
+        type.GetMethod("MarkExecuted")!.Invoke(inFlight, null);
+        if (observeLateGetter)
+            type.GetField("_removed", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(inFlight, CreateSynchronousSource());
+        Task removed = (Task)type.GetProperty("Removed")!.GetValue(inFlight)!;
+
+        TaskCompletionSource executedCopyRemoved = CreateSynchronousSource();
+        type.GetField("_executedCopyRemoved", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(inFlight, executedCopyRemoved);
+        Task<bool> observation = observeLateGetter
+            ? removed.ContinueWith(_ => !((Task)type.GetProperty("ExecutedCopyRemoved")!.GetValue(inFlight)!).IsCompleted,
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default)
+            : executedCopyRemoved.Task.ContinueWith(_ => removed.IsCompleted,
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+
+        return (type.GetMethod("RemoveCopy")!.CreateDelegate<Func<bool, bool>>(inFlight), removed, observation);
+
+#pragma warning disable NETH006 // Inline continuations observe the publication boundary deterministically.
+        static TaskCompletionSource CreateSynchronousSource() => new();
+#pragma warning restore NETH006
     }
 
     /// <summary>

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -42,6 +43,14 @@ public interface IPersistence
         byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
 
+        /// <summary>Passes the RLP of the state trie node at <paramref name="path"/> to <paramref name="action"/>, which must not keep it.</summary>
+        /// <returns>Whether the node was found.</returns>
+        bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
+
+        /// <summary>Passes the RLP of the storage trie node at <paramref name="path"/> to <paramref name="action"/>, which must not keep it.</summary>
+        /// <returns>Whether the node was found.</returns>
+        bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
+
         // Raw operations are used in importer
         byte[]? GetAccountRaw(in ValueHash256 addrHash);
         bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value);
@@ -58,18 +67,37 @@ public interface IPersistence
     /// </remarks>
     public interface IPrefetchingReader
     {
-        /// <summary>Starts reading <paramref name="accounts"/> and <paramref name="slots"/> from the store so later reads find them in memory.</summary>
+        /// <summary>
+        /// Decides from a few sampled keys which columns of a block are worth prefetching, before the caller collects
+        /// every key, so a block that needs no prefetch pays only for the samples.
+        /// </summary>
+        /// <param name="accountSamples">Up to <see cref="BasePersistence.PrefetchSamples"/> accounts spread over the block's accounts; may be filtered in place.</param>
+        /// <param name="slotSamples">Up to <see cref="BasePersistence.PrefetchSamples"/> slots spread over the block's slots; may be filtered in place.</param>
+        PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples);
+
+        /// <summary>Starts reading the <paramref name="columns"/> of <paramref name="accounts"/> and <paramref name="slots"/> from the store so later reads find them in memory.</summary>
+        /// <param name="columns">The columns <see cref="PlanPrefetch"/> chose; the others are not read.</param>
         /// <param name="accounts">The accounts to read ahead. The reader may reorder, filter or overwrite them in place.</param>
         /// <param name="slots">The slots to read ahead. The reader may reorder, filter or overwrite them in place.</param>
         /// <remarks>
         /// Best effort: the call returns without waiting for the reads, never reports a failed read, and does not change
         /// what later reads return. The spans are used only during the call and are not kept.
         /// </remarks>
-        void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken);
+        void Prefetch(PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken);
 
         /// <summary>Whether <see cref="Prefetch"/> reads anything ahead. A wrapper reports what the reader it wraps reports,
         /// so a caller that gets false skips collecting the keys.</summary>
-        bool SupportsPrefetch => true;
+        bool SupportsPrefetch { get; }
+    }
+
+    /// <summary>The columns of one block that <see cref="IPrefetchingReader.PlanPrefetch"/> decided to prefetch.</summary>
+    [Flags]
+    public enum PrefetchColumns
+    {
+        None = 0,
+        Accounts = 1,
+        Slots = 2,
+        All = Accounts | Slots,
     }
 
     public interface IWriteBatch : IDisposable
@@ -90,6 +118,16 @@ public interface IPersistence
 
         void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
         void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
+
+        /// <summary>
+        /// Does what <see cref="SelfDestruct"/> does, deleting the storage slots and storage trie nodes, for every
+        /// account whose path is within <c>[<paramref name="fromPath"/>, <paramref name="toPath"/>]</c>.
+        /// </summary>
+        /// <remarks>
+        /// Storage is keyed by the first 20 bytes of the account path, so the bounds are compared on those bytes only,
+        /// as in <see cref="DeleteAccountRange"/>.
+        /// </remarks>
+        void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath);
 
         /// <summary>
         /// Deletes every state trie node whose node and subtree are entirely contained within the value range

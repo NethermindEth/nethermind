@@ -15,7 +15,6 @@ namespace Nethermind.State.Flat;
 public class FlatStateReader(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
-    ITrieNodeCache trieNodeCache,
     IHistoricalTrieVisitor historicalTrieVisitor,
     ILogManager logManager
 ) : IStateReader
@@ -38,6 +37,17 @@ public class FlatStateReader(
         using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
         reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address), out UInt256? slot);
         value = slot.GetValueOrDefault();
+    }
+
+    public void GetStorage(BlockHeader? baseBlock, Address address, ReadOnlySpan<UInt256> indexes, Span<UInt256> values)
+    {
+        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        int selfDestructSnapshotIdx = reader.DetermineSelfDestructSnapshotIdx(address);
+        for (int i = 0; i < indexes.Length; i++)
+        {
+            reader.GetSlot(address, indexes[i], selfDestructSnapshotIdx, out UInt256? slot);
+            values[i] = slot.GetValueOrDefault();
+        }
     }
 
     public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);
@@ -65,7 +75,7 @@ public class FlatStateReader(
 
         using (reader)
         {
-            ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader, treeVisitor.IsFullDbScan ? null : trieNodeCache);
+            ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
             PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
             patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
         }

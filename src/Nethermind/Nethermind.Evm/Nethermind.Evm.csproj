@@ -11,6 +11,7 @@
     <PackageReference Include="Collections.Pooled" />
     <PackageReference Include="Fody" PrivateAssets="all" />
     <PackageReference Include="InlineIL.Fody" PrivateAssets="all" />
+    <PackageReference Include="NonBlocking" />
   </ItemGroup>
 
   <ItemGroup>

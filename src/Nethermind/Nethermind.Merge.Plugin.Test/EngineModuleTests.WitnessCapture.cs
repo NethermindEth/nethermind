@@ -187,10 +187,13 @@ public partial class EngineModuleTests
 
         request.Dispose();
 
-        Assert.That(rendezvous.HasPendingRequest(hash), Is.False,
-            "disposing the registration must clear the slot");
-        Assert.That(request.Task.IsCanceled, Is.True,
-            "disposing must cancel the task so any awaiter gets OperationCanceledException");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rendezvous.HasPendingRequest(hash), Is.False,
+                "disposing the registration must clear the slot");
+            Assert.That(request.Task.IsCanceled, Is.True,
+                "disposing must cancel the task so any awaiter gets OperationCanceledException");
+        }
     }
 
     [Test]
@@ -213,12 +216,15 @@ public partial class EngineModuleTests
         using WitnessRequest first = rendezvous.RequestWitness(hash);
         using WitnessRequest second = rendezvous.RequestWitness(hash);
 
-        Assert.That(first.Task.IsCompleted, Is.False, "the outstanding request stays pending");
-        Assert.That(second.Task.IsCompletedSuccessfully, Is.True,
-            "a second request while one is outstanding is declined: it completes immediately with no witness");
-        Assert.That(second.Task.Result, Is.Null);
-        Assert.That(rendezvous.HasPendingRequest(hash), Is.True,
-            "the original request still owns the slot");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Task.IsCompleted, Is.False, "the outstanding request stays pending");
+            Assert.That(second.Task.IsCompletedSuccessfully, Is.True,
+                "a second request while one is outstanding is declined: it completes immediately with no witness");
+            Assert.That(second.Task.Result, Is.Null);
+            Assert.That(rendezvous.HasPendingRequest(hash), Is.True,
+                "the original request still owns the slot");
+        }
     }
 
     [Test]
@@ -274,8 +280,11 @@ public partial class EngineModuleTests
         using WitnessRequest req2 = rendezvous.RequestWitness(p2.BlockHash!);
         await rpc.engine_newPayloadV5(p2, [], TestItem.KeccakE, r2 ?? []);
 
-        Assert.That(req1.Task.IsCompletedSuccessfully, Is.True, "block-1 task was completed during block-1");
-        Assert.That(req2.Task.IsCompletedSuccessfully, Is.True, "block-2 task must be completed during block-2");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(req1.Task.IsCompletedSuccessfully, Is.True, "block-1 task was completed during block-1");
+            Assert.That(req2.Task.IsCompletedSuccessfully, Is.True, "block-2 task must be completed during block-2");
+        }
 
         using Witness? w2 = await req2.Task;
         Assert.That(w2, Is.Not.Null, "block 2 must produce a valid witness");
@@ -345,9 +354,12 @@ public partial class EngineModuleTests
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []));
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(result.Data.ExecutionWitness, Is.SameAs(expectedWitness));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.Data.ExecutionWitness, Is.SameAs(expectedWitness));
+        }
     }
 
     [Test]
@@ -419,8 +431,11 @@ public partial class EngineModuleTests
         {
             using ResultWrapper<NewPayloadWithWitnessV1Result> resent = await handler.HandleAsync(request);
 
-            Assert.That(resent.Result.ResultType, Is.EqualTo(ResultType.Success));
-            Assert.That(resent.Data.ExecutionWitness!.State.ToArray(), Is.EqualTo(capturedState));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resent.Result.ResultType, Is.EqualTo(ResultType.Success));
+                Assert.That(resent.Data.ExecutionWitness!.State.ToArray(), Is.EqualTo(capturedState));
+            }
         }
     }
 
@@ -469,9 +484,12 @@ public partial class EngineModuleTests
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(payload, [], TestItem.KeccakA, []));
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure),
-            "a null blockHash is a malformed payload — return InvalidParams instead of forwarding");
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure),
+                "a null blockHash is a malformed payload — return InvalidParams instead of forwarding");
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
     }
 
     [Test]
@@ -495,8 +513,11 @@ public partial class EngineModuleTests
             payload, [], payload.ParentBeaconBlockRoot, []);
         using Witness? witness = result.Data.ExecutionWitness;
 
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(witness, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(witness, Is.Not.Null);
+        }
         Assert.That(witness!.State.Count, Is.GreaterThan(0),
             "witness State must contain at least the state root proof node");
     }
@@ -569,14 +590,20 @@ public partial class EngineModuleTests
         ResultWrapper<NewPayloadWithWitnessV1Result> res2 =
             await rpc.engine_newPayloadWithWitnessV5(p2, [], TestItem.KeccakE, r2 ?? []);
 
-        Assert.That(res1.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(res2.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res1.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(res2.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        }
 
         using Witness? w1 = res1.Data.ExecutionWitness;
         using Witness? w2 = res2.Data.ExecutionWitness;
 
-        Assert.That(w1, Is.Not.Null);
-        Assert.That(w2, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(w1, Is.Not.Null);
+            Assert.That(w2, Is.Not.Null);
+        }
         Assert.That(w1, Is.Not.SameAs(w2),
             "each block produces its own Witness instance; shared reference indicates a tracking bug");
     }
@@ -603,13 +630,19 @@ public partial class EngineModuleTests
         using ResultWrapper<NewPayloadWithWitnessV1Result> repeated =
             await scope.Resolve<NewPayloadWithWitnessHandler>().HandleAsync(request);
 
-        Assert.That(first.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(repeated.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(repeated.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        }
         Witness? captured = first.Data.ExecutionWitness;
         Witness? generated = repeated.Data.ExecutionWitness;
-        Assert.That(captured, Is.Not.Null);
-        Assert.That(generated, Is.Not.Null,
-            "newPayload skips a known block, so the handler must supply the witness itself");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(captured, Is.Not.Null);
+            Assert.That(generated, Is.Not.Null,
+                "newPayload skips a known block, so the handler must supply the witness itself");
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(generated!.State.ToArray(), Is.EqualTo(captured!.State.ToArray()));
@@ -731,14 +764,17 @@ public partial class EngineModuleTests
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await chain.EngineRpcModule.engine_newPayloadWithWitnessV5(bad, [], TestItem.KeccakE, requests ?? []);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success),
-            "non-VALID status must still yield HTTP 200 / RPC success per the spec");
-        Assert.That(result.Data.Status, Is.Not.EqualTo(PayloadStatus.Valid));
-        Assert.That(result.Data.ExecutionWitness, Is.Null,
-            "spec: witness must be None when status is not VALID");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success),
+                "non-VALID status must still yield HTTP 200 / RPC success per the spec");
+            Assert.That(result.Data.Status, Is.Not.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.Data.ExecutionWitness, Is.Null,
+                "spec: witness must be None when status is not VALID");
 
-        Assert.That(rendezvous.HasPendingRequest(Keccak.Zero), Is.False,
-            "the handler must cancel the rendezvous entry on non-VALID outcomes");
+            Assert.That(rendezvous.HasPendingRequest(Keccak.Zero), Is.False,
+                "the handler must cancel the rendezvous entry on non-VALID outcomes");
+        }
     }
 
     [Test]
@@ -746,25 +782,29 @@ public partial class EngineModuleTests
     {
         int processCount = 0;
 
+        using MergeTestBlockchain producer = await CreateBlockchain(Amsterdam.Instance);
         using MergeTestBlockchain chain = await CreateBlockchain(
             Amsterdam.Instance,
             configurer: builder =>
                 builder.AddDecorator<IBranchProcessor>((_, inner) =>
                     new CountingBranchProcessorDecorator(inner, () => Interlocked.Increment(ref processCount))));
 
-        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(producer);
         processCount = 0;
 
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await chain.EngineRpcModule.engine_newPayloadWithWitnessV5(
                 payload, [], TestItem.KeccakE, requests ?? []);
 
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(result.Data.ExecutionWitness, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.Data.ExecutionWitness, Is.Not.Null);
 
-        Assert.That(processCount, Is.EqualTo(1),
-            "Option A must execute the block exactly once; " +
-            "a count of 2 means the old double-execution bug has regressed");
+            Assert.That(processCount, Is.EqualTo(1),
+                "Option A must execute the block exactly once; " +
+                "a count of 2 means the old double-execution bug has regressed");
+        }
     }
 
     [Test]
@@ -779,10 +819,13 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> result =
             await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
 
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid),
-            "the witness infrastructure must be completely transparent to the normal path");
-        Assert.That(rendezvous.HasPendingRequest(hash), Is.False,
-            "no rendezvous entry should exist for a plain engine_newPayloadV5 call");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid),
+                "the witness infrastructure must be completely transparent to the normal path");
+            Assert.That(rendezvous.HasPendingRequest(hash), Is.False,
+                "no rendezvous entry should exist for a plain engine_newPayloadV5 call");
+        }
     }
 
     [Test]
@@ -883,7 +926,10 @@ public partial class EngineModuleTests
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain, txs.Length);
         Assert.That(payload.Transactions, Has.Length.EqualTo(txs.Length),
             "the built payload must contain exactly the submitted transactions");
-        await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
+        ResultWrapper<PayloadStatusV1> newPayloadResult = await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
+        Assert.That(newPayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid), "the block must be accepted before the forkchoice");
+        // VALID comes before the commit, which the forkchoice waits for only a bounded time before answering SYNCING.
+        await chain.WaitForCommitted(payload.BlockHash!);
 
         Task txPoolHeadWait = chain.WaitForTxPoolHead(payload.BlockHash!);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(

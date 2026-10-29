@@ -16,6 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
@@ -45,6 +46,7 @@ public class SnapStateServerTests
         int PersistedNodeCount { get; }
 
         IWriteBatch BeginWriteBatch();
+        void SetRawAccount(Hash256 accountPath, byte[] accountRlp);
         Hash256 GetStorageRoot(Hash256 storagePath);
     }
 
@@ -74,6 +76,11 @@ public class SnapStateServerTests
         }
 
         public IWriteBatch BeginWriteBatch() => new WriteBatch(this);
+        public void SetRawAccount(Hash256 accountPath, byte[] accountRlp)
+        {
+            _tree.Set(accountPath.Bytes, accountRlp);
+            _tree.Commit();
+        }
         public Hash256 GetStorageRoot(Hash256 accountPath) => _tree.Get(accountPath)!.StorageRoot;
         public void Dispose() => ((IDisposable)_store).Dispose();
 
@@ -335,8 +342,11 @@ public class SnapStateServerTests
         ]);
         using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
-        Assert.That(result.Count, Is.EqualTo(1));
-        Assert.That(ValueKeccak.Compute(result[0]), Is.EqualTo(context.RootHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count, Is.EqualTo(1));
+            Assert.That(ValueKeccak.Compute(result[0]), Is.EqualTo(context.RootHash));
+        }
     }
 
     [Test]
@@ -354,6 +364,67 @@ public class SnapStateServerTests
         using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
         Assert.That(result.Count, Is.EqualTo(1));
+    }
+
+    private static IEnumerable<TestCaseData> AccountPayloads()
+    {
+        yield return new TestCaseData(Array.Empty<byte>()).SetName("{m}: AbsentAccount");
+        yield return new TestCaseData(new byte[] { 0xc1, 0x80 }).SetName("{m}: PlaceholderAccount");
+        yield return new TestCaseData(AccountDecoder.Instance.EncodeAsBytes(Account.TotallyEmpty)).SetName("{m}: EmptyAccount");
+        yield return new TestCaseData(AccountDecoder.Instance.EncodeAsBytes(
+            new Account(1).WithChangedCodeHash(TestItem.KeccakA))).SetName("{m}: AccountWithCode");
+        yield return new TestCaseData(new byte[] { 0xc4, 0x80, 0x80, 0x80, 0x80 }).SetName("{m}: NullHashes");
+        yield return new TestCaseData(Rlp.Encode(Rlp.Encode(0), Rlp.Encode(0), Rlp.Encode(Keccak.EmptyTreeHash), Rlp.OfEmptyByteArray).Bytes)
+            .SetName("{m}: NullCodeHash");
+        yield return new TestCaseData(new byte[] { 0xc4, 0x80, 0x80, 0xa0 }).SetName("{m}: TruncatedStorageHash");
+        yield return new TestCaseData(AccountDecoder.Instance.EncodeAsBytes(Account.TotallyEmpty)[..^1]).SetName("{m}: TruncatedCodeHash");
+    }
+
+    [TestCaseSource(nameof(AccountPayloads))]
+    public void GetStorageResponses_AccountPayload_PreservesDecodeBehavior(byte[] accountRlp)
+    {
+        using ISnapServerContext context = CreateContext();
+        Hash256 accountPath = TestItem.Tree.AccountAddress0;
+        context.SetRawAccount(accountPath, accountRlp);
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(
+            [new PathGroup { Group = [accountPath.BytesToArray(), []] }]);
+        PathWithAccount[] accounts = [new(accountPath, Account.TotallyEmpty)];
+        RlpException? expectedException = null;
+        Account? expected = null;
+        if (accountRlp.Length > 0)
+        {
+            try
+            {
+                expected = AccountDecoder.Instance.Decode(accountRlp);
+            }
+            catch (RlpException exception)
+            {
+                expectedException = exception;
+            }
+        }
+
+        if (expectedException is not null)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => context.Server.GetTrieNodes(pathSet, context.RootHash, default),
+                    Throws.TypeOf(expectedException.GetType()).With.Message.EqualTo(expectedException.Message), "malformed trie payloads retain the account decoder error");
+                Assert.That(() => context.Server.GetStorageRanges(context.RootHash, accounts, null, null, 4000, default),
+                    Throws.TypeOf(expectedException.GetType()).With.Message.EqualTo(expectedException.Message), "malformed range payloads retain the account decoder error");
+            }
+            return;
+        }
+
+        using IByteArrayList nodes = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) =
+            context.Server.GetStorageRanges(context.RootHash, accounts, null, null, 4000, default);
+        using (slots)
+        using (proofs)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodes.Count, Is.EqualTo(expected is null ? 0 : 1), "only present accounts produce a storage trie lookup");
+            Assert.That(slots, Is.Empty, "an absent account or empty storage root has no storage slots");
+        }
     }
 
     [Test]
@@ -705,32 +776,44 @@ public class SnapStateServerTests
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray[..1], ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
         Assert.That(slots.Count, Is.EqualTo(1));
-        Assert.That(slots[0].Count, Is.EqualTo(1));
-        Assert.That(proofs, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slots[0].Count, Is.EqualTo(1));
+            Assert.That(proofs, Is.Not.Null);
+        }
 
         slots.DisposeRecursive();
         proofs?.Dispose();
 
         (slots, proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray[..1], ValueKeccak.Zero, ValueKeccak.MaxValue, 1000000, CancellationToken.None);
         Assert.That(slots.Count, Is.EqualTo(1));
-        Assert.That(slots[0].Count, Is.EqualTo(1000));
-        Assert.That(proofs?.Count, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slots[0].Count, Is.EqualTo(1000));
+            Assert.That(proofs?.Count, Is.EqualTo(0));
+        }
 
         slots.DisposeRecursive();
         proofs?.Dispose();
 
         (slots, proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray[..2], ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
         Assert.That(slots.Count, Is.EqualTo(1));
-        Assert.That(slots[0].Count, Is.EqualTo(1));
-        Assert.That(proofs, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slots[0].Count, Is.EqualTo(1));
+            Assert.That(proofs, Is.Not.Null);
+        }
         slots.DisposeRecursive();
         proofs?.Dispose();
 
         (slots, proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray[..2], ValueKeccak.Zero, ValueKeccak.MaxValue, 100000, CancellationToken.None);
         Assert.That(slots.Count, Is.EqualTo(2));
-        Assert.That(slots[0].Count, Is.EqualTo(1000));
-        Assert.That(slots[1].Count, Is.EqualTo(539));
-        Assert.That(proofs, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slots[0].Count, Is.EqualTo(1000));
+            Assert.That(slots[1].Count, Is.EqualTo(539));
+            Assert.That(proofs, Is.Not.Null);
+        }
         slots.DisposeRecursive();
         proofs?.Dispose();
 
@@ -738,8 +821,11 @@ public class SnapStateServerTests
         // incomplete tree will be returned as the hard limit is 2000000
         (slots, proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray, ValueKeccak.Zero, ValueKeccak.MaxValue, 3000000, CancellationToken.None);
         Assert.That(slots.Count, Is.EqualTo(8));
-        Assert.That(slots[^1].Count, Is.LessThan(8000));
-        Assert.That(proofs?.Count, Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slots[^1].Count, Is.LessThan(8000));
+            Assert.That(proofs?.Count, Is.GreaterThan(0));
+        }
 
         slots.DisposeRecursive();
         proofs?.Dispose();

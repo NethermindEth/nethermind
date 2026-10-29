@@ -27,7 +27,9 @@ public class GasLimitTxFilterTests
     public void Accept_FrameTx_JudgesItAgainstTheSpecPinnedForTheSubmission(bool pinnedCharges, bool headCharges)
     {
         ReleaseSpec lenient = SpecCharging(false);
+#pragma warning disable NUnit2045 // Keep output variables in the enclosing scope for subsequent checks and actions.
         Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(ValueBearingFrameTx(), lenient, out ulong affordable, out _), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(ValueBearingFrameTx(), SpecCharging(true), out ulong charged, out _), Is.True);
         Assert.That(charged, Is.GreaterThan(affordable), "the two specs must disagree, or this pins nothing");
 

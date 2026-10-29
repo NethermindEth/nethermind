@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 #
 # Settings shared by every zkVM guest (zisk, sp1, openvm); each guest's Makefile
-# adds only what differs: the libc, the bindings manifest, the harness and the
+# adds only what differs: the libc, the runtime package, the harness and the
 # exit protocol. Shared rather than copied because they have to agree - cycle
 # counts are comparable across targets only if the same closure is built by the
 # same toolchain, and BFLAT_REFS drifting in one guest would break that silently.
@@ -11,9 +11,18 @@
 # directory, so derive it rather than repeat it.
 GUEST_PROJECT := $(notdir $(MAKEFILE_DIR))
 
-# The bindings manifest is named after the libc everywhere except zisk, whose is
-# libziskos; that guest sets GUEST_EXTLIB itself.
-GUEST_EXTLIB ?= lib$(GUEST_LIBC)
+# The runtime package of the guest's zkVM. bflat gets the .nupkg that restore
+# put in the NuGet cache, not the files that the build copied out of it: bflat
+# checks the signature of a package, and does not check a local manifest. The
+# package has the platform (entry, linker script, manifest) and the bindings.
+# dotnet gives the folder that restore uses: $(HOME) can be unset (a test agent
+# runs make with no HOME) while dotnet still finds the home of the user.
+NUGET_PACKAGES ?= $(patsubst %/,%,$(shell dotnet nuget locals global-packages --list | sed -n 's/^global-packages: //p'))
+GUEST_PACKAGE_ID := $(shell echo '$(GUEST_PACKAGE)' | tr '[:upper:]' '[:lower:]')
+GUEST_PACKAGE_VERSION := $(shell sed -n 's/.*Include="$(GUEST_PACKAGE)" Version="\[\([^]]*\)\]".*/\1/p' $(MAKEFILE_DIR)/../../../Directory.Packages.props)
+GUEST_NUPKG := $(GUEST_PACKAGE_ID).$(GUEST_PACKAGE_VERSION).nupkg
+GUEST_NUPKG_PATH := $(NUGET_PACKAGES)/$(GUEST_PACKAGE_ID)/$(GUEST_PACKAGE_VERSION)/$(GUEST_NUPKG)
+PACKAGE_DIR := /nethermind/package
 
 # The bflat RISC-V64 compiler and .NET runtime, pinned by digest because :latest
 # moves with every CI run there; the tag records the bflat-riscv64 commit.
@@ -25,11 +34,13 @@ GUEST_EXTLIB ?= lib$(GUEST_LIBC)
 # .NET 11, not 10: both pass the soft-float suite, but 11 is the line it is
 # maintained on. It costs ~2.6% more SP1 cycles and ~2.5% more ZisK steps over
 # the nine stateless-tests blocks, and gives ~6.5% smaller binaries.
-BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:321edc6406497fbd6c6e09f717307e82df47bb90@sha256:7863dce1e70b735cc72a1edaa3e96c7410d6d452525e21a8dee283c99dc38396
+BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:dd05dd8af0a14065a9974492007dd5e568acfecc@sha256:34235a4a8050b171dd03562a875752c08db5b6fdb33bb505be1eeeb7c4ea19be
 
 # Every target decodes rv64im only and reads the whole .text up front, so even
 # unreachable F/D/C/A instructions reject the guest - fail at build time instead.
-ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --error-on-atomic
+# Floating point in the IL is not an error: the guest is soft-float (lp64), and
+# --error-on-float-binary checks that no F/D instruction is in the image.
+ISA_GATES ?= --error-on-float-binary --error-on-compressed --error-on-atomic
 
 # The guest has no instruction cache, so favouring speed over size is near free.
 # Requires the TrieNode seqlock collapse: -Ot over the seqlock built a guest whose
@@ -105,7 +116,7 @@ BFLAT_REFS := \
 # --- Targets shared by every guest ---------------------------------------
 #
 # Parameterised by GUEST_LIBC, which each guest sets before the include, and
-# by GUEST_PROJECT/GUEST_EXTLIB derived above. Note MAKEFILE_DIR here is the
+# by GUEST_PROJECT/GUEST_NUPKG derived above. Note MAKEFILE_DIR here is the
 # GUEST's directory, set by its Makefile; only SHARED_DIR points at this file.
 
 .DEFAULT_GOAL := build
@@ -116,12 +127,15 @@ dotnet-build:
 # ILC embeds every manifest resource of every input assembly and the guest reads
 # none, so they are dead weight (6.9 MB of chainspecs once rode along).
 build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
+	@[ -n "$(GUEST_PACKAGE_VERSION)" ] || { echo "error: no version of $(GUEST_PACKAGE) in Directory.Packages.props; the pin must be exact: Version=\"[x]\"" >&2; exit 1; }
+	@[ -f "$(GUEST_NUPKG_PATH)" ] || { echo "error: $(GUEST_NUPKG_PATH) is not there; restore puts it in NUGET_PACKAGES" >&2; exit 1; }
 	docker run --platform linux/amd64 --rm \
 		-e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
 		-e DOTNET_TYPELOADER_TRACE_INTERFACE_RESOLUTION=0 \
 		-w $(SRC_DIR) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/$(GUEST_PROJECT)/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
+		--mount type=bind,source="$(GUEST_NUPKG_PATH)",target=$(PACKAGE_DIR)/$(GUEST_NUPKG),readonly \
 		$(SHARED_MOUNT) \
 		$(BFLAT_IMAGE) \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc $(GUEST_LIBC) \
@@ -133,7 +147,7 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		--nostdlibrefs \
 		$(GUEST_SUBSTITUTIONS) \
 		$(BFLAT_REFS) \
-		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/$(GUEST_EXTLIB).bflat.manifest \
+		--extlib $(PACKAGE_DIR)/$(GUEST_NUPKG) \
 		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \

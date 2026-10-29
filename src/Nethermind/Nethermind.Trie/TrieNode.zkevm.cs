@@ -261,10 +261,12 @@ namespace Nethermind.Trie
 
         /// <summary>Rents the scratch for the depth of <paramref name="path"/>, holding at least <paramref name="length"/> bytes.</summary>
         /// <remarks>Valid until the next branch at that depth is encoded; <see cref="StorableBranchRlp"/> copies out what a node keeps.</remarks>
-        private static CappedArray<byte> RentBranchRlpScratch(int length, in TreePath path)
+        internal static CappedArray<byte> RentBranchRlpScratch(int length, in TreePath path)
         {
-            ref byte[]? scratch = ref (BranchRlpScratch.ByDepth ??= new byte[2 * Hash256.Size][])[path.Length];
-            if (scratch is null || scratch.Length < length) scratch = new byte[Math.Max(length, FullBranchRlpLength)];
+            // Read by value: a reference to an element of an array of references costs a covariance check call.
+            byte[]?[] byDepth = BranchRlpScratch.ByDepth ??= new byte[2 * Hash256.Size][];
+            byte[]? scratch = byDepth[path.Length];
+            if (scratch is null || scratch.Length < length) byDepth[path.Length] = scratch = new byte[Math.Max(length, FullBranchRlpLength)];
             return new CappedArray<byte>(scratch, length);
         }
 
@@ -312,16 +314,12 @@ namespace Nethermind.Trie
         /// nibbles back into its hex prefix is most of what encoding it costs. <see cref="OnKeyChanged"/> drops the RLP
         /// of a leaf whose key changes, so any RLP still present carries the current key.
         /// </remarks>
-        /// <returns>Whether the leaf had an RLP to reuse; when not, <paramref name="rlp"/> is not set.</returns>
+        /// <returns>Whether the leaf had an RLP, or else a hex-prefix key, to reuse; when not, <paramref name="rlp"/> is not set.</returns>
         private static bool TryEncodeLeafWithStoredKey(TrieNode node, ICappedArrayPool? pool, out CappedArray<byte> rlp)
         {
             CappedArray<byte> previous = node.ReadRlp();
             ReadOnlySpan<byte> previousRlp = previous.AsSpan();
-            if (previousRlp.IsEmpty)
-            {
-                rlp = default;
-                return false;
-            }
+            if (previousRlp.IsEmpty) return TryEncodeLeafWithCompactKey(node, pool, out rlp);
 
             int keyStart = previousRlp[0] < 0xf8 ? 1 : 1 + previousRlp[0] - 0xf7;
             // A hex-prefix key is one to thirty-three bytes: a single byte below 0x80, or a short string.
@@ -336,6 +334,27 @@ namespace Nethermind.Trie
             int position = Rlp.StartSequence(destination, 0, contentLength);
             keyItem.CopyTo(destination[position..]);
             Rlp.Encode(destination, position + keyItemLength, value);
+            return true;
+        }
+
+        /// <summary>Encodes <paramref name="node"/>, a leaf without RLP, from the hex-prefix key its data keeps, as a leaf
+        /// built by a raw-key write does.</summary>
+        /// <returns>Whether the leaf kept such a key; when not, <paramref name="rlp"/> is not set.</returns>
+        private static bool TryEncodeLeafWithCompactKey(TrieNode node, ICappedArrayPool? pool, out CappedArray<byte> rlp)
+        {
+            if (node._nodeData is not LeafData leaf || !leaf.TryGetCompactKey(out ReadOnlySpan<byte> compactKey))
+            {
+                rlp = default;
+                return false;
+            }
+
+            ReadOnlySpan<byte> value = leaf.Value.AsSpan();
+            int contentLength = Rlp.LengthOf(compactKey) + Rlp.LengthOf(value);
+            rlp = pool.SafeRent(Rlp.LengthOfSequence(contentLength));
+            Span<byte> destination = rlp.AsSpan();
+            int position = Rlp.StartSequence(destination, 0, contentLength);
+            position = Rlp.Encode(destination, position, compactKey);
+            Rlp.Encode(destination, position, value);
             return true;
         }
 

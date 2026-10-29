@@ -3,7 +3,6 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
@@ -79,7 +78,6 @@ public class XdcModule : Module
             //TODO this might not be wired correctly
             .AddSingleton<
                 IMasternodeVotingContract,
-                IAbiEncoder,
                 ISpecProvider,
                 IReadOnlyTxProcessingEnvFactory>(CreateVotingContract)
             .AddSingleton<IMintedRecordContract, MintedRecordContract>()
@@ -152,7 +150,7 @@ public class XdcModule : Module
             .RegisterSingletonJsonRpcModule<IXdcMasternodeEthRpcModule, XdcMasternodeEthModule>()
             .OnBuild(static _ => XdcBlockParameterConverter.Register());
 
-        RegisterRewardCalculatorSource(builder);
+        RegisterRewardCalculator(builder);
         builder.RegisterType<RewardsStore>().As<IRewardsStore>().As<IStartable>().WithAttributeFiltering().SingleInstance();
         builder.RegisterType<SnapshotManager>().As<ISnapshotManager>().WithAttributeFiltering().SingleInstance();
         builder.RegisterType<SignTransactionManager>().As<ISignTransactionManager>().As<IStartable>().SingleInstance();
@@ -164,8 +162,8 @@ public class XdcModule : Module
 
     protected virtual XdcChainSpecLoader CreateChainSpecLoader() => new();
 
-    protected virtual void RegisterRewardCalculatorSource(ContainerBuilder builder) =>
-        builder.AddDecorator<IRewardCalculatorSource, XdcRewardCalculatorSource>();
+    protected virtual void RegisterRewardCalculator(ContainerBuilder builder) =>
+        builder.AddScoped<IRewardCalculator, XdcRewardCalculator>();
 
     private static ITxPool CreateTxPool(IComponentContext ctx)
     {
@@ -203,11 +201,10 @@ public class XdcModule : Module
     }
 
     private IMasternodeVotingContract CreateVotingContract(
-        IAbiEncoder abiEncoder,
         ISpecProvider specProvider,
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnv)
     {
         IXdcReleaseSpec spec = (XdcReleaseSpec)specProvider.GetFinalSpec();
-        return new MasternodeVotingContract(abiEncoder, spec.MasternodeVotingContract, readOnlyTxProcessingEnv);
+        return new MasternodeVotingContract(spec.MasternodeVotingContract, readOnlyTxProcessingEnv);
     }
 }

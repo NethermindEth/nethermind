@@ -79,7 +79,7 @@ public class TaikoBeaconSyncTests
             new SyncConfig(),
             LimboLogs.Instance);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(sut.ShouldBeInBeaconModeControl(), Is.True);
             Assert.That(sut.IsBeaconSyncFinished(null), Is.True);
@@ -87,7 +87,7 @@ public class TaikoBeaconSyncTests
             Assert.That(sut.GetTargetBlockHeight(), Is.EqualTo(123UL));
             Assert.That(sut.GetFinalizedHash(), Is.EqualTo(TestItem.KeccakA));
             Assert.That(sut.GetHeadBlockHash(), Is.EqualTo(TestItem.KeccakB));
-        });
+        }
     }
 
     private static IBlockTree BlockTreeWith(ulong? libhNumber, ulong bestSuggestedHeader, ulong headNumber, bool isKnownBlock)

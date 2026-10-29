@@ -8,8 +8,8 @@ BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
 
 GUEST_LIBC := zisk
-# The only target whose bindings library is not named after its libc.
-GUEST_EXTLIB := libziskos
+# The runtime package of ZisK; build.mk gives its .nupkg to bflat.
+GUEST_PACKAGE := Nethermind.ZiskOS.Runtime
 
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk

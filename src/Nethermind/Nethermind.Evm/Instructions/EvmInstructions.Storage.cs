@@ -856,7 +856,7 @@ public static partial class EvmInstructions
         Address executingAccount = vm.VmState.Env.ExecutingAccount;
         StorageCell storageCell = new(executingAccount, in value);
 
-        ulong traceGasCost = TTracingInst.IsActive ? vm.GetStorageLoadTraceGasCost(in storageCell) : 0;
+        ulong traceGasCost = TTracingInst.IsActive && vm.IsTracingOperationStart ? vm.GetStorageLoadTraceGasCost(in storageCell) : 0;
         // Charge additional gas based on whether the storage cell is hot or cold.
         bool gasAvailable = TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec);
         if (TTracingInst.IsActive)
@@ -906,7 +906,7 @@ public static partial class EvmInstructions
         if (!result.IsUint64 || offset >= (uint)inputData.Length)
         {
             Unsafe.InitBlockUnaligned(ref slot, 0, EvmStack.WordSize);
-            if (TTracingInst.IsActive) vm.TxTracer.ReportStackPush(Bytes.ZeroByteSpan);
+            if (TTracingInst.IsActive && stack.TracesPushes) vm.TxTracer.ReportStackPush(Bytes.ZeroByteSpan);
             return EvmExceptionType.None;
         }
 

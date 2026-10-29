@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
@@ -39,7 +39,7 @@ namespace Nethermind.AuRa.Test
             IBlockGasLimitContract blockGasLimitContract3 = Substitute.For<IBlockGasLimitContract>();
             blockGasLimitContract3.ActivationBlock.Returns(10UL);
             blockGasLimitContract3.Activation.Returns(10UL);
-            blockGasLimitContract3.BlockGasLimit(Arg.Any<BlockHeader>()).Throws(new AbiException(string.Empty));
+            blockGasLimitContract3.BlockGasLimit(Arg.Any<BlockHeader>()).Throws(new ContractException(string.Empty));
 
             BlocksConfig config = new() { TargetBlockGasLimit = 4000000 };
             AuRaContractGasLimitOverride gasLimitOverride = new(
