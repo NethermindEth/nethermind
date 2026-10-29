@@ -222,6 +222,7 @@ internal static class TransactionLookupWorkload
 
     internal static async Task QualifyReceiptEncodingAsync(JsonObject manifest, Func<string, JsonArray, Task<JsonNode?>> rpc, string reportPath, CancellationToken cancellationToken, bool requireHashPrefixed = false)
     {
+        File.Delete(reportPath);
         var records = new JsonArray();
         foreach (var entry in manifest["entries"]!.AsArray())
         {
@@ -237,8 +238,33 @@ internal static class TransactionLookupWorkload
                 layout = "legacy-hash";
             }
             var hex = value?.GetValue<string>();
-            if (hex is not null && (!hex.StartsWith("0x", StringComparison.Ordinal) || hex.Length % 2 != 0)) throw new IOException("Invalid raw receipt encoding probe");
-            var bytes = hex is null ? Array.Empty<byte>() : Convert.FromHexString(hex[2..]);
+            byte[]? bytes = null;
+            try
+            {
+                if (hex is not null && (!hex.StartsWith("0x", StringComparison.Ordinal) || hex.Length % 2 != 0)) throw new IOException("Invalid raw receipt encoding probe");
+                bytes = hex is null ? Array.Empty<byte>() : Convert.FromHexString(hex[2..]);
+                if (requireHashPrefixed) ValidateHashPrefix(bytes, entry!.AsObject());
+            }
+            catch (Exception exception) when (exception is IOException or FormatException or ArgumentException)
+            {
+                string failurePath = reportPath + ".failure.json";
+                if (!File.Exists(failurePath))
+                {
+                    JsonObject failure = new() { ["reason"] = exception.Message[..Math.Min(1024, exception.Message.Length)], ["keyLayout"] = layout,
+                        ["key"] = (layout == "number-prefixed" ? key : hash)[..Math.Min(128, (layout == "number-prefixed" ? key : hash).Length)],
+                        ["byteLength"] = bytes?.Length, ["valueSha256"] = bytes is null ? null : Convert.ToHexStringLower(SHA256.HashData(bytes)),
+                        ["rawHexCharacters"] = hex?.Length, ["rawHex"] = bytes is not null && hex?.Length <= 524288 ? hex : null,
+                        ["rawHexPrefix"] = hex?[..Math.Min(512, hex.Length)], ["rawHexTail"] = hex?[Math.Max(0, hex.Length - 512)..] };
+                    foreach (string field in new[] { "blockNumber", "blockHash", "txHash", "transactionIndex", "blockTransactionCount" })
+                    {
+                        string? target = entry![field]?.ToString();
+                        failure[field] = target?[..Math.Min(128, target.Length)];
+                    }
+                    await using FileStream output = new(failurePath, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+                    await output.WriteAsync(Encoding.UTF8.GetBytes(failure.ToJsonString()), cancellationToken);
+                }
+                throw;
+            }
             var encoding = bytes.Length == 0 ? "missing-or-empty" : bytes[0] switch
             {
                 127 => "compact-no-hashes",
@@ -246,7 +272,6 @@ internal static class TransactionLookupWorkload
                 126 => "compact-hash-prefixed",
                 _ => "noncompact-or-unknown"
             };
-            if (requireHashPrefixed) ValidateHashPrefix(bytes, entry!.AsObject());
             records.Add((JsonNode)new JsonObject { ["blockHash"] = hash, ["blockNumber"] = entry["blockNumber"]!.DeepClone(), ["keyLayout"] = layout,
                 ["encoding"] = encoding, ["byteLength"] = bytes.Length, ["prefixHex"] = Convert.ToHexStringLower(bytes.AsSpan(0, Math.Min(96, bytes.Length))),
                 ["valueSha256"] = Convert.ToHexStringLower(SHA256.HashData(bytes)) });
@@ -261,13 +286,24 @@ internal static class TransactionLookupWorkload
         int offset = 1;
         int length = ReadRlpLength(bytes, ref offset, list: false);
         long count = Quantity(entry["transactionIndex"]);
-        if (length <= 0 || length % 32 != 0 || length / 32 != entry["blockTransactionCount"]!.GetValue<int>() || count < 0 || count >= length / 32)
+        int expectedCount = entry["blockTransactionCount"]!.GetValue<int>();
+        if (length <= 0 || length % 32 != 0 || length / 32 != expectedCount || count < 0 || count >= length / 32)
             throw new IOException("Stored transaction hash count differs from canonical block");
         if (!bytes.AsSpan(offset + checked((int)count * 32), 32).SequenceEqual(Convert.FromHexString(entry["txHash"]!.GetValue<string>()[2..])))
             throw new IOException("Stored transaction hash differs from canonical lookup target");
         offset += length;
         int receiptLength = ReadRlpLength(bytes, ref offset, list: true);
-        if (offset + receiptLength != bytes.Length) throw new IOException("Malformed compact receipt list framing");
+        int declaredEnd = offset + receiptLength;
+        // Persisted compact receipts exclude their final byte from the outer sequence length.
+        if (declaredEnd != bytes.Length && declaredEnd != bytes.Length - 1) throw new IOException("Malformed compact receipt list framing");
+        int receiptCount = 0;
+        while (offset < bytes.Length)
+        {
+            int itemLength = ReadRlpLength(bytes, ref offset, list: true);
+            offset += itemLength;
+            if (++receiptCount > expectedCount) throw new IOException("Stored receipt count exceeds canonical block");
+        }
+        if (receiptCount != expectedCount) throw new IOException("Stored receipt count differs from canonical block");
     }
 
     private static int ReadRlpLength(byte[] bytes, ref int offset, bool list)
