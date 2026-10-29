@@ -13,6 +13,8 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using Nethermind.StatelessInputGen;
@@ -93,21 +95,51 @@ public class TrustedInputTests
         ReadOnlySpan<byte> hints = SenderHints(input);
         ReadOnlySpan<byte> keys = TrustedInput.SenderKeys(hints);
         ReadOnlySpan<byte> ys = TrustedInput.SignatureYs(hints);
-        BigInteger p = BigInteger.Parse("0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", NumberStyles.HexNumber);
 
         Assert.That(hints.Length, Is.EqualTo(block.Transactions.Length * TrustedInput.SenderHintLength).And.Positive);
         for (int i = 0; i < block.Transactions.Length; i++)
         {
-            Signature signature = block.Transactions[i].Signature!;
-            BigInteger x = new(signature.RAsSpan, isUnsigned: true, isBigEndian: true);
-            BigInteger y = new(ys.Slice(i * 32, 32), isUnsigned: true, isBigEndian: true);
-
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(PublicKey.ComputeAddress(keys.Slice(i * 64, 64)), Is.EqualTo(block.Transactions[i].SenderAddress));
-                Assert.That(y * y % p, Is.EqualTo((x * x * x + 7) % p));
-                Assert.That(y.IsEven, Is.EqualTo((signature.RecoveryId & 1) == 0));
+                AssertSignaturePoint(block.Transactions[i].Signature!, ys.Slice(i * 32, 32));
             }
+        }
+    }
+
+    /// <summary>Hints cover the ECRECOVER calls that recover a key, and the EIP-7702 authorizations, in columns.</summary>
+    [Test]
+    public void Recovery_hints_hold_each_recovery_with_its_key()
+    {
+        EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
+        ValueHash256 message = ValueKeccak.Compute("message"u8);
+        Signature signature = ecdsa.Sign(TestItem.PrivateKeyB, in message);
+        byte[] call = new byte[128];
+        message.Bytes.CopyTo(call);
+        call[63] = (byte)(27 + signature.RecoveryId);
+        signature.Bytes.CopyTo(call.AsSpan(64));
+        byte[] badV = (byte[])call.Clone();
+        badV[63] = 29;
+        AuthorizationTuple authorization = ecdsa.Sign(TestItem.PrivateKeyC, BlockchainIds.Mainnet, TestItem.AddressD, 0);
+        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.WithType(TxType.SetCode)
+            .WithAuthorizationCode(authorization).SignedAndResolved(TestItem.PrivateKeyA).TestObject).TestObject;
+
+        byte[] hints = TrustedInput.RecoveryHints(BlockchainIds.Mainnet, block, [call, badV]);
+
+        ReadOnlySpan<byte> keys = TrustedInput.RecoveryHintColumn(hints, RecoveryHintField.Key);
+        ReadOnlySpan<byte> ys = TrustedInput.RecoveryHintColumn(hints, RecoveryHintField.Y);
+        ReadOnlySpan<byte> signatures = TrustedInput.RecoveryHintColumn(hints, RecoveryHintField.Signature);
+        Assert.That(hints, Has.Length.EqualTo(2 * TrustedInput.RecoveryHintLength));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TrustedInput.RecoveryHintColumn(hints, RecoveryHintField.Message)[..32].ToArray(), Is.EqualTo(message.ToByteArray()));
+            Assert.That(signatures[..64].ToArray(), Is.EqualTo(signature.Bytes.ToArray()));
+            Assert.That(TrustedInput.RecoveryHintColumn(hints, RecoveryHintField.RecoveryId).ToArray(),
+                Is.EqualTo(new[] { signature.RecoveryId, authorization.AuthoritySignature.RecoveryId }));
+            Assert.That(PublicKey.ComputeAddress(keys[..64]), Is.EqualTo(TestItem.AddressB));
+            Assert.That(PublicKey.ComputeAddress(keys[64..]), Is.EqualTo(TestItem.AddressC));
+            AssertSignaturePoint(signature, ys[..32]);
+            AssertSignaturePoint(authorization.AuthoritySignature, ys[32..]);
         }
     }
 
@@ -127,7 +159,7 @@ public class TrustedInputTests
     {
         (byte[] input, Block block) = await CreateInput(amsterdam: false);
         byte[] hints = SenderHints(input).ToArray();
-        byte[] weights = TrustedInput.SenderHintWeights(block.Hash!, hints);
+        byte[] weights = TrustedInput.HintWeights(block.Hash!, hints, []);
 
         byte[] otherHints = (byte[])hints.Clone();
         otherHints[^1] ^= 1;
@@ -135,9 +167,9 @@ public class TrustedInputTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(weights, Has.Length.EqualTo(block.Transactions.Length * 16));
-            Assert.That(TrustedInput.SenderHintWeights(block.Hash!, hints), Is.EqualTo(weights));
-            Assert.That(TrustedInput.SenderHintWeights(block.Hash!, otherHints), Is.Not.EqualTo(weights));
-            Assert.That(TrustedInput.SenderHintWeights(Keccak.Compute(block.Hash!.Bytes), hints), Is.Not.EqualTo(weights));
+            Assert.That(TrustedInput.HintWeights(block.Hash!, hints, []), Is.EqualTo(weights));
+            Assert.That(TrustedInput.HintWeights(block.Hash!, otherHints, []), Is.Not.EqualTo(weights));
+            Assert.That(TrustedInput.HintWeights(Keccak.Compute(block.Hash!.Bytes), hints, []), Is.Not.EqualTo(weights));
         }
     }
 
@@ -170,6 +202,19 @@ public class TrustedInputTests
     {
         StatelessValidationResult.Decode(StatelessExecutor.ExecuteTrusted(input), out StatelessValidationResult result);
         return result;
+    }
+
+    /// <summary>Asserts that <paramref name="y"/> is the y of <paramref name="signature"/>'s R on secp256k1.</summary>
+    private static void AssertSignaturePoint(Signature signature, ReadOnlySpan<byte> y)
+    {
+        BigInteger p = BigInteger.Parse("0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", NumberStyles.HexNumber);
+        BigInteger x = new(signature.RAsSpan, isUnsigned: true, isBigEndian: true);
+        BigInteger value = new(y, isUnsigned: true, isBigEndian: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value * value % p, Is.EqualTo((x * x * x + 7) % p));
+            Assert.That(value.IsEven, Is.EqualTo((signature.RecoveryId & 1) == 0));
+        }
     }
 
     private static Span<byte> SenderHints(byte[] input) => input.AsSpan(

@@ -60,7 +60,9 @@ public class TrustedInputPluginTests
         Block block = await chain.AddBlock(Transfer(chain));
 
         TrustedInputStore store = chain.Container.Resolve<TrustedInputStore>();
-        Assert.That(store.TryGet(block.Hash!, out byte[] input), Is.True);
+        // Captured off the import path.
+        Assert.That(() => store.TryGet(block.Hash!, out _), Is.True.After(10_000, 50));
+        store.TryGet(block.Hash!, out byte[] input);
         Assert.That(Keccak.Compute(Input.BlockHeaderOf(input)), Is.EqualTo(block.Hash));
     }
 

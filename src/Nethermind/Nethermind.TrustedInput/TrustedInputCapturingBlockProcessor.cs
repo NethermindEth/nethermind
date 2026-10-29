@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
@@ -60,9 +61,9 @@ public sealed class TrustedInputCapturingBlockProcessor(
 
         try
         {
-            using Witness blockWitness = witness.GetWitness(parent);
-            byte[] input = Stateless.Execution.IO.TrustedInput.Write(specProvider.ChainId, suggestedBlock, blockWitness);
-            store.Add(suggestedBlock.Number, suggestedBlock.Hash, input);
+            Witness blockWitness = witness.GetWitness(parent);
+            // Writing executes the block once more, statelessly, so it runs off the import path.
+            _ = Task.Run(() => Capture(suggestedBlock, blockWitness));
         }
         catch (Exception ex)
         {
@@ -70,5 +71,21 @@ public sealed class TrustedInputCapturingBlockProcessor(
         }
 
         return result;
+    }
+
+    private void Capture(Block block, Witness blockWitness)
+    {
+        using (blockWitness)
+        {
+            try
+            {
+                byte[] input = Stateless.Execution.IO.TrustedInput.Write(specProvider.ChainId, block, blockWitness);
+                store.Add(block.Number, block.Hash!, input);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"Could not capture the trusted input of block {block.ToString(Block.Format.Short)}", ex);
+            }
+        }
     }
 }

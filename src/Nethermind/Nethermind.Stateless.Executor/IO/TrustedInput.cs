@@ -33,10 +33,13 @@ namespace Nethermind.Stateless.Execution.IO;
 /// <list type="bullet">
 /// <item>A <see cref="HeaderLength"/>-byte header: magic, version, chain id, <see cref="ProtocolFork"/>, the offset and
 /// length of the block header, withdrawals and block access list RLP and of the sender hints, the offsets of the four
-/// item lists, and the total length.</item>
+/// item lists, the total length, and the offset and length of the recovery hints.</item>
 /// <item>Sender hints, empty or one per transaction: the signers' public keys (x || y, 64 bytes each), then the y of
 /// each signature's R (32 bytes each), all big-endian. A guest may check every signature against its hint in one
 /// batch, and recovers the senders when the batch fails, so a wrong hint costs time but never changes the result.</item>
+/// <item>Recovery hints, for the other public-key recoveries the block makes (of the ECRECOVER precompile and of
+/// EIP-7702 authorizations), in columns: the 32-byte messages, the 64-byte signatures (r || s), the keys, the ys of
+/// R, then the one-byte recovery ids. They join the senders' batch, and a recovery none of them matches is computed.</item>
 /// <item>Item lists of transactions (as sent on the wire), witness headers, state nodes and codes: a count and a
 /// reserved word, then the items. An item is its length, <see cref="ItemPrefixLength"/> - 4 reserved bytes, the item's
 /// bytes and padding to 8; a code is followed by <see cref="CodeInfo.ExecutionPadding"/> more bytes before that padding.
@@ -53,7 +56,7 @@ public static partial class TrustedInput
 
     public const uint Magic = 0x4E49544E; // "NTIN"
     public const uint Version = 1;
-    public const int HeaderLength = 80;
+    public const int HeaderLength = 88;
 
     /// <summary>The bytes before every item: its length, then room for an array header.</summary>
     public const int ItemPrefixLength = 24;
@@ -61,6 +64,11 @@ public static partial class TrustedInput
     /// <summary>The bytes of sender hints per transaction: a public key and the y of the signature's R.</summary>
     public const int SenderHintLength = KeyLength + YLength;
 
+    /// <summary>The bytes of recovery hints per recovery: its message, signature, key, the y of its R and its recovery id.</summary>
+    public const int RecoveryHintLength = MessageLength + SignatureLength + KeyLength + YLength + 1;
+
+    private const int MessageLength = 32;
+    private const int SignatureLength = 64;
     private const int KeyLength = 64;
     private const int YLength = 32;
     private const int WeightLength = 16;
@@ -76,6 +84,7 @@ public static partial class TrustedInput
     private const int StateNodesList = 64;
     private const int CodesList = 68;
     private const int TotalLengthOffset = 72;
+    private const int RecoveryHintsSection = 80;
     private const int ListPrefixLength = 8;
 
     /// <summary>Encodes <paramref name="block"/> and <paramref name="witness"/> as a trusted input under the chain's own
@@ -91,15 +100,24 @@ public static partial class TrustedInput
 
     /// <summary>Encodes <paramref name="block"/> and <paramref name="witness"/> as a trusted input.</summary>
     /// <param name="encodedTransactions">The block's transactions as sent on the wire, in block order.</param>
+    /// <remarks>Executes the block once, from a draft of the input, to learn the recoveries its ECRECOVER calls make.</remarks>
     public static byte[] Write(ulong chainId, ProtocolFork fork, Block block, IReadOnlyList<byte[]> encodedTransactions, Witness witness)
+    {
+        byte[] senderHints = SenderHints(chainId, fork, block, encodedTransactions);
+        byte[] draft = Write(chainId, fork, block, encodedTransactions, witness, senderHints, []);
+        byte[] recoveryHints = RecoveryHints(chainId, block, StatelessExecutor.CollectRecoveryInputs(draft));
+        return recoveryHints.Length == 0 ? draft : Write(chainId, fork, block, encodedTransactions, witness, senderHints, recoveryHints);
+    }
+
+    private static byte[] Write(ulong chainId, ProtocolFork fork, Block block, IReadOnlyList<byte[]> encodedTransactions,
+        Witness witness, byte[] senderHints, byte[] recoveryHints)
     {
         byte[] header = Rlp.Encode(block.Header).Bytes;
         byte[] withdrawals = block.Withdrawals is null ? [] : Rlp.Encode(block.Withdrawals).Bytes;
         byte[] blockAccessList = block.EncodedBlockAccessList ?? [];
-        byte[] senderHints = SenderHints(chainId, fork, block, encodedTransactions);
 
         int length = HeaderLength + Align(header.Length) + Align(withdrawals.Length) + Align(blockAccessList.Length)
-            + Align(senderHints.Length) + ListLength(encodedTransactions, 0) + ListLength(witness.Headers, 0) + ListLength(witness.State, 0)
+            + Align(senderHints.Length) + Align(recoveryHints.Length) + ListLength(encodedTransactions, 0) + ListLength(witness.Headers, 0) + ListLength(witness.State, 0)
             + ListLength(witness.Codes, CodeInfo.ExecutionPadding);
         byte[] input = new byte[length];
         Span<byte> span = input;
@@ -115,6 +133,7 @@ public static partial class TrustedInput
         position = WriteSection(span, WithdrawalsSection, position, withdrawals);
         position = WriteSection(span, BlockAccessListSection, position, blockAccessList);
         position = WriteSection(span, SenderHintsSection, position, senderHints);
+        position = WriteSection(span, RecoveryHintsSection, position, recoveryHints);
         position = WriteList(span, TransactionsList, position, encodedTransactions, 0);
         position = WriteList(span, WitnessHeadersList, position, witness.Headers, 0);
         position = WriteList(span, StateNodesList, position, witness.State, 0);
@@ -142,20 +161,22 @@ public static partial class TrustedInput
     internal static ReadOnlySpan<byte> SignatureYs(ReadOnlySpan<byte> senderHints) =>
         senderHints[(senderHints.Length / SenderHintLength * KeyLength)..];
 
-    /// <summary>The random weights, 16 bytes per transaction, a batch check of <paramref name="senderHints"/> takes.</summary>
+    /// <summary>The random weights, 16 bytes per signature, the senders' first, a batch check of the hints takes.</summary>
     /// <remarks>
     /// Drawn from the keccak of the block hash and the hints, so a prover fixes the hints, and through the block hash the
     /// transactions, before it learns the weights. The block hash binds the transactions only through the transactions
     /// root, which a successful validation checks; a block whose transactions do not match it fails anyway.
     /// </remarks>
-    internal static byte[] SenderHintWeights(Hash256 blockHash, ReadOnlySpan<byte> senderHints)
+    internal static byte[] HintWeights(Hash256 blockHash, ReadOnlySpan<byte> senderHints, ReadOnlySpan<byte> recoveryHints)
     {
-        byte[] seedInput = new byte[Hash256.Size + senderHints.Length];
+        byte[] seedInput = new byte[Hash256.Size + senderHints.Length + recoveryHints.Length];
         blockHash.Bytes.CopyTo(seedInput);
         senderHints.CopyTo(seedInput.AsSpan(Hash256.Size));
+        recoveryHints.CopyTo(seedInput.AsSpan(Hash256.Size + senderHints.Length));
         ValueHash256 seed = ValueKeccak.Compute(seedInput);
 
-        byte[] weights = new byte[senderHints.Length / SenderHintLength * WeightLength];
+        int count = senderHints.Length / SenderHintLength + recoveryHints.Length / RecoveryHintLength;
+        byte[] weights = new byte[count * WeightLength];
         Span<byte> counter = stackalloc byte[Hash256.Size + sizeof(int)];
         seed.Bytes.CopyTo(counter);
         for (int i = 0, at = 0; at < weights.Length; i++, at += Hash256.Size)
@@ -166,6 +187,72 @@ public static partial class TrustedInput
         }
 
         return weights;
+    }
+
+    /// <summary>The column of <paramref name="recoveryHints"/> that holds <paramref name="field"/> of every hint.</summary>
+    internal static ReadOnlySpan<byte> RecoveryHintColumn(ReadOnlySpan<byte> recoveryHints, RecoveryHintField field)
+    {
+        int count = recoveryHints.Length / RecoveryHintLength;
+        (int offset, int width) = field switch
+        {
+            RecoveryHintField.Message => (0, MessageLength),
+            RecoveryHintField.Signature => (MessageLength, SignatureLength),
+            RecoveryHintField.Key => (MessageLength + SignatureLength, KeyLength),
+            RecoveryHintField.Y => (MessageLength + SignatureLength + KeyLength, YLength),
+            _ => (MessageLength + SignatureLength + KeyLength + YLength, 1)
+        };
+        return recoveryHints.Slice(offset * count, width * count);
+    }
+
+    /// <summary>The recovery hints of the ECRECOVER calls <paramref name="precompileInputs"/> and of the EIP-7702
+    /// authorizations of <paramref name="block"/>; a recovery that yields no key gets none.</summary>
+    internal static byte[] RecoveryHints(ulong chainId, Block block, IReadOnlyList<byte[]> precompileInputs)
+    {
+        List<(ValueHash256 Message, Signature Signature)> recoveries = [];
+        Span<byte> input = stackalloc byte[128];
+        foreach (byte[] call in precompileInputs)
+        {
+            input.Clear();
+            call.AsSpan(0, Math.Min(call.Length, input.Length)).CopyTo(input);
+            // The precompile's own checks: a v word of 27 or 28, the rest of it zero.
+            byte v = input[63];
+            if (input[32..63].ContainsAnyExcept((byte)0) || v is not (27 or 28)) continue;
+
+            recoveries.Add((new ValueHash256(input[..32]), new Signature(input[64..128], Signature.GetRecoveryId(v))));
+        }
+
+        foreach (Transaction transaction in block.Transactions)
+        {
+            if (transaction.AuthorizationList is null) continue;
+
+            foreach (AuthorizationTuple tuple in transaction.AuthorizationList)
+            {
+                KeccakRlpWriter writer = new();
+                AuthorizationTupleDecoder.EncodeSignaturePayload(ref writer, tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
+                recoveries.Add((writer.GetValueHash(), tuple.AuthoritySignature));
+            }
+        }
+
+        EthereumEcdsa ecdsa = new(chainId);
+        List<(ValueHash256 Message, Signature Signature, PublicKey Key)> keyed = [];
+        foreach ((ValueHash256 message, Signature signature) in recoveries)
+        {
+            if (ecdsa.RecoverPublicKey(signature, in message) is { } key) keyed.Add((message, signature, key));
+        }
+
+        int count = keyed.Count;
+        byte[] hints = new byte[count * RecoveryHintLength];
+        for (int i = 0; i < count; i++)
+        {
+            (ValueHash256 message, Signature signature, PublicKey key) = keyed[i];
+            message.Bytes.CopyTo(hints.AsSpan(i * MessageLength));
+            signature.Bytes.CopyTo(hints.AsSpan(count * MessageLength + i * SignatureLength));
+            key.Bytes.CopyTo(hints.AsSpan(count * (MessageLength + SignatureLength) + i * KeyLength));
+            Secp256k1.WriteSignatureY(signature, hints.AsSpan(count * (MessageLength + SignatureLength + KeyLength) + i * YLength, YLength));
+            hints[count * (MessageLength + SignatureLength + KeyLength + YLength) + i] = signature.RecoveryId;
+        }
+
+        return hints;
     }
 
     /// <summary>The sender hints of <paramref name="block"/>, or none when a signature yields no key.</summary>
@@ -235,6 +322,10 @@ public static partial class TrustedInput
         if (!senderHints.IsEmpty && senderHints.Length != transactions.Length * SenderHintLength)
             throw new ArgumentException("Sender hints do not match the transactions", nameof(data));
 
+        ReadOnlySpan<byte> recoveryHints = Section(data, RecoveryHintsSection);
+        if (recoveryHints.Length % RecoveryHintLength != 0)
+            throw new ArgumentException("Recovery hints are not whole", nameof(data));
+
         Witness witness = new()
         {
             Headers = new ItemList(ReadItems(data, WitnessHeadersList, 0)),
@@ -253,6 +344,7 @@ public static partial class TrustedInput
             Witness: witness,
             EncodedTransactions: transactions,
             SenderHints: senderHints.ToArray(),
+            RecoveryHints: recoveryHints.ToArray(),
             ChainId: chainId,
             BlockHash: blockHash,
             SpecProvider: specProvider);
@@ -470,12 +562,24 @@ public static partial class TrustedInput
 
 /// <param name="EncodedTransactions">The block's transactions as sent on the wire, which sender recovery hashes.</param>
 /// <param name="SenderHints">The sender hints, empty or <see cref="TrustedInput.SenderHintLength"/> bytes per transaction.</param>
+/// <param name="RecoveryHints">The recovery hints, <see cref="TrustedInput.RecoveryHintLength"/> bytes per recovery.</param>
 /// <param name="GetBlock">Builds the block. Deferred, as it decodes attacker-controlled transactions and can throw.</param>
+/// <summary>A field of a recovery hint, each held in a column of its own.</summary>
+internal enum RecoveryHintField
+{
+    Message,
+    Signature,
+    Key,
+    Y,
+    RecoveryId
+}
+
 internal readonly record struct TrustedPayload(
     Func<Block> GetBlock,
     Witness Witness,
     byte[][] EncodedTransactions,
     byte[] SenderHints,
+    byte[] RecoveryHints,
     ulong ChainId,
     Hash256 BlockHash,
     ISpecProvider SpecProvider);

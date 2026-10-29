@@ -11,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Stateless.Execution.IO;
 
@@ -91,7 +92,8 @@ public static partial class StatelessExecutor
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
         => Execute(suggestedBlock, witness, specProvider, validateHashes: true);
 
-    private static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider, bool validateHashes)
+    private static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider, bool validateHashes,
+        IBlockTracer? blockTracer = null)
     {
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
         BlockHeader parentHeader;
@@ -144,7 +146,7 @@ public static partial class StatelessExecutor
         (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(
             suggestedBlock,
             ProcessingOptions.ReadOnlyChain,
-            NullBlockTracer.Instance,
+            blockTracer ?? NullBlockTracer.Instance,
             specProvider.GetSpec(suggestedBlock.Header));
 
         if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
