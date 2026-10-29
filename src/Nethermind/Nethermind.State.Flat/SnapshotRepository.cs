@@ -14,7 +14,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
-using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat;
 
@@ -208,7 +208,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 Interlocked.Increment(ref _snapshotCount);
                 Metrics.SnapshotCount++;
 
-                long totalBytes = snapshot.EstimateMemory();
+                // A compacted snapshot shares the node buffer generations of the base snapshots it merges, so only these count them.
+                long totalBytes = snapshot.EstimateMemory() + snapshot.EstimatePinnedNodeBytes();
                 Interlocked.Add(ref _inMemoryBytes, totalBytes);
                 Metrics.SnapshotMemory += totalBytes;
                 Metrics.TotalSnapshotMemory += totalBytes;
@@ -330,7 +331,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             using (_sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
                 sortedSnapshots.Remove(stateId);
 
-            long totalBytes = existing.EstimateMemory();
+            long totalBytes = existing.EstimateMemory() + existing.EstimatePinnedNodeBytes();
             Interlocked.Add(ref _inMemoryBytes, -totalBytes);
             Metrics.SnapshotMemory -= totalBytes;
             Metrics.TotalSnapshotMemory -= totalBytes;
@@ -958,6 +959,10 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         _smallCompacted.DisposeAndClear();
         _largeCompacted.DisposeAndClear();
         _compactSized.DisposeAndClear();
+
+        // In-memory snapshots pin their trie node buffer generations, which stay allocated until every pin is released.
+        foreach (KeyValuePair<StateId, Snapshot> compacted in _compactedSnapshots) RemoveAndReleaseInMemoryKnownState(compacted.Key, SnapshotTier.InMemoryCompacted);
+        foreach (KeyValuePair<StateId, Snapshot> snapshot in _snapshots) RemoveAndReleaseInMemoryKnownState(snapshot.Key, SnapshotTier.InMemoryBase);
     }
 
     // ---- Backward-walk infrastructure ----
