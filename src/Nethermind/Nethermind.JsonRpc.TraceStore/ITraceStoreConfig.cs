@@ -39,6 +39,9 @@ public interface ITraceStoreConfig : IConfig
     [ConfigItem(Description = "The max depth allowed when deserializing traces.", DefaultValue = "3200", HiddenFromDocs = true)]
     int MaxDepth { get; set; }
 
+    [ConfigItem(Description = "The number of concurrent instances of the OTS RPC module. Values below 1 use 1. Raising this limit increases concurrent historical scans and their CPU, I/O and memory load.", DefaultValue = "2")]
+    int OtsModuleConcurrentInstances { get; set; }
+
     [ConfigItem(Description = "The max parallelization when deserialization requests the `trace_filter` method. `0` to use the number of logical processors. If you experience a resource shortage, set to a low number.", DefaultValue = "0")]
     int DeserializationParallelization { get; set; }
 }

@@ -55,7 +55,7 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig, IJsonRpcConfig
                         ctx.Resolve<ILogManager>(),
                         ctx.Resolve<ITraceStoreConfig>().DeserializationParallelization))
                 .AddSingleton<IMainProcessingModule, TraceStoreMainProcessingModule>()
-                .RegisterBoundedJsonRpcModule<IOtsRpcModule, AutoRpcModuleFactory<IOtsRpcModule>>(2, jsonRpcConfig.Timeout)
+                .RegisterBoundedJsonRpcModule<IOtsRpcModule, AutoRpcModuleFactory<IOtsRpcModule>>(int.Max(1, traceStoreConfig.OtsModuleConcurrentInstances), jsonRpcConfig.Timeout)
                 .AddScoped<IOtsRpcModule, OtsRpcModule>();
 
             if (traceStoreConfig.AddressIndexEnabled)

@@ -20,5 +20,6 @@ public class TraceStoreConfig : ITraceStoreConfig
     public bool AddressIndexReset { get; set; }
     public bool VerifySerialized { get; set; } = false;
     public int MaxDepth { get; set; } = ParityLikeTraceSerializer.DefaultDepth;
+    public int OtsModuleConcurrentInstances { get; set; } = 2;
     public int DeserializationParallelization { get; set; } = 0;
 }
