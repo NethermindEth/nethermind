@@ -144,8 +144,11 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         TypeMapper mapper = new(diagnostics, location);
         List<string> readCalls = [];
         List<string> writeCalls = [];
-        foreach ((string name, ITypeSymbol type) in parameters)
+        List<int?> fixedLengths = [];
+        for (int i = 0; i < parameters.Count; i++)
         {
+            (string name, ITypeSymbol type) = parameters[i];
+            fixedLengths.Add(FixedLength(type, parameterSymbols[i]));
             readCalls.Add(mapper.Read(type, name));
             writeCalls.Add(mapper.Write(type, name, $"value.{name}"));
         }
@@ -161,7 +164,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         }
 
         string? payloadLength = !isNewtype && lengths.Count == parameters.Count ? string.Join(" + ", lengths) : null;
-        string source = GenerateConverterClass(symbol, recordDecl, readCalls, writeCalls, isNewtype, constLength, parameters.Count > 0 ? parameters[0].Name : "", payloadLength, mapper.Helpers);
+        string source = GenerateConverterClass(symbol, recordDecl, readCalls, writeCalls, isNewtype, constLength, parameters.Count > 0 ? parameters[0].Name : "", payloadLength, mapper.Helpers, fixedLengths);
         return new Output(hintName, source, ImmutableArray<Diagnostic>.Empty);
     }
 
@@ -245,7 +248,8 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         int constLength,
         string firstParameter,
         string? payloadLength,
-        List<string> helpers)
+        List<string> helpers,
+        List<int?> fixedLengths)
     {
         string recordName = symbol.Name;
         string fullTypeName = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
@@ -265,7 +269,21 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         }
         writeLines.AddRange(writeCalls.Select(static c => $"{c};"));
 
-        List<string> readLines = [.. readCalls.Select(static (c, i) => $"var _{i} = {c};")];
+        // A value with a declared length must have exactly that encoded length on read too.
+        List<string> readLines = [];
+        for (int i = 0; i < readCalls.Count; i++)
+        {
+            if (fixedLengths[i] is not { } fixedLength)
+            {
+                readLines.Add($"var _{i} = {readCalls[i]};");
+                continue;
+            }
+
+            readLines.Add($"int _{i}Start = r.BytesRead;");
+            readLines.Add($"var _{i} = {readCalls[i]};");
+            readLines.Add($"""if (r.BytesRead - _{i}Start != {fixedLength}) throw new {Library}.RlpReaderException("RLP item of {recordName} has another length than declared");""");
+        }
+
         if (constLength >= 0)
         {
             readLines.Add($"""if (_0.Length != {constLength}) throw new {Library}.RlpReaderException("RLP byte string of {recordName} must have {constLength} bytes");""");
@@ -385,6 +403,13 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             string name = $"ReadItems{_helperCount++}";
             string itemTypeName = Name(itemType);
             string read = Read(itemType, member);
+            string add = FixedLength(itemType, null) is { } itemLength
+                ? $$"""
+                            int start = r.BytesRead;
+                            items.Add({{read}});
+                            if (r.BytesRead - start != {{itemLength}}) throw new {{Library}}.RlpReaderException("RLP item has another length than declared");
+                """
+                : $"                items.Add({read});";
             Helpers.Add($$"""
                     private static global::System.Collections.Generic.List<{{itemTypeName}}> {{name}}(ref {{Library}}.RlpReader outer)
                     {
@@ -392,7 +417,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                         global::System.Collections.Generic.List<{{itemTypeName}}> items = new(r.CountItems());
                         while (r.HasNext)
                         {
-                            items.Add({{read}});
+                {{add}}
                         }
 
                         outer.ExitSequence(in r, itemLength);

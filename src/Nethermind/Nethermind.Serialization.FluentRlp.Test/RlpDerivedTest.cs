@@ -221,6 +221,17 @@ public class RlpDerivedTest
         }
     }
 
+    // RlpFixedLength must hold on read too, or a short field decodes and later fails to encode.
+    [TestCase("c280c0", TestName = "Empty fixed-length field")]
+    [TestCase("d593000102030405060708090a0b0c0d0e0f101112c0", TestName = "Fixed-length field one byte short")]
+    [TestCase("f694000102030405060708090a0b0c0d0e0f10111213e09f11111111111111111111111111111111111111111111111111111111111111", TestName = "Fixed-length list item one byte short")]
+    public void RecordWithFixedLengthHintsRejectsOtherLengths(string hex)
+    {
+        byte[] rlp = Convert.FromHexString(hex);
+
+        Assert.That(() => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadFixedEntry()), Throws.TypeOf<RlpReaderException>());
+    }
+
     [TestCase("public record Account(int Nonce) { public int Balance { get; init; } }", "RLP0002", TestName = "Settable property in the body")]
     [TestCase("public record Account(int Nonce) { public int Balance; }", "RLP0002", TestName = "Field in the body")]
     [TestCase("public record Account { public int Balance { get; init; } }", "RLP0003", TestName = "No primary constructor")]
