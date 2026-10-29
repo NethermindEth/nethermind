@@ -14,11 +14,12 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// the state as of the previous block, which the existing history answers.</summary>
 internal sealed class MidBlockOverlay
 {
-    // An overlay that grew past this many writes is let go of rather than kept.
-    private const int MaxSpareWrites = 1 << 14;
+    // An overlay whose storage or account capacity grew past this is let go of rather than kept. Capacity grown from
+    // empty steps from 8,419 to 17,519, so the largest overlay kept holds 8,419 entries of either kind.
+    private const int MaxCapacity = 1 << 14;
     private const int MaxSpares = 32;
 
-    /// <summary>The entries all spares together may hold: four overlays at the size limit, or many smaller ones. A
+    /// <summary>The entries all spares together may hold: seven of the largest overlays kept, or many smaller ones. A
     /// storage entry is about 100 B and an account entry with its pooled <see cref="AccountOverlay"/> about 150 B, so
     /// the spares hold about 10 MB at most. A return that would exceed it lets the overlay go.</summary>
     internal const int MaxSpareEntries = 1 << 16;
@@ -53,7 +54,7 @@ internal sealed class MidBlockOverlay
 
     internal int WriteCount => _storage.Count;
 
-    internal int StorageAccountCount => _storageAccounts.Count;
+    internal HashSet<AddressAsKey>.Enumerator StorageAccounts => _storageAccounts.GetEnumerator();
 
     /// <summary>An overlay emptied for <paramref name="block"/>, one a previous fold left warm when there is one.</summary>
     public static MidBlockOverlay Rent(ulong block)
@@ -83,7 +84,7 @@ internal sealed class MidBlockOverlay
     /// <summary>The caller gives up the overlay: nothing may read or fold it afterwards.</summary>
     public static void Return(MidBlockOverlay overlay)
     {
-        if (overlay._storage.EnsureCapacity(0) > MaxSpareWrites || overlay._accounts.EnsureCapacity(0) > MaxSpareWrites) return;
+        if (overlay.Oversized) return;
         overlay.Reset(0);
 
         int capacity = overlay.Capacity;
@@ -92,6 +93,9 @@ internal sealed class MidBlockOverlay
         Spares.Push(overlay);
         _spareEntries += capacity;
     }
+
+    /// <summary>Grew too large to keep for another fold, whether as a spare or as a cached entry.</summary>
+    internal bool Oversized => _storage.EnsureCapacity(0) > MaxCapacity || _accounts.EnsureCapacity(0) > MaxCapacity;
 
     /// <summary>Does not change while the overlay is a spare, so the same amount is added on return and taken on rent.</summary>
     private int Capacity =>

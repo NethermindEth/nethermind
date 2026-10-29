@@ -337,6 +337,29 @@ public class CoveredBlockTests
     }
 
     [Test]
+    public void AWorkerOfADisposedBlock_DoesNotFoldIntoTheOverlayAnotherBlockRented()
+    {
+        Assert.That(_index.TryOpenBlock(_seven, out ICoveredBlock? seven), Is.True);
+        IPrefixStateSeedSource stale = seven!.CreateWorkerSeeds();
+        seven.Dispose();
+
+        Assert.That(_index.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);
+        using ICoveredBlock block = eight!;
+        StateReadOverlaySlot slot = new();
+        Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 2, slot), Is.True);
+
+        bool staleSeeded = stale.TrySeed(_seven, 3, new StateReadOverlaySlot());
+        bool aKnown = slot.Current!.TryGetAccount(TestItem.AddressA, Parent, out Account? a);
+        slot.Disarm();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(staleSeeded, Is.False);
+            Assert.That(aKnown && a!.Balance == 40, Is.True, "block 8 rented the overlay the stale worker held, and the stale worker must not fold block 7 into it");
+        }
+    }
+
+    [Test]
     public void ABlockWhoseParentWasNotTraced_StartsFresh()
     {
         Assert.That(_index.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);

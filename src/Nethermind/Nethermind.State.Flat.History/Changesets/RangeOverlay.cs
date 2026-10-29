@@ -59,8 +59,7 @@ internal sealed class RangeOverlay : IStorageReadOverlay
     public static RangeOverlay Extend(RangeOverlay? older, MidBlockOverlay block, Hash256 blockHash, IReadOnlySet<AddressAsKey> excluded)
     {
         RangeOverlay node = new(older, block.Block, blockHash, excluded);
-        node._slots.EnsureCapacity(block.WriteCount);
-        node._storageAccounts.EnsureCapacity(block.StorageAccountCount);
+        node.Reserve(block);
         Dictionary<AddressAsKey, MidBlockOverlay.AccountOverlay>.Enumerator accounts = block.Accounts;
         while (accounts.MoveNext())
         {
@@ -76,7 +75,7 @@ internal sealed class RangeOverlay : IStorageReadOverlay
         while (writes.MoveNext())
         {
             StorageCell cell = writes.Current.Key;
-            if (node._refused.Contains(cell.Address) || !block.TryGetStorage(cell, out UInt256 value)) continue;
+            if (!node.Retains(block, cell, out UInt256 value)) continue;
 
             node._slots[cell] = value;
             node._storageAccounts.Add(cell.Address);
@@ -84,6 +83,40 @@ internal sealed class RangeOverlay : IStorageReadOverlay
 
         node.Entries += node._wiped.Count + node._slots.Count;
         return node;
+    }
+
+    /// <summary>Capacity the node holds for its slots and storage accounts, so a test can see what it reserved.</summary>
+    internal int Capacity => _slots.EnsureCapacity(0) + _storageAccounts.EnsureCapacity(0);
+
+    /// <summary>Sizes the node for the writes it keeps, not for every write of the block: a refused address can hold
+    /// most of a block's writes, and capacity reserved for them would stay with the node without being charged to
+    /// <see cref="Entries"/>. A storage account is kept only with a kept slot, so the slots bound the accounts.</summary>
+    private void Reserve(MidBlockOverlay block)
+    {
+        int slots = 0;
+        Dictionary<StorageCell, MidBlockOverlay.StorageWrite>.Enumerator writes = block.Writes;
+        while (writes.MoveNext())
+        {
+            if (Retains(block, writes.Current.Key, out _)) slots++;
+        }
+
+        int storageAccounts = 0;
+        HashSet<AddressAsKey>.Enumerator addresses = block.StorageAccounts;
+        while (addresses.MoveNext() && storageAccounts < slots)
+        {
+            if (!_refused.Contains(addresses.Current)) storageAccounts++;
+        }
+
+        _slots.EnsureCapacity(slots);
+        _storageAccounts.EnsureCapacity(storageAccounts);
+    }
+
+    private bool Retains(MidBlockOverlay block, in StorageCell cell, out UInt256 value)
+    {
+        if (!_refused.Contains(cell.Address)) return block.TryGetStorage(cell, out value);
+
+        value = UInt256.Zero;
+        return false;
     }
 
     public bool TryGetStorage(Address address, in UInt256 index, out UInt256 value)

@@ -44,10 +44,10 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
             else
             {
                 if (entry < 0) entry = LeastRecentlyRented();
-                // The overlay in the entry, evicted or of this same block, is folded again when no request holds it;
-                // one a request still reads is left to that request.
+                // The overlay in the entry, evicted or of this same block, is folded again when no request holds it
+                // and it did not grow too large to keep; one a request still reads is left to that request.
                 MidBlockOverlay? current = _overlays[entry];
-                overlay = current is { Pins: 0, Extending: false } ? current : new MidBlockOverlay();
+                overlay = current is { Pins: 0, Extending: false, Oversized: false } ? current : new MidBlockOverlay();
                 overlay.Reset(block, hash);
                 overlay.Version = version;
                 _overlays[entry] = overlay;

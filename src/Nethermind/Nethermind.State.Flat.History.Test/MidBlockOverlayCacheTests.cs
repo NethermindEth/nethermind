@@ -304,6 +304,37 @@ public class MidBlockOverlayCacheTests
     }
 
     [Test]
+    public void AnOverlayThatGrewTooLarge_IsNotFoldedAgain()
+    {
+        MidBlockOverlayCache cache = new(_store, blocks: 1);
+        IDb column = _columns.GetColumnDb(FlatHistoryColumns.TransactionChangesets);
+        ChangesetCollector collector = new();
+        for (int slot = 0; slot < 9_000; slot++) collector.Storage(new StorageCell(TestItem.AddressB, (UInt256)slot), [0x01]);
+        using (IWriteBatch batch = column.StartWriteBatch())
+        {
+            _store.Write(Block + 1, 0, collector.Pack(), batch);
+        }
+
+        collector.Release();
+
+        Assert.That(cache.TryRent(Block + 1, in HashA, 1, out MidBlockOverlayCache.Lease large, version: 0), Is.True);
+        MidBlockOverlay oversized = large.Overlay;
+        large.Dispose();
+
+        Assert.That(cache.TryRent(Block, in HashA, 3, out MidBlockOverlayCache.Lease next, version: 0), Is.True);
+        using (next)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(oversized.Oversized, Is.True, "9,000 writes grow the storage past the 8,419 step");
+                Assert.That(next.Overlay, Is.Not.SameAs(oversized), "an entry does not keep the largest fold it ever made");
+                Assert.That(next.Overlay.Oversized, Is.False);
+                Assert.That(BalanceOf(next.Overlay), Is.EqualTo((UInt256)3));
+            }
+        }
+    }
+
+    [Test]
     public void AnEvictedOverlayARequestStillHolds_IsLeftToIt()
     {
         MidBlockOverlayCache cache = new(_store, blocks: 1);

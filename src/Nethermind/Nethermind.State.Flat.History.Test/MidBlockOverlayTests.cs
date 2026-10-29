@@ -301,8 +301,8 @@ public class MidBlockOverlayTests
     [Test]
     public void TheSpares_HoldNoMoreThanTheTotalBound()
     {
-        // Each overlay holds about 11k entries, under the per-overlay limit, so only the total bound can refuse them.
-        byte[][] rows = Block(transactions: 64, addresses: 64, slots: 160);
+        // 7,680 writes each, a capacity of 8,419 under the per-overlay limit: only the total bound refuses the eighth.
+        byte[][] rows = Block(transactions: 64, addresses: 64, slots: 120);
         MidBlockOverlay[] overlays = new MidBlockOverlay[8];
         for (int i = 0; i < overlays.Length; i++)
         {
