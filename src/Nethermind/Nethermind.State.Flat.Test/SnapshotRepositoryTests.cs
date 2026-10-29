@@ -7,6 +7,8 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.State.Flat.NodeBuffer;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -170,6 +172,43 @@ public class SnapshotRepositoryTests
 
         bool leasedAfter = _repository.TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out _);
         Assert.That(leasedAfter, Is.False);
+    }
+
+    [Test]
+    public void InMemoryBytes_CountThePinnedNodeBufferBytesOfBaseSnapshotsOnly([Values] bool compacted)
+    {
+        SnapshotTier tier = compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase;
+        INodeRecordBufferPin pin = Substitute.For<INodeRecordBufferPin>();
+        pin.WriteBoundary.Returns(5UL << 32 | 1000);
+        SnapshotContent content = _resourcePool.GetSnapshotContent(ResourcePool.Usage.ReadOnlyProcessingEnv);
+        content.StateRootPointer = 6UL << 32 | 10;
+        Snapshot snapshot = new(CreateStateId(0), CreateStateId(1), content, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv, pin);
+        long before = _repository.InMemoryBytes;
+        long pinned = NodeRecordBuffer.DefaultGenerationBytes + 10 - 1000;
+
+        _repository.TryAdd(snapshot, tier);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.EstimatePinnedNodeBytes(), Is.EqualTo(pinned), "from the pin to the state root, across a generation");
+            Assert.That(_repository.InMemoryBytes - before, Is.EqualTo(compacted ? snapshot.EstimateCompactedMemory() : snapshot.EstimateMemory() + pinned),
+                "a compacted snapshot shares the generations of its base snapshots");
+        }
+
+        _repository.RemoveAndReleaseInMemoryKnownState(CreateStateId(1), tier);
+        Assert.That(_repository.InMemoryBytes, Is.EqualTo(before), "removal subtracts what was added");
+    }
+
+    [Test]
+    public void Dispose_ReleasesTheBufferPinsOfInMemorySnapshots([Values] bool compacted)
+    {
+        INodeRecordBufferPin pin = Substitute.For<INodeRecordBufferPin>();
+        Snapshot snapshot = new(CreateStateId(0), CreateStateId(1), _resourcePool.GetSnapshotContent(ResourcePool.Usage.ReadOnlyProcessingEnv),
+            _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv, pin);
+        _repository.TryAdd(snapshot, compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase);
+
+        _repository.Dispose();
+
+        pin.Received(1).Dispose();
     }
 
     #endregion

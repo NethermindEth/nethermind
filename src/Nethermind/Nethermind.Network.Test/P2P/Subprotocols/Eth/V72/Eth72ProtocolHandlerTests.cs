@@ -6341,6 +6341,9 @@ public class Eth72ProtocolHandlerTests
     {
         public PooledTransactionsMessage66? PooledTransactions { get; set; }
 
+        public ArrayPoolSpan<byte> Serialize<T>(T message)
+            where T : MessageBase => inner.Serialize(message);
+
         public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null)
             where T : MessageBase => inner.ZeroSerialize(message, allocator);
 

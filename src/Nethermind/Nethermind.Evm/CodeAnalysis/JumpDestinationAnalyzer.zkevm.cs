@@ -231,11 +231,11 @@ public sealed partial class JumpDestinationAnalyzer
     private static bool MayHoldReachingPush(ref byte end)
     {
         nint skew = Skew(ref end);
-        ref ulong row = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_reachBiases), skew * ReachRowLength);
-        ref ulong word = ref FirstWindowWord(ref end, skew);
+        ref ulong row = ref Aligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_reachBiases), skew * ReachRowLength));
+        ref ulong word = ref Aligned(ref FirstWindowWord(ref end, skew));
         ulong reach = ReachingBytes(ref word, ref row, 0) | ReachingBytes(ref word, ref row, 1) |
             ReachingBytes(ref word, ref row, 2) | ReachingBytes(ref word, ref row, 3);
-        return ((reach | ReachingBytes(ref word, ref row, 4)) & Aligned(ref Unsafe.Add(ref row, ReachHighBits))) != 0;
+        return ((reach | ReachingBytes(ref word, ref row, 4)) & Unsafe.Add(ref row, ReachHighBits)) != 0;
     }
 
     /// <summary>The offset of <paramref name="end"/> in its aligned word, which picks the look-back's row of biases.</summary>
@@ -252,12 +252,12 @@ public sealed partial class JumpDestinationAnalyzer
         ref Unsafe.Add(ref Unsafe.As<byte, ulong>(ref Unsafe.Subtract(ref end, skew)), -(MaxImmediateLength / sizeof(ulong)));
 
     /// <summary><paramref name="word"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
-    /// <remarks>One <c>andi</c> lets the JIT prove the load aligned and drop its alignment test.</remarks>
+    /// <remarks>One <c>andi</c> lets the JIT prove aligned every load at a whole number of words from the result, and drop their alignment tests.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong Aligned(ref ulong word) => StrictAlignmentFlag.IsActive
-        ? Unsafe.As<byte, ulong>(ref Unsafe.AddByteOffset(ref Unsafe.NullRef<byte>(),
+    private static ref ulong Aligned(ref ulong word) => ref StrictAlignmentFlag.IsActive
+        ? ref Unsafe.As<byte, ulong>(ref Unsafe.AddByteOffset(ref Unsafe.NullRef<byte>(),
             Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref Unsafe.As<ulong, byte>(ref word)) & ~(nint)(sizeof(ulong) - 1)))
-        : word;
+        : ref word;
 
     /// <summary>Returns the last position below <paramref name="destination"/> and at or above <paramref name="limit"/> that <paramref name="bitmap"/> marks, or -1.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -353,16 +353,16 @@ public sealed partial class JumpDestinationAnalyzer
     private static bool TryFindReachingPush(ref byte end, ref ulong biases, out nint offset)
     {
         nint skew = Skew(ref end);
-        ref ulong row = ref Unsafe.Add(ref biases, skew * ReachRowLength);
-        ref ulong word = ref FirstWindowWord(ref end, skew);
-        ulong highBits = Aligned(ref Unsafe.Add(ref row, ReachHighBits));
+        ref ulong row = ref Aligned(ref Unsafe.Add(ref biases, skew * ReachRowLength));
+        ref ulong word = ref Aligned(ref FirstWindowWord(ref end, skew));
+        ulong highBits = Unsafe.Add(ref row, ReachHighBits);
         // A word at a time, stopping at the first that reaches, so the search holds one word rather than eight.
         offset = -skew;
         ulong reaching = ReachingBytes(ref word, ref row, 0) & highBits;
         if (reaching == 0) { offset += sizeof(ulong); reaching = ReachingBytes(ref word, ref row, 1) & highBits; }
         if (reaching == 0) { offset += sizeof(ulong); reaching = ReachingBytes(ref word, ref row, 2) & highBits; }
         if (reaching == 0) { offset += sizeof(ulong); reaching = ReachingBytes(ref word, ref row, 3) & highBits; }
-        if (reaching == 0) { offset += sizeof(ulong); reaching = ReachingBytes(ref word, ref row, 4) & Aligned(ref Unsafe.Add(ref row, ReachTailMask)); }
+        if (reaching == 0) { offset += sizeof(ulong); reaching = ReachingBytes(ref word, ref row, 4) & Unsafe.Add(ref row, ReachTailMask); }
         if (reaching == 0) return false;
 
         offset += BitOperations.TrailingZeroCount(reaching) >> 3;
@@ -373,7 +373,7 @@ public sealed partial class JumpDestinationAnalyzer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong ReachingBytes(ref ulong word, ref ulong row, int index)
     {
-        ulong bytes = Aligned(ref Unsafe.Add(ref word, index));
-        return (bytes + Aligned(ref Unsafe.Add(ref row, index))) & ~bytes;
+        ulong bytes = Unsafe.Add(ref word, index);
+        return (bytes + Unsafe.Add(ref row, index)) & ~bytes;
     }
 }

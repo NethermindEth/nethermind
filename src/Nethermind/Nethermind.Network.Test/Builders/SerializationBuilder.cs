@@ -31,12 +31,18 @@ namespace Nethermind.Network.Test.Builders
             return this;
         }
 
+        public SerializationBuilder With<T>(IMessageSerializer<T> serializer) where T : MessageBase
+        {
+            _serializers.Add(SerializerInfo.Create(serializer));
+            return this;
+        }
+
         protected override void BeforeReturn() => TestObject = new MessageSerializationService(_serializers);
 
         public SerializationBuilder WithEncryptionHandshake() => With(new AuthMessageSerializer())
-                .With(new AuthEip8MessageSerializer(new Eip8MessagePad(new CryptoRandom())))
+                .With(new AuthEip8MessageSerializer())
                 .With(new AckMessageSerializer())
-                .With(new AckEip8MessageSerializer(new Eip8MessagePad(new CryptoRandom())));
+                .With(new AckEip8MessageSerializer());
 
         public SerializationBuilder WithP2P() => With(new Nethermind.Network.P2P.Messages.PingMessageSerializer())
                 .With(new Nethermind.Network.P2P.Messages.PongMessageSerializer())

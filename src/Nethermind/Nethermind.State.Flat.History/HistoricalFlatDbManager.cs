@@ -17,7 +17,6 @@ public sealed class HistoricalFlatDbManager(
     IFlatDbManager inner,
     IPersistenceManager persistenceManager,
     HistoryReader historyReader,
-    ITrieNodeCache trieNodeCache,
     IResourcePool resourcePool,
     bool enableDetailedMetrics,
     HistoryScopeGate scopeGate,
@@ -56,7 +55,7 @@ public sealed class HistoricalFlatDbManager(
         ReadOnlySnapshotBundle bundle = BuildHistoricalBundle(baseBlock, mode);
         try
         {
-            return new SnapshotBundle(bundle, trieNodeCache, resourcePool, usage);
+            return new SnapshotBundle(bundle, null, resourcePool, usage);
         }
         catch
         {
@@ -132,6 +131,7 @@ public sealed class HistoricalFlatDbManager(
                 reader,
                 enableDetailedMetrics,
                 PersistedSnapshotStack.Empty(enableDetailedMetrics),
+                bufferPin: null,
                 isHistorical: true);
         }
         catch
