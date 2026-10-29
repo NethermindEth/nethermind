@@ -95,6 +95,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.MSTORE] = AsTableEntry(&RawCalliHelper.ExecuteMStoreInsideBacking);
         lookup[(int)Instruction.MSTORE8] = AsTableEntry(&RawCalliHelper.ExecuteMStore8InsideActiveMemory);
         lookup[(int)Instruction.CALLDATACOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopy<RawCalliHelper.CallDataSource>);
+        lookup[(int)Instruction.CODECOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopy<RawCalliHelper.CodeSource>);
         if (SpecFlags.Eip2929(spec) && !SpecFlags.Eip8038(spec))
         {
             lookup[(int)Instruction.SLOAD] = SpecFlags.Eip8360(spec)
@@ -1777,7 +1778,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         /// <summary>
-        /// CALLDATACOPY or RETURNDATACOPY, as <typeparamref name="TSource"/> sources it, into a range that needs no new
+        /// CALLDATACOPY, CODECOPY or RETURNDATACOPY, as <typeparamref name="TSource"/> sources it, into a range that needs no new
         /// backing and leaves a gap of at most two words below it.
         /// </summary>
         /// <remarks>
@@ -1884,6 +1885,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static ReadOnlySpan<byte> Read(ref EvmStack stack, ref DispatchState state) =>
                 MemoryMarshal.CreateReadOnlySpan(in stack.InputData, (int)stack.InputDataLength);
+        }
+
+        /// <summary>CODECOPY: the running code, zero-extended.</summary>
+        internal readonly struct CodeSource : ICopySource
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<CodeCopyOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            public static bool ZeroExtends => true;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static ReadOnlySpan<byte> Read(ref EvmStack stack, ref DispatchState state) =>
+                MemoryMarshal.CreateReadOnlySpan(ref stack.Code, (int)stack.CodeLength);
         }
 
         /// <summary>RETURNDATACOPY: the last call's return data, which a read past its end faults on (EIP-211).</summary>

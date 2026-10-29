@@ -583,7 +583,7 @@ public class GuestDispatchDifferentialTests
     /// its need, which puts the end of the gas inside its word and expansion charges.
     /// </remarks>
     [Test]
-    public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2)] int memory)
+    public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.CODECOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2)] int memory)
     {
         byte[] data = new byte[40];
         for (int i = 0; i < data.Length; i++) data[i] = (byte)(i + 1);
