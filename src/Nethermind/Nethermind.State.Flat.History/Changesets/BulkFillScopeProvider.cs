@@ -17,7 +17,6 @@ namespace Nethermind.State.Flat.History.Changesets;
 
 public sealed class BulkFillScopeProvider(
     BulkFillSession session,
-    ITrieNodeCache trieCache,
     IResourcePool resources,
     IFlatDbConfig config,
     ILogManager logs) : IWorldStateScopeProvider, IStateReader
@@ -46,8 +45,8 @@ public sealed class BulkFillScopeProvider(
             return false;
         }
 
-        ReadOnlySnapshotBundle readOnly = new(new SnapshotPooledList(0), session.CreateReader(), false, PersistedSnapshotStack.Empty(), isHistorical: true);
-        SnapshotBundle bundle = new(readOnly, trieCache, resources, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        ReadOnlySnapshotBundle readOnly = new(new SnapshotPooledList(0), session.CreateReader(), false, PersistedSnapshotStack.Empty(), bufferPin: null, isHistorical: true);
+        SnapshotBundle bundle = new(readOnly, null, resources, ResourcePool.Usage.ReadOnlyProcessingEnv);
         try
         {
             scope = new Scope(new FlatWorldStateScope(session.CurrentState, bundle, session,

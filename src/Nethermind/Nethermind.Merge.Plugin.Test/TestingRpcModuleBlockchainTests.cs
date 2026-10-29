@@ -89,8 +89,11 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
         // Each transfer executed on the previous commit's post-state: nonces 0..N-1 were
         // accepted in order and the recipient balance accumulated across commits.
         BlockHeader finalHead = chain.BlockTree.Head!.Header;
-        Assert.That(chain.StateReader.TryGetAccount(finalHead, TestItem.AddressF, out AccountStruct recipient), Is.True);
-        Assert.That(recipient.Balance, Is.EqualTo(transferValue * CommitCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.StateReader.TryGetAccount(finalHead, TestItem.AddressF, out AccountStruct recipient), Is.True);
+            Assert.That(recipient.Balance, Is.EqualTo(transferValue * CommitCount));
+        }
     }
 
     [Test]

@@ -42,8 +42,11 @@ public class TxValidatorTests
         SecP256k1Curve.N.Convert(out BigInteger n);
         SecP256k1Curve.HalfN.Convert(out BigInteger halfN);
 
-        Assert.That((N == n), Is.True);
-        Assert.That((HalfN == halfN), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((N == n), Is.True);
+            Assert.That((HalfN == halfN), Is.True);
+        }
     }
 
     private static IEnumerable<TestCaseData> ZeroSignatureComponentCases()
@@ -405,8 +408,11 @@ public class TxValidatorTests
             .WithChainId(TestBlockchainIds.ChainId)
             .SignedAndResolved().TestObject;
 
-        Assert.That(txValidator.IsWellFormed(txWithoutTo, Cancun.Instance).AsBool(), Is.False);
-        Assert.That(txValidator.IsWellFormed(txWithTo, Cancun.Instance).AsBool());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txValidator.IsWellFormed(txWithoutTo, Cancun.Instance).AsBool(), Is.False);
+            Assert.That(txValidator.IsWellFormed(txWithTo, Cancun.Instance).AsBool());
+        }
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -827,12 +833,12 @@ public class TxValidatorTests
         Transaction tx = txBuilder.TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             ValidationResult validationResult = txValidator.IsWellFormed(tx, Prague.Instance);
             Assert.That(validationResult.AsBool(), Is.False);
             Assert.That(validationResult.Error, Is.EqualTo(TxErrorMessages.NotAllowedCreateTransaction));
-        });
+        }
     }
 
     [Test]
@@ -1322,9 +1328,12 @@ public class TxValidatorTests
 
         ValidationResult result = txValidator.IsWellFormed(tx, Eip8141Prototype.Instance);
 
-        Assert.That(result.AsBool(), Is.False);
-        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.BlobTxGasLimitExceeded(
-            (ulong)blobCount * Eip4844Constants.GasPerBlob, Eip8141Prototype.Instance.GasCosts.MaxBlobGasPerTx)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool(), Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.BlobTxGasLimitExceeded(
+                (ulong)blobCount * Eip4844Constants.GasPerBlob, Eip8141Prototype.Instance.GasCosts.MaxBlobGasPerTx)));
+        }
     }
 
     [Test]
@@ -1335,8 +1344,11 @@ public class TxValidatorTests
 
         ValidationResult result = txValidator.IsWellFormed(tx, Eip8141Prototype.Instance);
 
-        Assert.That(result.AsBool(), Is.False);
-        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidBlobVersionedHashVersion));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool(), Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidBlobVersionedHashVersion));
+        }
     }
 
     // A fork lowering the per-tx blob limit must evict an over-limit type-6 at head revalidation.
@@ -1459,6 +1471,7 @@ public class TxValidatorTests
         yield return new TestCaseData(null, true, false).SetName("IsWellFormed_FrameTxLegacyNonce_AfterEip8250_ReturnFalse");
         yield return new TestCaseData(new UInt256[] { 0 }, false, false).SetName("IsWellFormed_FrameTxKeyedNonce_BeforeEip8250_ReturnFalse");
         yield return new TestCaseData(new UInt256[] { 0 }, true, true).SetName("IsWellFormed_FrameTxKeyedNonce_AfterEip8250_ReturnTrue");
+        yield return new TestCaseData(Array.Empty<UInt256>(), true, true).SetName("IsWellFormed_FrameTxEmptyNonceKeys_AfterEip8250_ReturnTrue");
         yield return new TestCaseData(new UInt256[] { 1, 1 }, true, false).SetName("IsWellFormed_FrameTxMalformedNonceKeys_AfterEip8250_ReturnFalse");
     }
 
@@ -1471,13 +1484,33 @@ public class TxValidatorTests
         Assert.That(FrameTxNonceKeysTxValidator.Instance.IsWellFormed(tx, releaseSpec).AsBool(), Is.EqualTo(expectedWellFormed));
     }
 
-    [Test]
-    public void IsWellFormed_FrameTxKeyedNonceAtMaxSeq_AfterEip8250_ReturnFalse()
+    [TestCase(new ulong[] { }, false)]
+    [TestCase(new ulong[] { 0 }, true)]
+    [TestCase(new ulong[] { 5, 9 }, true)]
+    public void IsWellFormed_FrameTxAtMaxSeq_AfterEip8250_OnlyKeyedSetsAreSingleUse(ulong[] nonceKeys, bool expectedWellFormed)
     {
-        Transaction tx = new() { Type = TxType.FrameTx, NonceKeys = new UInt256[] { 0 }, Nonce = Eip8250Constants.MaxNonceSeq };
+        Transaction tx = new() { Type = TxType.FrameTx, NonceKeys = Array.ConvertAll(nonceKeys, static key => (UInt256)key), Nonce = Eip8250Constants.MaxNonceSeq };
         IReleaseSpec releaseSpec = new ReleaseSpec { IsEip8250Enabled = true };
 
-        Assert.That(FrameTxNonceKeysTxValidator.Instance.IsWellFormed(tx, releaseSpec).AsBool(), Is.False);
+        Assert.That(FrameTxNonceKeysTxValidator.Instance.IsWellFormed(tx, releaseSpec).AsBool(), Is.EqualTo(expectedWellFormed));
+    }
+
+    [TestCase(new ulong[] { 1 }, true)]
+    [TestCase(new ulong[] { }, false)]
+    public void IsWellFormed_FullValidator_FrameTxAtMaxSeq_AcceptsOnlyKeyedSets(ulong[] nonceKeys, bool expectedWellFormed)
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames = [SelfVerify(PrefixFrameGas)],
+            FrameSignatures = [],
+            NonceKeys = Array.ConvertAll(nonceKeys, static key => (UInt256)key),
+            Nonce = Eip8250Constants.MaxNonceSeq,
+        };
+
+        Assert.That(new TxValidator(TestBlockchainIds.ChainId).IsWellFormed(tx, Eip8250Prototype.Instance).AsBool(), Is.EqualTo(expectedWellFormed));
     }
 
     private static IEnumerable<TestCaseData> HeadRevalidationNonceEnvelopeCases()

@@ -66,7 +66,9 @@ namespace Ethereum.KeyStore.Test
                 securedPass.MakeReadOnly();
                 (PrivateKey key, Result result) = _store.GetKey(address, securedPass);
 
+#pragma warning disable NUnit2045 // Loading the key must succeed before checking its address.
                 Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), result.Error);
+#pragma warning restore NUnit2045
                 Assert.That(key.Address.ToString(false, false), Is.EqualTo(testModel.KeyData.Address));
             }
             catch (Exception e)

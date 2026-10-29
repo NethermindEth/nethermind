@@ -16,11 +16,14 @@ public class JsonRpcUrlTests
     public void Parse_success(string packedUrlValue, string expectedScheme, string expectedHost, int expectedPort, RpcEndpoint expectedRpcEndpoint, string[] expectedEnabledModules)
     {
         JsonRpcUrl url = JsonRpcUrl.Parse(packedUrlValue);
-        Assert.That(url.Scheme, Is.EqualTo(expectedScheme));
-        Assert.That(url.Host, Is.EqualTo(expectedHost));
-        Assert.That(url.Port, Is.EqualTo(expectedPort));
-        Assert.That(url.RpcEndpoint, Is.EqualTo(expectedRpcEndpoint));
-        Assert.That(expectedEnabledModules, Is.EqualTo(url.EnabledModules).AsCollection.IgnoreCase);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(url.Scheme, Is.EqualTo(expectedScheme));
+            Assert.That(url.Host, Is.EqualTo(expectedHost));
+            Assert.That(url.Port, Is.EqualTo(expectedPort));
+            Assert.That(url.RpcEndpoint, Is.EqualTo(expectedRpcEndpoint));
+            Assert.That(expectedEnabledModules, Is.EqualTo(url.EnabledModules).AsCollection.IgnoreCase);
+        }
     }
 
     [TestCase(null, typeof(ArgumentNullException))]

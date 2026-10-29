@@ -162,9 +162,12 @@ public class StateTreeTests
             tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), null);
 
         tree.Commit();
-        Assert.That(db.WritesCount, Is.EqualTo(expectedWrites), "writes");
-        Assert.That(Trie.Metrics.TreeNodeHashCalculations - _hashesBaseline, Is.EqualTo(expectedHashes), "hashes");
-        Assert.That(Trie.Metrics.TreeNodeRlpEncodings - _encodingsBaseline, Is.EqualTo(expectedEncodings), "encodings");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.WritesCount, Is.EqualTo(expectedWrites), "writes");
+            Assert.That(Trie.Metrics.TreeNodeHashCalculations - _hashesBaseline, Is.EqualTo(expectedHashes), "hashes");
+            Assert.That(Trie.Metrics.TreeNodeRlpEncodings - _encodingsBaseline, Is.EqualTo(expectedEncodings), "encodings");
+        }
     }
 
     private void AssertRootHashAfterUpdateAndCommit(StateTree tree, string expectedRootHash)
@@ -183,8 +186,11 @@ public class StateTreeTests
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
         Account account = tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"));
-        Assert.That(db.ReadsCount, Is.EqualTo(0));
-        Assert.That(account.Balance, Is.EqualTo(_account1.Balance));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.ReadsCount, Is.EqualTo(0));
+            Assert.That(account.Balance, Is.EqualTo(_account1.Balance));
+        }
         AssertRootHashAfterUpdateAndCommit(tree, "0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5");
     }
 

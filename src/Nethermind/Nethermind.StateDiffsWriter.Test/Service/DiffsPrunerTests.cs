@@ -65,10 +65,13 @@ public class DiffsPrunerTests
         // cutoff = 50 - 10 = 40
         int removed = pruner.PruneOnce();
 
-        Assert.That(removed, Is.EqualTo(39));
-        Assert.That(_store.ReadBlockDiff(39), Is.Null);
-        Assert.That(_store.ReadBlockDiff(40), Is.Not.Null);
-        Assert.That(_store.ReadBlockDiff(50), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removed, Is.EqualTo(39));
+            Assert.That(_store.ReadBlockDiff(39), Is.Null);
+            Assert.That(_store.ReadBlockDiff(40), Is.Not.Null);
+            Assert.That(_store.ReadBlockDiff(50), Is.Not.Null);
+        }
     }
 
     [Test]
@@ -88,9 +91,12 @@ public class DiffsPrunerTests
         int removed = pruner.PruneOnce();
 
         // Anchor = max(20, 50) = 50; cutoff = 50 - 5 = 45.
-        Assert.That(removed, Is.EqualTo(44));
-        Assert.That(_store.ReadBlockDiff(44), Is.Null);
-        Assert.That(_store.ReadBlockDiff(45), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removed, Is.EqualTo(44));
+            Assert.That(_store.ReadBlockDiff(44), Is.Null);
+            Assert.That(_store.ReadBlockDiff(45), Is.Not.Null);
+        }
     }
 
     [Test]
@@ -105,8 +111,11 @@ public class DiffsPrunerTests
         };
         DiffsPruner pruner = new(_blockTree, _store, _writer, config, LimboLogs.Instance);
 
-        Assert.That(pruner.PruneOnce(), Is.Zero);
-        Assert.That(_store.ReadBlockDiff(1), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruner.PruneOnce(), Is.Zero);
+            Assert.That(_store.ReadBlockDiff(1), Is.Not.Null);
+        }
     }
 
     [Test]
@@ -122,9 +131,12 @@ public class DiffsPrunerTests
         DiffsPruner pruner = new(_blockTree, _store, _writer, config, LimboLogs.Instance);
 
         // A negative window must disable pruning, not wrap into a huge cutoff that deletes every row.
-        Assert.That(pruner.PruneOnce(), Is.Zero);
-        Assert.That(_store.ReadBlockDiff(1), Is.Not.Null);
-        Assert.That(_store.ReadBlockDiff(50), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruner.PruneOnce(), Is.Zero);
+            Assert.That(_store.ReadBlockDiff(1), Is.Not.Null);
+            Assert.That(_store.ReadBlockDiff(50), Is.Not.Null);
+        }
     }
 
     [Test]

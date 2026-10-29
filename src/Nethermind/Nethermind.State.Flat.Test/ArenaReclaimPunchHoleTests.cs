@@ -107,8 +107,11 @@ public class ArenaReclaimPunchHoleTests
         BlobArenaFile file = blobs.GetFile(blobId);
         blobs.TryResetOrphanedFrontier(file);
 
-        Assert.That(file.Frontier, Is.EqualTo(0), "in-memory frontier reset");
-        Assert.That(new FileInfo(blobPath).Length, Is.EqualTo(0), "on-disk file truncated by frontier reset");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(file.Frontier, Is.EqualTo(0), "in-memory frontier reset");
+            Assert.That(new FileInfo(blobPath).Length, Is.EqualTo(0), "on-disk file truncated by frontier reset");
+        }
     }
 
     private static (SnapshotLocation, ArenaReservation) WriteReservation(ArenaManager manager, int size)

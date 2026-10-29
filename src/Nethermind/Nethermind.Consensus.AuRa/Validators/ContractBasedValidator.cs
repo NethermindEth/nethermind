@@ -4,8 +4,8 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -216,7 +216,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
                 return validators;
             }
-            catch (AbiException e)
+            catch (ContractException e)
             {
                 throw new AuRaException($"Failed to initialize validators list on block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}\n{new StackTrace()}.", e);
             }
