@@ -1934,10 +1934,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         sp = ref SlotAt(ref stack.Bottom, head);
                         // The hash lands big-endian over the length; the slot holds it in limb layout.
                         ref ulong hash = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
-                        ulong limb3 = ZkEvmBitOperations.Bswap64(hash);
-                        ulong limb2 = ZkEvmBitOperations.Bswap64(Unsafe.Add(ref hash, 1));
-                        ulong limb1 = ZkEvmBitOperations.Bswap64(Unsafe.Add(ref hash, 2));
-                        ulong limb0 = ZkEvmBitOperations.Bswap64(Unsafe.Add(ref hash, 3));
+                        // Loaded once: through Bswap64 the JIT reloads a mask for each word.
+                        ZkEvmBitOperations.LoadSwapMasks(out ulong m8, out ulong m16);
+                        ulong limb3 = ZkEvmBitOperations.Swap(hash, m8, m16);
+                        ulong limb2 = ZkEvmBitOperations.Swap(Unsafe.Add(ref hash, 1), m8, m16);
+                        ulong limb1 = ZkEvmBitOperations.Swap(Unsafe.Add(ref hash, 2), m8, m16);
+                        ulong limb0 = ZkEvmBitOperations.Swap(Unsafe.Add(ref hash, 3), m8, m16);
                         hash = limb0;
                         Unsafe.Add(ref hash, 1) = limb1;
                         Unsafe.Add(ref hash, 2) = limb2;
