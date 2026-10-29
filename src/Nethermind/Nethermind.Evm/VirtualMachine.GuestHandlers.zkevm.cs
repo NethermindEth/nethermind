@@ -1047,17 +1047,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             ref UInt256 m = ref Unsafe.As<ulong, UInt256>(ref modulus);
             ref UInt256 b = ref Unsafe.Add(ref m, 1);
-            Sp1MulModOperands operands;
+            EvmInstructions.Sp1MulModOperands operands;
             operands.Multiplier = Unsafe.Add(ref m, 2);
             operands.Modulus = m;
             Accelerators.UInt256MulMod((ulong*)Unsafe.AsPointer(ref b), (ulong*)&operands);
             m = b;
-        }
-
-        private struct Sp1MulModOperands
-        {
-            public UInt256 Multiplier;
-            public UInt256 Modulus;
         }
 
         /// <summary>
