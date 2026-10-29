@@ -103,6 +103,8 @@ internal sealed class FrameTxPaymasterFilter(
     }
 
     // EIP8141-GAP: no canonical paymaster runtime is pinned yet, so every code-carrying pay target is capped.
+    // PendingCodeDependencyCache's shared paymaster slots rely on this cap: exempting a canonical paymaster here
+    // moves its pay-frame dependencies back to per-transaction slots (see SlotPaymaster).
     internal static bool IsNonCanonicalPaymaster(Address paymaster, IReadOnlyStateProvider stateProvider) =>
         stateProvider.TryGetAccount(paymaster, out AccountStruct account) && account.HasCode;
 
