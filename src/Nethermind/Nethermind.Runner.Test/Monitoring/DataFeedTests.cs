@@ -93,6 +93,12 @@ public class DataFeedTests
     {
         await using FeedHarness harness = await FeedHarness.OpenAsync(query, cancellationToken);
 
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.BlockTree.Head!.Number, Is.Zero, "feed readiness must not depend on mining blocks");
+            Assert.That(harness.ResponseBody.EventCount("event: processed"), Is.EqualTo(1));
+        }
+
         Block head = harness.BlockTree.Head!;
         object forkChoiceBeforeRaise = harness.ForkChoiceCompletion;
         harness.BlockTree.ForkChoiceUpdated(head.Hash, head.Hash);
@@ -161,11 +167,10 @@ public class DataFeedTests
         ConsoleHelpers.LineWritten -= handler;
     }
 
-    /// <summary>A data feed over the production modules, with the receipt finder as the only substitute, opened as an SSE subscription.</summary>
+    /// <summary>A data feed over the production modules, with substituted receipts and processing statistics, opened as an SSE subscription.</summary>
     private sealed class FeedHarness : IAsyncDisposable
     {
-        private const int MaxReadinessBlocks = 30;
-
+        private readonly IProcessingStats _processingStats = Substitute.For<IProcessingStats>();
         private readonly LineInterceptingTextWriter? _installedConsoleWriter = InstallConsoleWriterIfMissing();
         private readonly IContainer _container;
         private readonly CancellationTokenSource _lifetime = new();
@@ -180,6 +185,7 @@ public class DataFeedTests
             _container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(Cancun.Instance))
                 .AddSingleton<IReceiptFinder>(ReceiptFinder)
+                .AddSingleton<IProcessingStats>(_processingStats)
                 .Build();
             BlockTree = _container.Resolve<IBlockTree>();
             BlockchainUtil = _container.Resolve<TestBlockchainUtil>();
@@ -262,14 +268,10 @@ public class DataFeedTests
             await _container.Resolve<PseudoNethermindRunner>().StartBlockProcessing(cancellationToken);
             _feed = DataFeed.ProcessingFeedAsync(_httpContext, _feedCancellation.Token);
 
-            // Processing statistics are reported at most once a second, so blocks are added until a report reaches the feed.
-            for (int attempt = 0; !ResponseBody.ProcessedWritten.Task.IsCompleted; attempt++)
-            {
-                Assert.That(attempt, Is.LessThan(MaxReadinessBlocks), "no processed event reached the feed");
-                Assert.That(_feed.IsCompleted, Is.False, "the feed ended before a processed event reached it");
-                await BlockchainUtil.AddBlockAndWaitForHead(false, cancellationToken);
-                await Task.WhenAny(ResponseBody.ProcessedWritten.Task, Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken));
-            }
+            // The in-memory response writes complete synchronously, so the feed has subscribed before returning.
+            Assert.That(_feed.IsCompleted, Is.False, "the feed ended before a processed event reached it");
+            _processingStats.NewProcessingStatistics += Raise.Event<EventHandler<BlockStatistics>>(this, new BlockStatistics());
+            await ResponseBody.ProcessedWritten.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
         }
     }
 

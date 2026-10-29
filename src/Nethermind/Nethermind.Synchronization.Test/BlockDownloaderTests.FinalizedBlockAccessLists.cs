@@ -66,8 +66,11 @@ public partial class BlockDownloaderTests
             if (missingBal && attempt < 2)
             {
                 balRequest = (await downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
-                Assert.That(balRequest.BlockAccessListsRequests, Has.Count.EqualTo(1));
-                Assert.That(suggested, Is.False);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(balRequest.BlockAccessListsRequests, Has.Count.EqualTo(1));
+                    Assert.That(suggested, Is.False);
+                }
             }
         }
         if (missingBal)
@@ -80,8 +83,11 @@ public partial class BlockDownloaderTests
         BlocksRequest? receiptRequest = await downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
         if (!missingBal)
         {
-            Assert.That(receiptRequest!.ReceiptsRequests, Has.Count.EqualTo(1));
-            Assert.That(suggested, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(receiptRequest!.ReceiptsRequests, Has.Count.EqualTo(1));
+                Assert.That(suggested, Is.False);
+            }
             for (int attempt = 0; attempt < (missingReceipts ? 3 : 1); attempt++)
             {
                 receiptRequest!.Receipts = missingReceipts && truncated
@@ -91,8 +97,11 @@ public partial class BlockDownloaderTests
                 receiptRequest = await downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
                 if (missingReceipts && attempt < 2)
                 {
-                    Assert.That(receiptRequest!.ReceiptsRequests, Has.Count.EqualTo(1));
-                    Assert.That(suggested, Is.False);
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(receiptRequest!.ReceiptsRequests, Has.Count.EqualTo(1));
+                        Assert.That(suggested, Is.False);
+                    }
                 }
             }
         }

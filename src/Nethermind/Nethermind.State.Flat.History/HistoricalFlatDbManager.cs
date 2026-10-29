@@ -17,7 +17,6 @@ public sealed class HistoricalFlatDbManager(
     IFlatDbManager inner,
     IPersistenceManager persistenceManager,
     HistoryReader historyReader,
-    ITrieNodeCache trieNodeCache,
     IResourcePool resourcePool,
     bool enableDetailedMetrics,
     HistoryScopeGate scopeGate,
@@ -56,7 +55,7 @@ public sealed class HistoricalFlatDbManager(
         ReadOnlySnapshotBundle bundle = BuildHistoricalBundle(baseBlock, mode);
         try
         {
-            return new SnapshotBundle(bundle, trieNodeCache, resourcePool, usage);
+            return new SnapshotBundle(bundle, null, resourcePool, usage);
         }
         catch
         {
@@ -83,6 +82,9 @@ public sealed class HistoricalFlatDbManager(
         IsBlockProcessing(usage)
             ? Classify(stateId) == HistoricalReadMode.NotHistorical && inner.HasStateForBlock(stateId, usage)
             : HasStateForBlock(stateId);
+
+    public bool IsHistoricalState(in StateId stateId) =>
+        Classify(stateId) is HistoricalReadMode.Normal or HistoricalReadMode.Restricted;
 
     public void FlushCache(CancellationToken cancellationToken) => inner.FlushCache(cancellationToken);
 
@@ -129,6 +131,7 @@ public sealed class HistoricalFlatDbManager(
                 reader,
                 enableDetailedMetrics,
                 PersistedSnapshotStack.Empty(enableDetailedMetrics),
+                bufferPin: null,
                 isHistorical: true);
         }
         catch

@@ -6,13 +6,12 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using Autofac;
+using Nethermind.Api.Monitoring;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
-using Nethermind.Monitoring.Config;
 
 namespace Nethermind.Init.Modules;
 

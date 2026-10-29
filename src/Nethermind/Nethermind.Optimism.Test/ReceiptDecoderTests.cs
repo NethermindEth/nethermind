@@ -84,6 +84,38 @@ public class ReceiptDecoderTests
         Assert.That(DecodeMessageReceipt(encoded)!.Logs, Has.Length.EqualTo(ReceiptRlpBuilder.UnbackedLogCount));
     }
 
+    [TestCase(5)]
+    [TestCase(31)]
+    [TestCase(33)]
+    [TestCase(34)]
+    public void Optimism_receipt_message_decoding_normalizes_invalid_post_state_length_to_rlp_exception(int length)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceiptWithFirstItem(new byte[length]);
+
+        Assert.That(() => DecodeMessageReceipt(encoded), Throws.TypeOf<RlpException>());
+    }
+
+    [TestCase(0)]
+    [TestCase(32)]
+    public void Optimism_receipt_message_decoding_accepts_valid_post_state_length(int length)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceiptWithFirstItem(new byte[length]);
+
+        Assert.That(DecodeMessageReceipt(encoded), Is.Not.Null);
+    }
+
+    [Test]
+    public void Optimism_compact_receipt_storage_decoding_normalizes_invalid_post_state_length_to_rlp_exception([Values(5, 31, 33, 34)] int length)
+    {
+        byte[] encoded = Rlp.Encode(Rlp.Encode(new byte[length])).Bytes;
+
+        Assert.That(() =>
+        {
+            RlpReader reader = new(encoded);
+            new OptimismCompactReceiptStorageDecoder().Decode(ref reader);
+        }, Throws.TypeOf<RlpException>());
+    }
+
     [Test]
     public void Optimism_compact_receipt_storage_decoding_skips_empty_log_entry()
     {
@@ -125,12 +157,12 @@ public class ReceiptDecoderTests
             RlpWriter writer = new(encodedBytes);
             decoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(decodedReceipt.DepositNonce, includesNonce ? Is.Not.Null : Is.Null);
                 Assert.That(decodedReceipt.DepositReceiptVersion, includesVersion ? Is.Not.Null : Is.Null);
                 Assert.That(rlp, Is.EqualTo(encodedBytes));
-            });
+            }
 
             return decodedReceipt;
         }
@@ -146,11 +178,11 @@ public class ReceiptDecoderTests
             RlpReader reader = new(encodedRlp);
             OptimismTxReceipt decodedStorageReceipt = (OptimismTxReceipt)decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
 
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(decodedStorageReceipt.DepositNonce, includesNonce ? Is.Not.Null : Is.Null);
                 Assert.That(decodedStorageReceipt.DepositReceiptVersion, includesVersion ? Is.Not.Null : Is.Null);
-            });
+            }
 
             return decodedReceipt;
         }
@@ -166,11 +198,11 @@ public class ReceiptDecoderTests
             RlpReader trieReader = new(encodedTrieRlp);
             OptimismTxReceipt decodedTrieReceipt = (OptimismTxReceipt)trieDecoder.DecodeGuardNotNull(ref trieReader, RlpBehaviors.SkipTypedWrapping);
 
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(decodedTrieReceipt.DepositNonce, shouldIncludeNonceAndVersionForTxTrie ? Is.Not.Null : Is.Null);
                 Assert.That(decodedTrieReceipt.DepositReceiptVersion, shouldIncludeNonceAndVersionForTxTrie ? Is.Not.Null : Is.Null);
-            });
+            }
         }
 
         OptimismTxReceipt decodedReceipt = TestNetworkEncodingRoundTrip(rlp, includesNonce, includesVersion);
@@ -198,7 +230,7 @@ public class ReceiptDecoderTests
     }
 
     [Test]
-    public void Compact_storage_decoding_computes_bloom()
+    public void Compact_storage_decoding_defers_bloom()
     {
         OptimismTxReceipt receipt = new()
         {
@@ -209,7 +241,7 @@ public class ReceiptDecoderTests
         OptimismCompactReceiptStorageDecoder decoder = new();
         RlpReader reader = new(decoder.Encode(receipt, RlpBehaviors.Eip658Receipts).Bytes);
 
-        CompactReceiptDecoderTests.AssertBloomSetOnDecode(decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Eip658Receipts), new Bloom(receipt.Logs));
+        CompactReceiptDecoderTests.AssertDecodedBloom(decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Eip658Receipts), null, new Bloom(receipt.Logs));
     }
 
     [Test]

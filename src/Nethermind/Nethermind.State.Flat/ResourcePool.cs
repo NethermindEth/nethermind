@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Metric;
 using Nethermind.Db;
 using IResettable = Nethermind.Core.Resettables.IResettable;
@@ -89,7 +88,8 @@ public class ResourcePool : IResourcePool
             to,
             content: GetSnapshotContent(usage),
             resourcePool: this,
-            usage: usage);
+            usage: usage,
+            bufferPin: null);
 
     public enum Usage
     {
@@ -158,75 +158,103 @@ public class ResourcePool : IResourcePool
         private readonly ConcurrentStackPool<SortedSnapshotContent> _sortedPool = new(snapshotContentPoolSize);
         private readonly ConcurrentStackPool<TransientResource> _cachedResourcePool = new(cachedResourcePoolSize);
         private TransientResource.Size _lastCachedResourceSize = new(1024, 1024);
-        private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), "SnapshotContent");
-        private readonly PooledResourceLabel _sortedLabel = new(usage.ToString(), "SortedSnapshotContent");
-        private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), "CachedResource");
+        private readonly PooledResourceMetrics _snapshotMetrics = new(usage, "SnapshotContent");
+        private readonly PooledResourceMetrics _sortedMetrics = new(usage, "SortedSnapshotContent");
+        private readonly PooledResourceMetrics _cachedResourceMetrics = new(usage, "CachedResource");
 
         public SnapshotContent GetSnapshotContent()
         {
-            Metrics.ActivePooledResource.AddBy(_snapshotLabel, 1);
             if (_snapshotPool.TryGet(out SnapshotContent? snapshotContent))
             {
-                Metrics.CachedPooledResource[_snapshotLabel] = (long)_snapshotPool.PooledItemCount;
+                _snapshotMetrics.OnRented(_snapshotPool.PooledItemCount);
                 return snapshotContent;
             }
 
-            Metrics.CreatedPooledResource.AddBy(_snapshotLabel, 1);
+            _snapshotMetrics.OnCreated(_snapshotPool.PooledItemCount);
             return new SnapshotContent();
         }
 
         public void ReturnSnapshotContent(SnapshotContent snapshotContent)
         {
-            Metrics.ActivePooledResource.AddBy(_snapshotLabel, -1);
-            if (!_snapshotPool.Return(snapshotContent))
-            {
-            }
-
-            Metrics.CachedPooledResource[_snapshotLabel] = (long)_snapshotPool.PooledItemCount;
+            _snapshotPool.Return(snapshotContent);
+            _snapshotMetrics.OnReturned(_snapshotPool.PooledItemCount);
         }
 
         public SortedSnapshotContent GetSortedSnapshotContent()
         {
-            Metrics.ActivePooledResource.AddBy(_sortedLabel, 1);
             if (_sortedPool.TryGet(out SortedSnapshotContent? sortedContent))
             {
-                Metrics.CachedPooledResource[_sortedLabel] = (long)_sortedPool.PooledItemCount;
+                _sortedMetrics.OnRented(_sortedPool.PooledItemCount);
                 return sortedContent;
             }
 
-            Metrics.CreatedPooledResource.AddBy(_sortedLabel, 1);
+            _sortedMetrics.OnCreated(_sortedPool.PooledItemCount);
             return new SortedSnapshotContent();
         }
 
         public void ReturnSortedSnapshotContent(SortedSnapshotContent sortedContent)
         {
-            Metrics.ActivePooledResource.AddBy(_sortedLabel, -1);
             _sortedPool.Return(sortedContent);
-            Metrics.CachedPooledResource[_sortedLabel] = (long)_sortedPool.PooledItemCount;
+            _sortedMetrics.OnReturned(_sortedPool.PooledItemCount);
         }
 
         public TransientResource GetCachedResource()
         {
-            Metrics.ActivePooledResource.AddBy(_cachedResourceLabel, 1);
             if (_cachedResourcePool.TryGet(out TransientResource? cachedResource))
             {
-                Metrics.CachedPooledResource[_cachedResourceLabel] = (long)_cachedResourcePool.PooledItemCount;
+                _cachedResourceMetrics.OnRented(_cachedResourcePool.PooledItemCount);
                 return cachedResource;
             }
 
-            Metrics.CreatedPooledResource.AddBy(_cachedResourceLabel, 1);
+            _cachedResourceMetrics.OnCreated(_cachedResourcePool.PooledItemCount);
             return new TransientResource(_lastCachedResourceSize);
         }
 
         public void ReturnCachedResource(TransientResource transientResource)
         {
-            Metrics.ActivePooledResource.AddBy(_cachedResourceLabel, -1);
             if (!_cachedResourcePool.Return(transientResource))
             {
                 _lastCachedResourceSize = transientResource.GetSize();
             }
 
-            Metrics.CachedPooledResource[_cachedResourceLabel] = (long)_cachedResourcePool.PooledItemCount;
+            _cachedResourceMetrics.OnReturned(_cachedResourcePool.PooledItemCount);
+        }
+    }
+
+    /// <summary>Counts one pooled resource type, writing the shared metric dictionaries only when detailed metrics are enabled.</summary>
+    private sealed class PooledResourceMetrics(Usage usage, string resourceType)
+    {
+        private readonly PooledResourceLabel _label = new(usage.ToString(), resourceType);
+        private long _active;
+        private long _created;
+
+        public void OnRented(double pooledCount)
+        {
+            Interlocked.Increment(ref _active);
+            Publish(pooledCount);
+        }
+
+        public void OnCreated(double pooledCount)
+        {
+            Interlocked.Increment(ref _active);
+            Interlocked.Increment(ref _created);
+            Publish(pooledCount);
+        }
+
+        public void OnReturned(double pooledCount)
+        {
+            Interlocked.Decrement(ref _active);
+            Publish(pooledCount);
+        }
+
+        private void Publish(double pooledCount)
+        {
+            if (!Metrics.DetailedMetricsEnabled) return;
+
+            // Racing publishers may leave a gauge one operation stale until the next rent or return.
+            Metrics.ActivePooledResource[_label] = Volatile.Read(ref _active);
+            Metrics.CreatedPooledResource[_label] = Volatile.Read(ref _created);
+            Metrics.CachedPooledResource[_label] = (long)pooledCount;
         }
     }
 

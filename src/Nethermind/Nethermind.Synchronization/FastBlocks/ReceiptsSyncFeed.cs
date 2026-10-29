@@ -243,7 +243,7 @@ namespace Nethermind.Synchronization.FastBlocks
         /// receipt that has logs. A non-zero but wrong bloom is left alone and caught later by the
         /// receipts-root comparison.
         /// </summary>
-        internal static void NormalizeZeroBlooms(TxReceipt[] receipts)
+        public static void NormalizeZeroBlooms(TxReceipt[] receipts)
         {
             for (int i = 0; i < receipts.Length; i++)
             {

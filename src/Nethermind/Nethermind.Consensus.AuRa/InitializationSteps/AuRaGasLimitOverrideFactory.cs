@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Abi;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -20,7 +19,6 @@ public class AuRaGasLimitOverrideFactory(
     ILogManager logManager,
     IAuraConfig auraConfig,
     IBlocksConfig blocksConfig,
-    IAbiEncoder abiEncoder,
     IReadOnlyTxProcessingEnvFactory envFactory,
     AuRaContractGasLimitOverride.Cache gasLimitOverrideCache)
 {
@@ -33,7 +31,6 @@ public class AuRaGasLimitOverrideFactory(
             AuRaContractGasLimitOverride gasLimitCalculator = new(
                 blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
                     new BlockGasLimitContract(
-                        abiEncoder,
                         blockGasLimitContractTransition.Value,
                         blockGasLimitContractTransition.Key,
                         envFactory.Create()))

@@ -17,6 +17,7 @@ using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.Evm.Precompiles.Metrics;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -28,6 +29,8 @@ public class PrecompileCachedCodeInfoRepositoryTests
     private static readonly Address OtherPrecompileAddress = Address.FromNumber(101);
 
     private const long UnconstrainedMaxBytes = 32 * 1024 * 1024;
+
+    private const string MetricLabel = "TEST_METRIC_LABEL";
 
     // budget tests below feed 4-byte inputs, and TestPrecompile echoes them
     private const int EntryCost = 4 * 2 + PrecompileCaches.EntryOverheadBytes;
@@ -573,8 +576,77 @@ public class PrecompileCachedCodeInfoRepositoryTests
         }
     }
 
-    private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null) : IPrecompile
+    [Test]
+    public void Run_ThroughEveryCacheOutcome_ReportsMetrics()
     {
+        bool detailedMetrics = DetailedMetricsEnabled;
+        DetailedMetricsEnabled = true; // probes are a detailed metric
+        try
+        {
+            const int inputLength = 3;
+            const int entryCost = inputLength * 2 + PrecompileCaches.EntryOverheadBytes;
+
+            (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, name: MetricLabel), maxBytes: entryCost);
+
+            resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance); // miss, admitted to both tiers
+            resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance); // per-block hit
+            resolved.Run(new byte[] { 4, 5, 6 }, Prague.Instance); // miss, budget full, so only the surviving tier takes it
+
+            caches.ClearBlockCache();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ProbeMetric("miss"), Is.EqualTo(2));
+                Assert.That(ProbeMetric("block_hit"), Is.EqualTo(1));
+                Assert.That(RejectedFullMetric(), Is.EqualTo(1), "the exhausted byte budget must be visible");
+                Assert.That(UsedBytesMetric(), Is.EqualTo(entryCost), "the gauge must report the block's high point");
+                Assert.That(EntriesMetric(), Is.EqualTo(1), "the refused entry must not be counted");
+            }
+
+            resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance); // surviving tier outlives the block
+            caches.ClearBlockCache();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ProbeMetric("surviving_hit"), Is.EqualTo(1));
+                Assert.That(UsedBytesMetric(), Is.Zero, "a block that only hit the surviving tier holds no budget");
+                Assert.That(EntriesMetric(), Is.Zero, "a block that only hit the surviving tier holds no entries");
+            }
+        }
+        finally
+        {
+            DetailedMetricsEnabled = detailedMetrics;
+        }
+    }
+
+    [Test]
+    public void PrepareFor_AfterBlockEnd_KeepsTheLastBlockMetrics()
+    {
+        const string label = "TEST_RESET_METRIC_LABEL";
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, name: label));
+        PreBlockCaches preBlockCaches = new(new PreBlockCachesConfig(), caches);
+
+        resolved.Run(new byte[] { 1, 2, 3, 4 }, Prague.Instance);
+        preBlockCaches.ClearPrecompileCache();
+        preBlockCaches.PrepareFor(stateRoot: null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.BlockCacheCount, Is.Zero, "precondition: the reset still empties the cache");
+            Assert.That(PrecompileCacheUsedBytes[label], Is.EqualTo(EntryCost), "a reset must not overwrite the last block's occupancy");
+            Assert.That(PrecompileCacheEntries[label], Is.EqualTo(1), "a reset must not overwrite the last block's entry count");
+        }
+    }
+
+    private static long ProbeMetric(string result) => PrecompileCacheProbes.TryGetValue((MetricLabel, result), out long count) ? count : 0;
+    private static long RejectedFullMetric() => PrecompileCacheRejectedFull.TryGetValue(MetricLabel, out long count) ? count : 0;
+    private static long UsedBytesMetric() => PrecompileCacheUsedBytes.TryGetValue(MetricLabel, out long bytes) ? bytes : 0;
+    private static long EntriesMetric() => PrecompileCacheEntries.TryGetValue(MetricLabel, out long entries) ? entries : 0;
+
+    private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null, string? name = null) : IPrecompile
+    {
+        public string Name => name ?? nameof(TestPrecompile);
+
         public bool SupportsCaching => supportsCaching;
 
         public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;

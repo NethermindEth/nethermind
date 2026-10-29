@@ -29,18 +29,21 @@ public sealed class NodeFilter
     private readonly bool _exactMatchOnly;
     private readonly ParsedIPAddress? _parsedCurrentIp;
     private readonly long _timeoutMs;
+    // Null in production: entries are timed with Environment.TickCount64. Tests pass a manual clock.
+    private readonly TimeProvider? _timeProvider;
 
     private NodeFilter() { }
 
     public NodeFilter(int size, bool exactMatchOnly, IPAddress? currentIp)
         : this(size, exactMatchOnly, currentIp, DefaultTimeoutMs) { }
 
-    internal NodeFilter(int size, bool exactMatchOnly, IPAddress? currentIp, long timeoutMs)
+    internal NodeFilter(int size, bool exactMatchOnly, IPAddress? currentIp, long timeoutMs, TimeProvider? timeProvider = null)
     {
         _cache = new(size);
         _exactMatchOnly = exactMatchOnly;
         _parsedCurrentIp = currentIp is not null ? ParsedIPAddress.Parse(currentIp) : null;
         _timeoutMs = timeoutMs;
+        _timeProvider = timeProvider;
     }
 
     /// <summary>
@@ -64,11 +67,11 @@ public sealed class NodeFilter
         if (_cache is null) return true;
 
         IpSubnetKey key = GetKey(ipAddress, exactOnly);
-        if (WasSeenRecently(key, Environment.TickCount64)) return false;
+        if (WasSeenRecently(key, NowMs())) return false;
 
         using Lock.Scope scope = _lock.EnterScope();
         // Refresh after waiting for the lock so acceptance starts a full timeout window.
-        long now = Environment.TickCount64;
+        long now = NowMs();
         if (_cache.TryGet(key, out LastSeen lastSeen))
         {
             if (now - lastSeen.Timestamp < _timeoutMs)
@@ -90,7 +93,7 @@ public sealed class NodeFilter
     {
         if (_cache is null) return true;
 
-        return !WasSeenRecently(GetKey(ipAddress, exactOnly), Environment.TickCount64);
+        return !WasSeenRecently(GetKey(ipAddress, exactOnly), NowMs());
     }
 
     public void Touch(IPAddress ipAddress, bool exactOnly = false)
@@ -102,7 +105,7 @@ public sealed class NodeFilter
 
         IpSubnetKey key = GetKey(ipAddress, exactOnly);
         using Lock.Scope scope = _lock.EnterScope();
-        long now = Environment.TickCount64;
+        long now = NowMs();
         if (_cache.TryGet(key, out LastSeen lastSeen))
         {
             Volatile.Write(ref lastSeen.Timestamp, now);
@@ -112,6 +115,9 @@ public sealed class NodeFilter
             _cache.Set(key, new LastSeen(now));
         }
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private long NowMs() => _timeProvider is null ? Environment.TickCount64 : (long)_timeProvider.GetElapsedTime(0).TotalMilliseconds;
 
     // Mutate the timestamp without replacing ClockCache's dictionary entry on every packet.
     private sealed class LastSeen(long timestamp)

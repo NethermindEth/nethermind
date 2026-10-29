@@ -131,6 +131,17 @@ namespace Nethermind.Trie
             _bufferPool = bufferPool;
         }
 
+        /// <summary>Throws where this build cannot commit a trie; see <c>PatriciaTree.zkevm.cs</c>.</summary>
+        partial void ThrowIfCommitUnsupported();
+
+        /// <summary>Reads the value at <paramref name="rawKey"/> straight from its bytes, where this build does.</summary>
+        /// <returns>Whether it did; when not, the caller walks the key's nibbles.</returns>
+        private partial bool TryGetByRawKey(ReadOnlySpan<byte> rawKey, Hash256? rootHash, out ReadOnlySpan<byte> value);
+
+        /// <summary>Writes <paramref name="value"/> at <paramref name="rawKey"/> straight from its bytes, where this build does.</summary>
+        /// <returns>Whether it did; when not, the caller walks the key's nibbles.</returns>
+        private partial bool TrySetByRawKey(ReadOnlySpan<byte> rawKey, CappedArray<byte> value);
+
         public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
         {
             if (!_allowCommits)
@@ -167,6 +178,8 @@ namespace Nethermind.Trie
 
             // Sometimes RootRef is set to null, so we still need to reset roothash to empty tree hash.
             SetRootHash(RootRef?.Keccak, true);
+
+            ThrowIfCommitUnsupported();
         }
 
         private TrieNode Commit(ICommitter committer, ref TreePath path, TrieNode node, bool skipSelf = false)
@@ -338,11 +351,13 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public virtual ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
+            if (TryGetByRawKey(rawKey, rootHash, out ReadOnlySpan<byte> value)) return value;
+
             byte[]? array = null;
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
+                Span<byte> nibbles = (nibblesCount <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc]
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                     [..nibblesCount]; // Slice to exact size;
@@ -364,37 +379,6 @@ namespace Nethermind.Trie
             catch (TrieException e)
             {
                 EnhanceException(rawKey, rootHash ?? RootHash, e);
-                throw;
-            }
-            finally
-            {
-                if (array is not null) ArrayPool<byte>.Shared.Return(array);
-            }
-        }
-
-        [SkipLocalsInit]
-        [DebuggerStepThrough]
-        public void WarmUpPath(ReadOnlySpan<byte> rawKey)
-        {
-            byte[]? array = null;
-            try
-            {
-                int nibblesCount = 2 * rawKey.Length;
-                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
-                        ? stackalloc byte[MaxKeyStackAlloc]
-                        : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
-                    [..nibblesCount]; // Slice to exact size;
-
-                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-
-                TreePath emptyPath = TreePath.Empty;
-                TrieNode? root = RootRef;
-
-                DoWarmUpPath(nibbles, ref emptyPath, root);
-            }
-            catch (TrieException e)
-            {
-                EnhanceException(rawKey, RootHash, e);
                 throw;
             }
             finally
@@ -516,11 +500,31 @@ namespace Nethermind.Trie
 
             _writeBeforeCommit++;
 
+            try
+            {
+                if (!TrySetByRawKey(rawKey, value)) SetByNibbles(rawKey, value);
+            }
+            finally
+            {
+                Volatile.Write(ref _isWriteInProgress, 0);
+            }
+
+            void Trace(in ReadOnlySpan<byte> rawKey, CappedArray<byte> value) => _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.AsSpan().ToHexString(withZeroX: true)}")}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowNonConcurrentWrites() => throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
+        }
+
+        /// <remarks>Apart from <see cref="Set(ReadOnlySpan{byte}, CappedArray{byte})"/>, so a write by raw key skips this
+        /// frame's nibble buffer.</remarks>
+        [SkipLocalsInit]
+        private void SetByNibbles(ReadOnlySpan<byte> rawKey, CappedArray<byte> value)
+        {
             byte[]? array = null;
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
+                Span<byte> nibbles = (nibblesCount <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc] // Fixed size stack allocation
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                     [..nibblesCount]; // Slice to exact size
@@ -536,14 +540,8 @@ namespace Nethermind.Trie
             }
             finally
             {
-                Volatile.Write(ref _isWriteInProgress, 0);
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
-
-            void Trace(in ReadOnlySpan<byte> rawKey, CappedArray<byte> value) => _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.AsSpan().ToHexString(withZeroX: true)}")}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowNonConcurrentWrites() => throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
         }
 
         [DebuggerStepThrough]
@@ -560,16 +558,19 @@ namespace Nethermind.Trie
             }
         }
 
-        private TrieNode? SetNew(TraverseStack traverseStack, Span<byte> remainingKey, CappedArray<byte> value, ref TreePath path, TrieNode? node)
+        private TrieNode? SetNew(TraverseStack traverseStack, Span<byte> key, CappedArray<byte> value, ref TreePath path, TrieNode? node)
         {
             TrieNode? originalNode = node;
             int originalPathLength = path.Length;
+            // The nibbles walked so far, word-sized: a branch level only reads its nibble and moves on, so it keeps no
+            // sliced span of the rest, whose start and length the guest would store back to the stack per level.
+            nint consumed = 0;
 
             while (true)
             {
                 if (node is null)
                 {
-                    node = value.IsNullOrEmpty ? null : TrieNodeFactory.CreateLeaf(remainingKey, value);
+                    node = value.IsNullOrEmpty ? null : TrieNodeFactory.CreateLeaf(key[(int)consumed..], value);
 
                     // End traverse
                     break;
@@ -580,6 +581,7 @@ namespace Nethermind.Trie
                 // Resolved, so anything but a branch is a leaf or an extension.
                 if (!node.IsBranch)
                 {
+                    Span<byte> remainingKey = key[(int)consumed..];
                     int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                     if (commonPrefixLength == node.Key!.Length)
                     {
@@ -597,7 +599,7 @@ namespace Nethermind.Trie
                             });
 
                             // Continue loop with the child as current node
-                            remainingKey = remainingKey[node!.Key.Length..];
+                            consumed += node!.Key.Length;
                             node = extensionChild;
 
                             continue;
@@ -667,7 +669,7 @@ namespace Nethermind.Trie
                     break;
                 }
 
-                int nib = remainingKey[0];
+                int nib = key[(int)consumed];
                 if (TracksPath) path.AppendMut(nib);
                 TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
 
@@ -680,15 +682,24 @@ namespace Nethermind.Trie
 
                 // Continue loop with child as current node
                 node = child;
-                remainingKey = remainingKey[1..];
+                consumed++;
             }
 
+            return ClimbToRoot(traverseStack, node, ref path, originalPathLength, originalNode);
+        }
+
+        /// <summary>Applies <paramref name="node"/>, what a write walk left at its deepest level, to each level on
+        /// <paramref name="traverseStack"/> up to the walk's start.</summary>
+        /// <returns>The node at the walk's start, or <paramref name="originalNode"/> where nothing above changes.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private TrieNode? ClimbToRoot(TraverseStack traverseStack, TrieNode? node, ref TreePath path, int originalPathLength, TrieNode? originalNode)
+        {
             while (traverseStack.TryPop(out TraverseStackFrame cStack))
             {
                 TrieNode? child = node;
                 node = cStack.Node;
 
-                if (IsUnchangedPendingLevel(node, cStack.ChildIdx, cStack.OriginalChild, child))
+                if (IsUnchangedPendingLevel(node, (int)cStack.ChildIdx, cStack.OriginalChild, child))
                 {
                     path.TruncateMut(originalPathLength);
                     traverseStack.Clear();
@@ -723,7 +734,7 @@ namespace Nethermind.Trie
                 }
 
                 // Branch only
-                int nib = cStack.ChildIdx;
+                int nib = (int)cStack.ChildIdx;
 
                 bool hasRemove = false;
                 if (TracksPath) path.TruncateOne();
@@ -734,6 +745,7 @@ namespace Nethermind.Trie
                     if (node.IsSealed) node = node.Unseal();
 
                     node.SetChild(nib, child);
+                    if (UnsealsAncestorsAtOnce) traverseStack.UnsealNodes();
                 }
 
                 if (!hasRemove)
@@ -766,6 +778,7 @@ namespace Nethermind.Trie
         /// <param name="path"></param>
         /// <param name="node"></param>
         /// <returns></returns>
+        [SkipLocalsInit]
         internal TrieNode? MaybeCombineNode(ref TreePath path, TrieNode node, TrieNode? originalNode)
         {
             Debug.Assert(node.IsBranch, "MaybeCombineNode requires a branch node.");
@@ -860,42 +873,75 @@ namespace Nethermind.Trie
         private record struct TraverseStackFrame
         {
             public TrieNode Node;
-            public int ChildIdx;
+            // Word-sized, as is the stack's count: a zkVM guest proves a 32-bit access at several times an aligned 64-bit one.
+            public nint ChildIdx;
             public TrieNode? OriginalChild;
         }
 
         private class TraverseStack
         {
-            [InlineArray(64)]
+            private const int Capacity = 64;
+
+            [InlineArray(Capacity)]
             private struct Inline64
             {
                 public TraverseStackFrame Item;
             }
 
             private Inline64 _entries;
-            private int _count;
+            private nint _count;
 
+            /// <remarks>Indexed by the word-sized count itself, checked once against the capacity: the inline array's indexer
+            /// takes an <see langword="int"/>, which the guest re-extends and checks again per push and pop.</remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public void Push(TraverseStackFrame frame) => _entries[_count++] = frame;
+            public void Push(TraverseStackFrame frame)
+            {
+                nint count = _count;
+                if ((nuint)count >= Capacity) ThrowStackFull();
+                Unsafe.Add(ref _entries.Item, count) = frame;
+                _count = count + 1;
+            }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool TryPop(out TraverseStackFrame frame)
             {
-                if (_count == 0) { frame = default; return false; }
-                frame = _entries[--_count];
-                if (ReleasesPoppedFrames) _entries[_count] = default; // release references
+                nint count = _count - 1;
+                if (count < 0) { frame = default; return false; }
+                ref TraverseStackFrame top = ref Unsafe.Add(ref _entries.Item, count);
+                frame = top;
+                if (ReleasesPoppedFrames) top = default; // release references
+                _count = count;
                 return true;
             }
 
-            public void Clear()
+            /// <summary>Unseals, in place, the node of every frame not yet popped.</summary>
+            /// <remarks>
+            /// Only where <see cref="TrieNode.Unseal"/> returns the node itself; see <see cref="UnsealsAncestorsAtOnce"/>.
+            /// Deepest first, stopping at a node already pending, dirty and unhashed: an earlier write left its ancestors so too.
+            /// Relies on each frame's node holding the next frame's node by reference in its <c>ChildIdx</c> slot, as the descent
+            /// cached it: the climb's early exit checks only the immediate parent, so a slot left holding a hash (a pruned or
+            /// unresolved child) would have a higher ancestor encode its child's stale hash.
+            /// </remarks>
+            public void UnsealNodes()
             {
-                if (_count != 0)
+                Span<TraverseStackFrame> frames = _entries[..(int)_count];
+                for (int i = frames.Length - 1; i >= 0; i--)
                 {
-                    _entries[.._count].Clear();
-                    _count = 0;
+                    TrieNode node = frames[i].Node;
+                    if (node.Keccak is null && node.IsDirty) return;
+                    node.Unseal();
                 }
             }
-            public int Count => _count;
+
+            [DoesNotReturn, StackTraceHidden]
+            private static void ThrowStackFull() => throw new IndexOutOfRangeException("The trie walk is deeper than its stack.");
+
+            public void Clear()
+            {
+                if (ReleasesPoppedFrames && _count != 0) _entries[..(int)_count].Clear();
+                _count = 0;
+            }
+            public int Count => (int)_count;
         }
 
         private CappedArray<byte> GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead)
@@ -963,65 +1009,6 @@ namespace Nethermind.Trie
             finally
             {
                 if (TracksPath) path.TruncateMut(originalPathLength);
-            }
-        }
-
-        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node)
-        {
-            int originalPathLength = path.Length;
-
-            try
-            {
-                while (true)
-                {
-                    if (node is null)
-                    {
-                        // If node read, then missing node. If value read.... what is it suppose to be then?
-                        return;
-                    }
-
-                    // Call FindCachedOrUnknown on some path.
-                    if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
-                    // Best effort: a path-keyed store may hold another version of the node, which just ends the warm-up.
-                    if (!node.TryResolveNode(TrieStore, ref path)) return;
-
-                    if (node.IsLeaf || node.IsExtension)
-                    {
-                        int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
-                        if (commonPrefixLength == node.Key!.Length)
-                        {
-                            if (node.IsLeaf)
-                            {
-                                // Done
-                                return;
-                            }
-
-                            // Continue traversal to the child of the extension
-                            path.AppendMut(node.Key);
-                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0, keepChildRef: true);
-                            remainingKey = remainingKey[node!.Key.Length..];
-                            node = extensionChild;
-
-                            continue;
-                        }
-
-                        // No node match
-                        return;
-                    }
-
-                    int nextNib = remainingKey[0];
-
-                    path.AppendMut(nextNib);
-                    TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nextNib, keepChildRef: true);
-
-                    // Continue loop with child as current node
-                    node = child;
-                    remainingKey = remainingKey[1..];
-                }
-            }
-            finally
-            {
-                path.TruncateMut(originalPathLength);
             }
         }
 

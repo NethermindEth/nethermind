@@ -39,6 +39,14 @@ public ref struct RlpWriter(Span<byte> data) : IRlpWriteBackend
         _position += length;
     }
 
+    /// <summary>Advances past the next <paramref name="length"/> bytes and returns them for the caller to fill.</summary>
+    internal Span<byte> Reserve(int length)
+    {
+        Span<byte> reserved = _data.Slice(_position, length);
+        _position += length;
+        return reserved;
+    }
+
     public override readonly string ToString() => $"[{nameof(RlpWriter)}|{_position}/{_data.Length}]";
 }
 

@@ -3,7 +3,6 @@
 
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 
@@ -27,7 +26,11 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     private OpcodeTable GetOpcodeTable() =>
         _cachedOpcodeTable ??= _opcodeTablesBySpec.GetValue(Spec, static _ => new OpcodeTable());
 
-    partial void ResetSpecCaches() => _cachedOpcodeTable = null;
+    partial void ResetSpecCaches()
+    {
+        _cachedOpcodeTable = null;
+        _frameCodeBodies = null;
+    }
 
     private const long OpcodeRefreshInterval = 10_000;
     private const long OpcodeRefreshLimit = 500_000;
@@ -48,8 +51,15 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         return true;
     }
 
+    /// <summary>The largest nested RETURN/REVERT output the VM keeps a scratch buffer for between transactions.</summary>
+    private const int MaxRetainedReturnDataLength = 32 * 1024;
+
+    /// <inheritdoc/>
+    /// <remarks>Every create output gets its own array.</remarks>
+    private partial bool IsUndeployableCreateOutput(int length, bool isRevert) => false;
+
     public object? ReturnData { get; set; }
 
-    private static partial delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> SelectInitializeFrame(IReleaseSpec spec) =>
-        SpecFlags.Eip158(spec) ? &InitializeFrameCore<OnFlag> : &InitializeFrameCore<OffFlag>;
+    private static partial delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrame(IReleaseSpec spec) =>
+        SelectInitializeFrameCore(spec);
 }

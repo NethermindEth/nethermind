@@ -9,6 +9,9 @@ namespace Nethermind.Evm;
 public partial class VmState<TGasPolicy>
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
+    private static EvmObjectPool<VmState<TGasPolicy>> _statePool => field ??= new(
+        maxShared: VirtualMachineStatics.MaxCallDepth * 2);
+
     // The EVM memory buffer lives on the per-tx scratch arena (reclaimed at reset), so a handle left from a
     // prior transaction dangles - reset it so the next growth allocates fresh. Mainline doesn't need this:
     // Dispose() clears _memory before the VmState returns to the pool.

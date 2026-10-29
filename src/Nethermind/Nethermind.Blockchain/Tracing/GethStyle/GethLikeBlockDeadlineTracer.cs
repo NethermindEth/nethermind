@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
@@ -15,9 +16,10 @@ using Nethermind.Int256;
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 internal sealed class GethLikeBlockDeadlineTracer(
-    IBlockTracer<GethLikeTxTrace> inner, GethTraceOptions options, CancellationToken external)
+    IBlockTracer<GethLikeTxTrace> inner, GethTraceOptions options, CancellationToken external, GethTraceDeadlineScope? scope = null)
     : IBlockTracer<GethLikeTxTrace>, IDisposable
 {
+    private readonly GethTraceDeadlineScope _scope = scope ?? new();
     private CancellationToken _external = external;
     private GethTraceDeadline? _deadline;
     private bool _transferred;
@@ -26,10 +28,15 @@ internal sealed class GethLikeBlockDeadlineTracer(
     internal bool Expired => _deadline?.Expired == true;
     public bool IsTracingRewards => inner.IsTracingRewards;
 
-    internal static IBlockTracer<GethLikeTxTrace> Wrap(IBlockTracer<GethLikeTxTrace> tracer, GethTraceOptions options, CancellationToken external) =>
-        options.EnforceExecutionDeadline && options.Tracer is null or "" or NativeCallTracer.CallTracer or NativePrestateTracer.PrestateTracer or Native4ByteTracer.FourByteTracer
-            ? new GethLikeBlockDeadlineTracer(tracer, options, external)
-            : tracer;
+    internal static IBlockTracer<GethLikeTxTrace> Wrap(
+        Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> createTracer, GethTraceOptions options, CancellationToken external)
+    {
+        bool supported = !GethLikeNativeTracerFactory.IsNativeTracer(options.Tracer)
+            || options.Tracer is NativeCallTracer.CallTracer or NativePrestateTracer.PrestateTracer or Native4ByteTracer.FourByteTracer;
+        if (!options.EnforceExecutionDeadline || options.ParsedTimeout.Error is not null || !supported) return createTracer(options);
+        GethTraceDeadlineScope scope = new();
+        return new GethLikeBlockDeadlineTracer(createTracer(options with { DeadlineScope = scope }), options, external, scope);
+    }
 
     // A second cancellation wrapper would hide the transaction's IsCancelled from VM dispatch.
     internal static IBlockTracer WithCancellation(IBlockTracer<GethLikeTxTrace> tracer, CancellationToken external)
@@ -47,15 +54,18 @@ internal sealed class GethLikeBlockDeadlineTracer(
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
+        ReleaseDeadline();
         _external.ThrowIfCancellationRequested();
-        ITxTracer current = inner.StartNewTxTrace(tx);
+        _scope.External = _external;
         if (tx is null || options.TxHash is { } target && target != tx.Hash)
-            return current.WithCancellation(_external);
+            return inner.StartNewTxTrace(tx).WithCancellation(_external);
 
+        ITxTracer? current = null;
         try
         {
+            _scope.Current = _deadline = new(_external, options.DeadlineClock);
+            current = inner.StartNewTxTrace(tx);
             TimeSpan duration = options.ResolveTimeout() ?? GethTraceDeadline.DefaultTimeout;
-            _deadline = new(_external, options.DeadlineClock);
             _deadline.Start(duration);
             CheckDeadline();
             return current.WithCancellation(_deadline.Token);
@@ -64,7 +74,7 @@ internal sealed class GethLikeBlockDeadlineTracer(
         {
             try
             {
-                try { current.Dispose(); }
+                try { current?.Dispose(); }
                 finally { ReleaseDeadline(); }
             }
             catch (Exception cleanupException)
@@ -115,7 +125,11 @@ internal sealed class GethLikeBlockDeadlineTracer(
         return result;
     }
 
-    private void ReleaseDeadline() => DisposableExtensions.DisposeAndNull(ref _deadline);
+    private void ReleaseDeadline()
+    {
+        _scope.Current = null;
+        DisposableExtensions.DisposeAndNull(ref _deadline);
+    }
 
     internal void HandleFailure(Exception exception)
     {
@@ -135,7 +149,8 @@ internal sealed class GethLikeBlockDeadlineTracer(
         try
         {
             ReleaseDeadline();
-            if (!_transferred)
+            // Disposable graphs release their children without aggregating an incomplete mux result.
+            if (!_transferred && inner is not IDisposable)
                 foreach (GethLikeTxTrace trace in inner.BuildResult()) trace.Dispose();
         }
         finally
@@ -143,6 +158,14 @@ internal sealed class GethLikeBlockDeadlineTracer(
             inner.TryDispose();
         }
     }
+}
+
+/// <summary>Shares the current transaction deadline within one tracer graph.</summary>
+/// <remarks>Not thread-safe. Each graph requires a fresh scope; parallel traces must not share an instance.</remarks>
+internal sealed class GethTraceDeadlineScope
+{
+    internal GethTraceDeadline? Current { get; set; }
+    internal CancellationToken External { get; set; }
 }
 
 internal sealed class GethTraceDeadlineException() : Exception("execution timeout");

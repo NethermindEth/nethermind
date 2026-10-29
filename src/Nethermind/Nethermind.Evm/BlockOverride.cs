@@ -18,6 +18,29 @@ public class BlockOverride
     public UInt256? BaseFeePerGas { get; set; }
     public UInt256? BlobBaseFee { get; set; }
 
+    /// <summary>
+    /// The withdrawals of a block of <c>eth_simulateV1</c>, processed after its calls from Shanghai on. Methods that run
+    /// a single call reject them, see <see cref="WithdrawalsNotSupported"/>.
+    /// </summary>
+    public Withdrawal[]? Withdrawals { get; set; }
+
+    /// <summary>The error of a single-call method given <see cref="Withdrawals"/>: it builds no block to process them in.</summary>
+    public const string WithdrawalsNotSupported = "block override \"withdrawals\" is not supported for this RPC method";
+
+    /// <summary>A copy of <paramref name="header"/> with these overrides applied.</summary>
+    public BlockHeader ApplyTo(BlockHeader header)
+    {
+        BlockHeader result = header.Clone();
+        ApplyOverrides(result);
+        return result;
+    }
+
+    /// <summary>Gets or sets the requested beacon root. Single-call methods reject it; see <see cref="BeaconRootNotSupported"/>.</summary>
+    public Hash256? BeaconRoot { get; set; }
+
+    /// <summary>The error of a single-call method given an unsupported <see cref="BeaconRoot"/> override.</summary>
+    public const string BeaconRootNotSupported = "block override \"beaconRoot\" is not supported for this RPC method";
+
     public void ApplyOverrides(BlockHeader result)
     {
         if (Time is not null) result.Timestamp = Time.Value;
@@ -39,7 +62,7 @@ public class BlockOverride
             result.Beneficiary = result.Author = FeeRecipient;
         }
         if (BaseFeePerGas is not null) result.BaseFeePerGas = BaseFeePerGas.Value;
-        if (PrevRandao is not null && PrevRandao != Hash256.Zero) result.MixHash = PrevRandao;
+        if (PrevRandao is not null) result.MixHash = PrevRandao;
         // BlobBaseFee is not a direct header field — it is derived from ExcessBlobGas via the
         // EIP-4844 formula. The override is applied via BlobBaseFeeOverrideCalculatorDecorator
         // (and for simulate via IBlobBaseFeeOverrideProvider) instead.

@@ -106,8 +106,11 @@ public class EvmStackTests
 
         EvmExceptionType result = InvokePush(op, ref stack);
 
-        Assert.That(result, Is.EqualTo(EvmExceptionType.StackOverflow));
-        Assert.That((int)stack.Head, Is.EqualTo(EvmStack.MaxStackSize - 1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(EvmExceptionType.StackOverflow));
+            Assert.That((int)stack.Head, Is.EqualTo(EvmStack.MaxStackSize - 1));
+        }
     }
 
     [TestCase(PopUInt256_1, 0)]
@@ -125,8 +128,11 @@ public class EvmStackTests
 
         bool result = InvokePopBool(op, ref stack);
 
-        Assert.That(result, Is.False);
-        Assert.That((int)stack.Head, Is.EqualTo(preFilled));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That((int)stack.Head, Is.EqualTo(preFilled));
+        }
     }
 
     [Test]
@@ -147,8 +153,11 @@ public class EvmStackTests
             _ => throw new System.ArgumentOutOfRangeException(nameof(op), op, null),
         };
 
-        Assert.That(result, Is.EqualTo(EvmExceptionType.StackUnderflow));
-        Assert.That((int)stack.Head, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(EvmExceptionType.StackUnderflow));
+            Assert.That((int)stack.Head, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -161,8 +170,11 @@ public class EvmStackTests
 
         int result = stack.PopByte();
 
-        Assert.That(result, Is.EqualTo(-1));
-        Assert.That((int)stack.Head, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(-1));
+            Assert.That((int)stack.Head, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -173,8 +185,11 @@ public class EvmStackTests
 
         Address? result = stack.PopAddress();
 
-        Assert.That(result, Is.Null);
-        Assert.That((int)stack.Head, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That((int)stack.Head, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -193,7 +208,9 @@ public class EvmStackTests
             ? stack.PushBothPaddedBytes<OffFlag, OnFlag>(ref MemoryMarshal.GetArrayDataReference(immediate), used, 32)
             : stack.PushBothPaddedBytes<OffFlag, OffFlag>(ref MemoryMarshal.GetArrayDataReference(immediate), used, 32);
 
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(result, Is.EqualTo(EvmExceptionType.None));
+#pragma warning restore NUnit2045
         Assert.That(stack.PopWord256(out Span<byte> word), Is.True);
         for (int i = 0; i < used; i++) Assert.That(word[i], Is.EqualTo((byte)(0xA0 + i)), $"byte {i} high-end");
         for (int i = used; i < 32; i++) Assert.That(word[i], Is.EqualTo(0), $"byte {i} zero-pad tail");
@@ -297,6 +314,27 @@ public class EvmStackTests
     }
 
     [Test]
+    public void Traced_PushByte_reports_the_byte_without_allocating([Values(0, 1, 0x80, 0xff)] int value)
+    {
+        using VmState<EthereumGasPolicy> vmState = CreateEvmState();
+        BytePushTracer tracer = new();
+        vmState.InitializeStacks(tracer, default, out EvmStack stack);
+        stack.PushByte<OnFlag, OnFlag>((byte)value);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        EvmExceptionType result = stack.PushByte<OnFlag, OnFlag>((byte)value);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(EvmExceptionType.None));
+            Assert.That(tracer.Length, Is.EqualTo(1));
+            Assert.That(tracer.Value, Is.EqualTo((byte)value));
+            Assert.That(allocated, Is.Zero);
+        }
+    }
+
+    [Test]
     public void Shifts_preserve_unaligned_native_slots(
         [Values(Instruction.SHL, Instruction.SHR, Instruction.SAR)] Instruction instruction,
         [Values(0, 1, 7)] int offset,
@@ -355,8 +393,11 @@ public class EvmStackTests
                 ? EvmInstructions.InstructionShift<EthereumGasPolicy, EvmInstructions.OpShl, OffFlag>(ref stack, ref gas)
                 : EvmInstructions.InstructionShift<EthereumGasPolicy, EvmInstructions.OpShr, OffFlag>(ref stack, ref gas);
             stack.PopUInt256(out UInt256 actual);
-            Assert.That(status, Is.EqualTo(EvmExceptionType.None));
-            Assert.That(actual, Is.EqualTo((UInt256)expected), $"{value} {instruction} {count}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(status, Is.EqualTo(EvmExceptionType.None));
+                Assert.That(actual, Is.EqualTo((UInt256)expected), $"{value} {instruction} {count}");
+            }
         }
     }
 
@@ -439,7 +480,9 @@ public class EvmStackTests
         vmState.InitializeStacks(default, out EvmStack stack);
         UInt256 value = new(0x1111111111111111UL, 0x2222222222222222UL, 0x3333333333333333UL, 0x4444444444444444UL);
 
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(stack.PushUInt256<OffFlag>(in value), Is.EqualTo(EvmExceptionType.None));
+#pragma warning restore NUnit2045
         Assert.That(stack.PopUInt256(out UInt256 popped), Is.True);
 
         Assert.That(popped, Is.EqualTo(value));
@@ -454,7 +497,9 @@ public class EvmStackTests
         UInt256 x = new(1), y = new(2), z = new(3);
 
         // Push in order x, y, z so z is top of stack.
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(stack.PushUInt256<OffFlag>(in x), Is.EqualTo(EvmExceptionType.None));
+#pragma warning restore NUnit2045
         Assert.That(stack.PushUInt256<OffFlag>(in y), Is.EqualTo(EvmExceptionType.None));
         Assert.That(stack.PushUInt256<OffFlag>(in z), Is.EqualTo(EvmExceptionType.None));
 
@@ -487,7 +532,9 @@ public class EvmStackTests
             ? InvokePushNBytes<OnFlag>(n, ref stack, ref MemoryMarshal.GetArrayDataReference(immediate))
             : InvokePushNBytes<OffFlag>(n, ref stack, ref MemoryMarshal.GetArrayDataReference(immediate));
 
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(result, Is.EqualTo(EvmExceptionType.None));
+#pragma warning restore NUnit2045
         Assert.That(stack.PopWord256(out Span<byte> word), Is.True);
 
         for (int i = 0; i < 32 - n; i++)
@@ -578,5 +625,17 @@ public class EvmStackTests
         public byte[] StackItem { get; private set; } = [];
 
         public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => StackItem = stackItem.ToArray();
+    }
+
+    private sealed class BytePushTracer : TxTracer
+    {
+        public int Length { get; private set; }
+        public byte Value { get; private set; }
+
+        public override void ReportStackPush(in ReadOnlySpan<byte> stackItem)
+        {
+            Length = stackItem.Length;
+            Value = stackItem[0];
+        }
     }
 }

@@ -30,7 +30,7 @@ public class FrameTxWidthFilterTests
     private const ulong Baseline = 1;
     private const ulong SafetyFactorPermille = 1000;
 
-    private const ulong Cost = (ulong)Eip8141Constants.IntrinsicGasCost + Eip8141Constants.Secp256k1VerificationGasCost + GasCostOf.ColdSLoad;
+    private const ulong Cost = (ulong)Eip8141Constants.IntrinsicGasCost + Eip8141Constants.Secp256k1VerificationGasCost + Eip8250Constants.KeyedNonceAccessCost;
 
     [TestCase(0, true, TestName = "the single baseline admission is free")]
     [TestCase((int)Baseline, false, TestName = "first admission beyond the baseline")]
@@ -196,7 +196,9 @@ public class FrameTxWidthFilterTests
         cache.Earn(Sender, 50_000);
         cache.Earn(Sender, 10_000);
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(cache.TrySpend(Sender, 21_000), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)39_000));
 
         Assert.That(cache.TrySpend(Sender, 39_001), Is.False);
@@ -401,7 +403,9 @@ public class FrameTxWidthFilterTests
         Transaction additional = SponsoredTx(nonce: 1);
         Transaction next = SponsoredTx(nonce: 2);
         admission.PaymasterWidth.Earn(Paymaster, ChargeOf(additional));
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(admission.Submit(baseline), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
         Assert.That(admission.Submit(additional), Is.EqualTo(AcceptTxResult.Accepted));
 
         admission.Remove(baseline);
@@ -426,7 +430,9 @@ public class FrameTxWidthFilterTests
         Transaction additional = SponsoredTx(nonce: 1);
         UInt256 cost = ChargeOf(additional);
         admission.PaymasterWidth.Earn(Paymaster, cost);
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(admission.Submit(SponsoredTx(nonce: 0)), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
         Assert.That(admission.Submit(additional), Is.EqualTo(AcceptTxResult.Accepted));
         ulong replacedNonce = replacesBaseline ? 0ul : 1ul;
 
@@ -517,7 +523,7 @@ public class FrameTxWidthFilterTests
         ConcurrentDictionary<AddressAsKey, ValueHash256> baselines = new();
         if (baseline is not null) baselines[Sender] = baseline.Hash!.ValueHash256;
         FrameTxWidthFilter filter = new(config, new TestChainHeadInfoProvider { NextBaseFee = nextBaseFee }, pending, FrameTxFilterTestPools.Pool(false), cache, baselines, LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>());
-        TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
+        TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>(), Eip8250Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 
@@ -561,7 +567,7 @@ public class FrameTxWidthFilterTests
     private static Transaction SponsoredTx(ulong nonce, UInt256[]? nonceKeys = null, uint gasPrice = 1) =>
         FrameTx(nonce, nonceKeys, gasPrice, frames: [OnlyVerify(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)]);
 
-    private static UInt256 ChargeOf(Transaction tx) => FrameTxWidthCharge.For(tx, Eip8141Prototype.Instance, SafetyFactorPermille);
+    private static UInt256 ChargeOf(Transaction tx) => FrameTxWidthCharge.For(tx, Eip8250Prototype.Instance, SafetyFactorPermille);
 
     /// <summary>The paymaster filter and the width filter as the pool chains them, over the pending set they admitted.</summary>
     private sealed class SponsoredAdmission(bool enabled = true, uint nextBaseFee = 0, bool paymasterHasCode = true)
@@ -586,7 +592,7 @@ public class FrameTxWidthFilterTests
             ILogger logger = LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>();
             FrameTxPaymasterFilter paymasterFilter = new(chain, pool, blobPool, Paymasters, _config, PaymasterWidth, _paymasterBaselines, logger);
             FrameTxWidthFilter widthFilter = new(_config, new TestChainHeadInfoProvider { NextBaseFee = nextBaseFee }, pool, blobPool, SenderWidth, _senderBaselines, logger);
-            TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
+            TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8250Prototype.Instance);
 
             AcceptTxResult result = paymasterFilter.Accept(tx, ref state, TxHandlingOptions.None);
             if (result)

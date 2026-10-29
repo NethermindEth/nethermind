@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -47,6 +48,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     private readonly object _runs = new();
     private bool _disposed;
     private int _inFlight;
+    private IRewardCalculator? _rewardCalculator;
 
     internal bool IsDisposing
     {
@@ -144,7 +146,9 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                     Await(tasks.AsSpan(0, queued), failure);
                 }
 
-                if (afterTransactions is not null)
+                // Only rewards are traced after the transactions, so a block that is never rewarded needs no replay,
+                // and no permit or environment either.
+                if (afterTransactions is not null && Volatile.Read(ref _rewardCalculator)?.MayReward(block.Header) != false)
                 {
                     results[transactions.Length] = TraceAfterTransactions(block, parent, slots, covered.CreateWorkerSeeds(), afterTransactions, token);
                     emitter.Publish();
@@ -252,6 +256,9 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         try
         {
             using Scope<Components> scope = RentEnvironment(parent);
+            // Every environment resolves the same calculator, and the first transaction always rents one before the
+            // reward pass is considered.
+            Volatile.Write(ref _rewardCalculator, scope.Component.RewardCalculator);
             if (scope.Component.Executor?.CanSeed != true) return false;
             IBlockTracer<TTrace> tracer = forTransaction(scope.Component.WorldState, hash);
             try
@@ -506,7 +513,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     }
 
     /// <summary>Processing services owned by one leased environment; never share its world state between active workers.</summary>
-    public record Components(IWorldState WorldState, BlockchainProcessorFacade Processor, ISpecProvider SpecProvider, TransactionTraceExecutor? Executor = null);
+    public record Components(IWorldState WorldState, BlockchainProcessorFacade Processor, ISpecProvider SpecProvider, TransactionTraceExecutor? Executor = null, IRewardCalculator? RewardCalculator = null);
 
     /// <summary>An environment together with the lifetime scope it was resolved from, so the pool that retires it
     /// retires the scope too.</summary>

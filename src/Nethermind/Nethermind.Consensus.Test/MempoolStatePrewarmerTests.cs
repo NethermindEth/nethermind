@@ -18,7 +18,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -67,9 +66,12 @@ public class MempoolStatePrewarmerTests
 
         Transaction[] delta = MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender);
 
-        Assert.That(delta.Length, Is.EqualTo(5), "the first pass warms every selected transaction");
-        Assert.That(warmedPerSender[TestItem.AddressA], Is.EqualTo(3), "sender A's warmed count is recorded");
-        Assert.That(warmedPerSender[TestItem.AddressB], Is.EqualTo(2), "sender B's warmed count is recorded");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delta.Length, Is.EqualTo(5), "the first pass warms every selected transaction");
+            Assert.That(warmedPerSender[TestItem.AddressA], Is.EqualTo(3), "sender A's warmed count is recorded");
+            Assert.That(warmedPerSender[TestItem.AddressB], Is.EqualTo(2), "sender B's warmed count is recorded");
+        }
     }
 
     [Test]
@@ -114,8 +116,11 @@ public class MempoolStatePrewarmerTests
         Assert.That(MempoolStatePrewarmer.SelectDelta(interleaved, warmed, scratch), Is.Empty);
 
         Transaction[] extended = BuildSenderTxs(TestItem.PrivateKeyB, count + 1);
-        Assert.That(MempoolStatePrewarmer.SelectDelta(extended.Concat(a), warmed, scratch), Is.EqualTo(extended));
-        Assert.That(scratch, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MempoolStatePrewarmer.SelectDelta(extended.Concat(a), warmed, scratch), Is.EqualTo(extended));
+            Assert.That(scratch, Is.Empty);
+        }
     }
 
     [Test]
@@ -435,7 +440,7 @@ public class MempoolStatePrewarmerTests
         public CancellationToken DeltaToken { get; init; }
 
         public IDisposable PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => null;
-        public CacheType ClearCaches() => default;
+        public void ClearCaches() { }
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
 
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
@@ -465,7 +470,7 @@ public class MempoolStatePrewarmerTests
         }
 
         public IDisposable PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => null;
-        public CacheType ClearCaches() => default;
+        public void ClearCaches() { }
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
 
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)

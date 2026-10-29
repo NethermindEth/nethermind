@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -23,7 +24,7 @@ public class ReceiptCanonicalityMonitorTests
     public void Publishes_receipts_in_canonicalisation_order()
     {
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, Substitute.For<IBlockTree>(), LimboLogs.Instance);
+        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, Substitute.For<IBlockTree>(), LimboLogs.Instance, MainnetSpecProvider.Instance);
 
         Block removed = Build.A.Block.WithNumber(1).WithExtraData([1]).TestObject;
         Block first = Build.A.Block.WithNumber(1).TestObject;
@@ -43,26 +44,28 @@ public class ReceiptCanonicalityMonitorTests
             return [];
         });
 
-        ConcurrentQueue<(Hash256?, bool)> published = new();
+        ConcurrentQueue<(Hash256?, bool, Transaction[]?)> published = new();
         using CountdownEvent allPublished = new(3);
         monitor.ReceiptsInserted += (_, e) =>
         {
-            published.Enqueue((e.BlockHeader.Hash, e.WasRemoved));
+            published.Enqueue((e.BlockHeader.Hash, e.WasRemoved, e.Transactions));
             allPublished.Signal();
         };
 
         RaiseNewCanonical(receiptStorage, first, removed);
         RaiseNewCanonical(receiptStorage, second);
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
         Assert.That(allPublished.Wait(Timeout), Is.True);
-        Assert.That(published, Is.EqualTo(new[] { (removed.Hash, true), (first.Hash, false), (second.Hash, false) }));
+#pragma warning restore NUnit2045
+        Assert.That(published, Is.EqualTo(new[] { (removed.Hash, true, removed.Transactions), (first.Hash, false, first.Transactions), (second.Hash, false, second.Transactions) }));
     }
 
     [Test]
     public void Publishes_new_block_when_reading_the_removed_block_fails()
     {
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, Substitute.For<IBlockTree>(), LimboLogs.Instance);
+        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, Substitute.For<IBlockTree>(), LimboLogs.Instance, MainnetSpecProvider.Instance);
 
         Block removed = Build.A.Block.WithNumber(1).WithExtraData([1]).TestObject;
         Block added = Build.A.Block.WithNumber(1).TestObject;
@@ -79,7 +82,9 @@ public class ReceiptCanonicalityMonitorTests
 
         RaiseNewCanonical(receiptStorage, added, removed);
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
         Assert.That(addedPublished.Wait(Timeout), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(published, Is.EqualTo(new[] { (added.Hash, false) }));
     }
 
@@ -89,7 +94,7 @@ public class ReceiptCanonicalityMonitorTests
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         receiptStorage.Get(Arg.Any<Block>()).Returns([]);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, blockTree, LimboLogs.Instance);
+        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, blockTree, LimboLogs.Instance, MainnetSpecProvider.Instance);
 
         Block removed = Build.A.Block.WithNumber(2).WithExtraData([1]).TestObject;
         blockTree.FindBlock(removed.Hash!, Arg.Any<BlockTreeLookupOptions>(), removed.Number).Returns(removed);
@@ -106,7 +111,9 @@ public class ReceiptCanonicalityMonitorTests
         blockTree.BlockRemovedFromMain += Raise.EventWith(new object(), new BlockHeaderEventArgs(removed.Header));
         RaiseNewCanonical(receiptStorage, added);
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
         Assert.That(allPublished.Wait(Timeout), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(published, Is.EqualTo(new[] { (removed.Hash, true), (added.Hash, false) }));
     }
 
@@ -115,7 +122,7 @@ public class ReceiptCanonicalityMonitorTests
     {
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         receiptStorage.Get(Arg.Any<Block>()).Returns([]);
-        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, Substitute.For<IBlockTree>(), LimboLogs.Instance);
+        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, Substitute.For<IBlockTree>(), LimboLogs.Instance, MainnetSpecProvider.Instance);
 
         using ManualResetEventSlim firstEntered = new();
         using ManualResetEventSlim release = new();

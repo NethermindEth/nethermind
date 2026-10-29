@@ -220,8 +220,30 @@ namespace Nethermind.Trie
         /// persisted path it has ever walked. See <c>TrieNode.zkevm.cs</c> for why the guest declines.</remarks>
         private const bool PruneTraversedChildren = true;
 
+        /// <summary>Whether a re-encoded branch keeps its previous RLP's value as it stands, rather than walking to it to drop it.</summary>
+        /// <remarks>Not on the host, whose stores can hold a branch read from anywhere: like a fresh encoding, the re-encode drops
+        /// any value. See <c>TrieNode.zkevm.cs</c> for why the guest keeps it.</remarks>
+        private static bool CopiesBranchValue => false;
+
+        /// <summary>Whether a branch hashed as soon as it is encoded keeps the RLP it had rather than its new one.</summary>
+        /// <remarks>Not on the host, which persists the new RLP. See <c>TrieNode.zkevm.cs</c> for the guest.</remarks>
+        private static bool KeepsRlpOfHashedBranch => false;
+
+        /// <summary>Rents the buffer the encoding of the branch at <paramref name="path"/> is written into: from <paramref name="pool"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static CappedArray<byte> RentBranchRlp(ICappedArrayPool? pool, int length, in TreePath path) => pool.SafeRent(length);
+
+        /// <summary>Returns <paramref name="rlp"/>, a branch encoding, in a buffer the node can keep: the one it is in.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static CappedArray<byte> StorableBranchRlp(CappedArray<byte> rlp, ICappedArrayPool? pool) => rlp;
+
         /// <summary>How <see cref="GetChildWithChildPath"/> is inlined: left to the JIT.</summary>
         private const MethodImplOptions GetChildWithChildPathInlining = default;
+
+        /// <summary>How <see cref="ResolveChildFromRlp"/> is inlined: never.</summary>
+        /// <remarks>Out of line so the resolved-child check of <see cref="ResolveChildWithChildPath"/> stays small enough to
+        /// inline into every walk.</remarks>
+        private const MethodImplOptions ResolveChildFromRlpInlining = MethodImplOptions.NoInlining;
 
         /// <summary>How <see cref="SetChild"/> is inlined: left to the JIT.</summary>
         private const MethodImplOptions SetChildInlining = default;
@@ -241,6 +263,16 @@ namespace Nethermind.Trie
             rlp = default;
             return false;
         }
+
+        /// <summary>Resolves child <paramref name="i"/> from an RLP other than a full branch's: through <see cref="ResolveChildFromAnyRlp"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private object? ResolveChildFromSparseRlp(ITrieNodeResolver tree, ref TreePath childPath, ref object? data, int i, CappedArray<byte> rlp) =>
+            ResolveChildFromAnyRlp(tree, ref childPath, ref data, i, rlp);
+
+        /// <summary>Creates the data of a leaf decoded from RLP, with the hex-prefix key <paramref name="compactKey"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static LeafData CreateLeafData(ReadOnlySpan<byte> compactKey, int compactKeyEnd, CappedArray<byte> value) =>
+            new(HexPrefix.FromBytes(compactKey).key, value);
 
         /// <summary>Descends <paramref name="path"/> into child <paramref name="index"/> of the node being encoded.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
-using System.Linq;
 using Nethermind.Config;
 
 namespace Nethermind.Network;
 
-public class PortInUseException(Exception exception, params int[] ports) : IOException(
+public class PortInUseException(Exception exception, params int[] ports) : ListenerBindException(
     $"{GetReason(ports)} " +
         "If you intend to run 2 or more nodes on one machine, ensure you have changed all configured ports under: " +
         $"{"\n\t" + string.Join("\n\t", ConfigExtensions.GetPortOptionNames())}",
@@ -16,8 +14,6 @@ public class PortInUseException(Exception exception, params int[] ports) : IOExc
     )
 {
     public PortInUseException(Exception exception, params string[] urls) : this(exception, GetPorts(urls)) { }
-
-    private static int[] GetPorts(string[] urls) => urls.Select(static u => new Uri(u).Port).ToArray();
 
     private static string GetReason(params int[] ports) => ports.Length switch
     {

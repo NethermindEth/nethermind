@@ -203,6 +203,19 @@ namespace Nethermind.Evm.Test
         {
             TransactionSubstate substate = new(default, 0, null, null, false);
 
+            AssertHasNoLogs(in substate);
+        }
+
+        [Test]
+        public void Halted_substate_has_no_log_list()
+        {
+            TransactionSubstate substate = new(EvmExceptionType.OutOfGas, isTracerConnected: false);
+
+            AssertHasNoLogs(in substate);
+        }
+
+        private static void AssertHasNoLogs(in TransactionSubstate substate)
+        {
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(substate.Logs, Is.Null, "a substate without a journal has no logs");

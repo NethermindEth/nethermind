@@ -131,13 +131,13 @@ public partial class EthRpcModuleTests
             "a call may leave its blob gas unpriced, but a transaction to sign must carry a non-zero blob fee cap");
     }
 
-    [TestCase(false, typeof(EIP1559TransactionForRpc), TestName = "WithoutExplicitType_PromotedToEip1559")]
-    [TestCase(true, typeof(LegacyTransactionForRpc), TestName = "WithExplicitLegacyType_StaysLegacy")]
-    public async Task SignTransaction_LegacyShapeJson_RespectsExplicitTypePinning(bool withExplicitType, Type expectedEchoType)
+    [TestCase("", "\"gasPrice\": \"0x9184e72a000\"", typeof(LegacyTransactionForRpc), "0x0", TestName = "GasPrice_WithoutType_SignsLegacy")]
+    [TestCase("\"type\": \"0x0\",", "\"gasPrice\": \"0x9184e72a000\"", typeof(LegacyTransactionForRpc), "0x0", TestName = "GasPrice_WithType0_SignsLegacy")]
+    [TestCase("\"type\": \"0x2\",", "\"gasPrice\": \"0x9184e72a000\"", typeof(LegacyTransactionForRpc), "0x0", TestName = "GasPrice_WithType2_SignsLegacy")]
+    [TestCase("\"type\": \"0x0\",", "\"maxFeePerGas\": \"0x9184e72a000\", \"maxPriorityFeePerGas\": \"0x1\"", typeof(EIP1559TransactionForRpc), "0x2", TestName = "DynamicFees_WithType0_SignsEip1559")]
+    public async Task SignTransaction_FieldsPickTheEnvelope(string typeLine, string feeFields, Type expectedEchoType, string expectedJsonType)
     {
-        // Bypasses BuildTx because constructed C# instances always serialize the `type` field;
-        // we need raw JSON that omits it to drive HasExplicitType=false on the server.
-        string typeLine = withExplicitType ? "\"type\": \"0x0\"," : "";
+        // Raw JSON, because constructed C# instances always serialize the `type` field.
         string txJson = $$"""
             {
                 {{typeLine}}
@@ -145,7 +145,7 @@ public partial class EthRpcModuleTests
                 "to": "0x2d44c0e097f6cd0f514edac633d82e01280b4a5c",
                 "value": "0x9184e72a",
                 "gas": "0x76c0",
-                "gasPrice": "0x9184e72a000",
+                {{feeFields}},
                 "nonce": "0x0"
             }
             """;
@@ -157,8 +157,14 @@ public partial class EthRpcModuleTests
         JsonRpcResponse<ParsedSignTransactionResult> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<ParsedSignTransactionResult>>(serialized)!;
         Assert.That(response.Result, Is.Not.Null, "precondition: signing must succeed for valid input");
 
-        Assert.That(response.Result!.Tx, Is.TypeOf(expectedEchoType),
-            "no-type input must auto-promote to EIP-1559; explicit type must be preserved");
+        // The echo is read back through the converter, which picks the class from the fields, so check the raw type too.
+        using JsonDocument echo = JsonDocument.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result!.Tx, Is.TypeOf(expectedEchoType), "the fields pick the envelope, as in geth");
+            Assert.That(echo.RootElement.GetProperty("result").GetProperty("tx").GetProperty("type").GetString(),
+                Is.EqualTo(expectedJsonType));
+        }
     }
 
     [TestCase(TxType.Legacy, typeof(LegacyTransactionForRpc), TestName = "Legacy")]
@@ -174,16 +180,22 @@ public partial class EthRpcModuleTests
             result.Raw,
             RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
 
-        Assert.That(decoded.Type, Is.EqualTo(type), "type must round-trip through RLP encode/decode");
-        Assert.That(decoded.GasLimit, Is.EqualTo(0x76c0UL), "gas must round-trip exactly - caller provided it explicitly");
-        Assert.That(decoded.Nonce, Is.EqualTo(0UL), "nonce must round-trip - caller provided it explicitly");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Type, Is.EqualTo(type), "type must round-trip through RLP encode/decode");
+            Assert.That(decoded.GasLimit, Is.EqualTo(0x76c0UL), "gas must round-trip exactly - caller provided it explicitly");
+            Assert.That(decoded.Nonce, Is.EqualTo(0UL), "nonce must round-trip - caller provided it explicitly");
+        }
 
         Address recovered = new EthereumEcdsa(decoded.ChainId ?? 1).RecoverAddress(decoded)!;
-        Assert.That(recovered, Is.EqualTo(new Address(UnlockedTestAccount)),
-            "signature must recover to the from address - raw is the canonical signed artifact");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recovered, Is.EqualTo(new Address(UnlockedTestAccount)),
+                "signature must recover to the from address - raw is the canonical signed artifact");
 
-        Assert.That(result.Tx, Is.TypeOf(expectedEchoType),
-            "tx echo must preserve subclass so JSON shape survives for clients that branch on type");
+            Assert.That(result.Tx, Is.TypeOf(expectedEchoType),
+                "tx echo must preserve subclass so JSON shape survives for clients that branch on type");
+        }
     }
 
     private async Task<string> SignTransaction(TransactionForRpc rpcTx)

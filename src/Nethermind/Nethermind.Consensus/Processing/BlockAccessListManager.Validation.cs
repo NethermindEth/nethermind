@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
@@ -147,6 +148,9 @@ public partial class BlockAccessListManager
         if (block.BlockAccessList is null) return;
 
         CheckInitialized();
+
+        // A mismatch throws and rejects the block, so counting before the checks is safe.
+        if (index == _validatedRowCount) _validatedRowCount++;
 
         if (TryFastPath(block, index, validateStorageReads)) return;
 
@@ -351,11 +355,34 @@ public partial class BlockAccessListManager
     private static bool IsSystemUserReadAt0(AccountChangesAtIndex ac, uint index)
         => index == 0 && ac.Address == Address.SystemUser && !HasStateChanges(ac) && ac.StorageReads.Count == 0;
 
+    private static readonly Address[] SystemContracts =
+    [
+        Eip7002Constants.WithdrawalRequestPredeployAddress,
+        Eip7251Constants.ConsolidationRequestPredeployAddress,
+        Eip8282Constants.BuilderDepositRequestPredeployAddress,
+        Eip8282Constants.BuilderExitRequestPredeployAddress,
+    ];
+
     private static bool IsSystemContract(Address address)
-        => address == Eip7002Constants.WithdrawalRequestPredeployAddress
-        || address == Eip7251Constants.ConsolidationRequestPredeployAddress
-        || address == Eip8282Constants.BuilderDepositRequestPredeployAddress
-        || address == Eip8282Constants.BuilderExitRequestPredeployAddress;
+    {
+        foreach (Address systemContract in SystemContracts)
+        {
+            if (address == systemContract) return true;
+        }
+
+        return false;
+    }
+
+    private static ulong SystemContractStorageReads(ReadOnlyBlockAccessList blockAccessList)
+    {
+        ulong reads = 0;
+        foreach (Address address in SystemContracts)
+        {
+            reads += (ulong)(blockAccessList.GetAccountChanges(address)?.StorageReads.Length ?? 0);
+        }
+
+        return reads;
+    }
 
     private static bool IsToleratedGeneratedOnlyAccount(Address address, uint index, bool hasNoChangesAtIndex, bool hasChargeableReads)
         => hasNoChangesAtIndex
@@ -414,6 +441,74 @@ public partial class BlockAccessListManager
         => throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list contained surplus changes for {address} at index {index}.");
 
     /// <summary>
+    /// Counterpart of <see cref="ValidateStructuralEquivalence"/> for a constructed <see cref="GeneratedBlockAccessList"/>:
+    /// checks the account set and the exact storage_reads per account against the suggested BAL.
+    /// </summary>
+    /// <remarks>
+    /// Reads the constructed list's per-account read sets directly, so the generated index does not have to
+    /// track and sort the reads. The decoder rejects duplicate suggested reads, so equal counts plus containment
+    /// mean equal sets.
+    /// </remarks>
+    private void ValidateGeneratedStructuralEquivalence(Block block)
+    {
+        if (_generatedValidationIndex!.TryGetGeneratedOverflow(out Address overflowAddress, out uint overflowIndex))
+        {
+            ThrowIncorrectChanges(block, overflowAddress, overflowIndex);
+        }
+
+        GeneratedBlockAccessList generated = GeneratedBlockAccessList;
+        ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
+        if (generated.AccountChanges.Count != suggested.AccountChanges.Count)
+        {
+            ThrowStructuralMismatch(block, BlockAccessListValidationIndex.StructuralMismatchKind.AccountCountMismatch, null, generated.AccountChanges.Count);
+        }
+
+        foreach (ReadOnlyAccountChanges suggestedAccount in suggested.AccountChanges)
+        {
+            Address address = suggestedAccount.Address;
+            GeneratedAccountChanges? generatedAccount = generated.GetAccountChanges(address);
+            if (generatedAccount is null)
+            {
+                ThrowStructuralMismatch(block, BlockAccessListValidationIndex.StructuralMismatchKind.MissingInGenerated, address, generated.AccountChanges.Count);
+            }
+
+            IReadOnlySet<UInt256> generatedReads = generatedAccount.StorageReads;
+            ReadOnlySpan<UInt256> suggestedReads = suggestedAccount.StorageReads;
+            if (generatedReads.Count != suggestedReads.Length)
+            {
+                ThrowStructuralMismatch(block, BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch, address, generated.AccountChanges.Count);
+            }
+
+            foreach (UInt256 slot in suggestedReads)
+            {
+                if (!generatedReads.Contains(slot))
+                {
+                    ThrowStructuralMismatch(block, BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsContentMismatch, address, generated.AccountChanges.Count);
+                }
+            }
+        }
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowStructuralMismatch(Block block, BlockAccessListValidationIndex.StructuralMismatchKind mismatch, Address? address, int generatedAccountCount)
+    {
+        string error = mismatch switch
+        {
+            BlockAccessListValidationIndex.StructuralMismatchKind.AccountCountMismatch
+                => $"Account-set size mismatch: suggested={block.BlockAccessList!.AccountChanges.Count}, generated={generatedAccountCount}.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.MissingInGenerated
+                => $"Suggested BAL declares account {address} which execution did not touch.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch
+                => $"storage_reads count mismatch for {address}.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsContentMismatch
+                => $"storage_reads mismatch for {address}.",
+            _ => throw new InvalidOperationException($"Unhandled {nameof(BlockAccessListValidationIndex.StructuralMismatchKind)}: {mismatch}"),
+        };
+
+        throw new InvalidBlockLevelAccessListException(block.Header, error);
+    }
+
+    /// <summary>
     /// Closes the gap between the column-index per-row validation and what the end-of-block
     /// canonical-bytes hash compare used to catch: namely, account-set presence and the exact
     /// set of storage_reads per account. Throws <see cref="InvalidBlockLevelAccessListException"/>
@@ -440,21 +535,11 @@ public partial class BlockAccessListManager
         BlockAccessListValidationIndex.StructuralMismatchKind mismatch =
             generatedIndex.FindStructuralMismatch(suggested, out Address? mismatchAddress, out int generatedAccountCount);
 
-        string? error = mismatch switch
+        if (mismatch is not BlockAccessListValidationIndex.StructuralMismatchKind.None)
         {
-            BlockAccessListValidationIndex.StructuralMismatchKind.None => null,
-            BlockAccessListValidationIndex.StructuralMismatchKind.AccountCountMismatch
-                => $"Account-set size mismatch: suggested={suggested.AccountChanges.Count}, generated={generatedAccountCount}.",
-            BlockAccessListValidationIndex.StructuralMismatchKind.MissingInGenerated
-                => $"Suggested BAL declares account {mismatchAddress} which execution did not touch.",
-            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch
-                => $"storage_reads count mismatch for {mismatchAddress}.",
-            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsContentMismatch
-                => $"storage_reads mismatch for {mismatchAddress}.",
-            _ => throw new InvalidOperationException($"Unhandled {nameof(BlockAccessListValidationIndex.StructuralMismatchKind)}: {mismatch}"),
-        };
+            ThrowStructuralMismatch(block, mismatch, mismatchAddress, generatedAccountCount);
+        }
 
-        if (error is not null) throw new InvalidBlockLevelAccessListException(block.Header, error);
         // EIP-7928: coverage rejects unused declared reads; BlockAccessListBasedWorldState.Get/GetOriginal
         // reject undeclared storage accesses, while incremental validation checks the write lanes.
         if (_readPlan?.TryFindUncovered(out Address? uncovered) == true)

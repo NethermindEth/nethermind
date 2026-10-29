@@ -192,6 +192,66 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
         }
 
+        [TestCase(0, TestName = "Apart")]
+        [TestCase(8, TestName = "Overlapping its source")]
+        public unsafe void Placed_code_memory_is_padded_in_place(int sourceOffset)
+        {
+            byte[] memory = GC.AllocateArray<byte>(64, pinned: true);
+            memory.AsSpan().Fill(0xff);
+            byte[] code = [0x60, 0x01, 0x5b];
+            code.CopyTo(memory.AsSpan(sourceOffset));
+            ReadOnlySpan<byte> source = sourceOffset == 0 ? code : memory.AsSpan(sourceOffset, code.Length);
+
+            ReadOnlyMemory<byte> placed = ExecutableCodeMemory.Place(memory, source);
+
+            using MemoryHandle whole = placed.Pin();
+            using MemoryHandle tail = placed[1..].Pin();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(placed.ToArray(), Is.EqualTo(code));
+                Assert.That(memory.AsSpan(code.Length, CodeInfo.ExecutionPadding).ToArray(), Is.All.EqualTo(0));
+                Assert.That(memory[code.Length + CodeInfo.ExecutionPadding], Is.EqualTo(0xff));
+                Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(placed.Span), ref memory[0]), Is.True);
+                Assert.That((nint)whole.Pointer, Is.EqualTo((nint)Unsafe.AsPointer(ref memory[0])));
+                Assert.That((nint)tail.Pointer, Is.EqualTo((nint)Unsafe.AsPointer(ref memory[1])));
+                Assert.That(ExecutableCodeMemory.IsPlaced(placed), Is.True);
+                Assert.That(ExecutableCodeMemory.TryGetExecutionBuffer(placed, out _), Is.False);
+            }
+        }
+
+        [Test]
+        public void Only_the_whole_of_placed_code_memory_is_recognised()
+        {
+            byte[] memory = GC.AllocateArray<byte>(64, pinned: true);
+            ReadOnlyMemory<byte> placed = ExecutableCodeMemory.Place(memory, [0x60, 0x01, 0x5b]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                // A slice's next bytes are more code; wrapped memory promises no padding.
+                Assert.That(ExecutableCodeMemory.IsPlaced(placed[1..]), Is.False);
+                Assert.That(ExecutableCodeMemory.IsPlaced(placed[..2]), Is.False);
+                Assert.That(ExecutableCodeMemory.IsPlaced(ExecutableCodeMemory.Wrap(memory.AsSpan(0, 3))), Is.False);
+                Assert.That(ExecutableCodeMemory.IsPlaced(ExecutableCodeMemory.Copy(memory.AsSpan(0, 3))), Is.False);
+                Assert.That(ExecutableCodeMemory.IsPlaced(memory.AsMemory(0, 3)), Is.False);
+            }
+        }
+
+        [Test]
+        public void Wrapped_code_memory_reads_in_place()
+        {
+            byte[] memory = GC.AllocateArray<byte>(8, pinned: true);
+            memory.AsSpan().Fill(0x5b);
+
+            ReadOnlyMemory<byte> wrapped = ExecutableCodeMemory.Wrap(memory.AsSpan(2, 4));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(wrapped.Length, Is.EqualTo(4));
+                Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(wrapped.Span), ref memory[2]), Is.True);
+                Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(wrapped[1..].Span), ref memory[3]), Is.True);
+            }
+        }
+
         [Test]
         public void Retains_a_whole_array_without_boxing()
         {
@@ -319,8 +379,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            Assert.That(codeInfo.ValidateJump(10), Is.False);
-            Assert.That(codeInfo.ValidateJump(11), Is.False); // 0x5b but not JUMPDEST but data
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(codeInfo.ValidateJump(10), Is.False);
+                Assert.That(codeInfo.ValidateJump(11), Is.False); // 0x5b but not JUMPDEST but data
+            }
         }
 
         [Test]

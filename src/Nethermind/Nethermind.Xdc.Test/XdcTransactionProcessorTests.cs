@@ -119,20 +119,20 @@ internal class XdcTransactionProcessorTests
         {
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(_spec.IsEip1559Enabled, header.BaseFeePerGas);
             UInt256 expectedFees = effectiveGasPrice * spentGas;
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(ownerReceivedFees, Is.EqualTo(expectedFees));
                 Assert.That(beneficiaryReceivedFees, Is.EqualTo(UInt256.Zero));
-            });
+            }
         }
         else
         {
             UInt256 expectedFees = premiumPerGas * spentGas;
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(beneficiaryReceivedFees, Is.EqualTo(expectedFees));
                 Assert.That(ownerReceivedFees, Is.EqualTo(UInt256.Zero));
-            });
+            }
         }
     }
 
@@ -194,11 +194,11 @@ internal class XdcTransactionProcessorTests
             premiumPerGas,
             tx.CalculateEffectiveGasPrice(eip1559Enabled, header.BaseFeePerGas), UInt256.Zero, StatusCode.Success);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(_stateProvider.GetBalance(beneficiary), Is.EqualTo(beneficiaryBefore), "block beneficiary was paid");
             Assert.That(_stateProvider.GetBalance(owner), Is.EqualTo(ownerBefore), "candidate owner was paid");
-        });
+        }
     }
 
     [TestCase(true, true, 0L, true, TestName = "Randomize transaction below the base fee is exempt from the floor")]
@@ -259,7 +259,7 @@ internal class XdcTransactionProcessorTests
 
         UInt256 charged = balanceBefore - _stateProvider.GetBalance(TestItem.AddressA);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             if (expectedToBeCharged)
             {
@@ -274,7 +274,7 @@ internal class XdcTransactionProcessorTests
                 Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee));
                 Assert.That(charged, Is.EqualTo(UInt256.Zero));
             }
-        });
+        }
     }
 
     [Test]
@@ -318,13 +318,13 @@ internal class XdcTransactionProcessorTests
         UInt256 balanceBefore = _stateProvider!.GetBalance(TestItem.AddressA);
         TransactionResult result = _transactionProcessor.TestBuyGas(tx, spec, out UInt256 effectiveGasPrice);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(effectiveGasPrice, Is.EqualTo((UInt256)expectedEffectiveGasPrice));
             Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
             Assert.That(balanceBefore - _stateProvider.GetBalance(TestItem.AddressA),
                 Is.EqualTo(effectiveGasPrice * gasLimit));
-        });
+        }
     }
 
     private class TestXdcTransactionProcessor(

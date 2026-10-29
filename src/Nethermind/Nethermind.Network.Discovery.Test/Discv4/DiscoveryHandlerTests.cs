@@ -1,14 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Generic;
 using System;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -19,8 +20,8 @@ using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Enr;
+using Nethermind.Network.Test;
 using Nethermind.Network.Test.Builders;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -75,9 +76,14 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         {
             IMessageSerializationService real = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
             IMessageSerializationService service = Substitute.For<IMessageSerializationService>();
-            IByteBuffer? serialized = null;
-            service.ZeroSerialize(Arg.Any<PingMsg>(), Arg.Any<IByteBufferAllocator>()).Returns(ci =>
-                serialized = real.ZeroSerialize(ci.Arg<PingMsg>(), UnpooledByteBufferAllocator.Default));
+            ReturnCountingPool pool = new();
+            service.Serialize(Arg.Any<PingMsg>()).Returns(ci =>
+            {
+                byte[] packet = real.SerializeToArray(ci.Arg<PingMsg>());
+                ArrayPoolSpan<byte> serialized = new(pool, packet.Length);
+                packet.CopyTo((Span<byte>)serialized);
+                return serialized;
+            });
             StartUdpChannel("127.0.0.1", 10003, _kademliaAdaptersMocks[0], service);
             PingMsg message = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _address, _address2, new byte[32])
             {
@@ -95,7 +101,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await _kademliaAdaptersMocks[1].Received(1).OnIncomingMsg(Arg.Any<PingMsg>());
-            Assert.That(serialized?.ReferenceCount, Is.Zero);
+            Assert.That(pool.Returned, Is.EqualTo(1));
         }
 
         [Test]
@@ -252,8 +258,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             handler.Receive(PooledUdpReceiveResult.Copy(data, _address2));
 
-            Assert.That(forwarded, Has.Count.EqualTo(1));
-            Assert.That(logger.LogList, Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(forwarded, Has.Count.EqualTo(1));
+                Assert.That(logger.LogList, Is.Empty);
+            }
         }
 
         [Test]
@@ -313,16 +322,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             (IKademliaAdapter adapter, DiscoveryHandler handler, List<byte[]> forwarded, IMessageSerializationService service) = CreateHandler();
 
             EnrResponseMsg msg = BuildEnrResponse(_privateKey2);
-            IByteBuffer serialized = service.ZeroSerialize(msg);
-            byte[] data;
-            try
-            {
-                data = serialized.ReadAllBytesAsArray();
-            }
-            finally
-            {
-                serialized.SafeRelease();
-            }
+            byte[] data = service.SerializeToArray(msg);
 
             handler.Receive(PooledUdpReceiveResult.Copy(data, _address2));
 
@@ -433,6 +433,32 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
+        public async Task GlobalInboundRateLimiter_IsNotSpentByAHostThePerIpLimiterRejects()
+        {
+            // The per-IP burst is 8; a single host sending far more must not use up the global budget for everyone else.
+            (IKademliaAdapter adapter, DiscoveryHandler handler, List<byte[]> forwarded, IMessageSerializationService service) = CreateHandler(globalInboundMessageBurst: 10);
+            using SemaphoreSlim called = new(0);
+            adapter.When(x => x.OnIncomingMsg(Arg.Any<DiscoveryMsg>())).Do(_ => called.Release());
+
+            byte[] data = SerializePing(service);
+            for (int i = 0; i < 100; i++)
+            {
+                handler.Receive(PooledUdpReceiveResult.Copy((byte[])data.Clone(), _address2));
+            }
+
+            IPEndPoint otherHost = new(IPAddress.Parse("127.0.3.1"), _address2.Port);
+            handler.Receive(PooledUdpReceiveResult.Copy((byte[])data.Clone(), otherHost));
+
+            for (int i = 0; i < 9; i++)
+            {
+                Assert.That(await called.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+            }
+            await Task.Delay(50);
+
+            await adapter.Received(9).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
+        [Test]
         public async Task InboundDispatchQueue_Drops_Messages_WhenFull()
         {
             IMessageSerializationService innerService = Build.A.SerializationService().WithDiscovery(_privateKey2).TestObject;
@@ -474,10 +500,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 FarAddress = _address
             };
 
-            IByteBuffer serialized = service.ZeroSerialize(msg);
-            byte[] data = serialized.ReadAllBytesAsArray();
-            serialized.SafeRelease();
-            return data;
+            return service.SerializeToArray(msg);
         }
 
         private EnrResponseMsg BuildEnrResponse(PrivateKey signingKey)
@@ -509,12 +532,26 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         private static async Task SleepWhileWaiting() =>
             await Task.Delay((TestContext.CurrentContext.CurrentRepeatCount + 1) * 300);
 
+        private sealed class ReturnCountingPool : ArrayPool<byte>
+        {
+            private int _returned;
+
+            public int Returned => Volatile.Read(ref _returned);
+
+            public override byte[] Rent(int minimumLength) => new byte[minimumLength];
+
+            public override void Return(byte[] array, bool clearArray = false) => Interlocked.Increment(ref _returned);
+        }
+
         private sealed class BlockingSerializationService(
             IMessageSerializationService innerService,
             ManualResetEventSlim deserializeEntered,
             ManualResetEventSlim unblockDeserialize) : IMessageSerializationService
         {
             private int _deserializeCalls;
+
+            public ArrayPoolSpan<byte> Serialize<T>(T message) where T : MessageBase
+                => innerService.Serialize(message);
 
             public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase
                 => innerService.ZeroSerialize(message, allocator);

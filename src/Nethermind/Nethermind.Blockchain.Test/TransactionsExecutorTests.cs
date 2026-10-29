@@ -411,8 +411,91 @@ namespace Nethermind.Blockchain.Test
                 block,
                 spec);
             Assert.That(selectedTransactions, Has.Length.EqualTo(2));
-            Assert.That(selectedTransactions[0], Is.SameAs(firstTx));
-            Assert.That(selectedTransactions[1], Is.SameAs(secondTx));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(selectedTransactions[0], Is.SameAs(firstTx));
+                Assert.That(selectedTransactions[1], Is.SameAs(secondTx));
+            }
+        }
+
+        // The middle transaction passes the picker but the processor rejects it, either before its receipt is
+        // written (intrinsic gas too low, as every real failure does today) or, simulated, after it.
+        [Test]
+        public void BlockProductionTransactionsExecutor_discarded_transaction_leaves_no_trace_in_receipts_or_gas_used(
+            [Values] bool amsterdam,
+            [Values] bool failsAfterReceipt)
+        {
+            IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Osaka.Instance;
+            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
+
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
+            stateProvider.CreateAccount(TestItem.AddressB, 1.Ether);
+            stateProvider.CreateAccount(TestItem.AddressC, 1.Ether);
+            stateProvider.Commit(spec);
+            stateProvider.CommitTree(0);
+
+            Transaction first = BuildTransfer(TestItem.PrivateKeyA, GasCostOf.Transaction);
+            Transaction discarded = BuildTransfer(TestItem.PrivateKeyB, failsAfterReceipt ? GasCostOf.Transaction : GasCostOf.Transaction - 1);
+            Transaction last = BuildTransfer(TestItem.PrivateKeyC, GasCostOf.Transaction);
+
+            Block block = Build.A.Block
+                .WithNumber(1)
+                .WithBaseFeePerGas(1)
+                .WithExcessBlobGas(0)
+                .WithGasLimit(30_000_000)
+                .WithTransactions(first, discarded, last)
+                .TestObject;
+            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
+
+            EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+            ITransactionProcessorAdapter adapter = new BuildUpTransactionProcessorAdapter(new EthereumTransactionProcessor(
+                BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine,
+                new EthereumCodeInfoRepository(stateProvider), LimboLogs.Instance));
+            if (failsAfterReceipt) adapter = new LateFailureTxProcessorAdapter(adapter, discarded);
+
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(
+                adapter,
+                stateProvider,
+                new BlockProcessor.BlockProductionTransactionPicker(specProvider),
+                LimboLogs.Instance,
+                NullBlockAccessListManager.Instance,
+                NullTxPool.Instance);
+
+            BlockReceiptsTracer receiptsTracer = new();
+            receiptsTracer.StartNewBlockTrace(blockToProduce);
+            txExecutor.SetBlockExecutionContext(new BlockExecutionContext(blockToProduce.Header, spec));
+            TxReceipt[] receipts = txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blockToProduce.Transactions, Is.EqualTo(new[] { first, last }));
+                Assert.That(receipts.Select(static r => r.TxHash), Is.EqualTo(new[] { first.Hash, last.Hash }));
+                Assert.That(receipts.Select(static r => r.Index), Is.EqualTo(new[] { 0, 1 }));
+                Assert.That(blockToProduce.Header.GasUsed, Is.EqualTo(2 * GasCostOf.Transaction));
+            }
+
+            static Transaction BuildTransfer(PrivateKey sender, ulong gasLimit) => Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithTo(TestItem.AddressD)
+                .WithMaxFeePerGas(1)
+                .WithGasLimit(gasLimit)
+                .SignedAndResolved(sender)
+                .TestObject;
+        }
+
+        /// <summary>Executes the transaction, then reports it as failed — a processor failure after its receipt.</summary>
+        private sealed class LateFailureTxProcessorAdapter(ITransactionProcessorAdapter inner, Transaction failing) : ITransactionProcessorAdapter
+        {
+            public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+            {
+                TransactionResult result = inner.Execute(transaction, txTracer);
+                return result && ReferenceEquals(transaction, failing) ? TransactionResult.MalformedTransaction : result;
+            }
+
+            public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) =>
+                inner.SetBlockExecutionContext(in blockExecutionContext);
         }
 
         // EIP-8141: the pool exempts frame transactions from EIP-3607, so without the same exemption
@@ -449,6 +532,35 @@ namespace Nethermind.Blockchain.Test
             if (expectedSkipReason is not null) Assert.That(args.Reason, Is.EqualTo(expectedSkipReason));
         }
 
+        [TestCase(true, GasCostOf.Transaction - 1, BlockProcessor.TxAction.Add, TestName = "CanAddTransaction_BelowLegacyFloor_Eip2780_Added")]
+        [TestCase(true, GasCostOf.TransactionEip2780, BlockProcessor.TxAction.Add, TestName = "CanAddTransaction_AtEip2780Floor_Added")]
+        [TestCase(true, GasCostOf.TransactionEip2780 - 1, BlockProcessor.TxAction.Stop, TestName = "CanAddTransaction_BelowEip2780Floor_Stopped")]
+        [TestCase(false, GasCostOf.Transaction - 1, BlockProcessor.TxAction.Stop, TestName = "CanAddTransaction_BelowLegacyFloor_PreEip2780_Stopped")]
+        public void CanAddTransaction_stops_only_below_the_cheapest_transaction(bool eip2780, ulong gasRemaining, BlockProcessor.TxAction expectedAction)
+        {
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
+
+            Transaction tx = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithSenderAddress(TestItem.AddressA)
+                .WithTo(TestItem.AddressA)
+                .WithGasLimit(GasCostOf.TransactionEip2780)
+                .WithMaxFeePerGas(1)
+                .WithMaxPriorityFeePerGas(1)
+                .TestObject;
+
+            Block block = Build.A.Block.WithGasLimit(4 * GasCostOf.Transaction + gasRemaining).TestObject;
+            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(eip2780 ? Amsterdam.Instance : Osaka.Instance);
+            BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider);
+
+            BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(
+                block, tx, new HashSet<Transaction>(), stateProvider, 4 * GasCostOf.Transaction, 0);
+
+            Assert.That(args.Action, Is.EqualTo(expectedAction));
+        }
+
         [TestCase(100_000UL, 0, false)]
         [TestCase(118_000UL, 0, true)]
         [TestCase(10_000UL, 4000, true)]
@@ -480,8 +592,11 @@ namespace Nethermind.Blockchain.Test
 
             if (expectedSkipped)
             {
-                Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
-                Assert.That(args.Reason, Does.StartWith("Not enough").And.Contains("gas in block"));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
+                    Assert.That(args.Reason, Does.StartWith("Not enough").And.Contains("gas in block"));
+                }
             }
             else
             {

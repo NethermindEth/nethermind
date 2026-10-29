@@ -40,8 +40,11 @@ public class EthereumGasPolicyTests
 
         tracker.Restore();
 
-        Assert.That(tracker.IsCold(in cell), Is.True, "the warm-up was reverted");
-        Assert.That(tracker.IsCold(in other), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracker.IsCold(in cell), Is.True, "the warm-up was reverted");
+            Assert.That(tracker.IsCold(in other), Is.True);
+        }
     }
 
     /// <summary>Returning a tracker to the pool must drop the remembered warm cell, or the next rental
@@ -430,10 +433,10 @@ public class EthereumGasPolicyTests
         spec.ClearReceivedCalls();
         bool actual = (eip3860, eip8038) switch
         {
-            (true, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038On, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
-            (true, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038Off, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
-            (false, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038On, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
-            (false, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038Off, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
+            (true, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038On, OffFlag, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
+            (true, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038Off, OffFlag, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
+            (false, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038On, OffFlag, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
+            (false, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038Off, OffFlag, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
         };
 
         using (Assert.EnterMultipleScope())
@@ -542,15 +545,31 @@ public class EthereumGasPolicyTests
     }
 
     [Test]
+    public void CreateAvailableFromIntrinsic_moves_gas_above_the_execution_cap_to_the_reservoir_only_when_capped([Values] bool capExecutionGas)
+    {
+        EthereumGasPolicy intrinsic = new() { Value = 21_000 };
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap * 2;
+
+        Assert.That(EthereumGasPolicy.TryCreateAvailableFromIntrinsic(gasLimit, in intrinsic, Amsterdam.Instance, out EthereumGasPolicy available, capExecutionGas), Is.True);
+
+        ulong expectedRemaining = capExecutionGas ? Eip7825Constants.DefaultTxGasLimitCap - 21_000 : gasLimit - 21_000;
+        Assert.That((EthereumGasPolicy.GetRemainingGas(in available), EthereumGasPolicy.GetStateReservoir(in available)),
+            Is.EqualTo((expectedRemaining, (long)(gasLimit - 21_000 - expectedRemaining))));
+    }
+
+    [Test]
     public void MinRequiredGasLimit_includes_state_reservoir_unlike_state_blind_minimal_gas()
     {
         EthereumGasPolicy standard = new() { Value = 30_000, StateReservoir = 183_600 };
         EthereumGasPolicy floor = new() { Value = 21_000 };
         IntrinsicGas<EthereumGasPolicy> intrinsic = new(standard, floor);
 
-        Assert.That(intrinsic.StandardGas, Is.EqualTo(213_600UL));
-        Assert.That(intrinsic.MinRequiredGasLimit, Is.EqualTo(213_600UL));
-        Assert.That(EthereumGasPolicy.GetRemainingGas(intrinsic.MinimalGas), Is.EqualTo(30_000UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(intrinsic.StandardGas, Is.EqualTo(213_600UL));
+            Assert.That(intrinsic.MinRequiredGasLimit, Is.EqualTo(213_600UL));
+            Assert.That(EthereumGasPolicy.GetRemainingGas(intrinsic.MinimalGas), Is.EqualTo(30_000UL));
+        }
     }
 
     [Test]
