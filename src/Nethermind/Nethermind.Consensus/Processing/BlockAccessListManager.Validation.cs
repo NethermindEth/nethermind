@@ -166,7 +166,7 @@ public partial class BlockAccessListManager
 
         ThrowIfIndexOutOfRange(block, suggested);
         ThrowIfChangesDiffer(block, suggested);
-        ThrowIfStorageReadBudgetExceeded(block, suggested);
+        ThrowIfStorageReadBudgetExceeded(block);
         ThrowStructuralMismatch(block, suggested);
     }
 
@@ -310,6 +310,29 @@ public partial class BlockAccessListManager
         return false;
     }
 
+    private static ulong SystemContractStorageReads(ReadOnlyBlockAccessList blockAccessList)
+    {
+        ulong reads = 0;
+        foreach (Address address in SystemContracts)
+        {
+            reads += (ulong)(blockAccessList.GetAccountChanges(address)?.StorageReads.Length ?? 0);
+        }
+
+        return reads;
+    }
+
+    private static ulong ChargeableStorageReads(MergedBlockAccessList blockAccessList)
+    {
+        ulong reads = 0;
+        for (int i = 0; i < blockAccessList.AccountCount; i++)
+        {
+            MergedBlockAccessList.AccountChanges account = blockAccessList.GetAccount(i);
+            if (!IsSystemContract(account.Address)) reads += (ulong)account.StorageReads.Length;
+        }
+
+        return reads;
+    }
+
     /// <summary>
     /// Upper bound on the chargeable storage reads the post-execution request calls can add without spending block gas.
     /// </summary>
@@ -341,37 +364,14 @@ public partial class BlockAccessListManager
     private bool HasCanonicalCode(Address predeploy, in ValueHash256 canonicalCodeHash)
         => stateProvider.GetCodeHash(predeploy) == canonicalCodeHash;
 
-    private void ThrowIfStorageReadBudgetExceeded(Block block, ReadOnlyBlockAccessList suggested)
+    private void ThrowIfStorageReadBudgetExceeded(Block block)
     {
-        ulong surplusReads = ChargeableStorageReads(suggested).SaturatingSub(ChargeableStorageReads(_mergedBlockAccessList));
+        ulong surplusReads = _suggestedChargeableStorageReads.SaturatingSub(ChargeableStorageReads(_mergedBlockAccessList));
         if (surplusReads > _postExecutionReadAllowance
             && _gasRemaining < (surplusReads - _postExecutionReadAllowance) * Eip7928Constants.ItemCost)
         {
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }
-    }
-
-    private static ulong ChargeableStorageReads(ReadOnlyBlockAccessList blockAccessList)
-    {
-        ulong reads = 0;
-        foreach (ReadOnlyAccountChanges account in blockAccessList.AccountChanges)
-        {
-            if (!IsSystemContract(account.Address)) reads += (ulong)account.StorageReads.Length;
-        }
-
-        return reads;
-    }
-
-    private static ulong ChargeableStorageReads(MergedBlockAccessList blockAccessList)
-    {
-        ulong reads = 0;
-        for (int i = 0; i < blockAccessList.AccountCount; i++)
-        {
-            MergedBlockAccessList.AccountChanges account = blockAccessList.GetAccount(i);
-            if (!IsSystemContract(account.Address)) reads += (ulong)account.StorageReads.Length;
-        }
-
-        return reads;
     }
 
     [DoesNotReturn, StackTraceHidden]

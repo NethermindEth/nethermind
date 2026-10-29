@@ -52,6 +52,7 @@ public partial class BlockAccessListManager(
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private Task? _balWarmupTask;
+    private BalReadStoragePlan? _readPlan;
     // Null in a build that folds parallel execution out, so nothing behind the pool is compiled.
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager>? _parallelTxProcessorWithWorldStateManager = !ZkEvmFlag.IsActive
         ? new Lazy<ParallelTxProcessorWithWorldStateManager>(() => new(stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, txProcessorFactory))
@@ -69,10 +70,10 @@ public partial class BlockAccessListManager(
         || readOnlyTxProcessingEnvFactory is not null;
 
     private readonly MergedBlockAccessList _mergedBlockAccessList = new();
-    // Tracks the suggested list's declared reads on the verify-only path, whose logs then hold only their accounts.
-    private BalReadStoragePlan? _readPlan;
     // Whether the merged list is checked against the suggested one rather than only encoded.
     private bool _validateBlockAccessList;
+    // Total chargeable storage reads of the suggested list, computed once at PrepareForProcessing.
+    private ulong _suggestedChargeableStorageReads;
     // EIP-7928: post-execution system calls read storage without spending block gas, so the
     // surplus-reads budget must leave room for what their own execution grant can read.
     private ulong _postExecutionReadAllowance;
@@ -134,6 +135,13 @@ public partial class BlockAccessListManager(
                     || (!options.ContainsFlag(ProcessingOptions.NoValidation)
                         && !_isBuilding
                         && !options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList)));
+            // Tally suggested chargeable storage reads here so the surplus-reads gas check avoids re-walking the BAL.
+            // Skipped when building a block or in RLP fixtures (no suggested)
+            if (!_isBuilding && suggestedBlock.BlockAccessList is not null)
+            {
+                ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;
+                _suggestedChargeableStorageReads = (ulong)suggested.TotalStorageReads - SystemContractStorageReads(suggested);
+            }
             _gasRemaining = suggestedBlock.GasUsed;
         }
 
@@ -197,8 +205,7 @@ public partial class BlockAccessListManager(
                 : _sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
             _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _readPlan);
-            // Read from the state before the block, which the post-execution calls' code can differ from only when the block deploys it.
-            _postExecutionReadAllowance = _validateBlockAccessList && ChargeableStorageReads(block.BlockAccessList!) > 0ul
+            _postExecutionReadAllowance = _suggestedChargeableStorageReads > 0ul
                 ? PostExecutionReadAllowance(_blockExecutionContext.Value.Spec)
                 : 0ul;
         }
@@ -289,6 +296,8 @@ public partial class BlockAccessListManager(
         _txProcessorWithWorldStateManager = null;
         _blockExecutionContext = null;
         _gasRemaining = null;
+        _suggestedChargeableStorageReads = 0ul;
+        _postExecutionReadAllowance = 0ul;
         BlockAccessListItems.Clear();
         _mergedBlockAccessList.Clear();
     }

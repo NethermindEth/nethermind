@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.BlockAccessLists;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -93,10 +94,10 @@ public class TransactionDiffViewTests
     public void Build_SortsSlotsByAddressThenKey()
     {
         BlockAccessIndexRecorder slice = new();
-        slice.AddStorageChange(new StorageCell(High, 2), UInt256.Zero, UInt256.One);
-        slice.AddStorageChange(new StorageCell(Mid, 4), UInt256.Zero, UInt256.One);
-        slice.AddStorageChange(new StorageCell(Low, 7), UInt256.Zero, UInt256.One);
-        slice.AddStorageChange(new StorageCell(Low, 3), UInt256.Zero, UInt256.One);
+        slice.AddStorageChange(High, 2, UInt256.Zero, UInt256.One);
+        slice.AddStorageChange(Mid, 4, UInt256.Zero, UInt256.One);
+        slice.AddStorageChange(Low, 7, UInt256.Zero, UInt256.One);
+        slice.AddStorageChange(Low, 3, UInt256.Zero, UInt256.One);
 
         TransactionDiffView view = TransactionDiffView.Build(slice, []);
 

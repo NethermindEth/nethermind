@@ -216,7 +216,14 @@ public sealed partial class BalReadStoragePlan : IDisposable
     /// <remarks>Call only after all workers have completed; merges coverage into the first worker.</remarks>
     public bool TryFindUncovered(out Address? address)
     {
-        int missing = Combine()?.FirstUncovered() ?? (TotalReads == 0 ? -1 : 0);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        BalReadCoverage? combined = null;
+        foreach (BalReadCoverage worker in _workers)
+        {
+            if (combined is null) combined = worker;
+            else combined.Absorb(worker);
+        }
+        int missing = combined?.FirstUncovered() ?? (TotalReads == 0 ? -1 : 0);
         int end = 0;
         foreach (ReadOnlyAccountChanges account in _accounts)
         {
@@ -232,31 +239,24 @@ public sealed partial class BalReadStoragePlan : IDisposable
     }
 
     /// <summary>Records the declared reads some worker executed as storage reads of <paramref name="recorder"/>.</summary>
-    /// <remarks>Call only after all workers have completed; merges coverage into the first worker.</remarks>
+    /// <remarks>Call only after all workers have completed.</remarks>
     public void RecordCoveredReads(BlockAccessIndexRecorder recorder)
     {
-        BalReadCoverage? combined = Combine();
-        if (combined is null) return;
+        ObjectDisposedException.ThrowIf(_disposed, this);
         int ordinal = 0;
         foreach (ReadOnlyAccountChanges account in _accounts)
         {
             foreach (UInt256 slot in account.StorageReads)
             {
-                if (combined.IsCovered(ordinal++)) recorder.AddStorageRead(new StorageCell(account.Address, slot));
+                foreach (BalReadCoverage worker in _workers)
+                {
+                    if (!worker.IsCovered(ordinal)) continue;
+                    recorder.AddStorageRead(new StorageCell(account.Address, slot));
+                    break;
+                }
+                ordinal++;
             }
         }
-    }
-
-    private BalReadCoverage? Combine()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        BalReadCoverage? combined = null;
-        foreach (BalReadCoverage worker in _workers)
-        {
-            if (combined is null) combined = worker;
-            else combined.Absorb(worker);
-        }
-        return combined;
     }
 
     /// <inheritdoc/>

@@ -124,12 +124,12 @@ namespace Nethermind.Consensus.Processing
                     _learnedItemReserve = 0;
                 }
 
-                BlockAccessListItemSet blockAccessListItems = balManager.BlockAccessListItems;
+                BlockAccessListItemSet blockAccessList = balManager.BlockAccessListItems;
                 long limit = (long)(block.Header.GasLimit / Eip7928Constants.ItemCost);
-                long reserve = BlockAccessListItemReserve.Calculate(block, _spec, stateProvider, blockAccessListItems)
+                long reserve = BlockAccessListItemReserve.Calculate(block, _spec, stateProvider, blockAccessList)
                     + _learnedItemReserve;
-                // Only the pre-execution system calls are kept at this point.
-                return new BlockAccessListItemBudget(limit - reserve - blockAccessListItems.ItemCount);
+                // Only the pre-execution system calls are merged at this point, so the count is cheap.
+                return new BlockAccessListItemBudget(limit - reserve - blockAccessList.ItemCount);
             }
 
             private TxAction ProcessTransaction(
@@ -162,7 +162,7 @@ namespace Nethermind.Consensus.Processing
 
                     if (result && itemBudget.Enabled && !itemBudget.TryConsume(balManager.CountPendingTransactionItems()))
                     {
-                        // Leave the executed transaction out: undo its state, its recorded accesses and its receipt.
+                        // Leave the executed transaction out: undo its state, its slice and its receipt.
                         stateProvider.Restore(snapshot);
                         balManager.Rollback();
                         receiptsTracer.DiscardLastTx();

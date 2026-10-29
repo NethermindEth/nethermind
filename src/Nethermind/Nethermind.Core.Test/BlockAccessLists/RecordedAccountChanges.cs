@@ -68,6 +68,11 @@ public static class BlockAccessIndexRecorderTestExtensions
 
         public bool HasAccount(Address address) => recorder.GetAccountChanges(address) is not null;
 
+        public void AddStorageRead(Address address, UInt256 key) => recorder.AddStorageRead(new StorageCell(address, key));
+
+        public void AddStorageChange(Address address, UInt256 key, UInt256 before, UInt256 after)
+            => recorder.AddStorageChange(new StorageCell(address, key), before, after);
+
         /// <summary>The block access list of every index in <paramref name="recorder"/>'s log.</summary>
         public GeneratedBlockAccessList ToGeneratedBlockAccessList() => recorder.Merge().ToGeneratedBlockAccessList();
 

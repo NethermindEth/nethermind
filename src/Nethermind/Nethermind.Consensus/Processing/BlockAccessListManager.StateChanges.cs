@@ -10,8 +10,8 @@ using Nethermind.Serialization.Rlp.Eip7928;
 namespace Nethermind.Consensus.Processing;
 
 /// <summary>
-/// Finalises the block by merging the logs of its indexes and stamping the generated BAL + its
-/// encoded RLP + its hash onto the produced block.
+/// Finalises the block by stamping the generated BAL + its encoded RLP + its hash onto the
+/// produced block.
 /// </summary>
 public partial class BlockAccessListManager
 {

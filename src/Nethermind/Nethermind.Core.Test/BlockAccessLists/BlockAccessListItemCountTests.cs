@@ -15,171 +15,200 @@ namespace Nethermind.Core.Test.BlockAccessLists;
 [TestFixture]
 public class BlockAccessListItemCountTests
 {
-    public static IEnumerable<TestCaseData> ItemCountCases()
+    [Test]
+    public void ItemCount_empty_is_zero()
     {
-        // Item count is 1 per account + 1 per distinct storage key, changed or read (matches
-        // ReadOnlyBlockAccessList.ItemCount and what BlockValidator.ValidateBlockLevelAccessListSize consumes).
-        yield return new TestCaseData(
-            (Action<BlockAccessIndexRecorder>)(static _ => { }),
-            0).SetName("ItemCount_empty_is_zero");
-        yield return new TestCaseData(
-            (Action<BlockAccessIndexRecorder>)(static r => r.AddAccountRead(TestItem.AddressA)),
-            1).SetName("ItemCount_account_read_counts_account");
-        yield return new TestCaseData(
-            (Action<BlockAccessIndexRecorder>)(static r => r.AddBalanceChange(TestItem.AddressA, before: UInt256.Zero, after: (UInt256)100)),
-            1).SetName("ItemCount_balance_change_counts_only_account");
-        yield return new TestCaseData(
-            (Action<BlockAccessIndexRecorder>)(static r => r.AddNonceChange(TestItem.AddressA, 1)),
-            1).SetName("ItemCount_nonce_change_counts_only_account");
-        yield return new TestCaseData(
-            (Action<BlockAccessIndexRecorder>)(static r => r.AddCodeChange(TestItem.AddressA, before: Array.Empty<byte>(), after: new byte[] { 0x60 })),
-            1).SetName("ItemCount_code_change_counts_only_account");
-        yield return new TestCaseData(
-            (Action<BlockAccessIndexRecorder>)(static r => r.AddStorageChange(new StorageCell(TestItem.AddressA, 1), before: UInt256.Zero, after: (UInt256)42)),
-            2).SetName("ItemCount_storage_change_counts_account_plus_slot");
-        yield return new TestCaseData(
-            (Action<BlockAccessIndexRecorder>)(static r => r.AddStorageRead(new StorageCell(TestItem.AddressA, 1))),
-            2).SetName("ItemCount_storage_read_counts_account_plus_slot");
-        yield return new TestCaseData(
-            (Action<BlockAccessIndexRecorder>)(static r =>
-            {
-                r.AddStorageChange(new StorageCell(TestItem.AddressA, 1), before: UInt256.Zero, after: (UInt256)42);
-                r.AddStorageRead(new StorageCell(TestItem.AddressA, 2));
-                r.AddBalanceChange(TestItem.AddressB, before: UInt256.Zero, after: (UInt256)1);
-                r.AddStorageRead(new StorageCell(TestItem.AddressB, 7));
-                r.AddStorageRead(new StorageCell(TestItem.AddressB, 7));
-                r.AddStorageRead(new StorageCell(TestItem.AddressA, 1));
-                r.AddStorageRead(new StorageCell(TestItem.AddressA, 2));
-            }),
-            5).SetName("ItemCount_combines_storage_changes_and_reads_across_accounts");
+        GeneratedBlockAccessList bal = new();
+        Assert.That(bal.ItemCount, Is.EqualTo(0));
     }
 
-    [TestCaseSource(nameof(ItemCountCases))]
-    public void ItemCount_counts_accounts_and_distinct_storage_keys(Action<BlockAccessIndexRecorder> record, int expected)
+    [Test]
+    public void ItemCount_one_account_read_only_counts_account()
     {
-        BlockAccessIndexRecorder recorder = new();
-        recorder.Begin(0);
-        record(recorder);
-        BlockAccessListItemSet items = new();
-        items.TrackAddedEntries(recorder.Log, recorder.Start);
+        BlockAccessIndexRecorder slice = new();
+        slice.AddAccountRead(TestItem.AddressA);
 
+        GeneratedBlockAccessList bal = slice.ToGeneratedBlockAccessList();
+
+        Assert.That(bal.ItemCount, Is.EqualTo(1));
+    }
+
+    public static IEnumerable<TestCaseData> SingleMutationCases()
+    {
+        // Item count is 1 per account + 1 per storage change + 1 per storage read (matches
+        // ReadOnlyBlockAccessList.ItemCount and what BlockValidator.ValidateBlockLevelAccessListSize consumes).
+        yield return new TestCaseData(
+            (Action<BlockAccessIndexRecorder>)(static s => s.AddBalanceChange(TestItem.AddressA, before: UInt256.Zero, after: (UInt256)100)),
+            1).SetName("ItemCount_balance_change_counts_only_account");
+        yield return new TestCaseData(
+            (Action<BlockAccessIndexRecorder>)(static s => s.AddNonceChange(TestItem.AddressA, 1)),
+            1).SetName("ItemCount_nonce_change_counts_only_account");
+        yield return new TestCaseData(
+            (Action<BlockAccessIndexRecorder>)(static s => s.AddCodeChange(TestItem.AddressA, before: Array.Empty<byte>(), after: new byte[] { 0x60 })),
+            1).SetName("ItemCount_code_change_counts_only_account");
+        yield return new TestCaseData(
+            (Action<BlockAccessIndexRecorder>)(static s => s.AddStorageChange(TestItem.AddressA, 1, before: UInt256.Zero, after: (UInt256)42)),
+            2).SetName("ItemCount_storage_change_counts_account_plus_slot");
+        yield return new TestCaseData(
+            (Action<BlockAccessIndexRecorder>)(static s => s.AddStorageRead(TestItem.AddressA, 1)),
+            2).SetName("ItemCount_storage_read_counts_account_plus_slot");
+    }
+
+    [TestCaseSource(nameof(SingleMutationCases))]
+    public void ItemCount_after_single_mutation(Action<BlockAccessIndexRecorder> mutate, int expected)
+    {
+        BlockAccessIndexRecorder slice = new();
+        mutate(slice);
+
+        GeneratedBlockAccessList bal = slice.ToGeneratedBlockAccessList();
+
+        Assert.That(bal.ItemCount, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void ItemCount_combines_storage_changes_and_reads_across_accounts()
+    {
+        BlockAccessIndexRecorder slice = new();
+        slice.AddStorageChange(TestItem.AddressA, 1, before: UInt256.Zero, after: (UInt256)42);
+        slice.AddStorageRead(TestItem.AddressA, 2);
+        slice.AddBalanceChange(TestItem.AddressB, before: UInt256.Zero, after: (UInt256)1);
+        slice.AddStorageRead(TestItem.AddressB, 7);
+        slice.AddStorageRead(TestItem.AddressB, 7);
+        slice.AddStorageRead(new StorageCell(TestItem.AddressA, 1));
+        slice.AddStorageRead(new StorageCell(TestItem.AddressA, 2));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(items.ItemCount, Is.EqualTo(expected));
-            Assert.That(Merge(recorder.Log).ItemCount, Is.EqualTo(expected));
+            Assert.That(slice.GetAccountChanges(TestItem.AddressA)!.StorageReads, Is.EquivalentTo(new UInt256[] { 2 }));
+            Assert.That(slice.GetAccountChanges(TestItem.AddressB)!.StorageReads, Is.EquivalentTo(new UInt256[] { 7 }));
         }
+
+        GeneratedBlockAccessList bal = slice.ToGeneratedBlockAccessList();
+
+        // A: account + storage change + storage read = 3; B: account + storage read = 2.
+        Assert.That(bal.ItemCount, Is.EqualTo(5));
     }
 
     /// <summary>
-    /// The item set and the log are reused across blocks through <c>Clear</c>;
+    /// The item set and the log are reused across blocks via <see cref="BlockAccessListItemSet.Clear"/>;
     /// the next block's <c>ItemCount</c> must report a fresh count, never the stale prior one.
     /// </summary>
     [Test]
-    public void ItemCount_reflects_reuse_across_blocks_through_Clear()
+    public void ItemCount_reflects_reuse_across_blocks_through_Reset([Values] bool reuseSlice)
     {
-        BlockAccessIndexRecorder recorder = new();
-        BlockAccessListItemSet items = new();
-        recorder.Begin(0);
-        recorder.AddStorageRead(new StorageCell(TestItem.AddressA, 1));
-        recorder.AddStorageRead(new StorageCell(TestItem.AddressA, 2));
-        items.TrackAddedEntries(recorder.Log, recorder.Start);
-        Assert.That(items.ItemCount, Is.EqualTo(3), "block 1: 1 account + 2 storage reads");
+        BlockAccessIndexRecorder sliceBlock1 = new();
+        sliceBlock1.AddStorageRead(TestItem.AddressA, 1);
+        sliceBlock1.AddStorageRead(TestItem.AddressA, 2);
 
-        recorder.Log.Clear();
-        items.Clear();
-        recorder.Begin(0);
-        for (int slot = 1; slot <= 4; slot++) recorder.AddStorageRead(new StorageCell(TestItem.AddressB, (UInt256)slot));
-        items.TrackAddedEntries(recorder.Log, recorder.Start);
+        BlockAccessListItemSet bal = new();
+        bal.TrackAddedEntries(sliceBlock1.Log, sliceBlock1.Start);
+        Assert.That(bal.ItemCount, Is.EqualTo(3), "block 1: 1 account + 2 storage reads");
 
-        using (Assert.EnterMultipleScope())
+        bal.Clear();
+
+        BlockAccessIndexRecorder sliceBlock2;
+        if (reuseSlice)
         {
-            Assert.That(items.ItemCount, Is.EqualTo(5), "block 2: 1 account + 4 storage reads, no carryover from block 1");
-            Assert.That(Merge(recorder.Log).ItemCount, Is.EqualTo(5));
+            sliceBlock1.Log.Clear();
+            sliceBlock1.Begin(0);
+            sliceBlock2 = sliceBlock1;
+            sliceBlock2.AddStorageRead(TestItem.AddressA, 99);
+            sliceBlock2.Discard();
         }
+        else
+        {
+            sliceBlock2 = new();
+        }
+        sliceBlock2.AddStorageRead(TestItem.AddressB, 1);
+        sliceBlock2.AddStorageRead(TestItem.AddressB, 2);
+        sliceBlock2.AddStorageRead(TestItem.AddressB, 3);
+        sliceBlock2.AddStorageRead(TestItem.AddressB, 4);
+        bal.TrackAddedEntries(sliceBlock2.Log, sliceBlock2.Start);
+
+        Assert.That(bal.ItemCount, Is.EqualTo(5),
+            "block 2: 1 account + 4 storage reads, no carryover from block 1");
     }
 
     public static IEnumerable<TestCaseData> CountNewItemsCases()
     {
         yield return new TestCaseData(
-            (Action<BlockAccessIndexRecorder>)(static r => r.AddAccountRead(TestItem.AddressA)),
+            (Action<BlockAccessIndexRecorder>)(static s => s.AddAccountRead(TestItem.AddressA)),
             0).SetName("CountNewItems_existing_account_read_adds_nothing");
         yield return new TestCaseData(
-            (Action<BlockAccessIndexRecorder>)(static r => r.AddAccountRead(TestItem.AddressC)),
+            (Action<BlockAccessIndexRecorder>)(static s => s.AddAccountRead(TestItem.AddressC)),
             1).SetName("CountNewItems_new_account_adds_one");
         yield return new TestCaseData(
-            (Action<BlockAccessIndexRecorder>)(static r =>
+            (Action<BlockAccessIndexRecorder>)(static s =>
             {
-                r.AddStorageRead(new StorageCell(TestItem.AddressA, 1));
-                r.AddStorageRead(new StorageCell(TestItem.AddressA, 2));
-                r.AddStorageChange(new StorageCell(TestItem.AddressB, 7), before: UInt256.Zero, after: UInt256.One);
+                s.AddStorageRead(TestItem.AddressA, 1);
+                s.AddStorageRead(TestItem.AddressA, 2);
+                s.AddStorageChange(TestItem.AddressB, 7, before: UInt256.Zero, after: UInt256.One);
             }),
             0).SetName("CountNewItems_existing_keys_add_nothing_whether_read_or_written");
         yield return new TestCaseData(
-            (Action<BlockAccessIndexRecorder>)(static r =>
+            (Action<BlockAccessIndexRecorder>)(static s =>
             {
-                r.AddStorageRead(new StorageCell(TestItem.AddressA, 3));
-                r.AddStorageChange(new StorageCell(TestItem.AddressA, 4), before: UInt256.Zero, after: UInt256.One);
-                r.AddStorageRead(new StorageCell(TestItem.AddressA, 4));
+                s.AddStorageRead(TestItem.AddressA, 3);
+                s.AddStorageChange(TestItem.AddressA, 4, before: UInt256.Zero, after: UInt256.One);
+                s.AddStorageRead(TestItem.AddressA, 4);
             }),
             2).SetName("CountNewItems_new_keys_of_existing_account_count_once_each");
         yield return new TestCaseData(
-            (Action<BlockAccessIndexRecorder>)(static r =>
+            (Action<BlockAccessIndexRecorder>)(static s =>
             {
-                r.AddStorageChange(new StorageCell(TestItem.AddressC, 1), before: UInt256.Zero, after: UInt256.One);
-                r.AddStorageRead(new StorageCell(TestItem.AddressC, 1));
-                r.AddStorageRead(new StorageCell(TestItem.AddressC, 2));
-                r.AddBalanceChange(TestItem.AddressD, before: UInt256.Zero, after: UInt256.One);
+                s.AddStorageChange(TestItem.AddressC, 1, before: UInt256.Zero, after: UInt256.One);
+                s.AddStorageRead(TestItem.AddressC, 1);
+                s.AddStorageRead(TestItem.AddressC, 2);
+                s.AddBalanceChange(TestItem.AddressD, before: UInt256.Zero, after: UInt256.One);
             }),
             4).SetName("CountNewItems_new_accounts_count_with_their_keys");
     }
 
     [TestCaseSource(nameof(CountNewItemsCases))]
-    public void CountNewItems_matches_the_item_count_TrackAddedEntries_adds(Action<BlockAccessIndexRecorder> record, int expected)
+    public void CountNewItems_matches_the_item_count_a_merge_adds(Action<BlockAccessIndexRecorder> mutate, int expected)
     {
-        BlockAccessIndexRecorder recorder = new();
-        BlockAccessListItemSet items = new();
-        recorder.Begin(1);
-        recorder.AddStorageRead(new StorageCell(TestItem.AddressA, 1));
-        recorder.AddStorageChange(new StorageCell(TestItem.AddressA, 2), before: UInt256.Zero, after: UInt256.One);
-        recorder.AddStorageRead(new StorageCell(TestItem.AddressB, 7));
-        items.TrackAddedEntries(recorder.Log, recorder.Start);
-        int before = items.ItemCount;
+        BlockAccessIndexRecorder first = new();
+        first.AddStorageRead(TestItem.AddressA, 1);
+        first.AddStorageChange(TestItem.AddressA, 2, before: UInt256.Zero, after: UInt256.One);
+        first.AddStorageRead(TestItem.AddressB, 7);
+        BlockAccessListItemSet bal = new();
+        bal.TrackAddedEntries(first.Log, first.Start);
+        int before = bal.ItemCount;
 
-        recorder.Begin(2);
-        record(recorder);
-        int counted = items.CountNewItems(recorder.Log, recorder.Start);
-        items.TrackAddedEntries(recorder.Log, recorder.Start);
+        BlockAccessIndexRecorder next = new();
+        mutate(next);
+        int counted = bal.CountNewItems(next.Log, next.Start);
+        bal.TrackAddedEntries(next.Log, next.Start);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(counted, Is.EqualTo(expected));
-            Assert.That(items.ItemCount - before, Is.EqualTo(counted));
+            Assert.That(bal.ItemCount - before, Is.EqualTo(counted));
         }
     }
 
     [Test]
-    public void Clear_trims_oversized_account_set()
+    public void Reset_trims_oversized_account_dictionary()
     {
         const int OversizedCapacity = CoreCollectionExtensions.DefaultTrimAboveCapacity + 1;
 
-        BlockAccessListItemSet items = new();
-        object accounts = typeof(BlockAccessListItemSet).GetField(
+        BlockAccessListItemSet bal = new();
+        object accountChanges = typeof(BlockAccessListItemSet).GetField(
             "_accounts",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(items)!;
-        MethodInfo ensureCapacity = accounts.GetType().GetMethod(
+            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(bal)!;
+        MethodInfo ensureCapacity = accountChanges.GetType().GetMethod(
             nameof(HashSet<>.EnsureCapacity),
             [typeof(int)])!;
-        PropertyInfo capacity = accounts.GetType().GetProperty(nameof(HashSet<>.Capacity))!;
-        ensureCapacity.Invoke(accounts, [OversizedCapacity]);
-        int capacityBeforeClear = (int)capacity.GetValue(accounts)!;
+        PropertyInfo capacity = accountChanges.GetType().GetProperty(nameof(HashSet<>.Capacity))!;
+        ensureCapacity.Invoke(accountChanges, [OversizedCapacity]);
+        int capacityBeforeReset = (int)capacity.GetValue(accountChanges)!;
 
-        items.Clear();
+        bal.Clear();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(capacityBeforeClear, Is.GreaterThan(CoreCollectionExtensions.DefaultTrimAboveCapacity));
-            Assert.That(capacity.GetValue(accounts), Is.GreaterThan(0));
-            Assert.That(capacity.GetValue(accounts), Is.LessThan(capacityBeforeClear));
+            Assert.That(capacityBeforeReset, Is.GreaterThan(CoreCollectionExtensions.DefaultTrimAboveCapacity));
+            Assert.That(capacity.GetValue(accountChanges), Is.GreaterThan(0));
+            Assert.That(capacity.GetValue(accountChanges), Is.LessThan(capacityBeforeReset));
         }
     }
 
@@ -205,13 +234,5 @@ public class BlockAccessListItemCountTests
             .TestObject;
 
         Assert.That(bal.ItemCount, Is.EqualTo(4));
-    }
-
-    private static MergedBlockAccessList Merge(BlockAccessListLog log)
-    {
-        log.Seal();
-        MergedBlockAccessList merged = new();
-        merged.Merge([log]);
-        return merged;
     }
 }

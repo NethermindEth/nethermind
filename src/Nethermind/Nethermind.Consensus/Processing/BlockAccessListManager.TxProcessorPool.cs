@@ -62,8 +62,8 @@ public partial class BlockAccessListManager
 
         private Block? _currentBlock;
         private BlockExecutionContext _currentCtx;
-        private BalReadStoragePlan? _readPlan;
         private int _lastBalIndex;
+        private BalReadStoragePlan? _readPlan;
 
         // _inUse[i] is the processor currently bound to balIndex i.
         private TxProcessorWithWorldState?[] _inUse = new TxProcessorWithWorldState?[DefaultTxCount];
@@ -111,9 +111,9 @@ public partial class BlockAccessListManager
 
         public void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan)
         {
+            _readPlan = readPlan;
             _currentBlock = block;
             _currentCtx = blockExecutionContext;
-            _readPlan = readPlan;
 
             int previousSize = _lastBalIndex + 1;
             int newLastBalIndex = block.Transactions.Length + 1;
@@ -361,11 +361,17 @@ public partial class BlockAccessListManager
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(_txProcessorWithWorldState.Recorder);
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? _)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan)
         {
+            if (readPlan is not null)
+                ThrowReadCoverageUnavailable();
             _log[0].Clear();
-            _txProcessorWithWorldState.Setup(block, blockExecutionContext, 0u, parentReader: null, readPlan: null);
+            _txProcessorWithWorldState.Setup(block, blockExecutionContext, 0u, parentReader: null);
         }
+
+        [DoesNotReturn]
+        private static void ThrowReadCoverageUnavailable()
+            => throw new InvalidOperationException("Read coverage requires parallel execution.");
 
         public TxProcessorWithWorldState Get(uint? _)
             => _txProcessorWithWorldState;
@@ -441,7 +447,7 @@ public partial class BlockAccessListManager
         /// safe: the parent reader only reads the parent state, which no slice writes, and the BAL-backed world state
         /// resets its own per-slice caches in its <c>Setup</c> and <c>ClearParentReader</c>.
         /// </remarks>
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader, BalReadStoragePlan? readPlan)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader, BalReadStoragePlan? readPlan = null)
         {
             if (_parentReaderAttached) ThrowParentReaderStillAttached();
 
@@ -461,8 +467,9 @@ public partial class BlockAccessListManager
                 _parentReaderAttached = true;
                 if (readPlan is not null && !ReferenceEquals(_readCoverage?.Plan, readPlan))
                     _readCoverage = readPlan.CreateCoverage();
-                WorldState.ReadCoverage = readPlan is null ? null : _readCoverage;
-                _balWorldState.Setup(block);
+                BalReadCoverage? coverage = readPlan is null ? null : _readCoverage;
+                WorldState.ReadCoverage = coverage;
+                _balWorldState.Setup(block, coverage);
             }
         }
 

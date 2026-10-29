@@ -3094,7 +3094,7 @@ public partial class BlockProcessorTests
                     .WithStorageReads((UInt256)5)
                     .TestObject)
                 .TestObject,
-            (Action<BlockAccessIndexRecorder>)(s => s.AddStorageRead(new StorageCell(TestItem.AddressA, 7))))
+            (Action<BlockAccessIndexRecorder>)(s => s.AddStorageRead(TestItem.AddressA, (UInt256)7)))
             .SetName("storage_reads content mismatch (same count, different value)");
 
         // Per-account presence mismatch with matching count: suggested has AddressA, generated

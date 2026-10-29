@@ -41,7 +41,7 @@ public static class BlockAccessListItemReserve
     /// <param name="block">The block being built; only its withdrawals are read.</param>
     /// <param name="spec">The block's release spec.</param>
     /// <param name="state">State at the start of transaction selection; read without recording accesses.</param>
-    /// <param name="blockAccessList">The items of the list as built so far, used to skip items already present.</param>
+    /// <param name="blockAccessList">The list as built so far, used to skip items already present.</param>
     public static long Calculate(Block block, IReleaseSpec spec, IWorldState state, BlockAccessListItemSet blockAccessList)
     {
         long reserve = spec.WithdrawalsEnabled ? WithdrawalRecipients(block.Withdrawals, blockAccessList) : 0;

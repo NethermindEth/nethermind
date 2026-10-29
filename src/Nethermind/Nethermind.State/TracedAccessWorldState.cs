@@ -31,11 +31,12 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     private UInt256 _scratchBalance;
     private ValueHash256 _scratchCodeHash;
     // Single-slot cache for the last storage cell read: a repeated same-cell SLOAD skips the BAL
-    // read-recording. Reset whenever the recorder, its index or its journal moves.
+    // read-recording. Reset in Clear(), SetIndex() and Restore() (a revert can un-record the cell's slot).
     private StorageCell _lastReadStorageCell;
     private bool _hasLastReadStorageCell;
 
-    /// <summary>Marks the declared reads executed, which then record only their account.</summary>
+    /// <summary>Optional worker coverage replacing materialization of declared read-only slots.</summary>
+    /// <remarks>Set only between execution slices, with the same coverage used by the BAL-backed state.</remarks>
     public BalReadCoverage? ReadCoverage { get; set; }
 
     public BlockAccessIndexRecorder? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
@@ -337,7 +338,6 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
     public void IncrementIndex() => SetIndex(GeneratingBlockAccessList.Index + 1);
 
-    /// <summary>Drops everything recorded for the current index.</summary>
     public void Clear()
     {
         GeneratingBlockAccessList.Discard();
@@ -349,7 +349,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
     public override void Restore(Snapshot snapshot)
     {
-        // A revert can drop the last cell's write, so drop the single-slot cache.
+        // A revert can un-record the last cell's slot, so drop the single-slot cache.
         _hasLastReadStorageCell = false;
         _generatingBlockAccessList?.Restore(snapshot.BlockAccessListSnapshot);
         base.Restore(snapshot);
