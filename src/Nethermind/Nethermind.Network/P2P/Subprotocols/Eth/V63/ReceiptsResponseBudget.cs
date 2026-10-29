@@ -82,11 +82,12 @@ internal static class ReceiptsResponseBudget
         }
     }
 
-    // The RLP readers do not check declared lengths against the enclosing item, so every length is
-    // checked here before anything inside it is read, which reports truncation as an RlpException.
+    // The RLP readers do not check declared lengths against the enclosing item, so every length, and the
+    // prefix that holds it, is checked here before anything inside it is read, which reports truncation
+    // as an RlpException.
     private static int ReadSequenceEnd(ref RlpReader ctx, int limit)
     {
-        ThrowIfTruncated(ctx.Position < limit);
+        ThrowIfTruncated(ctx.Position < limit && ctx.PeekPrefixLength() <= limit - ctx.Position);
         int end = ctx.ReadSequenceLength() + ctx.Position;
         ThrowIfTruncated(end <= limit);
         return end;

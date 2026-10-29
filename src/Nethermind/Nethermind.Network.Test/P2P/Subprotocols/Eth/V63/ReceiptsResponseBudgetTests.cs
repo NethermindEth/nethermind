@@ -44,6 +44,14 @@ public class ReceiptsResponseBudgetTests
     [TestCase(new byte[] { 0xc1 }, 1, TestName = "Envelope shorter than its header")]
     [TestCase(new byte[] { 0xc3, 0x01, 0xc5, 0xc0 }, 1, TestName = "Block list shorter than its header")]
     [TestCase(new byte[] { 0xc4, 0x01, 0xc2, 0xc3, 0x01 }, 1, TestName = "Block shorter than its header")]
+    [TestCase(new byte[] { 0xf9 }, null, TestName = "Block list missing its length bytes")]
+    [TestCase(new byte[] { 0xf9, 0x05 }, null, TestName = "Block list missing one of its length bytes")]
+    [TestCase(new byte[] { 0xfa }, null, TestName = "Block list missing its three length bytes")]
+    [TestCase(new byte[] { 0xf9 }, 1, TestName = "Envelope missing its length bytes")]
+    [TestCase(new byte[] { 0xc2, 0x01, 0xf9 }, 1, TestName = "Block list in an envelope missing its length bytes")]
+    [TestCase(new byte[] { 0xca, 0x88, 0x1d, 0xda, 0xe5, 0x99, 0xb2, 0x69, 0x3d, 0xec, 0xfb }, 1, TestName = "Block list after a request id missing its length bytes")]
+    [TestCase(new byte[] { 0xc3, 0x01, 0x80, 0xf9 }, 2, TestName = "Block list in an eth70 envelope missing its length bytes")]
+    [TestCase(new byte[] { 0xc2, 0xf9, 0x01 }, null, TestName = "Block missing one of its length bytes")]
     public void Truncated_response_is_rejected_as_malformed(byte[] payload, int? fieldsBeforeReceipts)
     {
         using DisposableByteBuffer content = Unpooled.WrappedBuffer(payload).AsDisposable();
