@@ -100,6 +100,7 @@ var names = new[] { "STATE_DIR", "ADDITIONAL_FLAGS", "ARM_SCRATCH_DIR", "NODE_EN
 var values = new JsonObject();
 foreach (var name in names) values[name] = Environment.GetEnvironmentVariable(name) ?? "";
 File.AppendAllText(Environment.GetEnvironmentVariable("SWEEP_CAPTURE")!, values.ToJsonString() + "\n");
+if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("PREPARED_SNAPSHOT_ROOT"))) File.WriteAllText(Path.Combine(Environment.GetEnvironmentVariable("STATE_DIR")!, "node.env"), "owned stub state");
 return Environment.GetEnvironmentVariable("FAIL_START_CLIENT") == values["CLIENT"]!.ToString() ? 1 : 0;
 """);
 File.WriteAllText(Path.Combine(scriptRoot, "stop-node.cs"), """
@@ -159,6 +160,7 @@ try
         values["PREPARED_SNAPSHOT_ROOT"] = Path.Combine(tests.DirectoryPath, "prepared-fixture");
         Directory.CreateDirectory(Path.Combine(values["PREPARED_SNAPSHOT_ROOT"], "merged"));
         values["PREPARED_SNAPSHOT_SHA256"] = new string('a', 64);
+        values["SNAPSHOT_BLOCK"] = "25490000";
         values["CLIENTS"] = string.Join(' ', SweepConfiguration.PreparedImages.Select(image => "nethermind@" + image + "+" + SweepConfiguration.PreparedFlags.Replace(' ', ';')));
         values["DB_ISOLATION_ALL"] = "overlay";
         values["MIGRATION_LATEST_START_UTC"] = "2026-10-29T05:00:00Z";
@@ -199,7 +201,29 @@ try
             Environment.SetEnvironmentVariable("FAIL_PREPARED_ACTION", null);
             Environment.SetEnvironmentVariable("SWEEP_CAPTURE", previousCapture);
         });
-    foreach (var (name, value) in new[] { ("PREPARED_SNAPSHOT_SHA256", ""), ("PREPARED_SNAPSHOT_SHA256", "bad"), ("RECEIPT_HASHES_MIGRATION_TIMEOUT", "1"), ("DB_ISOLATION_ALL", "copy"), ("JB_ETH_CALL_CORPUS", "true"), ("CLIENTS", "nethermind"), ("SCRATCH_ROOT", "/mnt/sda/expb-data/rpc-prepared"), ("MIGRATION_FINISH_BY_UTC", "2026-10-30T05:47:34Z") })
+    tests.Case("prepared startup failure stops the persisted owned child before aborting", () =>
+    {
+        var configuration = PreparedConfiguration();
+        configuration.Values["STATE_ROOT"] = Path.Combine(tests.DirectoryPath, "prepared-start-failure-state");
+        var trace = Path.Combine(tests.DirectoryPath, "prepared-start-failure");
+        var previousCapture = Environment.GetEnvironmentVariable("SWEEP_CAPTURE");
+        Environment.SetEnvironmentVariable("SWEEP_CAPTURE", trace + "-starts");
+        Environment.SetEnvironmentVariable("PREPARED_CAPTURE", trace);
+        Environment.SetEnvironmentVariable("FAIL_START_CLIENT", "nethermind");
+        try { new SweepRunner(configuration).RunAsync(CancellationToken.None).GetAwaiter().GetResult(); throw new InvalidOperationException("startup failure accepted"); }
+        catch (IOException)
+        {
+            RpcScriptTests.Assert(Directory.GetFiles(configuration["STATE_ROOT"], "node.log", SearchOption.AllDirectories).Length > 0, "owned startup state not torn down");
+            RpcScriptTests.Assert(!File.ReadAllText(trace).Contains("cell", StringComparison.Ordinal), "failed startup reached timing");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PREPARED_CAPTURE", null);
+            Environment.SetEnvironmentVariable("FAIL_START_CLIENT", null);
+            Environment.SetEnvironmentVariable("SWEEP_CAPTURE", previousCapture);
+        }
+    });
+    foreach (var (name, value) in new[] { ("PREPARED_SNAPSHOT_SHA256", ""), ("PREPARED_SNAPSHOT_SHA256", "bad"), ("RECEIPT_HASHES_MIGRATION_TIMEOUT", "1"), ("DB_ISOLATION_ALL", "copy"), ("JB_ETH_CALL_CORPUS", "true"), ("CLIENTS", "nethermind"), ("SCRATCH_ROOT", "/mnt/sda/expb-data/rpc-prepared"), ("MIGRATION_FINISH_BY_UTC", "2026-10-30T05:47:34Z"), ("SNAPSHOT_BLOCK", "1"), ("NETWORK", "other") })
         tests.Case("prepared mode rejects incompatible " + name + value, () =>
         {
             var values = PreparedConfiguration().Values;

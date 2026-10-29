@@ -109,7 +109,7 @@ try
     if (Get("PREPARED_SNAPSHOT_ROOT").Length > 0) await Attempt("prepared fixture shutdown and integrity", async () =>
     {
         var script = Path.Combine(BenchmarkProcess.EnvironmentValue("RPC_BENCH_SCRIPT_ROOT", Path.Combine(Environment.CurrentDirectory, "scripts", "rpc-bench")), "prepared-snapshot.py");
-        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token);
         bounded.CancelAfter(TimeSpan.FromMinutes(5));
         try
         {

@@ -436,6 +436,7 @@ def gate(args):
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
     observed = inspect(args.container)
+    atomic(output / 'prepared-container.json', observed)
     if observed['Config']['Image'] not in manifest['allowed_images'] or observed['Config']['Image'] != args.image or observed['Config']['Cmd'] != FLAGS:
         raise RuntimeError('prepared arm image/effective command mismatch')
     text = logs(args.container)

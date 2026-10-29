@@ -153,7 +153,7 @@ internal sealed partial class SweepConfiguration
         {
             if (!Prepared || !Path.IsPathFullyQualified(this["PREPARED_SNAPSHOT_ROOT"]) || !Regex.IsMatch(this["PREPARED_SNAPSHOT_SHA256"], "^[a-f0-9]{64}$"))
                 throw new ArgumentException("prepared snapshot root and externally pinned SHA256 must both be supplied");
-            if (Corpus || this["STATE_LAYOUT"] != "flat" || this["DB_ISOLATION_ALL"] != "overlay" || Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") != 0)
+            if (Corpus || this["STATE_LAYOUT"] != "flat" || this["SNAPSHOT_BLOCK"] != "25490000" || this["NETWORK"] != "mainnet" || this["DB_ISOLATION_ALL"] != "overlay" || Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") != 0)
                 throw new ArgumentException("prepared snapshots require public flat overlay mode, independent of the fresh migration gate");
             if (Arms.Any(arm => arm.Client != "nethermind" || !PreparedImages.Contains(arm.Image) || arm.Flags != PreparedFlags || arm.Environment.Length > 0) || BenchmarkProcess.EnvironmentValue("NODE_ENV_VARS").Length > 0)
                 throw new ArgumentException("prepared snapshots require the exact pinned images and unchanged receipt/config flags without environment overrides");
@@ -247,7 +247,7 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
                         if (container == _preparedContainer && (!snapshot.Running || snapshot.Logs.Contains("Adding transaction hashes to stored receipts", StringComparison.Ordinal) || snapshot.Logs.Contains("Transaction hashes added to stored receipts", StringComparison.Ordinal)))
                             throw new IOException("prepared arm exited or began a new migration");
                     }
-                    catch (IOException) when (container != _preparedContainer) { }
+                    catch (IOException) when (container != _preparedContainer) { BenchmarkProcess.Log("Prepared arm probe overlapped normal teardown."); }
                 }
                 await Task.Delay(TimeSpan.FromSeconds(10), monitored.Token);
             }
@@ -354,22 +354,19 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
             ["DIAG_DIR"] = Get("DIAG_DIR"), ["CONTAINER_NAME"] = container, ["RPC_PORT"] = "8545",
             ["PREPARED_SNAPSHOT_ROOT"] = Get("PREPARED_SNAPSHOT_ROOT"), ["PREPARED_SNAPSHOT_SHA256"] = Get("PREPARED_SNAPSHOT_SHA256")
         };
-        var started = await Script("start-node.cs", [], environment, cancellationToken);
+        (int Code, string Output, string Error) started;
+        try { started = await Script("start-node.cs", [], environment, cancellationToken); }
+        catch when (configuration.Prepared)
+        {
+            await CleanupPreparedStartup(state);
+            throw;
+        }
         if (started.Code != 0)
         {
             Fail(configuration.Corpus && !_usingSaved && _baselineLabel.Length == 0 ? "configured parity baseline startup failures" : "sweep arms never started");
             if (configuration.Prepared)
             {
-                if (File.Exists(Path.Combine(state, "node.env")))
-                    await Script("stop-node.cs", [], new() { ["STATE_DIR"] = state, ["LOG_OUT"] = Path.Combine(state, "node.log") }, CancellationToken.None);
-                else
-                {
-                    var run = Path.Combine(Get("SCRATCH_ROOT"), "run");
-                    if ((await BenchmarkProcess.RunAsync("mountpoint", ["-q", Path.Combine(run, "merged")], CancellationToken.None)).Code == 0)
-                        await Root("umount", [Path.Combine(run, "merged")], CancellationToken.None);
-                    if (BenchmarkPaths.MountsUnder(run).Length > 0) throw new IOException("prepared startup cleanup remains mounted");
-                    await Root("rm", ["-rf", "--", run], CancellationToken.None);
-                }
+                await CleanupPreparedStartup(state);
                 throw new IOException("prepared startup failed; timing aborted");
             }
             Console.WriteLine("::endgroup::");
@@ -443,6 +440,20 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
                 if (ScanNodeLog(Path.Combine(state, "node.log"), arm.Client, label, configuration.Corpus)) Fail("node health issues");
                 Console.WriteLine("::endgroup::");
             }
+        }
+    }
+
+    private async Task CleanupPreparedStartup(string state)
+    {
+        if (File.Exists(Path.Combine(state, "node.env")))
+            await Script("stop-node.cs", [], new() { ["STATE_DIR"] = state, ["LOG_OUT"] = Path.Combine(state, "node.log") }, CancellationToken.None);
+        else
+        {
+            var run = Path.Combine(Get("SCRATCH_ROOT"), "run");
+            if ((await BenchmarkProcess.RunAsync("mountpoint", ["-q", Path.Combine(run, "merged")], CancellationToken.None)).Code == 0)
+                await Root("umount", [Path.Combine(run, "merged")], CancellationToken.None);
+            if (BenchmarkPaths.MountsUnder(run).Length > 0) throw new IOException("prepared startup cleanup remains mounted");
+            await Root("rm", ["-rf", "--", run], CancellationToken.None);
         }
     }
 
