@@ -51,6 +51,9 @@ public record FixedKey(byte[] Bytes);
 public record FixedEntry([RlpFixedLength(20)] byte[] Address, List<FixedKey> Keys);
 
 [RlpSerializable]
+public record NamedEntry([RlpFixedLength(20)] byte[] Address, string Name);
+
+[RlpSerializable]
 public record UnhintedEntry(byte[] Address, List<byte[]> Keys);
 
 [RlpSerializable(RlpRepresentation.Newtype)]
@@ -135,6 +138,23 @@ public class RlpDerivedTest
 
         Tree decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadTree());
         Assert.That(decoded, Is.EqualTo(tree).UsingPropertiesComparer());
+    }
+
+    // A record that contains itself must not compute subtree lengths at every level, so it writes through the buffered path.
+    [Test]
+    public void DeepRecursiveRecord()
+    {
+        Tree tree = new("leaf", []);
+        for (int i = 0; i < 1_000; i++) tree = new Tree("node", [tree]);
+
+        byte[] rlp = Rlp.Write(tree, static (ref RlpWriter w, Tree tree) => w.Write(tree));
+        Tree decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadTree());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(typeof(TreeRlpConverter).IsAssignableTo(typeof(IRlpLengthConverter<Tree>)), Is.False);
+            Assert.That(Rlp.Write(decoded, static (ref RlpWriter w, Tree tree) => w.Write(tree)), Is.EqualTo(rlp));
+        }
     }
 
     [Test]
@@ -243,6 +263,10 @@ public class RlpDerivedTest
     [Test]
     public void LengthConverterWithWrongFixedLength()
         => Assert.That(static () => Rlp.Write<FixedEntryRlpConverter, FixedEntry>(new FixedEntry(new byte[19], [])), Throws.InvalidOperationException);
+
+    [Test]
+    public void BufferedWriteWithWrongFixedLength()
+        => Assert.That(static () => Rlp.Write(new NamedEntry(new byte[19], "name"), static (ref RlpWriter w, NamedEntry entry) => w.Write(entry)), Throws.InvalidOperationException);
 
     private static void AssertDirect<TConverter, T>(T value) where TConverter : IRlpLengthConverter<T>
     {

@@ -231,8 +231,9 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             case INamedTypeSymbol named when TypeMapper.IsCollection(named, "List", 1):
                 return CanMeasure(named.TypeArguments[0], null, visiting);
             case INamedTypeSymbol { IsGenericType: false } named when IsSerializable(named):
-                // A record that contains itself through a collection has a finite length for any value.
-                if (!visiting.Add(named)) return true;
+                // A record that contains itself would compute the length of each subtree again at every level, without a
+                // stack check, so it writes through the buffered path.
+                if (!visiting.Add(named)) return false;
                 IMethodSymbol? constructor = PrimaryConstructor(named);
                 bool result = constructor is not null && constructor.Parameters.All(p => CanMeasure(p.Type, p, visiting));
                 visiting.Remove(named);
@@ -275,7 +276,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
         // Read{Type}() and Write(value) of other types bind to extension methods, so bring the usings of the record into scope.
         IEnumerable<string> usingDirectives = new[] { "using Nethermind.Serialization.FluentRlp.Instances;" }
-            .Concat(recordDecl.SyntaxTree.GetCompilationUnitRoot().Usings.Select(static u => u.ToString()))
+            .Concat(recordDecl.SyntaxTree.GetCompilationUnitRoot().Usings.Where(static u => u.GlobalKeyword.IsKind(SyntaxKind.None)).Select(static u => u.ToString()))
             .Concat(recordDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().SelectMany(static n => n.Usings).Select(static u => u.ToString()))
             .Distinct();
         string accessibility = symbol.DeclaredAccessibility == Accessibility.Public ? "public" : "internal";
@@ -285,7 +286,19 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         {
             writeLines.Add($"""if (value.{firstParameter}.Length != {constLength}) throw new global::System.ArgumentException("{recordName} must have {constLength} bytes", nameof(value));""");
         }
-        writeLines.AddRange(writeCalls.Select(static c => $"{c};"));
+        // A value with a declared length must have exactly that encoded length on write too.
+        for (int i = 0; i < writeCalls.Count; i++)
+        {
+            if (fixedLengths[i] is not { } fixedLength)
+            {
+                writeLines.Add($"{writeCalls[i]};");
+                continue;
+            }
+
+            writeLines.Add($"int _{i}Start = w.Length;");
+            writeLines.Add($"{writeCalls[i]};");
+            writeLines.Add($"""if (w.Length - _{i}Start != {fixedLength}) throw new global::System.InvalidOperationException("RLP item of {recordName} has another length than declared");""");
+        }
 
         // A value with a declared length must have exactly that encoded length on read too.
         List<string> readLines = [];
