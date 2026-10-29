@@ -913,6 +913,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 // The result replaces the modulus, the deepest of the three.
                 ref ulong modulus = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 3));
+                if (!ZiskFlag.IsActive && typeof(TOperation) == typeof(EvmInstructions.OpAddMod))
+                {
+                    if (TryAddModInSlots(ref modulus))
+                    {
+                        // No call is made, so the carried state is still in its registers.
+                        head -= 2;
+                        sp = ref Moved(ref sp, -2);
+                        ip = ref Unsafe.Add(ref ip, 1);
+                        nint following = AlignedTable(handlers)[PairAt(ref ip)];
+                        return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, following);
+                    }
+
+                    // The shared handler takes the other operands, so this handler makes no call.
+                    gas += MidGasCost.GasCost;
+                    nint general = Entry(&ExecuteOpcode<Math3Opcode<TOperation, OffFlag>, OffFlag, OffFlag, OnFlag>);
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, general);
+                }
+
                 if ((modulus | Unsafe.Add(ref modulus, 1) | Unsafe.Add(ref modulus, 2) | Unsafe.Add(ref modulus, 3)) != 0)
                 {
                     if (ZiskFlag.IsActive)
@@ -925,10 +943,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         else
                             ZiskArithmetic.MulMod(m + 2 * LimbsPerWord, m + LimbsPerWord, m, (ulong*)&result);
                         *(UInt256*)m = result;
-                    }
-                    else if (typeof(TOperation) == typeof(EvmInstructions.OpAddMod))
-                    {
-                        AddModInSlots(ref modulus);
                     }
                     else if (Sp1Flag.IsActive)
                     {
@@ -965,14 +979,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
-        /// <summary>ADDMOD of the slots above <paramref name="modulus"/>, whose result replaces the modulus.</summary>
-        /// <param name="modulus">The modulus, not zero, with the second addend in the slot above and the first in the slot above that.</param>
+        /// <summary>ADDMOD of the slots above <paramref name="modulus"/>, whose result replaces the modulus, when both addends are below it.</summary>
+        /// <param name="modulus">The modulus, with the second addend in the slot above and the first in the slot above that.</param>
+        /// <returns><see langword="false"/>, with the slots unchanged, when an addend is not below the modulus; a zero modulus is one such case.</returns>
         /// <remarks>
         /// Two addends below the modulus, as field arithmetic gives, have a sum below twice the modulus: one add and one
-        /// conditional subtract, with no call. Any other operands take <see cref="UInt256.AddMod(in UInt256, in UInt256, in UInt256, out UInt256)"/>.
+        /// conditional subtract, with no call.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void AddModInSlots(ref ulong modulus)
+        private static bool TryAddModInSlots(ref ulong modulus)
         {
             ref ulong b = ref Unsafe.Add(ref modulus, LimbsPerWord);
             ref ulong a = ref Unsafe.Add(ref modulus, 2 * LimbsPerWord);
@@ -990,13 +1005,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             SubtractWithBorrow(b1, m1, ref bBelow);
             SubtractWithBorrow(b2, m2, ref bBelow);
             SubtractWithBorrow(b3, m3, ref bBelow);
-            if ((aBelow & bBelow) == 0)
-            {
-                ref UInt256 m = ref Unsafe.As<ulong, UInt256>(ref modulus);
-                UInt256.AddMod(in Unsafe.As<ulong, UInt256>(ref a), in Unsafe.As<ulong, UInt256>(ref b), in m, out UInt256 result);
-                m = result;
-                return;
-            }
+            if ((aBelow & bBelow) == 0) return false;
 
             ulong carry = 0;
             ulong s0 = AddWithCarry(a0, b0, ref carry);
@@ -1015,6 +1024,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             Unsafe.Add(ref modulus, 1) = (s1 & keepSum) | (d1 & ~keepSum);
             Unsafe.Add(ref modulus, 2) = (s2 & keepSum) | (d2 & ~keepSum);
             Unsafe.Add(ref modulus, 3) = (s3 & keepSum) | (d3 & ~keepSum);
+            return true;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1042,6 +1052,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// side. The second factor's slot takes the product, so only the first factor and the modulus are copied in and
         /// the product out. The stack is pinned and its slots are 8-byte aligned, as the precompile needs.
         /// </remarks>
+        [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Sp1MulModInSlots(ref ulong modulus)
         {

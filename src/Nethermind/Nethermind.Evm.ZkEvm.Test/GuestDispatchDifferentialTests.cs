@@ -416,23 +416,25 @@ public class GuestDispatchDifferentialTests
         Random random = new(seed * 7883);
         for (int i = 0; i < 400 && mismatches.Count < 5; i++)
         {
-            UInt256 modulus = random.Next(4) switch
+            UInt256 modulus = random.Next(5) switch
             {
                 0 => bn254,
                 1 => UInt256.MaxValue - (ulong)random.Next(0, 300),
                 2 => (UInt256.One << 255) + (ulong)random.Next(1, 300),
+                3 => UInt256.Zero,
                 _ => RandomWord(random) | UInt256.One,
             };
 
+            UInt256 largest = modulus.IsZero ? UInt256.MaxValue : modulus - 1;
             List<byte> code = [(byte)Instruction.PUSH32, .. modulus.ToBigEndian()];
             for (int operand = 0; operand < 2; operand++)
             {
                 UInt256 addend = random.Next(6) switch
                 {
-                    0 => modulus - 1,
+                    0 => largest,
                     1 => UInt256.Zero,
                     2 => modulus,
-                    _ => RandomWord(random) % modulus,
+                    _ => modulus.IsZero ? RandomWord(random) : RandomWord(random) % modulus,
                 };
                 code.AddRange([(byte)Instruction.PUSH32, .. addend.ToBigEndian()]);
             }
