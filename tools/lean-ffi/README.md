@@ -320,7 +320,8 @@ Cancellation is checked between calls; an individual native call remains uninter
 Setting `TxPool.AggregateProofs` to `false` (default `true`) disables this worker, so no proving is
 spent on mempool aggregation and `eth_getProofWrapper` has nothing to return. Received wrappers,
 including those submitted through `eth_sendProofWrapper`, are still verified, admitted and relayed as
-received, and block production still proves its own blocks on demand.
+received. Block production still proves its own blocks, but off the deadline path, and local inclusion
+lists can obligate only transactions covered by a received mode-1 proof.
 
 The node-wide prover decorator shares up to 64 verified aggregation steps within 32 MiB, keyed by
 immutable complete inputs, verification key and expected statement. Identical concurrent requests

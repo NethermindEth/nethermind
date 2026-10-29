@@ -37,7 +37,7 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "0", Description = "The max number of pending transactions per single sender. `0` to lift the limit.")]
     int MaxPendingTxsPerSender { get; set; }
 
-    [ConfigItem(DefaultValue = "true", Description = "EIP-8288: whether this node aggregates its pending dependency-bearing transactions into mode-1 proof wrappers every `AGGREGATION_INTERVAL`. When `false`, no proving is spent on mempool aggregation; received wrappers are still verified, admitted and relayed, and block production still proves its own blocks.")]
+    [ConfigItem(DefaultValue = "true", Description = "EIP-8288: whether this node aggregates its pending dependency-bearing transactions into mode-1 proof wrappers every `AGGREGATION_INTERVAL`. When `false`, no proving is spent on mempool aggregation; received wrappers are still verified, admitted and relayed, and block production still proves its own blocks, but off the deadline path; local inclusion lists can then obligate only transactions covered by a received mode-1 proof.")]
     bool AggregateProofs { get; set; }
 
     [ConfigItem(DefaultValue = "300000", Description = "The node's execution-gas budget for a frame transaction's validation prefix plus signature verification. Positive values below the shared EIP-8141 `MAX_VERIFY_GAS` floor are raised to that floor. Higher values allow local headroom on any network. `0` lifts the static prefix admission limit while signature verification and prefix simulation retain the default 300,000-gas node budget. This setting does not affect block validity.")]
