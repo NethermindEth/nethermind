@@ -261,7 +261,7 @@ namespace Nethermind.Trie
 
         /// <summary>Rents the scratch for the depth of <paramref name="path"/>, holding at least <paramref name="length"/> bytes.</summary>
         /// <remarks>Valid until the next branch at that depth is encoded; <see cref="StorableBranchRlp"/> copies out what a node keeps.</remarks>
-        private static CappedArray<byte> RentBranchRlpScratch(int length, in TreePath path)
+        internal static CappedArray<byte> RentBranchRlpScratch(int length, in TreePath path)
         {
             // Read by value: a reference to an element of an array of references costs a covariance check call.
             byte[]?[] byDepth = BranchRlpScratch.ByDepth ??= new byte[2 * Hash256.Size][];
