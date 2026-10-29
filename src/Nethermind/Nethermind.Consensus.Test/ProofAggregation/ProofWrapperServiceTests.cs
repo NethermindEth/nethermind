@@ -586,7 +586,7 @@ public class ProofWrapperServiceTests
         }
     }
 
-    // EIP-8288 (bec62841): mode 1 has no wrapper-level dependency-count limit. A produced wrapper merges proven aggregates whole,
+    // EIP-8288 (71440967): mode 1 is limited by the circuit, not MAX_LEANSIG_DEPS_PER_WRAPPER. A produced wrapper merges proven aggregates whole,
     // well beyond MAX_LEANSIG_DEPS_PER_WRAPPER, while fresh mode-0 witnesses, folded directly into the aggregate, stay within the
     // proving-cost budget of that many signatures.
     [Test]
