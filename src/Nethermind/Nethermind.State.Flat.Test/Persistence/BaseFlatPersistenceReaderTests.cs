@@ -52,8 +52,11 @@ public class BaseFlatPersistenceReaderTests
         byte[] expected = new byte[BaseFlatPersistence.StorageValueSize];
         value.CopyTo(expected, BaseFlatPersistence.StorageValueSize - valueLength);
 
-        Assert.That(found, Is.True);
-        Assert.That(result.ToBigEndian(), Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(result.ToBigEndian(), Is.EqualTo(expected));
+        }
     }
 
     // Golden path: a correctly RLP-wrapped 32-byte value (0xa0 + 32 = 33 bytes on disk) decodes cleanly with
@@ -71,8 +74,11 @@ public class BaseFlatPersistenceReaderTests
         UInt256 result = default;
         bool found = reader.TryGetStorage(default, default, ref result);
 
-        Assert.That(found, Is.True);
-        Assert.That(result.ToBigEndian(), Is.EqualTo(payload));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(result.ToBigEndian(), Is.EqualTo(payload));
+        }
     }
 
     // A prefetch must warm exactly the keys the scalar reads ask for, in both storage key layouts and across the

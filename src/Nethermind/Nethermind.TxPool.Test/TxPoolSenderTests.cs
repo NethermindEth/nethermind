@@ -53,8 +53,11 @@ public class TxPoolSenderTests
 
         (Hash256 _, AcceptTxResult? result) = sender.SendTransaction(tx, TxHandlingOptions.ManagedNonce).Result;
 
-        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-        Assert.That(tx.Nonce, Is.EqualTo(7UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(tx.Nonce, Is.EqualTo(7UL));
+        }
     }
 
     private static TxPoolSender BuildSender(out INonceManager nonceManager)

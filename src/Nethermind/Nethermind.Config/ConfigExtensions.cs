@@ -54,7 +54,7 @@ public static class ConfigExtensions
     /// Defaults come from a freshly constructed instance of the implementing
     /// type, so initializers and constructors are honoured exactly as production
     /// wiring would do (no parsing of the <see cref="ConfigItemAttribute.DefaultValue"/> string).
-    /// Properties flagged <see cref="ConfigItemAttribute.IsSensitive"/> are skipped.
+    /// Properties flagged <see cref="ConfigItemAttribute.IsSensitive"/> or <see cref="ObsoleteAttribute"/> are skipped.
     /// </remarks>
     /// <param name="configProvider">The provider to query.</param>
     /// <param name="onConfigError">
@@ -90,6 +90,7 @@ public static class ConfigExtensions
             {
                 if (!property.CanRead) continue;
                 if (property.GetCustomAttribute<ConfigItemAttribute>()?.IsSensitive == true) continue;
+                if (property.IsDefined(typeof(ObsoleteAttribute))) continue;
 
                 object? actual;
                 object? defaultValue;

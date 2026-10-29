@@ -81,7 +81,9 @@ public class ProgressTrackerTests
         for (int i = 0; i < 4; i++)
         {
             bool finished = progressTracker.IsFinished(out SnapSyncBatch? request);
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
             Assert.That(request!.AccountRangeRequest, Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That(request.AccountRangeRequest!.StartingHash, Is.EqualTo(expectedStarts[i]));
             Assert.That(request.AccountRangeRequest.LimitHash!.Value, Is.EqualTo(expectedLimits[i]));
             Assert.That(finished, Is.False);
@@ -89,8 +91,11 @@ public class ProgressTrackerTests
         }
 
         bool finalFinished = progressTracker.IsFinished(out SnapSyncBatch? finalRequest);
-        Assert.That(finalRequest, Is.Null);
-        Assert.That(finalFinished, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finalRequest, Is.Null);
+            Assert.That(finalFinished, Is.False);
+        }
     }
 
     [Test]
@@ -112,8 +117,11 @@ public class ProgressTrackerTests
         }
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
-        Assert.That(request!.CodesRequest, Is.Not.Null);
-        Assert.That(request.StorageRangeRequest, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request!.CodesRequest, Is.Not.Null);
+            Assert.That(request.StorageRangeRequest, Is.Null);
+        }
         request.Dispose();
     }
 
@@ -136,8 +144,11 @@ public class ProgressTrackerTests
         }
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
-        Assert.That(request!.CodesRequest, Is.Null);
-        Assert.That(request.StorageRangeRequest, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request!.CodesRequest, Is.Null);
+            Assert.That(request.StorageRangeRequest, Is.Not.Null);
+        }
         request.Dispose();
     }
 
@@ -161,8 +172,11 @@ public class ProgressTrackerTests
         Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(ProgressTracker.RangesProgressScale - 1));
 
         bool finished = progressTracker.IsFinished(out _);
-        Assert.That(finished, Is.True);
-        Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(ProgressTracker.RangesProgressScale));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finished, Is.True);
+            Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(ProgressTracker.RangesProgressScale));
+        }
 
         snapTrieFactory.Received(1).MarkRangePhaseFinished();
         if (checkpointed) snapTrieFactory.Received(1).SaveCheckpoint(null);
@@ -266,8 +280,11 @@ public class ProgressTrackerTests
         resumed.ReportRequestReleased(storage);
         storage.Dispose();
 
-        Assert.That(resumed.IsFinished(out SnapSyncBatch? next), Is.True, "the answered storage was the last request, so the phase is done");
-        Assert.That(next, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resumed.IsFinished(out SnapSyncBatch? next), Is.True, "the answered storage was the last request, so the phase is done");
+            Assert.That(next, Is.Null);
+        }
     }
 
     // Regression: a resumed run reported its account ranges as not started, so its progress never got past the
@@ -396,11 +413,15 @@ public class ProgressTrackerTests
                 return batch;
             });
 
+#pragma warning disable NUnit2045 // Confirm the wait outcome before checking checkpoint state.
             Assert.That(next.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the checkpoint is due, so it waits for the response");
+#pragma warning restore NUnit2045
             Assert.That(Volatile.Read(ref checkpointsSaved), Is.EqualTo(1));
         }
 
+#pragma warning disable NUnit2045 // Confirm the wait outcome before checking checkpoint state.
         Assert.That(next.Wait(TimeSpan.FromSeconds(10)), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(Volatile.Read(ref checkpointsSaved), Is.EqualTo(2));
         first!.Dispose();
         next.Result!.Dispose();
@@ -443,9 +464,12 @@ public class ProgressTrackerTests
 
         progressTracker.LoadProgress();
 
-        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? request), Is.True);
-        Assert.That(request, Is.Null);
-        Assert.That(logger.LogList, Has.Some.EqualTo("Snap - State Ranges (Phase 1 of 2) is finished."));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(progressTracker.IsFinished(out SnapSyncBatch? request), Is.True);
+            Assert.That(request, Is.Null);
+            Assert.That(logger.LogList, Has.Some.EqualTo("Snap - State Ranges (Phase 1 of 2) is finished."));
+        }
     }
 
     // Regression: account ranges must be requested again rather than skipped over a store that was just emptied.
@@ -458,7 +482,9 @@ public class ProgressTrackerTests
 
         progressTracker.LoadProgress();
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(progressTracker.IsFinished(out SnapSyncBatch? request), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(request!.AccountRangeRequest, Is.Not.Null);
         request.Dispose();
     }
@@ -486,18 +512,27 @@ public class ProgressTrackerTests
 
         //expecting 2 batches
         isFinished = progressTracker.IsFinished(out SnapSyncBatch? batch1);
-        Assert.That(isFinished, Is.False);
-        Assert.That(batch1, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isFinished, Is.False);
+            Assert.That(batch1, Is.Not.Null);
+        }
 
         isFinished = progressTracker.IsFinished(out SnapSyncBatch? batch2);
-        Assert.That(isFinished, Is.False);
-        Assert.That(batch2, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isFinished, Is.False);
+            Assert.That(batch2, Is.Not.Null);
+        }
 
-        Assert.That(batch2?.StorageRangeRequest?.StartingHash, Is.EqualTo(batch1?.StorageRangeRequest?.LimitHash?.IncrementPath()));
-        Assert.That(batch1?.StorageRangeRequest?.StartingHash, Is.EqualTo(lastProcessedHash.IncrementPath()));
-        Assert.That(batch2?.StorageRangeRequest?.LimitHash, Is.EqualTo(limitHash ?? Keccak.MaxValue));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch2?.StorageRangeRequest?.StartingHash, Is.EqualTo(batch1?.StorageRangeRequest?.LimitHash?.IncrementPath()));
+            Assert.That(batch1?.StorageRangeRequest?.StartingHash, Is.EqualTo(lastProcessedHash.IncrementPath()));
+            Assert.That(batch2?.StorageRangeRequest?.LimitHash, Is.EqualTo(limitHash ?? Keccak.MaxValue));
 
-        Assert.That(batch1?.StorageRangeRequest?.LimitHash, Is.EqualTo(new ValueHash256(expectedSplit)));
+            Assert.That(batch1?.StorageRangeRequest?.LimitHash, Is.EqualTo(new ValueHash256(expectedSplit)));
+        }
     }
 
 
@@ -523,11 +558,17 @@ public class ProgressTrackerTests
 
         //expecting 1 batch
         isFinished = progressTracker.IsFinished(out SnapSyncBatch? batch1);
-        Assert.That(isFinished, Is.False);
-        Assert.That(batch1, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isFinished, Is.False);
+            Assert.That(batch1, Is.Not.Null);
+        }
 
-        Assert.That(batch1?.StorageRangeRequest?.StartingHash, Is.EqualTo(lastProcessedHash.IncrementPath()));
-        Assert.That(batch1?.StorageRangeRequest?.LimitHash, Is.EqualTo(limitHash ?? Keccak.MaxValue));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch1?.StorageRangeRequest?.StartingHash, Is.EqualTo(lastProcessedHash.IncrementPath()));
+            Assert.That(batch1?.StorageRangeRequest?.LimitHash, Is.EqualTo(limitHash ?? Keccak.MaxValue));
+        }
     }
 
     // Regression for #13200. SnapSyncFeed.AnalyzeResponsePerPeer reaches the pivot only through UpdatePivot, and a
@@ -585,8 +626,11 @@ public class ProgressTrackerTests
         progressTracker.IsFinished(out SnapSyncBatch? request);
         using (request)
         {
-            Assert.That(request!.AccountsToRefreshRequest, Is.Null, "the turn is over, so the refresh queue must yield");
-            Assert.That(request.CodesRequest, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(request!.AccountsToRefreshRequest, Is.Null, "the turn is over, so the refresh queue must yield");
+                Assert.That(request.CodesRequest, Is.Not.Null);
+            }
         }
     }
 

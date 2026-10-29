@@ -147,9 +147,6 @@ public abstract class BlockchainTestBase
         // and a fire-and-forget background convert from one test can race another test's files. Long finality is
         // irrelevant at EF-test chain lengths, so keep the on-disk tier off.
         flatDbConfig.EnableLongFinality = false;
-        // Every test builds its own container, so the default budget allocates a production-sized trie node
-        // cache on the large object heap per test.
-        flatDbConfig.TrieCacheMemoryBudget = MemorySizes.MiB;
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
         blocksConfig.PreWarmStateConcurrency = 0;
         blocksConfig.PreWarming = PreWarmMode.None;
@@ -824,7 +821,9 @@ public abstract class BlockchainTestBase
 
     private static void AssertRpcSuccess(JsonRpcResponse response)
     {
+#pragma warning disable NUnit2045 // The response type must be confirmed before casting it.
         Assert.That(response, Is.InstanceOf<IResultWrapper>(), response is JsonRpcErrorResponse err ? $"RPC error: {err.Error?.Code} {err.Error?.Message}" : "unexpected response type");
+#pragma warning restore NUnit2045
         Assert.That(((IResultWrapper)response).Result.ResultType, Is.EqualTo(ResultType.Success));
     }
 
