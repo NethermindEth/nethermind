@@ -220,6 +220,24 @@ public class NodeRecordSignerTests
     public void FromBytes_throws_when_record_bytes_are_invalid(Func<byte[]> createRecordBytes)
         => Assert.That(() => NodeRecord.FromBytes(createRecordBytes()), Throws.TypeOf<RlpException>());
 
+    [TestCaseSource(nameof(TruncatedValueCases))]
+    public void TryDeserialize_rejects_value_running_past_the_record(Func<byte[]> createRecord)
+    {
+        NodeRecordSigner signer = new(new Ecdsa());
+        bool deserialized = true;
+        Assert.That(() =>
+        {
+            RlpReader reader = new(createRecord());
+            deserialized = signer.TryDeserialize(ref reader, out _);
+        }, Throws.Nothing);
+        Assert.That(deserialized, Is.False);
+    }
+
+    [TestCaseSource(nameof(TruncatedValueCases))]
+    [TestCaseSource(nameof(MalformedValueCases))]
+    public void FromBytes_throws_rlp_exception_when_record_is_malformed(Func<byte[]> createRecord)
+        => Assert.That(() => NodeRecord.FromBytes(createRecord()), Throws.TypeOf<RlpException>());
+
     [Test]
     public void Cannot_verify_when_signature_missing()
     {
@@ -324,6 +342,48 @@ public class NodeRecordSignerTests
         yield return new TestCaseData((Func<byte[]>)CreateRecordWithInvalidSignature)
             .SetName("FromBytes_throws_when_signature_does_not_match_public_key");
     }
+
+    private static IEnumerable<TestCaseData> TruncatedValueCases()
+    {
+        // The sequence declares 4 bytes and the record ends after 2.
+        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith(0x84, 0x75, 0x69)))
+            .SetName("{m}(sequence)");
+
+        // The udp port declares 3 bytes and the record ends after 2.
+        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith(0x01, 0x83, (byte)'u', (byte)'d', (byte)'p', 0x83, 0x23, 0x28)))
+            .SetName("{m}(udp port)");
+
+        // The tcp port declares 2 bytes and the record ends after 1.
+        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith(0x01, 0x83, (byte)'t', (byte)'c', (byte)'p', 0x82, 0x76)))
+            .SetName("{m}(tcp port)");
+
+        // The fork id ends after its fork hash, at the end of the record, so the next fork is missing.
+        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith(0x01, 0x83, (byte)'e', (byte)'t', (byte)'h', 0xc6, 0xc5, 0x84, 1, 2, 3, 4)))
+            .SetName("{m}(eth fork id)");
+    }
+
+    private static IEnumerable<TestCaseData> MalformedValueCases()
+    {
+        yield return new TestCaseData((Func<byte[]>)(static () => [0xf8]))
+            .SetName("{m}(list prefix without its length)");
+
+        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordWithSignatureLength(63, (EnrContentKey.Id, EncodeString("v4")))))
+            .SetName("{m}(short signature)");
+
+        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecord(
+                (EnrContentKey.Id, EncodeString("v4")),
+                (EnrContentKey.Ip, Rlp.Encode(new byte[5])))))
+            .SetName("{m}(ip of 5 bytes)");
+
+        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecord(
+                (EnrContentKey.Id, EncodeString("v4")),
+                (EnrContentKey.SecP256k1, Rlp.Encode(new byte[32])))))
+            .SetName("{m}(public key of 32 bytes)");
+    }
+
+    /// <summary>Creates a record holding a 64-byte signature followed by <paramref name="tail"/>.</summary>
+    private static byte[] CreateRecordEndingWith(params byte[] tail)
+        => Rlp.Encode(Rlp.Encode(new byte[64]), new Rlp(tail)).Bytes;
 
     private static byte[] CreateNonSequenceRecord() => EncodeString(EnrContentKey.Id).Bytes;
 
