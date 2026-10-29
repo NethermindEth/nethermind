@@ -246,7 +246,8 @@ public partial class DebugRpcModuleTests
         DeadlineExecution clock = new() { Expiry = expiry, DeliverOnlyAtTarget = true };
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
-        Block block = await chain.AddBlock(CreateTraceBlockTransactions(chain));
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
         Assert.That(block.Transactions, Has.Length.EqualTo(3));
         clock.Enabled = true;
         clock.Target = block.Transactions[selectedAt >= 0 ? selectedAt : expiry == "before" ? 1 : 0].Nonce;

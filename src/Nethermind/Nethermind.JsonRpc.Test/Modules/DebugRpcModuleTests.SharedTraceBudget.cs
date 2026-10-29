@@ -64,11 +64,7 @@ public partial class DebugRpcModuleTests
                 .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
-        Transaction[] transactions = new Transaction[3];
-        for (int i = 0; i < transactions.Length; i++)
-            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
-                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        Block block = await chain.AddBlock(transactions);
+        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
         if (indexed) IndexThroughTheCapture(chain, index, block, parent);
         clock.Enabled = true;
         clock.Target = nonce + (filtered ? 2UL : 1UL);
@@ -160,6 +156,15 @@ public partial class DebugRpcModuleTests
         }
         public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(context);
         public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) => inner.PrepareForInclusionCheck(transaction, stateGasAvailable);
+    }
+
+    private static Transaction[] CreateDeadlineTransactions(ulong nonce)
+    {
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        return transactions;
     }
 
     private sealed class DeadlineExecution : TimeProvider
