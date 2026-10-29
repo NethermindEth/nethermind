@@ -67,7 +67,7 @@ pinned key are prototype protocol choices, pending finalized EIP-8288 encodings.
 The serialized mixed guest proof is the whole `stark_proof`; an empty dependency list has an
 empty `stark_proof`. Blocks, wrappers and inclusion-list proofs reject a `stark_proof` above
 that local bound before decoding or verification; measured proofs of this guest are
-265–300 KB. These bounds are not process memory guarantees.
+265–326 KB. These bounds are not process memory guarantees.
 
 The current EIP-8288 companion places `stark_proof` in the block body and commits to
 `keccak256(stark_proof)` and `block_deps_hash` as two flat 32-byte header fields. Header synchronization therefore

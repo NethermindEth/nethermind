@@ -43,7 +43,7 @@ public static class Eip8288Constants
     /// guest, including a private recursive input, in blocks, wrappers and inclusion lists alike, checked before proof decoding
     /// or verification.</summary>
     /// <remarks>Not an EIP-8288 constant: the EIP no longer bounds <c>stark_proof</c> and leaves its size to the proof system.
-    /// This is a pinned-prover limit with margin above the guest's measured 265–325 KB root proofs; a guest or key change
+    /// This is a pinned-prover limit with margin above the guest's measured 265–326 KB root proofs; a guest or key change
     /// must revisit it.</remarks>
     public const int MaxAggregateProofBytes = 1_310_720;
 
