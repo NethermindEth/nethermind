@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
@@ -26,78 +27,68 @@ namespace Nethermind.Serialization.Rlp
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccountDecoder))]
         public AccountDecoder(bool slimFormat = false) => _slimFormat = slimFormat;
 
-        public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref RlpReader context)
+        /// <summary>Reads the code hash and the storage root of an account, and moves past the account.</summary>
+        public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref RlpReader reader)
         {
-            LiteRlpReader reader = new(context.Data);
-            int position = SkipToHashes(reader, context.Position);
+            RlpReader fields = reader.EnterSequence(out int itemLength);
+            SkipToHashes(ref fields);
 
-            position = DecodeHash(reader, position, Keccak.EmptyTreeHash, out Hash256 storageRoot);
-            context.Position = DecodeHash(reader, position, Keccak.OfAnEmptyString, out Hash256 codeHash);
+            Hash256 storageRoot = DecodeHash(ref fields, Keccak.EmptyTreeHash);
+            Hash256 codeHash = DecodeHash(ref fields, Keccak.OfAnEmptyString);
+            reader.ExitSequence(in fields, itemLength);
 
             return (codeHash, storageRoot);
         }
 
-        public Hash256 DecodeStorageRootOnly(ref RlpReader context)
+        /// <summary>Reads the storage root of an account, and moves past the account.</summary>
+        public Hash256 DecodeStorageRootOnly(ref RlpReader reader)
         {
-            LiteRlpReader reader = new(context.Data);
-            context.Position = DecodeHash(reader, SkipToHashes(reader, context.Position), Keccak.EmptyTreeHash, out Hash256 storageRoot);
+            RlpReader fields = reader.EnterSequence(out int itemLength);
+            SkipToHashes(ref fields);
+            Hash256 storageRoot = DecodeHash(ref fields, Keccak.EmptyTreeHash);
+            fields.SkipItem();
+            reader.ExitSequence(in fields, itemLength);
             return storageRoot;
         }
 
         /// <summary>Reads the storage root straight out of an account payload.</summary>
-        /// <remarks>
-        /// Saves the caller an <see cref="RlpReader"/> whose only job would be to carry a cursor for one
-        /// call. The reader is a ~40-byte ref struct that is address-exposed once passed by reference,
-        /// so constructing one is a real run of stores.
-        /// </remarks>
+        /// <remarks>Reads only the fields up to the storage root; the bytes after it are not checked.</remarks>
         public Hash256 DecodeStorageRootOnly(ReadOnlySpan<byte> accountRlp)
         {
-            LiteRlpReader reader = new(accountRlp);
-            DecodeHash(reader, SkipToHashes(reader, 0), Keccak.EmptyTreeHash, out Hash256 storageRoot);
-            return storageRoot;
+            RlpReader reader = new(accountRlp);
+            RlpReader fields = reader.EnterSequence(out _);
+            SkipToHashes(ref fields);
+            return DecodeHash(ref fields, Keccak.EmptyTreeHash);
         }
 
         /// <inheritdoc cref="TryDecodeStruct(ref RlpReader, out AccountStruct)"/>
-        /// <remarks><inheritdoc cref="DecodeStorageRootOnly(ReadOnlySpan{byte})" path="/remarks"/></remarks>
+        /// <remarks>The bytes after the account are not checked.</remarks>
         public bool TryDecodeStruct(ReadOnlySpan<byte> accountRlp, out AccountStruct account)
-            => TryDecodeStruct(new(accountRlp), position: 0, out _, out account);
-
-        /// <summary>The cursor-threaded core both public overloads run.</summary>
-        /// <param name="reader">The buffer to decode from.</param>
-        /// <param name="position">Offset of the account sequence within <paramref name="reader"/>.</param>
-        /// <param name="endPosition">Offset just past the account, or just past the sequence prefix of a placeholder.</param>
-        /// <param name="account">The decoded account, or <see cref="AccountStruct.TotallyEmpty"/> for a placeholder.</param>
-        /// <returns><see langword="true"/> when an account was decoded; otherwise <see langword="false"/>.</returns>
-        private bool TryDecodeStruct(LiteRlpReader reader, int position, out int endPosition, out AccountStruct account)
         {
-            reader.ReadSequenceLength(ref position, out int length);
-            if (length == 1)
-            {
-                account = AccountStruct.TotallyEmpty;
-                endPosition = position;
-                return false;
-            }
+            RlpReader reader = new(accountRlp);
+            return TryDecodeStruct(ref reader, out account);
+        }
 
-            int end = position + length;
-            reader.DecodeULong(ref position, out ulong nonce);
-            reader.DecodeUInt256(ref position, out UInt256 balance);
-            position = DecodeValueHash(reader, position, Keccak.EmptyTreeHash.ValueHash256, out ValueHash256 storageRoot);
-            endPosition = DecodeValueHash(reader, position, Keccak.OfAnEmptyString.ValueHash256, out ValueHash256 codeHash);
-            RlpHelpers.Check(endPosition, end);
+        /// <summary>Skips the nonce and the balance.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void SkipToHashes(ref RlpReader fields)
+        {
+            fields.ReadBytes();
+            fields.ReadBytes();
+        }
 
-            account = new AccountStruct(nonce, balance, storageRoot, codeHash);
+        /// <summary>Reads the placeholder that carries no account: a sequence with a single content byte.</summary>
+        /// <returns><see langword="true"/> when the placeholder was read.</returns>
+        private static bool TryReadPlaceholder(ref RlpReader reader, ref RlpReader fields, int itemLength)
+        {
+            if (fields.Remaining != 1) return false;
+
+            fields.ReadRaw(1);
+            reader.ExitSequence(in fields, itemLength);
             return true;
         }
 
-        /// <summary>Skips the sequence header, the nonce and the balance.</summary>
-        private static int SkipToHashes(LiteRlpReader reader, int position)
-        {
-            reader.SkipLength(ref position);
-            reader.SkipItems(ref position, 2);
-            return position;
-        }
-
-        public override void Encode<TWriter>(ref TWriter writer, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(ref RlpWriter writer, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -108,12 +99,11 @@ namespace Nethermind.Serialization.Rlp
             Encode(item, ref writer);
         }
 
-        public void Encode<TWriter>(Account account, ref TWriter writer, int? contentLength = null)
-            where TWriter : struct, IRlpWriteBackend, allows ref struct
+        public void Encode(Account account, ref RlpWriter writer, int? contentLength = null)
         {
             contentLength ??= GetContentLength(account);
 
-            writer.StartSequence(contentLength.Value);
+            RlpSequence sequence = writer.StartSequence(contentLength.Value);
             writer.Encode(account.Nonce);
             writer.Encode(account.Balance);
 
@@ -134,6 +124,8 @@ namespace Nethermind.Serialization.Rlp
             {
                 writer.Encode(account.CodeHash);
             }
+
+            writer.EndSequence(sequence);
         }
 
         /// <summary>
@@ -264,24 +256,19 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        protected override Account? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override Account? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            LiteRlpReader reader = new(decoderContext.Data);
-            int position = decoderContext.Position;
-            reader.ReadSequenceLength(ref position, out int length);
-            if (length == 1)
+            RlpReader fields = reader.EnterSequence(out int itemLength);
+            if (TryReadPlaceholder(ref reader, ref fields, itemLength))
             {
-                decoderContext.Position = position;
                 return null;
             }
 
-            int end = position + length;
-            reader.DecodeULong(ref position, out ulong nonce);
-            reader.DecodeUInt256(ref position, out UInt256 balance);
-            position = DecodeHash(reader, position, Keccak.EmptyTreeHash, out Hash256 storageRoot);
-            position = DecodeHash(reader, position, Keccak.OfAnEmptyString, out Hash256 codeHash);
-            RlpHelpers.Check(position, end);
-            decoderContext.Position = position;
+            ulong nonce = fields.DecodeULong();
+            UInt256 balance = fields.DecodeUInt256();
+            Hash256 storageRoot = DecodeHash(ref fields, Keccak.EmptyTreeHash);
+            Hash256 codeHash = DecodeHash(ref fields, Keccak.OfAnEmptyString);
+            reader.ExitSequence(in fields, itemLength);
 
             if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
             {
@@ -292,54 +279,40 @@ namespace Nethermind.Serialization.Rlp
         }
 
         /// <summary>Decodes an account hash, taking the slim format's empty byte string as <paramref name="slimEmpty"/>.</summary>
-        /// <remarks>
-        /// Force-inlined so the caller's read of <paramref name="slimEmpty"/> sinks back into the slim
-        /// branch that uses it, rather than being paid on every account.
-        /// </remarks>
-        /// <returns>The position past the item.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int DecodeHash(LiteRlpReader reader, int position, Hash256 slimEmpty, out Hash256 hash)
-        {
-            if (IsSlimEmpty(reader, position))
-            {
-                hash = slimEmpty;
-                return position + 1;
-            }
-
-            reader.DecodeKeccak(ref position, out hash);
-            return position;
-        }
+        private Hash256 DecodeHash(ref RlpReader fields, Hash256 slimEmpty)
+            => _slimFormat && fields.TryReadEmptyBytes() ? slimEmpty : fields.DecodeKeccak();
 
         /// <inheritdoc cref="DecodeHash"/>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int DecodeValueHash(LiteRlpReader reader, int position, in ValueHash256 slimEmpty, out ValueHash256 hash)
-        {
-            if (IsSlimEmpty(reader, position))
-            {
-                hash = slimEmpty;
-                return position + 1;
-            }
-
-            reader.DecodeValueKeccakNonNull(ref position, out hash);
-            return position;
-        }
-
-        private bool IsSlimEmpty(LiteRlpReader reader, int position)
-            => _slimFormat && reader.Data[position] == Rlp.EmptyByteArrayByte;
+        private ValueHash256 DecodeValueHash(ref RlpReader fields, in ValueHash256 slimEmpty)
+            => _slimFormat && fields.TryReadEmptyBytes() ? slimEmpty : fields.DecodeValueKeccakNonNull();
 
         /// <summary>Decodes an account payload into its allocation-free <see cref="AccountStruct"/> form.</summary>
         /// <remarks>
         /// Returns <see langword="false"/> only for the placeholder encoding that carries no account — a
         /// sequence with a single content byte — leaving <paramref name="account"/> as
-        /// <see cref="AccountStruct.TotallyEmpty"/> and the reader positioned just past the sequence prefix.
-        /// Malformed input is not reported this way: it throws <see cref="RlpException"/> like any other decode.
+        /// <see cref="AccountStruct.TotallyEmpty"/> and the reader positioned just past the placeholder.
+        /// Malformed input is not reported this way: it throws <see cref="RlpReaderException"/> like any other decode.
         /// </remarks>
         /// <returns><see langword="true"/> when an account was decoded; otherwise <see langword="false"/>.</returns>
-        public bool TryDecodeStruct(ref RlpReader decoderContext, out AccountStruct account)
+        public bool TryDecodeStruct(ref RlpReader reader, out AccountStruct account)
         {
-            bool decoded = TryDecodeStruct(new(decoderContext.Data), decoderContext.Position, out int endPosition, out account);
-            decoderContext.Position = endPosition;
-            return decoded;
+            RlpReader fields = reader.EnterSequence(out int itemLength);
+            if (TryReadPlaceholder(ref reader, ref fields, itemLength))
+            {
+                account = AccountStruct.TotallyEmpty;
+                return false;
+            }
+
+            ulong nonce = fields.DecodeULong();
+            UInt256 balance = fields.DecodeUInt256();
+            ValueHash256 storageRoot = DecodeValueHash(ref fields, Keccak.EmptyTreeHash.ValueHash256);
+            ValueHash256 codeHash = DecodeValueHash(ref fields, Keccak.OfAnEmptyString.ValueHash256);
+            reader.ExitSequence(in fields, itemLength);
+
+            account = new AccountStruct(nonce, balance, storageRoot, codeHash);
+            return true;
         }
     }
 }

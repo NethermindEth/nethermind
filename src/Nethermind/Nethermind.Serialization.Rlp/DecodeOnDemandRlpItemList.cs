@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Core.Collections;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -37,8 +38,7 @@ public abstract class DecodeOnDemandRlpItemList<T>(IRlpItemList inner) : IOwnedR
 
     public int RlpLength => inner.RlpLength;
 
-    public void Write<TWriter>(ref TWriter writer)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct => inner.Write(ref writer);
+    public void Write(ref RlpWriter writer) => inner.Write(ref writer);
 
     public void Dispose() => inner.Dispose();
 

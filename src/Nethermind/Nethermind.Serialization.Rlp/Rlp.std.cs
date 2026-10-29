@@ -65,7 +65,7 @@ public partial class Rlp
     private static bool RegisterDefaultDecoders()
     {
         RegisterDecoders(typeof(Rlp).Assembly);
-        RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+        RegisterPendingDecoders();
         return true;
     }
 

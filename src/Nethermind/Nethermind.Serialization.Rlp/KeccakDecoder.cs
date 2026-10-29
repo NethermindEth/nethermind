@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Buffers;
+using Nethermind.Serialization.FluentRlp;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
@@ -12,11 +13,11 @@ namespace Nethermind.Serialization.Rlp
     {
         public static readonly KeccakDecoder Instance = new();
 
-        protected override Hash256? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccakOrNull();
+        protected override Hash256? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => reader.DecodeKeccakOrNull();
 
         public override int GetLength(Hash256? item, RlpBehaviors rlpBehaviors) => Rlp.LengthOf(item);
 
-        public override void Encode<TWriter>(ref TWriter writer, Hash256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => writer.Encode(item);
+        public override void Encode(ref RlpWriter writer, Hash256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => writer.Encode(item);
 
         public override Rlp Encode(Hash256? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.Encode(item);
 
@@ -24,7 +25,7 @@ namespace Nethermind.Serialization.Rlp
         {
             int size = Rlp.LengthOf(item);
             CappedArray<byte> buffer = bufferPool.SafeRent(size);
-            RlpWriter writer = new(in buffer);
+            RlpWriter writer = RlpWriter.ContentWriter(buffer.AsSpan());
             writer.Encode(item);
             return buffer;
         }

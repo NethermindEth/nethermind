@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -21,24 +22,16 @@ public sealed class RlpByteArrayList : IByteArrayList, IRlpWrapper
 
     public int RlpLength => _inner.RlpLength;
 
-    public void Write<TWriter>(ref TWriter writer)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct => _inner.Write(ref writer);
+    public void Write(ref RlpWriter writer) => _inner.Write(ref writer);
 
     public static RlpByteArrayList DecodeList(ref RlpReader ctx, IMemoryOwner<byte> memoryOwner, RlpLimit? limit = null)
     {
-        // An omitted limit must not mean no limit, so fall back to the default cap.
-        RlpLimit effectiveLimit = limit ?? RlpLimit.DefaultLimit;
+        // An omitted limit must not mean no limit, so CountItems falls back to the default cap. It stops at the
+        // limit, so that a malicious input with millions of items is not scanned to its end.
+        RlpReader items = ctx.EnterSequence(out _);
+        int count = items.CountItems(limit);
 
-        int prefixStart = ctx.Position;
-        int innerLength = ctx.ReadSequenceLength();
-        int end = ctx.Position + innerLength;
-        // Early-out the walk at limit + 1: any count above the limit triggers the same disconnect,
-        // so we don't need to keep counting past it (matters for malicious inputs with millions of items).
-        int count = ctx.PeekNumberOfItemsRemaining(end, effectiveLimit.Limit + 1);
-        ctx.GuardLimit(count, effectiveLimit);
-
-        Memory<byte> rlpRegion = memoryOwner.Memory.Slice(prefixStart, end - prefixStart);
-        ctx.Position = end;
+        Memory<byte> rlpRegion = memoryOwner.Memory.SliceOf(ctx.ReadEncodedItem());
         return new(new RlpItemList(memoryOwner, rlpRegion, knownCount: count));
     }
 

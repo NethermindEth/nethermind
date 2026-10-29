@@ -17,7 +17,14 @@ public delegate TResult RefRlpReaderFunc<out TResult>(scoped ref RlpReader arg)
     where TResult : allows ref struct;
 
 /// <summary>The exception that is thrown when the input is not a canonical RLP encoding of the expected shape.</summary>
-public class RlpReaderException(string message) : Exception(message);
+public class RlpReaderException : Exception
+{
+    /// <summary>Creates the exception with <paramref name="message"/>.</summary>
+    public RlpReaderException(string message) : base(message) { }
+
+    /// <summary>Creates the exception with <paramref name="message"/> and the exception that caused it.</summary>
+    public RlpReaderException(string message, Exception innerException) : base(message, innerException) { }
+}
 
 /// <summary>The exception that is thrown when the input has more items or bytes than a caller allows.</summary>
 public class RlpLimitException(string message) : RlpReaderException(message);
@@ -111,13 +118,16 @@ public ref struct RlpReader
     /// <summary>Reads an empty sequence (<c>0xc0</c>) if it is the next item.</summary>
     /// <remarks>Some stored and network formats use an empty sequence to mark a missing object.</remarks>
     /// <returns><see langword="true"/> when an empty sequence was read.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryReadEmptySequence() => TryReadByte(RlpPrefix.ShortList);
 
     /// <summary>Reads an empty byte string (<c>0x80</c>) if it is the next item.</summary>
     /// <remarks>Some stored and network formats use an empty byte string to mark a missing hash or address.</remarks>
     /// <returns><see langword="true"/> when an empty byte string was read.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryReadEmptyBytes() => TryReadByte(RlpPrefix.ShortString);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool TryReadByte(byte value)
     {
         if (_position >= _buffer.Length || _buffer[_position] != value) return false;
@@ -190,6 +200,7 @@ public ref struct RlpReader
     /// <summary>Reads the big-endian bytes of a non-negative integer.</summary>
     /// <returns>The bytes without leading zeros; empty for zero.</returns>
     /// <exception cref="RlpReaderException">The item is not a canonical integer.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ReadOnlySpan<byte> ReadIntegerBytes()
     {
         ReadOnlySpan<byte> bigEndian = ReadBytes();
@@ -200,6 +211,7 @@ public ref struct RlpReader
     /// <summary>Reads a byte string.</summary>
     /// <returns>The payload of the byte string, without its prefix.</returns>
     /// <exception cref="RlpReaderException">The item is not a canonical byte string.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ReadOnlySpan<byte> ReadBytes()
     {
         ReadOnlySpan<byte> buffer = _buffer;
@@ -213,26 +225,27 @@ public ref struct RlpReader
             return buffer.Slice(position, 1);
         }
 
-        int start = position + 1;
-        int length = 0;
-        if (prefix <= RlpPrefix.LongString)
-        {
-            length = prefix - RlpPrefix.ShortString;
-            if (length == 1 && (uint)start < (uint)buffer.Length && buffer[start] < RlpPrefix.ShortString)
-            {
-                ThrowInvalid("RLP single byte below 0x80 must not have a prefix");
-            }
-        }
-        else if (prefix < RlpPrefix.ShortList)
-        {
-            length = ReadLongLength(buffer, position, prefix - RlpPrefix.LongString);
-            start += prefix - RlpPrefix.LongString;
-        }
-        else
-        {
-            ThrowInvalid("RLP does not correspond to a byte string");
-        }
+        if (prefix > RlpPrefix.LongString) return ReadLongBytes(prefix);
 
+        int start = position + 1;
+        int length = prefix - RlpPrefix.ShortString;
+        if ((uint)(start + length) > (uint)buffer.Length) ThrowInvalid("RLP is truncated");
+        if (length == 1 && buffer[start] < RlpPrefix.ShortString) ThrowInvalid("RLP single byte below 0x80 must not have a prefix");
+
+        _position = start + length;
+        return buffer.Slice(start, length);
+    }
+
+    // Long strings are rare in hot paths, so their prefix decode stays out of line and the short path inlines small.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private ReadOnlySpan<byte> ReadLongBytes(byte prefix)
+    {
+        if (prefix >= RlpPrefix.ShortList) ThrowInvalid("RLP does not correspond to a byte string");
+
+        ReadOnlySpan<byte> buffer = _buffer;
+        int position = _position;
+        int length = ReadLongLength(buffer, position, prefix - RlpPrefix.LongString);
+        int start = position + 1 + prefix - RlpPrefix.LongString;
         if ((long)start + length > buffer.Length) ThrowInvalid("RLP is truncated");
         _position = start + length;
         return buffer.Slice(start, length);
@@ -240,6 +253,7 @@ public ref struct RlpReader
 
     /// <summary>Reads a byte string of exactly <paramref name="length"/> bytes.</summary>
     /// <exception cref="RlpReaderException">The item is not a canonical byte string of that length.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ReadOnlySpan<byte> ReadBytes(int length)
     {
         // A string of 2 to 55 bytes has exactly one canonical prefix, so one byte compare checks prefix and length.
@@ -284,45 +298,56 @@ public ref struct RlpReader
     /// <param name="itemLength">The length of the whole sequence item, to pass to <see cref="ExitSequence"/>.</param>
     /// <returns>A reader over the payload of the sequence. Read the payload with it, then call <see cref="ExitSequence"/>.</returns>
     /// <exception cref="RlpReaderException">The item is not a canonical sequence, or the nesting is too deep.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly RlpReader EnterSequence(out int itemLength)
     {
         // Untrusted input sets the nesting depth, so a deep input must not overflow the stack.
         int depth = _depth + 1;
-        if (depth % StackCheckInterval == 0 && !RuntimeHelpers.TryEnsureSufficientExecutionStack())
-        {
-            ThrowInvalid("RLP nesting is too deep");
-        }
+        if (depth % StackCheckInterval == 0) CheckStack();
 
         ReadOnlySpan<byte> buffer = _buffer;
         int position = _position;
         if ((uint)position >= (uint)buffer.Length) ThrowInvalid("RLP is truncated");
 
         byte prefix = buffer[position];
+        if (prefix < RlpPrefix.ShortList) ThrowInvalid("RLP does not correspond to a sequence");
+
         int start = position + 1;
-        int length = 0;
+        int length;
         if (prefix > RlpPrefix.LongList)
         {
-            length = ReadLongLength(buffer, position, prefix - RlpPrefix.LongList);
-            start += prefix - RlpPrefix.LongList;
-        }
-        else if (prefix >= RlpPrefix.ShortList)
-        {
-            length = prefix - RlpPrefix.ShortList;
+            length = ReadLongListLength(buffer, position, prefix, out start);
         }
         else
         {
-            ThrowInvalid("RLP does not correspond to a sequence");
+            length = prefix - RlpPrefix.ShortList;
+            if ((uint)(start + length) > (uint)buffer.Length) ThrowInvalid("RLP is truncated");
         }
 
-        if ((long)start + length > buffer.Length) ThrowInvalid("RLP is truncated");
         itemLength = start + length - position;
         return new RlpReader(buffer.Slice(start, length), depth);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void CheckStack()
+    {
+        if (!RuntimeHelpers.TryEnsureSufficientExecutionStack()) ThrowInvalid("RLP nesting is too deep");
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int ReadLongListLength(ReadOnlySpan<byte> buffer, int position, byte prefix, out int start)
+    {
+        int length = ReadLongLength(buffer, position, prefix - RlpPrefix.LongList);
+        start = position + 1 + prefix - RlpPrefix.LongList;
+        if ((long)start + length > buffer.Length) ThrowInvalid("RLP is truncated");
+        return length;
     }
 
     /// <summary>Ends a sequence that <see cref="EnterSequence"/> started, and moves past it.</summary>
     /// <param name="reader">The reader that <see cref="EnterSequence"/> returned.</param>
     /// <param name="itemLength">The item length that <see cref="EnterSequence"/> returned.</param>
     /// <exception cref="RlpReaderException"><paramref name="reader"/> has unread items.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ExitSequence(scoped in RlpReader reader, int itemLength)
     {
         if (reader.HasNext) ThrowInvalid("RLP has trailing bytes");

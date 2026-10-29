@@ -1,0 +1,48 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+// TEMP-SWAP: members of Rlp that use decoders that are not ported yet. The step that ports a decoder moves its
+// members back to Rlp.cs, Rlp.std.cs or Rlp.zkevm.cs. The last step deletes this file and RegisterPendingDecoders.
+
+using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Serialization.Rlp.Eip7928;
+
+namespace Nethermind.Serialization.Rlp;
+
+public partial class Rlp
+{
+    public static Rlp Encode(Transaction? transaction) => Encode(transaction, false);
+
+    public static Rlp Encode(Transaction? transaction, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) =>
+        TxDecoder.Instance.EncodeTx(transaction, RlpBehaviors.SkipTypedWrapping, forSigning, isEip155Enabled, chainId);
+
+    public static int LengthOf(BlockInfo? item) => BlockInfoDecoder.Instance.GetLength(item, RlpBehaviors.None);
+
+    static partial void RegisterPendingDecoders()
+    {
+#if ZK_EVM
+        RegisterDecoder(typeof(ReadOnlyAccountChanges), AccountChangesDecoder.Instance);
+        RegisterDecoder(typeof(BalanceChange), BalanceChangeDecoder.Instance);
+        RegisterDecoder(typeof(Block), new BlockDecoder());
+        RegisterDecoder(typeof(ReadOnlyBlockAccessList), BlockAccessListDecoder.Instance);
+        RegisterDecoder(typeof(BlockBody), BlockBodyDecoder.Instance);
+        RegisterDecoder(typeof(BlockHeader), new HeaderDecoder());
+        RegisterDecoder(typeof(BlockInfo), BlockInfoDecoder.Instance);
+        RegisterDecoder(typeof(ChainLevelInfo), new ChainLevelDecoder());
+        RegisterDecoder(typeof(CodeChange), CodeChangeDecoder.Instance);
+        RegisterDecoder(typeof(NonceChange), NonceChangeDecoder.Instance);
+        RegisterDecoder(typeof(ReadOnlySlotChanges), SlotChangesDecoder.Instance);
+        RegisterDecoder(typeof(StorageChange), StorageChangeDecoder.Instance);
+        RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+
+        // Receipt decoders with explicit keys.
+        RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Default), new ReceiptMessageDecoder());
+        RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.LegacyStorage), new ReceiptStorageDecoder());
+        RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Storage), CompactReceiptStorageDecoder.Instance);
+        RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Trie), new ReceiptMessageDecoder());
+#else
+        RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+#endif
+    }
+}

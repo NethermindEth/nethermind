@@ -8,6 +8,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -50,7 +51,7 @@ public static class KeyValueStoreRlpExtensions
       where TCacheKey : struct, IEquatable<TCacheKey>
     {
         decoder ??= Rlp.GetDecoder<TItem>()
-            ?? throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(TItem).Name}");
+            ?? throw new RlpReaderException($"{nameof(Rlp)} does not support decoding {typeof(TItem).Name}");
 
         TItem? item = cache?.Get(cacheKey);
         item ??= db is IReadOnlyNativeKeyValueStore native
@@ -116,8 +117,9 @@ public static class KeyValueStoreRlpExtensions
                 return null;
             }
 
+            // A stored value can have extra bytes after it, so it is read as a leading item, as RlpCodec.ReadLeading does.
             RlpReader reader = new(data);
-            return valueDecoder.Decode(ref reader, rlpBehaviors | RlpBehaviors.AllowExtraBytes);
+            return valueDecoder.Decode(ref reader, rlpBehaviors);
         }
         finally
         {
@@ -140,8 +142,9 @@ public static class KeyValueStoreRlpExtensions
                 return null;
             }
 
+            // A stored value can have extra bytes after it, so it is read as a leading item, as RlpCodec.ReadLeading does.
             RlpReader reader = new(data);
-            return valueDecoder.Decode(ref reader, rlpBehaviors | RlpBehaviors.AllowExtraBytes);
+            return valueDecoder.Decode(ref reader, rlpBehaviors);
         }
         finally
         {
