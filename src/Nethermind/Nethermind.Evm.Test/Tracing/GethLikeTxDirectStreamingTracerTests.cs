@@ -224,9 +224,12 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
             writer.WriteEndArray();
         }
 
-        Assert.That(pipe.TotalBytes, Is.GreaterThan(8 * threshold), "precondition: the trace must span many flush windows");
-        Assert.That(pipe.MaxUnflushedBytes, Is.LessThanOrEqualTo(threshold + MaxEntryOvershootBytes),
-            "unflushed output must stay near the flush threshold however large each entry is, so a slow reader applies backpressure");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pipe.TotalBytes, Is.GreaterThan(8 * threshold), "precondition: the trace must span many flush windows");
+            Assert.That(pipe.MaxUnflushedBytes, Is.LessThanOrEqualTo(threshold + MaxEntryOvershootBytes),
+                "unflushed output must stay near the flush threshold however large each entry is, so a slow reader applies backpressure");
+        }
     }
 
     [Test]
@@ -250,9 +253,12 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
         FlushRecordingPipeWriter pipe = new(keepOutput: false);
         StreamTrace(code, GethTraceOptions.Default with { EnableMemory = true }, pipe, threshold);
 
-        Assert.That(pipe.TotalBytes, Is.GreaterThan(4 * 64 * 1024), "precondition: several entries each carry the 64 KB memory");
-        Assert.That(pipe.MaxUnflushedBytes, Is.LessThanOrEqualTo(threshold + 1024),
-            "a single entry larger than the threshold must not be held whole before the flush");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pipe.TotalBytes, Is.GreaterThan(4 * 64 * 1024), "precondition: several entries each carry the 64 KB memory");
+            Assert.That(pipe.MaxUnflushedBytes, Is.LessThanOrEqualTo(threshold + 1024),
+                "a single entry larger than the threshold must not be held whole before the flush");
+        }
     }
 
     [TestCase(1, TestName = "StreamedTrace_FlushedAtEveryCheck_IsByteIdenticalToUnflushedTrace")]
@@ -264,8 +270,11 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
 
         (ArrayBufferWriter<byte> unflushed, FlushRecordingPipeWriter flushed) = TraceUnflushedAndFlushed(StorageMemoryAndReturnDataCode(word), options, threshold);
 
-        Assert.That(flushed.FlushCount, Is.GreaterThan(10), "precondition: the trace must be flushed many times, including within entries");
-        Assert.That(flushed.WrittenSpan.SequenceEqual(unflushed.WrittenSpan), Is.True, "flushing must not change a single byte of the output");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flushed.FlushCount, Is.GreaterThan(10), "precondition: the trace must be flushed many times, including within entries");
+            Assert.That(flushed.WrittenSpan.SequenceEqual(unflushed.WrittenSpan), Is.True, "flushing must not change a single byte of the output");
+        }
     }
 
     [Test]

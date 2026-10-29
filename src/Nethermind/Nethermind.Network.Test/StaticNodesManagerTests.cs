@@ -52,8 +52,11 @@ namespace Nethermind.Network.Test
 
             Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(0));
             await _staticNodesManager.AddAsync(Enode, false);
-            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(1));
-            Assert.That(await listTask, Has.Count.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(1));
+                Assert.That(await listTask, Has.Count.EqualTo(1));
+            }
         }
 
         [Test]
@@ -69,8 +72,11 @@ namespace Nethermind.Network.Test
         {
             Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp), Is.False);
             await _staticNodesManager.AddAsync(Enode, false);
-            Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp), Is.True);
-            Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp.MapToIPv6()), Is.True, "IPv4-mapped-IPv6 is normalized");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp), Is.True);
+                Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp.MapToIPv6()), Is.True, "IPv4-mapped-IPv6 is normalized");
+            }
             await _staticNodesManager.RemoveAsync(Enode, false);
             Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp), Is.False);
         }
@@ -119,8 +125,11 @@ namespace Nethermind.Network.Test
             await _staticNodesManager.AddAsync(Enode, false);
             Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(1));
             await _staticNodesManager.RemoveAsync(Enode, false);
-            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(0));
-            Assert.That(eventRaised, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(0));
+                Assert.That(eventRaised, Is.True);
+            }
         }
 
         [Test]

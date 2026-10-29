@@ -30,8 +30,11 @@ public class BeaconApiRootsProviderTests
         (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
 
         Assert.That(result, Is.Not.Null);
-        Assert.That(result!.Value.BeaconBlockRoot.ToByteArray()[0], Is.EqualTo(0xaa));
-        Assert.That(result.Value.StateRoot.ToByteArray()[0], Is.EqualTo(0x11));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result!.Value.BeaconBlockRoot.ToByteArray()[0], Is.EqualTo(0xaa));
+            Assert.That(result.Value.StateRoot.ToByteArray()[0], Is.EqualTo(0x11));
+        }
     }
 
     [Test]
@@ -72,6 +75,17 @@ public class BeaconApiRootsProviderTests
     {
         // State root endpoint must NOT be called — handler throws on any extra request
         using BeaconApiRootsProvider sut = Build((HttpStatusCode.OK, """{"other":"x"}"""));
+
+        (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
+
+        Assert.That(result, Is.Null);
+    }
+
+    [TestCase("0x12")]
+    [TestCase("0xaabbccdd0000000000000000000000000000000000000000000000000000000000")]
+    public async Task GetBeaconRoots_WhenHeadersRootHasWrongLength_ReturnsNull(string root)
+    {
+        using BeaconApiRootsProvider sut = Build((HttpStatusCode.OK, $$$"""{"data":{"root":"{{{root}}}"}}"""));
 
         (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
 

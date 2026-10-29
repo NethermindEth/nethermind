@@ -27,9 +27,12 @@ public class BlobsBundleTests
         BlobsBundleV1 bundle = new(block);
 
         // Arrays are sized from the type-agnostic blob count, so only non-null entries prove the frame tx was copied in.
-        Assert.That(bundle.Blobs, Has.Length.EqualTo(3).And.None.Null);
-        Assert.That(bundle.Commitments, Has.Length.EqualTo(3).And.None.Null);
-        Assert.That(bundle.Proofs, Has.Length.EqualTo(3).And.None.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.Blobs, Has.Length.EqualTo(3).And.None.Null);
+            Assert.That(bundle.Commitments, Has.Length.EqualTo(3).And.None.Null);
+            Assert.That(bundle.Proofs, Has.Length.EqualTo(3).And.None.Null);
+        }
     }
 
     [Test]
@@ -40,9 +43,12 @@ public class BlobsBundleTests
 
         BlobsBundleV2 bundle = new(block);
 
-        Assert.That(bundle.Blobs, Has.Length.EqualTo(2).And.None.Null);
-        Assert.That(bundle.Commitments, Has.Length.EqualTo(2).And.None.Null);
-        Assert.That(bundle.Proofs, Has.Length.EqualTo(2 * Ckzg.CellsPerExtBlob).And.None.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.Blobs, Has.Length.EqualTo(2).And.None.Null);
+            Assert.That(bundle.Commitments, Has.Length.EqualTo(2).And.None.Null);
+            Assert.That(bundle.Proofs, Has.Length.EqualTo(2 * Ckzg.CellsPerExtBlob).And.None.Null);
+        }
     }
 
     // An empty bundle for a payload that still carries the blob transaction would be proposed as an invalid block.
@@ -80,8 +86,8 @@ public class BlobsBundleTests
             SenderAddress = TestItem.AddressA,
             GasLimit = 1_000_000,
             GasPrice = 1,
+            MaxFee = 100_000_000,
             DecodedMaxFeePerGas = 100,
-            MaxFeePerBlobGas = 1,
             Frames =
             [
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),

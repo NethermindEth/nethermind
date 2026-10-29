@@ -69,6 +69,11 @@ public sealed class HistoryAvailability
 
     internal long CaptureGeneration => Volatile.Read(ref _captureGeneration);
 
+    // Bumped when every record is removed to restart the history, so answers resolved against the old rows go too.
+    private long _recordsGeneration;
+
+    internal long RecordsGeneration => Volatile.Read(ref _recordsGeneration);
+
     internal void MarkCapturePublished() => Interlocked.Increment(ref _captureGeneration);
 
     /// <summary>Orders the caller's preceding reads before the generation load, so a live value read earlier cannot
@@ -283,6 +288,7 @@ public sealed class HistoryAvailability
     /// history at a snap pivot; a cached watermark would keep covering reads that now have no rows.</summary>
     public void ForgetObservedRecords()
     {
+        Interlocked.Increment(ref _recordsGeneration);
         MarkCapturePublished();
         Volatile.Write(ref _observedWatermark, -1);
         Volatile.Write(ref _observedFloor, -1);

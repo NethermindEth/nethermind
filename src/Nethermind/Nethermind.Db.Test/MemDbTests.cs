@@ -85,8 +85,11 @@ namespace Nethermind.Db.Test
         {
             MemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
-            Assert.That(memDb.KeyExists(TestItem.KeccakA), Is.True);
-            Assert.That(memDb.KeyExists(TestItem.KeccakB), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(memDb.KeyExists(TestItem.KeccakA), Is.True);
+                Assert.That(memDb.KeyExists(TestItem.KeccakB), Is.False);
+            }
         }
 
         [Test]
@@ -115,9 +118,12 @@ namespace Nethermind.Db.Test
             memDb.Set(TestItem.KeccakB, _sampleValue);
             KeyValuePair<byte[], byte[]>[] result = memDb[new[] { TestItem.KeccakB.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() }];
             Assert.That(result, Has.Length.EqualTo(3));
-            Assert.That(result[0].Value, Is.Not.Null);
-            Assert.That(result[1].Value, Is.Not.Null);
-            Assert.That(result[2].Value, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result[0].Value, Is.Not.Null);
+                Assert.That(result[1].Value, Is.Not.Null);
+                Assert.That(result[2].Value, Is.Null);
+            }
         }
 
         [Test]

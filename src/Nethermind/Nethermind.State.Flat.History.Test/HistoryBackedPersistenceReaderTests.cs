@@ -194,13 +194,35 @@ public class HistoryBackedPersistenceReaderTests
     public void GetAccount_ForAnAccountWithoutStorageOrCode_AllocatesLessThanAContract()
     {
         HistoryColumnsWriter.RecordAccount(_historyColumns, ContractAddress, 5, new Account(1, 100, TestItem.KeccakA, TestItem.KeccakB));
-        HistoryBackedPersistenceReader reader = Reader(10);
+        // A reader per block over one warmed history reader, so every measured read misses the read cache and decodes its row.
+        HistoryReader history = WarmedHistoryReader();
+        HistoryBackedPersistenceReader[] eoaReaders = ReadersFrom(history, 5);
+        HistoryBackedPersistenceReader[] contractReaders = ReadersFrom(history, 5);
+        int eoaRead = 0;
+        int contractRead = 0;
 
-        long eoaAllocated = MeasureAllocatedBytes(() => reader.GetAccount(Address));
-        long contractAllocated = MeasureAllocatedBytes(() => reader.GetAccount(ContractAddress));
+        long eoaAllocated = MeasureAllocatedBytes(() => eoaReaders[eoaRead++].GetAccount(Address));
+        long contractAllocated = MeasureAllocatedBytes(() => contractReaders[contractRead++].GetAccount(ContractAddress));
+        Dispose(eoaReaders);
+        Dispose(contractReaders);
 
         Assert.That(eoaAllocated, Is.LessThan(contractAllocated),
             "an account without storage or code takes the shared empty-hash instances; only a contract materializes its two hashes");
+    }
+
+    [Test]
+    public void GetAccount_ReadAgainAtTheSameBlock_ReturnsTheCachedAccountWithoutAllocating()
+    {
+        using HistoryBackedPersistenceReader reader = Reader(10);
+        Account? first = reader.GetAccount(Address);
+
+        long allocated = MeasureAllocatedBytes(() => reader.GetAccount(Address));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.GetAccount(Address), Is.SameAs(first));
+            Assert.That(allocated, Is.Zero);
+        }
     }
 
     [Test]
@@ -212,6 +234,8 @@ public class HistoryBackedPersistenceReaderTests
             "a scope that reads no storage must not build the per-account clears memos");
     }
 
+    private const int MeasureRuns = 6;
+
     /// <remarks>
     /// Takes the minimum over several calls: one call can also pay one-off runtime costs
     /// (lazy thread-local or static initialization) that do not belong to the code under test.
@@ -220,7 +244,7 @@ public class HistoryBackedPersistenceReaderTests
     {
         action();
         long min = long.MaxValue;
-        for (int i = 0; i < 5; i++)
+        for (int i = 1; i < MeasureRuns; i++)
         {
             long before = GC.GetAllocatedBytesForCurrentThread();
             action();
@@ -232,15 +256,39 @@ public class HistoryBackedPersistenceReaderTests
 
     private HistoryBackedPersistenceReader Reader(ulong block) => Reader(block, new HistoryScopeGate());
 
-    private HistoryBackedPersistenceReader Reader(ulong block, HistoryScopeGate scopeGate) => Reader(block, scopeGate, Keccak.EmptyTreeHash);
+    // One reader per MeasureAllocatedBytes run.
+    private static HistoryBackedPersistenceReader[] ReadersFrom(HistoryReader history, ulong firstBlock)
+    {
+        HistoryBackedPersistenceReader[] readers = new HistoryBackedPersistenceReader[MeasureRuns];
+        for (int i = 0; i < readers.Length; i++)
+            readers[i] = new HistoryBackedPersistenceReader(history, new StateId(firstBlock + (ulong)i, Keccak.EmptyTreeHash), new HistoryScopeGate());
+        return readers;
+    }
 
-    private HistoryBackedPersistenceReader Reader(ulong block, HistoryScopeGate scopeGate, Hash256 stateRoot)
+    private static void Dispose(HistoryBackedPersistenceReader[] readers)
+    {
+        foreach (HistoryBackedPersistenceReader reader in readers) reader.Dispose();
+    }
+
+    // The read cache is created on the first stored answer, so a read at an unrelated block keeps that out of a measurement.
+    private HistoryReader WarmedHistoryReader()
+    {
+        HistoryReader history = CreateHistoryReader();
+        history.GetAccount(1, ContractAddress);
+        return history;
+    }
+
+    private HistoryReader CreateHistoryReader()
     {
         FlatDbConfig config = new();
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
-        return new HistoryBackedPersistenceReader(reader, new StateId(block, stateRoot), scopeGate);
+        return new HistoryReader(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
     }
+
+    private HistoryBackedPersistenceReader Reader(ulong block, HistoryScopeGate scopeGate) => Reader(block, scopeGate, Keccak.EmptyTreeHash);
+
+    private HistoryBackedPersistenceReader Reader(ulong block, HistoryScopeGate scopeGate, Hash256 stateRoot) =>
+        new(CreateHistoryReader(), new StateId(block, stateRoot), scopeGate);
 }
 
 public class RestrictedModeHistoryBackedPersistenceReaderTests
@@ -302,8 +350,11 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
         UInt256 value = default;
         bool found = Reader(3).TryGetSlot(SlicedAddress, Slot, ref value);
 
-        Assert.That(found, Is.True);
-        Assert.That(value.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0xAA }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(value.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0xAA }));
+        }
     }
 
     [Test]

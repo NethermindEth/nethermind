@@ -21,11 +21,6 @@ public static class NethermindBuffers
     /// </summary>
     public static IByteBufferAllocator RlpxAllocator = PooledByteBufferAllocator.Default;
 
-    /// <summary>
-    /// Similar to <see cref="RlpxAllocator"/> but for discovery messages.
-    /// </summary>
-    public static IByteBufferAllocator DiscoveryAllocator = PooledByteBufferAllocator.Default;
-
     public static IByteBufferAllocator CreateAllocator(int arenaOrder, uint arenaCount) => new PooledByteBufferAllocator(
             preferDirect: PlatformDependent.DirectBufferPreferred,
             nHeapArena: (int)arenaCount,

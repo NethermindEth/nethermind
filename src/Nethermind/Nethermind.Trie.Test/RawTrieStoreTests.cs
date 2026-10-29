@@ -63,10 +63,8 @@ public class RawTrieStoreTests
         key[^1] = 1;
         byte[] value = TestItem.KeccakA.BytesToArray();
 
-        patriciaTree.WarmUpPath(key);
         patriciaTree.Set(key, value);
         patriciaTree.Commit();
-        patriciaTree.WarmUpPath(key);
 
         Assert.That(patriciaTree.Get(key).ToArray(), Is.EqualTo(value));
     }

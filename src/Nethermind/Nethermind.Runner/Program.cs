@@ -406,6 +406,9 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     if (Errors.Any())
         logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");
 
+    foreach (string warning in configProvider.GetObsoleteSettingWarnings())
+        logger.Warn(warning);
+
     return configProvider;
 }
 

@@ -27,6 +27,7 @@ public class HistoryReaderTests
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
     private HistoryReader _reader = null!;
+    private HistoryAvailability _availability = null!;
 
     [SetUp]
     public void SetUp()
@@ -35,6 +36,7 @@ public class HistoryReaderTests
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         FlatDbConfig config = new();
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        _availability = availability;
         _reader = new HistoryReader(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
     }
 
@@ -59,6 +61,147 @@ public class HistoryReaderTests
         availability.PublishWatermark(10, HistoryAvailability.FormatVersion);
 
         Assert.That(reader.TryGetAccount(10, Address, out AccountStruct account) && account.Nonce == 5, Is.True);
+    }
+
+    // Rows at or below a covered block never change; a row written under an earlier answer only shows the read is cached.
+    [Test]
+    public void Account_read_at_a_block_is_answered_once_and_other_blocks_read_their_own_rows()
+    {
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 20);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 5, new Account(5, 500));
+        AccountStruct first;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_reader.TryGetAccount(3, Address, out _), Is.False);
+            Assert.That(_reader.TryGetAccount(10, Address, out first), Is.True);
+        }
+
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 2, new Account(2, 200));
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 8, new Account(8, 800));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Nonce, Is.EqualTo(5UL));
+            Assert.That(_reader.TryGetAccount(3, Address, out _), Is.False, "cached absence");
+            Assert.That(_reader.TryGetAccount(10, Address, out AccountStruct again) && again.Nonce == 5, Is.True, "cached account");
+            Assert.That(_reader.TryGetAccount(9, Address, out AccountStruct other) && other.Nonce == 8, Is.True, "another block reads its row");
+        }
+    }
+
+    // An answer is final only once the block is covered, and only until a restart removes the records behind it.
+    [Test]
+    public void Answers_are_cached_only_for_covered_blocks_and_dropped_when_the_records_restart()
+    {
+        Assert.That(_reader.TryGetAccount(10, Address, out _), Is.False);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 5, new Account(5, 500));
+        Assert.That(_reader.TryGetAccount(10, Address, out AccountStruct uncovered) && uncovered.Nonce == 5, Is.True, "an uncovered answer is not kept");
+
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 20);
+        Assert.That(_reader.TryGetAccount(10, Address, out _), Is.True);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 8, new Account(8, 800));
+        Assert.That(_reader.TryGetAccount(10, Address, out AccountStruct covered) && covered.Nonce == 5, Is.True, "a covered answer is kept");
+
+        _availability.ForgetObservedRecords();
+
+        Assert.That(_reader.TryGetAccount(10, Address, out AccountStruct restarted) && restarted.Nonce == 8, Is.True, "a restart drops kept answers");
+    }
+
+    [Test]
+    public void Slots_are_cached_only_for_covered_blocks_and_dropped_when_the_records_restart()
+    {
+        Assert.That(_reader.TryGetStorage(10, Address, Slot, out _), Is.False);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 5, [0x11]);
+        Assert.That(_reader.TryGetStorage(10, Address, Slot, out UInt256 uncovered) && uncovered == 0x11, Is.True, "an uncovered answer is not kept");
+
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 20);
+        Assert.That(_reader.TryGetStorage(10, Address, Slot, out _), Is.True);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 8, [0x22]);
+        Assert.That(_reader.TryGetStorage(10, Address, Slot, out UInt256 covered) && covered == 0x11, Is.True, "a covered answer is kept");
+
+        _availability.ForgetObservedRecords();
+
+        Assert.That(_reader.TryGetStorage(10, Address, Slot, out UInt256 restarted) && restarted == 0x22, Is.True, "a restart drops kept answers");
+    }
+
+    // A capture that covers the block while the read runs must not make the answer read from the older rows final.
+    [Test]
+    public void An_answer_read_before_a_capture_covered_its_block_is_not_kept([Values] bool storage)
+    {
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 5, new Account(5, 500));
+        HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 5, [0x11]);
+        HookedColumns<FlatHistoryColumns> hooked = new(_historyColumns,
+            storage ? FlatHistoryColumns.StorageHistory : FlatHistoryColumns.AccountHistory, static () => { },
+            afterFirstCeiling: CaptureBlockEightAndCover);
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig());
+        HistoryReader reader = new(_db, hooked, availability, rowFormat, LimboLogs.Instance);
+
+        if (storage)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.TryGetStorage(10, Address, Slot, out UInt256 during) && during == 0x11, Is.True, "read before the capture");
+                Assert.That(reader.TryGetStorage(10, Address, Slot, out UInt256 after) && after == 0x22, Is.True, "the older answer is not kept");
+            }
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.TryGetAccount(10, Address, out AccountStruct during) && during.Nonce == 5, Is.True, "read before the capture");
+                Assert.That(reader.TryGetAccount(10, Address, out AccountStruct after) && after.Nonce == 8, Is.True, "the older answer is not kept");
+            }
+        }
+    }
+
+    private void CaptureBlockEightAndCover()
+    {
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 8, new Account(8, 800));
+        HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 8, [0x22]);
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 20);
+    }
+
+    [Test]
+    public void Cached_reads_return_the_same_account_and_do_not_allocate()
+    {
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 20);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 5, new Account(5, 500));
+        HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 5, [0x11]);
+        Account? first = _reader.GetAccount(10, Address);
+        _reader.TryGetStorage(10, Address, Slot, out _);
+        _reader.GetAccount(10, Address);
+        _reader.TryGetStorage(10, Address, Slot, out _);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Account? cached = _reader.GetAccount(10, Address);
+        bool slotFound = _reader.TryGetStorage(10, Address, Slot, out UInt256 slot);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.Not.Null);
+            Assert.That(cached, Is.SameAs(first));
+            Assert.That(slotFound && slot == 0x11, Is.True);
+            Assert.That(allocated, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Storage_read_at_a_block_is_answered_once_and_other_slots_read_their_own_rows()
+    {
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 20);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 5, [0x11]);
+        Assert.That(_reader.TryGetStorage(10, Address, Slot, out UInt256 first), Is.True);
+
+        HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 8, [0x22]);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot + 1, 5, [0x33]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo((UInt256)0x11));
+            Assert.That(_reader.TryGetStorage(10, Address, Slot, out UInt256 again) && again == 0x11, Is.True, "cached slot");
+            Assert.That(_reader.TryGetStorage(9, Address, Slot, out UInt256 otherBlock) && otherBlock == 0x22, Is.True, "another block reads its row");
+            Assert.That(_reader.TryGetStorage(10, Address, Slot + 1, out UInt256 otherSlot) && otherSlot == 0x33, Is.True, "another slot reads its row");
+        }
     }
 
     [TestCase(3ul, -1)]
@@ -211,8 +354,13 @@ public class HistoryReaderTests
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using ColumnsDb<FlatHistoryColumns> history = RocksHistoryTestDb.CreateColumns(directory.Path);
-        HistoryColumnsWriter.RecordAccountV3(history, Address, 20, new Account(5, 500));
-        HistoryColumnsWriter.RecordStorageV3(history, Address, Slot, 20, [0x55]);
+        // A distinct key per read, so each one reaches the store instead of the per-block read cache.
+        Address[] addresses = [Address, TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
+        foreach (Address address in addresses)
+        {
+            HistoryColumnsWriter.RecordAccountV3(history, address, 20, new Account(5, 500));
+            HistoryColumnsWriter.RecordStorageV3(history, address, Slot, 20, [0x55]);
+        }
         HistoryColumnsWriter.MarkBlockV3(history, 10, Keccak.EmptyTreeHash);
         HistoryColumnsWriter.SetWatermarkV3(history, 20);
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
@@ -240,12 +388,15 @@ public class HistoryReaderTests
             if (storage)
             {
                 UInt256 value = default;
-                Assert.That(reader.TryGetSlot(Address, Slot, ref value), Is.True);
-                Assert.That(value, Is.EqualTo((UInt256)0x55));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(reader.TryGetSlot(addresses[i], Slot, ref value), Is.True);
+                    Assert.That(value, Is.EqualTo((UInt256)0x55));
+                }
             }
             else
             {
-                Assert.That(reader.GetAccount(Address)?.Nonce, Is.EqualTo(5UL));
+                Assert.That(reader.GetAccount(addresses[i])?.Nonce, Is.EqualTo(5UL));
             }
         }
 
@@ -258,11 +409,12 @@ public class HistoryReaderTests
         }
     }
 
-    private sealed class HookedColumns<TKey>(IColumnsDb<TKey> inner, TKey hookedColumn, Action onFirstRead, Func<ISortedView, ISortedView>? onView = null)
+    private sealed class HookedColumns<TKey>(IColumnsDb<TKey> inner, TKey hookedColumn, Action onFirstRead, Func<ISortedView, ISortedView>? onView = null,
+        Action? afterFirstCeiling = null)
         : IColumnsDb<TKey> where TKey : struct, Enum
     {
         public IDb GetColumnDb(TKey key) =>
-            EqualityComparer<TKey>.Default.Equals(key, hookedColumn) ? new HookedDb(inner.GetColumnDb(key), onFirstRead, onView) : inner.GetColumnDb(key);
+            EqualityComparer<TKey>.Default.Equals(key, hookedColumn) ? new HookedDb(inner.GetColumnDb(key), onFirstRead, onView, afterFirstCeiling) : inner.GetColumnDb(key);
 
         public IColumnsWriteBatch<TKey> StartWriteBatch() => inner.StartWriteBatch();
         public IEnumerable<TKey> ColumnKeys => inner.ColumnKeys;
@@ -273,9 +425,11 @@ public class HistoryReaderTests
         public void Dispose() { }
     }
 
-    private sealed class HookedDb(IDb inner, Action onFirstRead, Func<ISortedView, ISortedView>? onView = null) : IDb, ISortedKeyValueStore
+    private sealed class HookedDb(IDb inner, Action onFirstRead, Func<ISortedView, ISortedView>? onView = null, Action? afterFirstCeiling = null)
+        : IDb, ISortedKeyValueStore
     {
         private int _fired;
+        private int _ceilingFired;
 
         private ISortedKeyValueStore Sorted => (ISortedKeyValueStore)inner;
 
@@ -289,8 +443,12 @@ public class HistoryReaderTests
         }
 
         public bool TryGetCeilingAtEpoch(scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl, long epoch,
-            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength) =>
-            Sorted.TryGetCeilingAtEpoch(lowerBoundIncl, upperBoundExcl, epoch, keyBuffer, out keyLength, valueBuffer, out valueLength);
+            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength)
+        {
+            bool found = Sorted.TryGetCeilingAtEpoch(lowerBoundIncl, upperBoundExcl, epoch, keyBuffer, out keyLength, valueBuffer, out valueLength);
+            if (afterFirstCeiling is not null && Interlocked.Exchange(ref _ceilingFired, 1) == 0) afterFirstCeiling();
+            return found;
+        }
 
         public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {

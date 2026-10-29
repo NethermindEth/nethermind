@@ -184,6 +184,14 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void ValueHash256_hex_constructor_rejects_other_lengths([Values(0, 2, 3, 62, 65, 66)] int hexDigits) =>
+            Assert.That(() => new ValueHash256("0x" + new string('a', hexDigits)), Throws.TypeOf<FormatException>());
+
+        [Test]
+        public void ValueHash256_hex_constructor_parses_32_bytes([Values] bool withZeroX) =>
+            Assert.That(new ValueHash256(Keccak.OfAnEmptyString.ToString(withZeroX)), Is.EqualTo(Keccak.OfAnEmptyString.ValueHash256));
+
+        [Test]
         public void Computes_known_hash_for_span_and_array()
         {
             byte[] byteArray = new byte[1024];
