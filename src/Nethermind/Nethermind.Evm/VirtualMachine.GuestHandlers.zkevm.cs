@@ -13,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
+using Nethermind.Zkvm.Abstractions;
 using static Nethermind.Evm.GuestWord;
 
 namespace Nethermind.Evm;
@@ -219,27 +220,66 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : ref slot;
         }
 
-        /// <summary><paramref name="handlers"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
-        /// <remarks>As <see cref="AlignedSlot"/>: one <c>andi</c> lets the JIT prove the handler load aligned and drop its alignment test.</remarks>
+        /// <summary><paramref name="table"/> in the form the dispatch chain carries it.</summary>
+        /// <remarks>
+        /// Where <see cref="StrictAlignmentFlag"/> is on, the chain carries the table's address in words. The address formed back from it
+        /// is a shift by <see cref="TableWordShift"/>, which the JIT proves aligned, so each handler load needs neither an alignment test nor an <c>andi</c> to
+        /// prove it, as a table pointer would. Read the table only through <see cref="HandlerAt"/> and <see cref="FollowerHandlerAt"/>,
+        /// or as SP1's <c>mul.S</c> does.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static nint* AlignedTable(nint* handlers)
+        internal static nint* DispatchTable(nint* table)
         {
-            Debug.Assert(((nuint)handlers & (nuint)(sizeof(nint) - 1)) == 0);
-            return StrictAlignmentFlag.IsActive ? (nint*)((nuint)handlers & ~(nuint)(sizeof(nint) - 1)) : handlers;
+            Debug.Assert(((nuint)table & (nuint)(sizeof(nint) - 1)) == 0);
+            return StrictAlignmentFlag.IsActive ? (nint*)((nuint)table >> TableWordShift) : table;
         }
+
+        /// <summary>The log2 of the size of a table entry, which converts between its address in bytes and in words.</summary>
+        private static int TableWordShift => sizeof(nint) == sizeof(ulong) ? 3 : 2;
+
+        /// <summary>The handler at <paramref name="index"/> in <paramref name="handlers"/>, a table in the form <see cref="DispatchTable"/> gives.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nint HandlerAt(nint* handlers, nint index) =>
+            StrictAlignmentFlag.IsActive ? *(nint*)(((nuint)handlers + (nuint)index) << TableWordShift) : handlers[index];
+
+        /// <summary>The follower handler for the opcode <paramref name="opcode"/>, which the paired table holds before <paramref name="handlers"/>.</summary>
+        /// <remarks>Indexed first and offset after, so the offset folds into the load.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nint FollowerHandlerAt(nint* handlers, nint opcode) => StrictAlignmentFlag.IsActive
+            ? *((nint*)(((nuint)handlers + (nuint)opcode) << TableWordShift) - FollowerHandlersLength)
+            : Unsafe.Add(ref handlers[opcode], -FollowerHandlersLength);
 
         /// <summary><paramref name="stack"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
         /// <remarks>
         /// As in <see cref="AlignedSlot"/>, one <c>andi</c> lets the JIT prove the loads of the stack's fields aligned and drop their tests.
-        /// It masks the pointer directly: the byref is rarely live after the rounding, so the cast costs no register copy.
+        /// It masks the byte offset from null, as <see cref="AlignedSlot"/> does: the stack stays live for the tail dispatch, so masking
+        /// <c>Unsafe.AsPointer</c> made the JIT copy it to another register first.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe ref EvmStack AlignedStack(ref EvmStack stack)
         {
             Debug.Assert(((nuint)Unsafe.AsPointer(ref stack) & (nuint)(sizeof(nint) - 1)) == 0);
             return ref StrictAlignmentFlag.IsActive
-                ? ref Unsafe.AsRef<EvmStack>((void*)((nuint)Unsafe.AsPointer(ref stack) & ~(nuint)(sizeof(nint) - 1)))
+                ? ref Unsafe.As<byte, EvmStack>(ref Unsafe.AddByteOffset(ref Unsafe.NullRef<byte>(),
+                    Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref Unsafe.As<EvmStack, byte>(ref stack)) & ~(nint)(sizeof(nint) - 1)))
                 : ref stack;
+        }
+
+        /// <summary>The running frame's memory, reached through references rounded down to the word boundaries they are already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
+        /// <remarks>
+        /// As <see cref="AlignedSlot"/>: the state is a byref parameter and its memory a byref loaded from it, so the JIT tests each one's
+        /// alignment again in every block that reads a field through it. One <c>andi</c> each proves them; both are naturally word-aligned.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe ref EvmPooledMemory AlignedMemory(ref DispatchState state)
+        {
+            Debug.Assert(((nuint)Unsafe.AsPointer(ref state) & (nuint)(sizeof(nint) - 1)) == 0);
+            Debug.Assert(((nuint)Unsafe.AsPointer(ref state.Memory) & (nuint)(sizeof(nint) - 1)) == 0);
+            if (!StrictAlignmentFlag.IsActive) return ref state.Memory;
+            ref DispatchState aligned = ref Unsafe.As<byte, DispatchState>(ref Unsafe.AddByteOffset(ref Unsafe.NullRef<byte>(),
+                Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref Unsafe.As<DispatchState, byte>(ref state)) & ~(nint)(sizeof(nint) - 1)));
+            return ref Unsafe.As<byte, EvmPooledMemory>(ref Unsafe.AddByteOffset(ref Unsafe.NullRef<byte>(),
+                Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref Unsafe.As<EvmPooledMemory, byte>(ref aligned.Memory)) & ~(nint)(sizeof(nint) - 1)));
         }
 
         /// <summary>The big-endian 16-bit value in the two lowest bytes of <paramref name="bytes"/>; the bytes above them are ignored.</summary>
@@ -258,6 +298,29 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         private static nuint ReadBigEndianUInt16(ref byte bytes) => StrictAlignmentFlag.IsActive
             ? ((nuint)bytes << 8) | Unsafe.Add(ref bytes, 1)
             : ReadBigEndianUInt16(Unsafe.ReadUnaligned<ushort>(ref bytes));
+
+        /// <summary>The four code bytes from <paramref name="start"/> past <paramref name="opcode"/>, read as one word, or <c>0</c> where <see cref="StrictAlignmentFlag"/> is on, which <see cref="CodeByte"/> and <see cref="CodeUInt16"/> then ignore.</summary>
+        /// <remarks>
+        /// A fused handler tests a few bytes past its opcode. Where the JIT tests alignment, a misaligned word read assembles all
+        /// four bytes behind a guard, so <see cref="CodeByte"/> reads only the bytes a test needs.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static uint CodeWord(ref byte opcode, int start) =>
+            StrictAlignmentFlag.IsActive ? 0 : Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref opcode, start));
+
+        /// <summary>The code byte <paramref name="offset"/> past <paramref name="opcode"/>, out of <paramref name="word"/>, its <see cref="CodeWord"/> from <paramref name="start"/>.</summary>
+        /// <remarks>The word's top byte is its shift alone: narrowing it too costs a mask the comparison does not need.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static uint CodeByte(ref byte opcode, uint word, int start, int offset) =>
+            StrictAlignmentFlag.IsActive ? Unsafe.Add(ref opcode, offset)
+            : offset == start + 3 ? word >> 24
+            : (byte)(word >> (8 * (offset - start)));
+
+        /// <summary>The big-endian 16-bit value at <paramref name="offset"/> past <paramref name="opcode"/>, out of <paramref name="word"/>, its <see cref="CodeWord"/> from <paramref name="start"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nuint CodeUInt16(ref byte opcode, uint word, int start, int offset) => StrictAlignmentFlag.IsActive
+            ? ReadBigEndianUInt16(ref Unsafe.Add(ref opcode, offset))
+            : ReadBigEndianUInt16(word >> (8 * (offset - start)));
 
         /// <summary>Marks a direct tail transfer that the opcode weaver emits into the calling handler.</summary>
         /// <remarks>The target is last to match the calli evaluation stack; this method must never survive weaving.</remarks>
@@ -300,11 +363,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ulong condition = TCondition.Evaluate(ref end) ? 1UL : 0UL;
                 // PUSH2, its two immediates and JUMPI; the first is the opcode an unfused comparison dispatches on.
                 ref byte opcode = ref ip;
-                uint branch = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref opcode, 1));
+                uint branch = CodeWord(ref opcode, 1);
                 // The branch's PUSH2 overflows a stack the comparison leaves full, which only ISZERO can.
                 if (TCondition.Inputs > 1 || head < EvmStack.MaxStackSize - 1)
                 {
-                    if ((byte)branch == (byte)Instruction.PUSH2 && branch >> 24 == (byte)Instruction.JUMPI)
+                    if (CodeByte(ref opcode, branch, 1, 1) == (byte)Instruction.PUSH2 && CodeByte(ref opcode, branch, 1, 4) == (byte)Instruction.JUMPI)
                     {
                         // The fused step charges the comparison with every opcode after it in one test.
                         if (condition == 0)
@@ -320,7 +383,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         else
                         {
                             ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
-                            nuint destination = ReadBigEndianUInt16(branch >> 8);
+                            nuint destination = CodeUInt16(ref opcode, branch, 1, 2);
                             if (destination < (nuint)AlignedStack(ref stack).CodeLength && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost + jumpGas))
                             {
                                 if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(destination))
@@ -340,10 +403,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         }
                     }
                     // An ISZERO between the comparison and the branch only inverts what the branch tests.
-                    else if ((byte)branch == (byte)Instruction.ISZERO)
+                    else if (CodeByte(ref opcode, branch, 1, 1) == (byte)Instruction.ISZERO)
                     {
-                        uint inverted = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref opcode, 2));
-                        if ((byte)inverted == (byte)Instruction.PUSH2 && inverted >> 24 == (byte)Instruction.JUMPI)
+                        uint inverted = CodeWord(ref opcode, 2);
+                        if (CodeByte(ref opcode, inverted, 2, 2) == (byte)Instruction.PUSH2 && CodeByte(ref opcode, inverted, 2, 5) == (byte)Instruction.JUMPI)
                         {
                             if (condition != 0)
                             {
@@ -358,7 +421,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             else
                             {
                                 ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
-                                nuint destination = ReadBigEndianUInt16(inverted >> 8);
+                                nuint destination = CodeUInt16(ref opcode, inverted, 2, 3);
                                 if (destination < (nuint)AlignedStack(ref stack).CodeLength && TryCharge(ref gas, 3 * VeryLowGasCost.GasCost + jumpGas))
                                 {
                                     if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(destination))
@@ -379,7 +442,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         }
                     }
                     // Code shorter than 256 bytes pushes its destinations with PUSH1.
-                    else if ((byte)branch == (byte)Instruction.PUSH1 && (byte)(branch >> 16) == (byte)Instruction.JUMPI)
+                    else if (CodeByte(ref opcode, branch, 1, 1) == (byte)Instruction.PUSH1 && CodeByte(ref opcode, branch, 1, 3) == (byte)Instruction.JUMPI)
                     {
                         if (condition == 0)
                         {
@@ -394,10 +457,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         else
                         {
                             ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
-                            nuint destination = (byte)(branch >> 8);
-                            if (destination < (nuint)stack.CodeLength && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost + jumpGas))
+                            nuint destination = CodeByte(ref opcode, branch, 1, 2);
+                            if (destination < (nuint)AlignedStack(ref stack).CodeLength && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost + jumpGas))
                             {
-                                if (!stack.IsAnalyzedJumpDestination(destination))
+                                if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(destination))
                                 {
                                     analyzed = destination;
                                     skipped = 1 + 2;
@@ -426,7 +489,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head -= TCondition.Inputs - 1;
                     sp = ref Moved(ref sp, -(TCondition.Inputs - 1));
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint unfused = AlignedTable(handlers)[(ushort)branch];
+                    nint unfused = HandlerAt(handlers, StrictAlignmentFlag.IsActive ? PairAt(ref ip) : (ushort)branch);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
                 }
             }
@@ -435,7 +498,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
 
         Dispatch:
-            nint next = AlignedTable(handlers)[PairAt(ref ip)];
+            nint next = HandlerAt(handlers, PairAt(ref ip));
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
 
         AnalyzeBranch:
@@ -561,7 +624,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -840,7 +903,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 NotStep.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -851,7 +914,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary>ADDMOD or MULMOD, as <typeparamref name="TOperation"/> computes it, with its operands and result in their stack slots.</summary>
         /// <remarks>
         /// The shared handler copies the three operands out and the result back. A zero modulus leaves the zero its
-        /// slot holds. A short stack or gas runs the shared handler instead, which faults on it.
+        /// slot holds, except for ADDMOD outside ZisK, which the shared handler then computes. A short stack or gas runs
+        /// the shared handler instead, which faults on it.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -870,6 +934,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 // The result replaces the modulus, the deepest of the three.
                 ref ulong modulus = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 3));
+                if (!ZiskFlag.IsActive && typeof(TOperation) == typeof(EvmInstructions.OpAddMod))
+                {
+                    if (TryAddModInSlots(ref modulus))
+                    {
+                        // No call is made, so the carried state is still in its registers.
+                        head -= 2;
+                        sp = ref Moved(ref sp, -2);
+                        ip = ref Unsafe.Add(ref ip, 1);
+                        nint following = HandlerAt(handlers, PairAt(ref ip));
+                        return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, following);
+                    }
+
+                    // The shared handler takes the other operands, so this handler makes no call.
+                    gas += MidGasCost.GasCost;
+                    nint general = Entry(&ExecuteOpcode<Math3Opcode<TOperation, OffFlag>, OffFlag, OffFlag, OnFlag>);
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, general);
+                }
+
                 if ((modulus | Unsafe.Add(ref modulus, 1) | Unsafe.Add(ref modulus, 2) | Unsafe.Add(ref modulus, 3)) != 0)
                 {
                     if (ZiskFlag.IsActive)
@@ -882,6 +964,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         else
                             ZiskArithmetic.MulMod(m + 2 * LimbsPerWord, m + LimbsPerWord, m, (ulong*)&result);
                         *(UInt256*)m = result;
+                    }
+                    else if (Sp1Flag.IsActive && typeof(TOperation) == typeof(EvmInstructions.OpMulMod))
+                    {
+                        Sp1MulModInSlots(ref modulus);
                     }
                     else
                     {
@@ -906,12 +992,98 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
 
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
             nint shared = Entry(&ExecuteOpcode<Math3Opcode<TOperation, OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>ADDMOD of the slots above <paramref name="modulus"/>, whose result replaces the modulus, when both addends are below it.</summary>
+        /// <param name="modulus">The modulus, with the second addend in the slot above and the first in the slot above that.</param>
+        /// <returns><see langword="false"/>, with the slots unchanged, when an addend is not below the modulus; a zero modulus is one such case.</returns>
+        /// <remarks>
+        /// Two addends below the modulus, as field arithmetic gives, have a sum below twice the modulus: one add and one
+        /// conditional subtract, with no call.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryAddModInSlots(ref ulong modulus)
+        {
+            ref ulong b = ref Unsafe.Add(ref modulus, LimbsPerWord);
+            ref ulong a = ref Unsafe.Add(ref modulus, 2 * LimbsPerWord);
+            ulong m0 = modulus, m1 = Unsafe.Add(ref modulus, 1), m2 = Unsafe.Add(ref modulus, 2), m3 = Unsafe.Add(ref modulus, 3);
+            ulong a0 = a, a1 = Unsafe.Add(ref a, 1), a2 = Unsafe.Add(ref a, 2), a3 = Unsafe.Add(ref a, 3);
+            ulong b0 = b, b1 = Unsafe.Add(ref b, 1), b2 = Unsafe.Add(ref b, 2), b3 = Unsafe.Add(ref b, 3);
+
+            // Each operand is below the modulus when subtracting the modulus from it borrows.
+            ulong aBelow = 0, bBelow = 0;
+            SubtractWithBorrow(a0, m0, ref aBelow);
+            SubtractWithBorrow(a1, m1, ref aBelow);
+            SubtractWithBorrow(a2, m2, ref aBelow);
+            SubtractWithBorrow(a3, m3, ref aBelow);
+            SubtractWithBorrow(b0, m0, ref bBelow);
+            SubtractWithBorrow(b1, m1, ref bBelow);
+            SubtractWithBorrow(b2, m2, ref bBelow);
+            SubtractWithBorrow(b3, m3, ref bBelow);
+            if ((aBelow & bBelow) == 0) return false;
+
+            ulong carry = 0;
+            ulong s0 = AddWithCarry(a0, b0, ref carry);
+            ulong s1 = AddWithCarry(a1, b1, ref carry);
+            ulong s2 = AddWithCarry(a2, b2, ref carry);
+            ulong s3 = AddWithCarry(a3, b3, ref carry);
+            ulong borrow = 0;
+            ulong d0 = SubtractWithBorrow(s0, m0, ref borrow);
+            ulong d1 = SubtractWithBorrow(s1, m1, ref borrow);
+            ulong d2 = SubtractWithBorrow(s2, m2, ref borrow);
+            ulong d3 = SubtractWithBorrow(s3, m3, ref borrow);
+
+            // The 257-bit sum is at least the modulus when it carried out or its difference did not borrow.
+            ulong keepSum = (carry | (borrow ^ 1)) - 1;
+            modulus = (s0 & keepSum) | (d0 & ~keepSum);
+            Unsafe.Add(ref modulus, 1) = (s1 & keepSum) | (d1 & ~keepSum);
+            Unsafe.Add(ref modulus, 2) = (s2 & keepSum) | (d2 & ~keepSum);
+            Unsafe.Add(ref modulus, 3) = (s3 & keepSum) | (d3 & ~keepSum);
+            return true;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong AddWithCarry(ulong x, ulong y, ref ulong carry)
+        {
+            ulong sum = x + y;
+            ulong result = sum + carry;
+            carry = (sum < x ? 1UL : 0UL) | (result < sum ? 1UL : 0UL);
+            return result;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong SubtractWithBorrow(ulong x, ulong y, ref ulong borrow)
+        {
+            ulong difference = x - y;
+            ulong result = difference - borrow;
+            borrow = (x < y ? 1UL : 0UL) | (difference < borrow ? 1UL : 0UL);
+            return result;
+        }
+
+        /// <summary>MULMOD of the slots above <paramref name="modulus"/> on SP1's precompile, whose result replaces the modulus.</summary>
+        /// <param name="modulus">The modulus, not zero, with the second factor in the slot above and the first in the slot above that.</param>
+        /// <remarks>
+        /// The precompile overwrites its multiplicand with the product and takes the multiplier and the modulus side by
+        /// side. The second factor's slot takes the product, so only the first factor and the modulus are copied in and
+        /// the product out. The stack is pinned and its slots are 8-byte aligned, as the precompile needs.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Sp1MulModInSlots(ref ulong modulus)
+        {
+            ref UInt256 m = ref Unsafe.As<ulong, UInt256>(ref modulus);
+            ref UInt256 b = ref Unsafe.Add(ref m, 1);
+            EvmInstructions.Sp1MulModOperands operands;
+            operands.Multiplier = Unsafe.Add(ref m, 2);
+            operands.Modulus = m;
+            Accelerators.UInt256MulMod((ulong*)Unsafe.AsPointer(ref b), (ulong*)&operands);
+            m = b;
         }
 
         /// <summary>
@@ -949,11 +1121,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (following == (byte)Instruction.PUSH4 &&
                     Unsafe.Add(ref opcode, 6) == (byte)Instruction.EQ && head < EvmStack.MaxStackSize - 2)
                 {
-                    uint branch = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref opcode, 7));
-                    if ((byte)branch == (byte)Instruction.PUSH2 && branch >> 24 == (byte)Instruction.JUMPI)
+                    uint branch = CodeWord(ref opcode, 7);
+                    if (CodeByte(ref opcode, branch, 7, 7) == (byte)Instruction.PUSH2 && CodeByte(ref opcode, branch, 7, 10) == (byte)Instruction.JUMPI)
                     {
                         // The selector's word, reversed, holds it zero-extended above bit 32, where a 32-bit read needs extending.
-                        ulong selector = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref opcode, 2))) >> 32;
+                        // Without Zbb a reversal is a long software sequence, so the four bytes are gathered instead.
+                        ulong selector = ZkEvmBitOperations.HasByteReverse
+                            ? BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref opcode, 2))) >> 32
+                            : ((ulong)Unsafe.Add(ref opcode, 2) << 24) | ((ulong)Unsafe.Add(ref opcode, 3) << 16) |
+                              ((ulong)Unsafe.Add(ref opcode, 4) << 8) | Unsafe.Add(ref opcode, 5);
                         // The fused step charges DUP1 with every opcode after it in one test.
                         if (((top ^ selector) | Unsafe.Add(ref top, 1) | Unsafe.Add(ref top, 2) | Unsafe.Add(ref top, 3)) != 0)
                         {
@@ -966,7 +1142,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         else
                         {
                             ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
-                            nuint destination = ReadBigEndianUInt16(branch >> 8);
+                            nuint destination = CodeUInt16(ref opcode, branch, 7, 8);
                             if (destination < (nuint)AlignedStack(ref stack).CodeLength && TryCharge(ref gas, 4 * VeryLowGasCost.GasCost + jumpGas))
                             {
                                 if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(destination))
@@ -1001,7 +1177,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head++;
                     sp = ref Moved(ref sp, 1);
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint unfused = AlignedTable(handlers)[following];
+                    nint unfused = HandlerAt(handlers, following);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
                 }
             }
@@ -1010,7 +1186,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
 
         Dispatch:
-            nint next = AlignedTable(handlers)[PairAt(ref ip)];
+            nint next = HandlerAt(handlers, PairAt(ref ip));
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -1036,7 +1212,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head++;
                 sp = ref Moved(ref sp, 1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1072,12 +1248,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     sp = ref Moved(ref sp, -1);
                     gas -= BaseGasCost.GasCost;
                     ip = ref Unsafe.Add(ref ip, 2);
-                    nint fused = AlignedTable(handlers)[PairAt(ref ip)];
+                    nint fused = HandlerAt(handlers, PairAt(ref ip));
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, fused);
                 }
 
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = AlignedTable(handlers)[following];
+                nint next = HandlerAt(handlers, following);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1108,7 +1284,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 SwapStep<TOpCount>.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1146,7 +1322,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 // Both read off the opcode's address, so the immediate's needs no add of its own.
                 ref byte opcode = ref ip;
-                nint next = AlignedTable(handlers)[PairAt(ref Unsafe.Add(ref opcode, 2))];
+                nint next = HandlerAt(handlers, PairAt(ref Unsafe.Add(ref opcode, 2)));
                 SetWord(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), Unsafe.Add(ref opcode, 1));
                 ip = ref Unsafe.Add(ref ip, 2);
                 head++;
@@ -1175,7 +1351,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (TryCharge(ref gas, JumpDestGasCost.GasCost))
             {
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1204,7 +1380,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head++;
                 sp = ref Moved(ref sp, 1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1309,7 +1485,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head++;
                 sp = ref Moved(ref sp, 1);
                 ip = ref Unsafe.Add(ref ip, 1 + TOpCount.Count);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1416,11 +1592,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ip = ref Unsafe.Add(ref ip, 3);
             head++;
             sp = ref Moved(ref sp, 1);
-            nint next = AlignedTable(handlers)[following];
+            nint next = HandlerAt(handlers, following);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
 
         Dispatch:
-            nint target = AlignedTable(handlers)[PairAt(ref ip)];
+            nint target = HandlerAt(handlers, PairAt(ref ip));
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, target);
 
         Analyze:
@@ -1459,15 +1635,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) == 0)
                 {
                     // Charged in the carried gas: a separate copy would take a callee-saved register.
-                    ref byte destination = ref state.Memory.TryPrepareWordOverwrite(offset, ref gas);
+                    ref byte destination = ref AlignedMemory(ref state).TryPrepareWordOverwrite(offset, ref gas);
                     if (!Unsafe.IsNullRef(ref destination))
                     {
                         // The value is the word below the offset; memory holds it big-endian.
-                        StoreBigEndian(ref destination, Unsafe.Add(ref offset, -1), Unsafe.Add(ref offset, -2), Unsafe.Add(ref offset, -3), Unsafe.Add(ref offset, -4));
+                        StoreBigEndian(ref destination, ref offset);
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                        nint next = HandlerAt(handlers, PairAt(ref ip));
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
@@ -1518,7 +1694,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 code = ref stack.Code;
                 sp = ref SlotAt(ref stack.Bottom, head);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1554,7 +1730,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 code = ref stack.Code;
                 sp = ref SlotAt(ref stack.Bottom, head);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1592,7 +1768,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head -= 2;
                 sp = ref SlotAt(ref stack.Bottom, head);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1649,7 +1825,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3) | (target >> 32)) == 0)
                         {
                             gas -= cost;
-                            ref byte range = ref state.Memory.TryPrepareRangeOverwrite(target, size, ref gas);
+                            ref byte range = ref AlignedMemory(ref state).TryPrepareRangeOverwrite(target, size, ref gas);
                             if (!Unsafe.IsNullRef(ref range))
                             {
                                 uint copied = 0;
@@ -1680,7 +1856,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head -= 3;
             sp = ref Moved(ref sp, -3);
             ip = ref Unsafe.Add(ref ip, 1);
-            nint next = AlignedTable(handlers)[PairAt(ref ip)];
+            nint next = HandlerAt(handlers, PairAt(ref ip));
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -1744,7 +1920,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong offset = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) == 0)
                 {
-                    ref byte destination = ref state.Memory.GetActiveInitializedRange(offset, 1);
+                    ref byte destination = ref AlignedMemory(ref state).GetActiveInitializedRange(offset, 1);
                     if (!Unsafe.IsNullRef(ref destination))
                     {
                         // The value is the word below the offset, whose low byte comes first in limb layout.
@@ -1752,7 +1928,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                        nint next = HandlerAt(handlers, PairAt(ref ip));
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
@@ -1787,13 +1963,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong slot = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 if ((Unsafe.Add(ref slot, 1) | Unsafe.Add(ref slot, 2) | Unsafe.Add(ref slot, 3) | (slot >> 32)) == 0)
                 {
-                    ref byte source = ref state.Memory.GetActiveInitializedWord(slot);
+                    ref byte source = ref AlignedMemory(ref state).GetActiveInitializedWord(slot);
                     if (!Unsafe.IsNullRef(ref source))
                     {
                         // Memory holds the word big-endian; the slot takes it in limb layout, over the offset it held.
                         LoadBigEndian(ref slot, ref source);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                        nint next = HandlerAt(handlers, PairAt(ref ip));
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
@@ -1829,13 +2005,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ulong offset = slot;
                 // Below 2^32 the offset cannot overflow when the word is added to it.
                 if ((Unsafe.Add(ref slot, 1) | Unsafe.Add(ref slot, 2) | Unsafe.Add(ref slot, 3) | (offset >> 32)) == 0 &&
-                    offset + EvmStack.WordSize <= (ulong)stack.InputDataLength)
+                    offset + EvmStack.WordSize <= (ulong)AlignedStack(ref stack).InputDataLength)
                 {
                     // The input holds the word big-endian; the slot takes it in limb layout, over the offset it held.
-                    ref byte source = ref Unsafe.Add(ref Unsafe.AsRef(in stack.InputData), (nint)offset);
+                    ref byte source = ref Unsafe.Add(ref Unsafe.AsRef(in AlignedStack(ref stack).InputData), (nint)offset);
                     LoadBigEndian(ref slot, ref source);
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                    nint next = HandlerAt(handlers, PairAt(ref ip));
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
@@ -1876,7 +2052,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                      ((offset | length) >> 32)) == 0)
                 {
                     ulong cost = GasCostOf.Sha3 + GasCostOf.Sha3Word * ((length + (EvmStack.WordSize - 1)) >> 5);
-                    ref byte data = ref state.Memory.GetActiveInitializedRange(offset, length);
+                    ref byte data = ref AlignedMemory(ref state).GetActiveInitializedRange(offset, length);
                     if (gas >= cost && !Unsafe.IsNullRef(ref data))
                     {
                         gas -= cost;
@@ -1888,16 +2064,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         sp = ref SlotAt(ref stack.Bottom, head);
                         // The hash lands big-endian over the length; the slot holds it in limb layout.
                         ref ulong hash = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
-                        ulong limb3 = ZkEvmBitOperations.Bswap64(hash);
-                        ulong limb2 = ZkEvmBitOperations.Bswap64(Unsafe.Add(ref hash, 1));
-                        ulong limb1 = ZkEvmBitOperations.Bswap64(Unsafe.Add(ref hash, 2));
-                        ulong limb0 = ZkEvmBitOperations.Bswap64(Unsafe.Add(ref hash, 3));
+                        // Loaded once: through Bswap64 the JIT reloads a mask for each word.
+                        ZkEvmBitOperations.LoadSwapMasks(out ulong m8, out ulong m16);
+                        ulong limb3 = ZkEvmBitOperations.Swap(hash, m8, m16);
+                        ulong limb2 = ZkEvmBitOperations.Swap(Unsafe.Add(ref hash, 1), m8, m16);
+                        ulong limb1 = ZkEvmBitOperations.Swap(Unsafe.Add(ref hash, 2), m8, m16);
+                        ulong limb0 = ZkEvmBitOperations.Swap(Unsafe.Add(ref hash, 3), m8, m16);
                         hash = limb0;
                         Unsafe.Add(ref hash, 1) = limb1;
                         Unsafe.Add(ref hash, 2) = limb2;
                         Unsafe.Add(ref hash, 3) = limb3;
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                        nint next = HandlerAt(handlers, PairAt(ref ip));
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
@@ -1928,7 +2106,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1957,7 +2135,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -2010,7 +2188,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -2073,7 +2251,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head--;
             sp = ref Moved(ref sp, -1);
             ip = ref Unsafe.Add(ref ip, 1);
-            nint next = AlignedTable(handlers)[PairAt(ref ip)];
+            nint next = HandlerAt(handlers, PairAt(ref ip));
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -2132,7 +2310,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head--;
             sp = ref Moved(ref sp, -1);
             ip = ref Unsafe.Add(ref ip, 1);
-            nint next = AlignedTable(handlers)[PairAt(ref ip)];
+            nint next = HandlerAt(handlers, PairAt(ref ip));
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -2224,7 +2402,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -2275,7 +2453,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head--;
             sp = ref Moved(ref sp, -1);
             ip = ref Unsafe.Add(ref ip, 1);
-            nint next = AlignedTable(handlers)[PairAt(ref ip)];
+            nint next = HandlerAt(handlers, PairAt(ref ip));
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -2316,7 +2494,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head--;
                     sp = ref Moved(ref sp, -1);
                     ip = ref Unsafe.Add(ref code, (nint)target + 1);
-                    nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                    nint next = HandlerAt(handlers, PairAt(ref ip));
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
@@ -2356,7 +2534,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     sp = ref Moved(ref sp, -2);
                     gas -= JumpIGasCost.GasCost;
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint notTaken = AlignedTable(handlers)[PairAt(ref ip)];
+                    nint notTaken = HandlerAt(handlers, PairAt(ref ip));
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, notTaken);
                 }
 
@@ -2375,7 +2553,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     sp = ref Moved(ref sp, -2);
                     gas -= jumpIAndJumpDestGas;
                     ip = ref Unsafe.Add(ref code, (nint)target + 1);
-                    nint taken = AlignedTable(handlers)[PairAt(ref ip)];
+                    nint taken = HandlerAt(handlers, PairAt(ref ip));
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, taken);
                 }
             }
@@ -2409,13 +2587,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             nint target = (nint)Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
             Debug.Assert((nuint)target < (nuint)stack.CodeLength);
-            if (stack.TryMarkJumpDestination(target, ref code))
+            if (AlignedStack(ref stack).TryMarkJumpDestination(target, ref code))
             {
                 head -= TConditional.IsActive ? 2 : 1;
                 sp = ref Moved(ref sp, -(TConditional.IsActive ? 2 : 1));
                 gas -= JumpAndJumpDestGas<TConditional>();
                 ip = ref Unsafe.Add(ref code, target + 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -2451,7 +2629,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 sp = ref SlotAt(ref stack.Bottom, head);
                 gas -= JumpAndJumpDestGas<TConditional>();
                 ip = ref Unsafe.Add(ref code, target + 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 

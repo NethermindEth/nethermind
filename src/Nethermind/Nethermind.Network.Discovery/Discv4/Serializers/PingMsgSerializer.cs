@@ -3,7 +3,6 @@
 
 using System.Net;
 using Autofac.Features.AttributeFilters;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
@@ -11,17 +10,15 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
 
-public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<PingMsg>
+public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IMessageSerializer<PingMsg>
 {
     protected virtual byte MsgTypeByte => (byte)MsgType.Ping;
 
-    public void Serialize(IByteBuffer byteBuffer, PingMsg msg)
+    public int Serialize(Span<byte> destination, PingMsg msg)
     {
-        (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) = GetLength(msg);
+        (_, int contentLength, int sourceAddressLength, int destinationAddressLength) = GetDataLength(msg);
 
-        byteBuffer.MarkIndex();
-        PrepareBufferForSerialization(byteBuffer, totalLength, MsgTypeByte);
-        ByteBufferRlpWriter writer = new(byteBuffer);
+        RlpWriter writer = StartPacket(destination, MsgTypeByte);
         writer.StartSequence(contentLength);
         writer.Encode(msg.Version);
         Encode(ref writer, msg.SourceAddress, msg.SourceTcpPort, sourceAddressLength);
@@ -33,18 +30,15 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
             writer.Encode(msg.EnrSequence.Value);
         }
 
-        byteBuffer.ResetIndex();
-        AddSignatureAndMdc(byteBuffer, totalLength + 1);
-
-        byteBuffer.MarkReaderIndex();
-        msg.Mdc = ReadHash(byteBuffer, byteBuffer.ReaderIndex);
-        byteBuffer.ResetReaderIndex();
+        int length = CompletePacket(destination, in writer, out ValueHash256 mdc);
+        msg.Mdc = mdc;
+        return length;
     }
 
-    public PingMsg Deserialize(IByteBuffer msgBytes)
+    public PingMsg Deserialize(ReadOnlySpan<byte> msgBytes)
     {
-        (PublicKey FarPublicKey, ValueHash256 Mdc, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
-        RlpReader ctx = new(Data.AsSpan());
+        (PublicKey FarPublicKey, ValueHash256 Mdc) = PrepareForDeserialization(msgBytes, out ReadOnlySpan<byte> data);
+        RlpReader ctx = new(data);
         int messageLength = ctx.ReadSequenceLength();
         if (messageLength > ctx.Length - ctx.Position)
         {
@@ -90,19 +84,13 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
         }
 
         ctx.Check(messageEnd);
-        Data.SetReaderIndex(Data.ReaderIndex + ctx.Position);
         return msg;
     }
 
-    public int GetLength(PingMsg msg, out int contentLength)
-    {
-        (int totalLength, contentLength, int _, int _) =
-            GetLength(msg);
-        return totalLength;
-    }
+    public int GetLength(PingMsg msg) => GetPacketLength(GetDataLength(msg).totalLength);
 
 
-    private static (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) GetLength(PingMsg msg)
+    private static (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) GetDataLength(PingMsg msg)
     {
         int sourceAddressLength = GetIPEndPointLength(msg.SourceAddress, msg.SourceTcpPort);
         int destinationAddressLength = GetIPEndPointLength(msg.DestinationAddress, msg.DestinationTcpPort);

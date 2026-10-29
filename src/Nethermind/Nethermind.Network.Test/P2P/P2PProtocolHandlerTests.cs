@@ -335,9 +335,12 @@ namespace Nethermind.Network.Test.P2P
             p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
 
             _session.Received(1).InitiateDisconnect(DisconnectReason.UnexpectedIdentity, Arg.Any<string>());
-            Assert.That(requestedProtocols, Is.Empty);
-            Assert.That(p2PProtocolHandler.AgreedCapabilities, Is.Empty);
-            Assert.That(p2PProtocolHandler.AvailableCapabilities, Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(requestedProtocols, Is.Empty);
+                Assert.That(p2PProtocolHandler.AgreedCapabilities, Is.Empty);
+                Assert.That(p2PProtocolHandler.AvailableCapabilities, Is.Empty);
+            }
         }
 
         [Test]
@@ -353,8 +356,11 @@ namespace Nethermind.Network.Test.P2P
             p2PProtocolHandler.HandleMessage(CreateP2PPacket(new AddCapabilityMessage(capability)));
             p2PProtocolHandler.HandleMessage(CreateP2PPacket(new AddCapabilityMessage(capability)));
 
-            Assert.That(requestedCount, Is.EqualTo(1));
-            Assert.That(p2PProtocolHandler.AgreedCapabilities.Count(c => c.Equals(capability)), Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(requestedCount, Is.EqualTo(1));
+                Assert.That(p2PProtocolHandler.AgreedCapabilities.Count(c => c.Equals(capability)), Is.EqualTo(1));
+            }
         }
 
         [Test]
@@ -385,8 +391,11 @@ namespace Nethermind.Network.Test.P2P
             p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
 
             Assert.That(requestedProtocols, Has.Exactly(1).Items);
-            Assert.That(requestedProtocols[0].ProtocolCode, Is.EqualTo(Protocol.Eth));
-            Assert.That(requestedProtocols[0].Version, Is.EqualTo(71));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(requestedProtocols[0].ProtocolCode, Is.EqualTo(Protocol.Eth));
+                Assert.That(requestedProtocols[0].Version, Is.EqualTo(71));
+            }
         }
 
         [Test]

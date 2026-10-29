@@ -77,7 +77,7 @@ namespace Nethermind.HealthChecks
             _timer.Dispose();
         }
 
-        public void EnsureEnoughFreeSpaceOnStart(ITimerFactory timerFactory)
+        public void EnsureEnoughFreeSpaceOnStart(ITimerFactory timerFactory, CancellationToken cancellationToken = default)
         {
             float minAvailableSpaceThreshold = 2 * _healthChecksConfig.LowStorageSpaceShutdownThreshold;
             if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0 && _healthChecksConfig.LowStorageSpaceWarningThreshold > _healthChecksConfig.LowStorageSpaceShutdownThreshold)
@@ -87,7 +87,7 @@ namespace Nethermind.HealthChecks
             {
                 if (_healthChecksConfig.LowStorageCheckAwaitOnStartup)
                 {
-                    ManualResetEventSlim mre = new(false);
+                    using ManualResetEventSlim mre = new(false);
                     using ITimer timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(_checkPeriodMinutes));
                     timer.Elapsed += (t, e) =>
                     {
@@ -96,7 +96,7 @@ namespace Nethermind.HealthChecks
                     };
 
                     timer.Start();
-                    mre.Wait();
+                    mre.Wait(cancellationToken);
                 }
                 else
                 {

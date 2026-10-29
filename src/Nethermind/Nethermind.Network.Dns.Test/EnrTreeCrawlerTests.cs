@@ -41,8 +41,11 @@ public class EnrTreeCrawlerTests
 
         (List<string> records, TestLogger logger) = await Crawl(client);
 
-        Assert.That(records, Is.EqualTo(new[] { LeafText }));
-        Assert.That(logger.LogList, Has.None.Contains("does not hash"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(records, Is.EqualTo(new[] { LeafText }));
+            Assert.That(logger.LogList, Has.None.Contains("does not hash"));
+        }
     }
 
     [Test]
@@ -58,8 +61,11 @@ public class EnrTreeCrawlerTests
 
         (List<string> records, TestLogger logger) = await Crawl(client);
 
-        Assert.That(records, Is.Empty);
-        Assert.That(logger.LogList, Has.Some.Contains("does not hash to the subdomain"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(records, Is.Empty);
+            Assert.That(logger.LogList, Has.Some.Contains("does not hash to the subdomain"));
+        }
     }
 
     [Test]
@@ -73,8 +79,11 @@ public class EnrTreeCrawlerTests
 
         (_, TestLogger logger) = await Crawl(client);
 
-        Assert.That(client.Queries, Is.SupersetOf(new[] { FirstChildLabel, SecondChildLabel }));
-        Assert.That(logger.LogList, Has.None.Contains("does not hash"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(client.Queries, Is.SupersetOf(new[] { FirstChildLabel, SecondChildLabel }));
+            Assert.That(logger.LogList, Has.None.Contains("does not hash"));
+        }
     }
 
     [Test]
@@ -91,8 +100,11 @@ public class EnrTreeCrawlerTests
         (_, TestLogger logger) = await Crawl(client);
 
         Assert.That(client.Queries, Has.None.EqualTo(FirstChildLabel));
-        Assert.That(client.Queries, Has.None.EqualTo("AAE6C2QIK4C66JK4Z47XCKUZCI"));
-        Assert.That(logger.LogList, Has.Some.Contains("does not hash to the subdomain"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(client.Queries, Has.None.EqualTo("AAE6C2QIK4C66JK4Z47XCKUZCI"));
+            Assert.That(logger.LogList, Has.Some.Contains("does not hash to the subdomain"));
+        }
     }
 
     private static string RootPointingAt(string enrRoot) =>
@@ -106,8 +118,11 @@ public class EnrTreeCrawlerTests
 
         (_, TestLogger logger) = await Crawl(client, EthDiscoSigner);
 
-        Assert.That(client.Queries, Does.Contain(enrRoot));
-        Assert.That(logger.LogList, Has.None.Contains("not an enrtree-root signed"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(client.Queries, Does.Contain(enrRoot));
+            Assert.That(logger.LogList, Has.None.Contains("not an enrtree-root signed"));
+        }
     }
 
     [TestCase("enrtree-root:v1 e=PL443R7BHELRFKXORE3EXM23YY l=FDXN3SN67NA5DKA4J2GOK7BVQI seq=1790946902 sig=_5woNhIQQlLQwyA40HWId-mLyqBEnNTKqjZmVREq3v4xAM4NiDzaRM2sezSX1OcFLHiGB-FjUDa9YZz6DJgcQAE", EthDiscoSigner, TestName = "Tampered root content")]
@@ -119,9 +134,12 @@ public class EnrTreeCrawlerTests
 
         (List<string> records, TestLogger logger) = await Crawl(client, signer);
 
-        Assert.That(records, Is.Empty);
-        Assert.That(client.Queries, Is.EqualTo(new[] { "" }));
-        Assert.That(logger.LogList, Has.Some.Contains("not an enrtree-root signed by the configured tree signer"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(records, Is.Empty);
+            Assert.That(client.Queries, Is.EqualTo(new[] { "" }));
+            Assert.That(logger.LogList, Has.Some.Contains("not an enrtree-root signed by the configured tree signer"));
+        }
     }
 
     [Test]
@@ -135,8 +153,11 @@ public class EnrTreeCrawlerTests
             records.Add(record);
         }
 
-        Assert.That(records, Is.Empty);
-        Assert.That(logger.LogList, Has.Some.Contains("is not a base32 compressed public key"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(records, Is.Empty);
+            Assert.That(logger.LogList, Has.Some.Contains("is not a base32 compressed public key"));
+        }
     }
 
     private static async Task<(List<string> Records, TestLogger Logger)> Crawl(FakeDnsClient client, string? signer = null)
