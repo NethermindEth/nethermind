@@ -718,7 +718,9 @@ public static class FrameTxValidation
             {
                 tokens += signature.Signer is null ? 0 : CountCalldataTokens(signature.Signer.Bytes, spec);
                 tokens += CountCalldataTokens(signature.Msg.Span, spec);
-                tokens += CountCalldataTokens(signature.Signature.Span, spec);
+                tokens += signature.SignsCanonicalHash
+                    ? (ulong)signature.Signature.Length * spec.GasCosts.TxDataNonZeroMultiplier
+                    : CountCalldataTokens(signature.Signature.Span, spec);
                 dataLength += (ulong)(signature.Signer is null ? 0 : Address.Size)
                               + (ulong)signature.Msg.Length
                               + (ulong)signature.Signature.Length;
