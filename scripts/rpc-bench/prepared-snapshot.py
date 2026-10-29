@@ -271,7 +271,9 @@ def prepare(args):
         raise RuntimeError('another container is running; refusing shared-host preparation')
     toyroot = root / 'toy'
     toyroot.mkdir()
+    print(f'Preflight reserves/occupancy passed; testing durable OverlayFS on {socket.gethostname()}', flush=True)
     atomic(output / 'kernel-probe.json', toy(toyroot))
+    print('Kernel whiteout/opaque/remount/nested-child probe passed; fingerprinting protected source', flush=True)
     source_before = fingerprint(SOURCE)
     atomic(output / 'source-before.json', source_before)
     overlay(SOURCE, root)
@@ -289,10 +291,11 @@ def prepare(args):
     watcher.start()
     try:
         run('docker', 'pull', BASELINE, timeout=600)
+        running = True  # Ownership is persisted before container creation, including interrupted docker run.
         run('docker', 'run', '-d', '--name', container, '--restart', 'no', '--stop-signal', 'SIGINT',
             '-p', '127.0.0.1:18545:8545', '-v', f'{root}/merged:/execution-data:rw', BASELINE, *FLAGS)
-        running = True
         atomic(output / 'container-start.json', inspect(container))
+        print(f'Owned baseline container started: {container}; readiness timeout600s', flush=True)
         health_end = time.monotonic() + 600
         while True:
             if not inspect(container)['State']['Running']:
@@ -305,6 +308,7 @@ def prepare(args):
             if time.monotonic() >= health_end:
                 raise RuntimeError('health timeout')
             time.sleep(10)
+        print('RPC ready; waiting for fresh positive receipt migration completion, timeout10800s', flush=True)
         end = time.monotonic() + 10800
         while True:
             text = logs(container)
@@ -317,12 +321,14 @@ def prepare(args):
             if time.monotonic() >= end:
                 raise RuntimeError('10800s migration timeout')
             time.sleep(10)
+        print('Positive receipt migration completion observed; checking identity and100case exact oracle', flush=True)
         atomic(output / 'runtime-identity.json', identity())
         validate_responses(json.loads(Path(args.oracle).read_text()), output / 'responses.json')
         final_logs = stop(container, output)
         running = False
         if not completion(final_logs):
             raise RuntimeError('completion evidence absent at shutdown')
+        print('Normal DB shutdown verified; syncing and sealing read-only fixture', flush=True)
         run('sync', '-f', root / 'merged', root=True, timeout=600)
         run('mount', '-o', 'remount,ro', root / 'merged', root=True)
         mount = mounted(root / 'merged', True)
@@ -353,7 +359,13 @@ def prepare(args):
                 stop(container, output)
             except Exception as error:
                 (output / 'cleanup-error.txt').write_text(str(error))
-                raise
+                found = subprocess.run(['docker', 'inspect', container], capture_output=True, timeout=30)
+                if found.returncode == 0:
+                    if json.loads(found.stdout)[0]['State']['Running']:
+                        raise RuntimeError('owned container still running; manual bounded cleanup required') from error
+                    run('docker', 'rm', container)
+                elif 'No such' not in found.stderr.decode(errors='replace'):
+                    raise RuntimeError('cannot establish owned container stopped') from error
         final_source = fingerprint(SOURCE)
         atomic(output / 'source-after.json', final_source)
         if final_source != source_before:
@@ -386,9 +398,9 @@ def qualify(args):
         space(PARENT)
         space(Path('/'))
         run('docker', 'pull', args.image, timeout=600)
+        running = True
         run('docker', 'run', '-d', '--name', container, '--restart', 'no', '--stop-signal', 'SIGINT',
             '-p', '127.0.0.1:18545:8545', '-v', f'{child}/merged:/execution-data:rw', args.image, *FLAGS)
-        running = True
         end = time.monotonic() + 600
         while True:
             space(PARENT)
