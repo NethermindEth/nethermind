@@ -286,6 +286,14 @@ public sealed partial class JumpDestinationAnalyzer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static nint HighestSetBit(ulong value)
     {
+        // A 32-bit core multiplies 64-bit words in several instructions and shifts them in pairs: there the half holding
+        // the bit is smeared and multiplied alone.
+        if (IntPtr.Size == sizeof(uint))
+        {
+            uint high = (uint)(value >> 32);
+            return high != 0 ? 32 + HighestSetBit(high) : HighestSetBit((uint)value);
+        }
+
         value |= value >> 1;
         value |= value >> 2;
         value |= value >> 4;
@@ -294,6 +302,25 @@ public sealed partial class JumpDestinationAnalyzer
         value |= value >> 32;
         return Unsafe.Add(ref MemoryMarshal.GetReference(HighestSetBitIndices), (nint)((value * 0x03F7_9D71_B4CB_0A89UL) >> 58));
     }
+
+    /// <summary><see cref="HighestSetBit(ulong)"/> of a 32-bit <paramref name="value"/>, which must not be zero.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static nint HighestSetBit(uint value)
+    {
+        value |= value >> 1;
+        value |= value >> 2;
+        value |= value >> 4;
+        value |= value >> 8;
+        value |= value >> 16;
+        return Unsafe.Add(ref MemoryMarshal.GetReference(HighestSetBitIndices32), (nint)((value * 0x07C4_ACDDU) >> 27));
+    }
+
+    /// <summary>The index of the highest set bit, by the top 5 bits of the smeared 32-bit value times the de Bruijn constant.</summary>
+    private static ReadOnlySpan<byte> HighestSetBitIndices32 =>
+    [
+        0, 9, 1, 10, 13, 21, 2, 29, 11, 14, 16, 18, 22, 25, 3, 30,
+        8, 12, 20, 28, 15, 17, 24, 7, 19, 27, 23, 6, 26, 5, 4, 31
+    ];
 
     /// <summary>The index of the highest set bit, by the top 6 bits of the smeared value times the de Bruijn constant.</summary>
     private static ReadOnlySpan<byte> HighestSetBitIndices =>
