@@ -981,12 +981,32 @@ public sealed partial class KeccakHash
     /// <remarks>Reads the whole word ending the message rather than the partial bytes one width at a time:
     /// on little-endian riscv64 those bytes are the word's top ones, so dropping its low byte, setting the
     /// pad byte above the rest and shifting the lot down by <c>7 - partial</c> bytes leaves exactly the
-    /// lane to absorb.</remarks>
+    /// lane to absorb. Where <see cref="StrictAlignmentFlag"/> is on and the partial bytes start on a word boundary, that
+    /// word is not: its read is a byte-by-byte gather, so the bytes are read in aligned pieces instead.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe ulong PaddedLastWord(byte* end, nuint partial)
     {
+        if (StrictAlignmentFlag.IsActive && ((nuint)(end - partial) & 7) == 0)
+        {
+            return PartialLane(ref *AlignedDown(end - partial), partial) | (0x01UL << (int)(partial << 3));
+        }
+
         ulong word = Unsafe.ReadUnaligned<ulong>(end - sizeof(ulong));
         return ((word >> 8) | (0x01UL << 56)) >> (int)((partial ^ 7) << 3);
+    }
+
+    /// <summary>The <paramref name="partial"/> bytes at <paramref name="lane"/>, zero-extended to a lane.</summary>
+    /// <param name="lane">A word boundary.</param>
+    /// <param name="partial">0 to 7; a constant folds the aligned pieces to at most three loads.</param>
+    /// <remarks>Reads no byte past the <paramref name="partial"/> ones.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong PartialLane(ref byte lane, nuint partial)
+    {
+        ulong word = 0;
+        if ((partial & 4) != 0) word = Unsafe.As<byte, uint>(ref lane);
+        if ((partial & 2) != 0) word |= (ulong)Unsafe.As<byte, ushort>(ref Unsafe.Add(ref lane, partial & 4)) << (int)((partial & 4) << 3);
+        if ((partial & 1) != 0) word |= (ulong)Unsafe.Add(ref lane, partial & 6) << (int)((partial & 6) << 3);
+        return word;
     }
 
     /// <summary>A message shorter than a lane followed by the 0x01 pad byte, as a lane.</summary>
