@@ -18,12 +18,16 @@ using Nethermind.Eez.Execution.Settlement.RollupX;
 
 namespace Nethermind.Eez.Follower.RollupX;
 
-/// <summary>Reads the blobs an L1 transaction carried.</summary>
+/// <summary>Reads the blobs L1 transactions carried.</summary>
 public interface IL1BlobSource
 {
-    /// <returns>The blobs <paramref name="versionedHashes"/> commit to, in their order.</returns>
+    /// <returns>
+    /// Every blob of the slot of <paramref name="block"/>, by the versioned hash of the commitment recomputed from its bytes.
+    /// <see cref="BlobSelection.Select(IReadOnlyDictionary{Hash256, byte[]}, IReadOnlyList{Hash256})"/> selects the blobs of
+    /// each transaction of the block from them.
+    /// </returns>
     /// <exception cref="L1SourceIncompleteException">The blobs cannot be served yet, or are no longer served.</exception>
-    Task<byte[][]> GetBlobs(EezL1Block block, IReadOnlyList<Hash256> versionedHashes, CancellationToken token);
+    Task<IReadOnlyDictionary<Hash256, byte[]>> GetSlotBlobs(EezL1Block block, CancellationToken token);
 }
 
 /// <summary>
@@ -40,20 +44,14 @@ public sealed class BeaconBlobSource(HttpClient http) : IL1BlobSource
 
     private (ulong GenesisTime, ulong SecondsPerSlot)? _clock;
 
-    public async Task<byte[][]> GetBlobs(EezL1Block block, IReadOnlyList<Hash256> versionedHashes, CancellationToken token)
+    public async Task<IReadOnlyDictionary<Hash256, byte[]>> GetSlotBlobs(EezL1Block block, CancellationToken token)
     {
-        if (versionedHashes.Count == 0)
-        {
-            return [];
-        }
-
         await KzgPolynomialCommitments.InitializeAsync();
         ulong slot = await Slot(block, token);
         List<byte[]> slotBlobs = await SlotBlobs(slot, token);
         try
         {
-            return BlobSelection.Select(slotBlobs, versionedHashes)
-                ?? throw new L1SourceIncompleteException(block.Number, $"The beacon node does not serve every blob L1 block {block.Number} carried in slot {slot}.");
+            return BlobSelection.ByVersionedHash(slotBlobs);
         }
         catch (ArgumentException)
         {
@@ -200,17 +198,13 @@ public static class BlobSelection
     private const int CommitmentSize = 48;
 
     /// <returns>The blob of each versioned hash, in order, or <see langword="null"/> when one is missing.</returns>
-    public static byte[][]? Select(IReadOnlyList<byte[]> blobs, IReadOnlyList<Hash256> versionedHashes)
-    {
-        Dictionary<Hash256, byte[]> byHash = new(blobs.Count);
-        foreach (byte[] blob in blobs)
-        {
-            if (blob.Length == BlobStream.BytesPerBlob)
-            {
-                byHash.TryAdd(VersionedHash(blob), blob);
-            }
-        }
+    public static byte[][]? Select(IReadOnlyList<byte[]> blobs, IReadOnlyList<Hash256> versionedHashes) =>
+        Select(ByVersionedHash(blobs), versionedHashes);
 
+    /// <param name="byHash">Blobs by the versioned hash of their recomputed commitment, as <see cref="ByVersionedHash"/> gives them.</param>
+    /// <returns>The blob of each versioned hash, in order, or <see langword="null"/> when one is missing.</returns>
+    public static byte[][]? Select(IReadOnlyDictionary<Hash256, byte[]> byHash, IReadOnlyList<Hash256> versionedHashes)
+    {
         byte[][] selected = new byte[versionedHashes.Count][];
         for (int i = 0; i < selected.Length; i++)
         {
@@ -223,6 +217,22 @@ public static class BlobSelection
         }
 
         return selected;
+    }
+
+    /// <summary>Recomputes the commitment of every full-size blob once; a blob of another size has no versioned hash.</summary>
+    /// <exception cref="ArgumentException">A blob holds an invalid field element.</exception>
+    public static Dictionary<Hash256, byte[]> ByVersionedHash(IReadOnlyList<byte[]> blobs)
+    {
+        Dictionary<Hash256, byte[]> byHash = new(blobs.Count);
+        foreach (byte[] blob in blobs)
+        {
+            if (blob.Length == BlobStream.BytesPerBlob)
+            {
+                byHash.TryAdd(VersionedHash(blob), blob);
+            }
+        }
+
+        return byHash;
     }
 
     public static Hash256 VersionedHash(ReadOnlySpan<byte> blob)

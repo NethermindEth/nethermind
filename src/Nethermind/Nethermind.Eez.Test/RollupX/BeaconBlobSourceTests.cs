@@ -21,26 +21,26 @@ public class BeaconBlobSourceTests
     [TestCase("{\"data\":{\"genesis_time\":null}}")]
     [TestCase("{\"data\":{\"genesis_time\":\"invalid\"}}")]
     [TestCase("invalid JSON")]
-    public async Task GetBlobs_MalformedClock_IsRetryable(string genesis)
+    public async Task GetSlotBlobs_MalformedClock_IsRetryable(string genesis)
     {
         using HttpClient http = Client(path => new StringContent(path.EndsWith("genesis") ? genesis : "{\"data\":{\"SECONDS_PER_SLOT\":\"12\"}}"));
-        await Assert.ThrowsAsync<L1SourceIncompleteException>(() => new BeaconBlobSource(http).GetBlobs(Block(), [TestItem.KeccakA], CancellationToken.None));
+        await Assert.ThrowsAsync<L1SourceIncompleteException>(() => new BeaconBlobSource(http).GetSlotBlobs(Block(), CancellationToken.None));
     }
 
     [TestCase("{}")]
     [TestCase("{\"data\":null}")]
     [TestCase("{\"data\":[\"0x00\"]}")]
     [TestCase("{\"data\":[null]}")]
-    public async Task GetBlobs_MalformedBlobData_IsRetryable(string data)
+    public async Task GetSlotBlobs_MalformedBlobData_IsRetryable(string data)
     {
         using HttpClient http = Client(path => new StringContent(path.Contains("genesis") ? "{\"data\":{\"genesis_time\":\"1000\"}}"
             : path.Contains("config/spec") ? "{\"data\":{\"SECONDS_PER_SLOT\":\"12\"}}" : data));
-        await Assert.ThrowsAsync<L1SourceIncompleteException>(() => new BeaconBlobSource(http).GetBlobs(Block(), [TestItem.KeccakA], CancellationToken.None));
+        await Assert.ThrowsAsync<L1SourceIncompleteException>(() => new BeaconBlobSource(http).GetSlotBlobs(Block(), CancellationToken.None));
     }
 
     [TestCase(true, TestName = "DeclaredOversizedClock")]
     [TestCase(false, TestName = "ChunkedOversizedClock")]
-    public async Task GetBlobs_OversizedClock_IsRetryable(bool declaredLength)
+    public async Task GetSlotBlobs_OversizedClock_IsRetryable(bool declaredLength)
     {
         using HttpClient http = Client(_ =>
         {
@@ -53,18 +53,18 @@ public class BeaconBlobSourceTests
             return new StreamContent(new NonSeekableStream(System.Text.Encoding.UTF8.GetBytes("{}" + new string(' ', 64 * 1024))));
         });
         L1SourceIncompleteException error = (await Assert.ThrowsAsync<L1SourceIncompleteException>(() =>
-            new BeaconBlobSource(http).GetBlobs(Block(), [TestItem.KeccakA], CancellationToken.None)))!;
+            new BeaconBlobSource(http).GetSlotBlobs(Block(), CancellationToken.None)))!;
         Assert.That(error.Message, Does.Contain("exceeds 65536 bytes"), "the size guard rejects the body before parsing it");
     }
 
     [Test]
-    public async Task GetBlobs_InvalidFieldElement_IsRetryable()
+    public async Task GetSlotBlobs_InvalidFieldElement_IsRetryable()
     {
         string blob = "0x" + new string('f', 64) + new string('0', 131072 * 2 - 64);
         using HttpClient http = Client(path => new StringContent(path.Contains("genesis") ? "{\"data\":{\"genesis_time\":\"1000\"}}"
             : path.Contains("config/spec") ? "{\"data\":{\"SECONDS_PER_SLOT\":\"12\"}}" : "{\"data\":[\"" + blob + "\"]}"));
         L1SourceIncompleteException error = (await Assert.ThrowsAsync<L1SourceIncompleteException>(() =>
-            new BeaconBlobSource(http).GetBlobs(Block(), [TestItem.KeccakA], CancellationToken.None)))!;
+            new BeaconBlobSource(http).GetSlotBlobs(Block(), CancellationToken.None)))!;
         Assert.That(error.Message, Does.Contain("invalid blob field element"));
     }
 

@@ -19,7 +19,8 @@ namespace Nethermind.Eez.Follower.RollupX;
 /// credited by <see cref="CarrierAttribution"/>, which also reads the entries L1 skipped from <c>L2TxSkipped</c>; of
 /// several anchor-only no-op batches from one root, only the earliest settles, and none when a richer batch from that root
 /// settles too, since they would all name the same L2 range. A batch's blobs are read only once it is known to settle
-/// us, so the blobs of a batch for another rollup, or of one that failed, never hold the follower back.
+/// us, so the blobs of a batch for another rollup, or of one that failed, never hold the follower back. The slot's blobs
+/// are read and verified at most once per scan, however many of its batches settle us, and are not kept after it.
 /// </summary>
 public sealed class RollupXBatchScanner(IEezL1Api l1, IL1BlobSource blobs, Address registry, ulong rollupId, ILogManager logManager) : IL1BatchScanner
 {
@@ -49,9 +50,10 @@ public sealed class RollupXBatchScanner(IEezL1Api l1, IL1BlobSource blobs, Addre
                 _logger.Info($"Batch {posted[index].Batch.TransactionHash} in L1 block {block.Number} only re-anchors {claims[index].CurrentRoot}, which another batch settles.");
         }
         ScannedBatch[] result = new ScannedBatch[posted.Count];
+        SlotBlobs slotBlobs = new(blobs, header);
         for (int i = 0; i < result.Length; i++)
         {
-            L1Batch batch = settlements[i].IsEmpty ? posted[i].Batch : await WithBlobs(posted[i], header, token);
+            L1Batch batch = settlements[i].IsEmpty ? posted[i].Batch : await WithBlobs(posted[i], slotBlobs, token);
             result[i] = new ScannedBatch(batch, settlements[i]);
         }
 
@@ -135,7 +137,7 @@ public sealed class RollupXBatchScanner(IEezL1Api l1, IL1BlobSource blobs, Addre
 
     /// <summary>The batch with the stream its blobs carry, which must be exactly every blob of its transaction, in order.</summary>
     /// <exception cref="EezFollowerException">The batch settled our rollup without carrying its stream in its blobs.</exception>
-    private async Task<L1Batch> WithBlobs(Posted posted, EezL1Block header, CancellationToken token)
+    private async Task<L1Batch> WithBlobs(Posted posted, SlotBlobs slotBlobs, CancellationToken token)
     {
         PostBatch decoded = posted.Decoded;
         Hash256[] versionedHashes = posted.VersionedHashes;
@@ -145,7 +147,7 @@ public sealed class RollupXBatchScanner(IEezL1Api l1, IL1BlobSource blobs, Addre
                 $"Batch {posted.Batch.TransactionHash} settled rollup {rollupId} without carrying its stream in every blob of its transaction, in order, and no calldata.");
         }
 
-        byte[][] carried = await blobs.GetBlobs(header, versionedHashes, token);
+        byte[][] carried = await slotBlobs.Select(versionedHashes, token);
         try
         {
             return posted.Batch with { DaStream = BlobStream.Unpack(carried) };
@@ -157,4 +159,19 @@ public sealed class RollupXBatchScanner(IEezL1Api l1, IL1BlobSource blobs, Addre
     }
 
     private sealed record Posted(L1Batch Batch, PostBatch Decoded, Hash256[] VersionedHashes, ClaimedChain Claim);
+
+    /// <summary>The blobs of one L1 block's slot, read on the first request of one scan and reused for its other batches.</summary>
+    private sealed class SlotBlobs(IL1BlobSource source, EezL1Block header)
+    {
+        private IReadOnlyDictionary<Hash256, byte[]>? _byHash;
+
+        /// <returns>The blobs <paramref name="versionedHashes"/> commit to, in their order.</returns>
+        /// <exception cref="L1SourceIncompleteException">The slot does not serve every blob of the transaction.</exception>
+        public async Task<byte[][]> Select(Hash256[] versionedHashes, CancellationToken token)
+        {
+            _byHash ??= await source.GetSlotBlobs(header, token);
+            return BlobSelection.Select(_byHash, versionedHashes)
+                ?? throw new L1SourceIncompleteException(header.Number, $"The beacon node does not serve every blob L1 block {header.Number} carried.");
+        }
+    }
 }

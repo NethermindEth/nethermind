@@ -347,8 +347,7 @@ public class EezDevReplayTests
     /// <summary>The beacon node as the recorded slots served it.</summary>
     private sealed class RecordedBlobs(RecordedL1 l1) : IL1BlobSource
     {
-        public Task<byte[][]> GetBlobs(EezL1Block block, IReadOnlyList<Hash256> versionedHashes, CancellationToken token) =>
-            Task.FromResult(BlobSelection.Select(l1.SlotBlobs[block.Number], versionedHashes)
-                ?? throw new L1SourceIncompleteException(block.Number, "The recorded slot lacks a blob."));
+        public Task<IReadOnlyDictionary<Hash256, byte[]>> GetSlotBlobs(EezL1Block block, CancellationToken token) =>
+            Task.FromResult<IReadOnlyDictionary<Hash256, byte[]>>(BlobSelection.ByVersionedHash(l1.SlotBlobs[block.Number]));
     }
 }
