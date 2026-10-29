@@ -40,17 +40,6 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
         _analyzer = null;
     }
 
-    /// <summary>Creates a precompile code entry with the bytes exposed by code-reflection opcodes.</summary>
-    /// <param name="precompile">The native precompile to dispatch.</param>
-    /// <param name="reflectionCode">The account code visible to EXTCODESIZE and EXTCODECOPY.</param>
-    /// <remarks>The reflection bytes are never interpreted while <see cref="Precompile"/> is set.</remarks>
-    public CodeInfo(IPrecompile precompile, ReadOnlyMemory<byte> reflectionCode)
-    {
-        Precompile = precompile;
-        InitializeCode(reflectionCode);
-        _analyzer = null;
-    }
-
     public partial ReadOnlyMemory<byte> Code { get; }
     public partial ReadOnlySpan<byte> CodeSpan { get; }
 
