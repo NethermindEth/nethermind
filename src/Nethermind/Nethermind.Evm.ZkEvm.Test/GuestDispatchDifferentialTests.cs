@@ -40,7 +40,7 @@ public class GuestDispatchDifferentialTests
 
     private static readonly ConcurrentDictionary<(Table, IReleaseSpec), nint[]> SharedTables = new();
 
-    private static readonly ConcurrentDictionary<(Table, IReleaseSpec, bool, bool), nint[]> PairedTables = new();
+    private static readonly ConcurrentDictionary<(Table, IReleaseSpec, bool, bool, bool), nint[]> PairedTables = new();
 
     private static readonly IReleaseSpec ReleaseSpec = Osaka.Instance;
 
@@ -621,6 +621,72 @@ public class GuestDispatchDifferentialTests
         Assert.That(mismatches, Is.Empty);
     }
 
+    public enum CallTarget { NoCode, Code, Delegation }
+
+    /// <remarks>
+    /// Two calls reach an account with no code, first cold and then warm, and a third reaches the target: an account
+    /// with no code, one with code, or one that delegates to code under EIP-7702. At code the chain leaves to enter its
+    /// frame. The calls expand memory over their input or output, or need no expansion, and move no value. Every amount
+    /// of gas up to the program's need puts the end of the gas inside each charge.
+    /// The reference is the cancelable table: a traced call enters a frame even at no code, so that the tracer sees it.
+    /// </remarks>
+    [Test]
+    public void Calls_match_the_shared_handlers(
+        [Values(Instruction.CALL, Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction op,
+        [Values] CallTarget target,
+        [ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec)
+    {
+        Address noCode = new("0x00000000000000000000000000000000000000aa");
+        Address withCode = new("0x00000000000000000000000000000000000000bb");
+        Address delegating = new("0x00000000000000000000000000000000000000cc");
+        CodeInfo code = new(new[] { (byte)Instruction.STOP });
+        ICodeInfoRepository repository = Substitute.For<ICodeInfoRepository>();
+        repository.GetCachedCodeInfo(Arg.Any<Address>(), Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address?>())
+            .Returns(call =>
+            {
+                Address account = (Address)call[0];
+                call[3] = account == delegating ? withCode : null;
+                return account == withCode ? code : CodeInfo.Empty;
+            });
+        repository.GetDelegatedCodeInfo(withCode, Arg.Any<IReleaseSpec>()).Returns(code);
+
+        Address last = target switch { CallTarget.NoCode => noCode, CallTarget.Code => withCode, _ => delegating };
+        byte[] program =
+        [
+            .. Call(op, noCode, 0, 0x40, 0x40, 0x20),
+            .. Call(op, noCode, 0x20, 0x20, 0, 0x20),
+            .. Call(op, last, 0x10, 0x20, 0xe0, 0x20),
+            (byte)Instruction.STOP
+        ];
+        const ulong ample = 100_000;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(program), Table.Cancelable, spec, codeInfoRepository: repository).GasLeft;
+
+        List<string> mismatches = [];
+        for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
+        {
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(program), Table.Untraced, spec, codeInfoRepository: repository);
+            Outcome shared = Run(gas, [], 0, new CodeInfo(program), Table.Cancelable, spec, codeInfoRepository: repository);
+            // A frame entered is not a fault: the gas, stack and counter it leaves the caller at must match too.
+            if (untraced.Exception == EvmExceptionType.Suspend ? untraced != shared : !Matches(untraced, shared))
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n shared   {shared}");
+        }
+
+        Outcome complete = Run(needed, [], 0, new CodeInfo(program), Table.Untraced, spec, codeInfoRepository: repository);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mismatches, Is.Empty);
+            Assert.That(complete.Exception, Is.EqualTo(target == CallTarget.NoCode ? EvmExceptionType.Stop : EvmExceptionType.Suspend));
+        }
+
+        static byte[] Call(Instruction op, Address to, byte inputOffset, byte inputLength, byte outputOffset, byte outputLength) =>
+        [
+            (byte)Instruction.PUSH1, outputLength, (byte)Instruction.PUSH1, outputOffset,
+            (byte)Instruction.PUSH1, inputLength, (byte)Instruction.PUSH1, inputOffset,
+            .. op == Instruction.CALL ? (byte[])[(byte)Instruction.PUSH0] : [],
+            (byte)Instruction.PUSH20, .. to.Bytes, (byte)Instruction.PUSH1, 0x40, (byte)op
+        ];
+    }
+
     /// <summary>A big-endian word drawn mostly from the values arithmetic splits its cases on.</summary>
     private static byte[] EdgeWord(Random random)
     {
@@ -845,11 +911,14 @@ public class GuestDispatchDifferentialTests
     });
 
     /// <param name="initial">The frame's full policy, whose execution gas must be <paramref name="gas"/>; by default one holding only it.</param>
+    /// <param name="codeInfoRepository">The code the calls read; without it CALL, STATICCALL and DELEGATECALL run as INVALID.</param>
     private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
-        bool loadsStorage = false, byte[]? returnData = null, bool isStatic = false, EthereumGasPolicy? initial = null)
+        bool loadsStorage = false, byte[]? returnData = null, bool isStatic = false, EthereumGasPolicy? initial = null,
+        ICodeInfoRepository? codeInfoRepository = null)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
         if (returnData is not null) vm.ReturnDataBuffer = returnData;
+        if (codeInfoRepository is not null) vm.UseCodeInfoRepository(codeInfoRepository);
         using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, 0, UInt256.Zero, inputData);
         using VmState<EthereumGasPolicy> frame = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default, isStatic);
@@ -880,7 +949,8 @@ public class GuestDispatchDifferentialTests
         {
             if (NeedsWorldStateOrHash((Instruction)opcode) &&
                 !(loadsStorage && (Instruction)opcode is Instruction.SLOAD or Instruction.TLOAD or Instruction.TSTORE) &&
-                !(returnData is not null && (Instruction)opcode is Instruction.RETURNDATASIZE or Instruction.RETURNDATACOPY))
+                !(returnData is not null && (Instruction)opcode is Instruction.RETURNDATASIZE or Instruction.RETURNDATACOPY) &&
+                !(codeInfoRepository is not null && (Instruction)opcode is Instruction.CALL or Instruction.STATICCALL or Instruction.DELEGATECALL))
                 handlers[opcode] = handlers[(int)Instruction.INVALID];
         }
 
@@ -890,7 +960,7 @@ public class GuestDispatchDifferentialTests
         nint pc;
         nint finalHead;
         // Paired once per table, fork and replaced set, as the dispatch loop pairs each table once.
-        nint[] paired = PairedTables.GetOrAdd((table, spec ?? ReleaseSpec, loadsStorage, returnData is not null), _ => VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers));
+        nint[] paired = PairedTables.GetOrAdd((table, spec ?? ReleaseSpec, loadsStorage, returnData is not null, codeInfoRepository is not null), _ => VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers));
         fixed (nint* pairedStart = paired)
         {
             nint* entries = pairedStart + VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength;
@@ -948,6 +1018,10 @@ public class GuestDispatchDifferentialTests
         public ITxTracer Tracer => _txTracer;
 
         public void Enter(VmState<EthereumGasPolicy> frame) => VmState = frame;
+
+        /// <summary>Sets the code repository that a transaction brings, which the calls read.</summary>
+        public void UseCodeInfoRepository(ICodeInfoRepository repository) =>
+            typeof(VirtualMachine<EthereumGasPolicy>).GetField("_codeInfoRepository", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(this, repository);
 
         public void Trace(ITxTracer tracer) => _txTracer = tracer;
     }
