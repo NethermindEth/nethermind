@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Api;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -99,7 +98,7 @@ public class ReadOnlySnapshotBundleSlotFilterBenchmark
             }
 
             FlatSnapshot snapshot = new(new StateId((ulong)layer, Keccak.Compute($"{layer}")), new StateId((ulong)layer + 1, Keccak.Compute($"{layer + 1}")),
-                content, resourcePool, ResourcePool.Usage.MainBlockProcessing);
+                content, resourcePool, ResourcePool.Usage.MainBlockProcessing, null);
             if (layer == Layers - 1)
             {
                 // The newest layer of a head bundle is usually a base snapshot, still in its mutable form.
@@ -129,7 +128,7 @@ public class ReadOnlySnapshotBundleSlotFilterBenchmark
 
         _persistence = new NoopPersistenceReader();
         _bundle = CreateBundle();
-        _snapshotBundle = new SnapshotBundle(CreateBundle(), new NullTrieNodeCache(), resourcePool,
+        _snapshotBundle = new SnapshotBundle(CreateBundle(), null, resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: Filtered);
 
         // Build the filters now so the read benchmarks measure steady-state reads.
@@ -156,7 +155,7 @@ public class ReadOnlySnapshotBundleSlotFilterBenchmark
             snapshots.Add(layer);
         }
 
-        return new ReadOnlySnapshotBundle(snapshots, _persistence, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(),
+        return new ReadOnlySnapshotBundle(snapshots, _persistence, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null,
             slotFilterBitsPerKey: Filtered ? BitsPerKey : 0);
     }
 

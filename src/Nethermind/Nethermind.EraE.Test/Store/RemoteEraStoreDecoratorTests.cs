@@ -43,8 +43,11 @@ public class RemoteEraStoreDecoratorTests
 
         (Block? block, TxReceipt[]? receipts) = await sut.FindBlockAndReceipts(epoch * 16, ensureValidated: false);
 
-        Assert.That(block, Is.Not.Null);
-        Assert.That(receipts, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block, Is.Not.Null);
+            Assert.That(receipts, Is.Not.Null);
+        }
         Assert.That(block!.Number, Is.EqualTo(epoch * 16));
         await _client.Received(1).DownloadFileAsync(filename, Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
@@ -125,8 +128,11 @@ public class RemoteEraStoreDecoratorTests
         if (contentValid && accumulatorTrusted)
         {
             (Block? block, TxReceipt[]? receipts) = await sut.FindBlockAndReceipts(blockNumber);
-            Assert.That(block, Is.Not.Null);
-            Assert.That(receipts, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(block, Is.Not.Null);
+                Assert.That(receipts, Is.Not.Null);
+            }
             Assert.That(block!.Number, Is.EqualTo(blockNumber));
         }
         else

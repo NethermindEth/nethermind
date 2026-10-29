@@ -41,7 +41,7 @@ runs:
   using: "composite"
   steps:
     - name: Set up .NET
-      uses: actions/setup-dotnet@v6
+      uses: ./.github/actions/setup-dotnet
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v4

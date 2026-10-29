@@ -303,9 +303,12 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
             Task initTask = stepsManager.InitializeAll(cancellationToken);
             await Task.Delay(100, cancellationToken);
-            Assert.That(initTask.IsCompleted, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(initTask.IsCompleted, Is.False);
 
-            Assert.That(container.Resolve<StepB>().WasExecuted, Is.False);
+                Assert.That(container.Resolve<StepB>().WasExecuted, Is.False);
+            }
             container.Resolve<StepE>().Waiter.SetResult();
             await initTask;
 
@@ -478,8 +481,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 alreadyInitialized ? [typeof(StepE)] : []);
             if (!alreadyInitialized)
             {
-                Assert.That(initialization.IsCompleted, Is.False);
-                Assert.That(container.Resolve<StepB>().WasExecuted, Is.False);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(initialization.IsCompleted, Is.False);
+                    Assert.That(container.Resolve<StepB>().WasExecuted, Is.False);
+                }
                 container.Resolve<StepE>().Waiter.SetResult();
             }
             await initialization.WaitAsync(cancellationToken);
