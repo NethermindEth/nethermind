@@ -139,7 +139,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         ulong? currentNonce = GetNonceCurrent(address);
         base.IncrementNonce(address, delta, out oldNonce);
         oldNonce = currentNonce ?? oldNonce;
-        _generatingBlockAccessList.AddNonceChange(address, oldNonce + delta);
+        _generatingBlockAccessList.AddNonceChange(address, oldNonce, oldNonce + delta);
     }
 
     public override void SubtractFromBalanceAndSetNonce(Address address, in UInt256 balanceChange, ulong nonce, IReleaseSpec spec)
@@ -158,7 +158,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         base.SetNonce(address, nonce);
         if (nonce != oldNonce)
         {
-            _generatingBlockAccessList.AddNonceChange(address, nonce);
+            _generatingBlockAccessList.AddNonceChange(address, oldNonce, nonce);
         }
     }
 
@@ -434,7 +434,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         ulong? currentNonce = GetNonceCurrent(address);
         base.DecrementNonce(address, delta);
         ulong oldNonce = currentNonce ?? (GetNonce(address) + delta);
-        _generatingBlockAccessList.AddNonceChange(address, oldNonce - delta);
+        _generatingBlockAccessList.AddNonceChange(address, oldNonce, oldNonce - delta);
     }
     private UInt256 GetBalanceInternal(Address address)
         => GetBalanceCurrent(address) ?? base.GetBalance(address);
@@ -532,7 +532,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         }
         if (nonce != 0)
         {
-            _generatingBlockAccessList?.AddNonceChange(address, nonce);
+            _generatingBlockAccessList?.AddNonceChange(address, 0, nonce);
         }
     }
 
