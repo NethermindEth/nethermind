@@ -108,11 +108,11 @@ public class DebugModuleTests
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithNumber(1).TestObject;
         _blockFinder.Head.Returns(new Block(header));
-        _blockFinder.FindHeader(header.Hash!).Returns(header);
+        _blockFinder.FindHeader(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(header);
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(header);
         _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
-        _blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number).Returns(new Block(header));
-        _blockFinder.FindBlock(header.Hash!, header.Number).ReturnsNull();
+        _blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number)
+            .Returns(byHash ? new Block(header) : null, (Block?)null);
         _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
         GethTraceOptions options = new() { StreamMode = true };
         DebugRpcModule module = CreateModule();
@@ -127,16 +127,16 @@ public class DebugModuleTests
             Assert.That(result.Result.Error, Is.EqualTo(byHash
                 ? $"block {header.Hash} not found" : $"Block body not found for {header.Hash}"));
         }
-        if (byHash)
-            _blockFinder.Received(1).FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number);
-        _blockFinder.Received(1).FindBlock(header.Hash!, header.Number);
+        _blockFinder.Received(byHash ? 2 : 1).FindBlock(header.Hash!,
+            BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number);
     }
 
     [Test]
     public void DebugTraceBlockByHash_preserves_lookup_exception()
     {
         InvalidOperationException failure = new("lookup unavailable");
-        _blockFinder.FindHeader(TestItem.KeccakA).Returns(_ => throw failure);
+        _blockFinder.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
+            .Returns(_ => throw failure);
         Assert.That(Assert.Throws<InvalidOperationException>(() => CreateModule().debug_traceBlockByHash(TestItem.KeccakA)), Is.SameAs(failure));
     }
 
@@ -484,7 +484,7 @@ public class DebugModuleTests
         Block block = Build.A.Block.WithParent(parent).TestObject;
         _jsonRpcConfig.EnableTracingStreamMode = streaming;
         _blockFinder.Head.Returns(parent);
-        if (headerRetained) _blockFinder.FindHeader(block.Hash!).Returns(block.Header);
+        if (headerRetained) _blockFinder.FindHeader(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(block.Header);
         _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent.Header);
         _blockchainBridge.HasStateForBlock(parent.Header).Returns(parentStateAvailable);
 
@@ -507,9 +507,8 @@ public class DebugModuleTests
         Block block = Build.A.Block.WithParent(parent).TestObject;
         _jsonRpcConfig.EnableTracingStreamMode = streaming;
         _blockFinder.Head.Returns(parent);
-        _blockFinder.FindHeader(block.Hash!).Returns(block.Header);
-        _blockFinder.FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, block.Number).Returns(block);
-        _blockFinder.FindBlock(block.Hash!, block.Number).Returns(block);
+        _blockFinder.FindHeader(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(block.Header);
+        _blockFinder.FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, block.Number).Returns(block);
         _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent.Header);
         _blockchainBridge.HasStateForBlock(parent.Header).Returns(true);
         _debugBridge.GetBlockTrace(Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(),
@@ -522,8 +521,8 @@ public class DebugModuleTests
         {
             Assert.That(response["error"], Is.Null, response.ToString());
             Assert.That(response["result"], Is.EqualTo(new JArray()).Using(JToken.EqualityComparer));
-            _blockFinder.Received(1).FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, block.Number);
-            _blockFinder.Received(streaming ? 1 : 0).FindBlock(block.Hash!, block.Number);
+            _blockFinder.Received(streaming ? 2 : 1).FindBlock(block.Hash!,
+                BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, block.Number);
             _debugBridge.Received(1).GetBlockTrace(Arg.Is<BlockParameter>(parameter => parameter.BlockHash == block.Hash),
                 Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(), Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
         }
@@ -750,11 +749,11 @@ public class DebugModuleTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         _jsonRpcConfig.EnableTracingStreamMode = streaming;
         _blockFinder.Head.Returns(block);
-        _blockFinder.FindHeader(block.Hash!).Returns(block.Header);
+        _blockFinder.FindHeader(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(block.Header);
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(block.Header);
         _blockFinder.FindBlock(block.Hash!, block.Number).Returns(block);
         _blockFinder.HasBlock(block.Number, block.Hash!).Returns(true);
-        _blockFinder.FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, block.Number).Returns(block);
+        _blockFinder.FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, block.Number).Returns(block);
         _blockchainBridge.HasStateForBlock(block.Header).Returns(true);
         Assert.That(_blockFinder.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None, block.Number - 1), Is.Null);
         object selector = method switch
@@ -806,11 +805,11 @@ public class DebugModuleTests
         BlockHeader header = block.Header;
         _blockFinder.Head.Returns(block);
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(header);
-        _blockFinder.FindHeader(header.Hash!).Returns(header);
+        _blockFinder.FindHeader(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(header);
         _blockFinder.FindBlock(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(block);
         _blockFinder.FindBlock(header.Hash!, header.Number).Returns(block);
         _blockFinder.FindBlock(header.Hash!).Returns(block);
-        _blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number).Returns(block);
+        _blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number).Returns(block);
         _blockFinder.HasBlock(header.Number, header.Hash!).Returns(true);
         _blockFinder.FindHeader(header.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parentHeaderMissing ? null : parent);
         // The RLP-decoded block of debug_traceBlock is a copy, so headers are matched by hash.
@@ -965,6 +964,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(selector).Returns(validated.Header);
         _blockFinder.FindBlock(selector).Returns(replacement);
         _blockFinder.FindBlock(validated.Hash!, validated.Number).Returns(validated);
+        _blockFinder.FindBlock(validated.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, validated.Number).Returns(validated);
         _blockFinder.HasBlock(validated.Number, validated.Hash!).Returns(true);
         _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent.Header);
         _blockchainBridge.HasStateForBlock(parent.Header).Returns(true);
@@ -979,7 +979,7 @@ public class DebugModuleTests
         {
             using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
             ((GethLikeTxTraceStreamingBlockResult)actual.Data).WriteAsJson(writer);
-            _blockFinder.Received(1).FindBlock(validated.Hash!, validated.Number);
+            _blockFinder.Received(1).FindBlock(validated.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, validated.Number);
             _debugBridge.Received(1).GetBlockTrace(Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash), Arg.Any<CancellationToken>(),
                 Arg.Any<GethTraceOptions>(), writer, Arg.Any<PipeWriter?>());
         }
@@ -1165,7 +1165,8 @@ public class DebugModuleTests
         _blockFinder.FindHeader(BlockParameter.Latest).Returns(validated.Header);
         _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number)
             .Returns(availability == "parent" ? null : parent.Header);
-        _blockFinder.FindBlock(validated.Hash!, validated.Number).Returns(availability == "body" ? null : validated);
+        _blockFinder.FindBlock(validated.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, validated.Number)
+            .Returns(availability == "body" ? null : validated);
         _blockchainBridge.HasStateForBlock(validated.Header).Returns(true);
         _blockchainBridge.HasStateForBlock(parent.Header).Returns(availability != "state");
         GethTraceOptions options = new() { Tracer = "callTracer", StreamMode = true, Timeout = TimeSpan.FromSeconds(5) };

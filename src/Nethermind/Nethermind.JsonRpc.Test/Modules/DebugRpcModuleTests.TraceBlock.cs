@@ -1925,6 +1925,60 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCase("head", false)]
+    [TestCase("head", true)]
+    [TestCase("canonical", false)]
+    [TestCase("canonical", true)]
+    [TestCase("orphan", false)]
+    [TestCase("orphan", true)]
+    public async Task Debug_traceBlockByHash_shared_lookup_preserves_canonical_and_head_selection(string targetKind, bool requireCanonical)
+    {
+        IGethStyleTracer? tracer = null;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<IGethStyleTracer>((_, inner) => tracer = inner));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(chain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .WithTo(TestItem.AddressC).WithValue(1).WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block target = await chain.AddBlock(transaction);
+        if (targetKind == "head")
+        {
+            chain.BlockTree.DeleteOldBlock(target.Number, target.Hash!);
+            Assert.That(chain.Container.Resolve<IBlockStore>().Get(target.Number, target.Hash!), Is.Null);
+        }
+        else
+        {
+            await chain.AddBlock();
+            if (targetKind == "orphan")
+            {
+                target = Build.A.Block.WithParent(parent).WithTransactions(transaction).WithExtraData([0x01]).TestObject;
+                chain.BlockTree.SuggestBlock(target, BlockTreeSuggestOptions.ForceDontSetAsMain);
+            }
+        }
+        _ = chain.DebugRpcModule;
+        Assert.That(tracer, Is.Not.Null);
+        if (tracer is null) return;
+        BlockParameter selector = new(target.Hash!, requireCanonical);
+        if (targetKind == "orphan" && requireCanonical)
+        {
+            Assert.That(() => tracer.TraceBlock(selector, GethTraceOptions.Default, CancellationToken.None), Throws.ArgumentNullException);
+            return;
+        }
+        IReadOnlyCollection<GethLikeTxTrace> traces = tracer.TraceBlock(selector, GethTraceOptions.Default, CancellationToken.None);
+        using IDisposable? traceOwner = traces as IDisposable;
+        Assert.That(traces, Has.Count.EqualTo(1));
+        foreach (GethLikeTxTrace trace in traces)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trace.TxHash, Is.EqualTo(transaction.Hash));
+                Assert.That(trace.Gas, Is.EqualTo(21_000));
+                Assert.That(trace.Failed, Is.False);
+            }
+        }
+    }
+
     [Test]
     public async Task Debug_traceBlockByHash_checks_genesis_body_before_rejecting_replay([Values] bool streaming, [Values] bool bodyAvailable)
     {
