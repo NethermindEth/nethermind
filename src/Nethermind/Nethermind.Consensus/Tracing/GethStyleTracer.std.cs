@@ -275,7 +275,13 @@ public class GethStyleTracer(
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
-        Block? block = blockTree.FindBlock(blockParameter);
+        Block? block = blockParameter is { Type: BlockParameterType.BlockHash }
+            ? blockTree.Head is { } head && head.Hash == blockParameter.BlockHash
+                ? head
+                : blockTree.FindBlock(blockParameter.BlockHash!,
+                    BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing
+                    | (blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None))
+            : blockTree.FindBlock(blockParameter);
         return TraceBlockImpl(block, options, cancellationToken, writer, pipeWriter);
     }
 

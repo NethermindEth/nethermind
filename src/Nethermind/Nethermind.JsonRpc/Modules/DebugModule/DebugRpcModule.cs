@@ -324,7 +324,7 @@ public class DebugRpcModule(
     /// </remarks>
     private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> StreamBlockTrace(BlockHeader header, GethTraceOptions? options, BlockParameter? selector = null, bool validateStructLogTimeout = false, Hash256? missingBodyHash = null)
     {
-        Block? resolvedBlock = blockFinder.FindBlock(header.Hash!, header.Number);
+        Block? resolvedBlock = blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number);
         if (resolvedBlock is null)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(
@@ -624,7 +624,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null)
     {
-        BlockHeader? header = blockFinder.FindHeader(blockHash);
+        BlockHeader? header = blockFinder.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (header is null)
         {
             return GetFailureResult<IReadOnlyCollection<GethLikeTxTrace>, BlockHeader>(
@@ -632,7 +632,7 @@ public class DebugRpcModule(
                 debugBridge.HaveNotSyncedHeadersYet());
         }
 
-        if (blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number) is null)
+        if (blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number) is null)
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block {blockHash} not found", ErrorCodes.ResourceNotFound);
 
         if (header.Number == 0)
