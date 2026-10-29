@@ -8,8 +8,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -151,7 +153,7 @@ public partial class BlockDownloaderTests
     }
 
     /// <summary>Creates a node whose finalized beacon chain holds <paramref name="blockCount"/> blocks awaiting catch-up.</summary>
-    private CatchUp CreateCatchUp(int blockCount)
+    private CatchUp CreateCatchUp(int blockCount, bool reconstruct = true, IBlocksConfig? blocksConfig = null)
     {
         IForwardHeaderProvider headers = Substitute.For<IForwardHeaderProvider>();
         IBeaconSyncStrategy beacon = Substitute.For<IBeaconSyncStrategy>();
@@ -160,7 +162,7 @@ public partial class BlockDownloaderTests
             .AddSingleton<IForwardHeaderProvider>(headers)
             .AddSingleton<IBeaconSyncStrategy>(beacon)
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance)),
-            new SyncConfig { ReconstructFinalizedStateFromBlockAccessLists = true });
+            new SyncConfig { ReconstructFinalizedStateFromBlockAccessLists = reconstruct }, blocksConfig ?? new BlocksConfig());
         Context ctx = node.Resolve<Context>();
         TxReceipt[] receipts = [new TxReceipt { StatusCode = 1, GasUsedTotal = 21000, Bloom = Bloom.Empty, Logs = [] }];
         Hash256 receiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, Amsterdam.Instance, null);
@@ -194,6 +196,7 @@ public partial class BlockDownloaderTests
         public byte[] Bal { get; }
         public BlockDownloader Downloader { get; }
         public PeerInfo Peer { get; } = new(Substitute.For<ISyncPeer>());
+        public IBlockAccessListStore BalStore => _node.Resolve<IBlockAccessListStore>();
 
         public CatchUp(IContainer node, Block[] blocks, TxReceipt[] receipts, byte[] bal)
         {

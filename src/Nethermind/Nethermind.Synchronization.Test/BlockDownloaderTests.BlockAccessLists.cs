@@ -263,6 +263,44 @@ public partial class BlockDownloaderTests
             Arg.Any<string>());
     }
 
+    [Test]
+    public async Task Full_sync_downloads_access_lists_of_executed_blocks_when_execution_uses_them(
+        [Values] bool parallelExecution, [Values] bool batchRead, [Values] bool served)
+    {
+        await using CatchUp catchUp = CreateCatchUp(1, reconstruct: false,
+            new BlocksConfig { ParallelExecution = parallelExecution, ParallelExecutionBatchRead = batchRead });
+        Block block = catchUp.Blocks[0];
+        bool suggested = false;
+        catchUp.Ctx.BlockTree.NewBestSuggestedBlock += (_, args) => suggested |= args.Block.Hash == block.Hash;
+
+        BlocksRequest bodyRequest = (await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
+        bodyRequest.OwnedBodies = new OwnedBlockBodies([block.Body]);
+        catchUp.Downloader.HandleResponse(bodyRequest, catchUp.Peer);
+
+        int accessListRequests = 0;
+        while (accessListRequests < 4 && await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None) is { } request)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(request.BlockAccessListsRequests, Has.Count.EqualTo(1));
+                Assert.That(request.ReceiptsRequests, Is.Empty);
+                Assert.That(suggested, Is.False);
+            }
+            accessListRequests++;
+            request.BlockAccessLists = BuildBlockAccessLists(served ? catchUp.Bal : null);
+            catchUp.Downloader.HandleResponse(request, catchUp.Peer);
+        }
+
+        bool usesAccessLists = parallelExecution || batchRead;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(suggested, Is.True);
+            // An unserved list does not hold the block back: after the retries it executes without one.
+            Assert.That(accessListRequests, Is.EqualTo(!usesAccessLists ? 0 : served ? 1 : 3));
+            Assert.That(catchUp.BalStore.Exists(block.Number, block.Hash!), Is.EqualTo(usesAccessLists && served));
+        }
+    }
+
     private const ulong HeaderTimestamp = 1_000_000;
 
     private static void ConfigureBlockAccessListRequest(Context ctx, IForwardHeaderProvider forwardHeaderProvider, params Hash256[] accessListHashes)

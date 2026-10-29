@@ -4,6 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -33,6 +34,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         IReceiptsRecovery receiptsRecovery,
         IBlockProcessingQueue blockProcessingQueue,
         ISyncConfig syncConfig,
+        IBlocksConfig blocksConfig,
         BlockAccessListServingWindow balServingWindow,
         ILogManager logManager,
         FinalizedBlockAccessListPolicy? finalizedBalPolicy = null)
@@ -54,6 +56,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
     {
         private readonly IBlockTree _blockTree = blockTree;
         private readonly ILogger _logger = logManager.GetClassLogger<MergeBlockDownloader>();
+        private readonly bool _executionUsesAccessLists = blocksConfig.ParallelExecution || blocksConfig.ParallelExecutionBatchRead;
 
         /// <inheritdoc/>
         /// <remarks>
@@ -68,8 +71,15 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 ? _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number)
                 : null;
 
+        /// <inheritdoc/>
+        /// <remarks>
+        /// A block that executes also takes its list when parallel execution or read warming uses it, as a block from
+        /// <c>engine_newPayload</c> does. Such a block executes without the list when peers do not serve it.
+        /// </remarks>
         protected override bool ShouldDownloadAccessList(BlockHeader header, bool shouldProcess) =>
-            base.ShouldDownloadAccessList(header, shouldProcess) || finalizedBalPolicy?.CanReconstruct(header) == true;
+            base.ShouldDownloadAccessList(header, shouldProcess)
+            || (shouldProcess && _executionUsesAccessLists)
+            || finalizedBalPolicy?.CanReconstruct(header) == true;
 
         protected override bool ShouldDownloadReceipts(BlockHeader header, bool shouldProcess, bool requested) =>
             base.ShouldDownloadReceipts(header, shouldProcess, requested)
