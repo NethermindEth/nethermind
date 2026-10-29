@@ -25,8 +25,8 @@ namespace Nethermind.Consensus.Processing;
 ///     they have all executed: each transaction's own failure, the EIP-8037 2D inclusion check and the
 ///     cumulative gas.
 ///   * <see cref="CheckPerTxInclusion"/> is the EIP-8037 worst-case 2D inclusion check.
-///   * <see cref="ValidateLogs"/> checks the logs against the suggested list once the block has
-///     executed in parallel, without merging them.
+///   * <see cref="ValidateLogs"/> checks that the logs, each checked against the suggested list as it
+///     sealed, together hold all of it once the block has executed in parallel, without merging them.
 ///   * <see cref="ValidateMergedBlockAccessList"/> compares the merged list with the suggested
 ///     one once the block has executed.
 /// </summary>
@@ -136,13 +136,14 @@ public partial class BlockAccessListManager
     /// <summary>Checks the logs against the block's suggested list without merging them.</summary>
     /// <remarks>
     /// Each index is recorded in one log, so the logs match when the suggested list declares all that each holds,
-    /// together they hold as many changes as it and touch all its accounts, and every declared read executed. Any
-    /// mismatch would also fail <see cref="ValidateMergedBlockAccessList"/>, so it is rejected without merging the
-    /// logs to name the first difference.
+    /// together they hold as many changes as it and touch all its accounts, and every declared read executed. The
+    /// thread that sealed each log checked the first, so only the totals and the reads are left. Any mismatch would also
+    /// fail <see cref="ValidateMergedBlockAccessList"/>, so it is rejected without merging the logs to name the first
+    /// difference.
     /// </remarks>
-    private void ValidateLogs(Block block, ReadOnlySpan<BlockAccessListLog> logs)
+    private void ValidateLogs(Block block)
     {
-        if (!BlockAccessListLog.Matches(logs, block.BlockAccessList!) || _readPlan?.TryFindUncovered(out _) == true)
+        if (!_logMatcher.Matches() || _readPlan?.TryFindUncovered(out _) == true)
             ThrowMismatch(block, "Suggested block-level access list does not match the generated one.");
     }
 

@@ -54,7 +54,7 @@ public partial class BlockAccessListManager
         start = ObserveTime(start, SealLabel);
         if (VerifyOnly)
         {
-            ValidateLogs(block, logs);
+            ValidateLogs(block);
             ObserveTime(start, ValidateLogsLabel);
             return;
         }

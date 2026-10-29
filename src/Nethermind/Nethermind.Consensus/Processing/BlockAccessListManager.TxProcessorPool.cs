@@ -47,7 +47,7 @@ public partial class BlockAccessListManager
 {
     private interface ITxProcessorWithWorldStateManager : IDisposable
     {
-        void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan);
+        void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan, BlockAccessListLog.Matcher? logMatcher);
         TxProcessorWithWorldState Get(uint? balIndex = null);
         TxProcessorWithWorldState GetPreExecution() => Get(0u);
         TxProcessorWithWorldState GetPostExecution() => Get(uint.MaxValue);
@@ -67,6 +67,7 @@ public partial class BlockAccessListManager
         private BlockExecutionContext _currentCtx;
         private int _lastBalIndex;
         private BalReadStoragePlan? _readPlan;
+        private BlockAccessListLog.Matcher? _logMatcher;
 
         // _inUse[i] is the processor currently bound to balIndex i.
         private TxProcessorWithWorldState?[] _inUse = new TxProcessorWithWorldState?[DefaultTxCount];
@@ -112,9 +113,10 @@ public partial class BlockAccessListManager
             }
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan, BlockAccessListLog.Matcher? logMatcher)
         {
             _readPlan = readPlan;
+            _logMatcher = logMatcher;
             _currentBlock = block;
             _currentCtx = blockExecutionContext;
 
@@ -214,7 +216,7 @@ public partial class BlockAccessListManager
             if (lastUse)
             {
                 processor.ReleaseParentReader();
-                processor.Recorder.Log.SealOnce();
+                Seal(processor.Recorder.Log);
             }
             ReturnProcessor(processor);
             if (lastUse && IsTransactionSlot(idx))
@@ -236,9 +238,15 @@ public partial class BlockAccessListManager
             int pooled = Volatile.Read(ref _processorCount);
             for (int i = 0; i < pooled && _processors.TryDequeue(out TxProcessorWithWorldState? processor); i++)
             {
-                if (processor.LogGeneration == _blockGeneration) processor.Recorder.Log.SealOnce();
+                if (processor.LogGeneration == _blockGeneration) Seal(processor.Recorder.Log);
                 _processors.Enqueue(processor);
             }
+        }
+
+        // The thread that seals a log checks it, so each log is checked once, in parallel with the others.
+        private void Seal(BlockAccessListLog log)
+        {
+            if (log.SealOnce()) _logMatcher?.Check(log);
         }
 
         private bool IsTransactionSlot(int idx) => idx > 0 && idx < _lastBalIndex;
@@ -255,10 +263,10 @@ public partial class BlockAccessListManager
             // was never rented, and a processor returned to the pool after the worker that released the idle ones checked it.
             ReleaseKeptParentReaders();
 
-            ParallelUnbalancedWork.For(0, _blockLogs.Count, _blockLogs, static (i, logs) =>
+            ParallelUnbalancedWork.For(0, _blockLogs.Count, this, static (i, pool) =>
             {
-                logs[i].SealOnce();
-                return logs;
+                pool.Seal(pool._blockLogs[i]);
+                return pool;
             });
             return CollectionsMarshal.AsSpan(_blockLogs);
         }
@@ -394,9 +402,9 @@ public partial class BlockAccessListManager
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(_txProcessorWithWorldState.Recorder);
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan, BlockAccessListLog.Matcher? logMatcher)
         {
-            if (readPlan is not null)
+            if (readPlan is not null || logMatcher is not null)
                 ThrowReadCoverageUnavailable();
             _log[0].Clear();
             _txProcessorWithWorldState.Setup(block, blockExecutionContext, 0u, parentReader: null);
@@ -404,7 +412,7 @@ public partial class BlockAccessListManager
 
         [DoesNotReturn]
         private static void ThrowReadCoverageUnavailable()
-            => throw new InvalidOperationException("Read coverage requires parallel execution.");
+            => throw new InvalidOperationException("Read coverage and log matching require parallel execution.");
 
         public TxProcessorWithWorldState Get(uint? _)
             => _txProcessorWithWorldState;

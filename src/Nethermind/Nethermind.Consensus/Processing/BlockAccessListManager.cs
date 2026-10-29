@@ -54,6 +54,7 @@ public partial class BlockAccessListManager(
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private Task? _balWarmupTask;
     private BalReadStoragePlan? _readPlan;
+    private readonly BlockAccessListLog.Matcher _logMatcher = new();
     // Null in a build that folds parallel execution out, so nothing behind the pool is compiled.
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager>? _parallelTxProcessorWithWorldStateManager = !ZkEvmFlag.IsActive
         ? new Lazy<ParallelTxProcessorWithWorldStateManager>(() => new(stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, txProcessorFactory))
@@ -129,6 +130,7 @@ public partial class BlockAccessListManager(
             Reset();
             if (VerifyOnly && suggestedBlock.BlockAccessList is { TotalStorageReads: > 0 } bal)
                 _readPlan = new BalReadStoragePlan(bal);
+            if (VerifyOnly) _logMatcher.Start(suggestedBlock.BlockAccessList!);
             // The parallel path executes on the suggested list, so it always checks it.
             _validateBlockAccessList = suggestedBlock.BlockAccessList is not null
                 && (ParallelExecutionEnabled
@@ -205,7 +207,7 @@ public partial class BlockAccessListManager(
                 ? _parallelTxProcessorWithWorldStateManager!.Value
                 : _sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
-            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _readPlan);
+            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _readPlan, VerifyOnly ? _logMatcher : null);
             _postExecutionReadAllowance = _suggestedChargeableStorageReads > 0ul
                 ? PostExecutionReadAllowance(_blockExecutionContext.Value.Spec)
                 : 0ul;

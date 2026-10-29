@@ -75,7 +75,7 @@ public class BlockAccessListLogTests
             Assert.That(BlockAccessListDecoder.EncodeToBytes(merged), Is.EqualTo(expectedRlp));
             Assert.That(merged.ItemCount, Is.EqualTo(expectedList.ItemCount));
             Assert.That(merged.Matches(BlockAccessListDecoder.Instance.Decode(expectedRlp)!, out Address? mismatched), Is.True, $"mismatch at {mismatched}");
-            Assert.That(BlockAccessListLog.Matches(logs, BlockAccessListDecoder.Instance.Decode(expectedRlp)!), Is.True);
+            Assert.That(Matches(logs, BlockAccessListDecoder.Instance.Decode(expectedRlp)!), Is.True);
         }
     }
 
@@ -96,7 +96,7 @@ public class BlockAccessListLogTests
         {
             Assert.That(matches, Is.EqualTo(mutation == Mutation.None));
             Assert.That(mismatched, Is.EqualTo(mismatchedAddress is null ? null : new Address(mismatchedAddress)));
-            Assert.That(BlockAccessListLog.Matches(logs, suggested), Is.EqualTo(mutation == Mutation.None));
+            Assert.That(Matches(logs, suggested), Is.EqualTo(mutation == Mutation.None));
         }
     }
 
@@ -108,6 +108,14 @@ public class BlockAccessListLogTests
         MissingLastAccount,
         MissingChange,
         UndeclaredRead,
+    }
+
+    private static bool Matches(BlockAccessListLog[] logs, ReadOnlyBlockAccessList suggested)
+    {
+        BlockAccessListLog.Matcher matcher = new();
+        matcher.Start(suggested);
+        foreach (BlockAccessListLog log in logs) matcher.Check(log);
+        return matcher.Matches();
     }
 
     private static BlockAccessListLog[] BuildLogs(Mutation mutation)

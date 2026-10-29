@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
-using Nethermind.Core.Threading;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -20,7 +18,7 @@ namespace Nethermind.Core.BlockAccessLists;
 /// <remarks>
 /// A log is kept by one recorder for a block, so it holds the indexes that recorder ran, in the order it ran them, and
 /// the merge works over one run per recorder. An index adds an access when it first touches a key and its net changes
-/// when it ends, so an item may repeat; the merge and <see cref="Matches"/> both take repeated accesses as one.
+/// when it ends, so an item may repeat; the merge and <see cref="Matcher"/> both take repeated accesses as one.
 /// <see cref="Clear"/> keeps the collections, so a reused instance stops allocating once warm.
 /// </remarks>
 public sealed class BlockAccessListLog : IResettable
@@ -86,68 +84,75 @@ public sealed class BlockAccessListLog : IResettable
     }
 
     /// <summary>Seals the log unless a caller already did since it was cleared.</summary>
+    /// <returns>Whether this call sealed the log.</returns>
     /// <remarks>Threads may race to seal a log; only one seals it, so read <see cref="Items"/> only once they all returned.</remarks>
-    public void SealOnce()
+    public bool SealOnce()
     {
-        if (Interlocked.Exchange(ref _sealed, 1) == 0) Seal();
+        if (Interlocked.Exchange(ref _sealed, 1) != 0) return false;
+        Seal();
+        return true;
     }
 
     /// <summary>The code change a sealed <see cref="Section.Code"/> item refers to.</summary>
     internal CodeChange GetCodeChange(in Item item) => _codeChanges[(int)item.Value.u0];
 
-    /// <summary>Whether the sealed runs of <paramref name="logs"/> together hold exactly the accounts and changes of
-    /// <paramref name="suggested"/>, and only storage reads it declares.</summary>
-    /// <param name="logs">Sealed logs, together holding each block access index at most once.</param>
-    /// <param name="suggested">The block's access list.</param>
+    /// <summary>
+    /// Checks sealed logs against a block's suggested list one at a time, then whether together they hold exactly its
+    /// accounts and changes, and only storage reads it declares.
+    /// </summary>
     /// <remarks>
-    /// Checks each log on its own, in parallel, instead of merging them. As no index is in two logs, logs that hold only
-    /// what <paramref name="suggested"/> declares, together hold as many changes as it and touch all its accounts hold
-    /// exactly its accounts and changes. Whether the declared reads all happened is for <see cref="BalReadStoragePlan"/>.
+    /// As no index is in two logs, logs that hold only what the suggested list declares, together hold as many changes as
+    /// it and touch all its accounts hold exactly its accounts and changes. So each log is checked on its own, as soon as
+    /// it seals, and only the totals wait for the last one. Whether the declared reads all happened is for
+    /// <see cref="BalReadStoragePlan"/>. Reused across blocks, so it stops allocating once warm.
     /// </remarks>
-    public static bool Matches(ReadOnlySpan<BlockAccessListLog> logs, ReadOnlyBlockAccessList suggested)
+    public sealed class Matcher
     {
-        ReadOnlySpan<ReadOnlyAccountChanges> accounts = suggested.AccountChanges.AsSpan();
-        int suggestedChanges = suggested.TotalStorageChangeEvents;
-        foreach (ReadOnlyAccountChanges account in accounts)
-        {
-            suggestedChanges += account.BalanceChanges.Length + account.NonceChanges.Length + account.CodeChanges.Length;
-        }
+        private ReadOnlyBlockAccessList? _suggested;
+        private ulong[] _touchedAccounts = [];
+        private int _accountCount;
+        private int _suggestedChanges;
+        private int _changes;
+        private int _undeclared;
 
-        int words = (accounts.Length + 63) / 64;
-        ulong[] touchedAccounts = ArrayPool<ulong>.Shared.Rent(words);
-        int[] changeCounts = ArrayPool<int>.Shared.Rent(logs.Length);
-        BlockAccessListLog[] runs = ArrayPool<BlockAccessListLog>.Shared.Rent(logs.Length);
-        try
+        /// <summary>Starts matching the logs of a block against <paramref name="suggested"/>.</summary>
+        public void Start(ReadOnlyBlockAccessList suggested)
         {
-            touchedAccounts.AsSpan(0, words).Clear();
-            logs.CopyTo(runs);
-            ParallelUnbalancedWork.For(0, logs.Length, (runs, suggested, touchedAccounts, changeCounts), static (i, state) =>
+            ReadOnlySpan<ReadOnlyAccountChanges> accounts = suggested.AccountChanges.AsSpan();
+            int suggestedChanges = suggested.TotalStorageChangeEvents;
+            foreach (ReadOnlyAccountChanges account in accounts)
             {
-                state.changeCounts[i] = state.runs[i].IsDeclaredBy(state.suggested, state.touchedAccounts, out int changeCount) ? changeCount : -1;
-                return state;
-            });
-
-            int changes = 0;
-            foreach (int changeCount in changeCounts.AsSpan(0, logs.Length))
-            {
-                if (changeCount < 0) return false;
-                changes += changeCount;
+                suggestedChanges += account.BalanceChanges.Length + account.NonceChanges.Length + account.CodeChanges.Length;
             }
 
-            return changes == suggestedChanges && AllTouched(touchedAccounts.AsSpan(0, words), accounts.Length);
-        }
-        finally
-        {
-            ArrayPool<BlockAccessListLog>.Shared.Return(runs, clearArray: true);
-            ArrayPool<int>.Shared.Return(changeCounts);
-            ArrayPool<ulong>.Shared.Return(touchedAccounts);
+            int words = (accounts.Length + 63) / 64;
+            if (_touchedAccounts.Length < words) _touchedAccounts = new ulong[words];
+            else _touchedAccounts.AsSpan(0, words).Clear();
+            _suggested = suggested;
+            _accountCount = accounts.Length;
+            _suggestedChanges = suggestedChanges;
+            _changes = 0;
+            _undeclared = 0;
         }
 
-        static bool AllTouched(ReadOnlySpan<ulong> touched, int count)
+        /// <summary>Checks that the suggested list declares all that the sealed <paramref name="log"/> holds.</summary>
+        /// <remarks>Call once for each log of the block; several threads may check logs at once.</remarks>
+        public void Check(BlockAccessListLog log)
         {
+            if (log.IsDeclaredBy(_suggested!, _touchedAccounts, out int changeCount)) Interlocked.Add(ref _changes, changeCount);
+            else Volatile.Write(ref _undeclared, 1);
+        }
+
+        /// <summary>Whether the checked logs together hold exactly the suggested list's accounts and changes.</summary>
+        /// <remarks>Call once every log of the block has been checked.</remarks>
+        public bool Matches() => _undeclared == 0 && _changes == _suggestedChanges && AllTouched();
+
+        private bool AllTouched()
+        {
+            ReadOnlySpan<ulong> touched = _touchedAccounts.AsSpan(0, (_accountCount + 63) / 64);
             for (int word = 0; word < touched.Length; word++)
             {
-                int bits = int.Min(64, count - word * 64);
+                int bits = int.Min(64, _accountCount - word * 64);
                 ulong expected = bits == 64 ? ulong.MaxValue : (1UL << bits) - 1;
                 if (touched[word] != expected) return false;
             }
