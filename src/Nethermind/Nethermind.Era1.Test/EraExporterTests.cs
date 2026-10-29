@@ -71,7 +71,7 @@ public class EraExporterTests
         IEraExporter sut = container.Resolve<IEraExporter>();
         string tmpDirectory = container.ResolveTempDirPath();
 
-        Assert.That(() => sut.Export(tmpDirectory, 0UL, to), Throws.TypeOf<ArgumentException>());
+        Assert.That(() => { _ = sut.Export(tmpDirectory, 0UL, to); }, Throws.TypeOf<ArgumentException>());
     }
 
     [Test]

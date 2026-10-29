@@ -2512,13 +2512,16 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    [TestCase((ulong)GasCostOf.SSetState, TxFrameReceipt.StatusFailure, 0UL, 0UL)]
-    [TestCase((ulong)(GasCostOf.SSetState + GasCostOf.NewAccountState), TxFrameReceipt.StatusSuccess, 1UL, (ulong)(GasCostOf.SSetState + GasCostOf.NewAccountState))]
+    [TestCase((ulong)GasCostOf.SSetState, TxFrameReceipt.StatusFailure, 0UL, 0UL, false)]
+    [TestCase((ulong)GasCostOf.SSetState, TxFrameReceipt.StatusFailure, 0UL, 0UL, true)]
+    [TestCase((ulong)(GasCostOf.SSetState + GasCostOf.NewAccountState), TxFrameReceipt.StatusSuccess, 1UL, (ulong)(GasCostOf.SSetState + GasCostOf.NewAccountState), false)]
+    [TestCase((ulong)(GasCostOf.SSetState + GasCostOf.NewAccountState), TxFrameReceipt.StatusSuccess, 1UL, (ulong)(GasCostOf.SSetState + GasCostOf.NewAccountState), true)]
     public void Execute_PaymentApprovalChargesSenderCreationToTheApprovingFrame(
         ulong stateGasLimit,
         byte expectedStatus,
         ulong expectedStorage,
-        ulong expectedStateGasUsed)
+        ulong expectedStateGasUsed,
+        bool emptyNonceKeys)
     {
         Address sponsorA = TestItem.AddressD;
         Address sponsorB = TestItem.AddressF;
@@ -2533,6 +2536,7 @@ public partial class FrameTxProcessorTests
             new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
             new TxFrame(FrameMode.Default, FrameFlags.ApprovePayment, sponsorA, executionGasLimit: 200_000, stateGasLimit, UInt256.Zero, default),
             new TxFrame(FrameMode.Default, FrameFlags.ApprovePayment, sponsorB, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
+        if (emptyNonceKeys) tx.NonceKeys = [];
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)];
         SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
 
@@ -2549,7 +2553,7 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_PaymentApprovalChargesCreationOfASenderEmptiedByAnEarlierFrame()
+    public void Execute_PaymentApprovalChargesCreationOfASenderEmptiedByAnEarlierFrame([Values] bool emptyNonceKeys)
     {
         Address sponsor = TestItem.AddressD;
         _stateProvider.CreateAccount(Sender, 1);
@@ -2562,6 +2566,7 @@ public partial class FrameTxProcessorTests
             new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
             Frame(FrameMode.Sender, target: Recipient, value: 1),
             new TxFrame(FrameMode.Default, FrameFlags.ApprovePayment, sponsor, executionGasLimit: 200_000, (ulong)GasCostOf.NewAccountState, UInt256.Zero, default));
+        if (emptyNonceKeys) tx.NonceKeys = [];
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)];
         SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
 
@@ -3376,13 +3381,34 @@ public partial class FrameTxProcessorTests
             "key 1 is at sequence 1 while key 7 is still at 0, so no sequence satisfies the set");
     }
 
-    // Key 0 is the account nonce itself, so the singleton set advances it and owes no first-use charge.
     [Test]
-    public void Execute_KeyedNonce_LegacyKeyBehavesAsTheAccountNonce()
+    public void Execute_KeyedNonce_SingleUseSetIsSpentOnce()
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        UInt256[] keys = [0, 7];
+
+        Transaction first = FrameTx(nonce: Eip8250Constants.MaxNonceSeq, KeyedSelfVerifyFrame(keys.Length));
+        first.NonceKeys = keys;
+        Assert.That(Process(first).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StorageAt(KeyedNonceManager.StorageSlot(Sender, keys[0])), Is.EqualTo((UInt256)Eip8250Constants.MaxNonceSeq));
+            Assert.That(StorageAt(KeyedNonceManager.StorageSlot(Sender, keys[1])), Is.EqualTo((UInt256)Eip8250Constants.MaxNonceSeq));
+            Assert.That(_stateProvider.GetNonce(Sender), Is.Zero);
+        }
+
+        Transaction replay = FrameTx(nonce: Eip8250Constants.MaxNonceSeq, KeyedSelfVerifyFrame(keys.Length));
+        replay.NonceKeys = keys;
+        Assert.That(Process(replay).Error, Is.EqualTo(TransactionResult.ErrorType.TransactionNonceTooLow));
+    }
+
+    [Test]
+    public void Execute_KeyedNonce_EmptySetBehavesAsTheAccountNonce()
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction keyed = FrameTx(nonce: 0, SelfVerifyFrame());
-        keyed.NonceKeys = [UInt256.Zero];
+        keyed.NonceKeys = [];
 
         FrameReceiptTracer keyedTracer = new();
 #pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
@@ -3395,10 +3421,10 @@ public partial class FrameTxProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(keyedTracer.FrameReceipts![0].StateGasUsed, Is.Zero, "the legacy key owes no first-use charge");
+            Assert.That(keyedTracer.FrameReceipts![0].StateGasUsed, Is.Zero, "the empty set owes no first-use charge");
             Assert.That(keyedTracer.FrameReceipts![0].ExecutionGasUsed,
                 Is.EqualTo(plainTracer.FrameReceipts![0].ExecutionGasUsed),
-                "the [0] set approves exactly as the absent set does");
+                "the empty set approves exactly as the absent set does");
         }
     }
 
@@ -3667,11 +3693,12 @@ public partial class FrameTxProcessorTests
     /// transaction's sig hash, as the default code requires.
     /// </summary>
     /// <remarks>
-    /// compute_sig_hash commits to the signature entries (bytes of empty-msg entries elided), so the entry
-    /// being replaced must already be present, of the same scheme and signer, when the hash is computed.
+    /// compute_sig_hash commits to the signature entries (bytes of empty-msg entries replaced by their length), so
+    /// a placeholder of the final scheme, signer and length is installed at <paramref name="index"/> before hashing.
     /// </remarks>
     private static void SignCanonicalHash(Transaction tx, int index, PrivateKey key, Address? signer)
     {
+        tx.FrameSignatures![index] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, new byte[TxFrameSignature.Secp256k1SignatureLength]);
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         Signature signature = new Ecdsa().Sign(key, in sigHash);
         byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
@@ -3701,12 +3728,12 @@ public partial class FrameTxProcessorTests
         }
 
         Transaction keyed = FrameTx(nonce: Eip8250Constants.MaxNonceSeq, SelfVerifyFrame());
-        keyed.NonceKeys = [UInt256.Zero];
+        keyed.NonceKeys = [];
         Assert.That(Process(keyed).Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
     }
 
-    // The EIP-8141 envelope answers as the key set [0], so verifier code reads one shape for both.
-    [TestCase(0x0E, false, ExpectedResult = 1UL, TestName = "Execute_TxParam_NonceKeyCount_WithoutKeys")]
+    // The EIP-8141 envelope answers as the empty key set, so verifier code reads one shape for both.
+    [TestCase(0x0E, false, ExpectedResult = 0UL, TestName = "Execute_TxParam_NonceKeyCount_WithoutKeys")]
     [TestCase(0x0E, true, ExpectedResult = 2UL, TestName = "Execute_TxParam_NonceKeyCount_WithKeys")]
     [TestCase(0x10, false, ExpectedResult = 0UL, TestName = "Execute_TxParam_FirstNonceKey_WithoutKeys")]
     [TestCase(0x10, true, ExpectedResult = 3UL, TestName = "Execute_TxParam_FirstNonceKey_WithKeys")]
@@ -3726,7 +3753,7 @@ public partial class FrameTxProcessorTests
     }
 
     // Authenticating only the first key would accept a set an attacker extended with keys approval
-    // consumes; the non-keyed envelope answers as [0], so both shapes are pinned.
+    // consumes; the non-keyed envelope answers as the empty set, so both shapes are pinned.
     [TestCase(false, TestName = "Execute_TxParam_NonceKeysHash_WithoutKeys")]
     [TestCase(true, TestName = "Execute_TxParam_NonceKeysHash_CommitsToEveryKey")]
     public void Execute_TxParam_NonceKeysHash_IsTheHashOfTheAnsweredKeySet(bool keyed)
@@ -3736,7 +3763,7 @@ public partial class FrameTxProcessorTests
             .PushData(0x0F).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
 
-        UInt256[] keys = keyed ? [3, 9] : [UInt256.Zero];
+        UInt256[] keys = keyed ? [3, 9] : [];
         Transaction tx = FrameTx(nonce: 0, keyed ? KeyedSelfVerifyFrame(keys.Length) : SelfVerifyFrame(),
             Frame(FrameMode.Default, target: Observer));
         if (keyed) tx.NonceKeys = keys;

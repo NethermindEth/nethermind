@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,6 +19,9 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
     where T : Options<T>
 {
     private Timer? _timer;
+    // Timer callbacks can overlap when an update outlasts the period.
+    private readonly Lock _statisticKeysLock = new();
+    private readonly Dictionary<string, StatisticKeys>.AlternateLookup<ReadOnlySpan<char>> _statisticKeys = new Dictionary<string, StatisticKeys>().GetAlternateLookup<ReadOnlySpan<char>>();
 
     public void StartUpdating()
     {
@@ -55,41 +59,69 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         }
     }
 
+    /// <remarks>
+    /// Each line is either a ticker (<c>name COUNT : n</c>) or a histogram (<c>name P50 : x ... COUNT : n SUM : n</c>).
+    /// Runs on every timer tick, so the metric keys are cached per statistic name, keeping a steady-state pass
+    /// allocation-free.
+    /// </remarks>
     public void ProcessStatisticsString(string dbStatsString)
     {
-        foreach ((string Name, IDictionary<string, double> SubMetric) in ExtractStatsFromStatisticString(dbStatsString))
+        lock (_statisticKeysLock)
         {
-            // The metric can be of several type, usually just a counter, but sometime its a histogram,
-            // in which case we take both the sum and count.
-            if (SubMetric.TryGetValue("SUM", out double valueSum))
+            foreach (ValueMatch statMatch in ExtractStatsRegex2().EnumerateMatches(dbStatsString))
             {
-                Metrics.DbStats[($"{dbName}Db", $"{Name}.sum")] = valueSum;
-                Metrics.DbStats[($"{dbName}Db", $"{Name}.count")] = SubMetric["COUNT"];
-            }
-            else
-            {
-                Metrics.DbStats[($"{dbName}Db", Name)] = SubMetric["COUNT"];
+                ReadOnlySpan<char> stat = dbStatsString.AsSpan(statMatch.Index, statMatch.Length);
+                int nameEnd = stat.IndexOf(' ');
+                if (nameEnd < 0) continue;
+
+                ReadOnlySpan<char> subStats = stat[nameEnd..];
+                double? count = null;
+                double? sum = null;
+                foreach (ValueMatch subStatMatch in ExtractSubStatsRegex().EnumerateMatches(subStats))
+                {
+                    ReadOnlySpan<char> subStat = subStats.Slice(subStatMatch.Index, subStatMatch.Length);
+                    int separator = subStat.IndexOf(SubStatSeparator);
+                    ReadOnlySpan<char> subName = subStat[..separator];
+                    if (subName is "COUNT")
+                    {
+                        count = double.Parse(subStat[(separator + SubStatSeparator.Length)..], CultureInfo.InvariantCulture);
+                    }
+                    else if (subName is "SUM")
+                    {
+                        sum = double.Parse(subStat[(separator + SubStatSeparator.Length)..], CultureInfo.InvariantCulture);
+                    }
+                }
+
+                if (count is null) continue;
+
+                StatisticKeys keys = GetStatisticKeys(stat[..nameEnd]);
+                if (sum is not null)
+                {
+                    Metrics.DbStats[keys.Sum] = sum.Value;
+                    Metrics.DbStats[keys.Count] = count.Value;
+                }
+                else
+                {
+                    Metrics.DbStats[keys.Ticker] = count.Value;
+                }
             }
         }
     }
 
-    private static IEnumerable<(string Name, IDictionary<string, double> Value)> ExtractStatsFromStatisticString(string statsStr)
+    private StatisticKeys GetStatisticKeys(ReadOnlySpan<char> statisticName)
     {
-        MatchCollection matches = ExtractStatsRegex2().Matches(statsStr);
-
-        foreach (Match match in matches)
+        if (!_statisticKeys.TryGetValue(statisticName, out StatisticKeys keys))
         {
-            string statName = match.Groups["name"].Value;
-
-            IDictionary<string, double> metricDictionary = new Dictionary<string, double>();
-            foreach (Match metricMatch in ExtractSubStatsRegex().Matches(match.Groups["value"].Value))
-            {
-                metricDictionary[metricMatch.Groups["subName"].Value] = double.Parse(metricMatch.Groups["subValue"].Value);
-            }
-
-            yield return (statName, metricDictionary);
+            string name = statisticName.ToString();
+            string metricsDbName = $"{dbName}Db";
+            keys = new((metricsDbName, name), (metricsDbName, $"{name}.sum"), (metricsDbName, $"{name}.count"));
+            _statisticKeys.Dictionary[name] = keys;
         }
+
+        return keys;
     }
+
+    private readonly record struct StatisticKeys((string, string) Ticker, (string, string) Sum, (string, string) Count);
 
     public void ProcessCompactionStats(string? compactionStatsString)
     {
@@ -170,10 +202,12 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         RegexOptions.Multiline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractIntervalRegex();
 
-    [GeneratedRegex("^(?<name>\\S+)(?<value>.*)$", RegexOptions.Multiline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
+    private const string SubStatSeparator = " : ";
+
+    [GeneratedRegex("^\\S+.*$", RegexOptions.Multiline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractStatsRegex2();
 
-    [GeneratedRegex("(?<subName>\\S+) \\: (?<subValue>\\S+)", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
+    [GeneratedRegex("\\S+ \\: \\S+", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractSubStatsRegex();
 
     private void LogMemoryProfile()
