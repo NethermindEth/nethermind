@@ -20,8 +20,14 @@ for (var index = 0; index < args.Length; index++)
         return args[index] is "-h" or "--help" ? 0 : 2;
     }
 }
+using var cancellation = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
 using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-return await SyncSettings.Update(http, key, superchain, "./src/Nethermind/Nethermind.Runner/configs", Task.Delay);
+try
+{
+    return await SyncSettings.Update(http, key, superchain, "./src/Nethermind/Nethermind.Runner/configs", Task.Delay, cancellation.Token);
+}
+catch (Exception) when (cancellation.IsCancellationRequested) { return 130; }
 #endif
 
 internal static class SyncSettings
@@ -42,7 +48,7 @@ internal static class SyncSettings
         ("xdc-testnet", "https://rpc.apothem.network", 8192, 10000, false)
     ];
 
-    internal static async Task<int> Update(HttpClient http, string key, bool superchain, string directory, Func<TimeSpan, Task> delay)
+    internal static async Task<int> Update(HttpClient http, string key, bool superchain, string directory, Func<TimeSpan, CancellationToken, Task> delay, CancellationToken cancellationToken)
     {
         var indentedJson = new JsonSerializerOptions { WriteIndented = true };
         Console.WriteLine("Fast Sync configuration settings initialization     ✅ ");
@@ -69,10 +75,10 @@ internal static class SyncSettings
                     pivot = (number, hash, difficulty);
                     break;
                 }
-                catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException or JsonException or FormatException or OverflowException or InvalidOperationException or ArgumentOutOfRangeException)
+                catch (Exception exception) when (!cancellationToken.IsCancellationRequested && exception is HttpRequestException or OperationCanceledException or JsonException or FormatException or OverflowException or InvalidOperationException or ArgumentOutOfRangeException)
                 {
                     Console.WriteLine($"{name} attempt {attempt}/5 failed: {exception.GetType().Name}");
-                    if (attempt < 5) await delay(TimeSpan.FromSeconds(10 * attempt));
+                    if (attempt < 5) await delay(TimeSpan.FromSeconds(10 * attempt), cancellationToken);
                 }
             }
             if (pivot is not { } value)
@@ -86,13 +92,15 @@ internal static class SyncSettings
             {
                 Console.WriteLine($"{target} PivotNumber: {value.Number}\n{target} PivotHash: {value.Hash}");
                 if (!pos) Console.WriteLine($"{target} PivotTotalDifficulty: {value.Difficulty}");
-                var config = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(directory, target + ".json")))!;
+                var config = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(directory, target + ".json"), cancellationToken))!;
                 var sync = config["Sync"] ?? throw new JsonException($"Missing Sync section in {target}");
                 sync["PivotNumber"] = value.Number;
                 sync["PivotHash"] = value.Hash;
                 if (!pos) sync["PivotTotalDifficulty"] = value.Difficulty.ToString(CultureInfo.InvariantCulture);
                 updated[target] = config;
             }
+            // Leader and follower configs are written together; cancelling between or during writes would split them.
+            cancellationToken.ThrowIfCancellationRequested();
             foreach (var (target, config) in updated)
                 await File.WriteAllTextAsync(Path.Combine(directory, target + ".json"), config.ToJsonString(indentedJson));
 
@@ -108,8 +116,8 @@ internal static class SyncSettings
                     var body = new JsonObject { ["id"] = 0, ["jsonrpc"] = "2.0", ["method"] = method, ["params"] = tag is null ? [] : new JsonArray(JsonValue.Create(tag), JsonValue.Create(false)) };
                     request.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
                 }
-                using var response = await http.SendAsync(request);
-                return JsonNode.Parse(await response.Content.ReadAsStringAsync())?["result"];
+                using var response = await http.SendAsync(request, cancellationToken);
+                return JsonNode.Parse(await response.Content.ReadAsStringAsync(cancellationToken))?["result"];
             }
         }
         if (failed.Count == 0) return 0;

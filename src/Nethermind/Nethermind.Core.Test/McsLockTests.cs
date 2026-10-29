@@ -205,7 +205,9 @@ public class McsLockTests
         {
             tasks[i] = Task.Factory.StartNew(Body, TaskCreationOptions.LongRunning);
         }
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(Task.WaitAll(tasks, TimeSpan.FromSeconds(60)), Is.True, "stress run deadlocked");
+#pragma warning restore NUnit2045
 
         Assert.That(failure, Is.Null);
         Assert.That(Interlocked.Read(ref total), Is.EqualTo((long)threadCount * iterations));

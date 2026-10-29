@@ -1222,19 +1222,17 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
-    [TestCase(0, true, TestName = "a payer covering the EIP-7623 floor resolves")]
-    [TestCase(-1, false, TestName = "a payer one wei short of the EIP-7623 floor does not")]
-    public void Simulate_PricesTheApproveGateOnTheSameBudgetExecutionEscrows(int balanceDelta, bool resolves)
+    [TestCase(0, true, TestName = "a payer covering max_fee resolves")]
+    [TestCase(-1, false, TestName = "a payer one wei short of max_fee does not")]
+    public void Simulate_PricesTheApproveGateAtTheMaxFee(int balanceDelta, bool resolves)
     {
-        // A calldata-heavy prefix prices on the EIP-7623 floor, so the simulated APPROVE gate must use
-        // the budget the main path escrows on.
-        Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 30_000, UInt256.Zero,
-                CalldataOf(30_000)));
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out ulong floorGas, out ulong maxGas), Is.True);
-        Assert.That(maxGas, Is.EqualTo(floorGas), "the fixture must be a shape where the floor binds");
+        // The base fees at inclusion are unknown here, so the simulated APPROVE gate prices max_cost at its bound,
+        // max_fee, as the admission exposure gate does.
+        const ulong maxFee = 1_000_000;
+        Transaction tx = FrameTx(nonce: 0, new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 30_000, UInt256.Zero, default));
+        tx.MaxFee = maxFee;
 
-        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), (UInt256)(maxGas + (ulong)(long)balanceDelta));
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), (UInt256)(maxFee + (ulong)(long)balanceDelta));
 
         (_, FrameTxValidationTracer tracer) = Simulate(tx);
 
@@ -1312,13 +1310,6 @@ public class FrameTxValidationPrefixSimulationTests
         raw[32] = 1; // r = 1
         raw[64] = 1; // s = 1
         return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, raw);
-    }
-
-    private static byte[] CalldataOf(int length)
-    {
-        byte[] data = new byte[length];
-        data.AsSpan().Fill(0xff);
-        return data;
     }
 
     private static TestCaseData ParityCase(string name, byte param, bool approveWhenZero, bool expectedValid) =>
@@ -1462,6 +1453,6 @@ public class FrameTxValidationPrefixSimulationTests
             Frames = frames,
             FrameSignatures = [],
             GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
+            MaxFee = 1.Ether,
         };
 }

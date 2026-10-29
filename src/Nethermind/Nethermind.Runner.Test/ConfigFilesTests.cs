@@ -31,7 +31,6 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Stats.Model;
 using Nethermind.Db.Rocks.Config;
-using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Serialization.Json;
@@ -39,6 +38,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test;
@@ -125,17 +125,58 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("*")]
     public void Eth_stats_disabled_by_default(string configWildcard) => Test<IEthStatsConfig, bool>(configWildcard, static c => c.Enabled, false);
 
-    [TestCase("mainnet archive", 4096000000UL)]
-    [TestCase("mainnet ^archive", 1024000000UL)]
-    [TestCase("volta archive", 768000000UL)]
-    [TestCase("volta ^archive", 768000000UL)]
-    [TestCase("gnosis archive", 1024000000UL)]
-    [TestCase("gnosis ^archive", 768000000UL)]
-    [TestCase("poacore archive", 1024000000UL)]
-    [TestCase("poacore ^archive", 768000000UL)]
-    [TestCase("spaceneth.json", 64000000UL)]
-    [TestCase("spaceneth_persistent.json", 128000000UL)]
-    public void Memory_hint_values_are_correct(string configWildcard, ulong expectedValue) => Test<IInitConfig, ulong?>(configWildcard, static c => c.MemoryHint, expectedValue);
+    [TestCase("mainnet archive", 2147483648UL, 536870912UL)]
+    [TestCase("op-mainnet_archive.json", 1073741824UL, 268435456UL)]
+    [TestCase("^archive", 536870912UL, 134217728UL)]
+    public void Db_cache_values_are_correct(string configWildcard, ulong sharedBlockCacheSize, ulong stateDbRowCacheSize)
+    {
+        Test<IDbConfig, ulong>(configWildcard, static c => c.SharedBlockCacheSize, sharedBlockCacheSize);
+        Test<IDbConfig, ulong?>(configWildcard, static c => c.StateDbRowCacheSize, stateDbRowCacheSize);
+    }
+
+    [Test]
+    public void Removed_memory_hint_settings_are_accepted_and_reported_as_deprecated()
+    {
+        Dictionary<string, string> variables = new()
+        {
+            { "NETHERMIND_INITCONFIG_MEMORYHINT", "2000000000" },
+            { "NETHERMIND_DBCONFIG_SKIPMEMORYHINTSETTING", "true" },
+            { "NETHERMIND_SYNCCONFIG_FASTBLOCKS", "true" },
+            // Changes the derived, obsolete Pruning.Enabled without setting it.
+            { "NETHERMIND_PRUNINGCONFIG_MODE", "None" }
+        };
+        IEnvironment environment = Substitute.For<IEnvironment>();
+        environment.GetEnvironmentVariables().Returns(variables);
+        environment.GetEnvironmentVariable(Arg.Any<string>()).Returns(static c => null);
+        foreach ((string name, string value) in variables)
+            environment.GetEnvironmentVariable(name).Returns(value);
+
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(new EnvConfigSource(environment));
+        configProvider.Initialize();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(configProvider.FindIncorrectSettings().Errors, Is.Empty);
+            Assert.That(configProvider.GetObsoleteSettingWarnings(), Is.EquivalentTo(new[]
+            {
+                "Init.MemoryHint is deprecated: Has no effect. Set Db.SharedBlockCacheSize to set the database cache size.",
+                "Db.SkipMemoryHintSetting is deprecated: Has no effect.",
+                "Sync.FastBlocks is deprecated."
+            }));
+            Assert.That(configProvider.GetNonDefaultValues().Select(static v => v.Name),
+                Has.None.EqualTo("MemoryHint").And.None.EqualTo("SkipMemoryHintSetting"));
+        }
+    }
+
+    [TestCase("*")]
+    public void Built_in_configs_set_no_obsolete_settings(string configWildcard)
+    {
+        foreach (TestConfigProvider configProvider in GetConfigProviders(configWildcard))
+        {
+            Assert.That(configProvider.GetObsoleteSettingWarnings(), Is.Empty, configProvider.FileName);
+        }
+    }
 
     [TestCase("*")]
     public void Metrics_disabled_by_default(string configWildcard)
@@ -211,7 +252,9 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
         foreach (NetworkNode bootnode in chainSpec.Bootnodes)
         {
+#pragma warning disable NUnit2045 // The bootnode must be an ENR before decoding its ENR payload.
             Assert.That(bootnode.IsEnr, Is.True, bootnode.ToString());
+#pragma warning restore NUnit2045
             Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr!, out _), Is.True, bootnode.ToString());
         }
     }
@@ -231,8 +274,11 @@ public class ConfigFilesTests : ConfigFileTestsBase
             .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
             .Build();
 
-        Assert.That(container.Resolve<INetworkConfig>().Bootnodes.Select(static node => node.ToString()), Does.Contain(bootnode));
-        Assert.That(logger.LogList, Has.Some.Contains("Discovery.Bootnodes is deprecated"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<INetworkConfig>().Bootnodes.Select(static node => node.ToString()), Does.Contain(bootnode));
+            Assert.That(logger.LogList, Has.Some.Contains("Discovery.Bootnodes is deprecated"));
+        }
     }
 
     [TestCase("sepolia.json", 5)]
@@ -300,16 +346,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("energyweb.json", true)]
     [TestCase("volta.json", true)]
     public void Snap_sync_settings_as_expected(string configWildcard, bool enabled) => Test<ISyncConfig, bool>(configWildcard, static c => c.SnapSync, enabled);
-
-#pragma warning disable CS0612 // Type or member is obsolete
-    [TestCase("^aura ^sepolia ^hoodi ^mainnet", false)]
-    [TestCase("aura ^archive", true)]
-    [TestCase("^archive ^spaceneth", true)]
-    [TestCase("sepolia ^archive", true)]
-    [TestCase("hoodi ^archive", true)]
-    [TestCase("mainnet ^archive", true)]
-    public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync) => Test<ISyncConfig, long?>(configWildcard, static c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 8192);
-#pragma warning restore CS0612
 
     [TestCase("^spaceneth.json")]
     public void Diagnostics_mode_is_not_enabled_by_default(string configWildcard) => Test<IInitConfig, DiagnosticMode>(configWildcard, static c => c.DiagnosticMode, DiagnosticMode.None);
@@ -425,6 +461,13 @@ public class ConfigFilesTests : ConfigFileTestsBase
         }
     }
 
+    [TestCase("chiado_archive.json")]
+    public void Config_file_contains_only_known_settings(string configFile)
+    {
+        (string errorMsg, IList<(IConfigSource Source, string Category, string Name)> errors) = GetConfigProvider(configFile).FindIncorrectSettings();
+        Assert.That(errors, Is.Empty, errorMsg);
+    }
+
     [Test]
     public void Archive_named_configs_have_pruning_turned_off_in_all_runner_configs()
     {
@@ -480,11 +523,11 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
         ISyncConfig syncConfig = GetConfigFromFile<ISyncConfig>("xdc_archive.json");
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(syncConfig.FastSync, Is.True);
             Assert.That(syncConfig.PivotNumber, Is.EqualTo(switchBlock + 1));
-        });
+        }
     }
 
     // XDPoSChain peers state-sync via GetNodeData, which SyncServer can only answer from
@@ -527,18 +570,18 @@ public class ConfigFilesTests : ConfigFileTestsBase
         AcceptTxResult result = new MinGasPriceTxFilter(GetConfigFromFile<IBlocksConfig>(configFile))
             .IsAllowed(tx, parent, spec);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(baseFee, Is.GreaterThan(UInt256.Zero), "EIP-1559 must be active for this to be meaningful");
             Assert.That((bool)result, Is.True, result.ToString());
-        });
+        }
     }
 
     [TestCase("*")]
     public void BufferResponses_rpc_is_off(string configWildcard) => Test<IJsonRpcConfig, bool>(configWildcard, static c => c.BufferResponses, false);
 
     [TestCase("*")]
-    public void Arena_order_is_default(string configWildcard) => Test<INetworkConfig, int>(configWildcard, static c => c.NettyArenaOrder, -1);
+    public void Arena_order_is_default(string configWildcard) => Test<INetworkConfig, int>(configWildcard, static c => c.NettyArenaOrder, INetworkConfig.DefaultNettyArenaOrder);
 
     [TestCase("chiado", 17_000_000UL, 5UL, 3000)]
     [TestCase("gnosis", 17_000_000UL, 5UL, 3000)]
@@ -580,22 +623,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
                 char nextChar = content.ElementAt(commaIndex + 1);
                 Assert.That(nextChar, Is.Not.EqualTo('}'), $"Additional comma found in {name}");
             }
-        }
-    }
-
-    [TestCase("*")]
-    public void Memory_hint_is_enough(string configWildcard)
-    {
-        foreach (TestConfigProvider configProvider in GetConfigProviders(configWildcard))
-        {
-            MemoryHintMan memoryHintMan = new(LimboLogs.Instance);
-            memoryHintMan.SetMemoryAllowances(
-                configProvider.GetConfig<IDbConfig>(),
-                configProvider.GetConfig<IInitConfig>(),
-                configProvider.GetConfig<INetworkConfig>(),
-                configProvider.GetConfig<ISyncConfig>(),
-                configProvider.GetConfig<ITxPoolConfig>(),
-                (uint)Environment.ProcessorCount);
         }
     }
 

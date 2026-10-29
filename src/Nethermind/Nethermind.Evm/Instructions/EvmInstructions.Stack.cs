@@ -1192,6 +1192,10 @@ public static partial class EvmInstructions
 
         // The number of topics is defined by the generic parameter.
         ulong topicsCount = (ulong)TOpCount.Count;
+        ulong emissionCost = GasCostOf.Log + topicsCount * GasCostOf.LogTopic;
+        if (DispatchFlags.ConstTracing && (vm.IsTracingOperationGasCost || vm.IsTracingOperationStart)
+            && length <= (ulong.MaxValue - emissionCost) / GasCostOf.LogData)
+            vm.TraceMemoryOperationGasCost(in position, in length, emissionCost + (ulong)length * GasCostOf.LogData);
 
         // Ensure that the memory expansion for the log data is accounted for.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, length, ref vmState.Memory)) goto OutOfGas;
