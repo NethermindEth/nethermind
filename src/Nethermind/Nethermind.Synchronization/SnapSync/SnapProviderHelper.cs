@@ -273,9 +273,10 @@ namespace Nethermind.Synchronization.SnapSync
                             }
                             else if (childPath.CompareTo(rightBoundaryPath.Truncate(childPath.Length)) <= 0)
                             {
-                                // The child's keys overlap [start, end], so the proof of the start or of the end passes
-                                // through it. Kept as a hash, the child would hide every key of the range under it: the
-                                // entries could leave them out and the root would still match.
+                                // The child's keys overlap [start, end]: the path of the start or of the end runs through
+                                // this extension, or it is a root extension inside the range. Kept as a hash, the child
+                                // would stand for every key of the range under it: the entries could leave them out and
+                                // the root would still match.
                                 return (AddRangeResult.InvalidProof, null, true);
                             }
                         }
