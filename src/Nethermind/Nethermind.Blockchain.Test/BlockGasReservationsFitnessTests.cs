@@ -88,9 +88,12 @@ public class BlockGasReservationsFitnessTests
         Transaction tx = FrameTx(executionGasLimit: 20_000, stateGasLimit: ulong.MaxValue - 20_000);
         Block block = Build.A.Block.WithGasLimit((long)BlockGasLimit).WithBaseFeePerGas(0).TestObject;
 
-        Assert.That(Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, Spec, out _, out ulong state), Is.True,
-            "the transaction must be priced, not left to the scalar fallback");
-        Assert.That(state, Is.EqualTo(ulong.MaxValue - 20_000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, Spec, out _, out ulong state), Is.True,
+                "the transaction must be priced, not left to the scalar fallback");
+            Assert.That(state, Is.EqualTo(ulong.MaxValue - 20_000));
+        }
 
         InvalidBlockException exception = Assert.Throws<InvalidBlockException>(
             () => BlockAccessListManager.CheckPerTxInclusion(block, 0, tx, Spec, 0, 0))!;
