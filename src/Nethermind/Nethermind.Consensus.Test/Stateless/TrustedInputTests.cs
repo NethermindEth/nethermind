@@ -5,6 +5,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
 using System.Threading.Tasks;
@@ -69,6 +70,20 @@ public class TrustedInputTests
         ForEachItem(input, list, item => item[^1] ^= 1);
 
         Assert.That(Execute(input).IsSuccess, Is.False);
+    }
+
+    /// <summary>The code store serves codes where they lie only when the list offers them with their hashes.</summary>
+    [Test]
+    public async Task Codes_are_read_with_their_hashes()
+    {
+        (byte[] input, _) = await CreateInput(amsterdam: false);
+        using Witness witness = TrustedInput.Read(input).Witness;
+
+        Assert.That(witness.Codes, Is.InstanceOf<IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)>>());
+        IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)> codes = (IReadOnlyList<(ValueHash256, ReadOnlyMemory<byte>)>)witness.Codes;
+        Assert.That(codes, Is.Not.Empty);
+        foreach ((ValueHash256 hash, ReadOnlyMemory<byte> code) in codes)
+            Assert.That(hash, Is.EqualTo(ValueKeccak.Compute(code.Span)));
     }
 
     [Test]

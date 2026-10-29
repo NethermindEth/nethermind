@@ -433,15 +433,16 @@ public static partial class TrustedInput
         }
     }
 
-    /// <summary>The codes as executable code memory, and as arrays copied on request.</summary>
+    /// <summary>The codes as executable code memory with their hashes, and as arrays copied on request.</summary>
     /// <remarks>The witness code store reads the memory, so the guest runs each code where it lies.</remarks>
-    private sealed class CodeList(ReadOnlyMemory<byte>[] codes) : IOwnedReadOnlyList<byte[]>, IReadOnlyList<ReadOnlyMemory<byte>>
+    private sealed class CodeList(ReadOnlyMemory<byte>[] codes) : IOwnedReadOnlyList<byte[]>, IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)>
     {
         public int Count => codes.Length;
 
         public byte[] this[int index] => codes[index].ToArray();
 
-        ReadOnlyMemory<byte> IReadOnlyList<ReadOnlyMemory<byte>>.this[int index] => codes[index];
+        (ValueHash256 Hash, ReadOnlyMemory<byte> Code) IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)>.this[int index] =>
+            (ValueKeccak.Compute(codes[index].Span), codes[index]);
 
         public ReadOnlySpan<byte[]> AsSpan()
         {
@@ -455,8 +456,11 @@ public static partial class TrustedInput
             foreach (ReadOnlyMemory<byte> code in codes) yield return code.ToArray();
         }
 
-        IEnumerator<ReadOnlyMemory<byte>> IEnumerable<ReadOnlyMemory<byte>>.GetEnumerator() =>
-            ((IEnumerable<ReadOnlyMemory<byte>>)codes).GetEnumerator();
+        IEnumerator<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)> IEnumerable<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)>.GetEnumerator()
+        {
+            foreach (ReadOnlyMemory<byte> code in codes)
+                yield return (ValueKeccak.Compute(code.Span), code);
+        }
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
 
