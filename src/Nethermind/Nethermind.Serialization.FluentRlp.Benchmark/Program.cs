@@ -76,7 +76,7 @@ public class CurrentFluentBenchmark
 
     [Benchmark]
     [BenchmarkCategory("Encode")]
-    public byte[] EncodeFluent() => Rlp.Write<AccessListRlpConverter, AccessList>(_fluent);
+    public byte[] EncodeFluent() => RlpCodec.Write<AccessListRlpConverter, AccessList>(_fluent);
 
     [Benchmark(Baseline = true)]
     [BenchmarkCategory("EncodeToBuffer")]
@@ -94,7 +94,7 @@ public class CurrentFluentBenchmark
     public int EncodeToBufferFluent()
     {
         _bufferWriter.ResetWrittenCount();
-        return Rlp.Write<AccessListRlpConverter, AccessList>(_bufferWriter, _fluent);
+        return RlpCodec.Write<AccessListRlpConverter, AccessList>(_bufferWriter, _fluent);
     }
 
     [Benchmark]
@@ -102,7 +102,7 @@ public class CurrentFluentBenchmark
     public int EncodeToBufferFluentBuffered()
     {
         _bufferWriter.ResetWrittenCount();
-        return Rlp.Write(_bufferWriter, _fluent, static (ref RlpWriter writer, AccessList value) => writer.Write(value));
+        return RlpCodec.Write(_bufferWriter, _fluent, static (ref RlpWriter writer, AccessList value) => writer.Write(value));
     }
 
     [Benchmark(Baseline = true)]
@@ -113,13 +113,13 @@ public class CurrentFluentBenchmark
     [Benchmark]
     [BenchmarkCategory("Decode")]
     public AccessList DecodeFluent()
-        => Rlp.Read(_encoded, static (scoped ref RlpReader reader) => reader.ReadAccessList());
+        => RlpCodec.Read(_encoded, static (scoped ref RlpReader reader) => reader.ReadAccessList());
 
     /// <summary>Decodes with FluentRlp to the same type as the current decoder, to compare the readers alone.</summary>
     [Benchmark]
     [BenchmarkCategory("Decode")]
     public Nethermind.Core.Eip2930.AccessList DecodeFluentToCurrentType()
-        => Rlp.Read(_encoded, static (scoped ref RlpReader reader) => reader.ReadSequence(static (scoped ref RlpReader r) =>
+        => RlpCodec.Read(_encoded, static (scoped ref RlpReader reader) => reader.ReadSequence(static (scoped ref RlpReader r) =>
         {
             Nethermind.Core.Eip2930.AccessList.Builder builder = new();
             while (r.HasNext)

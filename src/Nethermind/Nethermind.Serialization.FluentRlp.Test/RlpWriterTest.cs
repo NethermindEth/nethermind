@@ -17,7 +17,7 @@ public class RlpWriterTest
     [Test]
     public void WriteShortString()
     {
-        byte[] serialized = Rlp.Write(static (ref RlpWriter w) => { w.Write("dog"); });
+        byte[] serialized = RlpCodec.Write(static (ref RlpWriter w) => { w.Write("dog"); });
 
         byte[] expected = [0x83, (byte)'d', (byte)'o', (byte)'g'];
         Assert.That(serialized, Is.EqualTo(expected));
@@ -26,7 +26,7 @@ public class RlpWriterTest
     [Test]
     public void WriteEmptyString()
     {
-        byte[] serialized = Rlp.Write(static (ref RlpWriter w) => { w.Write(""); });
+        byte[] serialized = RlpCodec.Write(static (ref RlpWriter w) => { w.Write(""); });
 
         byte[] expected = [0x80];
         Assert.That(serialized, Is.EqualTo(expected));
@@ -35,7 +35,7 @@ public class RlpWriterTest
     [Test]
     public void WriteLongString()
     {
-        byte[] serialized = Rlp.Write(static (ref RlpWriter w) =>
+        byte[] serialized = RlpCodec.Write(static (ref RlpWriter w) =>
         {
             w.Write("Lorem ipsum dolor sit amet, consectetur adipisicing elit");
         });
@@ -51,7 +51,7 @@ public class RlpWriterTest
     [Test]
     public void WriteStringAtShortFormBoundary(int length, byte expectedPrefix)
     {
-        byte[] serialized = Rlp.Write(length, static (ref RlpWriter w, int length) => w.Write(new string('A', length)));
+        byte[] serialized = RlpCodec.Write(length, static (ref RlpWriter w, int length) => w.Write(new string('A', length)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -63,7 +63,7 @@ public class RlpWriterTest
     [Test]
     public void WriteStringJustOverShortFormBoundary()
     {
-        byte[] serialized = Rlp.Write(static (ref RlpWriter w) => w.Write(new string('A', 56)));
+        byte[] serialized = RlpCodec.Write(static (ref RlpWriter w) => w.Write(new string('A', 56)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -79,7 +79,7 @@ public class RlpWriterTest
     public void WriteSequenceAtShortFormBoundary(int contentLength, byte expectedPrefix)
     {
         // Each element is a single byte below 0x80, so it encodes as itself.
-        byte[] serialized = Rlp.Write(contentLength, static (ref RlpWriter w, int contentLength) =>
+        byte[] serialized = RlpCodec.Write(contentLength, static (ref RlpWriter w, int contentLength) =>
             w.WriteSequence(contentLength, static (ref RlpWriter w, int contentLength) =>
             {
                 for (int i = 0; i < contentLength; i++)
@@ -98,7 +98,7 @@ public class RlpWriterTest
     [Test]
     public void WriteZero()
     {
-        byte[] serialized = Rlp.Write(static (ref RlpWriter w) => { w.Write(0); });
+        byte[] serialized = RlpCodec.Write(static (ref RlpWriter w) => { w.Write(0); });
 
         byte[] expected = [0x80];
         Assert.That(serialized, Is.EqualTo(expected));
@@ -110,7 +110,7 @@ public class RlpWriterTest
         for (int i = 1; i < 0x80; i++)
         {
             int integer = i;
-            byte[] serialized = Rlp.Write(integer, static (ref RlpWriter w, int integer) => { w.Write(integer); });
+            byte[] serialized = RlpCodec.Write(integer, static (ref RlpWriter w, int integer) => { w.Write(integer); });
 
             byte[] expected = [(byte)integer];
             Assert.That(serialized, Is.EqualTo(expected));
@@ -124,7 +124,7 @@ public class RlpWriterTest
         for (int i = 0x80; i < 0x0100; i++)
         {
             int integer = i;
-            byte[] serialized = Rlp.Write(integer, static (ref RlpWriter w, int integer) => { w.Write(integer); });
+            byte[] serialized = RlpCodec.Write(integer, static (ref RlpWriter w, int integer) => { w.Write(integer); });
 
             expected[1] = (byte)integer;
             Assert.That(serialized, Is.EqualTo(expected));
@@ -138,7 +138,7 @@ public class RlpWriterTest
         for (int i = 0x100; i < 0xFFFF; i++)
         {
             int integer = i;
-            byte[] serialized = Rlp.Write(integer, static (ref RlpWriter w, int integer) => { w.Write(integer); });
+            byte[] serialized = RlpCodec.Write(integer, static (ref RlpWriter w, int integer) => { w.Write(integer); });
 
             expected[1] = (byte)((integer & 0xFF00) >> 8);
             expected[2] = (byte)((integer & 0x00FF) >> 0);
@@ -149,7 +149,7 @@ public class RlpWriterTest
     [Test]
     public void WriteStringList()
     {
-        byte[] serialized = Rlp.Write(static (ref RlpWriter w) =>
+        byte[] serialized = RlpCodec.Write(static (ref RlpWriter w) =>
         {
             w.WriteSequence(static (ref RlpWriter w) =>
             {
@@ -165,7 +165,7 @@ public class RlpWriterTest
     [Test]
     public void WriteEmptyList()
     {
-        byte[] serialized = Rlp.Write(static (ref RlpWriter w) => { w.WriteSequence(static (ref RlpWriter _) => { }); });
+        byte[] serialized = RlpCodec.Write(static (ref RlpWriter w) => { w.WriteSequence(static (ref RlpWriter _) => { }); });
 
         byte[] expected = [0xc0];
         Assert.That(serialized, Is.EqualTo(expected));
@@ -174,7 +174,7 @@ public class RlpWriterTest
     [Test]
     public void WriteSpan()
     {
-        byte[] serialized = Rlp.Write(static (ref RlpWriter w) => { w.Write([0x04, 0x00]); });
+        byte[] serialized = RlpCodec.Write(static (ref RlpWriter w) => { w.Write([0x04, 0x00]); });
 
         byte[] expected = [0x82, 0x04, 0x00];
         Assert.That(serialized, Is.EqualTo(expected));
@@ -183,7 +183,7 @@ public class RlpWriterTest
     [Test]
     public void WriteSetTheoreticalRepresentation()
     {
-        byte[] serialized = Rlp.Write(static (ref RlpWriter w) =>
+        byte[] serialized = RlpCodec.Write(static (ref RlpWriter w) =>
         {
             w.WriteSequence(static (ref RlpWriter w) =>
             {
@@ -212,7 +212,7 @@ public class RlpWriterTest
     public void WriteShortByteString(string valueHex, string expectedHex)
     {
         byte[] value = Convert.FromHexString(valueHex);
-        byte[] serialized = Rlp.Write(value, static (ref RlpWriter w, byte[] value) => w.Write(value));
+        byte[] serialized = RlpCodec.Write(value, static (ref RlpWriter w, byte[] value) => w.Write(value));
 
         Assert.That(Convert.ToHexString(serialized), Is.EqualTo(expectedHex).IgnoreCase);
     }
@@ -220,14 +220,14 @@ public class RlpWriterTest
     [Test]
     public void WriteSingleCharacterString()
     {
-        byte[] serialized = Rlp.Write(static (ref RlpWriter w) => w.Write("a"));
+        byte[] serialized = RlpCodec.Write(static (ref RlpWriter w) => w.Write("a"));
 
         Assert.That(serialized, Is.EqualTo(new byte[] { 0x61 }));
     }
 
     [Test]
     public void WriteNegativeInteger()
-        => Assert.That(() => Rlp.Write(static (ref RlpWriter w) => w.Write(-1)), Throws.TypeOf<ArgumentOutOfRangeException>());
+        => Assert.That(() => RlpCodec.Write(static (ref RlpWriter w) => w.Write(-1)), Throws.TypeOf<ArgumentOutOfRangeException>());
 
     [Test]
     public void WriteToTooShortDestination()
@@ -242,9 +242,9 @@ public class RlpWriterTest
     public void WriteSequenceWithDeclaredLength([Values(0, 2, 60, 300)] int stringLength)
     {
         byte[] value = new byte[stringLength];
-        byte[] expected = Rlp.Write(value, static (ref RlpWriter w, byte[] value) => w.WriteSequence(value, WritePayload));
+        byte[] expected = RlpCodec.Write(value, static (ref RlpWriter w, byte[] value) => w.WriteSequence(value, WritePayload));
 
-        byte[] buffered = Rlp.Write(value, WriteDeclared);
+        byte[] buffered = RlpCodec.Write(value, WriteDeclared);
         RlpWriter lengthWriter = RlpWriter.LengthWriter();
         WriteDeclared(ref lengthWriter, value);
         byte[] direct = new byte[expected.Length];
@@ -261,7 +261,7 @@ public class RlpWriterTest
 
     private static void WriteDeclared(ref RlpWriter w, byte[] value)
     {
-        RlpSequence sequence = w.StartSequence(value.Length == 0 ? 0 : Rlp.LengthOf(value));
+        RlpSequence sequence = w.StartSequence(value.Length == 0 ? 0 : RlpCodec.LengthOf(value));
         WritePayload(ref w, value);
         w.EndSequence(sequence);
     }
@@ -273,7 +273,7 @@ public class RlpWriterTest
 
     [Test]
     public void WriteSequenceWithWrongDeclaredLength()
-        => Assert.That(static () => Rlp.Write(static (ref RlpWriter w) =>
+        => Assert.That(static () => RlpCodec.Write(static (ref RlpWriter w) =>
         {
             RlpSequence sequence = w.StartSequence(5);
             w.Write("dog");
@@ -283,22 +283,22 @@ public class RlpWriterTest
     [Test]
     public void LengthHelpersMatchWrittenLength([Values(0UL, 1UL, 0x7fUL, 0x80UL, 0xffUL, 0x100UL, ulong.MaxValue)] ulong value)
     {
-        byte[] integer = Rlp.Write(value, static (ref RlpWriter w, ulong value) => w.Write(value));
+        byte[] integer = RlpCodec.Write(value, static (ref RlpWriter w, ulong value) => w.Write(value));
         UInt256 big = new(value, value, 0, 0);
-        byte[] uint256 = Rlp.Write(big, static (ref RlpWriter w, UInt256 value) => w.Write(value));
+        byte[] uint256 = RlpCodec.Write(big, static (ref RlpWriter w, UInt256 value) => w.Write(value));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Rlp.LengthOf(value), Is.EqualTo(integer.Length));
+            Assert.That(RlpCodec.LengthOf(value), Is.EqualTo(integer.Length));
             Assert.That(Instances.UInt256RlpConverter.GetLength(big), Is.EqualTo(uint256.Length));
-            Assert.That(Instances.UInt256RlpConverter.GetLength((UInt256)value), Is.EqualTo(Rlp.Write((UInt256)value, static (ref RlpWriter w, UInt256 v) => w.Write(v)).Length));
+            Assert.That(Instances.UInt256RlpConverter.GetLength((UInt256)value), Is.EqualTo(RlpCodec.Write((UInt256)value, static (ref RlpWriter w, UInt256 v) => w.Write(v)).Length));
         }
     }
 
     // A write action that swallows the exception of a nested sequence leaves that sequence without a prefix.
     [Test]
     public void WriteAfterSwallowedNestedException()
-        => Assert.That(static () => Rlp.Write(static (ref RlpWriter w) =>
+        => Assert.That(static () => RlpCodec.Write(static (ref RlpWriter w) =>
         {
             w.WriteSequence(static (ref RlpWriter w) =>
             {
@@ -319,7 +319,7 @@ public class RlpWriterTest
     {
         Node tree = Node.Nested(1_000_000);
 
-        Assert.That(() => Rlp.Write(tree, static (ref RlpWriter w, Node tree) => tree.Write(ref w)), Throws.TypeOf<InsufficientExecutionStackException>());
+        Assert.That(() => RlpCodec.Write(tree, static (ref RlpWriter w, Node tree) => tree.Write(ref w)), Throws.TypeOf<InsufficientExecutionStackException>());
     }
 
     // The buffered writer moves long prefixes into place when it copies its buffer. Nested sequences that cross the
@@ -330,7 +330,7 @@ public class RlpWriterTest
         Node tree = Node.Random(new Random(seed), depth: 0);
         byte[] expected = Node.Encode(tree);
 
-        byte[] buffered = Rlp.Write(tree, static (ref RlpWriter w, Node tree) => tree.Write(ref w));
+        byte[] buffered = RlpCodec.Write(tree, static (ref RlpWriter w, Node tree) => tree.Write(ref w));
 
         RlpWriter lengthWriter = RlpWriter.LengthWriter();
         tree.Write(ref lengthWriter);
@@ -339,7 +339,7 @@ public class RlpWriterTest
         tree.Write(ref contentWriter);
 
         ArrayBufferWriter<byte> bufferWriter = new();
-        int written = Rlp.Write(bufferWriter, tree, static (ref RlpWriter w, Node tree) => tree.Write(ref w));
+        int written = RlpCodec.Write(bufferWriter, tree, static (ref RlpWriter w, Node tree) => tree.Write(ref w));
 
         using (Assert.EnterMultipleScope())
         {
@@ -374,7 +374,7 @@ public class RlpWriterTest
         Node? decoded = null;
         try
         {
-            decoded = Rlp.Read(input, Node.Read);
+            decoded = RlpCodec.Read(input, Node.Read);
         }
         catch (RlpReaderException)
         {

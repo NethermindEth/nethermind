@@ -21,7 +21,7 @@ public delegate void RefRlpWriterAction(ref RlpWriter arg);
 /// <remarks>
 /// <para>
 /// A sequence prefix depends on the length of its payload. The writer that
-/// <see cref="Rlp.Write{TContext}(TContext, RefRlpWriterAction{TContext})"/> uses writes in one pass to a growable
+/// <see cref="RlpCodec.Write{TContext}(TContext, RefRlpWriterAction{TContext})"/> uses writes in one pass to a growable
 /// buffer: it reserves one prefix byte for each sequence and, when the payload is longer than 55 bytes, inserts the
 /// long prefix while it copies the buffer to the output.
 /// </para>
@@ -72,7 +72,7 @@ public ref struct RlpWriter
     public static RlpWriter LengthWriter() => new(default, isContent: false);
 
     /// <summary>Creates a writer that writes the items to <paramref name="destination"/>.</summary>
-    /// <remarks>The write action of each sequence runs twice, so prefer <see cref="Rlp"/> to encode a whole item.</remarks>
+    /// <remarks>The write action of each sequence runs twice, so prefer <see cref="RlpCodec"/> to encode a whole item.</remarks>
     public static RlpWriter ContentWriter(Span<byte> destination) => new(destination, isContent: true);
 
     internal static RlpWriter BufferingWriter()

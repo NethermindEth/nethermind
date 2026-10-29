@@ -8,7 +8,7 @@ using System.Numerics;
 namespace Nethermind.Serialization.FluentRlp;
 
 /// <summary>Entry points to encode and decode a whole RLP item.</summary>
-public static class Rlp
+public static class RlpCodec
 {
     /// <summary>Encodes the items written by <paramref name="action"/>.</summary>
     /// <returns>A new array of the exact encoded length.</returns>

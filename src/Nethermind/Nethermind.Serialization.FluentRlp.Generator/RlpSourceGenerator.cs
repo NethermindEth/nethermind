@@ -386,7 +386,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
                     """
                 : $$"""
-                        public static int GetLength({{fullTypeName}} value) => {{Library}}.Rlp.LengthOfSequence(GetPayloadLength(value));
+                        public static int GetLength({{fullTypeName}} value) => {{Library}}.RlpCodec.LengthOfSequence(GetPayloadLength(value));
 
                         private static int GetPayloadLength({{fullTypeName}} value) => {{payloadLength}};
 
@@ -569,16 +569,16 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         public string Length(ITypeSymbol type, IParameterSymbol? parameter, string value)
         {
             if (FixedLength(type, parameter) is { } fixedLength) return fixedLength.ToString();
-            if (IsByteArray(type)) return $"{Library}.Rlp.LengthOf({value})";
-            if (IsInteger(type)) return $"{Library}.Rlp.LengthOf<{Name(type)}>({value})";
+            if (IsByteArray(type)) return $"{Library}.RlpCodec.LengthOf({value})";
+            if (IsInteger(type)) return $"{Library}.RlpCodec.LengthOf<{Name(type)}>({value})";
             if (IsUInt256(type)) return $"{Instances}.UInt256RlpConverter.GetLength({value})";
 
             switch (type)
             {
                 case IArrayTypeSymbol { Rank: 1 } array:
-                    return $"{Library}.Rlp.LengthOfSequence({PayloadOfItems(type, array.ElementType, value, value)})";
+                    return $"{Library}.RlpCodec.LengthOfSequence({PayloadOfItems(type, array.ElementType, value, value)})";
                 case INamedTypeSymbol named when IsCollection(named, "List", 1):
-                    return $"{Library}.Rlp.LengthOfSequence({PayloadOfItems(type, named.TypeArguments[0], value, value)})";
+                    return $"{Library}.RlpCodec.LengthOfSequence({PayloadOfItems(type, named.TypeArguments[0], value, value)})";
                 case INamedTypeSymbol { IsTupleType: true } tuple:
                     return $"({Length(tuple.TupleElements[0].Type, null, $"{value}.Item1")} + {Length(tuple.TupleElements[1].Type, null, $"{value}.Item2")})";
                 default:

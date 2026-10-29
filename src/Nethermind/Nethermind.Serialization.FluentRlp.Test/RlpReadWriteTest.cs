@@ -14,13 +14,13 @@ public class RlpReadWriteTest
     [Test]
     public void LongString()
     {
-        byte[] rlp = Rlp.Write(static (ref RlpWriter w) =>
+        byte[] rlp = RlpCodec.Write(static (ref RlpWriter w) =>
         {
             string str = new('A', 2000);
             w.Write(str);
         });
 
-        string decoded = Rlp.Read(rlp, (scoped ref RlpReader r) => r.ReadString());
+        string decoded = RlpCodec.Read(rlp, (scoped ref RlpReader r) => r.ReadString());
 
         Assert.That(decoded, Is.EqualTo(new string('A', 2000)));
     }
@@ -28,7 +28,7 @@ public class RlpReadWriteTest
     [Test]
     public void HeterogeneousList()
     {
-        byte[] rlp = Rlp.Write(static (ref RlpWriter w) =>
+        byte[] rlp = RlpCodec.Write(static (ref RlpWriter w) =>
         {
             w.WriteSequence(static (ref RlpWriter w) =>
             {
@@ -41,7 +41,7 @@ public class RlpReadWriteTest
             });
         });
 
-        (int, (string, string)) decoded = Rlp.Read(rlp, (scoped ref RlpReader r) =>
+        (int, (string, string)) decoded = RlpCodec.Read(rlp, (scoped ref RlpReader r) =>
         {
             return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
@@ -64,7 +64,7 @@ public class RlpReadWriteTest
     [Test]
     public void LongList()
     {
-        byte[] rlp = Rlp.Write(static (ref RlpWriter w) =>
+        byte[] rlp = RlpCodec.Write(static (ref RlpWriter w) =>
         {
             w.WriteSequence(static (ref RlpWriter w) =>
             {
@@ -75,7 +75,7 @@ public class RlpReadWriteTest
             });
         });
 
-        List<string> decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        List<string> decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) =>
         {
             return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
@@ -99,7 +99,7 @@ public class RlpReadWriteTest
     [Test]
     public void MultipleLongList()
     {
-        byte[] rlp = Rlp.Write(static (ref RlpWriter w) =>
+        byte[] rlp = RlpCodec.Write(static (ref RlpWriter w) =>
         {
             w.WriteSequence(static (ref RlpWriter w) =>
             {
@@ -117,7 +117,7 @@ public class RlpReadWriteTest
             });
         });
 
-        (List<string> dogs, List<string> cats) = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        (List<string> dogs, List<string> cats) = RlpCodec.Read(rlp, static (scoped ref RlpReader r) =>
         {
             List<string> dogs = r.ReadSequence(static (scoped ref RlpReader r) =>
             {
@@ -155,7 +155,7 @@ public class RlpReadWriteTest
     [Test]
     public void UnknownLengthList([Values(1, 2, 3, 5, 10, 20)] int length)
     {
-        byte[] rlp = Rlp.Write(length, static (ref RlpWriter root, int length) =>
+        byte[] rlp = RlpCodec.Write(length, static (ref RlpWriter root, int length) =>
         {
             root.WriteSequence(length, static (ref RlpWriter w, int length) =>
             {
@@ -166,7 +166,7 @@ public class RlpReadWriteTest
             });
         });
 
-        List<int> decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        List<int> decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) =>
         {
             return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
@@ -186,8 +186,8 @@ public class RlpReadWriteTest
     [Test]
     public void InvalidObjectReading()
     {
-        byte[] rlp = Rlp.Write(static (ref RlpWriter w) => { w.Write(42); });
-        Action tryRead = () => Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        byte[] rlp = RlpCodec.Write(static (ref RlpWriter w) => { w.Write(42); });
+        Action tryRead = () => RlpCodec.Read(rlp, static (scoped ref RlpReader r) =>
         {
             return r.ReadSequence(static (scoped ref RlpReader _) => null as object);
         });
@@ -198,8 +198,8 @@ public class RlpReadWriteTest
     [Test]
     public void InvalidListReading()
     {
-        byte[] rlp = Rlp.Write(static (ref RlpWriter w) => { w.WriteSequence(static (ref RlpWriter _) => { }); });
-        Func<int> tryRead = () => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadInt32());
+        byte[] rlp = RlpCodec.Write(static (ref RlpWriter w) => { w.WriteSequence(static (ref RlpWriter _) => { }); });
+        Func<int> tryRead = () => RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadInt32());
 
         Assert.That(tryRead, Throws.TypeOf<RlpReaderException>());
     }
@@ -209,12 +209,12 @@ public class RlpReadWriteTest
     {
         RefRlpReaderFunc<int> intReader = static (scoped ref RlpReader r) => r.ReadInt32();
         RefRlpReaderFunc<int> wrappedReader = (scoped ref RlpReader r) => r.ReadSequence(intReader);
-        byte[] intRlp = Rlp.Write(static (ref RlpWriter w) => { w.Write(42); });
-        byte[] wrappedIntRlp = Rlp.Write(static (ref RlpWriter w) => w.WriteSequence(static (ref RlpWriter w) => { w.Write(42); }));
+        byte[] intRlp = RlpCodec.Write(static (ref RlpWriter w) => { w.Write(42); });
+        byte[] wrappedIntRlp = RlpCodec.Write(static (ref RlpWriter w) => w.WriteSequence(static (ref RlpWriter w) => { w.Write(42); }));
 
         foreach (byte[] rlp in (byte[][])[intRlp, wrappedIntRlp])
         {
-            int decoded = Rlp.Read(rlp, (scoped ref RlpReader r) => r.Choice(wrappedReader, intReader));
+            int decoded = RlpCodec.Read(rlp, (scoped ref RlpReader r) => r.Choice(wrappedReader, intReader));
 
             Assert.That(decoded, Is.EqualTo(42));
         }
@@ -246,7 +246,7 @@ public class RlpReadWriteTest
             });
         };
 
-        byte[] rlp = Rlp.Write(static (ref RlpWriter w) =>
+        byte[] rlp = RlpCodec.Write(static (ref RlpWriter w) =>
         {
             w.WriteSequence(static (ref RlpWriter w) =>
             {
@@ -257,7 +257,7 @@ public class RlpReadWriteTest
             });
         });
 
-        (string, string, string) decoded = Rlp.Read(rlp, (scoped ref RlpReader r) => r.Choice(readerA, readerB));
+        (string, string, string) decoded = RlpCodec.Read(rlp, (scoped ref RlpReader r) => r.Choice(readerA, readerB));
         Assert.That(decoded, Is.EqualTo(("dog", "cat", "1000")));
     }
 
@@ -266,7 +266,7 @@ public class RlpReadWriteTest
     {
         int? value = null;
 
-        byte[] rlp = Rlp.Write(value, static (ref RlpWriter w, int? value) =>
+        byte[] rlp = RlpCodec.Write(value, static (ref RlpWriter w, int? value) =>
         {
             if (value.HasValue)
             {
@@ -274,7 +274,7 @@ public class RlpReadWriteTest
             }
         });
 
-        int? decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        int? decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) =>
         {
             return r.Optional(static (scoped ref RlpReader r) => r.ReadInt32());
         });
@@ -288,7 +288,7 @@ public class RlpReadWriteTest
     {
         string? value = null;
 
-        byte[] rlp = Rlp.Write(value, static (ref RlpWriter w, string? value) =>
+        byte[] rlp = RlpCodec.Write(value, static (ref RlpWriter w, string? value) =>
         {
             if (value is not null)
             {
@@ -296,7 +296,7 @@ public class RlpReadWriteTest
             }
         });
 
-        string? decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        string? decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) =>
         {
             return r.Optional(static (scoped ref RlpReader r) => r.ReadString());
         });
@@ -309,7 +309,7 @@ public class RlpReadWriteTest
     {
         (string, int, string?, int?) tuple = ("dog", 42, optionalCount > 0 ? "cat" : null, optionalCount > 1 ? 7 : null);
 
-        byte[] rlp = Rlp.Write(tuple, static (ref RlpWriter w, (string _1, int _2, string? _3, int? _4) tuple) =>
+        byte[] rlp = RlpCodec.Write(tuple, static (ref RlpWriter w, (string _1, int _2, string? _3, int? _4) tuple) =>
         {
             w.Write(tuple._1);
             w.Write(tuple._2);
@@ -317,7 +317,7 @@ public class RlpReadWriteTest
             if (tuple._4.HasValue) w.Write(tuple._4.Value);
         });
 
-        (string, int, string?, int?) decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        (string, int, string?, int?) decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) =>
         {
             string _1 = r.ReadString();
             int _2 = r.ReadInt32();
@@ -336,7 +336,7 @@ public class RlpReadWriteTest
     {
         byte[] rlp = [0xc0];
 
-        Assert.That(() => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.Optional(static (scoped ref RlpReader r) => r.ReadString())),
+        Assert.That(() => RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.Optional(static (scoped ref RlpReader r) => r.ReadString())),
             Throws.TypeOf<RlpReaderException>());
     }
 
@@ -345,7 +345,7 @@ public class RlpReadWriteTest
     {
         byte[] rlp = [0x2a];
 
-        Assert.That(() => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.Choice(
+        Assert.That(() => RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.Choice(
                 static (scoped ref RlpReader _) => throw new InvalidOperationException(),
                 static (scoped ref RlpReader r) => r.ReadInt32())),
             Throws.TypeOf<InvalidOperationException>());
@@ -368,7 +368,7 @@ public class RlpReadWriteTest
             }),
         ];
 
-        byte[] rlp = Rlp.Write(students, static (ref RlpWriter w, List<Student> students) =>
+        byte[] rlp = RlpCodec.Write(students, static (ref RlpWriter w, List<Student> students) =>
         {
             w.WriteSequence(students, static (ref RlpWriter w, List<Student> students) =>
             {
@@ -379,7 +379,7 @@ public class RlpReadWriteTest
             });
         });
 
-        List<Student> decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        List<Student> decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) =>
         {
             return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
@@ -401,9 +401,9 @@ public class RlpReadWriteTest
     {
         List<string> list = ["cat", "dog"];
 
-        byte[] rlp = Rlp.Write(list, static (ref RlpWriter w, List<string> list) => w.Write(list, StringRlpConverter.Write));
+        byte[] rlp = RlpCodec.Write(list, static (ref RlpWriter w, List<string> list) => w.Write(list, StringRlpConverter.Write));
 
-        byte[] rlpExplicit = Rlp.Write(static (ref RlpWriter w) =>
+        byte[] rlpExplicit = RlpCodec.Write(static (ref RlpWriter w) =>
         {
             w.WriteSequence(static (ref RlpWriter w) =>
             {
@@ -413,7 +413,7 @@ public class RlpReadWriteTest
         });
         Assert.That(rlpExplicit, Is.EqualTo(rlp));
 
-        List<string> decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadList(StringRlpConverter.Read));
+        List<string> decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadList(StringRlpConverter.Read));
 
         Assert.That(list, Is.EqualTo(decoded));
     }
@@ -427,11 +427,11 @@ public class RlpReadWriteTest
             []
         ];
 
-        byte[] rlp = Rlp.Write(list, static (ref RlpWriter w, List<List<string>> list) =>
+        byte[] rlp = RlpCodec.Write(list, static (ref RlpWriter w, List<List<string>> list) =>
             w.Write(list, static (ref RlpWriter w, List<string> v) =>
                 w.Write(v, StringRlpConverter.Write)));
 
-        byte[] rlpExplicit = Rlp.Write(static (ref RlpWriter w) =>
+        byte[] rlpExplicit = RlpCodec.Write(static (ref RlpWriter w) =>
         {
             w.WriteSequence(static (ref RlpWriter w) =>
             {
@@ -453,7 +453,7 @@ public class RlpReadWriteTest
         });
         Assert.That(rlpExplicit, Is.EqualTo(rlp));
 
-        List<List<string>> decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        List<List<string>> decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) =>
             r.ReadList(static (scoped ref RlpReader r) =>
                 r.ReadList(StringRlpConverter.Read)));
 
@@ -469,10 +469,10 @@ public class RlpReadWriteTest
             { 2, "cat" },
         };
 
-        byte[] rlp = Rlp.Write(dictionary, static (ref RlpWriter w, Dictionary<int, string> dictionary) =>
+        byte[] rlp = RlpCodec.Write(dictionary, static (ref RlpWriter w, Dictionary<int, string> dictionary) =>
             w.Write(dictionary, Int32RlpConverter.Write, StringRlpConverter.Write));
 
-        byte[] rlpExplicit = Rlp.Write(dictionary, static (ref RlpWriter w, Dictionary<int, string> dictionary) =>
+        byte[] rlpExplicit = RlpCodec.Write(dictionary, static (ref RlpWriter w, Dictionary<int, string> dictionary) =>
         {
             w.WriteSequence(dictionary, static (ref RlpWriter w, Dictionary<int, string> dictionary) =>
             {
@@ -488,7 +488,7 @@ public class RlpReadWriteTest
         });
         Assert.That(rlp, Is.EqualTo(rlpExplicit));
 
-        Dictionary<int, string> decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        Dictionary<int, string> decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) =>
             r.ReadDictionary(Int32RlpConverter.Read, StringRlpConverter.Read));
 
         Assert.That(decoded, Is.EqualTo(dictionary));
@@ -499,10 +499,10 @@ public class RlpReadWriteTest
     {
         (int, int) tuple = (42, 1337);
 
-        byte[] rlp = Rlp.Write(tuple, static (ref RlpWriter w, (int, int) tuple)
+        byte[] rlp = RlpCodec.Write(tuple, static (ref RlpWriter w, (int, int) tuple)
             => w.Write(tuple, Int32RlpConverter.Write, Int32RlpConverter.Write));
 
-        byte[] rlpExplicit = Rlp.Write(tuple, static (ref RlpWriter w, (int, int) tuple) =>
+        byte[] rlpExplicit = RlpCodec.Write(tuple, static (ref RlpWriter w, (int, int) tuple) =>
         {
             w.Write(tuple.Item1);
             w.Write(tuple.Item2);
@@ -510,7 +510,7 @@ public class RlpReadWriteTest
 
         Assert.That(rlp, Is.EqualTo(rlpExplicit));
 
-        (int, int) decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        (int, int) decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) =>
             r.ReadTuple(Int32RlpConverter.Read, Int32RlpConverter.Read));
 
         Assert.That(decoded, Is.EqualTo(tuple));
@@ -546,9 +546,9 @@ public class RlpReadWriteTest
 
         Assert.That(() => rlp.Length switch
         {
-            9 => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadInt64()).ToString(),
-            17 => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadInt128()).ToString(),
-            _ => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadUInt256()).ToString(),
+            9 => RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadInt64()).ToString(),
+            17 => RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadInt128()).ToString(),
+            _ => RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadUInt256()).ToString(),
         }, Throws.TypeOf<RlpReaderException>());
     }
 
@@ -557,25 +557,25 @@ public class RlpReadWriteTest
     {
         byte[] rlp = [0x82, 0xc3, 0x28];
 
-        Assert.That(() => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadString()), Throws.TypeOf<RlpReaderException>());
+        Assert.That(() => RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadString()), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
     public void DictionaryWithDuplicateKey()
     {
-        byte[] rlp = Rlp.Write(static (ref RlpWriter w) => w.WriteSequence(static (ref RlpWriter w) =>
+        byte[] rlp = RlpCodec.Write(static (ref RlpWriter w) => w.WriteSequence(static (ref RlpWriter w) =>
         {
             w.WriteSequence(static (ref RlpWriter w) => { w.Write(1); w.Write("dog"); });
             w.WriteSequence(static (ref RlpWriter w) => { w.Write(1); w.Write("cat"); });
         }));
 
-        Assert.That(() => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadDictionary(Int32RlpConverter.Read, StringRlpConverter.Read)),
+        Assert.That(() => RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadDictionary(Int32RlpConverter.Read, StringRlpConverter.Read)),
             Throws.TypeOf<RlpReaderException>());
     }
 
     private static void AssertRoundTrip<T>(T value, RefRlpReaderFunc<T> read)
     {
-        byte[] rlp = Rlp.Write(value, static (ref RlpWriter w, T value) =>
+        byte[] rlp = RlpCodec.Write(value, static (ref RlpWriter w, T value) =>
         {
             switch (value)
             {
@@ -594,6 +594,6 @@ public class RlpReadWriteTest
             }
         });
 
-        Assert.That(Rlp.Read(rlp, read), Is.EqualTo(value), typeof(T).Name);
+        Assert.That(RlpCodec.Read(rlp, read), Is.EqualTo(value), typeof(T).Name);
     }
 }

@@ -34,7 +34,7 @@ public abstract class UInt256RlpConverter : IRlpLengthConverter<UInt256>
     public static int GetLength(UInt256 value)
     {
         int byteCount = (value.BitLen + 7) / 8;
-        return byteCount == 1 && value.u0 < 0x80 ? 1 : Rlp.LengthOfString(byteCount);
+        return byteCount == 1 && value.u0 < 0x80 ? 1 : RlpCodec.LengthOfString(byteCount);
     }
 
     /// <summary>Reads a value encoded as a byte string of exactly 32 big-endian bytes, as for EIP-2930 storage keys.</summary>

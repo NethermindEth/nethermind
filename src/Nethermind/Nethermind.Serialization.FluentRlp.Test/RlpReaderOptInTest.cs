@@ -12,7 +12,7 @@ public class RlpReaderOptInTest
     [TestCase("c3010203", 3, ExpectedResult = 3)]
     [TestCase("c0", 0, ExpectedResult = 0)]
     public int CountItemsWithinLimit(string hex, int maxCount)
-        => Rlp.Read(Convert.FromHexString(hex), (scoped ref RlpReader r) =>
+        => RlpCodec.Read(Convert.FromHexString(hex), (scoped ref RlpReader r) =>
         {
             RlpReader items = r.EnterSequence(out int length);
             int count = items.CountItems(maxCount);
@@ -22,7 +22,7 @@ public class RlpReaderOptInTest
 
     [Test]
     public void CountItemsOverLimit()
-        => Assert.That(static () => Rlp.Read(Convert.FromHexString("c3010203"), static (scoped ref RlpReader r) =>
+        => Assert.That(static () => RlpCodec.Read(Convert.FromHexString("c3010203"), static (scoped ref RlpReader r) =>
         {
             RlpReader items = r.EnterSequence(out int length);
             return items.CountItems(2);
@@ -61,7 +61,7 @@ public class RlpReaderOptInTest
     public void ReadEncodedItemKeepsThePrefix()
     {
         byte[] source = Convert.FromHexString("c2c18183646f67");
-        (string first, string second) = Rlp.Read(source, static (scoped ref RlpReader r) =>
+        (string first, string second) = RlpCodec.Read(source, static (scoped ref RlpReader r) =>
             (Convert.ToHexString(r.ReadEncodedItem()), Convert.ToHexString(r.ReadEncodedItem())));
 
         using (Assert.EnterMultipleScope())
@@ -75,7 +75,7 @@ public class RlpReaderOptInTest
     [TestCase("b801", TestName = "Long form of a short length")]
     [TestCase("c3", TestName = "Truncated sequence")]
     public void SkipItemRejectsMalformedPrefix(string hex)
-        => Assert.That(() => Rlp.Read(Convert.FromHexString(hex), static (scoped ref RlpReader r) =>
+        => Assert.That(() => RlpCodec.Read(Convert.FromHexString(hex), static (scoped ref RlpReader r) =>
         {
             r.SkipItem();
             return 0;
@@ -86,7 +86,7 @@ public class RlpReaderOptInTest
     public void ExitSequenceIgnoringRestSkipsLaterItems()
     {
         byte[] source = Convert.FromHexString("c60102c3040506");
-        (int a, int b) = Rlp.Read(source, static (scoped ref RlpReader r) =>
+        (int a, int b) = RlpCodec.Read(source, static (scoped ref RlpReader r) =>
         {
             RlpReader items = r.EnterSequence(out int length);
             (int, int) result = (items.ReadInteger<int>(), items.ReadInteger<int>());
@@ -99,7 +99,7 @@ public class RlpReaderOptInTest
 
     [Test]
     public void ExitSequenceIgnoringRestChecksLaterPrefixes()
-        => Assert.That(static () => Rlp.Read(Convert.FromHexString("c30181" + "00"), static (scoped ref RlpReader r) =>
+        => Assert.That(static () => RlpCodec.Read(Convert.FromHexString("c30181" + "00"), static (scoped ref RlpReader r) =>
         {
             RlpReader items = r.EnterSequence(out int length);
             int first = items.ReadInteger<int>();
@@ -125,7 +125,7 @@ public class RlpReaderOptInTest
     [Test]
     public void ReadLeadingIgnoresTrailingBytes()
     {
-        int value = Rlp.ReadLeading(Convert.FromHexString("05ffff"), static (scoped ref RlpReader r) => r.ReadInteger<int>(), out int bytesRead);
+        int value = RlpCodec.ReadLeading(Convert.FromHexString("05ffff"), static (scoped ref RlpReader r) => r.ReadInteger<int>(), out int bytesRead);
 
         Assert.That((value, bytesRead), Is.EqualTo((5, 1)));
     }
@@ -134,7 +134,7 @@ public class RlpReaderOptInTest
     public void WriteEncodedCopiesItems()
     {
         byte[] item = Convert.FromHexString("c2c180");
-        byte[] rlp = Rlp.Write(item, static (ref RlpWriter w, byte[] item) => w.WriteSequence(item, static (ref RlpWriter w, byte[] item) => w.WriteEncoded(item)));
+        byte[] rlp = RlpCodec.Write(item, static (ref RlpWriter w, byte[] item) => w.WriteSequence(item, static (ref RlpWriter w, byte[] item) => w.WriteEncoded(item)));
 
         Assert.That(Convert.ToHexString(rlp), Is.EqualTo("C3C2C180"));
     }

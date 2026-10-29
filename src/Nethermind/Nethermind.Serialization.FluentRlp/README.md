@@ -7,8 +7,8 @@ extension methods, or generated for records with `[RlpSerializable]`.
 [RlpSerializable]
 public record AccessListItem(Address Address, List<StorageKey> StorageKeys);
 
-byte[] rlp = Rlp.Write(item, static (ref RlpWriter w, AccessListItem item) => w.Write(item));
-AccessListItem decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadAccessListItem());
+byte[] rlp = RlpCodec.Write(item, static (ref RlpWriter w, AccessListItem item) => w.Write(item));
+AccessListItem decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadAccessListItem());
 ```
 
 ## Decoding rules
@@ -25,11 +25,11 @@ AccessListItem decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.Read
 
 ## Encoding
 
-`Rlp.Write(value, action)` runs the write action once. It writes to a per-thread buffer and inserts the long sequence
+`RlpCodec.Write(value, action)` runs the write action once. It writes to a per-thread buffer and inserts the long sequence
 prefixes when it copies the buffer to the output.
 
 A converter that also implements `IRlpLengthConverter<T>` computes the encoded length first. Then
-`Rlp.Write<TConverter, T>(value)` allocates the exact output and writes it in one pass, without a buffer or a copy.
+`RlpCodec.Write<TConverter, T>(value)` allocates the exact output and writes it in one pass, without a buffer or a copy.
 Hand-written code gets the same with `RlpWriter.StartSequence(payloadLength)` and `EndSequence`, which check the
 declared length. `RlpReader.ReadBytes(length)` reads a byte string of an exact length, and `UInt256RlpConverter`
 has `ReadFixed` and `WriteFixed` for 32-byte values.
