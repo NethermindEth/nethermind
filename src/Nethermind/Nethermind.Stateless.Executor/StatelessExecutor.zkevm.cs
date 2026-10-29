@@ -26,4 +26,13 @@ public static partial class StatelessExecutor
             recovered = EthereumEcdsa.TryRecoverSendersInBatch(
                 transactions, encodedTransactions, new EthereumEcdsa(specProvider.ChainId), !spec.ValidateChainId);
     }
+
+    static partial void TryVerifySendersInBatch(
+        Transaction[] transactions, in TrustedPayload payload, ISpecProvider specProvider, IReleaseSpec spec, ref bool verified)
+    {
+        if (AirbenderFlag.IsActive)
+            verified = EthereumEcdsa.TryVerifySendersInBatch(transactions, payload.EncodedTransactions,
+                new EthereumEcdsa(specProvider.ChainId), !spec.ValidateChainId, TrustedInput.SenderKeys(payload.SenderHints),
+                TrustedInput.SignatureYs(payload.SenderHints), TrustedInput.SenderHintWeights(payload.BlockHash, payload.SenderHints));
+    }
 }

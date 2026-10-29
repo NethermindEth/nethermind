@@ -48,7 +48,7 @@ public static partial class StatelessExecutor
             ISpecProvider specProvider = payload.SpecProvider;
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
             InitializeKzg(spec);
-            if (TryRecoverSenders(block.Transactions, payload.EncodedTransactions, specProvider, spec))
+            if (TrySetTrustedSenders(block.Transactions, payload, specProvider, spec))
             {
                 using Witness witness = payload.Witness;
 
@@ -69,4 +69,20 @@ public static partial class StatelessExecutor
 
         return output;
     }
+
+    /// <summary>Sets every sender, from the input's sender hints where the guest can check them all at once.</summary>
+    /// <remarks>A failed check says nothing about the block, as the hints may be what is wrong, so recovery then decides.</remarks>
+    private static bool TrySetTrustedSenders(Transaction[] transactions, in TrustedPayload payload, ISpecProvider specProvider, IReleaseSpec spec)
+    {
+        bool verified = false;
+        if (payload.SenderHints.Length != 0)
+            TryVerifySendersInBatch(transactions, payload, specProvider, spec, ref verified);
+
+        return verified || TryRecoverSenders(transactions, payload.EncodedTransactions, specProvider, spec);
+    }
+
+    /// <summary>Checks every signature against its sender hint in one call where the guest can, setting the senders and
+    /// <paramref name="verified"/> when all match.</summary>
+    static partial void TryVerifySendersInBatch(
+        Transaction[] transactions, in TrustedPayload payload, ISpecProvider specProvider, IReleaseSpec spec, ref bool verified);
 }

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Globalization;
+using System.Numerics;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -9,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
@@ -29,8 +32,11 @@ namespace Nethermind.Stateless.Execution.IO;
 /// Layout, little-endian, every section and item 8-byte aligned from the start of the input:
 /// <list type="bullet">
 /// <item>A <see cref="HeaderLength"/>-byte header: magic, version, chain id, <see cref="ProtocolFork"/>, the offset and
-/// length of the block header, withdrawals and block access list RLP, the offsets of the four item lists, and the
-/// total length.</item>
+/// length of the block header, withdrawals and block access list RLP and of the sender hints, the offsets of the four
+/// item lists, and the total length.</item>
+/// <item>Sender hints, empty or one per transaction: the signers' public keys (x || y, 64 bytes each), then the y of
+/// each signature's R (32 bytes each), all big-endian. A guest may check every signature against its hint in one
+/// batch, and recovers the senders when the batch fails, so a wrong hint costs time but never changes the result.</item>
 /// <item>Item lists of transactions (as sent on the wire), witness headers, state nodes and codes: a count and a
 /// reserved word, then the items. An item is its length, <see cref="ItemPrefixLength"/> - 4 reserved bytes, the item's
 /// bytes and padding to 8; a code is followed by <see cref="CodeInfo.ExecutionPadding"/> more bytes before that padding.
@@ -52,11 +58,19 @@ public static partial class TrustedInput
     /// <summary>The bytes before every item: its length, then room for an array header.</summary>
     public const int ItemPrefixLength = 24;
 
+    /// <summary>The bytes of sender hints per transaction: a public key and the y of the signature's R.</summary>
+    public const int SenderHintLength = KeyLength + YLength;
+
+    private const int KeyLength = 64;
+    private const int YLength = 32;
+    private const int WeightLength = 16;
+
     private const int ChainIdOffset = 8;
     private const int ForkOffset = 16;
     private const int BlockHeaderSection = 24;
     private const int WithdrawalsSection = 32;
     private const int BlockAccessListSection = 40;
+    private const int SenderHintsSection = 48;
     private const int TransactionsList = 56;
     private const int WitnessHeadersList = 60;
     private const int StateNodesList = 64;
@@ -82,9 +96,10 @@ public static partial class TrustedInput
         byte[] header = Rlp.Encode(block.Header).Bytes;
         byte[] withdrawals = block.Withdrawals is null ? [] : Rlp.Encode(block.Withdrawals).Bytes;
         byte[] blockAccessList = block.EncodedBlockAccessList ?? [];
+        byte[] senderHints = SenderHints(chainId, fork, block, encodedTransactions);
 
         int length = HeaderLength + Align(header.Length) + Align(withdrawals.Length) + Align(blockAccessList.Length)
-            + ListLength(encodedTransactions, 0) + ListLength(witness.Headers, 0) + ListLength(witness.State, 0)
+            + Align(senderHints.Length) + ListLength(encodedTransactions, 0) + ListLength(witness.Headers, 0) + ListLength(witness.State, 0)
             + ListLength(witness.Codes, CodeInfo.ExecutionPadding);
         byte[] input = new byte[length];
         Span<byte> span = input;
@@ -99,6 +114,7 @@ public static partial class TrustedInput
         position = WriteSection(span, BlockHeaderSection, position, header);
         position = WriteSection(span, WithdrawalsSection, position, withdrawals);
         position = WriteSection(span, BlockAccessListSection, position, blockAccessList);
+        position = WriteSection(span, SenderHintsSection, position, senderHints);
         position = WriteList(span, TransactionsList, position, encodedTransactions, 0);
         position = WriteList(span, WitnessHeadersList, position, witness.Headers, 0);
         position = WriteList(span, StateNodesList, position, witness.State, 0);
@@ -116,6 +132,66 @@ public static partial class TrustedInput
         Block block = payload.GetBlock();
         using Witness witness = payload.Witness.ToWitness();
         return Write(payload.ChainId, (ProtocolFork)(payload.SchemaId >> 8), block, payload.EncodedTransactions, witness);
+    }
+
+    /// <summary>The signers' public keys of <paramref name="senderHints"/>, 64 bytes each.</summary>
+    internal static ReadOnlySpan<byte> SenderKeys(ReadOnlySpan<byte> senderHints) =>
+        senderHints[..(senderHints.Length / SenderHintLength * KeyLength)];
+
+    /// <summary>The ys of the signatures' R of <paramref name="senderHints"/>, 32 bytes each.</summary>
+    internal static ReadOnlySpan<byte> SignatureYs(ReadOnlySpan<byte> senderHints) =>
+        senderHints[(senderHints.Length / SenderHintLength * KeyLength)..];
+
+    /// <summary>The random weights, 16 bytes per transaction, a batch check of <paramref name="senderHints"/> takes.</summary>
+    /// <remarks>
+    /// Drawn from the keccak of the block hash and the hints, so a prover fixes the hints, and through the block hash the
+    /// transactions, before it learns the weights. The block hash binds the transactions only through the transactions
+    /// root, which a successful validation checks; a block whose transactions do not match it fails anyway.
+    /// </remarks>
+    internal static byte[] SenderHintWeights(Hash256 blockHash, ReadOnlySpan<byte> senderHints)
+    {
+        byte[] seedInput = new byte[Hash256.Size + senderHints.Length];
+        blockHash.Bytes.CopyTo(seedInput);
+        senderHints.CopyTo(seedInput.AsSpan(Hash256.Size));
+        ValueHash256 seed = ValueKeccak.Compute(seedInput);
+
+        byte[] weights = new byte[senderHints.Length / SenderHintLength * WeightLength];
+        Span<byte> counter = stackalloc byte[Hash256.Size + sizeof(int)];
+        seed.Bytes.CopyTo(counter);
+        for (int i = 0, at = 0; at < weights.Length; i++, at += Hash256.Size)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(counter[Hash256.Size..], i);
+            ValueHash256 block = ValueKeccak.Compute(counter);
+            block.Bytes[..Math.Min(Hash256.Size, weights.Length - at)].CopyTo(weights.AsSpan(at));
+        }
+
+        return weights;
+    }
+
+    /// <summary>The sender hints of <paramref name="block"/>, or none when a signature yields no key.</summary>
+    private static byte[] SenderHints(ulong chainId, ProtocolFork fork, Block block, IReadOnlyList<byte[]> encodedTransactions)
+    {
+        Transaction[] transactions = block.Transactions;
+        IReleaseSpec spec = StatelessSpecProvider.Create(chainId, fork, new ForkActivation(block.Number, block.Timestamp))
+            .GetSpec(block.Header);
+        EthereumEcdsa ecdsa = new(chainId);
+        byte[] hints = new byte[transactions.Length * SenderHintLength];
+        Span<byte> keys = hints.AsSpan(0, transactions.Length * KeyLength);
+        Span<byte> ys = hints.AsSpan(transactions.Length * KeyLength);
+        Span<byte> key = stackalloc byte[PublicKey.PrefixedLengthInBytes];
+
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            Transaction transaction = transactions[i];
+            if (transaction.Signature is not { } signature
+                || !ecdsa.TryRecoverPublicKey(transaction, encodedTransactions[i], key, !spec.ValidateChainId))
+                return [];
+
+            key[1..].CopyTo(keys[(i * KeyLength)..]);
+            Secp256k1.WriteSignatureY(signature, ys.Slice(i * YLength, YLength));
+        }
+
+        return hints;
     }
 
     /// <summary>The RLP of the block header <paramref name="input"/> carries, whose keccak is the block hash a guest reports.</summary>
@@ -155,6 +231,10 @@ public static partial class TrustedInput
         ReadOnlySpan<byte> withdrawalsRlp = Section(data, WithdrawalsSection);
         ReadOnlySpan<byte> blockAccessListRlp = Section(data, BlockAccessListSection);
         byte[][] transactions = ReadItems(data, TransactionsList, 0);
+        ReadOnlySpan<byte> senderHints = Section(data, SenderHintsSection);
+        if (!senderHints.IsEmpty && senderHints.Length != transactions.Length * SenderHintLength)
+            throw new ArgumentException("Sender hints do not match the transactions", nameof(data));
+
         Witness witness = new()
         {
             Headers = new ItemList(ReadItems(data, WitnessHeadersList, 0)),
@@ -172,6 +252,7 @@ public static partial class TrustedInput
             GetBlock: () => CreateBlock(header, transactions, withdrawals, encodedBlockAccessList),
             Witness: witness,
             EncodedTransactions: transactions,
+            SenderHints: senderHints.ToArray(),
             ChainId: chainId,
             BlockHash: blockHash,
             SpecProvider: specProvider);
@@ -326,6 +407,32 @@ public static partial class TrustedInput
         public void Dispose() { }
     }
 
+    /// <summary>The y of a signature's R, which the sender hints carry.</summary>
+    /// <remarks>Its own class, so that a guest, which never writes an input, does not run the constants' initializer.</remarks>
+    private static class Secp256k1
+    {
+        private static readonly BigInteger FieldPrime =
+            BigInteger.Parse("0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", NumberStyles.HexNumber);
+
+        private static readonly BigInteger GroupOrder =
+            BigInteger.Parse("0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", NumberStyles.HexNumber);
+
+        /// <summary>Writes the y of <paramref name="signature"/>'s R big-endian: the root of x^3 + 7 whose parity the
+        /// recovery id gives, x being r, or r + n for ids 2 and 3.</summary>
+        public static void WriteSignatureY(Signature signature, Span<byte> destination)
+        {
+            BigInteger x = new(signature.RAsSpan, isUnsigned: true, isBigEndian: true);
+            if ((signature.RecoveryId & 2) != 0) x += GroupOrder;
+
+            // p = 3 mod 4, so a square's root is its (p + 1) / 4 power.
+            BigInteger y = BigInteger.ModPow((x * x * x + 7) % FieldPrime, (FieldPrime + 1) / 4, FieldPrime);
+            if (y.IsEven == ((signature.RecoveryId & 1) != 0)) y = FieldPrime - y;
+
+            destination.Clear();
+            y.TryWriteBytes(destination[(destination.Length - y.GetByteCount(isUnsigned: true))..], out _, isUnsigned: true, isBigEndian: true);
+        }
+    }
+
     /// <summary>The codes as executable code memory, and as arrays copied on request.</summary>
     /// <remarks>The witness code store reads the memory, so the guest runs each code where it lies.</remarks>
     private sealed class CodeList(ReadOnlyMemory<byte>[] codes) : IOwnedReadOnlyList<byte[]>, IReadOnlyList<ReadOnlyMemory<byte>>
@@ -358,11 +465,13 @@ public static partial class TrustedInput
 }
 
 /// <param name="EncodedTransactions">The block's transactions as sent on the wire, which sender recovery hashes.</param>
+/// <param name="SenderHints">The sender hints, empty or <see cref="TrustedInput.SenderHintLength"/> bytes per transaction.</param>
 /// <param name="GetBlock">Builds the block. Deferred, as it decodes attacker-controlled transactions and can throw.</param>
 internal readonly record struct TrustedPayload(
     Func<Block> GetBlock,
     Witness Witness,
     byte[][] EncodedTransactions,
+    byte[] SenderHints,
     ulong ChainId,
     Hash256 BlockHash,
     ISpecProvider SpecProvider);

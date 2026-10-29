@@ -5,6 +5,8 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Globalization;
+using System.Numerics;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
@@ -20,6 +22,7 @@ namespace Nethermind.Consensus.Test.Stateless;
 [NonParallelizable]
 public class TrustedInputTests
 {
+    private const int SenderHintsSection = 48;
     private const int TransactionsList = 56;
     private const int WitnessHeadersList = 60;
     private const int StateNodesList = 64;
@@ -69,7 +72,62 @@ public class TrustedInputTests
     }
 
     [Test]
-    public async Task Malformed_input_reports_the_sentinel([Values(0, 4, 72)] int corruptedOffset)
+    public async Task Sender_hints_hold_each_signers_key_and_signature_point()
+    {
+        (byte[] input, Block block) = await CreateInput(amsterdam: false);
+        ReadOnlySpan<byte> hints = SenderHints(input);
+        ReadOnlySpan<byte> keys = TrustedInput.SenderKeys(hints);
+        ReadOnlySpan<byte> ys = TrustedInput.SignatureYs(hints);
+        BigInteger p = BigInteger.Parse("0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", NumberStyles.HexNumber);
+
+        Assert.That(hints.Length, Is.EqualTo(block.Transactions.Length * TrustedInput.SenderHintLength).And.Positive);
+        for (int i = 0; i < block.Transactions.Length; i++)
+        {
+            Signature signature = block.Transactions[i].Signature!;
+            BigInteger x = new(signature.RAsSpan, isUnsigned: true, isBigEndian: true);
+            BigInteger y = new(ys.Slice(i * 32, 32), isUnsigned: true, isBigEndian: true);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(PublicKey.ComputeAddress(keys.Slice(i * 64, 64)), Is.EqualTo(block.Transactions[i].SenderAddress));
+                Assert.That(y * y % p, Is.EqualTo((x * x * x + 7) % p));
+                Assert.That(y.IsEven, Is.EqualTo((signature.RecoveryId & 1) == 0));
+            }
+        }
+    }
+
+    /// <summary>A guest checks hints in a batch and recovers the senders when the batch fails, so a hint changes no result.</summary>
+    [Test]
+    public async Task Wrong_sender_hint_leaves_the_block_valid()
+    {
+        (byte[] input, _) = await CreateInput(amsterdam: false);
+
+        SenderHints(input)[0] ^= 1;
+
+        Assert.That(Execute(input).IsSuccess, Is.True);
+    }
+
+    [Test]
+    public async Task Sender_hint_weights_follow_the_block_hash_and_every_hint()
+    {
+        (byte[] input, Block block) = await CreateInput(amsterdam: false);
+        byte[] hints = SenderHints(input).ToArray();
+        byte[] weights = TrustedInput.SenderHintWeights(block.Hash!, hints);
+
+        byte[] otherHints = (byte[])hints.Clone();
+        otherHints[^1] ^= 1;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(weights, Has.Length.EqualTo(block.Transactions.Length * 16));
+            Assert.That(TrustedInput.SenderHintWeights(block.Hash!, hints), Is.EqualTo(weights));
+            Assert.That(TrustedInput.SenderHintWeights(block.Hash!, otherHints), Is.Not.EqualTo(weights));
+            Assert.That(TrustedInput.SenderHintWeights(Keccak.Compute(block.Hash!.Bytes), hints), Is.Not.EqualTo(weights));
+        }
+    }
+
+    [Test]
+    public async Task Malformed_input_reports_the_sentinel([Values(0, 4, SenderHintsSection + 4, 72)] int corruptedOffset)
     {
         (byte[] input, _) = await CreateInput(amsterdam: false);
         input[corruptedOffset] ^= 1;
@@ -98,6 +156,10 @@ public class TrustedInputTests
         StatelessValidationResult.Decode(StatelessExecutor.ExecuteTrusted(input), out StatelessValidationResult result);
         return result;
     }
+
+    private static Span<byte> SenderHints(byte[] input) => input.AsSpan(
+        (int)BinaryPrimitives.ReadUInt32LittleEndian(input.AsSpan(SenderHintsSection)),
+        (int)BinaryPrimitives.ReadUInt32LittleEndian(input.AsSpan(SenderHintsSection + 4)));
 
     private static void ForEachItem(byte[] input, int list, Action<Span<byte>> mutate)
     {
