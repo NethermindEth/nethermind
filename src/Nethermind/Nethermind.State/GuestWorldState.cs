@@ -49,6 +49,7 @@ public sealed class GuestWorldState : IWorldState
     private const byte HeadNew = 3;
     private const byte HeadDelete = 4;
     private const byte HeadRecreateEmpty = 5;
+    private const int AuxFirstIsNew = 0x100;
 
     private const int NoSlot = -1;
 
@@ -328,7 +329,7 @@ public sealed class GuestWorldState : IWorldState
         undo.Account = entry.Current;
         undo.TxStart = entry.TxStart;
         undo.Stamp = entry.TxStamp;
-        undo.Aux = entry.Head | (entry.FirstIsNew ? 0x100 : 0);
+        undo.Aux = entry.Head | (entry.FirstIsNew ? AuxFirstIsNew : 0);
 
         if (entry.TxStamp != _txId)
         {
@@ -1017,7 +1018,7 @@ public sealed class GuestWorldState : IWorldState
                         entry.TxStart = undo.TxStart;
                         entry.TxStamp = undo.Stamp;
                         entry.Head = (byte)undo.Aux;
-                        entry.FirstIsNew = (undo.Aux & 0x100) != 0;
+                        entry.FirstIsNew = (undo.Aux & AuxFirstIsNew) != 0;
                         break;
                     }
                 case UndoKind.Slot:
