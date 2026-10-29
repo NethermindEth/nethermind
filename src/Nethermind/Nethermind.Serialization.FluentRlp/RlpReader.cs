@@ -19,6 +19,9 @@ public delegate TResult RefRlpReaderFunc<out TResult>(scoped ref RlpReader arg)
 /// <summary>The exception that is thrown when the input is not a canonical RLP encoding of the expected shape.</summary>
 public class RlpReaderException(string message) : Exception(message);
 
+/// <summary>The exception that is thrown when the input has more items or bytes than a caller allows.</summary>
+public class RlpLimitException(string message) : RlpReaderException(message);
+
 /// <summary>
 /// Reads canonical RLP items from a span of bytes.
 /// </summary>
@@ -73,6 +76,83 @@ public ref struct RlpReader
         }
 
         return count;
+    }
+
+    /// <summary>Counts the items left in this reader, and throws when there are more than <paramref name="maxCount"/>.</summary>
+    /// <remarks>Use it before a collection is allocated for untrusted input, so that a peer cannot make it too large.</remarks>
+    /// <exception cref="RlpLimitException">There are more than <paramref name="maxCount"/> items.</exception>
+    /// <exception cref="RlpReaderException">An item prefix is malformed or truncated.</exception>
+    public readonly int CountItems(int maxCount)
+    {
+        RlpReader reader = this;
+        int count = 0;
+        while (reader.HasNext)
+        {
+            if (count == maxCount) ThrowLimit(maxCount);
+            int headerLength = reader.ReadHeader(out int length, out _);
+            reader._position += headerLength + length;
+            count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>Gets whether the next item is a sequence.</summary>
+    /// <exception cref="RlpReaderException">No bytes are left.</exception>
+    public readonly bool IsNextSequence
+    {
+        get
+        {
+            if (!HasNext) ThrowInvalid("RLP is truncated");
+            return _buffer[_position] >= RlpPrefix.ShortList;
+        }
+    }
+
+    /// <summary>Reads an empty sequence (<c>0xc0</c>) if it is the next item.</summary>
+    /// <remarks>Some stored and network formats use an empty sequence to mark a missing object.</remarks>
+    /// <returns><see langword="true"/> when an empty sequence was read.</returns>
+    public bool TryReadEmptySequence() => TryReadByte(RlpPrefix.ShortList);
+
+    /// <summary>Reads an empty byte string (<c>0x80</c>) if it is the next item.</summary>
+    /// <remarks>Some stored and network formats use an empty byte string to mark a missing hash or address.</remarks>
+    /// <returns><see langword="true"/> when an empty byte string was read.</returns>
+    public bool TryReadEmptyBytes() => TryReadByte(RlpPrefix.ShortString);
+
+    private bool TryReadByte(byte value)
+    {
+        if (_position >= _buffer.Length || _buffer[_position] != value) return false;
+        _position++;
+        return true;
+    }
+
+    /// <summary>Reads the next item without decoding its payload.</summary>
+    /// <remarks>
+    /// Only the prefix of the item is checked. The items of a sequence are not checked, so read the result with
+    /// another reader before it is trusted.
+    /// </remarks>
+    /// <returns>The whole encoded item, with its prefix.</returns>
+    /// <exception cref="RlpReaderException">The prefix is malformed or the item is truncated.</exception>
+    public ReadOnlySpan<byte> ReadEncodedItem()
+    {
+        int start = _position;
+        int headerLength = ReadHeader(out int length, out _);
+        _position = start + headerLength + length;
+        return _buffer.Slice(start, headerLength + length);
+    }
+
+    /// <summary>Moves past the next item without decoding its payload.</summary>
+    /// <inheritdoc cref="ReadEncodedItem" path="/exception"/>
+    public void SkipItem() => ReadEncodedItem();
+
+    /// <summary>Reads the next <paramref name="count"/> bytes as they are, without RLP checks.</summary>
+    /// <remarks>Only for formats that are not canonical RLP, such as old stored data. Canonical items use the other reads.</remarks>
+    /// <exception cref="RlpReaderException">Fewer than <paramref name="count"/> bytes are left.</exception>
+    public ReadOnlySpan<byte> ReadRaw(int count)
+    {
+        if ((uint)count > (uint)Remaining) ThrowInvalid("RLP is truncated");
+        ReadOnlySpan<byte> raw = _buffer.Slice(_position, count);
+        _position += count;
+        return raw;
     }
 
     /// <summary>Reads a non-negative integer.</summary>
@@ -249,6 +329,20 @@ public ref struct RlpReader
         _position += itemLength;
     }
 
+    /// <summary>Ends a sequence that <see cref="EnterSequence"/> started, and moves past it and its unread items.</summary>
+    /// <remarks>
+    /// For formats that allow items to be added later, such as EIP-8 messages. The prefixes of the unread items are
+    /// checked, but their payloads are not decoded.
+    /// </remarks>
+    /// <param name="reader">The reader that <see cref="EnterSequence"/> returned.</param>
+    /// <param name="itemLength">The item length that <see cref="EnterSequence"/> returned.</param>
+    /// <exception cref="RlpReaderException">An unread item has a malformed prefix.</exception>
+    public void ExitSequenceIgnoringRest(scoped in RlpReader reader, int itemLength)
+    {
+        _ = reader.CountItems();
+        _position += itemLength;
+    }
+
     /// <summary>Returns the result of the first alternative that reads without an <see cref="RlpReaderException"/>.</summary>
     /// <remarks>
     /// The reader goes back to its start position after each failed alternative.
@@ -335,6 +429,10 @@ public ref struct RlpReader
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void ThrowInvalid(string message) => throw new RlpReaderException(message);
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowLimit(int maxCount) => throw new RlpLimitException($"RLP has more than {maxCount} items");
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ReadLongLength(ReadOnlySpan<byte> buffer, int position, int lengthOfLength)

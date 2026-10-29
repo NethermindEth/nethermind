@@ -192,6 +192,14 @@ public ref struct RlpWriter
         _length += 1 + value.Length;
     }
 
+    /// <summary>Writes bytes that are already RLP, such as an item that was read with <see cref="RlpReader.ReadEncodedItem"/>.</summary>
+    /// <remarks>The bytes are not checked, so they must be one or more complete, canonical items.</remarks>
+    public void WriteEncoded(scoped ReadOnlySpan<byte> encoded)
+    {
+        if (_isContent) encoded.CopyTo(Reserve(encoded.Length));
+        _length += encoded.Length;
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void WriteLongString(scoped ReadOnlySpan<byte> value)
     {

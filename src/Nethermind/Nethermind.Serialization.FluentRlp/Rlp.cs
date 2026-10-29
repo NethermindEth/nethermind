@@ -95,6 +95,19 @@ public static class Rlp
     private static int LengthOfPrefixed(int length)
         => length + (length <= RlpPrefix.MaxShortLength ? 1 : length < 0x100 ? 2 : length < 0x10000 ? 3 : length < 0x1000000 ? 4 : 5);
 
+    /// <summary>Decodes the start of <paramref name="source"/> with <paramref name="func"/>, and ignores the bytes after it.</summary>
+    /// <remarks>For a value at the start of a larger buffer, or stored data that can have extra bytes at the end.</remarks>
+    /// <param name="bytesRead">The number of bytes that <paramref name="func"/> read.</param>
+    /// <exception cref="RlpReaderException">The input is malformed.</exception>
+    public static T ReadLeading<T>(ReadOnlySpan<byte> source, RefRlpReaderFunc<T> func, out int bytesRead)
+        where T : allows ref struct
+    {
+        RlpReader reader = new(source);
+        T result = func(ref reader);
+        bytesRead = reader.BytesRead;
+        return result;
+    }
+
     /// <summary>Decodes <paramref name="source"/> with <paramref name="func"/>, which must consume all of it.</summary>
     /// <exception cref="RlpReaderException">The input is malformed or has trailing bytes.</exception>
     public static T Read<T>(ReadOnlySpan<byte> source, RefRlpReaderFunc<T> func)
@@ -103,6 +116,28 @@ public static class Rlp
         RlpReader reader = new(source);
         T result = func(ref reader);
         if (reader.HasNext) throw new RlpReaderException("RLP has trailing bytes");
+        return result;
+    }
+
+    /// <summary>Decodes <paramref name="source"/> with <typeparamref name="TConverter"/>, which must consume all of it.</summary>
+    /// <exception cref="RlpReaderException">The input is malformed or has trailing bytes.</exception>
+    public static T Read<TConverter, T>(ReadOnlySpan<byte> source) where TConverter : IRlpConverter<T>
+    {
+        RlpReader reader = new(source);
+        T result = TConverter.Read(ref reader);
+        if (reader.HasNext) throw new RlpReaderException("RLP has trailing bytes");
+        return result;
+    }
+
+    /// <summary>Decodes the start of <paramref name="source"/> with <typeparamref name="TConverter"/>, and ignores the bytes after it.</summary>
+    /// <inheritdoc cref="ReadLeading{T}(ReadOnlySpan{byte}, RefRlpReaderFunc{T}, out int)" path="/remarks"/>
+    /// <param name="bytesRead">The number of bytes that <typeparamref name="TConverter"/> read.</param>
+    /// <exception cref="RlpReaderException">The input is malformed.</exception>
+    public static T ReadLeading<TConverter, T>(ReadOnlySpan<byte> source, out int bytesRead) where TConverter : IRlpConverter<T>
+    {
+        RlpReader reader = new(source);
+        T result = TConverter.Read(ref reader);
+        bytesRead = reader.BytesRead;
         return result;
     }
 }
