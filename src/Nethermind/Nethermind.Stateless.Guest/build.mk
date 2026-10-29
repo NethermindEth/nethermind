@@ -162,7 +162,8 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		--nostdlibrefs \
 		$(GUEST_SUBSTITUTIONS) \
 		$(BFLAT_REFS) \
-		--extlib $(if $(GUEST_PACKAGE),$(PACKAGE_DIR)/$(GUEST_NUPKG),$(GUEST_EXTLIB_MANIFEST)) \n		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \
+		--extlib $(if $(GUEST_PACKAGE),$(PACKAGE_DIR)/$(GUEST_NUPKG),$(GUEST_EXTLIB_MANIFEST)) \
+		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \
 		$(GUEST_OUT) \
