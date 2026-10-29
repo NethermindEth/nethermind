@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Nethermind.TrustedInput</RootNamespace>
+    <Nullable>enable</Nullable>
+    <GenerateRpcJsonContext>true</GenerateRpcJsonContext>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
+    <ProjectReference Include="..\Nethermind.Stateless.Executor\Nethermind.Stateless.Executor.csproj" />
+  </ItemGroup>
+
+</Project>

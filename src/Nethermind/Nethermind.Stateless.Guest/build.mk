@@ -66,7 +66,11 @@ BFLAT_DOCKER_ARGS ?=
 SHARED_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 SHARED_SRC_DIR := /nethermind/shared
 SHARED_MOUNT := --mount type=bind,source="$(SHARED_DIR)",target=$(SHARED_SRC_DIR),readonly
-GUEST_SOURCES := $(SHARED_SRC_DIR)/Program.cs $(SRC_DIR)/Program.cs
+# The input the guest takes - Ssz, the spec StatelessInput, or Trusted, the trusted-input format - picks the shared
+# file that implements Execute, and the guest's name.
+GUEST_INPUT ?= Ssz
+GUEST_NAME ?= $(if $(filter Trusted,$(GUEST_INPUT)),nethermind-trusted,nethermind)
+GUEST_SOURCES := $(SHARED_SRC_DIR)/Program.cs $(SHARED_SRC_DIR)/Input.$(GUEST_INPUT).cs $(SRC_DIR)/Program.cs
 # Pinned rather than derived: with more than one source bflat names the output
 # after the first, which is the shared one.
 GUEST_OUT := -o $(SRC_DIR)/Program
@@ -119,7 +123,7 @@ BFLAT_REFS := \
 .DEFAULT_GOAL := build
 
 dotnet-build:
-	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/$(GUEST_PROJECT).csproj
+	dotnet build -c release -p:EnableZkEvm=true -p:GuestInput=$(GUEST_INPUT) $(GUEST_DIR)/$(GUEST_PROJECT).csproj
 
 # ILC embeds every manifest resource of every input assembly and the guest reads
 # none, so they are dead weight (6.9 MB of chainspecs once rode along).
@@ -154,10 +158,10 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 	if [ "$$len" != "0" ]; then echo "error: the guest image embeds $$len bytes of manifest resources; the guest reads none, find the assembly that added them" >&2; exit 1; fi; \
 	echo "Resource verification: OK - no manifest resources in the guest image"
 	mkdir -p $(GUEST_DIR)/bin && \
-		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/nethermind
+		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/$(GUEST_NAME)
 	@# The flat ROM image and instruction section bflat writes beside an Airbender ELF.
 	@for ext in bin text; do \
-		if [ -f $(GUEST_DIR)/Program.$$ext ]; then mv -f $(GUEST_DIR)/Program.$$ext $(GUEST_DIR)/bin/nethermind.$$ext; fi; \
+		if [ -f $(GUEST_DIR)/Program.$$ext ]; then mv -f $(GUEST_DIR)/Program.$$ext $(GUEST_DIR)/bin/$(GUEST_NAME).$$ext; fi; \
 	done
 
 # Assembled by the bflat image's own clang, for the ISA the gates above allow.

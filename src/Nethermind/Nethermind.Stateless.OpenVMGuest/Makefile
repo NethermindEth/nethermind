@@ -42,7 +42,7 @@ ifeq ($(strip $(OPENVM_RUNNER)),)
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
 		--mount type=bind,source="$(GUEST_DIR)/openvm.toml",target=/openvm.toml,readonly \
 		$(OPENVM_IMAGE) \
-		/n/nethermind /openvm.toml /n/$(INPUT).raw
+		/n/$(GUEST_NAME) /openvm.toml /n/$(INPUT).raw
 else
-	$(OPENVM_RUNNER) $(GUEST_DIR)/bin/nethermind $(GUEST_DIR)/openvm.toml $(GUEST_DIR)/bin/$(INPUT).raw
+	$(OPENVM_RUNNER) $(GUEST_DIR)/bin/$(GUEST_NAME) $(GUEST_DIR)/openvm.toml $(GUEST_DIR)/bin/$(INPUT).raw
 endif

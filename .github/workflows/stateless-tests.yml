@@ -63,7 +63,7 @@ jobs:
           dotnet test --project src/Nethermind/Nethermind.Evm.ZkEvm.Test/Nethermind.Evm.ZkEvm.Test.csproj -c release -p:EnableZkEvm=true
 
   build:
-    name: Build ${{ matrix.vm }} guest
+    name: Build ${{ matrix.vm }} ${{ matrix.input }} guest
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -71,6 +71,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        vm: [zisk, sp1, openvm]
+        # The input the guest takes: Ssz, the spec StatelessInput, or Trusted, the trusted-input format.
+        input: [Ssz, Trusted]
         include:
           - vm: zisk
             project: Nethermind.Stateless.ZiskGuest
@@ -108,18 +111,18 @@ jobs:
       # protocol differ per target and come from the guest's Makefile.
       - name: Build Nethermind
         working-directory: src/Nethermind/${{ matrix.project }}
-        run: make build
+        run: make build GUEST_INPUT=${{ matrix.input }}
 
       - name: Upload guest binary
         uses: actions/upload-artifact@v7
         with:
-          name: nethermind-${{ matrix.vm }}
-          path: src/Nethermind/${{ matrix.project }}/bin/nethermind
+          name: nethermind-${{ matrix.vm }}${{ matrix.input == 'Trusted' && '-trusted' || '' }}
+          path: src/Nethermind/${{ matrix.project }}/bin/${{ matrix.input == 'Trusted' && 'nethermind-trusted' || 'nethermind' }}
           if-no-files-found: error
           retention-days: 1
 
   test:
-    name: ${{ matrix.vm }} ${{ matrix.block.input }}
+    name: ${{ matrix.vm }} ${{ matrix.input }} ${{ matrix.block.input }}
     needs: [blocks, build]
     runs-on: ubuntu-latest
     permissions:
@@ -130,6 +133,7 @@ jobs:
       fail-fast: false
       matrix:
         vm: [zisk, sp1, openvm]
+        input: [Ssz, Trusted]
         block: ${{ fromJSON(needs.blocks.outputs.blocks) }}
         include:
           # `output` is the guest's 43-byte result and every VM prints it: ZisK
@@ -158,7 +162,7 @@ jobs:
       - name: Download guest binary
         uses: actions/download-artifact@v8
         with:
-          name: nethermind-${{ matrix.vm }}
+          name: nethermind-${{ matrix.vm }}${{ matrix.input == 'Trusted' && '-trusted' || '' }}
           path: src/Nethermind/${{ matrix.project }}/bin
 
       - name: Download input
@@ -169,11 +173,31 @@ jobs:
           echo "${{ matrix.block.hash }}  ${{ matrix.block.input }}" | sha256sum --status -c - || \
             { echo "::error::Checksum failed"; exit 1; }
 
+      - name: Set up .NET
+        if: matrix.input == 'Trusted'
+        uses: actions/setup-dotnet@v6
+
+      # A trusted input carries the block and witness of the pinned stateless input, and its guest reports the
+      # block hash rather than the payload root, so the expected result comes from the conversion.
+      - name: Select the input and the expected result
+        id: expected
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.input }}" = Trusted ]; then
+            bin="src/Nethermind/${{ matrix.project }}/bin"
+            dotnet run --project tools/StatelessInputGen/StatelessInputGen.csproj -c release -- \
+              convert --source "$bin/${{ matrix.block.input }}" --output "$bin" | tee "$RUNNER_TEMP/convert.log"
+            read -r input output digest < <(grep -E '^[^ ]+\.nti [0-9a-f]+ [0-9a-f]{64}$' "$RUNNER_TEMP/convert.log")
+          else
+            input="${{ matrix.block.input }}" output="${{ matrix.block.output }}" digest="${{ matrix.block.digest }}"
+          fi
+          { echo "input=$input"; echo "output=$output"; echo "digest=$digest"; } >> "$GITHUB_OUTPUT"
+
       # The artifact loses the executable bit; ZisK reads the file, the other
       # two hand it to a runner image that does the same, but make's own
       # recipes expect it back.
       - name: Restore the executable bit
-        run: chmod +x "src/Nethermind/${{ matrix.project }}/bin/nethermind"
+        run: chmod +x "src/Nethermind/${{ matrix.project }}/bin/${{ matrix.input == 'Trusted' && 'nethermind-trusted' || 'nethermind' }}"
 
       - name: Check Docker Hub OIDC availability
         id: dockerhub
@@ -198,15 +222,15 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.project }}
         run: |
           set -euo pipefail
-          make run INPUT="${{ matrix.block.input }}" 2>&1 | tee "$RUNNER_TEMP/run.log"
-          grep -q "${{ matrix.block.output }}" "$RUNNER_TEMP/run.log" || \
+          make run INPUT="${{ steps.expected.outputs.input }}" GUEST_INPUT=${{ matrix.input }} 2>&1 | tee "$RUNNER_TEMP/run.log"
+          grep -q "${{ steps.expected.outputs.output }}" "$RUNNER_TEMP/run.log" || \
             { echo "::error::Output mismatch"; exit 1; }
           # The line above is a debug print on OpenVM. What gets proven is the
           # digest in the 32-byte public-values window, so assert that too - a
           # mis-sized window write or an accelerator returning zeros would pass
           # the print check untouched.
           if [ "${{ matrix.vm }}" = openvm ]; then
-            grep -q "public_values=${{ matrix.block.digest }}" "$RUNNER_TEMP/run.log" || \
+            grep -q "public_values=${{ steps.expected.outputs.digest }}" "$RUNNER_TEMP/run.log" || \
               { echo "::error::Public values mismatch"; exit 1; }
           fi
 

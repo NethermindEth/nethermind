@@ -69,6 +69,16 @@ public static class ExecutableCodeMemory
         return new FixedManager((byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(destination)), code.Length, padded: true).Memory;
     }
 
+    /// <summary>Wraps the first <paramref name="codeLength"/> bytes of <paramref name="codeAndPadding"/> as code
+    /// <see cref="CodeInfo"/> executes in place, clearing the execution padding after them.</summary>
+    /// <param name="codeAndPadding">Memory that never moves: the code, then <see cref="CodeInfo.ExecutionPadding"/> bytes.</param>
+    /// <param name="codeLength">The code's length.</param>
+    internal static unsafe ReadOnlyMemory<byte> PlacePadded(Span<byte> codeAndPadding, int codeLength)
+    {
+        codeAndPadding.Slice(codeLength, CodeInfo.ExecutionPadding).Clear();
+        return new FixedManager((byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(codeAndPadding)), codeLength, padded: true).Memory;
+    }
+
     /// <summary>Gets whether <paramref name="code"/> is the whole of a <see cref="Place"/> result.</summary>
     internal static bool IsPlaced(ReadOnlyMemory<byte> code) =>
         MemoryMarshal.TryGetMemoryManager(code, out FixedManager? manager, out int start, out int length)
