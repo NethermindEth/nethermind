@@ -1821,6 +1821,120 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return true;
     }
 
+    // Age cutoff 1.0 makes every blob file a GC candidate and force threshold 0.0 relocates their live values into
+    // fresh blob files, so the forced-bottommost rewrite can drop every stale blob file - a surviving key pinning the
+    // oldest one otherwise keeps all newer unreferenced files alive.
+    private static readonly Dictionary<string, string> BlobGarbageCollectionOptions = new()
+    {
+        { "enable_blob_files", "true" },
+        { "enable_blob_garbage_collection", "true" },
+        { "blob_garbage_collection_age_cutoff", "1.0" },
+        { "blob_garbage_collection_force_threshold", "0.0" },
+    };
+
+    // RocksDB defaults for the options the blob-GC compaction overrides, used for any key the database's own
+    // configuration leaves unset so the restore never invents a value the node did not run with.
+    private static readonly Dictionary<string, string> BlobGarbageCollectionDefaults = new()
+    {
+        { "enable_blob_files", "false" },
+        { "enable_blob_garbage_collection", "false" },
+        { "blob_garbage_collection_age_cutoff", "0.25" },
+        { "blob_garbage_collection_force_threshold", "1.0" },
+    };
+
+    /// <inheritdoc/>
+    public virtual bool CompactReclaimingBlobFiles()
+    {
+        // A store with no blob files has nothing for the rewrite to reclaim, so skip hours of pointless I/O - but
+        // still report it ran, so the one-shot caller marks it done rather than re-attempting it every start. When
+        // the property is unavailable the rewrite runs rather than silently skip the feature.
+        if (!HasBlobFiles())
+        {
+            if (_logger.IsInfo) _logger.Info($"Skipping blob-file compaction of {Name}: it holds no blob files to reclaim.");
+            return true;
+        }
+
+        if (_logger.IsInfo) _logger.Info($"Compacting {Name} with blob garbage collection to retire stale blob files. This runs until done and aborts cleanly on shutdown.");
+
+        IDictionary<string, string> optionsToRestore = SnapshotBlobGarbageCollectionOptions();
+
+        ApplyOptions(BlobGarbageCollectionOptions);
+        try
+        {
+            CompactOpenRange(cf: null, forceBottommost: true);
+        }
+        finally
+        {
+            RestoreOptionsAfterBlobGarbageCollection(optionsToRestore);
+        }
+
+        return true;
+    }
+
+    private bool HasBlobFiles()
+    {
+        string? numBlobFiles = _db.GetProperty("rocksdb.num-blob-files");
+        return !long.TryParse(numBlobFiles, out long count) || count > 0;
+    }
+
+    /// <summary>Snapshots the live values of the options the blob-GC compaction overrides so the restore puts
+    /// back exactly what the database runs with, rather than the fixed <see cref="GetStandardOptions"/> a
+    /// <see cref="Tune"/> to <see cref="ITunableDb.TuneType.Default"/> would otherwise impose on a customized or
+    /// runtime-tuned blocks database.</summary>
+    /// <remarks>A value the sync tuner's runtime <see cref="Tune"/> forced on the live database wins over
+    /// configuration, because that is what the database actually runs with: for a blocks database the tuner
+    /// applies <see cref="ITunableDb.TuneType.EnableBlobFiles"/> while bodies sync, turning blob files on even
+    /// when configuration does not. Restoring the configured value there would both contradict the live options
+    /// and desync <see cref="_currentTune"/> from them - a later <see cref="Tune"/> to the same type would
+    /// short-circuit on its no-op guard and never re-apply. Anything no active tune set falls back to the
+    /// database's own configuration, then to the RocksDB defaults in <see cref="BlobGarbageCollectionDefaults"/>.</remarks>
+    private IDictionary<string, string> SnapshotBlobGarbageCollectionOptions()
+    {
+        IDictionary<string, string> configured = ExtractOptions(_perTableDbConfig.RocksDbOptions + _perTableDbConfig.AdditionalRocksDbOptions);
+
+        // Of the tune types only EnableBlobFiles changes any of these four keys (it forces enable_blob_files on),
+        // so read the live override from that tune's own option set rather than assuming its value. Every other
+        // tune, and the Default sentinel that stands for the configured/standard options, leaves these keys at
+        // their configured values.
+        IDictionary<string, string>? activeTune = _currentTune == ITunableDb.TuneType.EnableBlobFiles
+            ? GetBlobFilesOptions()
+            : null;
+
+        Dictionary<string, string> snapshot = new(BlobGarbageCollectionOptions.Count);
+        foreach (string key in BlobGarbageCollectionOptions.Keys)
+        {
+            if (activeTune is not null && activeTune.TryGetValue(key, out string? tunedValue))
+            {
+                snapshot[key] = tunedValue;
+            }
+            else if (configured.TryGetValue(key, out string? configuredValue))
+            {
+                snapshot[key] = configuredValue;
+            }
+            else
+            {
+                snapshot[key] = BlobGarbageCollectionDefaults[key];
+            }
+        }
+
+        return snapshot;
+    }
+
+    /// <summary>Re-applies the blob-GC options the database carried before the compaction. A failing restore is
+    /// logged, not thrown: the database stays usable, only its compaction options may differ until the next
+    /// restart.</summary>
+    private void RestoreOptionsAfterBlobGarbageCollection(IDictionary<string, string> optionsToRestore)
+    {
+        try
+        {
+            ApplyOptions(optionsToRestore);
+        }
+        catch (RocksDbException e)
+        {
+            if (_logger.IsError) _logger.Error($"Failed to restore {Name} options after blob-file compaction; the database stays usable but its compaction options may differ until restart.", e);
+        }
+    }
+
     /// <inheritdoc/>
     public virtual void InterruptCompactions() => _db.DisableManualCompaction();
 

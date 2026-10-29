@@ -45,6 +45,15 @@ namespace Nethermind.Db
         /// during the rewrite loses its ability to abort it.</summary>
         bool CompactIfDeadWeightExceeds(double deadRatio) => false;
 
+        /// <summary>Runs a one-shot, store-wide forced-bottommost compaction with RocksDB blob garbage collection
+        /// enabled, to retire stale blob files a plain range reclaim cannot free while a surviving key still
+        /// references the oldest blob file. Blocks until done; returns whether it ran. The default declines.</summary>
+        /// <remarks>Enables blob garbage collection and blob-file writing transiently for the compaction and restores
+        /// the prior options afterwards, so steady-state write amplification is unchanged. Abort via
+        /// <see cref="InterruptCompactions"/> on shutdown. A decorator must forward this together with
+        /// <see cref="InterruptCompactions"/>, or a shutdown during the rewrite loses its ability to abort it.</remarks>
+        bool CompactReclaimingBlobFiles() => false;
+
         /// <summary>Aborts any manual compaction in flight and refuses new ones, so a shutdown joining the thread
         /// that called <see cref="CompactIfDeadWeightExceeds"/> is not held for the rewrite's duration. Terminal
         /// and store-wide: there is no re-enable, a column store applies it to every column sharing the database,

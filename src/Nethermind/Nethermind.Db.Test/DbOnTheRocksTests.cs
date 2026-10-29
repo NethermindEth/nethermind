@@ -1196,12 +1196,224 @@ namespace Nethermind.Db.Test
                 "the exclusive bound is not in the range, so neither the tombstone nor the unlink may take it");
         }
 
+        [Test]
+        public void CompactReclaimingBlobFiles_RetiresBlobFilesAPinnedKeyKeptAlive_WithoutInliningTheRetainedValuesIntoSst()
+        {
+            // Blob mode with tiny thresholds, auto-compaction off so a ranged reclaim cannot free what a forced
+            // bottommost compaction with blob GC must. The factory must be built over the SAME config, or the
+            // options never reach the database and the test silently runs without blob files.
+            DbConfig config = new()
+            {
+                AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;blob_compression_type=kNoCompression;disable_auto_compactions=true;"
+            };
+            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance);
+
+            const int heights = 500;
+            const int retained = 50; // the pinned bottom region; height 1 references the oldest blob file
+            byte[] value = new byte[4096];
+            Random.Shared.NextBytes(value);
+            for (ulong number = 1; number <= heights; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
+            db.Flush();
+
+            long sstBefore = SstBytes(DbPath);
+            long blobBefore = BlobBytes(DbPath);
+            Assert.That(blobBefore, Is.GreaterThan(0), "blob mode must actually be engaged - values of 4096 bytes belong in blob files, not SST");
+
+            db.RemoveRange(BlockKey((ulong)retained, 0x00), BlockKey(heights, 0x00));
+            db.ReclaimRange(BlockKey((ulong)retained, 0x00), BlockKey(heights, 0x00));
+            long blobAfterReclaim = BlobBytes(DbPath);
+
+            bool compacted = db.CompactReclaimingBlobFiles();
+            long sstAfter = SstBytes(DbPath);
+            long blobAfter = BlobBytes(DbPath);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted, Is.True);
+                Assert.That(blobAfterReclaim, Is.GreaterThan(blobBefore / 2),
+                    "a ranged reclaim cannot retire the newer blob files while a surviving key still references the oldest one");
+                Assert.That(sstAfter + blobAfter, Is.LessThan((sstBefore + blobBefore) / 2),
+                    "the one-shot blob-GC compaction must give the disk back now that only the pinned region survives");
+                // The retained values must be relocated into fresh blob files, never inlined into SST.
+                Assert.That(blobAfter, Is.GreaterThan(sstAfter),
+                    "the retained values stay in blob files - inlining them into SST would bloat SST by the whole retained dataset");
+                Assert.That(sstAfter, Is.LessThan(blobBefore / 2),
+                    "SST must not balloon with the retained values the blob GC relocated");
+                Assert.That(GetValue(db, BlockKey(1, 0x00)), Is.Not.Null, "the pinned bottom key must still read back");
+                Assert.That(GetValue(db, BlockKey(heights / 2, 0x00)), Is.Null, "a removed key must be gone");
+            }
+        }
+
+        [Test]
+        public void CompactReclaimingBlobFiles_RestoresConfiguredBlobAndCompactionOptions_NotTheStandardTuneDefaults()
+        {
+            // A blocks database that runs with blob files and auto-compaction disabled: the one-shot must put both
+            // back exactly as configured, not reset them to the standard tune defaults the way routing the restore
+            // through Tune(Default) did.
+            DbConfig config = new()
+            {
+                AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;blob_compression_type=kNoCompression;disable_auto_compactions=true;"
+            };
+            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            using OptionsCapturingDbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance);
+
+            const int heights = 100;
+            byte[] value = new byte[4096];
+            Random.Shared.NextBytes(value);
+            for (ulong number = 1; number <= heights; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
+            db.Flush();
+            Assert.That(BlobBytes(DbPath), Is.GreaterThan(0), "blob mode must actually be engaged before the compaction");
+
+            bool compacted = db.CompactReclaimingBlobFiles();
+
+            // A large value written and flushed after the restore must still land in a blob file: that only happens
+            // while enable_blob_files is the configured true, not the standard default false.
+            long blobBeforeWrite = BlobBytes(DbPath);
+            db.PutSpan(BlockKey(heights + 1, 0x00), value, WriteFlags.None);
+            db.Flush();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted, Is.True);
+                Assert.That(BlobBytes(DbPath), Is.GreaterThan(blobBeforeWrite),
+                    "a post-restore write must still produce blob files - resetting enable_blob_files to the standard default would send it to SST");
+                Assert.That(db.AppliedOptions, Is.Not.Empty, "the compaction must have applied and then restored options");
+                Assert.That(db.AppliedOptions[^1].TryGetValue("enable_blob_files", out string? restoredBlobFiles) ? restoredBlobFiles : null, Is.EqualTo("true"),
+                    "the restore must put enable_blob_files back to the configured value");
+                Assert.That(db.AppliedOptions.Any(static options => options.TryGetValue("disable_auto_compactions", out string? flag) && flag == "false"), Is.False,
+                    "the restore must not re-enable auto-compaction the node disabled - the standard tune defaults would");
+            }
+        }
+
+        [Test]
+        public void CompactReclaimingBlobFiles_RestoresRuntimeTunedBlobFiles_WhenConfigurationDoesNotEnableThem()
+        {
+            // A blocks database whose configuration does not enable blob files: they are on only because the sync
+            // tuner's runtime Tune(EnableBlobFiles) turned them on. The one-shot must restore that live value, not
+            // the configured/default false: otherwise _currentTune stays EnableBlobFiles while the options say
+            // false, and the next Tune(EnableBlobFiles) short-circuits on its no-op guard and never turns blob
+            // files back on. Auto-compaction is pinned off (not a blob option) so the before/after blob sizes are
+            // the write's own, not a background compaction consolidating files between the measurements.
+            DbConfig config = new() { AdditionalRocksDbOptions = "disable_auto_compactions=true;" };
+            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            using OptionsCapturingDbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance);
+
+            db.Tune(ITunableDb.TuneType.EnableBlobFiles);
+
+            const int heights = 100;
+            byte[] value = new byte[4096];
+            Random.Shared.NextBytes(value);
+            for (ulong number = 1; number <= heights; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
+            db.Flush();
+            Assert.That(BlobBytes(DbPath), Is.GreaterThan(0), "the runtime tune must engage blob mode before the compaction");
+
+            bool compacted = db.CompactReclaimingBlobFiles();
+
+            // Re-apply the tune exactly as the sync tuner does when the bodies feed goes Active again. The guard
+            // makes it a no-op because _currentTune is still EnableBlobFiles, so blob files stay on only if the
+            // one-shot restored the live true rather than the configured false.
+            db.Tune(ITunableDb.TuneType.EnableBlobFiles);
+
+            long blobBeforeWrite = BlobBytes(DbPath);
+            db.PutSpan(BlockKey(heights + 1, 0x00), value, WriteFlags.None);
+            db.Flush();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted, Is.True);
+                Assert.That(db.AppliedOptions[^1].TryGetValue("enable_blob_files", out string? restoredBlobFiles) ? restoredBlobFiles : null, Is.EqualTo("true"),
+                    "the restore must put back the runtime-tuned enable_blob_files, not the configured/default false");
+                Assert.That(BlobBytes(DbPath), Is.GreaterThan(blobBeforeWrite),
+                    "a post-restore write must still produce blob files - a config-only restore would send it to SST and leave the tune desynced");
+            }
+        }
+
+        [Test]
+        public void CompactReclaimingBlobFiles_ReclaimsPartiallyReferencedBlobFiles_ThatAPlainCompactionCannot()
+        {
+            // The sliced-history shape a realistic retention prune leaves behind: scattered survivors across the
+            // whole range, so (nearly) every blob file still holds a live key and none is fully unreferenced. A
+            // plain forced-bottommost compaction runs with blob garbage collection off, so it rewrites the SST
+            // pointers but cannot retire a blob file any survivor still pins - it gives next to nothing back.
+            // CompactReclaimingBlobFiles relocates the survivors into fresh blob files and drops the stale ones,
+            // reclaiming the great majority. This is the control: the earlier contiguous-retention shape let a
+            // plain compaction reclaim most of the disk because its pruned blob files were fully unreferenced,
+            // which hid the whole point of the blob-GC path.
+            DbConfig config = new()
+            {
+                AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;blob_compression_type=kNoCompression;disable_auto_compactions=true;"
+            };
+            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+
+            string plainPath = Path.Combine(DbPath, "plain");
+            string blobGcPath = Path.Combine(DbPath, "blobgc");
+            using DbOnTheRocks plain = new(plainPath, GetRocksDbSettings(plainPath, "Blocks"), config, factory, LimboLogs.Instance);
+            using DbOnTheRocks blobGc = new(blobGcPath, GetRocksDbSettings(blobGcPath, "Blocks"), config, factory, LimboLogs.Instance);
+
+            const int heights = 500;
+            const int retainEvery = 50; // 1-in-50 scattered survivors, so every ~64-height blob file keeps a live key
+            byte[] value = new byte[4096];
+            Random.Shared.NextBytes(value);
+            long plainBefore = SeedSlicedRetention(plain, plainPath, heights, retainEvery, value);
+            long blobGcBefore = SeedSlicedRetention(blobGc, blobGcPath, heights, retainEvery, value);
+
+            plain.CompactOpenRange(cf: null, forceBottommost: true);
+            long plainAfter = SstBytes(plainPath) + BlobBytes(plainPath);
+
+            bool compacted = blobGc.CompactReclaimingBlobFiles();
+            long blobGcAfter = SstBytes(blobGcPath) + BlobBytes(blobGcPath);
+
+            double plainReclaimed = 1.0 - (double)plainAfter / plainBefore;
+            double blobGcReclaimed = 1.0 - (double)blobGcAfter / blobGcBefore;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted, Is.True);
+                Assert.That(plainBefore, Is.EqualTo(blobGcBefore), "the two databases must be seeded identically for the comparison to be fair");
+                Assert.That(plainReclaimed, Is.LessThan(0.15),
+                    "a plain forced-bottommost compaction cannot retire a blob file a scattered survivor still pins, so it gives almost nothing back");
+                Assert.That(blobGcReclaimed, Is.GreaterThanOrEqualTo(0.80),
+                    "blob garbage collection relocates the scattered survivors into fresh blob files and retires the stale ones, reclaiming the great majority");
+                for (ulong number = 1; number <= heights; number++)
+                {
+                    bool survivor = number == 1 || number % retainEvery == 0;
+                    Assert.That(GetValue(blobGc, BlockKey(number, 0x00)), survivor ? Is.Not.Null : Is.Null,
+                        $"height {number} must {(survivor ? "survive" : "be pruned")} after the blob-GC compaction");
+                }
+            }
+        }
+
+        // Seeds block-ordered blob-sized values, then prunes everything except a scattered 1-in-retainEvery
+        // survivor (plus height 1) as a sliced-history retention prune does, leaving partially-referenced blob
+        // files. Returns the on-disk size just before compaction, which is the denominator for the reclaim ratio.
+        private static long SeedSlicedRetention(DbOnTheRocks db, string dbPath, int heights, int retainEvery, byte[] value)
+        {
+            for (ulong number = 1; number <= (ulong)heights; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
+            db.Flush();
+
+            ulong gapStart = 2;
+            for (ulong survivor = (ulong)retainEvery; survivor <= (ulong)heights; survivor += (ulong)retainEvery)
+            {
+                if (survivor > gapStart) db.RemoveRange(BlockKey(gapStart, 0x00), BlockKey(survivor, 0x00));
+                gapStart = survivor + 1;
+            }
+            if ((ulong)heights >= gapStart) db.RemoveRange(BlockKey(gapStart, 0x00), BlockKey((ulong)heights + 1, 0x00));
+            db.Flush();
+
+            return SstBytes(dbPath) + BlobBytes(dbPath);
+        }
+
         private static int SstFileCount(string dbPath) => Directory
             .EnumerateFiles(dbPath, "*.sst", SearchOption.AllDirectories)
             .Count();
 
         private static long SstBytes(string dbPath) => Directory
             .EnumerateFiles(dbPath, "*.sst", SearchOption.AllDirectories)
+            .Sum(file => new FileInfo(file).Length);
+
+        private static long BlobBytes(string dbPath) => Directory
+            .EnumerateFiles(dbPath, "*.blob", SearchOption.AllDirectories)
             .Sum(file => new FileInfo(file).Length);
 
         private static byte[] BlockKey(ulong blockNumber, byte hashTag)
@@ -2264,6 +2476,23 @@ namespace Nethermind.Db.Test
         {
             NativeCloses++;
             base.ReleaseUnmanagedResources();
+        }
+    }
+
+    class OptionsCapturingDbOnTheRocks(
+        string basePath,
+        DbSettings dbSettings,
+        IDbConfig dbConfig,
+        IRocksDbConfigFactory rocksDbConfigFactory,
+        ILogManager logManager
+        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager)
+    {
+        public List<IDictionary<string, string>> AppliedOptions { get; } = [];
+
+        protected override void ApplyOptions(IDictionary<string, string> options)
+        {
+            AppliedOptions.Add(new Dictionary<string, string>(options));
+            base.ApplyOptions(options);
         }
     }
 }
