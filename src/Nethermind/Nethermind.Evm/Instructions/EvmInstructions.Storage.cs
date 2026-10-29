@@ -912,8 +912,15 @@ public static partial class EvmInstructions
 
         uint available = (uint)inputData.Length - (uint)offset;
         uint copiedLength = available >= 32 ? 32u : available;
-        return stack.WriteRightPaddedBytes<TTracingInst>(ref slot,
-            ref Unsafe.Add(ref MemoryMarshal.GetReference(inputData), (nint)offset),
-            copiedLength);
+        ref byte input = ref Unsafe.Add(ref MemoryMarshal.GetReference(inputData), (nint)offset);
+        if (EvmPooledMemory.IsSwizzled)
+        {
+            // The input is laid out as memory is (see EvmPooledMemory.LoadInputAfterGas).
+            Span<byte> natural = stackalloc byte[EvmStack.WordSize];
+            SwizzledMemory.Read(ref input, natural[..(int)copiedLength]);
+            return stack.WriteRightPaddedBytes<TTracingInst>(ref slot, ref MemoryMarshal.GetReference(natural), copiedLength);
+        }
+
+        return stack.WriteRightPaddedBytes<TTracingInst>(ref slot, ref input, copiedLength);
     }
 }

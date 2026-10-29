@@ -1467,7 +1467,8 @@ public partial class VirtualMachine<TGasPolicy>(
             return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
         }
 
-        ReadOnlyMemory<byte> callData = state.Env.InputData;
+        // Precompiles take their input in natural order, where a guest's call input is laid out as its memory.
+        ReadOnlyMemory<byte> callData = EvmPooledMemory.IsSwizzled ? SwizzledMemory.ToNatural(state.Env.InputData) : state.Env.InputData;
         ref readonly UInt256 transferValue = ref state.ExecutionType.GetBalanceCredit(in state.Env.Value);
         TGasPolicy gas = state.Gas;
 

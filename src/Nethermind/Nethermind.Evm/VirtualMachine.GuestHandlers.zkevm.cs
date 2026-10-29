@@ -1747,7 +1747,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     ref byte destination = ref AlignedMemory(ref state).GetActiveInitializedWord(offset);
                     if (!Unsafe.IsNullRef(ref destination))
                     {
-                        StoreBigEndian(ref destination, ref offset);
+                        StoreMemoryWord(ref destination, ref offset);
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
@@ -1790,7 +1790,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!Unsafe.IsNullRef(ref destination))
                     {
                         // The value is the word below the offset; memory holds it big-endian.
-                        StoreBigEndian(ref destination, ref offset);
+                        StoreMemoryWord(ref destination, ref offset);
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
@@ -2085,10 +2085,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 if (inSource)
                                 {
                                     copied = (uint)Math.Min(size, (ulong)source.Length - from);
-                                    Bytes.Copy(source.Slice((int)from, (int)copied), MemoryMarshal.CreateSpan(ref range, (int)copied));
+                                    if (TSource.InMemoryLayout)
+                                        SwizzledMemory.Copy(ref range, ref Unsafe.Add(ref MemoryMarshal.GetReference(source), (nint)from), (nint)copied);
+                                    else if (EvmPooledMemory.IsSwizzled)
+                                        SwizzledMemory.Write(ref range, source.Slice((int)from, (int)copied));
+                                    else
+                                        Bytes.Copy(source.Slice((int)from, (int)copied), MemoryMarshal.CreateSpan(ref range, (int)copied));
                                 }
 
-                                Unsafe.InitBlockUnaligned(ref Unsafe.Add(ref range, copied), 0, (uint)size - copied);
+                                if (EvmPooledMemory.IsSwizzled)
+                                    SwizzledMemory.Clear(ref Unsafe.Add(ref range, copied), (nint)((uint)size - copied));
+                                else
+                                    Unsafe.InitBlockUnaligned(ref Unsafe.Add(ref range, copied), 0, (uint)size - copied);
                                 // Reloaded rather than held across the calls, where each would take a callee-saved register.
                                 handlers = state.OpcodeHandlers;
                                 code = ref stack.Code;
@@ -2122,6 +2130,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             /// <summary>Whether a read past the end of the source reads zeros rather than faulting.</summary>
             static abstract bool ZeroExtends { get; }
 
+            /// <summary>Whether the source's bytes are laid out as memory is rather than in natural order (see
+            /// <see cref="EvmPooledMemory.LoadInputAfterGas"/>).</summary>
+            static abstract bool InMemoryLayout { get; }
+
             /// <summary>The source's bytes.</summary>
             static abstract ReadOnlySpan<byte> Read(ref EvmStack stack, ref DispatchState state);
         }
@@ -2133,6 +2145,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Entry(&ExecuteOpcode<CallDataCopyOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             public static bool ZeroExtends => true;
+
+            public static bool InMemoryLayout => EvmPooledMemory.IsSwizzled;
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static ReadOnlySpan<byte> Read(ref EvmStack stack, ref DispatchState state) =>
@@ -2146,6 +2160,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Entry(&ExecuteOpcode<ReturnDataCopyOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             public static bool ZeroExtends => false;
+
+            public static bool InMemoryLayout => false;
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static ReadOnlySpan<byte> Read(ref EvmStack stack, ref DispatchState state) => state.Vm.ReturnDataBuffer.Span;
@@ -2177,7 +2193,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!Unsafe.IsNullRef(ref destination))
                     {
                         // The value is the word below the offset, whose low byte comes first in limb layout.
-                        destination = (byte)Unsafe.Add(ref offset, -LimbsPerWord);
+                        (EvmPooledMemory.IsSwizzled ? ref SwizzledMemory.ByteAt(ref destination) : ref destination) =
+                            (byte)Unsafe.Add(ref offset, -LimbsPerWord);
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
@@ -2220,7 +2237,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!Unsafe.IsNullRef(ref source))
                     {
                         // Memory holds the word big-endian; the slot takes it in limb layout, over the offset it held.
-                        LoadBigEndian(ref slot, ref source);
+                        LoadMemoryWord(ref slot, ref source);
                         ip = ref Unsafe.Add(ref ip, 1);
                         nint next = AlignedTable(handlers)[PairAt(ref ip)];
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
@@ -2260,9 +2277,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if ((Unsafe.Add(ref slot, 1) | Unsafe.Add(ref slot, 2) | Unsafe.Add(ref slot, 3) | (offset >> 32)) == 0 &&
                     offset + EvmStack.WordSize <= (ulong)AlignedStack(ref stack).InputDataLength)
                 {
-                    // The input holds the word big-endian; the slot takes it in limb layout, over the offset it held.
+                    // The input holds the word as memory does; the slot takes it in limb layout, over the offset it held.
                     ref byte source = ref Unsafe.Add(ref Unsafe.AsRef(in AlignedStack(ref stack).InputData), (nint)offset);
-                    LoadBigEndian(ref slot, ref source);
+                    LoadMemoryWord(ref slot, ref source);
                     ip = ref Unsafe.Add(ref ip, 1);
                     nint next = AlignedTable(handlers)[PairAt(ref ip)];
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
@@ -2310,7 +2327,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     {
                         gas -= (nuint)(cost);
                         head--;
-                        if (TryReadWordKeccakMemo(ref data, length, ref lengthLimbs))
+                        // The memo keys on the bytes as memory holds them, which in swizzled memory name the input only
+                        // from a group boundary.
+                        if ((!EvmPooledMemory.IsSwizzled || (offset & (sizeof(uint) - 1)) == 0) &&
+                            TryReadWordKeccakMemo(ref data, length, ref lengthLimbs))
                         {
                             sp = ref Moved(ref sp, -1);
                             ip = ref Unsafe.Add(ref ip, 1);
@@ -2318,7 +2338,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, memoized);
                         }
 
-                        KeccakCache.ComputeTo(MemoryMarshal.CreateReadOnlySpan(ref data, (int)length), out Unsafe.As<ulong, ValueHash256>(ref lengthLimbs));
+                        if (!EvmPooledMemory.IsSwizzled)
+                            KeccakCache.ComputeTo(MemoryMarshal.CreateReadOnlySpan(ref data, (int)length), out Unsafe.As<ulong, ValueHash256>(ref lengthLimbs));
+                        else if ((offset & (sizeof(uint) - 1)) == 0)
+                            airbender_keccak256_laid_out((byte*)Unsafe.AsPointer(ref data), (nuint)length, (byte*)Unsafe.AsPointer(ref lengthLimbs));
+                        else
+                            KeccakCache.ComputeTo(SwizzledMemory.ToArray(ref data, (int)length), out Unsafe.As<ulong, ValueHash256>(ref lengthLimbs));
                         // Reloaded rather than held across the call, where each would take a callee-saved register.
                         handlers = state.OpcodeHandlers;
                         code = ref stack.Code;
@@ -2335,7 +2360,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         Unsafe.Add(ref hash, 1) = limb1;
                         Unsafe.Add(ref hash, 2) = limb2;
                         Unsafe.Add(ref hash, 3) = limb3;
-                        WriteWordKeccakMemo(ref state.Memory.GetActiveInitializedRange(offset, length), length, ref hash);
+                        if (!EvmPooledMemory.IsSwizzled || (offset & (sizeof(uint) - 1)) == 0)
+                            WriteWordKeccakMemo(ref state.Memory.GetActiveInitializedRange(offset, length), length, ref hash);
                         ip = ref Unsafe.Add(ref ip, 1);
                         nint next = AlignedTable(handlers)[PairAt(ref ip)];
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);

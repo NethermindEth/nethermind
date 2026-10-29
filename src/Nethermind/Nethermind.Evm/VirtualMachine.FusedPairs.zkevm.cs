@@ -577,7 +577,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!Unsafe.IsNullRef(ref destination))
                     {
                         // The value is the word below the offset; memory holds it big-endian.
-                        StoreBigEndian(ref destination, ref offset);
+                        StoreMemoryWord(ref destination, ref offset);
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
@@ -627,7 +627,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     ref byte source = ref AlignedMemory(ref state).GetActiveInitializedWord(slot);
                     if (!Unsafe.IsNullRef(ref source))
                     {
-                        LoadBigEndian(ref slot, ref source);
+                        LoadMemoryWord(ref slot, ref source);
                         ip = ref Unsafe.Add(ref ip, 1);
                         nint next = AlignedTable(handlers)[PairAt(ref ip)];
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
@@ -662,7 +662,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref byte source = ref AlignedMemory(ref state).GetActiveInitializedWord(Unsafe.Add(ref ip, 1));
                 if (!Unsafe.IsNullRef(ref source))
                 {
-                    LoadBigEndian(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref source);
+                    LoadMemoryWord(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref source);
                     head++;
                     sp = ref Moved(ref sp, 1);
                     ip = ref Unsafe.Add(ref ip, 3);
@@ -699,7 +699,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (!Unsafe.IsNullRef(ref destination))
                 {
                     // The value is the top word, which ends at the head; memory holds it big-endian.
-                    StoreBigEndian(ref destination, ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)));
+                    StoreMemoryWord(ref destination, ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)));
                     head--;
                     sp = ref Moved(ref sp, -1);
                     ip = ref Unsafe.Add(ref ip, 3);

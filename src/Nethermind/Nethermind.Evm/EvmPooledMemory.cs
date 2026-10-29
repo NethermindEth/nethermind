@@ -30,6 +30,14 @@ public partial struct EvmPooledMemory
     private byte[]? _memory;
     public ulong Size { get; private set; }
 
+    /// <summary>Whether the memory keeps its bytes in the layout <see cref="SwizzledMemory"/> describes.</summary>
+    /// <remarks>
+    /// Then every byte this type takes or hands out is in natural order, converted at the boundary; only the references
+    /// to the memory itself, which the guest's handlers read and write in place, see the layout. See
+    /// <c>EvmPooledMemory.std.cs</c> and <c>.zkevm.cs</c>.
+    /// </remarks>
+    internal static partial bool IsSwizzled { get; }
+
     internal EvmPooledMemory(EvmFrameMemory inlineMemoryManager, bool isFresh = false)
     {
         _initializedSize = isFresh ? (ulong)InlineCapacity : 0;
@@ -50,7 +58,10 @@ public partial struct EvmPooledMemory
         EvmWord word1 = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
         UpdateSize(newLength);
         ref byte memory = ref GetBackingReference();
-        Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), word1);
+        if (IsSwizzled)
+            SwizzledMemory.Write(ref Unsafe.Add(ref memory, offset), word);
+        else
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), word1);
         return true;
     }
 
@@ -61,7 +72,8 @@ public partial struct EvmPooledMemory
 
         int offset = TruncateToInt32(location.u0);
         UpdateSize(newLength);
-        Unsafe.Add(ref GetBackingReference(), offset) = value;
+        ref byte at = ref Unsafe.Add(ref GetBackingReference(), offset);
+        (IsSwizzled ? ref SwizzledMemory.ByteAt(ref at) : ref at) = value;
         return true;
     }
 
@@ -144,7 +156,10 @@ public partial struct EvmPooledMemory
         Debug.Assert(location.u0 + (ulong)length <= Size);
         int intLocation = TruncateToInt32(location.u0);
         ulong preparedInitializedSize = PrepareOverwriteAfterGas(location.u0, (ulong)length, location.u0);
-        Bytes.Copy(value, GetBackingSpan(intLocation, length));
+        if (IsSwizzled)
+            SwizzledMemory.Write(ref MemoryMarshal.GetReference(GetBackingSpan(intLocation, length)), value);
+        else
+            Bytes.Copy(value, GetBackingSpan(intLocation, length));
         CommitOverwrite(preparedInitializedSize);
     }
 
@@ -153,11 +168,14 @@ public partial struct EvmPooledMemory
     /// The caller must have already charged for and expanded the destination range.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    /// <param name="sourceInMemoryLayout">Whether <paramref name="source"/> is laid out as memory, as a call's input is in
+    /// swizzled memory (see <see cref="LoadInputAfterGas"/>), rather than in natural order.</param>
     internal void CopyFromZeroExtendedAfterGas(
         in UInt256 destination,
         ReadOnlySpan<byte> source,
         in UInt256 sourceOffset,
-        int length)
+        int length,
+        bool sourceInMemoryLayout = false)
     {
         if (length == 0)
         {
@@ -173,12 +191,21 @@ public partial struct EvmPooledMemory
         {
             int intSourceOffset = TruncateToInt32(sourceOffset.u0);
             copiedLength = Math.Min(source.Length - intSourceOffset, length);
-            Bytes.Copy(source.Slice(intSourceOffset, copiedLength), target);
+            if (IsSwizzled && sourceInMemoryLayout)
+                SwizzledMemory.Copy(ref MemoryMarshal.GetReference(target),
+                    ref Unsafe.Add(ref MemoryMarshal.GetReference(source), intSourceOffset), copiedLength);
+            else if (IsSwizzled)
+                SwizzledMemory.Write(ref MemoryMarshal.GetReference(target), source.Slice(intSourceOffset, copiedLength));
+            else
+                Bytes.Copy(source.Slice(intSourceOffset, copiedLength), target);
         }
 
         if (copiedLength != length)
         {
-            target[copiedLength..].Clear();
+            if (IsSwizzled)
+                SwizzledMemory.Clear(ref Unsafe.Add(ref MemoryMarshal.GetReference(target), copiedLength), length - copiedLength);
+            else
+                target[copiedLength..].Clear();
         }
 
         CommitOverwrite(preparedInitializedSize);
@@ -233,7 +260,7 @@ public partial struct EvmPooledMemory
 
         UpdateSize(newLength);
 
-        data = GetBackingMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
+        data = Natural(GetBackingMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0)));
         return true;
     }
 
@@ -282,7 +309,7 @@ public partial struct EvmPooledMemory
         }
 
         ClearForTracing((ulong)largeSize);
-        return GetBackingMemory((int)location, (int)length);
+        return Natural(GetBackingMemory((int)location, (int)length));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -342,7 +369,7 @@ public partial struct EvmPooledMemory
             }
             else if (_memory is null && _inlineMemoryManager is not null && overwriteEnd <= InlineCapacity)
             {
-                GetInlineSpan().Slice((int)initializedSize, (int)(location.u0 - initializedSize)).Clear();
+                GetInlineSpan().Slice((int)initializedSize, (int)(GroupEnd(location.u0) - initializedSize)).Clear();
                 preparedInitializedSize = overwriteEnd;
             }
             else
@@ -352,6 +379,13 @@ public partial struct EvmPooledMemory
         }
         ref byte destination = ref Unsafe.Add(ref GetBackingReference(), TruncateToInt32(location.u0));
         ref byte source = ref MemoryMarshal.GetReference(word);
+        if (IsSwizzled)
+        {
+            SwizzledMemory.StoreNativeWord(ref destination, ref source);
+            CommitOverwrite(preparedInitializedSize);
+            return;
+        }
+
         Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
         Unsafe.WriteUnaligned(ref destination, swap.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 24))));
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 8), swap.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 16))));
@@ -371,6 +405,12 @@ public partial struct EvmPooledMemory
     internal void StoreWordAfterGas(in UInt256 location, ReadOnlySpan<byte> word)
     {
         Debug.Assert(location.IsUint64);
+        if (IsSwizzled)
+        {
+            SaveAfterGas(in location, word);
+            return;
+        }
+
         int offset = TruncateToInt32(location.u0);
         ulong overwriteEnd = location.u0 + WordSize;
         byte[]? memory = _memory;
@@ -429,6 +469,13 @@ public partial struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
         ulong overwriteEnd = location.u0 + 1;
+        if (IsSwizzled)
+        {
+            PrepareAccessAfterGas(overwriteEnd);
+            SwizzledMemory.ByteAt(ref Unsafe.Add(ref GetBackingReference(), offset)) = value;
+            return;
+        }
+
         byte[]? memory = _memory;
         if (memory is not null && overwriteEnd <= _initializedSize)
         {
@@ -477,8 +524,16 @@ public partial struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
         PrepareAccessAfterGas(location.u0 + WordSize);
-        return ref Unsafe.Add(ref GetBackingReference(), offset);
+        ref byte word = ref Unsafe.Add(ref GetBackingReference(), offset);
+        if (!IsSwizzled) return ref word;
+
+        // The word in natural order, in a buffer of its own: the guest runs one frame at a time.
+        byte[] natural = s_naturalWord ??= new byte[WordSize];
+        SwizzledMemory.Read(ref word, natural);
+        return ref MemoryMarshal.GetArrayDataReference(natural);
     }
+
+    private static byte[]? s_naturalWord;
 
     /// <summary>
     /// Returns the 32 bytes at <paramref name="offset"/> when they lie inside both the active and the initialized memory,
@@ -522,7 +577,8 @@ public partial struct EvmPooledMemory
         Debug.Assert(offset <= uint.MaxValue);
         ulong end = offset + WordSize;
         ulong initializedSize = _initializedSize;
-        if (end > initializedSize && (offset > initializedSize || end > GetBackingCapacity()))
+        if ((end > initializedSize && (offset > initializedSize || end > GetBackingCapacity())) ||
+            (IsSwizzled && (offset & GroupMask) != 0))
             return ulong.MaxValue;
 
         Debug.Assert(end <= MaxMemorySize, "The backing never reaches past the largest addressable size.");
@@ -557,7 +613,7 @@ public partial struct EvmPooledMemory
         int offset = TruncateToInt32(location.u0);
         int intLength = TruncateToInt32(length);
         PrepareAccessAfterGas(location.u0 + length);
-        return GetBackingSpan(offset, intLength);
+        return Natural(GetBackingSpan(offset, intLength));
     }
 
     /// <summary>
@@ -591,7 +647,23 @@ public partial struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         Debug.Assert(length.IsUint64);
         PrepareAccessAfterGas(location.u0 + length.u0);
-        return GetBackingMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
+        return Natural(GetBackingMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0)));
+    }
+
+    /// <summary><see cref="LoadAfterGas"/> for the input of a call, in the layout a call's input takes.</summary>
+    /// <remarks>
+    /// In swizzled memory the input keeps the memory's layout, laid out from its own start: a range starting on a group
+    /// boundary is handed over as it lies, without a copy, and any other is laid out again in a new array.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal ReadOnlyMemory<byte> LoadInputAfterGas(in UInt256 location, in UInt256 length)
+    {
+        if (!IsSwizzled) return LoadAfterGas(in location, in length);
+        if (length.IsZero) return default;
+
+        PrepareAccessAfterGas(location.u0 + length.u0);
+        ReadOnlyMemory<byte> input = GetBackingMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
+        return (location.u0 & GroupMask) == 0 ? input : SwizzledMemory.FromNatural(SwizzledMemory.ToNatural(input).Span);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -607,6 +679,12 @@ public partial struct EvmPooledMemory
         Debug.Assert(destination.u0 + length <= Size);
         Debug.Assert(source.u0 + length <= Size);
         ulong sourceEnd = source.u0 + length;
+        if (IsSwizzled)
+        {
+            CopySwizzledAfterGas(in destination, in source, length, sourceEnd);
+            return;
+        }
+
         ulong destinationEnd = destination.u0 + length;
         ulong initializedSize = _initializedSize;
         if (sourceEnd <= initializedSize
@@ -625,6 +703,21 @@ public partial struct EvmPooledMemory
         }
 
         CopyAfterGasSlow(in destination, in source, length, sourceEnd);
+    }
+
+    /// <summary><see cref="CopyAfterGas"/> in swizzled memory.</summary>
+    /// <remarks>Initializes the source first, so its unwritten bytes read as the zeroes they stand for.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void CopySwizzledAfterGas(in UInt256 destination, in UInt256 source, ulong length, ulong sourceEnd)
+    {
+        PrepareAccessAfterGas(sourceEnd);
+        ulong preparedInitializedSize = PrepareOverwriteAfterGas(destination.u0, length, sourceEnd);
+        ref byte memory = ref GetBackingReference();
+        SwizzledMemory.Move(
+            ref Unsafe.Add(ref memory, TruncateToInt32(destination.u0)),
+            ref Unsafe.Add(ref memory, TruncateToInt32(source.u0)),
+            TruncateToInt32(length));
+        CommitOverwrite(preparedInitializedSize);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -739,7 +832,7 @@ public partial struct EvmPooledMemory
             return new(size, default);
 
         int visible = (int)Math.Min(size, capacity);
-        return new(size, GetBackingMemory(0, visible));
+        return new(size, Natural(GetBackingMemory(0, visible)));
     }
 
     public void Dispose()
@@ -778,8 +871,19 @@ public partial struct EvmPooledMemory
     private Span<byte> LoadSpan(ulong newLength, int offset, int length)
     {
         UpdateSize(newLength);
-        return GetBackingSpan(offset, length);
+        return Natural(GetBackingSpan(offset, length));
     }
+
+    /// <summary><paramref name="span"/> of the memory as it lies, or a copy of its bytes in natural order where the memory
+    /// is swizzled.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Span<byte> Natural(Span<byte> span) =>
+        IsSwizzled ? SwizzledMemory.ToArray(ref MemoryMarshal.GetReference(span), span.Length) : span;
+
+    /// <inheritdoc cref="Natural(Span{byte})"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlyMemory<byte> Natural(ReadOnlyMemory<byte> memory) =>
+        IsSwizzled ? SwizzledMemory.ToArray(ref MemoryMarshal.GetReference(memory.Span), memory.Length) : memory;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void PrepareAccessAfterGas(ulong newLength)
@@ -819,9 +923,32 @@ public partial struct EvmPooledMemory
     {
         if (preparedInitializedSize != 0)
         {
-            _initializedSize = preparedInitializedSize;
+            _initializedSize = CompleteGroup(preparedInitializedSize);
         }
     }
+
+    /// <summary>The end the initialized prefix takes for one ending at <paramref name="end"/>.</summary>
+    /// <remarks>
+    /// In swizzled memory the next group boundary, the rest of the group zeroed: every clear starts where the prefix ends,
+    /// and one starting inside a group would clear bytes the prefix holds and miss bytes it should clear.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ulong CompleteGroup(ulong end)
+    {
+        if (!IsSwizzled || (end & GroupMask) == 0) return end;
+
+        ulong groupEnd = GroupEnd(end);
+        ref byte memory = ref GetBackingReference();
+        for (ulong at = end; at < groupEnd; at++)
+            SwizzledMemory.ByteAt(ref Unsafe.Add(ref memory, (nint)at)) = 0;
+        return groupEnd;
+    }
+
+    /// <summary><paramref name="offset"/> rounded up to a group boundary in swizzled memory, as a clear up to it must be.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong GroupEnd(ulong offset) => IsSwizzled ? (offset + GroupMask) & ~GroupMask : offset;
+
+    private const ulong GroupMask = sizeof(uint) - 1;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void EnsureRented(ulong requiredEnd)
@@ -962,18 +1089,18 @@ public partial struct EvmPooledMemory
         {
             if (overwriteStart > initializedSize)
             {
-                GetInlineSpan().Slice((int)initializedSize, (int)(overwriteStart - initializedSize)).Clear();
+                GetInlineSpan().Slice((int)initializedSize, (int)(GroupEnd(overwriteStart) - initializedSize)).Clear();
             }
 
             return Math.Max(initializedSize, overwriteEnd);
         }
 
-        ulong preservedSize = Math.Min(initializedSize, Math.Max(overwriteStart, preservedEnd));
+        ulong preservedSize = GroupEnd(Math.Min(initializedSize, Math.Max(overwriteStart, preservedEnd)));
         byte[] memory = EnsureCapacity(overwriteEnd, preservedSize, ref initializedSize);
 
         if (overwriteStart > initializedSize)
         {
-            Array.Clear(memory, (int)initializedSize, (int)(overwriteStart - initializedSize));
+            Array.Clear(memory, (int)initializedSize, (int)(GroupEnd(overwriteStart) - initializedSize));
         }
 
         return Math.Max(initializedSize, overwriteEnd);

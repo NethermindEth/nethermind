@@ -14,6 +14,10 @@ public partial struct EvmPooledMemory
 {
     private static TraceMemory EmptyTraceMemory => new(0, default);
 
+    /// <remarks>On Airbender, whose 32-bit core has no byte-swap instruction: there a word in natural order costs a swap
+    /// per 32-bit digit to load or store, where the swizzled layout costs none.</remarks>
+    internal static partial bool IsSwizzled => AirbenderFlag.IsActive;
+
     /// <summary>
     /// Returns the first of the <paramref name="length"/> bytes at <paramref name="offset"/> when they lie inside both
     /// the active and the initialized memory, or a null reference when they do not.
@@ -117,7 +121,10 @@ public partial struct EvmPooledMemory
     {
         nuint end = offset + WordSize;
         nuint initializedSize = (nuint)_initializedSize;
-        if (end < offset || (end > initializedSize && (offset > initializedSize + (nuint)MaxClearedGap || end > (nuint)GetBackingCapacity())))
+        // Swizzled memory takes an unaligned word through the shared handler, whose clears keep the initialized prefix
+        // on a group boundary; here the clears are whole words.
+        if (end < offset || (end > initializedSize && (offset > initializedSize + (nuint)MaxClearedGap || end > (nuint)GetBackingCapacity())) ||
+            (IsSwizzled && offset % sizeof(uint) != 0))
             return ref Unsafe.NullRef<byte>();
 
         nuint size = (nuint)Size;
@@ -204,7 +211,9 @@ public partial struct EvmPooledMemory
         Debug.Assert(offset <= uint.MaxValue && length is > 0 and <= uint.MaxValue);
         ulong end = offset + length;
         ulong initializedSize = _initializedSize;
-        if (end > initializedSize && (offset > initializedSize + MaxClearedGap || end > GetBackingCapacity()))
+        // As in TryPrepareWordOverwriteInNativeWords: in swizzled memory only whole groups.
+        if ((end > initializedSize && (offset > initializedSize + MaxClearedGap || end > GetBackingCapacity())) ||
+            (IsSwizzled && ((offset | length) & (sizeof(uint) - 1)) != 0))
             return ref Unsafe.NullRef<byte>();
 
         Debug.Assert(end <= MaxMemorySize, "The backing never reaches past the largest addressable size.");
