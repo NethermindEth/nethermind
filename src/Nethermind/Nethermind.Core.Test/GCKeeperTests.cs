@@ -1139,10 +1139,10 @@ public class GCKeeperTests
         }
     }
 
-    // A payload that starts while the previous one is still in processing leaves no idle gap, so a stream of
-    // overlapping payloads reads as back to back however long their interval is.
+    // A payload that starts while another is still in processing leaves no idle gap. Here every other payload starts
+    // while the one before it is still in processing: half the gaps are 0, the other half 150 ms.
     [Test]
-    public async Task Overlapping_payloads_leave_no_idle_gap()
+    public async Task Overlapping_payload_leaves_no_idle_gap()
     {
         IGCStrategy strategy = CreateCadenceStrategy(250, adaptive: true);
         RegionRuntime runtime = new();
@@ -1150,19 +1150,23 @@ public class GCKeeperTests
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, run.Delay, run.Time);
 
         strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
-        IDisposable previous = keeper.TryStartNoGCRegion();
-        for (int i = 0; i < 2 * PayloadCadence.Samples; i++)
+        // The first payload has no gap before it: 17 gaps, the window keeps the last 16.
+        for (int pair = 0; pair <= PayloadCadence.Samples / 2; pair++)
         {
+            IDisposable first = keeper.TryStartNoGCRegion();
             run.Time.Advance(TimeSpan.FromMilliseconds(200));
-            IDisposable next = keeper.TryStartNoGCRegion();
-            previous.Dispose();
-            previous = next;
+            IDisposable second = keeper.TryStartNoGCRegion();
+            run.Time.Advance(TimeSpan.FromMilliseconds(10));
+            first.Dispose();
+            run.Time.Advance(TimeSpan.FromMilliseconds(40));
+            second.Dispose();
+            run.Time.Advance(TimeSpan.FromMilliseconds(150));
         }
-        previous.Dispose();
         strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
         await keeper.ScheduleGCInternal(throttle: false);
 
-        Assert.That(run.Delays, Is.EqualTo(new[] { 250 }));
+        // A median idle gap of (0 + 150) / 2 = 75 ms, a quarter of it the delay.
+        Assert.That(run.Delays, Is.EqualTo(new[] { 18 }));
     }
 
     [Test]
