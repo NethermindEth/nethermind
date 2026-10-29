@@ -211,6 +211,24 @@ public class RecursiveStarkAggregatorTests
         }
     }
 
+    // EIP-8288 Test Case 13: inputs covering {a, b} and {b, c} for retained {a, c} deduplicate b, discard it and prove exactly {a, c}.
+    [Test]
+    public void Overlapping_recursive_inputs_deduplicate_and_discard_the_shared_dependency()
+    {
+        FrameDependency a = Sphincs("a"), b = Sphincs("b"), c = Sphincs("c");
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        store.AddVerified([a, b], null, [1]);
+        store.AddVerified([b, c], null, [2]);
+        Assert.That(store.TryGetInput([a, c], out AggregationInput input), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(input.RecursiveProofs, Has.Count.EqualTo(2));
+            Assert.That(input.Discards, Is.EqualTo(new[] { b }));
+            Assert.That(RecursiveStarkAggregatorTests.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> deps, out _), Is.True);
+            Assert.That(deps, Is.EqualTo(Eip8288Dependencies.Canonicalize([a, c])));
+        }
+    }
+
     [Test]
     public void Proof_store_rejects_missing_dependencies()
     {

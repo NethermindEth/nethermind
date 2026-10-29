@@ -314,11 +314,16 @@ it gets one outstanding request instead of four. It is never disconnected for it
 Every EIP-8288 `AGGREGATION_INTERVAL` (one second), a tracked aggregation worker produces mode-1
 wrappers over bounded subsets until every pending dependency-bearing transaction is covered or
 one interval of proving has elapsed; the next cycle resumes the rotation where it stopped. Ticks
-coalesce while proving. Selections rotate across disjoint groups, reuse authenticated child proofs and discard
-removed dependencies. Mode 1 has no dependency-count limit, so a subset is bounded by
-`MAX_WRAPPER_BYTES`, the guest's 256 dependencies and an estimated proving cost equal to folding 16 fresh
-signatures: already proven aggregates merge whole and may carry many more dependencies. Mode-0 witnesses
-fold directly into the aggregate, and a selection a held proof already proves is not proven again. Completed selections are checked against current pool membership
+coalesce while proving. Subsets are transaction-hash-prefix buckets: the candidates in canonical
+order start as one bucket, and one that does not fit is subdivided by successive hash bits, so nodes
+with the same pool view build the same sets. Mode 1 is bounded by `MAX_WRAPPER_BYTES` and the
+circuit's dependency-list limit (the guest's 256 dependencies), and a bucket also by an estimated
+proving cost equal to folding 16 fresh signatures: already proven aggregates merge whole and may
+carry many more dependencies. Mode-0 witnesses fold directly into the aggregate, and a set a held
+proof already proves is not proven again; for partial coverage held proofs are merged and only
+missing dependencies added, discarding those outside the retained transactions. A set an announced
+mode-1 wrapper claims (by its `deps-hash`) is left for up to two intervals while that wrapper is
+fetched, then proven locally. Completed selections are checked against current pool membership
 before publication. `eth_getProofWrapper` returns a copy without invoking the prover.
 Managed aggregation folds at most four direct witnesses or two children per call.
 Cancellation is checked between calls; an individual native call remains uninterruptible.

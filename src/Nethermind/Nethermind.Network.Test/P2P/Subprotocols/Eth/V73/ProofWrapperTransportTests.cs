@@ -254,6 +254,27 @@ public class ProofWrapperTransportTests
         }
     }
 
+    // EIP-8288 proof reuse: aggregation learns which dependency sets announced mode-1 wrappers claim while they are fetched.
+    [Test]
+    public void Announced_mode_1_dependency_set_is_offered_to_aggregation_while_fetched()
+    {
+        using WrapperTestNode node = new();
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        WrapperAnnouncement recursive = Describe(Wrapper(64, FrameTransaction(1))), direct = Describe(DirectWrapper(FrameTransaction(2)));
+        Func<ValueHash256, bool> offered = node.Wrappers.IsDependencySetOffered!;
+
+        node.Transport.OnAnnounce(peer, new([.. new[] { recursive, direct }.OrderBy(static a => a.Hash)]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(offered(recursive.Coverage.DepsHash), Is.True);
+            Assert.That(offered(direct.Coverage.DepsHash), Is.False, "only a recursive proof can be reused");
+        }
+        node.Tick(WrapperTransportLimits.PendingLifetime + WrapperTransportLimits.FetchDeadline);
+        Assert.That(offered(recursive.Coverage.DepsHash), Is.False, "an expired offer no longer defers aggregation");
+    }
+
     // A response is held to the metadata its own server announced, so the first announcer's false length or hints cannot get an
     // honest server penalized for the true wrapper.
     [Test]

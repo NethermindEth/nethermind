@@ -15,6 +15,7 @@ using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -623,6 +624,75 @@ public class ProofWrapperServiceTests
             Assert.That(wrapper.Transactions, Has.Count.EqualTo(proven ? transactions.Length : 1));
             Assert.That(wrapper.Deps, Has.Count.EqualTo((proven ? transactions.Length : 1) * Eip8288Constants.MaxSigsPerTx));
             Assert.That(MempoolWrapperValidator.Validate(wrapper, new FakeLeanProofVerifier(true), Eip8288Verifier.Pinned, out string? error), Is.True, error);
+        }
+    }
+
+    // EIP-8288 proof reuse: candidates are partitioned by transaction-hash prefix, oversized buckets subdivided by successive bits,
+    // so the wrappers depend on the pool view alone, not on the order transactions arrived in.
+    [Test]
+    public void Produced_wrappers_are_hash_prefix_buckets_independent_of_arrival_order()
+    {
+        (ProofWrapperService service, _) = Create(10, 128 * 1024, out Transaction[] transactions);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        store.AddVerified([new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default)], [[1]], null);
+        ProofWrapperService reordered = CreateService([.. transactions.Reverse()], store, new FakeLeanProofVerifier(true));
+
+        List<Hash256[]> first = Produced(service), second = Produced(reordered);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Has.Count.GreaterThan(1));
+            Assert.That(second, Is.EqualTo(first));
+            foreach (Hash256[] bucket in first)
+            {
+                int prefix = CommonPrefixBits(bucket[0], bucket[^1]);
+                Assert.That(transactions.Where(t => !bucket.Contains(t.Hash!) && CommonPrefixBits(t.Hash!, bucket[0]) >= prefix), Is.Empty,
+                    "every transaction sharing the bucket's prefix is in it");
+            }
+        }
+
+        static List<Hash256[]> Produced(ProofWrapperService wrappers)
+        {
+            List<Hash256[]> produced = [];
+            Assert.That(wrappers.RefreshWrapper(() => produced.Add([.. Decode(wrappers.GetLatestWrapper().Data!).Transactions.Select(static tx => tx.Hash!)])),
+                Is.EqualTo(Result.Success));
+            return [.. produced.OrderBy(static bucket => bucket[0].ToString())];
+        }
+
+        static int CommonPrefixBits(Hash256 a, Hash256 b)
+        {
+            for (int bit = 0; bit < 256; bit++)
+                if ((a.Bytes[bit >> 3] ^ b.Bytes[bit >> 3]) >> (7 - (bit & 7)) != 0) return bit;
+            return 256;
+        }
+    }
+
+    // EIP-8288 proof reuse: aggregation leaves a dependency set a peer offers a proof of for a bounded wait, reuses the proof once
+    // held, and proves the set itself once the wait lapses without one.
+    [Test]
+    public void Offered_dependency_set_waits_for_the_offer_and_then_is_proven_locally([Values] bool offerArrives)
+    {
+        Create(1, 64, out Transaction[] transactions);
+        List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(transactions[0], FrameTxSigHash.ComputeValue);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        store.AddVerified(deps, [[1]], null);
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService(transactions, store, verifier);
+        ValueHash256 digest = ValueKeccak.Compute(Eip8288Dependencies.Serialize(deps));
+        service.IsDependencySetOffered = offered => offered == digest;
+        ManualTimeProvider clock = new();
+
+        Result waiting = service.RefreshWrapper(clock: clock);
+        if (offerArrives) store.AddCachedRecursive(deps, [7]);
+        else clock.Advance(ProofWrapperService.ReuseOfferWait);
+        Result produced = service.RefreshWrapper(clock: clock);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waiting, Is.Not.EqualTo(Result.Success));
+            Assert.That(produced, Is.EqualTo(Result.Success));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(offerArrives ? 0 : 1));
+            Assert.That(Decode(service.GetLatestWrapper().Data!).RecursiveStark!.StarkProof, Is.EqualTo(offerArrives ? new byte[] { 7 } : new byte[] { 1 }));
         }
     }
 

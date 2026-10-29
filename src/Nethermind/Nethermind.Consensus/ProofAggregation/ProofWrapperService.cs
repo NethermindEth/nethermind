@@ -39,12 +39,24 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Estimated proving cost (<see cref="RecursiveStarkAggregator.EstimatedCost"/>) one produced wrapper may take: that of
     /// folding <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> fresh signatures.</summary>
-    /// <remarks>EIP-8288 sets no mode-1 dependency-count limit, so a produced wrapper is bounded by <c>MAX_WRAPPER_BYTES</c>, the
-    /// pinned guest's <see cref="Eip8288Constants.MaxProofDependencies"/> and this budget: it may cover many more dependencies
+    /// <remarks>EIP-8288 limits mode 1 only by <c>MAX_WRAPPER_BYTES</c> and the circuit's dependency-list limit, here
+    /// <see cref="Eip8288Constants.MaxProofDependencies"/>, so a produced wrapper is bounded by those and this budget: it may cover many more dependencies
     /// when they come from already proven aggregates, whose merge costs far less than fresh signatures. A transaction exceeding it
     /// alone is produced in a wrapper of its own.</remarks>
     internal const long MaxWrapperProvingCost = Eip8288Constants.MaxLeanSigDepsPerWrapper * RecursiveStarkAggregator.SignatureCost
         + (Eip8288Constants.MaxLeanSigDepsPerWrapper / RecursiveStarkAggregator.DirectBatchSize - 1) * RecursiveStarkAggregator.MergeCost;
+
+    /// <summary>How long aggregation leaves a dependency set a peer offers a proof of, before proving it itself.</summary>
+    internal static readonly TimeSpan ReuseOfferWait = TimeSpan.FromMilliseconds(2 * Eip8288Constants.AggregationInterval);
+
+    /// <summary>How long a dependency set that waited for an offer is proven without waiting again.</summary>
+    private static readonly TimeSpan OfferWaitMemory = TimeSpan.FromMinutes(1);
+
+    /// <summary>Whether a peer announced a mode-1 wrapper this node is still fetching whose EIP-8437 dependency digest, Keccak-256
+    /// of the concatenated dependency triples, is the given one.</summary>
+    /// <remarks>EIP-8288 proof reuse: aggregation leaves such a set for up to <see cref="ReuseOfferWait"/>, so the fetched proof can
+    /// be reused instead of generating a new one.</remarks>
+    public Func<ValueHash256, bool>? IsDependencySetOffered { get; set; }
 
     /// <summary>Transactions submitted to the pool per turn of admission.</summary>
     /// <remarks>EIP-8288 bounds a wrapper only by <c>MAX_WRAPPER_BYTES</c>, so one wrapper may carry thousands of small transactions
@@ -54,7 +66,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     private const int MaxRememberedVerifications = 128;
     private readonly object _aggregationLock = new();
-    private int _rotation;
+    private ValueHash256? _resumeAfter;
+    private readonly Dictionary<ValueHash256, long> _offerWaits = [];
     private readonly SemaphoreSlim _admission = new(1, 1);
 
     /// <summary>Callers of one source waiting for admission. Each source enters admission one caller at a time, so RPC callers
@@ -483,11 +496,13 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     public Result<byte[]> BuildWrapper(CancellationToken cancellationToken = default)
         => BuildWrapper(true, cancellationToken);
 
-    /// <summary>One <c>AGGREGATION_INTERVAL</c> cycle of background aggregation: builds bounded wrappers, continuing the
-    /// rotation, until every pending dependency-bearing transaction has been offered to one, calling
-    /// <paramref name="produced"/> after each new one, so it can be read through <see cref="GetLatestWrapper()"/> and published.</summary>
+    /// <summary>One <c>AGGREGATION_INTERVAL</c> cycle of background aggregation: builds the wrappers of the hash-prefix buckets
+    /// (see <see cref="PlanBuckets"/>), continuing the rotation, until every pending dependency-bearing transaction has been offered
+    /// to one, calling <paramref name="produced"/> after each new one, so it can be read through <see cref="GetLatestWrapper()"/>
+    /// and published.</summary>
     /// <remarks>Stops at the first build failure, or before starting another build once <paramref name="budget"/> has elapsed,
-    /// so prover work per cycle stays bounded; the next cycle resumes the rotation where this one stopped.</remarks>
+    /// so prover work per cycle stays bounded; the next cycle resumes the rotation where this one stopped. A bucket whose
+    /// dependency set a peer offers is skipped while <see cref="IsDependencySetOffered"/> defers it.</remarks>
     /// <returns>Success when at least one wrapper is current; otherwise the first failure.</returns>
     public Result RefreshWrapper(Action? produced = null, TimeSpan? budget = null, TimeProvider? clock = null,
         CancellationToken cancellationToken = default)
@@ -498,22 +513,29 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         try
         {
             using IDisposable request = ProductionProofCache.Background(cancellationToken);
+            if (RefreshVerifier() is not { } verifier) return Result.Fail(WrappersUnavailable);
+            List<Bucket> buckets = PlanBuckets(verifier, cancellationToken);
+            if (buckets.Count == 0) return Result.Fail(NoProofBackedTransactions);
+            PruneOfferWaits(clock);
+            int start = ResumeIndex(buckets);
             bool any = false;
-            for (int scanned = 0; ;)
+            string? deferred = null;
+            for (int i = 0; i < buckets.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                Result<byte[]> result = BuildWrapperCore(false, cancellationToken, out int buildScanned, out int candidates, out bool unchanged);
-                scanned += buildScanned;
-                // A stretch of the rotation without proof-backed transactions ends no cycle that has more candidates.
+                if (i != 0 && budget is { } limit && clock.GetElapsedTime(started) >= limit) break;
+                int index = (start + i) % buckets.Count;
+                Result<byte[]> result = BuildBucket(buckets[index], verifier, false, clock, cancellationToken, out bool unchanged);
+                Advance(buckets, index);
                 if (result.IsSuccess)
                 {
                     any = true;
                     if (!unchanged) produced?.Invoke();
                 }
-                else if (result.Error != NoProofBackedTransactions) return any ? Result.Success : Result.Fail(result.Error!);
-                if (buildScanned == 0 || scanned >= candidates || budget is { } limit && clock.GetElapsedTime(started) >= limit)
-                    return any ? Result.Success : Result.Fail(result.Error ?? NoProofBackedTransactions);
+                else if (result.Error == AwaitingOfferedProof) deferred = result.Error;
+                else return any ? Result.Success : Result.Fail(result.Error!);
             }
+            return any ? Result.Success : Result.Fail(deferred ?? NoProofBackedTransactions);
         }
         catch (InvalidOperationException exception)
         {
@@ -529,7 +551,18 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             cancellationToken.ThrowIfCancellationRequested();
             using IDisposable request = ProductionProofCache.Background(cancellationToken);
-            return BuildWrapperCore(returnEncoded, cancellationToken, out _, out _, out _);
+            if (RefreshVerifier() is not { } verifier) return Result<byte[]>.Fail(WrappersUnavailable);
+            List<Bucket> buckets = PlanBuckets(verifier, cancellationToken);
+            int start = ResumeIndex(buckets);
+            Result<byte[]> result = Result<byte[]>.Fail(NoProofBackedTransactions);
+            for (int i = 0; i < buckets.Count; i++)
+            {
+                int index = (start + i) % buckets.Count;
+                result = BuildBucket(buckets[index], verifier, returnEncoded, TimeProvider.System, cancellationToken, out _);
+                Advance(buckets, index);
+                if (result.Error != AwaitingOfferedProof) break;
+            }
+            return result;
         }
         catch (InvalidOperationException exception)
         {
@@ -537,6 +570,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         }
         finally { Monitor.Exit(_aggregationLock); }
     }
+
+    private const string WrappersUnavailable = "EIP-8288 proof wrappers are unavailable.";
+    private const string AwaitingOfferedProof = "A peer offers a proof of this dependency set; awaiting it before proving.";
 
     private const string NoProofBackedTransactions = "No proof-backed pending transactions.";
 
@@ -559,77 +595,121 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         return Result<byte[]>.Success(knownHash == hash ? [] : (byte[])wrapper.Encoded.Clone());
     }
 
-    /// <param name="scanned">Candidates this build passed over, from the rotation point to where the wrapper filled.</param>
-    /// <param name="candidateCount">Pending transactions considered.</param>
-    /// <param name="unchanged">Whether the build selected the latest wrapper's transactions again, which it returns as is.</param>
-    private Result<byte[]> BuildWrapperCore(bool returnEncoded, CancellationToken cancellationToken, out int scanned, out int candidateCount,
-        out bool unchanged)
+    /// <summary>A pending dependency-bearing transaction with its dependencies and encoded size.</summary>
+    private readonly record struct Candidate(Transaction Transaction, List<FrameDependency> Deps, int EncodedLength);
+
+    /// <summary>A planned wrapper: a hash-prefix bucket of transactions, in canonical order, and the inputs proving their
+    /// dependency union.</summary>
+    private sealed record Bucket(List<Transaction> Transactions, List<FrameDependency> Deps, AggregationInput Input);
+
+    /// <summary>Partitions the pending dependency-bearing transactions into transaction-hash-prefix buckets that each fit one
+    /// mode-1 wrapper.</summary>
+    /// <remarks>EIP-8288 proof reuse: the candidates in canonical order start as one bucket, and a bucket exceeding the wrapper's
+    /// transaction bytes, the circuit's dependency-list limit or the proving-cost budget is subdivided by successive hash bits, so
+    /// nodes with the same pool view build the same sets and can reuse each other's proofs. A transaction exceeding the proving
+    /// budget alone is still a bucket of its own; one whose inputs are unavailable or exceed the circuit is left out.</remarks>
+    private List<Bucket> PlanBuckets(Eip8288Verifier verifier, CancellationToken cancellationToken)
     {
-        scanned = 0;
-        candidateCount = 0;
-        unchanged = false;
-        if (RefreshVerifier() is not { } verifier)
-            return Result<byte[]>.Fail("EIP-8288 proof wrappers are unavailable.");
-        List<Transaction> transactions = [];
-        List<FrameDependency> deps = [];
-        HashSet<FrameDependency> covered = [];
-        AggregationInput selectedInput = new();
-        int transactionBytes = 0;
-        List<Transaction> candidates = [.. txPool.GetPendingTransactions()];
-        AddBlobCandidates(candidates);
-        candidates.Sort(static (a, b) => a.Hash!.Bytes.SequenceCompareTo(b.Hash!.Bytes));
-        candidateCount = candidates.Count;
         WrapperSnapshot? previous = Volatile.Read(ref _cachedWrapper);
         RecursiveProofInput? previousProof = previous is not null && previous.Verifier == verifier ? previous.Parent : null;
-        int start = candidates.Count == 0 ? 0 : (int)((uint)_rotation % (uint)candidates.Count);
-        int next = 0;
-        int end = candidates.Count;
-        for (int candidateIndex = start; candidateIndex < candidates.Count; candidateIndex++)
+        List<Transaction> pending = [.. txPool.GetPendingTransactions()];
+        AddBlobCandidates(pending);
+        List<Candidate> candidates = new(pending.Count);
+        foreach (Transaction transaction in pending)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            Transaction transaction = candidates[candidateIndex];
             if (!transaction.SupportsFrames) continue;
-            List<FrameDependency> transactionDeps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
-            if (transactionDeps.Count == 0) continue;
+            List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
+            if (deps.Count == 0) continue;
             int encodedLength = Rlp.LengthOfSequence(TxDecoder.Instance.GetLength(transaction, MempoolWrapperDecoder.TransactionBehaviors));
-            if (encodedLength > MaxWrapperTransactionBytes) continue;
-            if (encodedLength > MaxWrapperTransactionBytes - transactionBytes)
-            {
-                if (transactions.Count != 0) { next = end = candidateIndex; break; }
-                continue;
-            }
-            bool addsDependencies = false;
-            foreach (FrameDependency dependency in transactionDeps)
-                if (!covered.Contains(dependency)) { addsDependencies = true; break; }
-            if (addsDependencies)
-            {
-                List<FrameDependency> combined = [.. deps, .. transactionDeps];
-                combined = Eip8288Dependencies.Canonicalize(combined);
-                if (!leanProofStore.TryGetInput(combined, out AggregationInput candidateInput)
-                    || combined.Count + candidateInput.Discards.Count > Eip8288Constants.MaxProofDependencies
-                    || !Eip8288Dependencies.FitsProofList(combined)) continue;
-                // Mode-0 witnesses fold directly into the aggregate and proven aggregates merge whole; the wrapper ends once the
-                // proving work would exceed the budget, whichever way the previous wrapper's proof is reused. A transaction
-                // exceeding the budget alone is still offered, in a wrapper of its own.
-                if (transactions.Count != 0 && ProvingCost(candidateInput, combined, previousProof) > MaxWrapperProvingCost)
-                {
-                    next = end = candidateIndex;
-                    break;
-                }
-                deps = combined;
-                selectedInput = candidateInput;
-                covered.UnionWith(transactionDeps);
-            }
-            transactionBytes += encodedLength;
-            transactions.Add(transaction);
-            next = (candidateIndex + 1) % candidates.Count;
+            if (encodedLength <= MaxWrapperTransactionBytes) candidates.Add(new(transaction, deps, encodedLength));
         }
-        // A build that reached the end of the candidates starts the next one from the beginning.
-        _rotation = end == candidates.Count ? 0 : next;
-        scanned = end - start;
-        if (transactions.Count == 0)
-            return Result<byte[]>.Fail(NoProofBackedTransactions);
-        transactions.Sort(static (a, b) => a.Hash!.Bytes.SequenceCompareTo(b.Hash!.Bytes));
+        candidates.Sort(static (a, b) => a.Transaction.Hash!.Bytes.SequenceCompareTo(b.Transaction.Hash!.Bytes));
+        List<Bucket> buckets = [];
+        Plan(0, candidates.Count, 0);
+        return buckets;
+
+        void Plan(int start, int end, int bit)
+        {
+            if (start == end) return;
+            cancellationToken.ThrowIfCancellationRequested();
+            Bucket? bucket = TryBucket(start, end, out bool fits);
+            if (fits || end - start == 1 || bit == 8 * Hash256.Size)
+            {
+                if (bucket is not null) buckets.Add(bucket);
+                return;
+            }
+            int middle = start;
+            while (middle < end && !HasBit(candidates[middle].Transaction.Hash!, bit)) middle++;
+            Plan(start, middle, bit + 1);
+            Plan(middle, end, bit + 1);
+        }
+
+        Bucket? TryBucket(int start, int end, out bool fits)
+        {
+            fits = false;
+            long bytes = 0;
+            List<FrameDependency> union = [];
+            for (int i = start; i < end; i++)
+            {
+                bytes += candidates[i].EncodedLength;
+                union.AddRange(candidates[i].Deps);
+            }
+            if (bytes > MaxWrapperTransactionBytes) return null;
+            union = Eip8288Dependencies.Canonicalize(union);
+            if (!Eip8288Dependencies.FitsProofList(union) || !leanProofStore.TryGetInput(union, out AggregationInput input)
+                || union.Count + input.Discards.Count > Eip8288Constants.MaxProofDependencies) return null;
+            fits = end - start == 1 || ProvingCost(input, union, previousProof) <= MaxWrapperProvingCost;
+            List<Transaction> transactions = new(end - start);
+            for (int i = start; i < end; i++) transactions.Add(candidates[i].Transaction);
+            return new(transactions, union, input);
+        }
+    }
+
+    private static bool HasBit(Hash256 hash, int bit) => (hash.Bytes[bit >> 3] >> (7 - (bit & 7)) & 1) != 0;
+
+    /// <summary>The bucket after the one the previous build ended at, or the first.</summary>
+    private int ResumeIndex(List<Bucket> buckets)
+    {
+        if (_resumeAfter is not { } after) return 0;
+        for (int i = 0; i < buckets.Count; i++)
+            if (buckets[i].Transactions[0].Hash!.Bytes.SequenceCompareTo(after.Bytes) > 0) return i;
+        return 0;
+    }
+
+    private void Advance(List<Bucket> buckets, int built) =>
+        _resumeAfter = built == buckets.Count - 1 ? null : buckets[built].Transactions[^1].Hash!.ValueHash256;
+
+    /// <summary>Whether to skip proving <paramref name="deps"/> this time, as a peer offers a proof of exactly them.</summary>
+    /// <remarks>Each dependency set waits at most <see cref="ReuseOfferWait"/>, so an unavailable or invalid offer does not prevent
+    /// local aggregation (EIP-8288).</remarks>
+    private bool AwaitsOffer(List<FrameDependency> deps, TimeProvider clock)
+    {
+        if (IsDependencySetOffered is not { } offered) return false;
+        ValueHash256 digest = ValueKeccak.Compute(Eip8288Dependencies.Serialize(deps));
+        if (!offered(digest)) return false;
+        long now = clock.GetTimestamp();
+        if (!_offerWaits.TryGetValue(digest, out long since)) _offerWaits[digest] = since = now;
+        return clock.GetElapsedTime(since, now) < ReuseOfferWait;
+    }
+
+    private void PruneOfferWaits(TimeProvider clock)
+    {
+        if (_offerWaits.Count == 0) return;
+        long now = clock.GetTimestamp();
+        List<ValueHash256>? expired = null;
+        foreach ((ValueHash256 digest, long since) in _offerWaits)
+            if (clock.GetElapsedTime(since, now) >= OfferWaitMemory) (expired ??= []).Add(digest);
+        foreach (ValueHash256 digest in expired ?? []) _offerWaits.Remove(digest);
+    }
+
+    /// <param name="unchanged">Whether the bucket is the latest wrapper's transactions again, which it returns as is.</param>
+    private Result<byte[]> BuildBucket(Bucket bucket, Eip8288Verifier verifier, bool returnEncoded, TimeProvider clock,
+        CancellationToken cancellationToken, out bool unchanged)
+    {
+        unchanged = false;
+        List<Transaction> transactions = bucket.Transactions;
+        List<FrameDependency> deps = bucket.Deps;
+        AggregationInput selectedInput = bucket.Input;
         byte[] selection = new byte[transactions.Count * Hash256.Size];
         for (int i = 0; i < transactions.Count; i++) transactions[i].Hash!.Bytes.CopyTo(selection.AsSpan(i * Hash256.Size));
         ValueHash256 selectionHash = ValueKeccak.Compute(selection);
@@ -646,7 +726,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps);
             if (!leanProofStore.TryGetRecursiveProof(deps, out byte[]? proof))
             {
-                if (cached is not null && cached.Verifier == verifier && HasOverlap(cached.Parent.InnerDeps, covered))
+                if (AwaitsOffer(deps, clock)) return Result<byte[]>.Fail(AwaitingOfferedProof);
+                if (cached is not null && cached.Verifier == verifier && HasOverlap(cached.Parent.InnerDeps, [.. deps]))
                 {
                     AggregationInput incremental = RecursiveStarkAggregator.Combine(
                         [new() { RecursiveProofs = [cached.Parent] }, selectedInput], deps);

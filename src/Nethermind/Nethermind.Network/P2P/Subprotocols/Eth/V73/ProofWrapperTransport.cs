@@ -58,6 +58,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
         _verifier = _wrappers.RefreshVerifier();
         _wrappers.WrapperValidated += OnWrapperValidated;
         _wrappers.VerifierChanged += OnVerifierChanged;
+        _wrappers.IsDependencySetOffered = IsDependencySetOffered;
         // A chain without a scheduled EIP-8288 fork runs no wrapper timer.
         _timer = _wrappers.IsScheduled
             ? _clock.CreateTimer(static state => ((ProofWrapperTransport)state!).Tick(), this, WrapperTransportLimits.Tick, WrapperTransportLimits.Tick)
@@ -89,6 +90,19 @@ public sealed partial class ProofWrapperTransport : IDisposable
         wrapperHash.Bytes.CopyTo(key);
         verifier.AggregatedVk.Bytes.CopyTo(key[ValueHash256.MemorySize..]);
         return ValueKeccak.Compute(key);
+    }
+
+    /// <summary>Whether a mode-1 wrapper announced with dependency digest <paramref name="depsHash"/> is still being fetched.</summary>
+    /// <remarks>The digest is an unvalidated hint; it only lets aggregation wait briefly for the proof (EIP-8288 proof reuse).</remarks>
+    internal bool IsDependencySetOffered(ValueHash256 depsHash)
+    {
+        lock (_gate)
+        {
+            foreach (WrapperFetch fetch in _fetches.Values)
+                if (!fetch.Removed && fetch.Announcement.Mode == MempoolWrapper.ModeRecursive && fetch.Announcement.Coverage.DepsHash == depsHash)
+                    return true;
+        }
+        return false;
     }
 
     /// <summary>Registers an <c>eth/73</c> peer once its Status is accepted.</summary>
@@ -238,6 +252,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
         outbox.Flush();
         _wrappers.WrapperValidated -= OnWrapperValidated;
         _wrappers.VerifierChanged -= OnVerifierChanged;
+        _wrappers.IsDependencySetOffered = null;
         _timer?.Dispose();
         _stop.Cancel();
         _stop.Dispose();
