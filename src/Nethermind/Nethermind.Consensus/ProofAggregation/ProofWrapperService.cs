@@ -64,6 +64,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// for its whole length.</remarks>
     internal const int AdmissionChunk = 64;
 
+    /// <summary>The share of a partly rejected wrapper's transactions the pool must hold for it to be relayed unchanged.</summary>
+    /// <remarks>A local bound: EIP-8288 permits unchanged relay despite pool rejection, but one admitted transaction must not carry
+    /// a wrapper's worth of rejected ones across the network.</remarks>
+    internal const double MinPooledShareToRelay = 0.5;
+
     private const int MaxRememberedVerifications = 128;
     private readonly object _aggregationLock = new();
     private ValueHash256? _resumeAfter;
@@ -107,7 +112,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         => (await AcceptDetailedAsync(wrapper, cancellationToken)).Result;
 
     /// <summary>Raised with the encoded wrapper once its proof is valid, the pool holds every transaction it carries or newly
-    /// admitted at least one of them, and the verifier it was validated under is still current.</summary>
+    /// admitted at least one of them and holds at least <see cref="MinPooledShareToRelay"/> of them, and the verifier it was
+    /// validated under is still current.</summary>
     /// <remarks>EIP-8288: pool rejection of some transactions does not invalidate the wrapper or prevent its unchanged relay. The
     /// second argument is the verifier it was validated under. Subscribers must not mutate the wrapper.</remarks>
     public event Action<byte[], Eip8288Verifier>? WrapperValidated;
@@ -345,9 +351,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             // A verifier change during pool insertion purged before this admission committed; purge its leftovers.
             if (RefreshVerifier() is { } current && current != verifier) Purge(current);
-            // A rejected transaction must not ride on one that was already pending, so a partly rejected wrapper is relayed
-            // only when it newly admitted one.
-            if ((admission.IsSuccess || admitted != 0) && relay is not null && RefreshVerifier() == verifier)
+            // Rejected transactions must not ride on already pending ones or outweigh the pooled ones, so a partly rejected
+            // wrapper is relayed only when it newly admitted one and the pool holds enough of it.
+            if ((admission.IsSuccess || admitted != 0 && pooled >= MinPooledShareToRelay * decoded.Transactions.Count)
+                && relay is not null && RefreshVerifier() == verifier)
                 WrapperValidated?.Invoke(relay, verifier);
             return new(admission.IsSuccess ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.PoolRejected, admission);
         }

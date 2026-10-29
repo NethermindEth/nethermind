@@ -1268,6 +1268,28 @@ public class ProofWrapperServiceTests
         }
     }
 
+    // A partly rejected wrapper is relayed only while the pool holds at least MinPooledShareToRelay of its transactions.
+    [TestCase(1, 3, false)]
+    [TestCase(2, 2, true)]
+    public async Task Partly_pool_rejected_wrapper_is_relayed_only_when_the_pool_holds_enough_of_it(int admittedCount, int rejectedCount, bool relayedExpected)
+    {
+        Transaction[] admitted = [.. Enumerable.Range(0, admittedCount).Select(static i => CreateHashedTransaction(Keccak.Compute($"admitted{i}")))];
+        Transaction[] rejected = [.. Enumerable.Range(0, rejectedCount).Select(static i => CreateHashedTransaction(Keccak.Compute($"rejected{i}")))];
+        (ProofWrapperService service, ITxPool pool, byte[] wrapper) = CreateWrapper(AcceptTxResult.InsufficientFunds, [.. admitted, .. rejected]);
+        HashSet<Hash256> accepted = [.. admitted.Select(static t => t.Hash!)];
+        pool.SubmitTx(Arg.Is<Transaction>(t => accepted.Contains(t.Hash!)), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        int relayed = 0;
+        service.WrapperValidated += (_, _) => relayed++;
+
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(wrapper);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
+            Assert.That(relayed, Is.EqualTo(relayedExpected ? 1 : 0));
+        }
+    }
+
     private static Transaction CreateHashedTransaction(Hash256 key)
     {
         Transaction transaction = CreateTransaction(new(Eip8288Constants.LeanSphincsScheme, key.ValueHash256, default), key);
