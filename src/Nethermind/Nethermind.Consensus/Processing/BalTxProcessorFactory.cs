@@ -67,10 +67,18 @@ public class BalTxProcessorFactory(
     /// <remarks>The caller owns the returned virtual machine and disposes it once it stops using the processor.</remarks>
     public (ITransactionProcessor Processor, ITransactionProcessorAdapter Adapter, IDisposable VirtualMachine) Create(IWorldState worldState, bool parallel)
     {
+#if RUST_EVM
+        IVirtualMachine virtualMachine = Nethermind.Evm.Rust.RustVirtualMachine.IsAvailable
+            ? new Nethermind.Evm.Rust.RustVirtualMachine(blockHashProvider, specProvider, logManager, new EthereumPrecompileProvider())
+            : new VirtualMachine(blockHashProvider, specProvider, logManager, frameCodeRunner);
+        IDisposable ownedVirtualMachine = (IDisposable)virtualMachine;
+#else
         VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager, frameCodeRunner);
+        IDisposable ownedVirtualMachine = virtualMachine;
+#endif
         ITransactionProcessor processor = _transactionProcessorFactory.Create(
             _blobBaseFeeCalculator, specProvider, worldState, virtualMachine,
             _codeInfoRepositoryFactory(worldState), logManager, parallel);
-        return (processor, _txProcessorAdapterFactory(processor), virtualMachine);
+        return (processor, _txProcessorAdapterFactory(processor), ownedVirtualMachine);
     }
 }

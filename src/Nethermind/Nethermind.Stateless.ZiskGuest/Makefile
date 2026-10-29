@@ -11,6 +11,19 @@ GUEST_LIBC := zisk
 # The only target whose bindings library is not named after its libc.
 GUEST_EXTLIB := libziskos
 
+# RUST_EVM=1 runs the EVM's frames on nethermind-rust's interpreter: the guest is built with the
+# binding compiled in and linked against libnmffi (ziskos plus nm-ffi in one static library, built
+# by nethermind-rust's zkvm/zisk/libnmffi tooling) in place of libziskos.
+# The library and its manifest are copied into $(GUEST_DIR)/nmffi, which the build container sees
+# as $(SRC_DIR)/nmffi.
+RUST_EVM ?= 0
+ifeq ($(RUST_EVM),1)
+GUEST_EXTLIB_PATH := $(SRC_DIR)/nmffi/libnmffi.bflat.manifest
+GUEST_BUILD_PROPS := -p:EnableRustEvm=true
+# The Rust library carries atomic instructions, which ziskemu runs.
+ISA_GATES := --error-on-float --error-on-float-binary --error-on-compressed
+endif
+
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 

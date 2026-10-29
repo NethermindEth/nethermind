@@ -130,7 +130,13 @@ public partial class StatelessBlockProcessingEnv(
             BlobBaseFeeCalculator.Instance,
             specProvider,
             state,
+#if RUST_EVM
+            Nethermind.Evm.Rust.RustVirtualMachine.IsAvailable
+                ? new Nethermind.Evm.Rust.RustVirtualMachine(blockhashProvider, specProvider, logManager, new EthereumPrecompileProvider())
+                : (IVirtualMachine)new EthereumVirtualMachine(blockhashProvider, specProvider, logManager),
+#else
             new EthereumVirtualMachine(blockhashProvider, specProvider, logManager),
+#endif
             new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache),
             logManager
         );

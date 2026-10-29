@@ -14,6 +14,11 @@ GUEST_PROJECT := $(notdir $(MAKEFILE_DIR))
 # The bindings manifest is named after the libc everywhere except zisk, whose is
 # libziskos; that guest sets GUEST_EXTLIB itself.
 GUEST_EXTLIB ?= lib$(GUEST_LIBC)
+# A guest that links a bindings library from elsewhere sets the manifest path itself.
+GUEST_EXTLIB_PATH ?= $(BIN_DIR)/runtimes/linux-riscv64/native/$(GUEST_EXTLIB).bflat.manifest
+
+# Extra MSBuild properties for the guest's managed build.
+GUEST_BUILD_PROPS ?=
 
 # The bflat RISC-V64 compiler and .NET runtime, pinned by digest because :latest
 # moves with every CI run there; the tag records the bflat-riscv64 commit.
@@ -111,7 +116,7 @@ BFLAT_REFS := \
 .DEFAULT_GOAL := build
 
 dotnet-build:
-	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/$(GUEST_PROJECT).csproj
+	dotnet build -c release -p:EnableZkEvm=true $(GUEST_BUILD_PROPS) $(GUEST_DIR)/$(GUEST_PROJECT).csproj
 
 # ILC embeds every manifest resource of every input assembly and the guest reads
 # none, so they are dead weight (6.9 MB of chainspecs once rode along).
@@ -133,7 +138,7 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		--nostdlibrefs \
 		$(GUEST_SUBSTITUTIONS) \
 		$(BFLAT_REFS) \
-		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/$(GUEST_EXTLIB).bflat.manifest \
+		--extlib $(GUEST_EXTLIB_PATH) \
 		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \
