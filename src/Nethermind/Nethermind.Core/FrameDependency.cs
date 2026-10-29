@@ -232,8 +232,8 @@ public static class Eip8288Dependencies
     /// <summary>Whether one dependency list of the pinned recursive guest can hold <paramref name="dependencies"/>: at most
     /// <see cref="Eip8288Constants.MaxProofDependencies"/>, <see cref="Eip8288Constants.MaxGenericStarkProofs"/> of them
     /// leanSTARK.</summary>
-    /// <remarks>A local proving and verification bound: a statement over it is split or deferred when built and refused locally,
-    /// without penalty, when received.</remarks>
+    /// <remarks>The circuit's dependency-list limit: a statement over it is split or deferred when built and a mode-1 proof over it
+    /// is invalid when received (EIP-8288).</remarks>
     public static bool FitsProofList(IReadOnlyCollection<FrameDependency> dependencies) =>
         dependencies.Count <= Eip8288Constants.MaxProofDependencies && CountLeanStark(dependencies) <= Eip8288Constants.MaxGenericStarkProofs;
 

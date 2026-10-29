@@ -81,7 +81,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private WrapperSnapshot? _cachedWrapper;
     private readonly Lock _verifierLock = new();
     private readonly Lock _commitLock = new();
-    internal const string WiderThanLocalProofBound = "Mode 1 proof wrapper covers more dependencies than the local prover's bound.";
+    internal const string WiderThanCircuitBound = "Mode 1 proof covers more dependencies than the AGGREGATED_VK circuit accepts.";
     private const string VerifierChangedDuringAdmission = "The target fork's verifier changed during validation; retry.";
     private Eip8288Verifier? _verifier;
     private TargetForks? _targetForks;
@@ -240,11 +240,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             {
                 return ProofWrapperAcceptance.Malformed($"Invalid proof wrapper RLP: {exception.Message}");
             }
-            // EIP-8288 sets no mode-1 dependency-count limit, but the pinned guest commits to at most MaxProofDependencies, at most
-            // MaxGenericStarkProofs of them leanSTARK, so a wider recursive proof cannot be verified, stored or reaggregated here:
-            // a local refusal, without penalty.
+            // EIP-8288: mode 1 is limited by the dependency list the AGGREGATED_VK circuit accepts, here the pinned guest's.
             if (decoded.Mode == MempoolWrapper.ModeRecursive && !Eip8288Dependencies.FitsProofList(decoded.Deps))
-                return ProofWrapperAcceptance.LocalFailure(WiderThanLocalProofBound);
+                return ProofWrapperAcceptance.Invalid(WiderThanCircuitBound, verifier);
             // EIP-8437 carries blob-carrying transactions with their blob data elided, so a wrapper submitted with full blobs is
             // relayed in that form; its blobs reach peers as EIP-8070 cells once the pool holds them.
             byte[]? relay = ElidedForRelay(decoded, wrapper);

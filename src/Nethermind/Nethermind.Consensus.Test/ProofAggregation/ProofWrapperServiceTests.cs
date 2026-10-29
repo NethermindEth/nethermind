@@ -227,8 +227,8 @@ public class ProofWrapperServiceTests
     }
 
     // EIP-8437: proof and dependency-rule failures, including exceeding MAX_SIGS_PER_TX or another EIP-8288 dependency limit, are
-    // discarded without penalty, so they are reported apart from malformed encodings, which remain penalizable. A mode-1 wrapper
-    // wider than the pinned guest's bound is a local refusal.
+    // discarded without penalty, so they are reported apart from malformed encodings, which remain penalizable. EIP-8288 Test
+    // Case 12: a mode-1 proof wider than the circuit's dependency-list limit, the pinned guest's, is invalid.
     [TestCase("valid", ProofWrapperAcceptanceStatus.Accepted)]
     [TestCase("proof", ProofWrapperAcceptanceStatus.Invalid)]
     [TestCase("union", ProofWrapperAcceptanceStatus.Invalid)]
@@ -236,9 +236,9 @@ public class ProofWrapperServiceTests
     [TestCase("limit", ProofWrapperAcceptanceStatus.Invalid)]
     [TestCase("transaction limit", ProofWrapperAcceptanceStatus.Invalid)]
     [TestCase("wide", ProofWrapperAcceptanceStatus.Accepted)]
-    [TestCase("wider than the local bound", ProofWrapperAcceptanceStatus.LocalFailure)]
-    [TestCase("leanstark within the local bound", ProofWrapperAcceptanceStatus.Accepted)]
-    [TestCase("leanstark wider than the local bound", ProofWrapperAcceptanceStatus.LocalFailure)]
+    [TestCase("wider than the circuit bound", ProofWrapperAcceptanceStatus.Invalid)]
+    [TestCase("leanstark within the circuit bound", ProofWrapperAcceptanceStatus.Accepted)]
+    [TestCase("leanstark wider than the circuit bound", ProofWrapperAcceptanceStatus.Invalid)]
     [TestCase("reference", ProofWrapperAcceptanceStatus.Malformed)]
     [TestCase("order", ProofWrapperAcceptanceStatus.Malformed)]
     public async Task Proof_and_dependency_failures_are_invalid_and_encoding_failures_malformed(string scenario, ProofWrapperAcceptanceStatus expected)
@@ -249,11 +249,11 @@ public class ProofWrapperServiceTests
         {
             "limit" or "wide" => (2, static i => 9 - i),
             "transaction limit" => (1, static _ => Eip8288Constants.MaxSigsPerTx + 1),
-            "wider than the local bound" => (Eip8288Constants.MaxProofDependencies / Eip8288Constants.MaxSigsPerTx + 1,
+            "wider than the circuit bound" => (Eip8288Constants.MaxProofDependencies / Eip8288Constants.MaxSigsPerTx + 1,
                 static _ => Eip8288Constants.MaxSigsPerTx),
             // The pinned guest holds at most MaxGenericStarkProofs leanSTARK dependencies per list.
-            "leanstark within the local bound" => (Eip8288Constants.MaxGenericStarkProofs, static _ => Eip8288Constants.MaxStarksPerTx),
-            "leanstark wider than the local bound" => (Eip8288Constants.MaxGenericStarkProofs + 1, static _ => Eip8288Constants.MaxStarksPerTx),
+            "leanstark within the circuit bound" => (Eip8288Constants.MaxGenericStarkProofs, static _ => Eip8288Constants.MaxStarksPerTx),
+            "leanstark wider than the circuit bound" => (Eip8288Constants.MaxGenericStarkProofs + 1, static _ => Eip8288Constants.MaxStarksPerTx),
             "unsorted" => (1, static _ => 2),
             _ => (1, (Func<int, int>)(static _ => 1))
         };

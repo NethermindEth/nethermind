@@ -131,15 +131,15 @@ EIP, with the pinned guest's generic leanVM CPU proof as its leanSTARK profile:
 * Frames, wrappers and inclusion-list `proof_deps` accept `0x11`, charged
   `LEANSTARK_VERIFICATION_GAS`; any other scheme is rejected as before.
 * The guest checks every entry of the selected list and of each child list, discarded entries
-  included, against its run, and holds at most 16 leanSTARK entries per list. That is a local
-  bound like the 256-dependency one: the builder never sends a statement over it to the prover,
-  and a received mode-1 wrapper or inclusion-list proof over it is refused locally without
-  penalty and without verification.
+  included, against its run, and holds at most 16 leanSTARK entries per list. Like the
+  256-dependency bound it is part of the circuit's dependency-list limit: the builder never sends a
+  statement over it to the prover, a received mode-1 wrapper over it is invalid and an
+  inclusion-list proof over it imposes no obligation, both without penalty or verification.
 
 Startup checks ABI 9, the pinned key and the nine bounds together. New devnets require fresh
 chain and database namespaces.
 
-The latest companion specification has no block dependency quota: blocks are bounded by gas, mode-0 wrappers by `MAX_LEANSIG_DEPS_PER_WRAPPER`, `MAX_LEANSTARK_DEPS_PER_WRAPPER` and `MAX_WRAPPER_BYTES`, and mode-1 wrappers by `MAX_WRAPPER_BYTES` alone. This prototype guest's 256-dependency and 16-leanSTARK limits are local; this key cannot prove every set the draft permits, so this prototype is not full-capacity conformance. A received mode-1 wrapper over more than 256 dependencies or 16 leanSTARK dependencies is refused locally, without penalizing its sender, before verification. Raising the bound changes the guest and so `AGGREGATED_VK`. Local inability to prove or retain a set is not an inclusion-list omission excuse. Full activation requires a verifier and proof format supporting every set the fork's gas rules permit, with the complete construction, including recursive merges and discards, benchmarked against the slot deadline.
+The latest companion specification has no block dependency quota: blocks are bounded by gas, mode-0 wrappers by `MAX_LEANSIG_DEPS_PER_WRAPPER`, `MAX_LEANSTARK_DEPS_PER_WRAPPER` and `MAX_WRAPPER_BYTES`, and mode-1 wrappers by `MAX_WRAPPER_BYTES` and the dependency-list limit of the circuit behind `AGGREGATED_VK`, which EIP-8288 fixes from benchmarks before activation. This prototype guest's limit is 256 dependencies, at most 16 of them leanSTARK; a received mode-1 wrapper over it is invalid and discarded before verification, without penalizing its sender. Blocks have no such limit in the draft, so this key cannot prove every block the draft permits and this prototype is not full-capacity conformance. Raising the bound changes the guest and so `AGGREGATED_VK`. Local inability to prove or retain a set is not an inclusion-list omission excuse. Full activation requires a verifier and proof format supporting every set the fork's gas rules permit, with the complete construction, including recursive merges and discards, benchmarked against the slot deadline.
 
 ## Proving resources
 
