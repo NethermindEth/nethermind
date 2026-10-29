@@ -21,14 +21,16 @@ public static class Eip8288Constants
     public const int MaxDependenciesPerFrame = 256;
 
     /// <summary>Maximum distinct dependencies covered by one proof of the pinned native backend.</summary>
-    /// <remarks>A local proving and verification bound, not a consensus or FOCIL omission bound. EIP-8288 has no block dependency quota; wrappers within its limits but above this envelope are refused locally,
-    /// never treated as invalid.</remarks>
+    /// <remarks>A local proving and verification bound, not a FOCIL omission bound; EIP-8288 has no block dependency quota. Wrappers
+    /// and inclusion-list proofs above it are refused locally, without penalty, but a block whose dependencies exceed it is invalid
+    /// here: no proof under the pinned <see cref="AggregatedVk"/> can cover it, as with <see cref="MaxAggregateProofBytes"/>.</remarks>
     public const int MaxProofDependencies = 256;
 
     /// <summary>Maximum leanSTARK dependencies in one dependency list of the pinned recursive guest, selected, child and discard
     /// lists alike.</summary>
     /// <remarks>A local proving and verification bound like <see cref="MaxProofDependencies"/>: a statement over more is split or
-    /// deferred by the builder and refused locally, without penalty, when received, never treated as invalid.</remarks>
+    /// deferred by the builder, and a wrapper or inclusion-list proof over it is refused locally, without penalty, but a block over
+    /// it is invalid here, since no proof under the pinned <see cref="AggregatedVk"/> can cover it.</remarks>
     public const int MaxGenericStarkProofs = 16;
 
     /// <summary>Maximum instructions of a leanSTARK program the pinned generic verifier accepts.</summary>
