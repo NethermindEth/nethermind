@@ -9,11 +9,15 @@ import shutil
 import subprocess
 import time
 
-from verify import Rpc, SYSTEM, equal, registry, verify_prefix
+from verify import HEADER, Rpc, SYSTEM, equal, registry, verify_prefix
 
 
 CASES = {
     "durability": {
+        "restart_with_datadir_ahead_of_l1_retreats_before_production":
+            ("unsettled-restart", ("before-restart", "after-restart")),
+        "l1_only_restart_keeps_finalized":
+            ("finalized-restart", ("before-restart", "after-restart")),
         "settled_safe_prefix_survives_restart_and_fresh_follower_replay":
             ("durability", ("before-restart", "after-restart", "after-new-traffic", "fresh-follower")),
     },
@@ -108,12 +112,32 @@ def adapt(suite, source):
         after("    assert_follower_reaches(&w, (settled.0, settled.1)).await;",
               '\n    candidate.verify_settled(&l2_rpc, &settled.1.to_string(), "after-anchor-settlement").await.unwrap();')
     elif suite == "durability":
-        after("    let states_before = chain.executed_states().await.unwrap();", "\n    let mut candidate = nethermind::Candidate::start(\"durability\", harness.l2_genesis_path(), &harness.follower_env(None).await.unwrap()).await.unwrap();")
+        after('    let env = harness.env_for(STAGING_USER_KEY, true).await.unwrap();',
+              '\n    let mut candidate = nethermind::Candidate::start("unsettled-restart", harness.l2_genesis_path(), &harness.follower_env().await.unwrap()).await.unwrap();')
+        after('            "the precondition requires every staged L2 block to be absent from L1"\n        );',
+              '\n        candidate.verify_unsettled(&node.l2_rpc_url(), &format!("{staged_tx:#x}"), "before-restart").await.unwrap();\n        candidate.restart().await.unwrap();')
+        after('        "the unfunded poster must not accidentally make the staged suffix L1-canonical"\n    );',
+              '\n    candidate.verify_unsettled(&restarted.l2_rpc_url(), &format!("{staged_tx:#x}"), "after-restart").await.unwrap();')
+        marker = "    let (finalized, safe) = {"
+        addition = '    let mut candidate = nethermind::Candidate::start("finalized-restart", harness.l2_genesis_path(), &harness.follower_env().await.unwrap()).await.unwrap();\n'
+        if source.count(marker) != 1:
+            raise ValueError("upstream finality restart boundary changed")
+        source = source.replace(marker, addition + marker)
+        additions.append(addition)
+        if source.count('        node.assert_no_process_death();\n        (finalized, safe)') != 1:
+            raise ValueError("upstream finalized observation boundary changed")
+        marker = '        node.assert_no_process_death();\n        (finalized, safe)'
+        addition = '        candidate.verify_finalized(&rpc, finalized, "before-restart").await.unwrap();\n        candidate.restart().await.unwrap();\n'
+        source = source.replace(marker, addition + marker)
+        additions.append(addition)
+        after('        "finalized fell from #{finalized} to #{after} after the restart"\n    );',
+              '\n    candidate.verify_finalized(&rpc, finalized, "after-restart").await.unwrap();')
+        after("    let states_before = chain.executed_states().await.unwrap();", "\n    let mut candidate = nethermind::Candidate::start(\"durability\", harness.l2_genesis_path(), &harness.follower_env().await.unwrap()).await.unwrap();")
         after('        .expect("composer did not retain its newly settled safe block");', '\n        candidate.verify(&node.l2_rpc_url(), settled_before_restart.0, "before-restart").await.unwrap();\n        candidate.restart().await.unwrap();')
         after('    .expect("restarted composer did not restore the exact pre-crash safe prefix");', '\n    candidate.verify(&restarted.l2_rpc_url(), settled_before_restart.0, "after-restart").await.unwrap();')
         after("    follower.assert_no_process_death();", '\n    candidate.verify(&restarted.l2_rpc_url(), settled_after_restart.0, "after-new-traffic").await.unwrap();\n    drop(candidate);\n    let fresh = nethermind::Candidate::start("durability", harness.l2_genesis_path(), &follower_env).await.unwrap();\n    fresh.verify(&restarted.l2_rpc_url(), settled_after_restart.0, "fresh-follower").await.unwrap();')
     elif suite == "resumption":
-        after('    let node = NodeHandle::start("resume-composer", &NodeConfig::default(), &env)\n        .await\n        .unwrap();', '\n    let candidate = nethermind::Candidate::start("resumption", harness.l2_genesis_path(), &harness.follower_env(None).await.unwrap()).await.unwrap();')
+        after('    let node = NodeHandle::start("resume-composer", &NodeConfig::default(), &env)\n        .await\n        .unwrap();', '\n    let candidate = nethermind::Candidate::start("resumption", harness.l2_genesis_path(), &harness.follower_env().await.unwrap()).await.unwrap();')
         marker = "    chain.set_interval_mining(0).await.unwrap();"
         addition = '    candidate.verify(&node.l2_rpc_url(), 1, "before-resumption").await.unwrap();\n'
         if source.count(marker) != 1:
@@ -200,6 +224,15 @@ def verify(settings_path):
         if expected is None or expected["hash"] != expected_hash or int(expected["number"], 16) == 0:
             raise ValueError("reference is missing the scenario settlement")
         expected_height = int(expected["number"], 16)
+    previous = None
+    if case == "finalized-restart" and phase == "after-restart":
+        previous = json.loads((directory / "finalized-restart-before-restart.json").read_text())
+        equal((previous["result"], previous["case"], previous["phase"]),
+              ("pass", case, "before-restart"), "finality restart baseline")
+        for field in ("candidate_revision", "image_id", "database_id"):
+            equal(previous[field], settings[field], "finality restart " + field)
+        if previous["container"] == container["Id"]:
+            raise ValueError("finality check requires an actual candidate restart")
     while time.monotonic() < deadline:
         snapshot = l1.call("eth_getBlockByNumber", "latest", False)
         commitment = registry(l1, settings["registry"], call, snapshot)
@@ -208,7 +241,19 @@ def verify(settings_path):
         if endpoint is None or own is None or int(endpoint["number"], 16) < max(settings["minimum_height"], expected_height):
             time.sleep(1)
             continue
-        result = verify_prefix(reference, candidate, commitment, genesis, 8192)
+        finality = None
+        if case == "finalized-restart":
+            finality = check_finalized(reference, candidate, settings["finalized_minimum"], int(endpoint["number"], 16), previous)
+            if finality is None:
+                time.sleep(1)
+                continue
+        if case == "unsettled-restart":
+            equal(commitment, genesis, "unsettled scenario must remain at the registered genesis")
+            result = check_unsettled(reference, candidate, genesis, settings["staged_transaction"], phase)
+        else:
+            result = verify_prefix(reference, candidate, commitment, genesis, 8192)
+        if finality is not None:
+            result.update(finality)
         if case == "native-system":
             state = settings["native_state"]
             check_native_state(reference, candidate, commitment, state)
@@ -237,6 +282,56 @@ def verify(settings_path):
 
 
 
+def check_unsettled(reference, candidate, genesis, transaction, phase):
+    if not re.fullmatch(r"0x[a-fA-F0-9]{64}", transaction):
+        raise ValueError("invalid staged transaction hash")
+    left = reference.call("eth_getBlockByNumber", "0x0", True)
+    right = candidate.call("eth_getBlockByNumber", "0x0", True)
+    for field in (*HEADER, "transactions"):
+        equal(left[field], right[field], "unsettled genesis " + field)
+    for node in (reference, candidate):
+        for tag in ("safe", "finalized"):
+            equal(node.call("eth_getBlockByNumber", tag, False)["hash"], genesis, "unsettled " + tag)
+    equal(candidate.call("eth_getBlockByNumber", "latest", False)["hash"], genesis, "candidate imported unsettled tail")
+    equal(candidate.call("eth_getTransactionReceipt", transaction), None, "candidate imported unsettled receipt")
+    receipt = reference.call("eth_getTransactionReceipt", transaction)
+    equal(receipt is not None, phase == "before-restart", "upstream staged receipt lifecycle")
+    if receipt is not None:
+        equal(receipt["transactionHash"], transaction, "staged receipt identity")
+    return {"height": 0, "endpoint": genesis, "verified_blocks": 1, "verified_receipts": 0,
+            "verified_native_transactions": 0, "staged_transaction": transaction}
+
+
+def check_finalized(reference, candidate, minimum, height, previous=None):
+    if not isinstance(minimum, int) or minimum <= 0:
+        raise ValueError("finalized scenario needs a non-genesis anchor")
+    safe = candidate.call("eth_getBlockByNumber", "safe", False)
+    if safe is None or int(safe["number"], 16) > height:
+        return None
+    safe_height = int(safe["number"], 16)
+    if previous is not None and safe_height <= previous["safe_height"]:
+        return None
+    blocks = [node.call("eth_getBlockByNumber", "finalized", False) for node in (reference, candidate)]
+    if previous is not None:
+        if blocks[1] is None or int(blocks[1]["number"], 16) < previous["finalized_height"]:
+            raise AssertionError("candidate finalized head regressed after safe advanced")
+        for node in (reference, candidate):
+            equal(node.call("eth_getBlockByNumber", hex(previous["finalized_height"]), False)["hash"],
+                  previous["finalized_hash"], "pre-restart finalized block")
+    if any(block is None or not minimum <= int(block["number"], 16) <= height for block in blocks):
+        return None
+    if int(blocks[1]["number"], 16) > safe_height:
+        return None
+    anchor = reference.call("eth_getBlockByNumber", hex(minimum), False)
+    equal(candidate.call("eth_getBlockByNumber", hex(minimum), False)["hash"], anchor["hash"], "finalized anchor")
+    for node, block in zip((reference, candidate), blocks):
+        equal(node.call("eth_getBlockByNumber", block["number"], False)["hash"], block["hash"], "canonical finalized block")
+    equal(candidate.call("eth_getBlockByNumber", safe["number"], False)["hash"], safe["hash"], "canonical safe block")
+    return {"safe_height": safe_height, "safe_hash": safe["hash"],
+            "finalized_height": int(blocks[1]["number"], 16), "finalized_hash": blocks[1]["hash"],
+            "finalized_anchor_height": minimum, "finalized_anchor_hash": anchor["hash"]}
+
+
 def check_native_state(reference, candidate, commitment, expected):
     context = {"blockHash": commitment, "requireCanonical": True}
     for node in (reference, candidate):
@@ -260,7 +355,7 @@ def report(args):
         observations = []
         for phase in phases:
             observation = json.loads((args.directory / (label + "-" + phase + ".json")).read_text())
-            if observation["result"] != "pass" or observation["case"] != label or observation["phase"] != phase or observation["verified_blocks"] <= 1:
+            if observation["result"] != "pass" or observation["case"] != label or observation["phase"] != phase or observation["verified_blocks"] < (1 if label == "unsettled-restart" else 2):
                 raise ValueError("missing actual candidate execution")
             equal(observation["candidate_revision"], os.environ["GITHUB_SHA"], "candidate test source")
             equal(observation["image_id"], os.environ["EEZ_CANDIDATE_IMAGE"], "candidate test image")
@@ -269,7 +364,23 @@ def report(args):
             for observation in observations:
                 if not re.fullmatch(r"0x[a-fA-F0-9]{64}", observation.get("settled_hash", "")) or not 0 < observation.get("settled_height", 0) <= observation["height"]:
                     raise ValueError("missing exact scenario settlement evidence")
-        if suite == "durability":
+        if label in ("unsettled-restart", "finalized-restart"):
+            before, restarted = observations
+            if before["database_id"] != restarted["database_id"] or before["container"] == restarted["container"]:
+                raise ValueError("candidate restart must retain its database and replace its container")
+            if label == "unsettled-restart":
+                equal(before["staged_transaction"], restarted["staged_transaction"], "same unsettled transaction")
+                for observation in observations:
+                    equal((observation["height"], observation["verified_blocks"], observation["verified_receipts"]),
+                          (0, 1, 0), "candidate must retain only genesis")
+            else:
+                if not 0 < before["finalized_anchor_height"] <= before["finalized_height"] <= restarted["finalized_height"]:
+                    raise ValueError("candidate finalized head regressed across restart")
+                if not before["finalized_height"] <= before["safe_height"] < restarted["safe_height"] <= restarted["height"]:
+                    raise ValueError("candidate safe head did not advance after restart")
+                equal(before["finalized_anchor_height"], restarted["finalized_anchor_height"], "same finalized anchor height")
+                equal(before["finalized_anchor_hash"], restarted["finalized_anchor_hash"], "same finalized anchor hash")
+        if label == "durability":
             before, restarted, advanced, fresh = observations
             if before["database_id"] != restarted["database_id"] or restarted["database_id"] != advanced["database_id"] or fresh["database_id"] == before["database_id"]:
                 raise ValueError("restart must retain its database; fresh recovery must use a different database")

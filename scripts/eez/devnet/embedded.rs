@@ -191,11 +191,12 @@ impl Candidate {
     }
 
     pub async fn verify(&self, reference: &str, minimum: u64, phase: &str) -> Result<()> {
-        self.observe(reference, minimum, phase, None, None).await
+        self.observe(reference, minimum, phase, json!({})).await
     }
 
     pub async fn verify_settled(&self, reference: &str, hash: &str, phase: &str) -> Result<()> {
-        self.observe(reference, 1, phase, None, Some(hash)).await
+        self.observe(reference, 1, phase, json!({"settled_hash": hash}))
+            .await
     }
 
     pub async fn verify_native(
@@ -205,8 +206,33 @@ impl Candidate {
         phase: &str,
         expected: &Value,
     ) -> Result<()> {
-        self.observe(reference, minimum, phase, Some(expected), None)
+        self.observe(reference, minimum, phase, json!({"native_state": expected}))
             .await
+    }
+
+    pub async fn verify_unsettled(
+        &self,
+        reference: &str,
+        transaction: &str,
+        phase: &str,
+    ) -> Result<()> {
+        self.observe(
+            reference,
+            0,
+            phase,
+            json!({"staged_transaction": transaction}),
+        )
+        .await
+    }
+
+    pub async fn verify_finalized(&self, reference: &str, minimum: u64, phase: &str) -> Result<()> {
+        self.observe(
+            reference,
+            minimum,
+            phase,
+            json!({"finalized_minimum": minimum}),
+        )
+        .await
     }
 
     async fn observe(
@@ -214,16 +240,13 @@ impl Candidate {
         reference: &str,
         minimum: u64,
         phase: &str,
-        expected: Option<&Value>,
-        settled_hash: Option<&str>,
+        details: Value,
     ) -> Result<()> {
         let mut settings = self.settings.clone();
-        if let Some(state) = expected {
-            settings["native_state"] = state.clone();
-        }
-        if let Some(hash) = settled_hash {
-            settings["settled_hash"] = json!(hash);
-        }
+        settings
+            .as_object_mut()
+            .unwrap()
+            .extend(details.as_object().unwrap().clone());
         settings["reference"] = json!(reference);
         settings["candidate"] = json!(self.url());
         settings["container"] = json!(&self.name);
