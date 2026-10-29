@@ -226,6 +226,14 @@ internal static class WrapperTestObjects
 
     public static WrapperAnnouncement Describe(byte[] wrapper) => WrapperAnnouncement.Create(wrapper);
 
+    /// <summary>Describes bytes that need not parse as a wrapper, as mode 1 with zero hints.</summary>
+    public static WrapperAnnouncement DescribeOpaque(byte[] wrapper) => Announcement(1, wrapper.Length, ValueKeccak.Compute(wrapper));
+
+    /// <summary>An announcement entry with arbitrary, possibly false, metadata.</summary>
+    public static WrapperAnnouncement Announcement(int mode, int length, in ValueHash256 hash, WrapperCoverage coverage = default) =>
+        WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)mode), Eth73Rlp.EncodeUInt((ulong)length),
+            Eth73Rlp.EncodeBytes(hash.Bytes), Eth73Rlp.EncodeBytes(coverage.DepsHash.Bytes), Eth73Rlp.EncodeBytes(coverage.TxsHash.Bytes)));
+
     /// <summary>A ProofWrappers entry pairing <paramref name="wrapper"/> with its canonical hash.</summary>
     public static ProofWrapperEntry Entry(byte[] wrapper) => new(ValueKeccak.Compute(wrapper), wrapper);
 }

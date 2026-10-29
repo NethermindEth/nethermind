@@ -128,11 +128,13 @@ public class ProofWrapperTransportTests
         }
     }
 
-    // EIP-8437: requesters check each returned wrapper's canonical hash and the responder's announced mode and length.
-    // A hash reference in a compact = 0 response is rejected too.
+    // EIP-8437: requesters check each returned wrapper's canonical hash and the responder's announced mode, length and coverage
+    // hints, the hints before any proof verification. A hash reference in a compact = 0 response is rejected too.
     [TestCase("hash")]
     [TestCase("mode")]
     [TestCase("length")]
+    [TestCase("dependency digest")]
+    [TestCase("transaction digest")]
     [TestCase("reference")]
     [TestCase("repeat")]
     public void Mismatched_entries_are_violations(string scenario)
@@ -142,10 +144,10 @@ public class ProofWrapperTransportTests
         WrapperAnnouncement truth = Describe(wrapper);
         WrapperAnnouncement announced = scenario switch
         {
-            "mode" => WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)(1 - truth.Mode)),
-                Eth73Rlp.EncodeUInt((ulong)truth.Length), Eth73Rlp.EncodeBytes(truth.Hash.Bytes))),
-            "length" => WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)truth.Mode),
-                Eth73Rlp.EncodeUInt((ulong)truth.Length + 1), Eth73Rlp.EncodeBytes(truth.Hash.Bytes))),
+            "mode" => Announcement(1 - truth.Mode, truth.Length, truth.Hash, truth.Coverage),
+            "length" => Announcement(truth.Mode, truth.Length + 1, truth.Hash, truth.Coverage),
+            "dependency digest" => Announcement(truth.Mode, truth.Length, truth.Hash, truth.Coverage with { DepsHash = default }),
+            "transaction digest" => Announcement(truth.Mode, truth.Length, truth.Hash, truth.Coverage with { TxsHash = default }),
             _ => truth
         };
         using WrapperTestNode node = new();
@@ -165,6 +167,8 @@ public class ProofWrapperTransportTests
         {
             Assert.That(link.Penalties, Has.Length.EqualTo(1));
             if (scenario == "reference") Assert.That(link.Penalties[0], Does.Contain("compact = 0"));
+            if (scenario.EndsWith("digest")) Assert.That(link.Penalties[0], Does.Contain("dependency or transaction digest"));
+            Assert.That(node.Verifier.Calls, Is.Zero, "no proof is verified");
             Assert.That(node.Transport.ChargedBytes, Is.Zero);
             Assert.That(node.Pending, Is.Empty);
         }
@@ -223,7 +227,34 @@ public class ProofWrapperTransportTests
         }
     }
 
-    // A response is held to the length its own server announced, so the first announcer's false length cannot get an
+    // EIP-8437: a requester may skip fetching a wrapper whose hints match a held, validated one, as a reproof of the same
+    // transactions and dependencies is; equal dependencies over other transactions are still fetched.
+    [Test]
+    public void Wrapper_with_the_coverage_of_a_held_one_is_not_fetched()
+    {
+        Transaction a = FrameTransaction(1), b = FrameTransaction(2);
+        Transaction otherA = FrameTransaction(1);
+        otherA.Nonce = 5;
+        otherA.Hash = new Hash256(ValueKeccak.Compute(Envelope(otherA)));
+        using WrapperTestNode node = new();
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        Assert.That(node.Transport.PublishWrapper(Wrapper(64, 1, a, b)), Is.True);
+        WrapperAnnouncement reproof = Describe(Wrapper(64, 2, a, b));
+        WrapperAnnouncement otherTransactions = Describe(Wrapper(64, 1, otherA, b));
+
+        node.Transport.OnAnnounce(peer, new([reproof]));
+        node.Transport.OnAnnounce(peer, new([otherTransactions]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(otherTransactions.Coverage.DepsHash, Is.EqualTo(reproof.Coverage.DepsHash));
+            Assert.That(link.Sent<GetProofWrappersMessage>().SelectMany(static r => r.Hashes), Is.EqualTo(new[] { otherTransactions.Hash }));
+            Assert.That(node.Transport.FetchCount, Is.EqualTo(1));
+        }
+    }
+
+    // A response is held to the metadata its own server announced, so the first announcer's false length or hints cannot get an
     // honest server penalized for the true wrapper.
     [Test]
     public void A_false_announced_length_does_not_blame_an_honest_server()
@@ -233,8 +264,7 @@ public class ProofWrapperTransportTests
         WrapperPeer liarPeer = node.Connect(liar), honestPeer = node.Connect(honest);
         byte[] wrapper = Wrapper(64, FrameTransaction(1));
         WrapperAnnouncement truth = Describe(wrapper);
-        WrapperAnnouncement lie = WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)truth.Mode),
-            Eth73Rlp.EncodeUInt((ulong)wrapper.Length + 1), Eth73Rlp.EncodeBytes(truth.Hash.Bytes)));
+        WrapperAnnouncement lie = Announcement(truth.Mode, wrapper.Length + 1, truth.Hash, truth.Coverage with { TxsHash = default });
         node.Transport.OnAnnounce(liarPeer, new([lie]));
         node.Transport.OnAnnounce(honestPeer, new([truth]));
         node.Transport.OnProofWrappers(liarPeer, new(liar.Sent<GetProofWrappersMessage>().Single().RequestId, []));
@@ -257,8 +287,7 @@ public class ProofWrapperTransportTests
         for (int message = 0; message < 6; message++)
         {
             WrapperAnnouncement[] batch = [.. Enumerable.Range(0, Eth73Protocol.MaxAnnouncements)
-                .Select(_ => WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(1), Eth73Rlp.EncodeUInt(64),
-                    Eth73Rlp.EncodeBytes(Keccak.Compute($"silent:{announced++}").Bytes))))
+                .Select(_ => Announcement(1, 64, Keccak.Compute($"silent:{announced++}").ValueHash256))
                 .OrderBy(a => a.Hash)];
             node.Transport.OnAnnounce(silentPeer, new(batch));
             node.Tick(TimeSpan.FromSeconds(1));
@@ -430,14 +459,14 @@ public class ProofWrapperTransportTests
         using WrapperTestNode node = new();
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
-        node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
+        node.Transport.OnAnnounce(peer, new([DescribeOpaque(wrapper)]));
         Answer(node, peer, link, wrapper);
         await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(link.Penalties.Single(), Does.Contain("malformed"));
             Assert.That(node.Pending, Is.Empty);
-            Assert.That(node.Transport.IsTombstoned(Describe(wrapper).Hash), Is.True);
+            Assert.That(node.Transport.IsTombstoned(DescribeOpaque(wrapper).Hash), Is.True);
         }
     }
 
@@ -611,7 +640,7 @@ public class ProofWrapperTransportTests
         node.Transport.OnAnnounce(peer, new([Describe(invalid)]));
         Answer(node, peer, link, invalid);
         await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
-        node.Transport.OnAnnounce(badPeer, new([Describe(malformed)]));
+        node.Transport.OnAnnounce(badPeer, new([DescribeOpaque(malformed)]));
         Answer(node, badPeer, bad, malformed);
         await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
         Assert.That(node.Transport.IsTombstoned(Describe(invalid).Hash), Is.True);
@@ -621,7 +650,7 @@ public class ProofWrapperTransportTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(node.Transport.IsTombstoned(Describe(invalid).Hash), Is.False);
-            Assert.That(node.Transport.IsTombstoned(Describe(malformed).Hash), Is.True);
+            Assert.That(node.Transport.IsTombstoned(DescribeOpaque(malformed).Hash), Is.True);
         }
         node.Transport.OnAnnounce(peer, new([Describe(invalid)]));
         Answer(node, peer, link, invalid);

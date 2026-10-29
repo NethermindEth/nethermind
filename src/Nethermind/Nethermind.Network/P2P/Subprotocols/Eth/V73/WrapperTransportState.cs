@@ -110,6 +110,7 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
 
     private readonly Dictionary<ValueHash256, Entry> _objects = [];
     private readonly Dictionary<ValueHash256, List<ValueHash256>> _byTransaction = [];
+    private readonly Dictionary<WrapperCoverage, List<ValueHash256>> _byCoverage = [];
     private readonly LinkedList<ValueHash256> _order = new();
 
     public long Bytes { get; private set; }
@@ -132,7 +133,18 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
             if (!_byTransaction.TryGetValue(transaction, out List<ValueHash256>? holders)) _byTransaction[transaction] = holders = [];
             holders.Add(wrapperHash);
         }
+        if (!_byCoverage.TryGetValue(entry.Announcement.Coverage, out List<ValueHash256>? equivalent)) _byCoverage[entry.Announcement.Coverage] = equivalent = [];
+        equivalent.Add(wrapperHash);
         return true;
+    }
+
+    /// <summary>Whether a held wrapper validated under <paramref name="verifier"/> has these coverage hints.</summary>
+    public bool HoldsEquivalent(in WrapperCoverage coverage, Eip8288Verifier? verifier)
+    {
+        if (!_byCoverage.TryGetValue(coverage, out List<ValueHash256>? equivalent)) return false;
+        foreach (ValueHash256 wrapperHash in equivalent)
+            if (_objects[wrapperHash].Verifier == verifier) return true;
+        return false;
     }
 
     /// <summary>The held wrappers listing <paramref name="transaction"/>.</summary>
@@ -157,6 +169,9 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
         foreach (ValueHash256 transaction in entry.Hashes)
             if (_byTransaction.TryGetValue(transaction, out List<ValueHash256>? holders) && holders.Remove(wrapperHash) && holders.Count == 0)
                 _byTransaction.Remove(transaction);
+        if (_byCoverage.TryGetValue(entry.Announcement.Coverage, out List<ValueHash256>? equivalent) && equivalent.Remove(wrapperHash)
+            && equivalent.Count == 0)
+            _byCoverage.Remove(entry.Announcement.Coverage);
     }
 }
 
@@ -284,22 +299,28 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     /// <summary>Cancels validation at the fetch deadline or shutdown.</summary>
     public CancellationTokenSource? Processing { get; set; }
 
-    /// <summary>The mode and length each source announced; a response is held to its own server's metadata, so one peer's
-    /// false metadata cannot make an honest server's response look mismatched.</summary>
-    private readonly Dictionary<WrapperPeer, (int Mode, int Length)> _metadata = [];
+    /// <summary>The metadata each source announced; a response is held to its own server's metadata, so one peer's false
+    /// metadata cannot make an honest server's response look mismatched.</summary>
+    private readonly Dictionary<WrapperPeer, (int Mode, int Length, WrapperCoverage Coverage)> _metadata = [];
 
-    public void AddSource(WrapperPeer peer, int mode, int length)
+    public void AddSource(WrapperPeer peer, int mode, int length, WrapperCoverage coverage)
     {
         if (Sources.Contains(peer) || Sources.Count >= WrapperTransportLimits.MaxSourcesPerWrapper) return;
         Sources.Add(peer);
-        _metadata[peer] = (mode, length);
+        _metadata[peer] = (mode, length, coverage);
     }
 
+    public void AddSource(WrapperPeer peer, WrapperAnnouncement announcement) =>
+        AddSource(peer, announcement.Mode, announcement.Length, announcement.Coverage);
+
     /// <summary>The length <paramref name="peer"/> announced, or the first announcement's.</summary>
-    public int LengthFrom(WrapperPeer peer) => _metadata.TryGetValue(peer, out (int Mode, int Length) metadata) ? metadata.Length : Announcement.Length;
+    public int LengthFrom(WrapperPeer peer) => _metadata.TryGetValue(peer, out (int Mode, int Length, WrapperCoverage Coverage) metadata) ? metadata.Length : Announcement.Length;
 
     /// <summary>The mode <paramref name="peer"/> announced, or the first announcement's.</summary>
-    public int ModeFrom(WrapperPeer peer) => _metadata.TryGetValue(peer, out (int Mode, int Length) metadata) ? metadata.Mode : Announcement.Mode;
+    public int ModeFrom(WrapperPeer peer) => _metadata.TryGetValue(peer, out (int Mode, int Length, WrapperCoverage Coverage) metadata) ? metadata.Mode : Announcement.Mode;
+
+    /// <summary>The coverage hints <paramref name="peer"/> announced, or the first announcement's.</summary>
+    public WrapperCoverage CoverageFrom(WrapperPeer peer) => _metadata.TryGetValue(peer, out (int Mode, int Length, WrapperCoverage Coverage) metadata) ? metadata.Coverage : Announcement.Coverage;
 
     /// <summary>The next peer to ask for the body, or null once every source was tried or the source budget is spent.</summary>
     /// <remarks>Sources are asked in announcement order, except that one whose wrappers repeatedly failed verification is asked

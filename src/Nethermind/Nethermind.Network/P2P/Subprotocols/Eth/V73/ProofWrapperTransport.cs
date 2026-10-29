@@ -363,10 +363,11 @@ public sealed partial class ProofWrapperTransport : IDisposable
         if (!IsEnabled || wrapper.Length is 0 or > Eth73Protocol.MaxWrapperBytes) return false;
         ValueHash256[] hashes;
         WrapperShape shape;
-        try { hashes = WrapperBodies.ParseWrapper(wrapper, out shape); }
+        WrapperCoverage coverage;
+        try { hashes = WrapperBodies.ParseWrapper(wrapper, out shape, out coverage); }
         catch (RlpException) { return false; }
         ValueHash256[] encodingHashes = WrapperCompaction.EncodingHashes(wrapper);
-        WrapperAnnouncement announcement = WrapperAnnouncement.Create(wrapper, shape.Mode);
+        WrapperAnnouncement announcement = WrapperAnnouncement.Create(wrapper, shape.Mode, coverage);
         Outbox outbox = new();
         lock (_gate)
         {

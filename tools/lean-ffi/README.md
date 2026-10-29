@@ -263,9 +263,12 @@ target fork.
 The only object is the canonical EIP-8288 wrapper
 `[transactions, mode, [dependencies, proof_content]]`, carrying each transaction's full pooled
 encoding, at most `MAX_WRAPPER_BYTES` (2 MiB).
-An announcement entry is `[mode, length, hash]`; a returned wrapper must match the responding
-peer's announced mode and length as well as the hash. NewProofWrapperHashes and GetProofWrappers
-are bounded before decompression at their largest valid sizes, 2,499 and 1,072 bytes. Requests to a
+An announcement entry is `[mode, length, hash, deps-hash, txs-hash]`, the hints hashing the wrapper's
+concatenated dependency triples and its ascending consensus transaction hashes; a returned wrapper must
+match the responding peer's announced mode, length and hints as well as the hash, the hints checked
+before its proof is verified. A wrapper whose hints match a held one validated under the current rules
+is not fetched. NewProofWrapperHashes and GetProofWrappers are bounded before decompression at their
+largest valid sizes, 6,787 and 1,072 bytes. Requests to a
 peer set `compact = 1` once this node caches transaction encodings that peer sent in full within
 validated wrappers (LRU, 4 MiB per peer and 64 MiB overall, released with the connection); a
 responder then replaces each encoding it already sent in full on that connection with its

@@ -39,9 +39,9 @@ public static class Eth73Protocol
     /// soft limit alone is not a violation.</remarks>
     public const int LocalMaxResponseBytes = SoftResponseLimit + MaxWrapperBytes + ResponseFramingBytes;
 
-    /// <summary>The largest valid NewProofWrapperHashes, 64 <c>[mode, length, hash]</c> entries at their widest, bounding
-    /// message data before decompression (EIP-8437 check_vectors.py).</summary>
-    public const int MaxNewProofWrapperHashesBytes = 2499;
+    /// <summary>The largest valid NewProofWrapperHashes, 64 <c>[mode, length, hash, deps-hash, txs-hash]</c> entries at their
+    /// widest, bounding message data before decompression (EIP-8437 check_vectors.py).</summary>
+    public const int MaxNewProofWrapperHashesBytes = 6787;
 
     /// <summary>The largest valid GetProofWrappers, 32 hashes under the widest request ID, bounding message data before
     /// decompression (EIP-8437 check_vectors.py).</summary>

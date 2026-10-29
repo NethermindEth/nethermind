@@ -16,7 +16,7 @@ public abstract class Eth73Message : P2PMessage
     public override string Protocol => "eth";
 }
 
-/// <summary><c>NewProofWrapperHashes (0x16) = [[mode, length, hash], ...]</c>: 1 to 64 held wrappers in strictly ascending hash order.</summary>
+/// <summary><c>NewProofWrapperHashes (0x16) = [[mode, length, hash, deps-hash, txs-hash], ...]</c>: 1 to 64 held wrappers in strictly ascending hash order.</summary>
 public sealed class NewProofWrapperHashesMessage(WrapperAnnouncement[] announcements) : Eth73Message
 {
     public override int PacketType => Eth73MessageCode.NewProofWrapperHashes;

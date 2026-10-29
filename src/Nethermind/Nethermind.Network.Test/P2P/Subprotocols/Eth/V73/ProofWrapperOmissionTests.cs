@@ -179,8 +179,7 @@ public class ProofWrapperOmissionTests
         pair.Exchange(first);
         await pair.Stored(first);
         byte[] compact = WrapperCompaction.Compact(second, hash => hash == ValueKeccak.Compute(Envelope(a)));
-        WrapperAnnouncement understated = WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(1),
-            Eth73Rlp.EncodeUInt((ulong)compact.Length), Eth73Rlp.EncodeBytes(Describe(second).Hash.Bytes)));
+        WrapperAnnouncement understated = Announcement(1, compact.Length, Describe(second).Hash, Describe(second).Coverage);
         pair.Node.Transport.OnAnnounce(pair.HolderPeer, new([understated]));
         GetProofWrappersMessage request = pair.ToHolder.Sent<GetProofWrappersMessage>()[^1];
         Assert.That(request.Compact, Is.True);

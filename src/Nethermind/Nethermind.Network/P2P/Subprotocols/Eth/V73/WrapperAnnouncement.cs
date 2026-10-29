@@ -11,20 +11,26 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
-/// <summary>An EIP-8437 NewProofWrapperHashes entry <c>[mode, length, hash]</c>: a wrapper's EIP-8288 mode, its encoded size
-/// and the Keccak-256 of those exact bytes.</summary>
-/// <remarks>Mode and length are checked against the returned wrapper. Announcements carry no other hints, such as a verifier
-/// identifier or dependency digest: identical wrappers share a hash, and a receiver verifies under its own target fork.</remarks>
+/// <summary>EIP-8437 announcement coverage hints: Keccak-256 of a wrapper's concatenated 96-byte <c>deps</c> entries and of its
+/// concatenated, ascending consensus transaction hashes.</summary>
+/// <remarks>Fork-independent: they hash encoded triples, not the circuit's dependency digest. Matching hints identify equal
+/// coverage despite different proof bytes, but establish neither coverage nor validity until a wrapper is validated.</remarks>
+public readonly record struct WrapperCoverage(ValueHash256 DepsHash, ValueHash256 TxsHash);
+
+/// <summary>An EIP-8437 NewProofWrapperHashes entry <c>[mode, length, hash, deps-hash, txs-hash]</c>: a wrapper's EIP-8288 mode,
+/// its encoded size, the Keccak-256 of those exact bytes and its coverage hints.</summary>
+/// <remarks>Mode, length and both hints are checked against the returned wrapper before its proof is verified.</remarks>
 public sealed class WrapperAnnouncement
 {
-    /// <summary>The longest canonical entry: a one-byte mode, a three-byte length and a 32-byte hash.</summary>
-    public const int MaxEncodedBytes = 39;
+    /// <summary>The longest canonical entry: a one-byte mode, a three-byte length and three 32-byte hashes.</summary>
+    public const int MaxEncodedBytes = 106;
 
-    private WrapperAnnouncement(int mode, int length, ValueHash256 hash, byte[] encoded)
+    private WrapperAnnouncement(int mode, int length, ValueHash256 hash, WrapperCoverage coverage, byte[] encoded)
     {
         Mode = mode;
         Length = length;
         Hash = hash;
+        Coverage = coverage;
         Encoded = encoded;
     }
 
@@ -32,22 +38,27 @@ public sealed class WrapperAnnouncement
     public int Mode { get; }
     public int Length { get; }
     public ValueHash256 Hash { get; }
+    public WrapperCoverage Coverage { get; }
 
     /// <summary>The canonical RLP encoding, at most <see cref="MaxEncodedBytes"/>.</summary>
     public byte[] Encoded { get; }
 
-    /// <summary>Describes a wrapper, reading its mode from the encoding.</summary>
-    /// <exception cref="RlpException">The wrapper does not carry a mode field where EIP-8288 places it.</exception>
-    public static WrapperAnnouncement Create(ReadOnlySpan<byte> wrapper) => Create(wrapper, WrapperBodies.ReadMode(wrapper));
+    /// <summary>Describes a canonical wrapper, reading its mode and coverage hints from the encoding.</summary>
+    /// <exception cref="RlpException">The wrapper is not a canonical EIP-8288 wrapper.</exception>
+    public static WrapperAnnouncement Create(ReadOnlySpan<byte> wrapper)
+    {
+        WrapperBodies.ParseWrapper(wrapper, out WrapperShape shape, out WrapperCoverage coverage);
+        return Create(wrapper, shape.Mode, coverage);
+    }
 
-    /// <summary>Describes wrapper bytes under an explicit mode, as the EIP-8437 announcement vectors do for opaque bodies.</summary>
-    public static WrapperAnnouncement Create(ReadOnlySpan<byte> wrapper, int mode)
+    /// <summary>Describes wrapper bytes under an explicit mode and hints, as the EIP-8437 announcement vectors do for opaque bodies.</summary>
+    public static WrapperAnnouncement Create(ReadOnlySpan<byte> wrapper, int mode, WrapperCoverage coverage)
     {
         if (wrapper.Length is 0 or > Eth73Protocol.MaxWrapperBytes) throw new ArgumentException("Wrapper length is out of bounds", nameof(wrapper));
         if (mode is not (0 or 1)) throw new ArgumentException("Wrapper mode must be 0 or 1", nameof(mode));
         ValueHash256 hash = ValueKeccak.Compute(wrapper);
-        return new(mode, wrapper.Length, hash,
-            Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)mode), Eth73Rlp.EncodeUInt((ulong)wrapper.Length), Eth73Rlp.EncodeBytes(hash.Bytes)));
+        return new(mode, wrapper.Length, hash, coverage, Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)mode), Eth73Rlp.EncodeUInt((ulong)wrapper.Length),
+            Eth73Rlp.EncodeBytes(hash.Bytes), Eth73Rlp.EncodeBytes(coverage.DepsHash.Bytes), Eth73Rlp.EncodeBytes(coverage.TxsHash.Bytes)));
     }
 
     public static WrapperAnnouncement Decode(ReadOnlySpan<byte> encoded)
@@ -60,8 +71,9 @@ public sealed class WrapperAnnouncement
         ulong length = fields.ReadUInt64();
         if (length is 0 or > Eth73Protocol.MaxWrapperBytes) throw new RlpException("Wrapper length is out of bounds");
         ValueHash256 hash = fields.ReadHash();
+        WrapperCoverage coverage = new(fields.ReadHash(), fields.ReadHash());
         fields.End();
-        return new((int)mode, (int)length, hash, encoded.ToArray());
+        return new((int)mode, (int)length, hash, coverage, encoded.ToArray());
     }
 
     public override string ToString() => $"mode-{Mode} wrapper {Hash.ToShortString()} ({Length} bytes)";
@@ -84,7 +96,7 @@ public static class WrapperBodies
     /// transaction-hash order and well-formed dependency triples. Dependency and proof rules, such as the dependency list's order,
     /// the mode-0 dependency limits and witness count, are left to validation, which discards a wrapper breaking them without
     /// penalty (EIP-8437). Hash references are resolved before a returned wrapper is parsed, so an unresolved one is rejected.</remarks>
-    public static ValueHash256[] ParseWrapper(ReadOnlySpan<byte> wrapper, out WrapperShape shape)
+    public static ValueHash256[] ParseWrapper(ReadOnlySpan<byte> wrapper, out WrapperShape shape, out WrapperCoverage coverage)
     {
         int verificationBytes = 0;
         long work = 0;
@@ -109,12 +121,14 @@ public static class WrapperBodies
         Eth73RlpReader dependencies = content.ReadList();
         // Mode 1 has no dependency-count limit; MAX_WRAPPER_BYTES bounds either mode's list.
         int dependencyCount = dependencies.CountRemaining(Eip8288Constants.MaxWrapperDependencies);
+        byte[] dependencyEntries = new byte[dependencyCount * Eip8288Constants.DependencyTripleLength];
         for (int i = 0; i < dependencyCount; i++)
         {
             ReadOnlySpan<byte> dependency = dependencies.ReadBytes();
             // A reserved scheme is well-formed here; validation rejects it as a dependency-rule failure, without penalty.
             if (dependency.Length != Eip8288Constants.DependencyTripleLength || !dependency[..31].IsZero()
                 || !Eip8288Dependencies.IsKnownScheme(dependency[31])) throw new RlpException("Invalid dependency");
+            dependency.CopyTo(dependencyEntries.AsSpan(i * Eip8288Constants.DependencyTripleLength));
             work += (long)(dependency[31] == Eip8288Constants.LeanStarkScheme
                 ? Eip8288Constants.LeanStarkVerificationGas : Eip8288Constants.LeanSphincsVerificationGas);
         }
@@ -133,6 +147,9 @@ public static class WrapperBodies
         }
         content.End();
         shape = new((int)mode, verificationBytes, work);
+        byte[] transactionHashes = new byte[hashes.Count * ValueHash256.MemorySize];
+        for (int i = 0; i < hashes.Count; i++) hashes[i].Bytes.CopyTo(transactionHashes.AsSpan(i * ValueHash256.MemorySize));
+        coverage = new(ValueKeccak.Compute(dependencyEntries), ValueKeccak.Compute(transactionHashes));
         return [.. hashes];
     }
 
@@ -199,8 +216,11 @@ public static class WrapperBodies
         return any ? last : throw new RlpException("Transaction payload does not end with its blob versioned hashes");
     }
 
-    /// <inheritdoc cref="ParseWrapper(ReadOnlySpan{byte}, out WrapperShape)"/>
-    public static ValueHash256[] ParseWrapper(ReadOnlySpan<byte> wrapper) => ParseWrapper(wrapper, out _);
+    /// <inheritdoc cref="ParseWrapper(ReadOnlySpan{byte}, out WrapperShape, out WrapperCoverage)"/>
+    public static ValueHash256[] ParseWrapper(ReadOnlySpan<byte> wrapper, out WrapperShape shape) => ParseWrapper(wrapper, out shape, out _);
+
+    /// <inheritdoc cref="ParseWrapper(ReadOnlySpan{byte}, out WrapperShape, out WrapperCoverage)"/>
+    public static ValueHash256[] ParseWrapper(ReadOnlySpan<byte> wrapper) => ParseWrapper(wrapper, out _, out _);
 
     /// <summary>Reads the mode field, the second field of the wrapper list, without checking the rest of the encoding.</summary>
     /// <exception cref="RlpException">The encoding has no mode field of 0 or 1 in that position.</exception>

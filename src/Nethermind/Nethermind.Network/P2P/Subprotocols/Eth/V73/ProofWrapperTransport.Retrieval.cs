@@ -28,6 +28,7 @@ public sealed partial class ProofWrapperTransport
     // ---- Announcements and wrapper requests ---------------------------------------------------------------------------
 
     /// <summary>Records announced wrappers this node wants; announcements establish no validity and require no action.</summary>
+    /// <remarks>EIP-8437: a wrapper whose coverage hints match a held wrapper validated under the current rules is not fetched.</remarks>
     internal void OnAnnounce(WrapperPeer peer, NewProofWrapperHashesMessage message)
     {
         bool enabled = IsEnabled;
@@ -48,7 +49,12 @@ public sealed partial class ProofWrapperTransport
                     || IsTombstoned(wrapperHash, now)) continue;
                 if (_fetches.TryGetValue(wrapperHash, out WrapperFetch? existing))
                 {
-                    existing.AddSource(peer, announcement.Mode, announcement.Length);
+                    existing.AddSource(peer, announcement);
+                    continue;
+                }
+                if (_store.HoldsEquivalent(announcement.Coverage, _verifier))
+                {
+                    WrapperMetrics.Record(WrapperEvent.EquivalentSkipped);
                     continue;
                 }
                 // The pending cache is bounded, and each peer holds at most a share of it, so one peer announcing wrappers it
@@ -57,7 +63,7 @@ public sealed partial class ProofWrapperTransport
                     || peer.PendingFetches >= WrapperTransportLimits.MaxPendingAnnouncementsPerPeer) continue;
                 WrapperFetch fetch = new(announcement, now) { Announcer = peer };
                 peer.PendingFetches++;
-                fetch.AddSource(peer, announcement.Mode, announcement.Length);
+                fetch.AddSource(peer, announcement);
                 _fetches.Add(wrapperHash, fetch);
             }
             Schedule(outbox);
@@ -135,8 +141,8 @@ public sealed partial class ProofWrapperTransport
     }
 
     /// <summary>Matches returned entries, in order, to distinct requested hashes, resolves hash references from encodings
-    /// cached from this peer, checks each wrapper's canonical hash and the responding peer's announced mode and length, then
-    /// queues the wrappers for validation.</summary>
+    /// cached from this peer, checks each wrapper's canonical hash and the responding peer's announced mode, length and coverage
+    /// hints, then queues the wrappers for validation.</summary>
     /// <remarks>Requested wrappers skipped before the last one returned were unavailable from this peer; those after it were cut
     /// by the soft limit and are requested again from the same peer. A compact item referencing an encoding this node no longer
     /// holds is discarded without penalty and requested again with <c>compact = 0</c> (EIP-8437).</remarks>
@@ -171,6 +177,9 @@ public sealed partial class ProofWrapperTransport
                 else if (item.Hash != entries[i].Hash) violation = "a returned wrapper does not match its hash";
                 else if (fetches[cursor].LengthFrom(peer) != item.Wrapper.Length)
                     violation = "a returned wrapper does not match its announced mode or length";
+                // EIP-8437: false hints are penalized before, and independently of, proof verification.
+                else if (item.Coverage is { } coverage && coverage != fetches[cursor].CoverageFrom(peer))
+                    violation = "a returned wrapper does not match its announced dependency or transaction digest";
                 else matched[i] = cursor++;
             }
             if (violation is not null)
@@ -203,7 +212,7 @@ public sealed partial class ProofWrapperTransport
                     fetch.Wrapper = wrapper;
                     fetch.ChargedBytes = item.Charge;
                     fetch.Server = peer;
-                    fetch.AddSource(peer, item.Mode, wrapper.Length);
+                    fetch.AddSource(peer, item.Mode, wrapper.Length, item.Coverage ?? default);
                     Enqueue(fetch);
                 }
                 // A wrapper after the last returned one was cut by the soft limit: ask the same peer again.
@@ -215,9 +224,23 @@ public sealed partial class ProofWrapperTransport
         outbox.Flush();
     }
 
-    /// <summary>A returned entry after reference resolution: the complete wrapper, its hash and its admission charge, or no
-    /// wrapper on a cache miss, or the reason it is malformed.</summary>
-    private readonly record struct Returned(int Mode, ValueHash256 Hash, byte[]? Wrapper, bool Referenced, string? Error, long Charge = 0);
+    /// <summary>A returned entry after reference resolution: the complete wrapper, its hash, coverage hints and admission charge,
+    /// or no wrapper on a cache miss, or the reason it is malformed.</summary>
+    /// <remarks>Hints are null for a wrapper that does not parse, which validation then rejects as malformed.</remarks>
+    private readonly record struct Returned(int Mode, ValueHash256 Hash, byte[]? Wrapper, bool Referenced, string? Error, long Charge = 0,
+        WrapperCoverage? Coverage = null);
+
+    private static Returned Complete(int mode, byte[] wrapper, bool referenced)
+    {
+        WrapperCoverage? coverage;
+        try
+        {
+            WrapperBodies.ParseWrapper(wrapper, out _, out WrapperCoverage parsed);
+            coverage = parsed;
+        }
+        catch (RlpException) { coverage = null; }
+        return new(mode, ValueKeccak.Compute(wrapper), wrapper, referenced, null, AdmissionCharge(wrapper), coverage);
+    }
 
     /// <summary>What a held wrapper is charged to its server's byte budgets until validated: as ordinary transaction gossip, the
     /// larger of its bytes and a per-transaction overhead, so many small transactions sharing one proof cost their admission work;
@@ -238,7 +261,7 @@ public sealed partial class ProofWrapperTransport
             int mode = WrapperBodies.TryReadMode(wire);
             if (!WrapperCompaction.HasReferences(wire))
             {
-                returned[i] = new(mode, ValueKeccak.Compute(wire), wire, false, null, AdmissionCharge(wire));
+                returned[i] = Complete(mode, wire, false);
                 continue;
             }
             // Reconstruction is bounded by the length this peer announced; an entry matching no request fails matching later.
@@ -252,7 +275,7 @@ public sealed partial class ProofWrapperTransport
                 out byte[]? wrapper, out string? error);
             returned[i] = outcome switch
             {
-                WrapperCompaction.Outcome.Complete => new(mode, ValueKeccak.Compute(wrapper!), wrapper, true, null, AdmissionCharge(wrapper!)),
+                WrapperCompaction.Outcome.Complete => Complete(mode, wrapper!, true),
                 WrapperCompaction.Outcome.Missing => new(mode, default, null, true, null),
                 _ => new(mode, default, null, true, error)
             };
