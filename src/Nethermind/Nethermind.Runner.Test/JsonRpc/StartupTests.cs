@@ -679,7 +679,8 @@ public class StartupTests
             writer.Flush();
             if (flush) pipe!.FlushAsync(token).GetAwaiter().GetResult();
             throw RpcTest.CreateTraceDeadlineException();
-        }, resultCancellation, NullLogger.Instance) { PropagateExecutionTimeout = true };
+        }, resultCancellation, NullLogger.Instance)
+        { PropagateExecutionTimeout = true };
         IDebugRpcModule debugModule = Substitute.For<IDebugRpcModule>();
         debugModule.debug_traceBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>())
             .Returns(ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(result));
@@ -696,7 +697,8 @@ public class StartupTests
             });
         Startup startup = CreateStartup(rpcConfig: new JsonRpcConfig
         {
-            EnabledModules = [ModuleType.Engine, ModuleType.Debug], BufferResponses = bufferResponse
+            EnabledModules = [ModuleType.Engine, ModuleType.Debug],
+            BufferResponses = bufferResponse
         }, jsonRpcLocalStats: stats, debugModule: debugModule);
         string selector = method == nameof(IDebugRpcModule.debug_traceBlockByNumber)
             ? ownedDeadline ? "\"latest\"" : "\"0x1\""
@@ -717,13 +719,19 @@ public class StartupTests
                 using JsonDocument document = JsonDocument.Parse(response);
                 if (batch)
                 {
-                    Assert.That(document.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Array));
-                    Assert.That(document.RootElement.GetArrayLength(), Is.EqualTo(2));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(document.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                        Assert.That(document.RootElement.GetArrayLength(), Is.EqualTo(2));
+                    }
                 }
                 JsonElement envelope = batch ? document.RootElement[1] : document.RootElement;
                 Assert.That(envelope.TryGetProperty("result", out JsonElement traces), Is.True);
-                Assert.That(traces.ValueKind, Is.EqualTo(JsonValueKind.Array));
-                Assert.That(traces.GetArrayLength(), Is.EqualTo(2));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(traces.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                    Assert.That(traces.GetArrayLength(), Is.EqualTo(2));
+                }
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(statusCode, Is.EqualTo(StatusCodes.Status200OK));
@@ -747,8 +755,11 @@ public class StartupTests
                 using JsonDocument document = JsonDocument.Parse(response);
                 if (batch)
                 {
-                    Assert.That(document.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Array));
-                    Assert.That(document.RootElement.GetArrayLength(), Is.EqualTo(2));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(document.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                        Assert.That(document.RootElement.GetArrayLength(), Is.EqualTo(2));
+                    }
                 }
                 JsonElement envelope = batch ? document.RootElement[1] : document.RootElement;
                 Assert.That(envelope.TryGetProperty("error", out JsonElement error), Is.True);

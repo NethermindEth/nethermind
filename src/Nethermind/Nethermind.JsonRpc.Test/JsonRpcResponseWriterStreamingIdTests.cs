@@ -224,7 +224,9 @@ public class JsonRpcResponseWriterStreamingIdTests
         using JsonRpcResponse response = path == "deferred"
             ? new JsonRpcSuccessResponse
             {
-                Id = new JsonRpcId(42L), Result = new ModuleSelectedErrorResult(failure), Streaming = CreateStreamingContext()
+                Id = new JsonRpcId(42L),
+                Result = new ModuleSelectedErrorResult(failure),
+                Streaming = CreateStreamingContext()
             }
             : CreateStreamingContext().MapException(path == "wrapped" ? new System.Reflection.TargetInvocationException(failure) : failure);
         using RecyclableMemoryStream stream = RecyclableStream.GetStream("module-error");
@@ -286,7 +288,8 @@ public class JsonRpcResponseWriterStreamingIdTests
                 writer.Flush();
                 if (flush) pipe!.FlushAsync(token).GetAwaiter().GetResult();
                 throw new GethTraceDeadlineException();
-            }, new CancellationTokenSource(), NullLogger.Instance) { PropagateExecutionTimeout = true },
+            }, new CancellationTokenSource(), NullLogger.Instance)
+            { PropagateExecutionTimeout = true },
             Streaming = CreateStreamingContext()
         };
         try

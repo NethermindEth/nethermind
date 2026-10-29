@@ -406,8 +406,11 @@ public class GethStyleTracerTests
             Assert.That(deadline.Pause, Throws.Nothing);
             Assert.That(deadline.Expired, Is.False);
             deadline.Resume();
-            Assert.That(deadline.Expired, Is.False);
-            Assert.That(clock.Timers[0].Due, Is.EqualTo(TimeSpan.Zero));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deadline.Expired, Is.False);
+                Assert.That(clock.Timers[0].Due, Is.EqualTo(TimeSpan.Zero));
+            }
             clock.Advance(TimeSpan.Zero);
         }
         Assert.That(deadline.Expired, Is.True);
