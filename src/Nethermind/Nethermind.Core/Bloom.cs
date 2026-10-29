@@ -74,18 +74,14 @@ public partial class Bloom : IEquatable<Bloom>
             ThrowInvalidUpdate();
         }
 
-        BloomExtract indexes = GetExtract(sequence);
+        KeccakCache.ComputeTo(sequence, out ValueHash256 keccak);
+        ReadOnlySpan<byte> hash = keccak.Bytes;
+        (int b1, byte m1) = ByteMask(hash[0], hash[1]);
+        (int b2, byte m2) = ByteMask(hash[2], hash[3]);
+        (int b3, byte m3) = ByteMask(hash[4], hash[5]);
 
-        // Compute word/masks once.
-        (int w1, ulong m1) = WordMask(indexes.Index1);
-        (int w2, ulong m2) = WordMask(indexes.Index2);
-        (int w3, ulong m3) = WordMask(indexes.Index3);
-
-        // Write to this bloom using 64-bit words.
-        SetWordMasks(w1, m1, w2, m2, w3, m3);
-
-        // Write to master bloom using bit indexes.
-        masterBloom?.SetWordMasks(w1, m1, w2, m2, w3, m3);
+        SetByteMasks(b1, m1, b2, m2, b3, m3);
+        masterBloom?.SetByteMasks(b1, m1, b2, m2, b3, m3);
     }
 
     public bool Matches(ReadOnlySpan<byte> sequence) => Matches(GetExtract(sequence));
@@ -201,12 +197,23 @@ public partial class Bloom : IEquatable<Bloom>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void SetWordMasks(int w1, ulong m1, int w2, ulong m2, int w3, ulong m3)
+    private void SetByteMasks(int b1, byte m1, int b2, byte m2, int b3, byte m3)
     {
-        Span<ulong> words = ULongs; // 256 / 8 = 32 ulongs
-        words[w1] |= m1;
-        words[w2] |= m2;
-        words[w3] |= m3;
+        Span<byte> bytes = _bloomData.AsSpan();
+        bytes[b1] |= m1;
+        bytes[b2] |= m2;
+        bytes[b3] |= m3;
+    }
+
+    /// <remarks>
+    /// The low 11 bits of the big-endian pair select a bit counted from the end of the bloom; byte-wise access
+    /// avoids 64-bit shifts, which 32-bit targets emulate.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static (int byteIndex, byte mask) ByteMask(byte high, byte low)
+    {
+        int bit = (high & 7) << 8 | low;
+        return (ByteLength - 1 - (bit >> 3), (byte)(1 << (bit & 7)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
