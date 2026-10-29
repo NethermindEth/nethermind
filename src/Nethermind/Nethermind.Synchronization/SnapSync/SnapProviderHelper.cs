@@ -171,7 +171,17 @@ namespace Nethermind.Synchronization.SnapSync
             if (result != AddRangeResult.OK)
                 return (result, null, false);
 
-            tree.BulkSetAndUpdateRootHash(entries);
+            try
+            {
+                tree.BulkSetAndUpdateRootHash(entries);
+            }
+            catch (TrieException e) when (e is MissingTrieNodeException or TrieNodeException)
+            {
+                // The tree holds only the proof nodes, so the bulk set loads a node only when an entry reaches a child
+                // the proof keeps as a hash, such as a leaf beside the range: the entries do not fit the proof. Patricia
+                // stores report the node they cannot load as a MissingTrieNodeException, flat ones as a TrieNodeException.
+                return (AddRangeResult.InvalidProof, null, false);
+            }
 
             if (tree.RootHash.ValueHash256 != expectedRootHash)
                 return (AddRangeResult.DifferentRootHash, null, false);

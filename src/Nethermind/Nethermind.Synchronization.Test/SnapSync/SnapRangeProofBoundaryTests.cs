@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Autofac;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -23,6 +24,8 @@ using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -49,6 +52,9 @@ public class SnapRangeProofBoundaryTests
     private static readonly ValueHash256 KeyC = new("0xb11aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     private static readonly ValueHash256 KeyD = new("0xf000000000000000000000000000000000000000000000000000000000000001");
     private static readonly ValueHash256[] Keys = [KeyA, KeyB, KeyC, KeyD];
+
+    // Just before leaf D: the proof of this key ends at leaf D, which a range ending here keeps as a hash.
+    private static readonly ValueHash256 KeyBeforeD = new("0xf000000000000000000000000000000000000000000000000000000000000000");
 
     private static readonly ValueHash256 RootExtensionSlot1 = new("0xab1ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc");
     private static readonly ValueHash256 RootExtensionSlot2 = new("0xab2ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc");
@@ -268,6 +274,50 @@ public class SnapRangeProofBoundaryTests
         Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
     }
 
+    // A made-up account just before leaf D: adding it needs leaf D, which the proof leaves out.
+    [TestCase(Backend.Patricia)]
+    [TestCase(Backend.Flat)]
+    public void AddAccountRange_EntryReachingALeafTheProofKeepsAsAHash_IsAnInvalidProof(Backend backend)
+    {
+        Source source = new();
+        using FactoryScope scope = new(backend);
+
+        (AddRangeResult result, _, _, _, _) = SnapProviderHelper.AddAccountRange(
+            scope.Factory, 0, source.StateRoot, ValueKeccak.Zero, ValueKeccak.MaxValue,
+            [MadeUpAccountBeforeD()], Proofs(source.AccountProof(KeyBeforeD)));
+
+        Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
+    }
+
+    [Test]
+    public void HandleResponse_RangesWhoseEntriesDoNotFitTheProof_GetThePeerReported()
+    {
+        Source source = new();
+        using IContainer container = CreateContainer(source.StateRoot);
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+        Synchronization.SnapSync.SnapSyncFeed feed = (Synchronization.SnapSync.SnapSyncFeed)container.Resolve<ISimpleSyncFeed<SnapSyncBatch>>();
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        feed.AnalyzeResponsePerPeer(AddRangeResult.OK, new PeerInfo(Substitute.For<ISyncPeer>()));
+
+        List<SyncResponseHandlingResult> results = [];
+        for (int i = 0; i <= Synchronization.SnapSync.SnapSyncFeed.AllowedInvalidResponses; i++)
+        {
+            progressTracker.IsFinished(out SnapSyncBatch? batch);
+            Assert.That(batch?.AccountRangeRequest?.StartingHash, Is.EqualTo(ValueKeccak.Zero), "the range is offered again");
+            batch!.AccountRangeResponse = new AccountsAndProofs
+            {
+                PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { MadeUpAccountBeforeD() },
+                Proofs = Proofs(source.AccountProof(KeyBeforeD))
+            };
+
+            // The feed disposes the batch.
+            results.Add(feed.HandleResponse(batch, peer));
+        }
+
+        Assert.That(results, Is.EqualTo(Enumerable.Repeat(SyncResponseHandlingResult.OK, Synchronization.SnapSync.SnapSyncFeed.AllowedInvalidResponses)
+            .Append(SyncResponseHandlingResult.LesserQuality)));
+    }
+
     [Test]
     public void RefreshAccounts_AccountUnderAnExtensionWhoseChildIsNotInTheProof_IsRetriedRatherThanDropped()
     {
@@ -330,6 +380,8 @@ public class SnapRangeProofBoundaryTests
 
         Assert.That(refreshed.Account!.StorageRoot, Is.EqualTo(source.Accounts[KeyB].StorageRoot), "the proven storage root is adopted");
     }
+
+    private static PathWithAccount MadeUpAccountBeforeD() => new(KeyBeforeD, Build.An.Account.WithBalance(9).TestObject);
 
     private static ContainerBuilder CreateContainerBuilder(Hash256 stateRoot) =>
         new ContainerBuilder()
