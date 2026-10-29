@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core.Extensions;
@@ -1861,6 +1862,66 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(actual["error"], Is.Null, response);
             Assert.That((JArray)actual["result"]!, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByHash_retained_body_without_total_difficulty_does_not_create_level(
+        [Values] bool streaming, [Values] bool bodyAvailable, [Values] bool headerTotalDifficultyAvailable)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(chain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .WithTo(TestItem.AddressC).WithValue(1).WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block retained = Build.A.Block.WithParent(parent).WithTransactions(transaction).TestObject;
+        retained.Header.TotalDifficulty = null;
+        IHeaderStore headerStore = chain.Container.Resolve<IHeaderStore>();
+        IBlockStore blockStore = chain.Container.Resolve<IBlockStore>();
+        headerStore.Insert(retained.Header);
+        if (bodyAvailable) blockStore.Insert(retained);
+        BlockHeader cachedHeader = retained.Header.Clone();
+        cachedHeader.TotalDifficulty = headerTotalDifficultyAvailable ? UInt256.One : null;
+        headerStore.Cache(cachedHeader);
+        Block? storedBody = blockStore.Get(retained.Number, retained.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.ChainLevelInfoRepository.LoadLevel(retained.Number), Is.Null);
+            Assert.That(storedBody, bodyAvailable ? Is.Not.Null : Is.Null);
+            Assert.That(storedBody?.TotalDifficulty, Is.Null);
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(parent.Hash), "the hash replay must not use the head fast path");
+            Assert.That(chain.StateReader.HasStateForBlock(parent), Is.True);
+        }
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", retained.Hash!);
+        JToken actual = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.ChainLevelInfoRepository.LoadLevel(retained.Number), Is.Null, "read-only replay must not create chain metadata");
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(parent.Hash));
+            if (!bodyAvailable)
+            {
+                Assert.That(actual["result"], Is.Null, response);
+                Assert.That((int?)actual["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound));
+                Assert.That((string?)actual["error"]?["message"], Is.EqualTo($"block {retained.Hash} not found"));
+            }
+            else
+            {
+                Assert.That(actual["error"], Is.Null, response);
+            }
+        }
+        if (!bodyAvailable) return;
+        JArray? traces = actual["result"] as JArray;
+        Assert.That(traces, Has.Count.EqualTo(1), response);
+        if (traces is not { Count: 1 }) return;
+        JToken trace = traces[0]!["result"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)traces[0]!["txHash"], Is.EqualTo(transaction.Hash!.ToString()));
+            Assert.That((long?)trace["gas"], Is.EqualTo(21_000));
+            Assert.That((bool?)trace["failed"], Is.False);
         }
     }
 
