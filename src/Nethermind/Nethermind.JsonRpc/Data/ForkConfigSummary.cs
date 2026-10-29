@@ -16,12 +16,27 @@ public class ForkConfigSummary
     public required ForkConfig? Last { get; init; }
 }
 
+public sealed class DebugConfigSummary
+{
+    /// <summary>
+    /// Contains every configured fork in activation order.
+    /// </summary>
+    public required IReadOnlyList<ForkConfig> Forks { get; init; }
+}
+
 public class ForkConfig
 {
     [JsonConverter(typeof(NullableRawULongConverter))]
     public ulong? ActivationTime { get; init; }
     [JsonConverter(typeof(NullableRawULongConverter))]
     public ulong? ActivationBlock { get; init; }
+
+    /// <summary>
+    /// Indicates whether this fork is active in the debug configuration response.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Active { get; init; }
+
     public required BlobScheduleSettingsForRpc? BlobSchedule { get; init; }
     public required ulong ChainId { get; init; }
     public required byte[] ForkId { get; init; }

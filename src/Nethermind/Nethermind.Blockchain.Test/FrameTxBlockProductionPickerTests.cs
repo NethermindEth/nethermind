@@ -182,7 +182,7 @@ public class FrameTxBlockProductionPickerTests
     }
 
     // EIP-8250 moves a keyed transaction's replay protection into NONCE_MANAGER, so nonce_seq is
-    // unrelated to the sender's account nonce; only the [0] set still means the account nonce.
+    // unrelated to the sender's account nonce; only the empty set still means the account nonce.
     [TestCase(false, BlockProcessor.TxAction.Skip, TestName = "The account-nonce domain still gates on the account nonce")]
     [TestCase(true, BlockProcessor.TxAction.Add, TestName = "A keyed nonce domain is not gated on the account nonce")]
     public void Keyed_nonce_frame_transaction_is_not_gated_on_the_account_nonce(bool keyedDomain, BlockProcessor.TxAction expectedAction)
@@ -191,7 +191,7 @@ public class FrameTxBlockProductionPickerTests
         using KeyedNonceStateScope scope = KeyedNonceState();
 
         // A fresh sequence, which the account nonce of 5 cannot coincide with.
-        Transaction tx = FrameTx(nonce: 0, keyedDomain ? [UInt256.One] : [UInt256.Zero], executionGasLimit: 100_000, stateGasLimit: 0);
+        Transaction tx = FrameTx(nonce: 0, keyedDomain ? [UInt256.One] : [], executionGasLimit: 100_000, stateGasLimit: 0);
         Block block = Build.A.Block.WithGasLimit(30_000_000).TestObject;
 
         BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(
