@@ -65,10 +65,7 @@ public partial class EthRpcModuleTests
         int proofCalls = verifier.ProofCalls;
         Assert.That(context.Test.EthRpcModule.eth_getProofWrapper().Result.Error, Does.Contain("not ready"));
         Assert.That(verifier.ProofCalls, Is.EqualTo(proofCalls));
-        ProofWrapperService service = context.Test.Container.Resolve<ProofWrapperService>();
-        // A single small witness would otherwise be rebroadcast as mode 0 without proving.
-        service.ProducesDirectWrappers = false;
-        Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+        Assert.That(context.Test.Container.Resolve<ProofWrapperService>().BuildWrapper().IsSuccess, Is.True);
         ResultWrapper<byte[]> aggregated = context.Test.EthRpcModule.eth_getProofWrapper();
         Assert.That(aggregated.Result, Is.EqualTo(Result.Success), aggregated.Result.Error);
         Assert.That(verifier.LastInput!.Witnesses[0].ToArray(), Is.EqualTo(new byte[] { 7 }));

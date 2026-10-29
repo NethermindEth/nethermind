@@ -657,92 +657,9 @@ public class ProofWrapperServiceTests
         }
     }
 
-    // EIP-8288 (bec62841): a node holding only direct witnesses may rebroadcast a mode-0 aggregation that concatenates them
-    // instead of proving them; within the mode-0 limits it is far smaller than a recursive proof.
-    [Test]
-    public async Task Small_all_witness_selection_is_produced_as_mode_0_without_proving()
-    {
-        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
-        Dictionary<FrameDependency, byte[]> witnesses = [];
-        Transaction[] transactions =
-        [
-            WitnessedTransaction(store, witnesses, 0, sphincs: 1),
-            WitnessedTransaction(store, witnesses, 1, sphincs: 2),
-            WitnessedTransaction(store, witnesses, 2, sphincs: 1, starks: 1)
-        ];
-        FakeLeanProofVerifier verifier = new(true);
-        ProofWrapperService service = CreateService(transactions, store, verifier, directWrappers: true);
-
-        Result<byte[]> built = service.BuildWrapper();
-
-        Assert.That(built.IsSuccess, Is.True, built.Error);
-        MempoolWrapper wrapper = Decode(built.Data!);
-        ITxPool receivingPool = Substitute.For<ITxPool>();
-        receivingPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
-        ProofWrapperService receiver = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: receivingPool);
-        ProofWrapperAcceptance received = await receiver.AcceptDetailedAsync(built.Data!);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(wrapper.Mode, Is.EqualTo(MempoolWrapper.ModeDirect));
-            Assert.That(wrapper.Transactions, Has.Count.EqualTo(transactions.Length));
-            Assert.That(wrapper.Proofs, Is.EqualTo(wrapper.Deps.Select(dependency => witnesses[dependency])), "one witness per dependency, in order");
-            Assert.That(verifier.ProofCalls, Is.Zero);
-            Assert.That(MempoolWrapperValidator.Validate(wrapper, new FakeLeanProofVerifier(true), Eip8288Verifier.Pinned, out string? error), Is.True, error);
-            Assert.That(received.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), received.Result.Error);
-            Assert.That(service.GetLatestWrapper().Data, Is.EqualTo(built.Data));
-            Assert.That(service.BuildWrapper().Data, Is.EqualTo(built.Data), "an unchanged selection is returned as is");
-        }
-    }
-
-    [TestCase("larger", 1, TestName = "Mode 1 when the witnesses encode larger than a recursive proof")]
-    [TestCase("held proof", 0, TestName = "Mode 1 reusing a held proof smaller than the witnesses")]
-    [TestCase("witness missing", 0, TestName = "Mode 1 when only recursive coverage is held")]
-    [TestCase("folded", 1, TestName = "Mode 1 folding witnesses into a selection that starts with recursive coverage")]
-    public void Mode_1_is_produced_when_mode_0_does_not_apply(string scenario, int proofCalls)
-    {
-        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
-        Dictionary<FrameDependency, byte[]> witnesses = [];
-        Transaction[] transactions = scenario switch
-        {
-            "larger" => [WitnessedTransaction(store, witnesses, 0, sphincs: 0, starks: 1, starkWitnessBytes: ProofWrapperService.EstimatedRecursiveProofBytes)],
-            "held proof" => [WitnessedTransaction(store, witnesses, 0, sphincs: 2)],
-            "witness missing" => [WitnessedTransaction(store, witnesses, 0, sphincs: 2, proven: true)],
-            _ => FoldedSelection(store, witnesses)
-        };
-        if (scenario == "held proof")
-            store.AddCachedRecursive(Eip8288Dependencies.ForTransaction(transactions[0], FrameTxSigHash.ComputeValue), new byte[100]);
-        FakeLeanProofVerifier verifier = new(true);
-        ProofWrapperService service = CreateService(transactions, store, verifier, directWrappers: true);
-
-        Result<byte[]> built = service.BuildWrapper();
-
-        Assert.That(built.IsSuccess, Is.True, built.Error);
-        MempoolWrapper wrapper = Decode(built.Data!);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(wrapper.Mode, Is.EqualTo(MempoolWrapper.ModeRecursive));
-            Assert.That(wrapper.Transactions, Has.Count.EqualTo(transactions.Length));
-            Assert.That(verifier.ProofCalls, Is.EqualTo(proofCalls));
-            Assert.That(MempoolWrapperValidator.Validate(wrapper, new FakeLeanProofVerifier(true), Eip8288Verifier.Pinned, out string? error), Is.True, error);
-        }
-
-        // The first transaction in hash order is recursively covered, so the selection is proven from its start.
-        static Transaction[] FoldedSelection(LeanProofStore store, Dictionary<FrameDependency, byte[]> witnesses)
-        {
-            LeanProofStore scratch = new(FrameTxSigHash.ComputeValue);
-            bool zeroFirst = WitnessedTransaction(scratch, [], 0, sphincs: 1).Hash!.Bytes
-                .SequenceCompareTo(WitnessedTransaction(scratch, [], 1, sphincs: 1).Hash!.Bytes) < 0;
-            return
-            [
-                WitnessedTransaction(store, witnesses, zeroFirst ? 0UL : 1UL, sphincs: 1, proven: true),
-                WitnessedTransaction(store, witnesses, zeroFirst ? 1UL : 0UL, sphincs: 1)
-            ];
-        }
-    }
-
     // A transaction whose own proving cost exceeds the per-wrapper budget is still produced, alone, rather than never offered.
     [Test]
-    public void Transaction_exceeding_the_proving_budget_alone_is_still_produced([Values] bool directWrappers)
+    public void Transaction_exceeding_the_proving_budget_alone_is_still_produced()
     {
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         Dictionary<FrameDependency, byte[]> witnesses = [];
@@ -751,7 +668,7 @@ public class ProofWrapperServiceTests
         Assert.That(store.TryGetInput(Eip8288Dependencies.ForTransaction(wide, FrameTxSigHash.ComputeValue), out AggregationInput wideInput), Is.True);
         Assert.That(RecursiveStarkAggregator.EstimatedCost(wideInput), Is.GreaterThan(ProofWrapperService.MaxWrapperProvingCost));
         FakeLeanProofVerifier verifier = new(true);
-        ProofWrapperService service = CreateService([wide, small], store, verifier, directWrappers: directWrappers);
+        ProofWrapperService service = CreateService([wide, small], store, verifier);
         List<MempoolWrapper> produced = [];
 
         Result result = service.RefreshWrapper(() => produced.Add(Decode(service.GetLatestWrapper().Data!)));
@@ -761,36 +678,8 @@ public class ProofWrapperServiceTests
             Assert.That(result, Is.EqualTo(Result.Success));
             Assert.That(produced.SelectMany(static w => w.Transactions).Select(static tx => tx.Hash), Is.EquivalentTo(new[] { wide.Hash, small.Hash }));
             Assert.That(produced.Single(w => w.Transactions.Any(tx => tx.Hash == wide.Hash)).Transactions, Has.Count.EqualTo(1));
-            Assert.That(produced.Select(static w => w.Mode), Is.All.EqualTo(directWrappers ? MempoolWrapper.ModeDirect : MempoolWrapper.ModeRecursive));
-            Assert.That(verifier.ProofCalls, directWrappers ? Is.Zero : Is.Positive);
-        }
-    }
-
-    // One cycle covers a pool mixing direct witnesses, leanSTARK witnesses and recursive coverage: each transaction lands in exactly
-    // one valid wrapper, mode-0 wrappers stay within the mode-0 limits, and recursively covered transactions are proven.
-    [Test]
-    public void Mixed_coverage_cycle_covers_every_transaction_in_valid_wrappers_of_both_modes()
-    {
-        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
-        Dictionary<FrameDependency, byte[]> witnesses = [];
-        List<Transaction> transactions = [];
-        for (ulong i = 0; i < 18; i++) transactions.Add(WitnessedTransaction(store, witnesses, i, sphincs: 1));
-        for (ulong i = 18; i < 20; i++) transactions.Add(WitnessedTransaction(store, witnesses, i, sphincs: 0, starks: 1));
-        Transaction proven = WitnessedTransaction(store, witnesses, 20, sphincs: 2, proven: true);
-        transactions.Add(proven);
-        ProofWrapperService service = CreateService([.. transactions], store, new FakeLeanProofVerifier(true), directWrappers: true);
-        List<MempoolWrapper> produced = [];
-
-        Result result = service.RefreshWrapper(() => produced.Add(Decode(service.GetLatestWrapper().Data!)));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(Result.Success));
-            Assert.That(produced.SelectMany(static w => w.Transactions).Select(static tx => tx.Hash), Is.EquivalentTo(transactions.Select(static tx => tx.Hash)));
-            Assert.That(produced.Single(w => w.Transactions.Any(tx => tx.Hash == proven.Hash)).Mode, Is.EqualTo(MempoolWrapper.ModeRecursive));
-            Assert.That(produced.Where(static w => w.Mode == MempoolWrapper.ModeDirect), Is.Not.Empty);
-            foreach (MempoolWrapper wrapper in produced)
-                Assert.That(MempoolWrapperValidator.Validate(wrapper, new FakeLeanProofVerifier(true), Eip8288Verifier.Pinned, out string? error), Is.True, error);
+            Assert.That(produced.Select(static w => w.Mode), Is.All.EqualTo(MempoolWrapper.ModeRecursive));
+            Assert.That(verifier.ProofCalls, Is.Positive);
         }
     }
 
@@ -1502,10 +1391,8 @@ public class ProofWrapperServiceTests
         return (CreateService(transactions, store, verifier), verifier);
     }
 
-    /// <param name="directWrappers">Whether production may choose mode 0; off by default, so tests of mode-1 proving can use
-    /// small direct witnesses.</param>
     private static ProofWrapperService CreateService(Transaction[] transactions, LeanProofStore store, ILeanProofVerifier verifier, IReleaseSpec? spec = null, ITxPool? pool = null,
-        IWrappedBlobTransactionAdmission? blobAdmission = null, bool directWrappers = false)
+        IWrappedBlobTransactionAdmission? blobAdmission = null)
     {
         pool ??= Substitute.For<ITxPool>();
         pool.GetPendingTransactions().Returns(transactions);
@@ -1519,10 +1406,7 @@ public class ProofWrapperServiceTests
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
-        return new(pool, new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance), finder, store, verifier, blobAdmission)
-        {
-            ProducesDirectWrappers = directWrappers
-        };
+        return new(pool, new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance), finder, store, verifier, blobAdmission);
     }
 
     /// <summary>A dependency-bearing frame transaction carrying <paramref name="blobs"/> blobs in the elided network form EIP-8437

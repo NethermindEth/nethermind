@@ -157,8 +157,6 @@ public class Eip8288BlockProductionTests
         Transaction first = CreateTransaction(chain, firstDependency, [1]);
         Transaction second = CreateTransaction(chain, secondDependency, [2]);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
-        // Two witnesses would otherwise be rebroadcast as mode 0, leaving no background aggregate to reuse.
-        service.ProducesDirectWrappers = false;
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
             Transactions = [.. new[] { first, second }.OrderBy(static tx => tx.Hash!.ToString()).Select(static tx => tx)],

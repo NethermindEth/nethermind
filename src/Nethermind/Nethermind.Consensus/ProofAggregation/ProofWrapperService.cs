@@ -32,8 +32,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier,
     IWrappedBlobTransactionAdmission? blobAdmission = null)
 {
-    /// <summary>Encoded transaction bytes a produced wrapper may carry: <c>MAX_WRAPPER_BYTES</c> less the largest aggregate proof,
-    /// which also bounds a produced mode-0 proof list, the widest dependency list the pinned guest proves and the list framing.</summary>
+    /// <summary>Encoded transaction bytes a produced mode-1 wrapper may carry: <c>MAX_WRAPPER_BYTES</c> less the largest
+    /// aggregate proof, the widest dependency list the pinned guest proves and the list framing.</summary>
     internal const int MaxWrapperTransactionBytes = Eip8288Constants.MaxWrapperBytes - Eip8288Constants.MaxAggregateProofBytes
         - Eip8288Constants.MaxProofDependencies * (2 + Eip8288Constants.DependencyTripleLength) - 64;
 
@@ -41,17 +41,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// folding <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> fresh signatures.</summary>
     /// <remarks>EIP-8288 sets no mode-1 dependency-count limit, so a produced wrapper is bounded by <c>MAX_WRAPPER_BYTES</c>, the
     /// pinned guest's <see cref="Eip8288Constants.MaxProofDependencies"/> and this budget: it may cover many more dependencies
-    /// when they come from already proven aggregates, whose merge costs far less than fresh signatures. A mode-0 selection takes
-    /// no proving and is not bounded by it, and a transaction exceeding it alone is produced in a wrapper of its own.</remarks>
+    /// when they come from already proven aggregates, whose merge costs far less than fresh signatures. A transaction exceeding it
+    /// alone is produced in a wrapper of its own.</remarks>
     internal const long MaxWrapperProvingCost = Eip8288Constants.MaxLeanSigDepsPerWrapper * RecursiveStarkAggregator.SignatureCost
         + (Eip8288Constants.MaxLeanSigDepsPerWrapper / RecursiveStarkAggregator.DirectBatchSize - 1) * RecursiveStarkAggregator.MergeCost;
-
-    /// <summary>Estimated serialized size of a recursive proof of the pinned guest: the low end of its measured 265–325 KB root
-    /// proofs, against which a mode-0 encoding is compared when no proof of the exact dependency set is held.</summary>
-    internal const int EstimatedRecursiveProofBytes = 265_000;
-
-    /// <summary>Whether produced wrappers may be mode 0; when false every produced wrapper is proven as mode 1.</summary>
-    internal bool ProducesDirectWrappers { get; set; } = true;
 
     /// <summary>Transactions submitted to the pool per turn of admission.</summary>
     /// <remarks>EIP-8288 bounds a wrapper only by <c>MAX_WRAPPER_BYTES</c>, so one wrapper may carry thousands of small transactions
@@ -83,8 +76,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     // Remembered verifications are keyed by AGGREGATED_VK too, so none answers under another verifier.
     private readonly Dictionary<(ValueHash256 Wrapper, ValueHash256 Verifier), string?> _verifiedWrappers = [];
     private readonly Queue<(ValueHash256 Wrapper, ValueHash256 Verifier)> _verifiedWrapperOrder = [];
-    /// <param name="Parent">The recursive proof of a mode-1 wrapper, which the next build may extend; null for mode 0.</param>
-    private sealed record WrapperSnapshot(ValueHash256 Selection, Hash256[] Transactions, byte[] Encoded, ValueHash256 Hash, RecursiveProofInput? Parent,
+    private sealed record WrapperSnapshot(ValueHash256 Selection, Hash256[] Transactions, byte[] Encoded, ValueHash256 Hash, RecursiveProofInput Parent,
         Eip8288Verifier Verifier);
     private WrapperSnapshot? _cachedWrapper;
     private readonly Lock _verifierLock = new();
@@ -485,13 +477,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         }
     }
 
-    /// <summary>Builds a wrapper over the current proof-backed pool view.</summary>
-    /// <remarks>Fails when no proof-backed transaction is pending, since a wrapper carries at least one. EIP-8288 lets a node
-    /// rebroadcast a mode-0 aggregation that concatenates direct witnesses instead of proving them: a selection whose every
-    /// dependency has a held direct witness, within <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> and <c>MAX_LEANSTARK_DEPS_PER_WRAPPER</c>,
-    /// is produced as mode 0, without proving, when its witnesses encode no larger than the recursive proof mode 1 would carry:
-    /// a held proof of the exact dependency set, or else <see cref="EstimatedRecursiveProofBytes"/>. Any other selection is
-    /// proven as mode 1, folding its direct witnesses straight into the aggregate.</remarks>
+    /// <summary>Builds a recursive wrapper over the current proof-backed pool view.</summary>
+    /// <remarks>Fails when no proof-backed transaction is pending, since a wrapper carries at least one.</remarks>
     public Result<byte[]> BuildWrapper(CancellationToken cancellationToken = default)
         => BuildWrapper(true, cancellationToken);
 
@@ -586,8 +573,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         List<FrameDependency> deps = [];
         HashSet<FrameDependency> covered = [];
         AggregationInput selectedInput = new();
-        // Whether the selection is still best carried as mode 0, by its held direct witnesses.
-        bool direct = ProducesDirectWrappers;
         int transactionBytes = 0;
         List<Transaction> candidates = [.. txPool.GetPendingTransactions()];
         AddBlobCandidates(candidates);
@@ -622,18 +607,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 if (!leanProofStore.TryGetInput(combined, out AggregationInput candidateInput)
                     || combined.Count + candidateInput.Discards.Count > Eip8288Constants.MaxProofDependencies
                     || !Eip8288Dependencies.FitsProofList(combined)) continue;
-                bool combinedDirect = direct && DirectProofsLength(candidateInput, combined) <= RecursiveProofLength(EstimatedRecursiveProofBytes);
-                // A mode-0 selection takes no proving, so it ends where mode 0 would no longer apply rather than turn into a proof.
-                // Otherwise mode-0 witnesses fold directly into the aggregate and proven aggregates merge whole; the wrapper ends
-                // once the proving work would exceed the budget, whichever way the previous wrapper's proof is reused. A transaction
+                // Mode-0 witnesses fold directly into the aggregate and proven aggregates merge whole; the wrapper ends once the
+                // proving work would exceed the budget, whichever way the previous wrapper's proof is reused. A transaction
                 // exceeding the budget alone is still offered, in a wrapper of its own.
-                if (transactions.Count != 0 && !combinedDirect
-                    && (direct || ProvingCost(candidateInput, combined, previousProof) > MaxWrapperProvingCost))
+                if (transactions.Count != 0 && ProvingCost(candidateInput, combined, previousProof) > MaxWrapperProvingCost)
                 {
                     next = end = candidateIndex;
                     break;
                 }
-                direct = combinedDirect;
                 deps = combined;
                 selectedInput = candidateInput;
                 covered.UnionWith(transactionDeps);
@@ -662,17 +643,12 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         try
         {
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps);
-            bool held = leanProofStore.TryGetRecursiveProof(deps, out byte[]? proof);
-            // EIP-8288: a mode-0 aggregation concatenating the held witnesses is rebroadcast instead of a proof when it is no
-            // larger than the recursive proof, held or estimated, that mode 1 would carry.
-            if (direct && DirectProofsLength(selectedInput, deps) <= RecursiveProofLength(held ? proof!.Length : EstimatedRecursiveProofBytes))
-                return PublishDirect(transactions, deps, selectedInput, selectionHash, hashes, verifier, returnEncoded);
-            if (!held)
+            if (!leanProofStore.TryGetRecursiveProof(deps, out byte[]? proof))
             {
-                if (cached is { Parent: { } cachedParent } && cached.Verifier == verifier && HasOverlap(cachedParent.InnerDeps, covered))
+                if (cached is not null && cached.Verifier == verifier && HasOverlap(cached.Parent.InnerDeps, covered))
                 {
                     AggregationInput incremental = RecursiveStarkAggregator.Combine(
-                        [new() { RecursiveProofs = [cachedParent] }, selectedInput], deps);
+                        [new() { RecursiveProofs = [cached.Parent] }, selectedInput], deps);
                     if (deps.Count + incremental.Discards.Count <= Eip8288Constants.MaxProofDependencies)
                         selectedInput = incremental;
                 }
@@ -712,41 +688,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             return Result<byte[]>.Fail(exception.Message);
         }
     }
-
-    /// <summary>Publishes a mode-0 wrapper carrying the held direct witness of each dependency, in dependency order.</summary>
-    private Result<byte[]> PublishDirect(List<Transaction> transactions, List<FrameDependency> deps, AggregationInput input,
-        ValueHash256 selectionHash, Hash256[] hashes, Eip8288Verifier verifier, bool returnEncoded)
-    {
-        Dictionary<FrameDependency, ReadOnlyMemory<byte>> witnesses = new(input.Deps.Count);
-        for (int i = 0; i < input.Deps.Count; i++) witnesses[input.Deps[i]] = input.Witnesses[i];
-        byte[][] proofs = new byte[deps.Count][];
-        for (int i = 0; i < deps.Count; i++) proofs[i] = witnesses[deps[i]].ToArray();
-        byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
-        {
-            Transactions = transactions,
-            Deps = deps,
-            Mode = MempoolWrapper.ModeDirect,
-            Proofs = proofs
-        }).Bytes;
-        if (!ArePending(hashes))
-            return Result<byte[]>.Fail("Proof wrapper selection changed while aggregating; retry with the current pool.");
-        Volatile.Write(ref _cachedWrapper, new(selectionHash, hashes, (byte[])encoded.Clone(), ValueKeccak.Compute(encoded), null, verifier));
-        return Result<byte[]>.Success(returnEncoded ? encoded : []);
-    }
-
-    /// <summary>The encoded length of the mode-0 proof list for <paramref name="deps"/>, or <see cref="int.MaxValue"/> when
-    /// <paramref name="input"/> does not hold a direct witness for each of them or they exceed the mode-0 dependency limits.</summary>
-    private static int DirectProofsLength(AggregationInput input, IReadOnlyList<FrameDependency> deps)
-    {
-        if (input.RecursiveProofs.Count != 0 || input.Deps.Count != deps.Count) return int.MaxValue;
-        (int sphincs, int stark) = Eip8288Dependencies.CountByScheme(deps);
-        if (sphincs > Eip8288Constants.MaxLeanSigDepsPerWrapper || stark > Eip8288Constants.MaxLeanStarkDepsPerWrapper) return int.MaxValue;
-        long length = 0;
-        foreach (ReadOnlyMemory<byte> witness in input.Witnesses) length += Rlp.LengthOf(witness.Span);
-        return length > Eip8288Constants.MaxAggregateProofBytes ? int.MaxValue : Rlp.LengthOfSequence((int)length);
-    }
-
-    private static int RecursiveProofLength(int proofBytes) => Rlp.LengthOfByteString(proofBytes, 0);
 
     /// <summary>Adds the blob pool's dependency-bearing frame transactions in the elided network form EIP-8437 carries:
     /// commitments and cell proofs without blob data, which peers retrieve as EIP-8070 cells.</summary>
