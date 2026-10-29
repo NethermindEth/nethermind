@@ -118,7 +118,7 @@ public class GethStyleTracerTests
         DeadlineClock clock = new();
         using CancellationTokenSource external = new();
         Transaction selected = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
-        Transaction? following = next == "null" ? null : Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject;
+        Transaction following = next == "null" ? null : Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject;
         DisposalCountingTracer firstInner = new();
         DisposalCountingTracer secondInner = new();
         IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
