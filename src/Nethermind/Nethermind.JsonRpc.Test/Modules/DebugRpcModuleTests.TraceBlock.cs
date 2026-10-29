@@ -44,6 +44,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Preimage;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -58,6 +59,72 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [Test]
+    public async Task By_number_real_execution_returns_module_only_after_response_disposal(
+        [Values("", NativeCallTracer.CallTracer)] string tracer, [Values] bool expires)
+    {
+        DeadlineExecution clock = new() { Expiry = "after" };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        Block block = await AddDeadlineCommitmentBlock(chain, large: false);
+        clock.Target = block.Transactions[0].Nonce;
+        clock.Enabled = true;
+        chain.RpcConfig.EnabledModules = [ModuleType.Debug];
+        IDebugRpcModule module = WithDeadlineClock(chain.DebugRpcModule, clock);
+        IRpcModulePool<IDebugRpcModule> pool = Substitute.For<IRpcModulePool<IDebugRpcModule>>();
+        pool.GetModule(false).Returns(module);
+        chain.Container.Resolve<IRpcModuleProvider>().Register(pool);
+        IJsonRpcService service = chain.Container.Resolve<IJsonRpcService>();
+        JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IDebugRpcModule.debug_traceBlockByNumber), block.Number,
+            new { tracer, timeout = expires ? "1s" : "5s", streamMode = true });
+        using JsonRpcResponse response = await service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http));
+        Assert.That(response.TryGetStreamableResult(out _), Is.True);
+        await pool.Received(1).GetModule(false);
+        pool.DidNotReceive().ReturnModule(module);
+        Assert.That(clock.Calls, Is.Zero, "execution must remain deferred while the module is rented");
+        using RecyclableMemoryStream stream = RecyclableStream.GetStream("debug-rental");
+        PipeWriter writer = new RewindableStreamPipeWriter(stream);
+        try
+        {
+            await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None)
+                .AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            await writer.FlushAsync();
+            pool.DidNotReceive().ReturnModule(module);
+            JToken json = JToken.Parse(Encoding.UTF8.GetString(stream.ToArray()));
+            if (expires)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput));
+                    Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"));
+                    Assert.That(json["result"], Is.Null);
+                }
+            }
+            else
+            {
+                Assert.That(json["error"], Is.Null);
+                JToken? result = json["result"];
+                Assert.That(result, Is.TypeOf<JArray>());
+                JArray traces = (JArray)result!;
+                Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length));
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(clock.Calls, Is.EqualTo(expires ? 1 : block.Transactions.Length));
+                Assert.That(clock.Timers, Has.Count.EqualTo(expires ? 1 : block.Transactions.Length));
+                Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+            }
+            response.Dispose();
+            pool.Received(1).ReturnModule(module);
+            response.Dispose();
+            pool.Received(1).ReturnModule(module);
+        }
+        finally
+        {
+            await writer.CompleteAsync();
+        }
+    }
+
     [Test]
     public async Task Debug_traceBlockByNumber_buffered_execution_deadline(
         [Values("callTracer", "prestateTracer", "4byteTracer", "noopTracer", "")] string tracer,
