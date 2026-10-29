@@ -262,6 +262,52 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task ByNumber_filtered_javascript_skip_preserves_mux_prefix_log_indices_and_alignment(
+        [Values] bool revertFirst, [Values("blockOverrides", "stateOverrides")] string replay)
+    {
+        DeadlineExecution clock = new();
+        Hash256? selectedHash = null;
+        const string script = "{fault:function(){},result:function(ctx){return {txIndex:ctx.txIndex};}}";
+        string[] responses = await TraceLogsBeforeAndAfterIndexing(revertFirst, (chain, block) =>
+        {
+            selectedHash = block.Transactions[2].Hash!;
+            Dictionary<string, object> options = new()
+            {
+                ["tracer"] = "muxTracer",
+                ["tracerConfig"] = new Dictionary<string, object> { [script] = new { }, ["callTracer"] = new { withLog = true } },
+                ["txHash"] = selectedHash,
+                ["timeout"] = "0s",
+                ["streamMode"] = false,
+                [replay] = new { }
+            };
+            return RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
+                "debug_traceBlockByNumber", block.Number, options);
+        });
+        foreach (string response in responses)
+        {
+            JToken json = JToken.Parse(response);
+            Assert.That(json["result"], Is.TypeOf<JArray>(), response);
+            JArray entries = (JArray)json["result"]!;
+            Assert.That(entries, Has.Count.EqualTo(1), response);
+            Assert.That(entries[0]["result"], Is.TypeOf<JObject>(), response);
+            JObject children = (JObject)entries[0]["result"]!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((string?)entries[0]["txHash"], Is.EqualTo(selectedHash!.ToString()), response);
+                Assert.That(children, Has.Count.EqualTo(2), response);
+                Assert.That((int?)children[script]?["txIndex"], Is.EqualTo(2), response);
+                Assert.That((string?)children["callTracer"]?["logs"]?[0]?["index"], Is.EqualTo(revertFirst ? "0x1" : "0x2"), response);
+            }
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers, Has.Count.EqualTo(2), "each replay has exactly one selected transaction owner");
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
+    }
+
     private static void AssertLastTransactionLogIndex(string[] responses, bool revertFirst)
     {
         foreach (string response in responses)
