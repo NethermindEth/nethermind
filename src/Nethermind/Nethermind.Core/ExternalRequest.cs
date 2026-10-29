@@ -16,8 +16,10 @@ namespace Nethermind.Core;
 /// <para>
 /// Thread-static rather than async-local, so entering a request allocates nothing. The JSON-RPC service enters it while
 /// the method runs until it returns or first yields, and again while the response is written, where streamed and lazily
-/// enumerated results run; the parallel block tracer's workers enter the request of the job they run. Other work handed
-/// to another thread, or continued after an await, reads <see cref="None"/> unless it enters the request there.
+/// enumerated results run; an MCP tool call enters one of its own while its body runs until it first yields; the parallel
+/// block tracer's workers enter the request of the job they run. Other work handed to another thread, or continued after
+/// an await, does not carry the request: it reads whatever its thread has entered then, <see cref="None"/> or another
+/// request's id if the continuation runs inline inside that request's scope.
 /// </para>
 /// </remarks>
 public static class ExternalRequest

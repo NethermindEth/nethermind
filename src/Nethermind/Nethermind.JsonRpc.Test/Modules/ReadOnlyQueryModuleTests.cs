@@ -449,6 +449,8 @@ public class ReadOnlyQueryModuleTests
                 new[] { new { transactions = new[] { first } }, new { transactions = new[] { last } } }, "latest", GethOptions("callTracer")),
             "trace_callMany" => RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, new[] { new[] { first, types }, new[] { last, types } }, "latest"),
             "eth_estimateGas" => chain.TestEthRpc(method, last, "latest"),
+            // Fills fees after awaiting the gas price, then estimates the gas: its frames run after that await.
+            "eth_fillTransaction" => chain.TestEthRpc(method, new { from = TestItem.AddressB.ToString(), to = Contracts[^1].ToString(), type = "0x0" }),
             _ => throw new ArgumentOutOfRangeException(nameof(method), method, null),
         };
     }
@@ -456,12 +458,14 @@ public class ReadOnlyQueryModuleTests
     /// <summary>
     /// Every frame of one request reads the request's id, however many blocks, transactions or runs the request takes: a
     /// simulation with an empty block between the two that call, bundles traced a transaction at a time while the
-    /// response is written, calls traced as one block, and the runs of a gas estimate. The next request reads another.
+    /// response is written, calls traced as one block, the runs of a gas estimate, and those of a transaction fill, which
+    /// estimates after an await that completes at once. The next request reads another.
     /// </summary>
     [TestCase(ReadOnlyQueryKind.Simulate, "eth_simulateV1")]
     [TestCase(ReadOnlyQueryKind.Trace, "debug_traceCallMany")]
     [TestCase(ReadOnlyQueryKind.Trace, "trace_callMany")]
     [TestCase(ReadOnlyQueryKind.Call, "eth_estimateGas")]
+    [TestCase(ReadOnlyQueryKind.Call, "eth_fillTransaction")]
     public async Task Every_frame_of_one_request_reads_its_id(ReadOnlyQueryKind kind, string method)
     {
         FrameOfferProbe probe = new();

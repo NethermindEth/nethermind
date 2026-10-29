@@ -278,19 +278,27 @@ public class JsonRpcServiceTests
     public void Request_context_is_current_only_while_the_method_runs()
     {
         JsonRpcContext? seen = null;
+        long request = ExternalRequest.None;
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_chainId().Returns(_ =>
         {
             seen = JsonRpcContext.Current;
+            request = ExternalRequest.Current;
             return ResultWrapper<ulong>.Success(1);
         });
 
-        RpcTest.AssertSuccess<ulong>(TestRequest(ethRpcModule, "eth_chainId"));
+        JsonRpcResponse response = TestRequest(ethRpcModule, "eth_chainId");
+        long afterInvoke = ExternalRequest.Current;
+        RpcTest.SerializeResponse(response);
+        RpcTest.AssertSuccess<ulong>(response);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(seen, Is.SameAs(_context));
             Assert.That(JsonRpcContext.Current, Is.Null);
+            Assert.That(request, Is.Not.EqualTo(ExternalRequest.None), "the method runs as a request of its own");
+            Assert.That(afterInvoke, Is.EqualTo(ExternalRequest.None), "the request ends with the method");
+            Assert.That(ExternalRequest.Current, Is.EqualTo(ExternalRequest.None), "writing the response leaves no request entered");
         }
     }
 

@@ -92,6 +92,7 @@ namespace Nethermind.JsonRpc
             action?.Invoke();
             action = null;
             Streaming = null;
+            RequestId = ExternalRequest.None;
             StreamedResultObservation = null;
         }
     }

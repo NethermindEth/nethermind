@@ -94,7 +94,8 @@ public static class JsonRpcResponseWriter
     /// <remarks>
     /// Only a deferred execution result is staged for recovery; any other streamable result is written directly into
     /// <paramref name="writer"/>. A replaced failure is reported through <see cref="JsonRpcResponseWriteOutcome.Of"/>.
-    /// A streamed result runs as the request that produced it (<see cref="ExternalRequest"/>) until its first await.
+    /// A streamed result runs as the request that produced it (<see cref="ExternalRequest"/>) until its first await; the
+    /// streaming tracers flush with <c>SafeWait</c> rather than an await, so their whole trace runs as the request.
     /// </remarks>
     public static ValueTask WriteAsync(PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, bool isBatch, CancellationToken cancellationToken)
     {
