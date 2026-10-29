@@ -165,7 +165,9 @@ internal sealed class McpTestNode : IAsyncDisposable
         BlockHeader parent = Chain.BlockTree.FindHeader(number - 1, BlockTreeLookupOptions.RequireCanonical)!;
         Block sibling = Build.A.Block.WithParent(parent).WithStateRoot(parent.StateRoot!).WithExtraData([0x72, 0x65, 0x6f, 0x72, 0x67])
             .WithTotalDifficulty(parent.TotalDifficulty + parent.Difficulty).TestObject;
+#pragma warning disable NUnit2045 // The sibling must be inserted before it can become canonical.
         Assert.That(Chain.BlockTree.Insert(sibling, BlockTreeInsertBlockOptions.SaveHeader), Is.EqualTo(AddBlockResult.Added));
+#pragma warning restore NUnit2045
         Assert.That(Chain.BlockTree.TryUpdateMainChain(sibling.Header, wereProcessed: true, forceUpdateHeadBlock: true, sibling), Is.True,
             "precondition: the sibling must become canonical");
         return sibling;
@@ -362,8 +364,11 @@ internal static partial class McpAssert
     /// <remarks>Errors are text-only: structuredContent would have to match the tool's output schema, which describes success.</remarks>
     public static JsonElement Error(CallToolResult result, params string[] expectedCode)
     {
-        Assert.That(result.IsError, Is.True, () => $"expected a tool error, got {Text(result)}");
-        Assert.That(result.StructuredContent, Is.Null, "errors must not carry structuredContent");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.True, () => $"expected a tool error, got {Text(result)}");
+            Assert.That(result.StructuredContent, Is.Null, "errors must not carry structuredContent");
+        }
         using JsonDocument document = JsonDocument.Parse(Text(result));
         Assert.That(document.RootElement.TryGetProperty("error", out JsonElement found), Is.True, () => $"missing 'error' in {document.RootElement}");
         JsonElement error = found.Clone();

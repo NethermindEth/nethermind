@@ -489,9 +489,12 @@ public class FrameTxDecoderTests
         // `c3 82 01 2c` is the whole nonce_keys list; `c1` under-declares it without moving any other byte.
         ReadOnlySpan<byte> canonical = [0xc3, 0x82, 0x01, 0x2c];
         int headerIndex = bytes.AsSpan().IndexOf(canonical);
-        Assert.That(headerIndex, Is.GreaterThanOrEqualTo(0), "canonical nonce_keys encoding not found");
-        // A second occurrence would let the patch corrupt an unrelated list and still throw, i.e. pass for the wrong reason.
-        Assert.That(bytes.AsSpan(headerIndex + 1).IndexOf(canonical), Is.LessThan(0), "the nonce_keys encoding is not unique");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headerIndex, Is.GreaterThanOrEqualTo(0), "canonical nonce_keys encoding not found");
+            // A second occurrence would let the patch corrupt an unrelated list and still throw, i.e. pass for the wrong reason.
+            Assert.That(bytes.AsSpan(headerIndex + 1).IndexOf(canonical), Is.LessThan(0), "the nonce_keys encoding is not unique");
+        }
 
         if (underDeclare)
         {
@@ -545,6 +548,18 @@ public class FrameTxDecoderTests
         keyed.NonceKeys = keys;
 
         Assert.That(() => FrameTxNonceCalldata.Measure(keyed), Throws.InstanceOf<ArgumentOutOfRangeException>());
+    }
+
+    [TestCase(true, 1UL, 3, TestName = "MeasureNonceCalldata_SequentialKeyedNonce_PricesTheSequence")]
+    [TestCase(true, Eip8250Constants.MaxNonceSeq, 2, TestName = "MeasureNonceCalldata_SingleUseKeyedNonce_ExemptsTheSequence")]
+    [TestCase(false, Eip8250Constants.MaxNonceSeq, 9, TestName = "MeasureNonceCalldata_PlainNonceAtMax_PricesTheSequence")]
+    public void MeasureNonceCalldata_PricesTheSequenceUnlessSingleUse(bool keyed, ulong nonceSeq, int nonZeroBytes)
+    {
+        Transaction tx = CreateFrameTx();
+        tx.Nonce = nonceSeq;
+        tx.NonceKeys = keyed ? [(UInt256)7] : null;
+
+        Assert.That(FrameTxNonceCalldata.Measure(tx), Is.EqualTo((0, nonZeroBytes)));
     }
 
     [TestCase(Eip8141Constants.MaxFrames, false)]

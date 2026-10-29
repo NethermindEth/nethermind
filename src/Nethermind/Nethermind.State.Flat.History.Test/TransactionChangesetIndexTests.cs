@@ -119,7 +119,9 @@ public class TransactionChangesetIndexTests
         Block original = _block;
         _block = Build.A.Block.WithNumber(7).WithDifficulty(99).WithTransactions(_block.Transactions).TestObject;
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(Capture(transactions: 2), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(_index.TryRentOverlay(7, original.Hash!, 2, out MidBlockOverlayCache.Lease lease), Is.True,
             "an incomplete replacement must not overwrite the hash or rows of a covered block");
         using (lease)

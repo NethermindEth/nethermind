@@ -376,8 +376,11 @@ public class McpRemoteModeTests
         {
             using HttpRequestMessage request = McpHttp.Post(plainEndpoint, McpHttp.InitializeBody(), host: host, bearer: Token);
             using HttpResponseMessage response = await http.SendAsync(request);
-            Assert.That(response.IsSuccessStatusCode, Is.False, "plain HTTP must not be served on a TLS listener");
-            Assert.That(await response.Content.ReadAsStringAsync(), Does.Not.Contain("serverInfo"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response.IsSuccessStatusCode, Is.False, "plain HTTP must not be served on a TLS listener");
+                Assert.That(await response.Content.ReadAsStringAsync(), Does.Not.Contain("serverInfo"));
+            }
         }
         catch (HttpRequestException exception)
         {

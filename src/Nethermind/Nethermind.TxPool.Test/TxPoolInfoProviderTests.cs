@@ -45,19 +45,28 @@ public class TxPoolInfoProviderTests
             .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, transactions } });
         TxPoolInfo info = _infoProvider.GetInfo();
 
-        Assert.That(info.Pending.Count, Is.EqualTo(1));
-        Assert.That(info.Queued.Count, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(info.Pending.Count, Is.EqualTo(1));
+            Assert.That(info.Queued.Count, Is.EqualTo(1));
+        }
 
         KeyValuePair<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> pending = info.Pending.First();
-        Assert.That(pending.Key.Value, Is.EqualTo(_address));
-        Assert.That(pending.Value.Count, Is.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pending.Key.Value, Is.EqualTo(_address));
+            Assert.That(pending.Value.Count, Is.EqualTo(3));
+        }
         VerifyNonceAndTransactions(pending.Value, 3);
         VerifyNonceAndTransactions(pending.Value, 4);
         VerifyNonceAndTransactions(pending.Value, 5);
 
         KeyValuePair<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> queued = info.Queued.First();
-        Assert.That(queued.Key.Value, Is.EqualTo(_address));
-        Assert.That(queued.Value.Count, Is.EqualTo(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(queued.Key.Value, Is.EqualTo(_address));
+            Assert.That(queued.Value.Count, Is.EqualTo(4));
+        }
         VerifyNonceAndTransactions(queued.Value, 1);
         VerifyNonceAndTransactions(queued.Value, 2);
         VerifyNonceAndTransactions(queued.Value, 8);
@@ -79,8 +88,11 @@ public class TxPoolInfoProviderTests
 
         TxPoolInfo info = _infoProvider.GetInfo();
 
-        Assert.That(info.Pending[_address].Keys, Is.EqualTo(new[] { Key(0) }));
-        Assert.That(info.Queued[_address].Keys, Is.EqualTo(new[] { Key(2) }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(info.Pending[_address].Keys, Is.EqualTo(new[] { Key(0) }));
+            Assert.That(info.Queued[_address].Keys, Is.EqualTo(new[] { Key(2) }));
+        }
     }
 
     [Test]
@@ -98,8 +110,11 @@ public class TxPoolInfoProviderTests
 
         TxPoolInfo info = _infoProvider.GetInfo();
 
-        Assert.That(info.Pending.ContainsKey(_address), Is.False);
-        Assert.That(info.Queued.ContainsKey(_address), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(info.Pending.ContainsKey(_address), Is.False);
+            Assert.That(info.Queued.ContainsKey(_address), Is.False);
+        }
     }
 
     // Inputs are always nonce-sorted: TxDistinctSortedPool's group comparer puts
@@ -131,8 +146,11 @@ public class TxPoolInfoProviderTests
 
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        Assert.That(senderInfo.Pending.Keys, Is.EqualTo(Keys(scenario.ExpectedPending)), "pending nonces are those continuous with the account nonce");
-        Assert.That(senderInfo.Queued.Keys, Is.EqualTo(Keys(scenario.ExpectedQueued)), "queued nonces are those beyond a gap from the account nonce");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(senderInfo.Pending.Keys, Is.EqualTo(Keys(scenario.ExpectedPending)), "pending nonces are those continuous with the account nonce");
+            Assert.That(senderInfo.Queued.Keys, Is.EqualTo(Keys(scenario.ExpectedQueued)), "queued nonces are those beyond a gap from the account nonce");
+        }
     }
 
     [Test]
@@ -154,8 +172,11 @@ public class TxPoolInfoProviderTests
 
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        Assert.That(senderInfo.Pending.Keys, Is.EqualTo(new[] { Key(0) }));
-        Assert.That(senderInfo.Queued.Keys, Is.EqualTo(new[] { Key(2) }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(senderInfo.Pending.Keys, Is.EqualTo(new[] { Key(0) }));
+            Assert.That(senderInfo.Queued.Keys, Is.EqualTo(new[] { Key(2) }));
+        }
     }
 
     [Test]
@@ -209,8 +230,11 @@ public class TxPoolInfoProviderTests
 
         TxPoolCounts counts = _infoProvider.GetCounts();
 
-        Assert.That(counts.Pending, Is.EqualTo(scenario.ExpectedPending.Length), "pending count must match the split");
-        Assert.That(counts.Queued, Is.EqualTo(scenario.ExpectedQueued.Length), "queued count must match the split");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counts.Pending, Is.EqualTo(scenario.ExpectedPending.Length), "pending count must match the split");
+            Assert.That(counts.Queued, Is.EqualTo(scenario.ExpectedQueued.Length), "queued count must match the split");
+        }
     }
 
     [Test]
@@ -224,8 +248,11 @@ public class TxPoolInfoProviderTests
 
         TxPoolCounts counts = _infoProvider.GetCounts();
 
-        Assert.That(counts.Pending, Is.EqualTo(3), "nonces 0, 1, 2 form a continuous run from account nonce 0");
-        Assert.That(counts.Queued, Is.EqualTo(1), "nonce 5 is queued behind the gap");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counts.Pending, Is.EqualTo(3), "nonces 0, 1, 2 form a continuous run from account nonce 0");
+            Assert.That(counts.Queued, Is.EqualTo(1), "nonce 5 is queued behind the gap");
+        }
     }
 
     /// <summary>EIP-8250 keyed sequences are unrelated, so all such transactions are includable; keying the map by

@@ -104,8 +104,11 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, BlockParameter.Latest, rewardPercentiles);
 
-            Assert.That(resultWrapper.Result.Error, Is.EqualTo("rewardPercentiles: Value at index 4: 1 is less than or equal to the value at previous index 3: 5."));
-            Assert.That(resultWrapper.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resultWrapper.Result.Error, Is.EqualTo("rewardPercentiles: Value at index 4: 1 is less than or equal to the value at previous index 3: 5."));
+                Assert.That(resultWrapper.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            }
         }
 
         [Test]
@@ -119,8 +122,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             double[] percentiles = Enumerable.Range(1, 999).Select(p => p / 10d).ToArray();
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, BlockParameter.Latest, percentiles);
 
-            Assert.That(resultWrapper.Result.Error, Is.EqualTo("rewardPercentiles: 999 is over the query limit 100."));
-            Assert.That(resultWrapper.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resultWrapper.Result.Error, Is.EqualTo("rewardPercentiles: 999 is over the query limit 100."));
+                Assert.That(resultWrapper.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            }
         }
 
         [TestCase(new double[] { -1, 1, 2 }, TestName = "NegativePercentile")]
@@ -134,8 +140,11 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, BlockParameter.Latest, rewardPercentiles);
 
-            Assert.That(resultWrapper.Result.Error, Is.EqualTo("rewardPercentiles: Some values are below 0 or greater than 100."));
-            Assert.That(resultWrapper.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resultWrapper.Result.Error, Is.EqualTo("rewardPercentiles: Some values are below 0 or greater than 100."));
+                Assert.That(resultWrapper.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            }
         }
 
         [TestCase(3UL, 3UL, 5, 6)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1.5 * 5) / 8, 1) = 1 | Next Base Fee = 5 + 1 = 6
@@ -160,8 +169,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             UInt256 resultNextBaseFee = resultWrapper.Data.BaseFeePerGas[1];
             UInt256 resultBaseFee = resultWrapper.Data.BaseFeePerGas[0];
 
-            Assert.That(resultNextBaseFee, Is.EqualTo((UInt256)expectedNextBaseFee));
-            Assert.That(resultBaseFee, Is.EqualTo((UInt256)baseFee));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resultNextBaseFee, Is.EqualTo((UInt256)expectedNextBaseFee));
+                Assert.That(resultBaseFee, Is.EqualTo((UInt256)baseFee));
+            }
 
         }
 
@@ -249,8 +261,11 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock, []);
 
-            Assert.That(resultWrapper.Data.BaseFeePerGas![1], Is.EqualTo((UInt256)expectedNextBaseFee));
-            Assert.That(resultWrapper.Data.BaseFeePerGas![0], Is.EqualTo((UInt256)baseFee));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resultWrapper.Data.BaseFeePerGas![1], Is.EqualTo((UInt256)expectedNextBaseFee));
+                Assert.That(resultWrapper.Data.BaseFeePerGas![0], Is.EqualTo((UInt256)baseFee));
+            }
         }
 
         [Test]

@@ -71,8 +71,11 @@ public class CliqueTests
         Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
         bool validHeader = _sealValidator.ValidateParams(_blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.None), block.Header);
         bool validSeal = _sealValidator.ValidateSeal(block.Header, true);
-        Assert.That(validHeader, Is.True);
-        Assert.That(validSeal, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validHeader, Is.True);
+            Assert.That(validSeal, Is.True);
+        }
     }
 
     [TestCase(Block4Rlp)]
@@ -84,8 +87,11 @@ public class CliqueTests
         Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
         bool validHeader = _sealValidator.ValidateParams(_blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.None), block.Header);
         bool validSeal = _sealValidator.ValidateSeal(block.Header, true);
-        Assert.That(validHeader, Is.False);
-        Assert.That(validSeal, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validHeader, Is.False);
+            Assert.That(validSeal, Is.True);
+        }
     }
 
     [TestCase(Block4Rlp)]

@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
@@ -108,8 +109,8 @@ public class FrameTransactionForRpcTests
         }
     }
 
-    [TestCase("0x12", typeof(ArgumentException))]
-    [TestCase("0xzz", typeof(FormatException))]
+    [TestCase("0x12", typeof(SafePublicMessageFormatException))]
+    [TestCase("0xzz", typeof(SafePublicMessageFormatException))]
     public void FrameSignature_RejectsMalformedSigner(string signer, Type expectedException)
     {
         string json = $"{{\"scheme\":1,\"signer\":\"{signer}\"}}";
@@ -138,7 +139,7 @@ public class FrameTransactionForRpcTests
 
     [Test]
     public void Frame_RejectsEmptyTarget() =>
-        Assert.That(() => Serializer.Deserialize<FrameForRpc>("""{"target":"0x"}"""), Throws.ArgumentException);
+        Assert.That(() => Serializer.Deserialize<FrameForRpc>("""{"target":"0x"}"""), Throws.TypeOf<SafePublicMessageFormatException>());
 
     private static JsonDocument SerializeToJson(TransactionForRpc rpc) => JsonDocument.Parse(Serializer.Serialize(rpc));
 
@@ -275,7 +276,9 @@ public class FrameTransactionForRpcTests
         Transaction tx = rpc.ToTransaction(spec: withSpec ? FramesSpec : null).Data!;
 
         // Priced over max_gas, which includes intrinsic gas, as the processor checks it.
+#pragma warning disable NUnit2045 // Gas calculation must succeed and its output remains in scope for subsequent checks.
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, FramesSpec, out _, out _, out ulong maxGas, estimateSignatureBytes: true), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(maxGas, Is.GreaterThan(tx.GasLimit));
         UInt256 expected = (UInt256)(3 * (withSpec ? maxGas : tx.GasLimit)) + (blobs ? (UInt256)(5 * Eip4844Constants.GasPerBlob) : UInt256.Zero);
         using (Assert.EnterMultipleScope())
@@ -502,9 +505,12 @@ public class FrameTransactionForRpcTests
             Signatures = Secp256k1Signatures(1),
         };
 
-        Assert.That(rpc.ToTransaction(validateUserInput: true, gasCap: GasCap).IsError, Is.True);
-        // GasLimit still reports the frame sum alone, matching FrameTxDecoder.
-        Assert.That(rpc.ToTransaction(validateUserInput: true).Data!.GasLimit, Is.EqualTo(frameGas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.ToTransaction(validateUserInput: true, gasCap: GasCap).IsError, Is.True);
+            // GasLimit still reports the frame sum alone, matching FrameTxDecoder.
+            Assert.That(rpc.ToTransaction(validateUserInput: true).Data!.GasLimit, Is.EqualTo(frameGas));
+        }
     }
 
     private static Transaction BuildKeyedFrameTx(UInt256[]? nonceKeys, ulong nonceSeq = 3)

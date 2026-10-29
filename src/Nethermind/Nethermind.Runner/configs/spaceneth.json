@@ -19,7 +19,7 @@
     "BlobsSupport": "Disabled"
   },
   "Network": {
-    "ActivePeersMaxCount": 4
+    "MaxActivePeers": 4
   },
   "JsonRpc": {
     "Enabled": true,

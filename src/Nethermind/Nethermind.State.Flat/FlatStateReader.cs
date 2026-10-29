@@ -15,7 +15,6 @@ namespace Nethermind.State.Flat;
 public class FlatStateReader(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
-    ITrieNodeCache trieNodeCache,
     IHistoricalTrieVisitor historicalTrieVisitor,
     ILogManager logManager
 ) : IStateReader
@@ -76,7 +75,7 @@ public class FlatStateReader(
 
         using (reader)
         {
-            ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader, treeVisitor.IsFullDbScan ? null : trieNodeCache);
+            ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
             PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
             patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
         }
