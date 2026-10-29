@@ -126,11 +126,23 @@ public partial struct EvmPooledMemory
             Debug.Assert(GasCostOf.Memory == 3, "The linear term adds the word counts once per unit of the memory charge.");
             nuint newWords = (end + (WordSize - 1)) >> 5;
             nuint words = size >> 5;
-            ulong cost = (Math.BigMul((uint)newWords, (uint)newWords) >> 9) - (Math.BigMul((uint)words, (uint)words) >> 9) +
-                3 * (ulong)(newWords - words);
+            nuint cost;
+            if (newWords <= ushort.MaxValue)
+            {
+                // Below 2 MiB the squares fit a native word.
+                cost = (newWords * newWords >> 9) - (words * words >> 9) + 3 * (newWords - words);
+            }
+            else
+            {
+                ulong wideCost = (Math.BigMul((uint)newWords, (uint)newWords) >> 9) - (Math.BigMul((uint)words, (uint)words) >> 9) +
+                    3 * (ulong)(newWords - words);
+                if (wideCost > nuint.MaxValue) return ref Unsafe.NullRef<byte>();
+                cost = (nuint)wideCost;
+            }
+
             if (gas < cost) return ref Unsafe.NullRef<byte>();
 
-            gas -= (nuint)cost;
+            gas -= cost;
             Size = newWords << 5;
         }
 
@@ -144,12 +156,34 @@ public partial struct EvmPooledMemory
             nint gap = (nint)offset - (nint)initializedSize;
             if (gap > 0)
             {
-                ClearWord(ref Unsafe.Subtract(ref word, gap));
-                if (gap > WordSize) ClearWord(ref Unsafe.Subtract(ref word, WordSize));
+                ClearWordInNativeWords(ref Unsafe.Subtract(ref word, gap));
+                if (gap > WordSize) ClearWordInNativeWords(ref Unsafe.Subtract(ref word, WordSize));
             }
         }
 
         return ref word;
+    }
+
+    /// <summary><see cref="ClearWord"/> for a 32-bit guest.</summary>
+    /// <remarks>The JIT tests the alignment before each 4-byte part of an unaligned store; this tests it once.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void ClearWordInNativeWords(ref byte word)
+    {
+        if ((nuint)Unsafe.AsPointer(ref word) % sizeof(uint) != 0)
+        {
+            ClearWord(ref word);
+            return;
+        }
+
+        ref uint digits = ref Unsafe.As<byte, uint>(ref word);
+        digits = 0;
+        Unsafe.Add(ref digits, 1) = 0;
+        Unsafe.Add(ref digits, 2) = 0;
+        Unsafe.Add(ref digits, 3) = 0;
+        Unsafe.Add(ref digits, 4) = 0;
+        Unsafe.Add(ref digits, 5) = 0;
+        Unsafe.Add(ref digits, 6) = 0;
+        Unsafe.Add(ref digits, 7) = 0;
     }
 
     /// <summary>
