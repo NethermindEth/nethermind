@@ -85,8 +85,22 @@ public class MessageSerializationService : IMessageSerializationService
 
     public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
     {
-        if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
-            ThrowNoSerializerRegistered<T>();
+        if (!_zeroSerializers.TryGetValue(typeof(T).TypeHandle, out object serializerObject))
+            ThrowNoSerializerRegistered<T>("serializer");
+
+        if (serializerObject is IMessageSerializer<T> serializer)
+        {
+            T message = serializer.Deserialize(buffer.AsSpan());
+            // The serializer does not report how much it read, so the whole message counts as read.
+            buffer.SetReaderIndex(buffer.WriterIndex);
+            return message;
+        }
+
+        if (serializerObject is not IZeroMessageSerializer<T> zeroMessageSerializer)
+        {
+            ThrowInvalidSerializerType<T>(serializerObject);
+            return null!;
+        }
 
         return zeroMessageSerializer.Deserialize(buffer);
     }
@@ -173,28 +187,6 @@ public class MessageSerializationService : IMessageSerializationService
             => throw new InvalidOperationException($"{serializer.GetType().Name} wrote {written} bytes instead of the {length} it reported.");
     }
 
-    private bool TryGetZeroSerializer<T>(out IZeroMessageSerializer<T> serializer) where T : MessageBase
-    {
-        RuntimeTypeHandle typeHandle = typeof(T).TypeHandle;
-        if (!_zeroSerializers.TryGetValue(typeHandle, out object serializerObject))
-        {
-            serializer = null!;
-            return false;
-        }
-
-        if (serializerObject is IZeroMessageSerializer<T> messageSerializer)
-        {
-            serializer = messageSerializer;
-            return true;
-        }
-
-        // The constructor admits only the two kinds, so this is an IMessageSerializer<T>.
-        ThrowNotZeroSerializer<T>(serializerObject);
-        // unreachable
-        serializer = null!;
-        return false;
-    }
-
     private bool TryGetSerializer<T>(out IMessageSerializer<T> serializer) where T : MessageBase
     {
         if (_zeroSerializers.TryGetValue(typeof(T).TypeHandle, out object serializerObject) && serializerObject is IMessageSerializer<T> messageSerializer)
@@ -208,12 +200,8 @@ public class MessageSerializationService : IMessageSerializationService
     }
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowNoSerializerRegistered<T>(string serializerInterface = nameof(IZeroMessageSerializer<>)) where T : MessageBase
+    private static void ThrowNoSerializerRegistered<T>(string serializerInterface) where T : MessageBase
         => throw new InvalidOperationException($"No {serializerInterface} registered for {typeof(T).Name}.");
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowNotZeroSerializer<T>(object serializerObject) where T : MessageBase
-        => throw new InvalidOperationException($"{serializerObject.GetType().Name} for {typeof(T).Name} is not an {nameof(IZeroMessageSerializer<>)}; use {nameof(Deserialize)}<T>(ArraySegment<byte>) instead.");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidSerializerType<T>(object? serializerObject)

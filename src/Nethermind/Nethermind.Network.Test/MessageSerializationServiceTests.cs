@@ -7,6 +7,7 @@ using Autofac;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Network.P2P.Messages;
@@ -36,13 +37,20 @@ public class MessageSerializationServiceTests
     }
 
     [Test]
-    public void Deserialize_from_a_byte_buffer_points_a_span_serializer_to_the_byte_overload()
+    public void Deserialize_from_a_byte_buffer_reads_the_rest_of_it_with_a_span_serializer()
     {
-        MessageSerializationService service = new(SerializerInfo.Create(new SpanSerializer()));
-        using DisposableByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        using DisposableByteBuffer packet = UnpooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        packet.WriteBytes(Bytes.FromHexString("01c104"));
+        packet.SkipBytes(1);
 
-        Assert.That(() => service.Deserialize<SpanMessage>(buffer), Throws.InvalidOperationException.With.Message.EqualTo(
-            $"{nameof(SpanSerializer)} for {nameof(SpanMessage)} is not an IZeroMessageSerializer; use Deserialize<T>(ArraySegment<byte>) instead."));
+        DisconnectMessage message = container.Resolve<IMessageSerializationService>().Deserialize<DisconnectMessage>(packet);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message.Reason, Is.EqualTo((int)EthDisconnectReason.TooManyPeers));
+            Assert.That(packet.IsReadable(), Is.False);
+        }
     }
 
     [Test]
