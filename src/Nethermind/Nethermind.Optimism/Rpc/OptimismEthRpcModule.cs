@@ -60,7 +60,8 @@ public class OptimismEthRpcModule(
     IOptimismSpecHelper opSpecHelper,
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider,
-    IBlockForRpcFactory blockForRpcFactory)
+    IBlockForRpcFactory blockForRpcFactory,
+    ForwardedNonceTracker nonceTracker)
     : EthRpcModule(rpcConfig,
         blockchainBridge,
         blockFinder,
@@ -119,9 +120,31 @@ public class OptimismEthRpcModule(
         if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
             return sendError;
 
-        if (rpcTx is LegacyTransactionForRpc { From: { } from } legacy)
-            legacy.Nonce ??= _txPool.GetLatestPendingNonce(from);
+        if (rpcTx is not LegacyTransactionForRpc { From: { } from } legacy)
+            return await SignAndSend(rpcTx);
 
+        // One send at a time: the next one fills its nonce after this one is in the pool or with the sequencer.
+        await nonceTracker.SendLock.WaitAsync();
+        try
+        {
+            // A node that forwards to the sequencer has no pool (NullTxPool), so the tracker stands in for it.
+            ulong? forwardedNonce = sequencerRpcClient is null ? null : nonceTracker.GetNextNonce(from);
+            ulong nonce = legacy.Nonce ??= forwardedNonce ?? _txPool.GetLatestPendingNonce(from);
+
+            ResultWrapper<Hash256> result = await SignAndSend(rpcTx);
+            if (forwardedNonce is not null && result.Result.ResultType == ResultType.Success)
+                nonceTracker.OnForwarded(from, nonce);
+
+            return result;
+        }
+        finally
+        {
+            nonceTracker.SendLock.Release();
+        }
+    }
+
+    private async Task<ResultWrapper<Hash256>> SignAndSend(SignableTransactionForRpc rpcTx)
+    {
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction? tx, out string? error))
         {

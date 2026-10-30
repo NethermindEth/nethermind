@@ -53,6 +53,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly IJsonRpcClient? _sequencerRpcClient;
     private readonly HeadBlockSignal _headBlockSignal;
     private readonly IBlockForRpcFactory _blockForRpcFactory;
+    private readonly ForwardedNonceTracker _nonceTracker;
 
     public OptimismEthModuleFactory(IJsonRpcConfig rpcConfig,
         IBlockchainBridgeFactory blockchainBridgeFactory,
@@ -116,6 +117,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         TxSealer sealer = new(txSigner, timestamper);
         _sealer = sealer;
         _headBlockSignal = new HeadBlockSignal(blockTree);
+        _nonceTracker = new ForwardedNonceTracker(blockFinder, stateReader);
     }
 
     public override IOptimismEthRpcModule Create() => new OptimismEthRpcModule(
@@ -142,6 +144,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _opSpecHelper,
             _headBlockSignal,
             _capabilitiesProvider,
-            _blockForRpcFactory
+            _blockForRpcFactory,
+            _nonceTracker
         );
 }
