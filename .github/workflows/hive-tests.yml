@@ -55,7 +55,7 @@ on:
   workflow_call:
 
 concurrency:
-  group: hive-tests-${{ github.ref }}
+  group: hive-tests-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 env:
