@@ -32,6 +32,9 @@ public sealed class FrameTxValidationTracer(
     ulong maxVerifyGas = Eip8141Constants.MaxVerifyGas)
     : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer, IInstructionTracingFilter
 {
+    /// <summary>The opcodes that reach <see cref="StartOperation"/>; every other opcode runs untraced.</summary>
+    /// <remarks>Must cover every opcode the <c>switch</c> in <see cref="StartOperation"/> handles, otherwise the rule for a missing opcode is silently skipped.
+    /// <see cref="Instruction.SLOAD"/> is included only so <c>_inRecentRootCode</c> is current before <c>LoadOperationStorage</c> reads it.</remarks>
     public UInt256 InstructionMask => InspectedInstructions;
 
     internal static readonly UInt256 InspectedInstructions = CreateInspectedInstructions();
