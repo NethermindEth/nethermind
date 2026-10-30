@@ -20,6 +20,8 @@ public class MinGasPriceTxFilter(IBlocksConfig blocksConfig) : IMinGasPriceTxFil
     /// Enabled by default to preserve tx-pool admission diagnostics returned to RPC callers.</remarks>
     internal bool IncludeRejectionMessage { get; init; } = true;
 
+    private readonly ParentBaseFeeCache _baseFee = new();
+
     public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
         => IsAllowed(tx, parentHeader, blocksConfig.MinGasPrice, currentSpec);
 
@@ -29,7 +31,7 @@ public class MinGasPriceTxFilter(IBlocksConfig blocksConfig) : IMinGasPriceTxFil
         UInt256 baseFeePerGas = UInt256.Zero;
         if (spec.IsEip1559Enabled)
         {
-            baseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, spec);
+            baseFeePerGas = _baseFee.Get(parentHeader, spec);
             tx.TryCalculatePremiumPerGas(baseFeePerGas, out premiumPerGas);
         }
 
