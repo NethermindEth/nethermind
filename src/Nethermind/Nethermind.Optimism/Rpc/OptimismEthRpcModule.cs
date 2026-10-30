@@ -31,6 +31,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -60,7 +61,8 @@ public class OptimismEthRpcModule(
     IOptimismSpecHelper opSpecHelper,
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider,
-    IBlockForRpcFactory blockForRpcFactory)
+    IBlockForRpcFactory blockForRpcFactory,
+    ForwardedNonceTracker nonceTracker)
     : EthRpcModule(rpcConfig,
         blockchainBridge,
         blockFinder,
@@ -119,13 +121,44 @@ public class OptimismEthRpcModule(
         if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
             return sendError;
 
-        if (rpcTx is LegacyTransactionForRpc { From: { } from } legacy)
-            legacy.Nonce ??= _txPool.GetLatestPendingNonce(from);
+        if (rpcTx is not LegacyTransactionForRpc { From: { } from } legacy)
+            return (await SignAndSend(rpcTx)).Result;
 
+        // Sends from one account run one at a time: the next fills its nonce after this one is in the pool or with the sequencer.
+        using IDisposable senderLock = await nonceTracker.LockSenderAsync(from);
+
+        // A node that forwards to the sequencer has no pool (NullTxPool), so the tracker stands in for it.
+        ulong? nextNonce = sequencerRpcClient is null ? null : GetNextForwardedNonce(from, legacy.Nonce is not null);
+        ulong nonce = legacy.Nonce ??= nextNonce ?? _txPool.GetLatestPendingNonce(from);
+
+        (ResultWrapper<Hash256> result, bool signedByNode) = await SignAndSend(rpcTx);
+        // Only a transaction this node signed is counted: a request that brings its own signature is sent as it is, so its
+        // from need not be the account that signed it. A nonce past a gap waits at the sequencer, so it is not counted either.
+        if (signedByNode && nonce == nextNonce && result.Result.ResultType == ResultType.Success)
+            nonceTracker.OnForwarded(from, nonce);
+
+        return result;
+    }
+
+    private ulong? GetNextForwardedNonce(Address from, bool hasNonce)
+    {
+        try
+        {
+            return nonceTracker.GetNextNonce(from);
+        }
+        // Without the head state the next nonce is unknown; a request that has its nonce is forwarded all the same, uncounted.
+        catch (MissingTrieNodeException) when (hasNonce)
+        {
+            return null;
+        }
+    }
+
+    private async Task<(ResultWrapper<Hash256> Result, bool SignedByNode)> SignAndSend(SignableTransactionForRpc rpcTx)
+    {
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
-            return ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput);
+            return (ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput), false);
         }
 
         tx.ChainId = _blockchainBridge.GetChainId();
@@ -133,16 +166,19 @@ public class OptimismEthRpcModule(
         {
             if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress))
             {
-                return ResultWrapper<Hash256>.Fail(TxPoolErrorMessages.FailedToRecoverSender, ErrorCodes.TransactionRejected);
+                return (ResultWrapper<Hash256>.Fail(TxPoolErrorMessages.FailedToRecoverSender, ErrorCodes.TransactionRejected), false);
             }
 
             tx.SenderAddress = senderAddress;
         }
 
+        // The sealer keeps a signature the request brought; it signs with the wallet only a transaction without one.
+        bool unsigned = tx.Signature is null;
         if (!sealer.TrySeal(tx, TxHandlingOptions.None))
-            return ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked);
+            return (ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked), false);
 
-        return await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
+        bool signedByNode = unsigned && tx.Signature is not null;
+        return (await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes), signedByNode);
     }
 
     public override async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
