@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -78,6 +79,7 @@ public class LightTxDecoderTests
     public void Round_trip_preserves_the_optional_trailing_fields(UInt256[] nonceKeys, ulong? deadline)
     {
         Transaction tx = BlobCarryingTx(TxType.FrameTx, deadline, nonceKeys);
+        SpecChangeTxValidator validator = new(TestBlockchainIds.ChainId);
 
         LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
 
@@ -85,13 +87,16 @@ public class LightTxDecoderTests
         {
             Assert.That(decoded.NonceKeys, Is.EqualTo(nonceKeys));
             Assert.That(decoded.PersistedExpiryDeadline, Is.EqualTo(deadline));
+            Assert.That(validator.IsWellFormedLight(decoded, Eip8250Prototype.Instance).Error,
+                Is.EqualTo(validator.IsWellFormedLight(new LightTransaction(tx), Eip8250Prototype.Instance).Error));
         }
     }
 
     private static IEnumerable<TestCaseData> TrailingFieldCases()
     {
         // [0] aliases the account nonce, so it must survive as itself rather than collapse to an absent field.
-        UInt256[][] nonceKeySets = [null, [UInt256.Zero], [0xbeef], [1, UInt256.MaxValue], FullWidthKeys()];
+        // [] selects the account nonce under EIP-8250, where an absent set is the refused legacy shape.
+        UInt256[][] nonceKeySets = [null, [], [UInt256.Zero], [0xbeef], [1, UInt256.MaxValue], FullWidthKeys()];
         foreach (ulong? deadline in (ulong?[])[null, 0ul, 1_000ul])
         {
             foreach (UInt256[] nonceKeys in nonceKeySets)
@@ -306,6 +311,7 @@ public class LightTxDecoderTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(decoded.NonceKeys, Is.Null, "a group from before the key-set flag reads its empty keys list as no set");
             Assert.That(decoded.PersistedPaymaster, Is.EqualTo(TestItem.AddressC));
             Assert.That(decoded.PayerAddress, Is.Null);
             Assert.That(decoded.PayerExposure, Is.Null);
@@ -426,13 +432,14 @@ public class LightTxDecoderTests
     public void A_group_carrying_a_slot_this_build_does_not_know_still_decodes()
     {
         byte[] bare = FrameRecordWithoutGroup();
-        // [keys: [], payer: absent, exposure: 0, paymaster: AddressC, max_fee: 5, one slot this build has no name for]
-        byte[] group = [0xDA, 0xC0, 0x80, 0x80, 0x94, .. TestItem.AddressC.Bytes, 0x05, 0x01];
+        // [keys: [], payer: absent, exposure: 0, paymaster: AddressC, max_fee: 5, key set: yes, one slot this build has no name for]
+        byte[] group = [0xDB, 0xC0, 0x80, 0x80, 0x94, .. TestItem.AddressC.Bytes, 0x05, 0x01, 0x02];
 
         LightTransaction decoded = LightTxDecoder.Decode([.. bare, .. group]);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(decoded.NonceKeys, Is.Empty);
             Assert.That(decoded.PersistedPaymaster, Is.EqualTo(TestItem.AddressC));
             Assert.That(decoded.PayerAddress, Is.Null);
             Assert.That(decoded.MaxFee, Is.EqualTo((UInt256)5));
