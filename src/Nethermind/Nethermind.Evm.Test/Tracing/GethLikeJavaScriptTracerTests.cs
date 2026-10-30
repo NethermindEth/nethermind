@@ -22,6 +22,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -110,6 +111,25 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             GetTracer(userTracer), Bytes.FromHexString(code), MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace trace = tracer.BuildResult().First();
         AssertResult(trace, new[] { $"step:{opcode}:0:", $"fault:{opcode}:0:invalid opcode: {opcode}" });
+    }
+
+    [Test]
+    public void Nested_precompile_out_of_gas_is_reported_by_exit_not_fault()
+    {
+        const string userTracer = """
+            {
+                events: [],
+                step: function(log) { if (["CALL", "POP", "STOP"].indexOf(log.op.toString()) >= 0) this.events.push("step:" + log.op.toString() + ":" + (log.getError() || "")); },
+                fault: function(log) { this.events.push("fault:" + log.op.toString() + ":" + log.getError()); },
+                enter: function(frame) { this.events.push("enter"); },
+                exit: function(frame) { this.events.push("exit:" + frame.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        byte[] code = Prepare.EvmCode.Call(Sha256Precompile.Address, 10).Op(Instruction.POP).Op(Instruction.STOP).Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(userTracer), code, MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, new[] { "step:CALL:", "enter", "exit:out of gas", "step:POP:", "step:STOP:" });
     }
 
     [Test]
