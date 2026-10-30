@@ -461,11 +461,12 @@ public class ConfigFilesTests : ConfigFileTestsBase
         }
     }
 
-    [TestCase("chiado_archive.json")]
+    [TestCaseSource(nameof(AllConfigFiles))]
     public void Config_file_contains_only_known_settings(string configFile)
     {
         (string errorMsg, IList<(IConfigSource Source, string Category, string Name)> errors) = GetConfigProvider(configFile).FindIncorrectSettings();
-        Assert.That(errors, Is.Empty, errorMsg);
+        // The TraceStore plugin assembly is not loaded in this test process, so its config type is unknown here.
+        Assert.That(errors.Where(static e => e.Category != "TraceStoreConfig"), Is.Empty, errorMsg);
     }
 
     [Test]
