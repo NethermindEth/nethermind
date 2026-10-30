@@ -2352,6 +2352,91 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        public enum NonceTakenBy { CompetitorInBlock, PooledTxInBlock, NoTxInBlock }
+
+        [Test]
+        public async Task Pending_tx_is_surfaced_as_evicted_only_when_a_different_block_tx_takes_its_nonce([Values] bool isBlob, [Values] NonceTakenBy takenBy)
+        {
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetCancunSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction[] pooled = new Transaction[2];
+            for (int nonce = 0; nonce < pooled.Length; nonce++)
+            {
+                pooled[nonce] = Build.A.Transaction
+                    .WithNonce((ulong)nonce)
+                    .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
+                    .WithShardBlobTxTypeAndFieldsIfBlobTx()
+                    .WithMaxFeePerGas(1.GWei)
+                    .WithMaxPriorityFeePerGas(1.GWei)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                Assert.That(_txPool.SubmitTx(pooled[nonce], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            Transaction competitor = Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(2.GWei)
+                .WithMaxPriorityFeePerGas(2.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            List<Transaction> evicted = [];
+            List<Transaction> removed = [];
+            _txPool.EvictedPending += (_, e) => evicted.Add(e.Transaction);
+            _txPool.RemovedPending += (_, e) => removed.Add(e.Transaction);
+
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+            Transaction[] blockTxs = takenBy switch
+            {
+                NonceTakenBy.CompetitorInBlock => [competitor],
+                NonceTakenBy.PooledTxInBlock => [pooled[0]],
+                _ => [],
+            };
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTransactions(blockTxs).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetPendingTransaction(pooled[0].Hash!, out _), Is.False, "the nonce-0 tx leaves the pool in every case");
+                Assert.That(evicted.Select(static tx => tx.Hash),
+                    Is.EqualTo(takenBy == NonceTakenBy.CompetitorInBlock ? new[] { pooled[0].Hash } : Array.Empty<Hash256>()),
+                    "only a tx whose nonce a different included tx took is surfaced as a drop");
+                Assert.That(removed.Select(static tx => tx.Hash),
+                    Is.EqualTo(takenBy == NonceTakenBy.NoTxInBlock ? Array.Empty<Hash256>() : new[] { pooled[0].Hash }));
+            }
+        }
+
+        [Test]
+        public async Task Pending_tx_is_not_evicted_by_an_included_tx_with_the_same_nonce_in_another_nonce_domain([Values] bool keyedInBlock)
+        {
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+            Address sender = TestItem.PrivateKeyA.Address;
+            EnsureSenderBalance(sender, 100.Ether);
+            Transaction plain = Build.A.Transaction
+                .WithNonce(0)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithGasLimit(21_000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction keyed = BuildKeyedFrameTx(sender, nonceKey: 0xbeef, seq: 0, value: UInt256.Zero, maxFee: 1.GWei);
+            (Transaction pending, Transaction included) = keyedInBlock ? (plain, keyed) : (keyed, plain);
+            Assert.That(_txPool.SubmitTx(pending, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            List<Transaction> evicted = [];
+            _txPool.EvictedPending += (_, e) => evicted.Add(e.Transaction);
+
+            if (!keyedInBlock)
+            {
+                _stateProvider.IncrementNonce(sender);
+            }
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTransactions(included).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(evicted, Is.Empty);
+                Assert.That(_txPool.TryGetPendingTransaction(pending.Hash!, out _), Is.True);
+            }
+        }
+
         [Test]
         public void should_calculate_gasBottleneck_properly()
         {
