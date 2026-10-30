@@ -157,6 +157,9 @@ namespace Ethereum.Test.Base
             header.Hash = header.CalculateHash();
             Block block = new(header, new BlockBody(transactions, [], withdrawals));
 
+            // Zero is a placeholder rather than a keccak256 output: generated tests that pin no logs put it there.
+            StateTestLogsTracer? logsTracer = test.PostReceiptsRoot is null || test.PostReceiptsRoot == Keccak.Zero ? null : new();
+
             Stopwatch stopwatch = Stopwatch.StartNew();
 
             TransactionResult? txResult = null;
@@ -165,7 +168,7 @@ namespace Ethereum.Test.Base
             {
                 try
                 {
-                    txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), txTracer);
+                    txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), logsTracer?.Wrap(txTracer) ?? txTracer);
                 }
                 catch (InvalidDataException e)
                 {
@@ -209,7 +212,7 @@ namespace Ethereum.Test.Base
                 }
             }
 
-            List<string> differences = RunAssertions(test, stateProvider);
+            List<string> differences = RunAssertions(test, stateProvider, logsTracer);
             string? txError = txResult is { TransactionExecuted: false } failedResult
                 ? failedResult.ErrorDescription
                 : blockValidationError;
@@ -249,12 +252,18 @@ namespace Ethereum.Test.Base
             stateProvider.Reset();
         }
 
-        private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)
+        private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider, StateTestLogsTracer? logsTracer)
         {
             List<string> differences = [];
             if (test.PostHash != stateProvider.StateRoot)
             {
                 differences.Add($"STATE ROOT exp: {test.PostHash}, actual: {stateProvider.StateRoot}");
+            }
+
+            Hash256? logsHash = logsTracer?.LogsHash;
+            if (logsHash is not null && logsHash != test.PostReceiptsRoot)
+            {
+                differences.Add($"LOGS HASH exp: {test.PostReceiptsRoot}, actual: {logsHash}");
             }
 
             foreach (string difference in differences)
