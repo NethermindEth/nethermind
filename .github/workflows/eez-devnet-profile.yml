@@ -21,7 +21,7 @@ jobs:
       matrix:
         suite: ${{ fromJSON(inputs.suites) }}
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ inputs.profile == 'rollupx' && matrix.suite == 'protocol' && 20 || 15 }}
+    timeout-minutes: ${{ (matrix.suite == 'protocol' || matrix.suite == 'wave-mixed') && 20 || 15 }}
     env:
       EEZ_PROFILE: ${{ inputs.profile }}
       EEZ_SUITE: ${{ matrix.suite }}

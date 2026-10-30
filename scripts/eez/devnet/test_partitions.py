@@ -219,6 +219,71 @@ run_check "state-chaining" bash "$HERE/verify-state-chaining.sh"
                             partitions.report(root)
                         self.assertFalse((root / "partition.json").exists())
 
+    def test_fault_restart_waits_for_front_transport_without_replaying_transactions(self):
+        for permanent_failure in (False, True):
+            with self.subTest(permanent_failure=permanent_failure), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                scripts = root / "scripts"
+                scripts.mkdir()
+                original = """set -euo pipefail
+L1F=http://front.test
+wait_l2_rpc() { :; }
+retry() { for attempt in 1 2 3; do if "$@"; then return 0; fi; done; return 1; }
+wait_l2_rpc
+replayed=original
+[[ "$replayed" == original ]]
+[[ -s "$RESULT_DIR/probes" && "$(cat "$RESULT_DIR/probes")" -ge 2 ]]
+printf 'original-safe-prefix-and-fresh-transaction-assertions\\n'
+"""
+                script = scripts / "verify-fault-recovery.sh"
+                script.write_text(original)
+                library = scripts / "lib.sh"
+                raw = 'resp=$(curl "$front" -d "$raw" 2>/dev/null); rc=$?'
+                library.write_text(raw)
+                probe = root / "cast"
+                probe.write_text("""#!/usr/bin/env bash
+[[ "$*" == 'chain-id --rpc-url http://front.test' ]] || exit 9
+count=$(cat "$RESULT_DIR/probes" 2>/dev/null || echo 0)
+count=$((count + 1))
+echo "$count" > "$RESULT_DIR/probes"
+[[ "$PERMANENT_FAILURE" == false && "$count" -ge 2 ]] || exit 56
+echo 7331
+""")
+                probe.chmod(0o755)
+                changed, hooks = partitions.adapt_driver(self.driver(), root, "rollup0", "faults")
+                self.assertEqual(["verify-eezl2-deployment", "verify-fault-recovery"], hooks)
+                self.assertIn('bash "$HERE/scripts/verify-fault-recovery.sh"', changed)
+                addition = 'retry timeout 5s cast chain-id --rpc-url "$L1F" >/dev/null\n'
+                self.assertEqual(original, script.read_text().replace(addition, ""), "original scenario and assertions remain unchanged")
+                self.assertEqual(1, library.read_text().count('2>"$RESULT_DIR/front-rpc-error.log"'))
+                self.assertEqual(raw, library.read_text().replace('2>"$RESULT_DIR/front-rpc-error.log"', '2>/dev/null'),
+                                 "transaction request and failure status remain unchanged")
+                result = subprocess.run(["bash", str(script)], capture_output=True, text=True, timeout=10,
+                    env={**os.environ, "PATH": str(root) + os.pathsep + os.environ["PATH"], "RESULT_DIR": str(root),
+                         "PERMANENT_FAILURE": str(permanent_failure).lower()})
+                if permanent_failure:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertNotIn("original-safe-prefix-and-fresh-transaction-assertions", result.stdout)
+                else:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn("original-safe-prefix-and-fresh-transaction-assertions", result.stdout)
+                self.assertEqual(int((root / "probes").read_text()), 3 if permanent_failure else 2)
+
+    def test_fault_readiness_rejects_missing_or_ambiguous_upstream_boundaries(self):
+        for malformed in ("missing-ready", "duplicate-ready", "missing-curl", "duplicate-curl"):
+            with self.subTest(malformed=malformed), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                scripts = root / "scripts"
+                scripts.mkdir()
+                ready = "wait_l2_rpc\nreplayed=original\n"
+                curl = 'resp=$(curl "$front" 2>/dev/null); rc=$?\n'
+                (scripts / "verify-fault-recovery.sh").write_text("" if malformed == "missing-ready" else ready * (2 if malformed == "duplicate-ready" else 1))
+                (scripts / "lib.sh").write_text("" if malformed == "missing-curl" else curl * (2 if malformed == "duplicate-curl" else 1))
+                before = {p: p.read_text() for p in scripts.iterdir()}
+                with self.assertRaises(ValueError):
+                    partitions.adapt_fault_readiness(root)
+                self.assertEqual(before, {p: p.read_text() for p in scripts.iterdir()}, "failed adaptation must not partially rewrite the source")
+
     @staticmethod
     def coverage_plan(profile):
         result = {"upstream": {"profile": profile}, "protocol_cases": ["bridge", "bridgeL2"],

@@ -102,6 +102,8 @@ def adapt_driver(commands, package, profile, suite):
             retained.append(name)
     if selected == "verify-cross-chain-waves":
         adapt_waves(package / "scripts/verify-cross-chain-waves.sh", WAVE_GROUPS[suite])
+    if suite == "faults":
+        adapt_fault_readiness(package)
     if profile == "rollupx":
         if suite == "protocol":
             readiness = '# Canonical replay proves readiness; an observer receipt alone does not.\n'
@@ -128,6 +130,18 @@ def adapt_driver(commands, package, profile, suite):
         raise ValueError("upstream full-suite summary boundary changed")
     commands = commands[:commands.index(summary)] + '\necho "upstream partition $EEZ_SUITE passed"\n'
     return commands, retained
+
+
+def adapt_fault_readiness(package):
+    script = package / "scripts/verify-fault-recovery.sh"
+    library = package / "scripts/lib.sh"
+    # L2 RPC readiness does not cover the separate transaction ingress front.
+    ready = replace_once(script.read_text(), "wait_l2_rpc\nreplayed=",
+                         'wait_l2_rpc\nretry timeout 5s cast chain-id --rpc-url "$L1F" >/dev/null\nreplayed=')
+    diagnostics = replace_once(library.read_text(), '2>/dev/null); rc=$?',
+                               '2>"$RESULT_DIR/front-rpc-error.log"); rc=$?')
+    script.write_text(ready)
+    library.write_text(diagnostics)
 
 
 def defer_native_settlement(commands, selected):
