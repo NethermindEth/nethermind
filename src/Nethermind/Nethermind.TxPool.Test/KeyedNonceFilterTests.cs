@@ -77,7 +77,7 @@ internal class KeyedNonceFilterTests
 
     [Test]
     public void Leaves_the_account_nonce_domain_to_the_account_nonce_filters() =>
-        Assert.That((bool)Accept(KeyedTx([UInt256.Zero], 0), StateWith(0)), Is.True);
+        Assert.That((bool)Accept(KeyedTx([], 0), StateWith(0)), Is.True);
 
     /// <remarks>The decoder rejects a malformed set before the pool sees it, so this pins the filter's own guard
     /// rather than a reachable ingress path.</remarks>
