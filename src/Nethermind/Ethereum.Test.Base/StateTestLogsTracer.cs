@@ -46,16 +46,17 @@ internal sealed class StateTestLogsTracer : TxTracer, IFrameTxReceiptTracer, ITx
 
     /// <remarks>
     /// The processor takes the frame receipt reports from the tracer it is given, not from inside a composite,
-    /// so this one passes them on to both tracers.
+    /// so this one passes them on to both tracers. The caller's tracer gets the receipt report only when it traces
+    /// receipts, as the processor would send it.
     /// </remarks>
     private sealed class CompositeTracer(ITxTracer txTracer, StateTestLogsTracer logsTracer)
         : CompositeTxTracer(txTracer, logsTracer), IFrameTxReceiptTracer
     {
-        private readonly IFrameTxReceiptTracer? _frameTxTracer = txTracer as IFrameTxReceiptTracer;
+        private readonly IFrameTxReceiptTracer? _frameTxTracer = IFrameTxReceiptTracer.FindIn(txTracer);
 
         public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
         {
-            _frameTxTracer?.ReportFrameTxReceipt(payer, frameReceipts);
+            if (txTracer.IsTracingReceipt) _frameTxTracer?.ReportFrameTxReceipt(payer, frameReceipts);
             logsTracer.ReportFrameTxReceipt(payer, frameReceipts);
         }
 
