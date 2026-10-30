@@ -69,6 +69,18 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
 
     private static long? RefundAt(IEnumerable<StructLog> logs, string opcode) => logs.Single(l => l.Op == opcode).Refund;
 
+    [TestCaseSource(typeof(GethLikeTxMemoryTracerTests), nameof(GethLikeTxMemoryTracerTests.OutOfGasOperations))]
+    public void Streams_full_cost_of_out_of_gas_operation(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
+    {
+        List<StructLog> logs = StreamLogs(code, GethTraceOptions.Default, GasCostOf.Transaction + gasAfterIntrinsic);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs[^1].Error, Is.EqualTo("out of gas"));
+            Assert.That(logs[^1].GasCost, Is.EqualTo(expectedGasCost));
+        }
+    }
+
     [Test]
     public void Streams_parent_refund_survives_child_revert()
     {
@@ -374,9 +386,9 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
     private List<StructLog> ExecuteAndStream(bool clearingFrameReverts) =>
         StreamLogs(clearingFrameReverts ? ChildClearThenRevertCode() : ClearSstoreCode(), GethTraceOptions.Default);
 
-    private List<StructLog> StreamLogs(byte[] code, GethTraceOptions options)
+    private List<StructLog> StreamLogs(byte[] code, GethTraceOptions options, ulong gasLimit = 100000)
     {
-        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
 
         return StreamLogs(options,
             tracer => _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer),
@@ -404,6 +416,8 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
         return [.. document.RootElement.EnumerateArray().Select(static e => new StructLog(
             e.GetProperty("op").GetString()!,
             e.GetProperty("depth").GetInt32(),
+            e.GetProperty("gasCost").GetUInt64(),
+            e.TryGetProperty("error", out JsonElement error) ? error.GetString() : null,
             e.TryGetProperty("refund", out JsonElement refund) ? refund.GetInt64() : null,
             e.TryGetProperty("returnData", out JsonElement returnData) ? returnData.GetString() : null))];
     }
@@ -425,5 +439,5 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
             .Done;
     }
 
-    private readonly record struct StructLog(string Op, int Depth, long? Refund, string? ReturnData);
+    private readonly record struct StructLog(string Op, int Depth, ulong GasCost, string? Error, long? Refund, string? ReturnData);
 }

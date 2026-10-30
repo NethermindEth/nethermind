@@ -726,7 +726,9 @@ public static class FrameTxValidation
             {
                 tokens += signature.Signer is null ? 0 : CountCalldataTokens(signature.Signer.Bytes, spec);
                 tokens += CountCalldataTokens(signature.Msg.Span, spec);
-                tokens += CountCalldataTokens(signature.Signature.Span, spec);
+                tokens += signature.SignsCanonicalHash
+                    ? (ulong)signature.Signature.Length * spec.GasCosts.TxDataNonZeroMultiplier
+                    : CountCalldataTokens(signature.Signature.Span, spec);
                 dataLength += (ulong)(signature.Signer is null ? 0 : Address.Size)
                               + (ulong)signature.Msg.Length
                               + (ulong)signature.Signature.Length;
@@ -751,10 +753,7 @@ public static class FrameTxValidation
             (int zeroBytes, int nonZeroBytes) = transaction.FrameCalldataStats;
             tokens += (ulong)zeroBytes + (ulong)nonZeroBytes * spec.GasCosts.TxDataNonZeroMultiplier;
             dataLength += (ulong)(zeroBytes + nonZeroBytes);
-            if (nonceKeys is not [{ IsZero: true }])
-            {
-                keyedNonceAccessCost = (ulong)nonceKeys.Length * Eip8250Constants.KeyedNonceAccessCost;
-            }
+            keyedNonceAccessCost = (ulong)nonceKeys.Length * Eip8250Constants.KeyedNonceAccessCost;
         }
 
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost
