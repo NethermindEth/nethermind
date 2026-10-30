@@ -316,6 +316,32 @@ public class UnsafeHeadFollowerTests
         }
     }
 
+    [Test]
+    public async Task Advance_RestartBelowStoredCanonicalBlocks_RevalidatesThemBeforeMovingTheHead()
+    {
+        Block[] ahead = Serve(Branch(_heads.Safe, 2, extraData: 0xb9));
+        await _follower.Advance(_heads, CancellationToken.None);
+        _engine.Inserted.Clear();
+        _sequencer.ClearReceivedCalls();
+        FollowerHeads restarted = new(_engine, _chain, _heads.Safe);
+        IUnsafeBlockPreparation preparation = Substitute.For<IUnsafeBlockPreparation>();
+        preparation.Prepare(Arg.Any<BlockHeader>(), Arg.Any<Block>(), Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<UnsafeBlockPreparationResult>(UnsafeBlockPreparationResult.Ready));
+        UnsafeHeadFollower follower = new(_sequencer, _chain, _engine,
+            new Rollup0HeaderRules(DerivedChain.SpecProvider, DerivedChain.Context), LimboLogs.Instance, preparation);
+
+        await follower.Advance(restarted, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_engine.Inserted.Select(static block => block.Hash), Is.EqualTo(ahead.Select(static block => block.Hash)));
+            Assert.That(restarted.Head.Hash, Is.EqualTo(ahead[^1].Hash));
+            Assert.That(restarted.Safe.Hash, Is.EqualTo(_heads.Safe.Hash));
+            Assert.That(RawBlockReads(), Is.Zero, "stored bodies are reused, but their canonical evidence and Engine validation are not skipped");
+        }
+        await preparation.Received(2).Prepare(Arg.Any<BlockHeader>(), Arg.Any<Block>(), Arg.Any<CancellationToken>());
+    }
+
     private int RawBlockReads() => _sequencer.ReceivedCalls().Count(static call => call.GetMethodInfo().Name == nameof(IEezSequencerApi.GetRawBlock));
 
     private Block[] Serve(Block[] blocks)

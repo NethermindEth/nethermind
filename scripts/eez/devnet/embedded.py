@@ -51,7 +51,7 @@ NATIVE_CASES = {
         "imported_history_reorg_recovers_twenty_ordinary_transactions_without_settlement":
             ("unsafe-history-reorg", ("before-reorg", "after-reorg", "after-restart", "after-settlement")),
         "native_l1_reorg_recovers_confirmed_and_unresolved_source_generations_in_nonce_order":
-            ("native-source-reorg", ("before-reorg", "after-reorg", "after-settlement")),
+            ("native-source-reorg", ("before-reorg", "after-reorg", "after-settlement", "after-settled-restart")),
     },
 }
 
@@ -85,7 +85,7 @@ def adapt_native(source):
     marker = "    let l1 = ProviderBuilder::new().connect_http(world.l1_rpc().parse().unwrap());"
     for name in (first, second):
         label = NATIVE_CASES["queue_reorg"][name][0]
-        binding = "mut " if name == first else ""
+        binding = "mut "
         after(name, marker, '\n    let ' + binding + 'candidate = nethermind::Candidate::start_native("' + label + '", &world).await.unwrap();')
     after(first, "    assert!(ancestor.number >= setup_tip);",
           '\n    candidate.verify_unsafe(&world.l2_rpc(), &serde_json::json!(hashes), "before-reorg").await.unwrap();')
@@ -100,7 +100,9 @@ def adapt_native(source):
     marker = "    wait_for_safe_prefix_convergence(&[&world.node, &follower], covered, TIMEOUT)\n        .await\n        .unwrap();"
     after(second, marker,
           '\n    candidate.verify_unsafe(&world.l2_rpc(), &serde_json::json!(sources), "after-reorg").await.unwrap();\n'
-          '    candidate.verify(&world.l2_rpc(), covered, "after-settlement").await.unwrap();')
+          '    candidate.verify(&world.l2_rpc(), covered, "after-settlement").await.unwrap();\n'
+          '    candidate.restart().await.unwrap();\n'
+          '    candidate.verify_unsafe(&world.l2_rpc(), &serde_json::json!(sources), "after-settled-restart").await.unwrap();')
     restored = source
     for addition in reversed(additions):
         if restored.count(addition) != 1:
@@ -344,6 +346,7 @@ def verify(settings_path):
     equal(reference.call("eth_chainId"), candidate.call("eth_chainId"), "L2 chain identity")
     genesis = reference.call("eth_getBlockByNumber", "0x0", False)["hash"]
     if "unsafe_transactions" in settings:
+        settings["container"] = container["Id"]
         return verify_unsafe(settings, directory, l1, reference, candidate, genesis, call, deadline)
     expected_hash = settings.get("settled_hash")
     expected_height = 0
@@ -502,6 +505,14 @@ def report(args):
                 equal(repaired["database_id"], restarted["database_id"], "unsafe restart retains database")
                 if repaired["container"] == restarted["container"]:
                     raise ValueError("unsafe recovery requires an actual candidate restart")
+        if label == "native-source-reorg":
+            before, settled, restarted = observations[1:]
+            equal(before["unsafe_transactions"], restarted["unsafe_transactions"], "same settled restart transactions")
+            equal(settled["database_id"], restarted["database_id"], "settled restart retains database")
+            if settled["container"] == restarted["container"]:
+                raise ValueError("settled recovery requires an actual candidate restart")
+            if not 0 < before["safe_height"] <= restarted["safe_height"] or before["finalized_height"] > restarted["finalized_height"]:
+                raise ValueError("settled or finalized head regressed during native restart")
         if suite in ("contract_post", "partial_consumption"):
             for observation in observations:
                 if not re.fullmatch(r"0x[a-fA-F0-9]{64}", observation.get("settled_hash", "")) or not 0 < observation.get("settled_height", 0) <= observation["height"]:

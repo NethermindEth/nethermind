@@ -103,7 +103,7 @@ public sealed class UnsafeHeadFollower(
         List<Block>? blocks;
         try
         {
-            blocks = await Branch(target.Hash, heads.Safe, token);
+            blocks = await Branch(target.Hash, heads.Safe, heads.Head.Number, token);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -218,18 +218,18 @@ public sealed class UnsafeHeadFollower(
     }
 
     /// <summary>
-    /// The sequencer's blocks from <paramref name="head"/> down to the first one whose parent is canonical, newest first;
+    /// The sequencer's blocks from <paramref name="head"/> down to the executed canonical prefix, newest first;
     /// <see langword="null"/> when that parent is below <paramref name="safe"/> or the source hash differs.
     /// Blocks the node already holds off the canonical chain, such as the ones a head reset left, are taken locally.
     /// </summary>
     /// <exception cref="L1SourceIncompleteException">The walk exceeds <see cref="MaxDepth"/> and needs a fresh source snapshot.</exception>
-    private async Task<List<Block>?> Branch(Hash256 head, BlockHeader safe, CancellationToken token)
+    private async Task<List<Block>?> Branch(Hash256 head, BlockHeader safe, ulong executedHeight, CancellationToken token)
     {
         List<Block> blocks = [];
         Hash256 next = head;
         while (blocks.Count < MaxDepth)
         {
-            if (blockTree.FindHeader(next) is { } known && blockTree.IsMainChain(known))
+            if (blockTree.FindHeader(next) is { } known && known.Number <= executedHeight && blockTree.IsMainChain(known))
             {
                 return known.Number >= safe.Number ? blocks : null;
             }
@@ -244,7 +244,7 @@ public sealed class UnsafeHeadFollower(
             next = block.ParentHash!;
         }
 
-        if (blockTree.FindHeader(next) is { } ancestor && blockTree.IsMainChain(ancestor))
+        if (blockTree.FindHeader(next) is { } ancestor && ancestor.Number <= executedHeight && blockTree.IsMainChain(ancestor))
             return ancestor.Number >= safe.Number ? blocks : null;
         throw new L1SourceIncompleteException(safe.Number, "Unsafe ancestry exceeds the walk limit; retry with a fresh source snapshot.");
     }

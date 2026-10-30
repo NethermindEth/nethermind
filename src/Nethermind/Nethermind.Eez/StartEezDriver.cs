@@ -14,7 +14,7 @@ namespace Nethermind.Eez;
 /// <see cref="EezDriver"/> runs in the background and handles its own failures; the service stopper stops it with the
 /// other services, before anything is disposed.
 /// </remarks>
-[RunnerStepDependencies(typeof(InitializeBlockchain), typeof(InitializeBlockProducer), typeof(InitializeNetwork))]
+[RunnerStepDependencies(typeof(InitializeBlockchain), typeof(InitializeBlockProducer), typeof(InitializeNetwork), typeof(ReviewBlockTree))]
 public class StartEezDriver(EezDriver driver, ILogManager logManager) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)

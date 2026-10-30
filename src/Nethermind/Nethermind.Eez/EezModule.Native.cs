@@ -7,6 +7,8 @@ using System.Net.Http.Headers;
 using System.Text;
 using Autofac;
 using Autofac.Core;
+using Nethermind.Api;
+using Nethermind.Init.Steps;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Eez.Execution.Settlement.RollupX;
@@ -29,6 +31,19 @@ public partial class EezModule
             .Bind<IEezL1History, NativeCanonicalHistory>()
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
             .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, NativeNodeHistoryExecutor>();
+        // Native replay needs canonical L1 evidence and is owned by the follower's Engine path.
+        builder.RegisterType<ReviewBlockTree>().WithParameter(new ResolvedParameter(
+            static (parameter, _) => parameter.ParameterType == typeof(IInitConfig),
+            static (_, context) =>
+            {
+                IInitConfig init = context.Resolve<IInitConfig>();
+                return new InitConfig
+                {
+                    ProcessingEnabled = false,
+                    HealCanonicalChain = init.HealCanonicalChain,
+                    HealCanonicalChainDepth = init.HealCanonicalChainDepth,
+                };
+            })).SingleInstance();
         builder.RegisterType<NativeL1Rpc>().WithParameter(ResolvedParameter.ForKeyed<HttpClient>(NativeL1ClientKey)).SingleInstance();
     }
 

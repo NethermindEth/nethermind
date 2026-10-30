@@ -8,6 +8,10 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Visitors;
+using Nethermind.Init.Steps;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -308,6 +312,32 @@ public partial class RollupXGenesisTests
     }
 
     [Test]
+    public async Task NativeFollower_StartupReview_PreservesHealingWithoutReplayingBeforeCanonicalEvidence([Values] bool heal)
+    {
+        using NativeHistoryTestSource source = CreateHistorySource();
+        IBlockTree tree = Substitute.For<IBlockTree, IBlockTreeHealer>();
+        Block head = Build.A.Block.TestObject;
+        head.Header.Hash = TestItem.KeccakA;
+        tree.Head.Returns(head);
+        InitConfig init = new() { ProcessingEnabled = true, HealCanonicalChain = heal, HealCanonicalChainDepth = 17 };
+        using IContainer container = NativeFollowerContainer(source, FollowerRules(source), configure: builder =>
+            builder.AddSingleton<IInitConfig>(init)
+                .AddSingleton(tree)
+                .AddSingleton(Substitute.For<IWorldStateManager>())
+                .AddSingleton(Substitute.For<IBlockProcessingQueue>()));
+
+        await container.Resolve<ReviewBlockTree>().Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<IInitConfig>().ProcessingEnabled, Is.True, "normal Engine processing must remain enabled");
+            await tree.DidNotReceive().Accept(Arg.Any<IBlockTreeVisitor>(), Arg.Any<CancellationToken>());
+            ((IBlockTreeHealer)tree).Received(heal ? 1 : 0).HealCanonicalChain(TestItem.KeccakA, 17);
+            Assert.That(source.Methods, Is.Empty, "native evidence preparation belongs to the single follower driver");
+        }
+    }
+
+    [Test]
     public void NativeFollower_BatchOverResourceBudget_RejectsBeforeL1Reads()
     {
         using NativeHistoryTestSource source = CreateHistorySource();
@@ -406,7 +436,7 @@ public partial class RollupXGenesisTests
         return EezChainRules.NativeRollupX(schedule, Address.FromNumber(123), format);
     }
 
-    private static IContainer NativeFollowerContainer(NativeHistoryTestSource source, EezChainRules rules, string? l1Config = null)
+    private static IContainer NativeFollowerContainer(NativeHistoryTestSource source, EezChainRules rules, string? l1Config = null, Action<ContainerBuilder>? configure = null)
     {
         EezConfig config = new()
         {
@@ -426,6 +456,7 @@ public partial class RollupXGenesisTests
             .AddSingleton(Substitute.For<IEngineRpcModule>())
             .AddModule(new EezModule(config, rules));
         builder.RegisterInstance(source.Http).Keyed<HttpClient>(EezModule.NativeL1ClientKey).ExternallyOwned();
+        configure?.Invoke(builder);
         return builder.Build();
     }
 

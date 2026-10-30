@@ -75,8 +75,8 @@ class EmbeddedCoverageTests(unittest.TestCase):
         .unwrap();''')))
         adapted, restored = embedded.adapt_native(source)
         self.assertEqual(source, restored)
-        self.assertEqual(5, adapted.count("candidate.verify_unsafe("))
-        self.assertEqual(1, adapted.count("candidate.restart().await.unwrap();"))
+        self.assertEqual(6, adapted.count("candidate.verify_unsafe("))
+        self.assertEqual(2, adapted.count("candidate.restart().await.unwrap();"))
         self.assertEqual(2, adapted.count("Candidate::start_native("))
         for marker in ("assert!(ancestor.number >= setup_tip);", "assert_eq!(after_chain.state_root, before_chain.state_root);", "assert!(settled.status());"):
             with self.subTest(marker=marker), self.assertRaises((ValueError, AssertionError)):
@@ -85,8 +85,8 @@ class EmbeddedCoverageTests(unittest.TestCase):
     def test_native_report_rejects_settled_only_execution_and_fake_restart(self):
         revision, image = "a" * 40, "sha256:" + "b" * 64
         for name, (label, phases) in embedded.NATIVE_CASES["queue_reorg"].items():
-            for failure in (None, "settled-only", "missing-receipts", "missing-mode", "source", "image", "missing-phase", "database", "container"):
-                if label != "unsafe-history-reorg" and failure in ("database", "container"):
+            for failure in (None, "settled-only", "missing-receipts", "missing-mode", "source", "image", "missing-phase", "database", "container", "zero-safe", "safe-regressed", "finalized-regressed"):
+                if label != "native-source-reorg" and failure in ("zero-safe", "safe-regressed", "finalized-regressed"):
                     continue
                 with self.subTest(label=label, failure=failure), tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)
@@ -96,16 +96,19 @@ class EmbeddedCoverageTests(unittest.TestCase):
                     for index, phase in enumerate(phases):
                         observation = {"result": "pass", "case": label, "phase": phase, "verified_blocks": 5,
                             "candidate_revision": revision, "image_id": image, "database_id": "same",
-                            "container": "restarted" if index >= 2 else "original", "mode": "unsafe",
-                            "unsafe_height": 4, "safe_height": 0, "unsafe_transactions": ["0x" + "12" * 32]}
+                            "container": "restarted" if phase in ("after-restart", "after-settled-restart") or (label == "unsafe-history-reorg" and phase == "after-settlement") else "original", "mode": "unsafe",
+                            "unsafe_height": 4, "safe_height": 2 if label == "native-source-reorg" else 0, "finalized_height": 1 if label == "native-source-reorg" else 0, "unsafe_transactions": ["0x" + "12" * 32]}
                         if phase == "after-reorg":
+                            if failure == "zero-safe": observation["safe_height"] = 0
                             if failure == "settled-only": observation["safe_height"] = 4
                             if failure == "missing-receipts": observation["unsafe_transactions"] = []
                             if failure == "missing-mode": observation.pop("mode")
                             if failure == "source": observation["candidate_revision"] = "c" * 40
                             if failure == "image": observation["image_id"] = "sha256:" + "c" * 64
                             if failure == "missing-phase": continue
-                        if phase == "after-restart":
+                        if phase in ("after-restart", "after-settled-restart"):
+                            if failure == "safe-regressed": observation["safe_height"] = 1
+                            if failure == "finalized-regressed": observation["finalized_height"] = 0
                             if failure == "database": observation["database_id"] = "fresh"
                             if failure == "container": observation["container"] = "original"
                         (root / (label + "-" + phase + ".json")).write_text(json.dumps(observation))
@@ -116,6 +119,34 @@ class EmbeddedCoverageTests(unittest.TestCase):
                             self.assertEqual("passed", json.loads((root / "candidate-coverage.json").read_text())["cases"][0]["candidate_status"])
                         else:
                             with self.assertRaises((ValueError, AssertionError, FileNotFoundError)): embedded.report(args)
+
+    def test_native_unsafe_dispatch_records_inspected_container_id_for_restart_evidence(self):
+        revision, image, identity = "a" * 40, "sha256:" + "b" * 64, "c" * 64
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            settings = {"result_directory": str(root), "candidate_revision": revision, "image_id": image,
+                        "container": "candidate-name", "reference": "reference", "candidate": "candidate", "l1": "l1",
+                        "case": "unsafe-history-reorg", "phase": "before-reorg", "rollup_id": "1", "l1_chain_id": "1",
+                        "unsafe_transactions": ["0x" + "12" * 32]}
+            path = root / "settings.json"
+            path.write_text(json.dumps(settings))
+            def inspect(command, **kwargs):
+                if command[:3] == ["docker", "image", "inspect"]:
+                    return json.dumps([{"Id": image, "Config": {"Labels": {"org.opencontainers.image.revision": revision}}}])
+                if command[:3] == ["docker", "container", "inspect"]:
+                    return json.dumps([{"Image": image, "Id": identity}])
+                self.assertEqual("cast", command[0])
+                return "0xcall"
+            l1 = Mock(call=Mock(return_value="0x1"))
+            reference = Mock(call=Mock(side_effect=lambda method, *args: "0x2" if method == "eth_chainId" else {"hash": "genesis"}))
+            candidate = Mock(call=Mock(return_value="0x2"))
+            with patch.dict(os.environ, {"EEZ_EMBEDDED_RESULTS": str(root), "GITHUB_SHA": revision}), \
+                 patch("embedded.subprocess.check_output", side_effect=inspect), patch("embedded.Rpc", side_effect=[l1, reference, candidate]), \
+                 patch("embedded.verify_unsafe") as dispatch:
+                embedded.verify(path)
+            dispatch.assert_called_once()
+            self.assertEqual(identity, dispatch.call_args.args[0]["container"])
+            self.assertEqual("candidate-name", json.loads(path.read_text())["container"], "observation inputs remain unchanged")
 
     def test_native_accounting_checks_genesis_and_settled_state_on_both_nodes(self):
         expected = {"system_balance": "0x7", "system_nonce": "0x2", "recipient": "recipient", "recipient_balance": "0x10"}
