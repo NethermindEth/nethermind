@@ -276,6 +276,9 @@ namespace Nethermind.TxPool
             {
                 foreach (Transaction restored in _blobTransactions.GetSnapshot())
                 {
+                    // Admission marks a pooled hash as known; a recreated record skipped admission, so peers'
+                    // announcements of it would be fetched again and a resubmission rejected as a replacement.
+                    _hashCache.SetLongTerm(restored.Hash!);
                     if (HasExpiryDeadline(restored)) _expiringFrameTxCount++;
                     // EIP-8141: the bound is summed over the pending set, so a record that survived the restart
                     // has to keep counting against its payer. Restored, not re-gated: the reservation was
@@ -2122,17 +2125,20 @@ namespace Nethermind.TxPool
             }
         }
 
-        /// <summary>Whether every nonce key <paramref name="tx"/> selects still sits at its declared sequence in the head state.</summary>
+        /// <summary>Whether every nonce key <paramref name="tx"/> selects still sits at its declared sequence in the head state; single-use sets must read 0.</summary>
         private bool IsKeyedNonceCurrent(Transaction tx) =>
             KeyedNonceManager.IsNonceSetValid(_headInfo.ReadOnlyStateProvider, tx.SenderAddress!, tx.NonceKeys!, tx.Nonce);
 
         /// <summary>Whether any nonce key <paramref name="tx"/> selects has advanced past its declared sequence in the head state.</summary>
-        /// <remarks>A keyed sequence only ever advances, so a key already beyond the declared sequence has spent it for good on this fork.</remarks>
+        /// <remarks>A keyed sequence only ever advances, so a key already beyond the declared sequence has spent it for good on this fork.
+        /// A single-use set (<see cref="Eip8250Constants.MaxNonceSeq"/>) is behind once any of its keys has been used.</remarks>
         private bool IsKeyedNonceBehind(Transaction tx)
         {
+            bool singleUse = tx.Nonce == Eip8250Constants.MaxNonceSeq;
             foreach (UInt256 nonceKey in tx.NonceKeys!)
             {
-                if (KeyedNonceManager.CurrentNonceSeq(_headInfo.ReadOnlyStateProvider, tx.SenderAddress!, in nonceKey) > tx.Nonce)
+                ulong current = KeyedNonceManager.CurrentNonceSeq(_headInfo.ReadOnlyStateProvider, tx.SenderAddress!, in nonceKey);
+                if (singleUse ? current != 0 : current > tx.Nonce)
                 {
                     return true;
                 }

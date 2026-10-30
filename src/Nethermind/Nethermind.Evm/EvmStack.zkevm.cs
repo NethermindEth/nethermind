@@ -53,8 +53,7 @@ public ref partial struct EvmStack
     internal readonly bool AnalyzeJumpDestination(nint destination, ref byte code)
     {
         CodeInfo? codeInfo = _codeInfo;
-        return codeInfo is not null && ReferenceEquals(_jumpDestinations, codeInfo.IncrementalJumpBitmap) &&
-            codeInfo.AnalyzeRunningJump(destination, _jumpDestinations!, ref code);
+        return codeInfo is not null && codeInfo.AnalyzeRunningJump(destination, _jumpDestinations, ref code);
     }
 
     /// <summary>
