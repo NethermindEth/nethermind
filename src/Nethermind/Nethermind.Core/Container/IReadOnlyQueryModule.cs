@@ -54,8 +54,8 @@ public enum ReadOnlyQueryKind
 /// The modules are never applied to main block processing, prewarming, validation or sync. A
 /// <see cref="ReadOnlyQueryKind.Call"/> module configures every environment of the shared read-only transaction
 /// processor source, though, and other users also run calls there whose results they act on: Taiko builds its transaction
-/// lists there, Shutter reads its eon keys and validator registry there, and the Flashbots rbuilder module serves its
-/// calls there. A module must therefore leave every result exactly as it would be without it.
+/// lists there, and the Flashbots rbuilder module serves its calls there. A module must therefore leave every result
+/// exactly as it would be without it.
 /// </para>
 /// <para>
 /// Some environments that run calls without persisting them are left out on purpose, because their results are acted on

@@ -19,18 +19,4 @@ public static class EnumerableExtensions
 
     public static bool NullableSequenceEqual<T>(this IEnumerable<T>? first, IEnumerable<T>? second) =>
         first is not null ? second is not null && first.SequenceEqual(second) : second is null;
-
-    public static bool ContainsDuplicates<T>(this IEnumerable<T> list, int? count = null, IEqualityComparer<T>? comparer = null)
-    {
-        HashSet<T> hashSet = count is null ? new HashSet<T>(comparer) : new HashSet<T>(count.Value, comparer);
-        foreach (T element in list)
-        {
-            if (!hashSet.Add(element))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }

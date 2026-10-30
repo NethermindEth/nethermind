@@ -59,7 +59,6 @@
     <Project Path="../../src/Nethermind/Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Serialization.SszGenerator/Nethermind.Serialization.SszGenerator.csproj" />
-    <Project Path="../../src/Nethermind/Nethermind.Shutter/Nethermind.Shutter.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Sockets/Nethermind.Sockets.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Specs/Nethermind.Specs.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.State.Flat.History/Nethermind.State.Flat.History.csproj" />

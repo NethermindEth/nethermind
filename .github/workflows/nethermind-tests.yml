@@ -106,7 +106,6 @@ jobs:
               Nethermind.Facade.Test
               Nethermind.OpcodeTracing.Plugin.Test
               Nethermind.Serialization.JsonGenerator.Test
-              Nethermind.Shutter.Test
               Nethermind.State.Flat.Test
           - name: Nethermind tests 6
             list: >-

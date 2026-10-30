@@ -18,7 +18,6 @@ using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Snappier;
-using Timestamper = Nethermind.Core.Timestamper;
 
 namespace Nethermind.EraE.Archive;
 
@@ -86,9 +85,7 @@ public sealed class EraWriter : IDisposable
         {
             _slotTime = new SlotTime(
                 specProvider.BeaconChainGenesisTimestamp.Value * MillisecondsPerSecond,
-                new Timestamper(),
-                TimeSpan.FromSeconds(BeaconSlotSeconds),
-                TimeSpan.Zero);
+                TimeSpan.FromSeconds(BeaconSlotSeconds));
         }
     }
 

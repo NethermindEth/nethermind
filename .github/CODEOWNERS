@@ -34,7 +34,6 @@
 /src/Nethermind/Nethermind.Serialization.Rlp @LukaszRozmej @Marchhill
 /src/Nethermind/Nethermind.Serialization.Ssz @flcl42 @ak88 @Marchhill
 /src/Nethermind/Nethermind.Serialization.SszGenerator @flcl42 @ak88 @Marchhill
-/src/Nethermind/Nethermind.Shutter @Marchhill
 /src/Nethermind/Nethermind.Sockets @LukaszRozmej @benaadams
 /src/Nethermind/Nethermind.Specs* @smartprogrammer93 @Marchhill @LukaszRozmej @benaadams @flcl42 @AnkushinDaniil
 /src/Nethermind/Nethermind.State @LukaszRozmej @benaadams @asdacap @flcl42 @damian-orzechowski

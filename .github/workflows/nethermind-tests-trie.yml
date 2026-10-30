@@ -109,7 +109,6 @@ jobs:
               Nethermind.Evm.Test
               Nethermind.Merge.AuRa.Test
               Nethermind.Network.Discovery.Test
-              Nethermind.Shutter.Test
               Nethermind.Taiko.Test
               Nethermind.Trie.Test
               Nethermind.Xdc.Test
