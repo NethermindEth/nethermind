@@ -28,10 +28,11 @@ public partial class EezModule
             .AddKeyedSingleton<HttpClient>(NativeL1ClientKey, _ => NativeL1Client(config.L1RpcUrl!))
             .AddSingleton<NativeCanonicalHistory>()
             .AddSingleton<IUnsafeBlockPreparation, NativeUnsafeBlockPreparation>()
+            .AddSingleton<IFollowerStateRecovery, NativeFollowerStateRecovery>()
             .Bind<IEezL1History, NativeCanonicalHistory>()
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
             .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, NativeNodeHistoryExecutor>();
-        // Native replay needs canonical L1 evidence and is owned by the follower's Engine path.
+        // Native replay needs canonical L1 evidence and is owned by the follower.
         builder.RegisterType<ReviewBlockTree>().WithParameter(new ResolvedParameter(
             static (parameter, _) => parameter.ParameterType == typeof(IInitConfig),
             static (_, context) =>

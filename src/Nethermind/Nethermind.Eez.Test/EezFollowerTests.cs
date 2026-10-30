@@ -428,10 +428,64 @@ public class EezFollowerTests
         await Assert.DoesNotThrowAsync(async () => await driver.DisposeAsync(), "the stopper and the container may both release the driver");
     }
 
-    private EezFollower Follower(IEezL2Engine engine, IEezL1History? history = null)
+    [Test]
+    public async Task Boot_RecoveryIncomplete_PublishesNoForkchoiceUntilRetrySucceeds()
+    {
+        _chain.ForkChoiceUpdated(finalizedBlockHash: L2(2).Hash!, safeBlockBlockHash: L2(4).Hash!);
+        _l1.GetLogs(Registry, L1BatchScanner.L2ExecutionPerformedTopic, L1BatchScanner.RollupTopic(RollupId),
+            Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>()).Returns([SettledRoot(SettlingL1Block, 4)]);
+        IFollowerStateRecovery recovery = Substitute.For<IFollowerStateRecovery>();
+        recovery.Restore(L2(4), Arg.Any<CancellationToken>()).Returns(Task.FromException(new EezEngineUnavailableException("recovering")));
+        _engine.Forkchoices.Clear();
+        _follower = Follower(_engine, recovery: recovery);
+
+        bool first = await _follower.TryBoot(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.False);
+            Assert.That(_engine.Forkchoices, Is.Empty, "an unavailable checkpoint must not lower persisted safe/finalized heads");
+        }
+        recovery.Restore(L2(4), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+
+        Assert.That(await _follower.TryBoot(CancellationToken.None), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_follower.Heads.Safe.Hash, Is.EqualTo(L2(4).Hash));
+            Assert.That(_follower.Heads.Finalized.Hash, Is.EqualTo(L2(2).Hash));
+            Assert.That(_engine.Forkchoices.Count, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Boot_L1ReorganizesDuringRecovery_DoesNotPublishTheOldSettlement()
+    {
+        _chain.ForkChoiceUpdated(finalizedBlockHash: L2(2).Hash!, safeBlockBlockHash: L2(4).Hash!);
+        _l1.GetLogs(Registry, L1BatchScanner.L2ExecutionPerformedTopic, L1BatchScanner.RollupTopic(RollupId),
+            Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>()).Returns([SettledRoot(SettlingL1Block, 4)]);
+        IFollowerStateRecovery recovery = Substitute.For<IFollowerStateRecovery>();
+        recovery.Restore(L2(4), Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            GrowL1(5, "replacement", SettlingL1Block);
+            return Task.CompletedTask;
+        });
+        _engine.Forkchoices.Clear();
+        _follower = Follower(_engine, recovery: recovery);
+
+        bool booted = await _follower.TryBoot(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(booted, Is.False);
+            Assert.That(_engine.Forkchoices, Is.Empty, "checkpoint recovery cannot publish a settlement reorganized out of L1");
+        }
+    }
+
+    private EezFollower Follower(IEezL2Engine engine, IEezL1History? history = null, IFollowerStateRecovery? recovery = null)
     {
         ResumePointFinder resumePoints = new(_l1, _chain, Registry, RollupId, _config.RegistryDeployBlock, _config.L1LogScanBlocks);
-        return new EezFollower(_l1, _scanner, _reconciler, resumePoints, _unsafeHead, new Rollup0HeaderRules(MainnetSpecProvider.Instance, DerivedChain.Context), EezChainRules.Rollup0, _chain, engine, _config, LimboLogs.Instance, history);
+        return new EezFollower(_l1, _scanner, _reconciler, resumePoints, _unsafeHead, new Rollup0HeaderRules(MainnetSpecProvider.Instance, DerivedChain.Context), EezChainRules.Rollup0, _chain, engine, _config, LimboLogs.Instance, history, recovery);
     }
 
     private EezDriver Driver(IEezSequencer? sequencer, IProcessExitSource? processExit = null, ITimestamper? clock = null) =>

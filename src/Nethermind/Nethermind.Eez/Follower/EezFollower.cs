@@ -44,7 +44,8 @@ public sealed class EezFollower(
     IEezL2Engine engine,
     IEezConfig config,
     ILogManager logManager,
-    IEezL1History? l1History = null)
+    IEezL1History? l1History = null,
+    IFollowerStateRecovery? stateRecovery = null)
 {
     /// <summary>
     /// How many settling L1 blocks are kept while L1 finalizes none of them, as on a chain without a finalized tag; an
@@ -275,11 +276,20 @@ public sealed class EezFollower(
     /// <summary>Continues from the last settlement L1 and the local chain agree on, or from genesis when there is none.</summary>
     private async Task Resume(EezL1Block latest, bool fromGenesis, CancellationToken token)
     {
-        l1History?.Invalidate();
         SettledRecord? record = fromGenesis ? null : await resumePoints.Find(latest.Number, token);
         BlockHeader endpoint = record?.L2End ?? blockTree.Genesis!;
         ulong next = record is null ? config.RegistryDeployBlock : record.L1Number + 1;
         EezL1Block lastScanned = await Block(next - 1, token);
+        if (stateRecovery is not null)
+        {
+            await stateRecovery.Restore(endpoint, token);
+            if (record is not null && !await IsCanonical(record.L1Number, record.L1Hash, token))
+            {
+                l1History?.Invalidate();
+                throw new L1SourceIncompleteException(record.L1Number, "L1 reorganized during native checkpoint recovery.");
+            }
+        }
+        l1History?.Invalidate();
         await _heads.Reset(endpoint);
 
         _settled.Clear();
