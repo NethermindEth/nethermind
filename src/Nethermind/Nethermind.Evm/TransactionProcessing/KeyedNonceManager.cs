@@ -34,15 +34,8 @@ public static class KeyedNonceManager
         return new StorageCell(Eip8250Constants.NonceManagerAddress, index);
     }
 
-    public static ulong CurrentNonceSeq(IReadOnlyStateProvider state, Address sender, in UInt256 nonceKey)
-    {
-        if (nonceKey.IsZero)
-        {
-            return state.GetNonce(sender);
-        }
-
-        return CurrentNonceSeq(state, StorageSlot(sender, nonceKey));
-    }
+    public static ulong CurrentNonceSeq(IReadOnlyStateProvider state, Address sender, in UInt256 nonceKey) =>
+        CurrentNonceSeq(state, StorageSlot(sender, nonceKey));
 
     private static ulong CurrentNonceSeq(IReadOnlyStateProvider state, in StorageCell slot)
     {
@@ -52,14 +45,14 @@ public static class KeyedNonceManager
     }
 
     public static bool IsFirstUse(IReadOnlyStateProvider state, Address sender, in UInt256 nonceKey) =>
-        !nonceKey.IsZero && CurrentNonceSeq(state, sender, nonceKey) == 0;
+        CurrentNonceSeq(state, sender, nonceKey) == 0;
 
     /// <summary>How many of <paramref name="nonceKeys"/> are unused, so consuming the set creates that many
     /// <c>NONCE_MANAGER</c> slots.</summary>
     /// <remarks>
     /// EIP-8250 prices each fresh slot as one storage-set state charge against the approving frame, so every
     /// path that grants payment approval owes the same count regardless of whether the approver carries code.
-    /// The set <c>[0]</c> writes no slot and counts zero.
+    /// The empty set writes no slot and counts zero.
     /// Counted slot by slot rather than inferred from the shared sequence: gas estimation reaches payment
     /// approval with nonce validation skipped, so there a partially used set is observable.
     /// </remarks>
@@ -67,14 +60,12 @@ public static class KeyedNonceManager
     public static int FirstUseCount(IReadOnlyStateProvider state, Address sender, ReadOnlySpan<UInt256> nonceKeys)
     {
         int firstUseCount = 0;
-        // A well-formed multi-key set cannot contain key 0, so every key reads a storage slot.
         if (Avx512F.IsSupported && nonceKeys.Length is >= MinHashBatchSize and <= Eip8250Constants.MaxNonceKeys)
         {
             Span<UInt256> indices = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
             StorageIndices(sender, nonceKeys, indices);
             for (int i = 0; i < nonceKeys.Length; i++)
             {
-                Debug.Assert(!nonceKeys[i].IsZero, "key 0 cannot appear in a well-formed multi-key set");
                 StorageCell slot = new(Eip8250Constants.NonceManagerAddress, indices[i]);
                 if (CurrentNonceSeq(state, slot) == 0) firstUseCount++;
             }
@@ -93,13 +84,13 @@ public static class KeyedNonceManager
     [SkipLocalsInit]
     public static void ConsumeNonceSet(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
     {
-        if (nonceKeys.Length == 1 && nonceKeys[0].IsZero)
+        if (nonceKeys.IsEmpty)
         {
             state.IncrementNonce(sender);
             return;
         }
 
-        UInt256 nextSeq = (UInt256)nonceSeq + UInt256.One;
+        UInt256 nextSeq = nonceSeq == Eip8250Constants.MaxNonceSeq ? nonceSeq : (UInt256)nonceSeq + UInt256.One;
 
         if (Avx512F.IsSupported && nonceKeys.Length is >= MinHashBatchSize and <= Eip8250Constants.MaxNonceKeys)
         {
@@ -107,7 +98,6 @@ public static class KeyedNonceManager
             StorageIndices(sender, nonceKeys, indices);
             for (int i = 0; i < nonceKeys.Length; i++)
             {
-                Debug.Assert(!nonceKeys[i].IsZero, "key 0 must not appear in a non-[0] nonce_keys set");
                 state.Set(new StorageCell(Eip8250Constants.NonceManagerAddress, indices[i]), nextSeq);
             }
             return;
@@ -115,16 +105,13 @@ public static class KeyedNonceManager
 
         foreach (UInt256 nonceKey in nonceKeys)
         {
-            // EIP-8250 rejects key 0 in a non-[0] set; the decode-time validity check owns that, this guards the primitive.
-            Debug.Assert(!nonceKey.IsZero, "key 0 must not appear in a non-[0] nonce_keys set");
             state.Set(StorageSlot(sender, nonceKey), nextSeq);
         }
     }
 
     /// <summary>Whether <paramref name="nonceKeys"/> selects protocol-managed nonce domains rather than the sender's account nonce.</summary>
-    /// <remarks>The set <c>[0]</c> aliases the account nonce, so only it keeps the account-nonce semantics every other transaction type has.</remarks>
-    public static bool UsesKeyedDomain(ReadOnlySpan<UInt256> nonceKeys) =>
-        nonceKeys.Length != 1 || !nonceKeys[0].IsZero;
+    /// <remarks>The empty set selects the account nonce, so only it keeps the account-nonce semantics every other transaction type has.</remarks>
+    public static bool UsesKeyedDomain(ReadOnlySpan<UInt256> nonceKeys) => !nonceKeys.IsEmpty;
 
     /// <summary>Whether <paramref name="tx"/>'s replay protection lives in <c>NONCE_MANAGER</c> rather than the sender's account nonce.</summary>
     /// <remarks>Account-nonce filters and sender-bucket ordering are meaningless for such a transaction.</remarks>
@@ -133,23 +120,15 @@ public static class KeyedNonceManager
 
     /// <summary>Checks whether <paramref name="nonceKeys"/> is a well-formed <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> nonce-key set.</summary>
     /// <remarks>
-    /// Well-formed means: length in <c>[1, <see cref="Eip8250Constants.MaxNonceKeys"/>]</c>; key 0 appears only as the
-    /// singleton set <c>[0]</c>; and any multi-key set is strictly increasing, which also excludes a later 0.
+    /// Well-formed means: length in <c>[0, <see cref="Eip8250Constants.MaxNonceKeys"/>]</c> and strictly increasing.
     /// </remarks>
     public static bool AreNonceKeysWellFormed(ReadOnlySpan<UInt256> nonceKeys)
     {
-        if (nonceKeys.Length < 1 || nonceKeys.Length > Eip8250Constants.MaxNonceKeys)
+        if (nonceKeys.Length > Eip8250Constants.MaxNonceKeys)
         {
             return false;
         }
 
-        // Key 0 is valid only as the singleton [0].
-        if (nonceKeys[0].IsZero)
-        {
-            return nonceKeys.Length == 1;
-        }
-
-        // Strictly increasing; as the first key is non-zero this also rejects any later 0.
         for (int i = 1; i < nonceKeys.Length; i++)
         {
             if (nonceKeys[i] <= nonceKeys[i - 1])
@@ -163,9 +142,10 @@ public static class KeyedNonceManager
 
     /// <summary>Checks whether <paramref name="nonceKeys"/>/<paramref name="nonceSeq"/> is a valid set to consume against <paramref name="sender"/>'s current state.</summary>
     /// <remarks>
-    /// Requires all of: <paramref name="nonceKeys"/> is well-formed (see <see cref="AreNonceKeysWellFormed"/>),
-    /// <paramref name="nonceSeq"/> is below <see cref="Eip8250Constants.MaxNonceSeq"/>, and every key in the set is
-    /// currently at <paramref name="nonceSeq"/> (per <see cref="CurrentNonceSeq"/>). Safe to call on undecoded/untrusted input.
+    /// Requires <paramref name="nonceKeys"/> to be well-formed (see <see cref="AreNonceKeysWellFormed"/>). The empty set
+    /// requires the account nonce to equal <paramref name="nonceSeq"/>, which must be below <see cref="Eip8250Constants.MaxNonceSeq"/>.
+    /// Otherwise every key must be at <paramref name="nonceSeq"/> (per <see cref="CurrentNonceSeq"/>), or unused when
+    /// <paramref name="nonceSeq"/> is <see cref="Eip8250Constants.MaxNonceSeq"/>. Safe to call on undecoded/untrusted input.
     /// </remarks>
     [SkipLocalsInit]
     public static bool IsNonceSetValid(IReadOnlyStateProvider state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
@@ -175,21 +155,21 @@ public static class KeyedNonceManager
             return false;
         }
 
-        if (nonceSeq >= Eip8250Constants.MaxNonceSeq)
+        if (nonceKeys.IsEmpty)
         {
-            return false;
+            return nonceSeq < Eip8250Constants.MaxNonceSeq && state.GetNonce(sender) == nonceSeq;
         }
 
-        // A well-formed multi-key set is bounded and cannot contain key 0, so every key uses a storage slot.
+        ulong expected = nonceSeq == Eip8250Constants.MaxNonceSeq ? 0 : nonceSeq;
+
         if (Avx512F.IsSupported && nonceKeys.Length >= MinHashBatchSize)
         {
-            Debug.Assert(!nonceKeys[0].IsZero, "key 0 cannot appear in a well-formed multi-key set");
             Span<UInt256> indices = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
             StorageIndices(sender, nonceKeys, indices);
             for (int i = 0; i < nonceKeys.Length; i++)
             {
                 StorageCell slot = new(Eip8250Constants.NonceManagerAddress, indices[i]);
-                if (CurrentNonceSeq(state, slot) != nonceSeq)
+                if (CurrentNonceSeq(state, slot) != expected)
                 {
                     return false;
                 }
@@ -199,7 +179,7 @@ public static class KeyedNonceManager
 
         foreach (ref readonly UInt256 nonceKey in nonceKeys)
         {
-            if (CurrentNonceSeq(state, sender, nonceKey) != nonceSeq)
+            if (CurrentNonceSeq(state, sender, nonceKey) != expected)
             {
                 return false;
             }

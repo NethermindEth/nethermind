@@ -59,9 +59,6 @@ public sealed class ConfigureMemoryAllocators(
 
         NethermindBuffers.Default = NethermindBuffers.CreateAllocator(arenaOrder, arenaCount);
         NethermindBuffers.RlpxAllocator = NethermindBuffers.CreateAllocator(arenaOrder, arenaCount);
-
-        // 1 MB chunk as discovery should be fairly small and does not do much.
-        NethermindBuffers.DiscoveryAllocator = NethermindBuffers.CreateAllocator(8, arenaCount);
     }
 
     private void ConfigureDefaultPooledByteBufferAllocator(int arenaOrder, uint arenaCount)

@@ -15,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using NSubstitute;
@@ -27,7 +28,6 @@ public class FlatDbManagerTests
 {
     private IResourcePool _resourcePool = null!;
     private IProcessExitSource _processExitSource = null!;
-    private ITrieNodeCache _trieNodeCache = null!;
     private ISnapshotCompactor _snapshotCompactor = null!;
     private ISnapshotRepository _snapshotRepository = null!;
     private IPersistenceManager _persistenceManager = null!;
@@ -35,6 +35,7 @@ public class FlatDbManagerTests
     private IFlatDbConfig _config = null!;
     private IBlocksConfig _blocksConfig = null!;
     private CancellationTokenSource _cts = null!;
+    private INodeRecordBuffer _buffer = null!;
 
     private const long HistoryBarrier = 100;
     private static readonly Address HistoryAddr = new("0x0000000000000000000000000000000000000abc");
@@ -51,9 +52,9 @@ public class FlatDbManagerTests
     {
         _resourcePool = Substitute.For<IResourcePool>();
         _cts = new CancellationTokenSource();
+        _buffer = FlatTestHelpers.NewTestBuffer();
         _processExitSource = Substitute.For<IProcessExitSource>();
         _processExitSource.Token.Returns(_cts.Token);
-        _trieNodeCache = Substitute.For<ITrieNodeCache>();
         _snapshotCompactor = Substitute.For<ISnapshotCompactor>();
         _snapshotRepository = Substitute.For<ISnapshotRepository>();
         _persistenceManager = Substitute.For<IPersistenceManager>();
@@ -79,12 +80,13 @@ public class FlatDbManagerTests
         _cts.Dispose();
         _historyDb.Dispose();
         _historyColumns.Dispose();
+        _buffer.Dispose();
     }
 
     private FlatDbManager CreateManager() => new(
         _resourcePool,
         _processExitSource,
-        _trieNodeCache,
+        _buffer,
         _snapshotCompactor,
         _snapshotRepository,
         _persistenceManager,
@@ -686,11 +688,52 @@ public class FlatDbManagerTests
         }
     }
 
-    private HistoricalFlatDbManager WrapHistory(FlatDbManager inner) => new(
+    [TestCase(false, TestName = "GatherReadOnlySnapshotBundle_repeated_on_one_block_reads_availability_once")]
+    [TestCase(true, TestName = "GatherReadOnlySnapshotBundle_repeated_on_one_block_reads_availability_once_with_a_floor")]
+    public async Task GatherReadOnlySnapshotBundle_repeated_on_one_block_reads_availability_once(bool withFloor)
+    {
+        const int Scopes = 8;
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        RecordHistoryWindow();
+
+        SnapshotableMemDb availableBlocks = new();
+        using (IWriteBatch batch = availableBlocks.StartWriteBatch())
+        {
+            for (ulong block = 0; block < HistoryBarrier; block++)
+            {
+                HistoryAvailability.MarkBlock(batch, block, CreateStateId(block, (byte)block).StateRoot, HistoryAvailability.FormatVersion);
+            }
+        }
+
+        HistoryAvailability availability = new(availableBlocks);
+        availability.PublishWatermark(HistoryBarrier - 1, HistoryAvailability.FormatVersion);
+        HistoryReader reader = new(_historyDb, _historyColumns, availability, HistoryRowFormat.Resolve(availability, _config), LimboLogs.Instance);
+        if (withFloor) availability.PublishGlobalFloor(10);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = WrapHistory(inner, reader);
+        StateId state = CreateStateId(25, rootByte: 25);
+
+        ReadScope(manager, state);
+        long readsBefore = availableBlocks.ReadsCount;
+        for (int i = 1; i < Scopes; i++) ReadScope(manager, state);
+
+        Assert.That(availableBlocks.ReadsCount - readsBefore, Is.Zero, "every later scope on the same block answers availability from memory");
+
+        static void ReadScope(HistoricalFlatDbManager manager, in StateId state)
+        {
+            Assert.That(manager.HasStateForBlock(state), Is.True);
+            using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(state);
+            Assert.That(bundle.GetAccount(HistoryAddr)?.Balance, Is.EqualTo((UInt256)2000));
+        }
+    }
+
+    private HistoricalFlatDbManager WrapHistory(FlatDbManager inner) => WrapHistory(inner, _historyReader);
+
+    private HistoricalFlatDbManager WrapHistory(FlatDbManager inner, HistoryReader historyReader) => new(
         inner,
         _persistenceManager,
-        _historyReader,
-        _trieNodeCache,
+        historyReader,
         _resourcePool,
         enableDetailedMetrics: false,
         new HistoryScopeGate(),

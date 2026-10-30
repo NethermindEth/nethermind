@@ -91,11 +91,11 @@ public partial class StatelessBlockProcessingEnv(
         IKeyValueStoreWithBatching codeDb = witness.CreateCodeDb();
         IWorldStateScopeProvider scopeProvider = WorldStateScopeProviderFactory?.Invoke(trieStore, codeDb)
             ?? new TrieStoreScopeProvider(trieStore, codeDb, UnavailableStateHeaderProvider.Instance, logManager);
-        return RequireWitnessedBytecode(new WorldState(scopeProvider, logManager));
+        return CreateWorldState(scopeProvider, logManager);
     }
 
-    /// <summary>Makes a bytecode access fail when the witness lacks the code.</summary>
-    private static partial IWorldState RequireWitnessedBytecode(WorldState worldState);
+    /// <summary>Creates the world state over the witness, where a bytecode access fails when the witness lacks the code.</summary>
+    private static partial IWorldState CreateWorldState(IWorldStateScopeProvider scopeProvider, ILogManager logManager);
 
     /// <summary>Creates the block's code cache, sized for <see cref="CodeCacheCapacity"/> codes.</summary>
     private static partial ICodeCache CreateCodeCache();

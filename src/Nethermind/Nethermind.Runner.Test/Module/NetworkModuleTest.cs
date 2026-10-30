@@ -157,7 +157,7 @@ public class NetworkModuleTest
 
                 Type interfaceGenericDefinition = implementedInterface.GetGenericTypeDefinition();
 
-                if (interfaceGenericDefinition == typeof(IZeroMessageSerializer<>).GetGenericTypeDefinition())
+                if (interfaceGenericDefinition == typeof(IZeroMessageSerializer<>) || interfaceGenericDefinition == typeof(IMessageSerializer<>))
                 {
                     yield return (implementedInterface.GenericTypeArguments[0], type);
                 }
