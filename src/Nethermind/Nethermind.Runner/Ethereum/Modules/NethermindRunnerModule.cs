@@ -37,7 +37,7 @@ public class NethermindRunnerModule(
     IConfigProvider configProvider,
     IProcessExitSource processExitSource,
     IEnumerable<INethermindPlugin> plugins,
-    string? command,
+    StepCommandSelection? command,
     ILogManager logManager
 ) : Module
 {
@@ -81,7 +81,7 @@ public class NethermindRunnerModule(
             ;
 
         if (command is not null)
-            builder.AddSingleton(new StepCommandSelection(command));
+            builder.AddSingleton(command);
 
         foreach (INethermindPlugin plugin in plugins)
         {

@@ -842,7 +842,7 @@ public class EthereumRunnerTests
         ApiBuilder builder = new(processExitSource, configProvider, LimboLogs.Instance);
         IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
         plugins.Add(new RunnerTestPlugin(true));
-        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: "verify-trie");
+        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: new StepCommandSelection("verify-trie", []));
 
         try
         {
