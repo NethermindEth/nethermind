@@ -35,7 +35,7 @@ public class RocksDbRewriter(
 {
     private const string RewriteSuffix = "_rewrite";
     private const string OldSuffix = "_old";
-    private static readonly long ChunkBytes = 1.MiB;
+    private static readonly nuint ChunkBytes = (nuint)1.MiB;
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(10);
 
     private readonly ILogger _logger = logManager.GetClassLogger<RocksDbRewriter>();
@@ -110,29 +110,27 @@ public class RocksDbRewriter(
     }
 
     /// <remarks>
-    /// Reads with one iterator and writes the chunks it produces from concurrent batches. The writes skip the WAL,
-    /// so the family is flushed at the end; a crash before that leaves only the rewrite directory, which the next
-    /// run deletes.
+    /// Reads with one iterator into write batches that concurrent writers commit. The writes skip the WAL, so the
+    /// family is flushed at the end; a crash before that leaves only the rewrite directory, which the next run
+    /// deletes. Batches are native rather than <see cref="DbOnTheRocks.RocksDbWriteBatch"/>, which commits every few
+    /// hundred no-WAL writes on the thread filling it, here the reader.
     /// </remarks>
     private async Task Copy(DbOnTheRocks source, DbOnTheRocks target, string? family, CancellationToken cancellationToken)
     {
         IColumnFamilyHandle? sourceFamily = GetFamily(source, family);
         IColumnFamilyHandle? targetFamily = GetFamily(target, family);
 
+        WriteOptions noWal = target.WriteFlagsToWriteOptions(WriteFlags.DisableWAL)!;
         using CancellationTokenSource writerFailed = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        Channel<List<KeyValuePair<byte[], byte[]>>> chunks = Channel.CreateBounded<List<KeyValuePair<byte[], byte[]>>>(Environment.ProcessorCount);
+        Channel<WriteBatch> batches = Channel.CreateBounded<WriteBatch>(Environment.ProcessorCount);
         Task writers = Parallel.ForEachAsync(
-            chunks.Reader.ReadAllAsync(writerFailed.Token),
+            batches.Reader.ReadAllAsync(writerFailed.Token),
             new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = writerFailed.Token },
-            (chunk, _) =>
+            (writeBatch, _) =>
             {
                 try
                 {
-                    using DbOnTheRocks.RocksDbWriteBatch batch = new(target);
-                    foreach (KeyValuePair<byte[], byte[]> entry in chunk)
-                    {
-                        batch.Set(entry.Key, entry.Value, targetFamily, WriteFlags.DisableWAL);
-                    }
+                    using (writeBatch) target._db.Write(writeBatch, noWal);
                 }
                 catch
                 {
@@ -145,6 +143,7 @@ public class RocksDbRewriter(
             });
 
         long count = 0;
+        WriteBatch? batch = new();
         try
         {
             using ReadOptions readOptions = source.CreateReadOptions();
@@ -153,21 +152,15 @@ public class RocksDbRewriter(
             readOptions.SetReadaheadSize(source.ReadAheadSize);
             using Iterator iterator = source.CreateIterator(readOptions, sourceFamily);
 
-            List<KeyValuePair<byte[], byte[]>> chunk = [];
-            long chunkBytes = 0;
             long lastProgress = Stopwatch.GetTimestamp();
             for (iterator.SeekToFirst(); iterator.Valid(); iterator.Next())
             {
-                byte[] key = iterator.GetKeySpan().ToArray();
-                byte[] value = iterator.GetValueSpan().ToArray();
-                chunk.Add(new(key, value));
-                chunkBytes += key.Length + value.Length;
+                batch.Put(iterator.GetKeySpan(), iterator.GetValueSpan(), targetFamily);
                 count++;
 
-                if (chunkBytes < ChunkBytes) continue;
-                await chunks.Writer.WriteAsync(chunk, writerFailed.Token);
-                chunk = [];
-                chunkBytes = 0;
+                if (batch.DataSize < ChunkBytes) continue;
+                await batches.Writer.WriteAsync(batch, writerFailed.Token);
+                batch = new();
 
                 if (Stopwatch.GetElapsedTime(lastProgress) < ProgressInterval) continue;
                 lastProgress = Stopwatch.GetTimestamp();
@@ -177,11 +170,14 @@ public class RocksDbRewriter(
             // An iterator stops being valid on a read error too, which would otherwise swap in a truncated copy.
             iterator.ThrowIfError();
 
-            if (chunk.Count > 0) await chunks.Writer.WriteAsync(chunk, writerFailed.Token);
+            await batches.Writer.WriteAsync(batch, writerFailed.Token);
+            batch = null;
         }
         finally
         {
-            chunks.Writer.Complete();
+            // Not handed to a writer, so still the reader's to dispose.
+            batch?.Dispose();
+            batches.Writer.Complete();
             await writers;
         }
 
