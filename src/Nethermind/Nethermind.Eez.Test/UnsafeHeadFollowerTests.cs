@@ -270,6 +270,52 @@ public class UnsafeHeadFollowerTests
         }
     }
 
+    [Test]
+    public async Task Advance_DeadlineBeforeFirstInsertion_ReducesBatchUntilTheNextPollCanAdvance([Values] bool duringPreparation)
+    {
+        Block[] ahead = Serve(Branch(_heads.Safe, UnsafeHeadFollower.MaxBlocksPerAdvance, extraData: 0xb8));
+        IUnsafeBlockPreparation preparation = Substitute.For<IUnsafeBlockPreparation>();
+        _follower = new UnsafeHeadFollower(_sequencer, _chain, _engine, new Rollup0HeaderRules(DerivedChain.SpecProvider, DerivedChain.Context), LimboLogs.Instance, preparation);
+        Dictionary<Hash256, byte[]> encoded = ahead.ToDictionary(static block => block.Hash!, static block => Rlp.Encode(block).Bytes);
+        Hash256 safe = _heads.Safe.Hash!, finalized = _heads.Finalized.Hash!;
+        for (int poll = 0; poll < 3; poll++)
+        {
+            int reads = 0;
+            using CancellationTokenSource deadline = new();
+            _sequencer.GetRawBlock(Arg.Any<Hash256>(), Arg.Any<CancellationToken>()).Returns(call =>
+            {
+                if (++reads > UnsafeHeadFollower.MaxBlocksPerAdvance / 4 && !duringPreparation)
+                {
+                    deadline.Cancel();
+                    return Task.FromCanceled<byte[]?>(deadline.Token);
+                }
+                return Task.FromResult<byte[]?>(encoded[call.ArgAt<Hash256>(0)]);
+            });
+            preparation.Prepare(Arg.Any<BlockHeader>(), Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(_ =>
+            {
+                if (duringPreparation && reads > UnsafeHeadFollower.MaxBlocksPerAdvance / 4)
+                {
+                    deadline.Cancel();
+                    return ValueTask.FromCanceled<UnsafeBlockPreparationResult>(deadline.Token);
+                }
+                return new ValueTask<UnsafeBlockPreparationResult>(UnsafeBlockPreparationResult.Ready);
+            });
+            if (poll < 2)
+            {
+                await Assert.CatchAsync<OperationCanceledException>(() => _follower.Advance(_heads, deadline.Token));
+                Assert.That(_engine.Inserted, Is.Empty, "the first attempt did not complete an insertion");
+            }
+            else
+                await _follower.Advance(_heads, deadline.Token);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_heads.Head.Hash, Is.EqualTo(ahead[UnsafeHeadFollower.MaxBlocksPerAdvance / 4 - 1].Hash));
+            Assert.That(_heads.Safe.Hash, Is.EqualTo(safe));
+            Assert.That(_heads.Finalized.Hash, Is.EqualTo(finalized));
+        }
+    }
+
     private int RawBlockReads() => _sequencer.ReceivedCalls().Count(static call => call.GetMethodInfo().Name == nameof(IEezSequencerApi.GetRawBlock));
 
     private Block[] Serve(Block[] blocks)

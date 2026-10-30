@@ -71,6 +71,7 @@ public sealed class UnsafeHeadFollower(
 
     private readonly ILogger _logger = logManager.GetClassLogger<UnsafeHeadFollower>();
     private Hash256? _refused;
+    private int _downloadLimit = MaxBlocksPerAdvance;
 
     /// <exception cref="L1SourceIncompleteException">The sequencer cannot be read; the next poll retries.</exception>
     /// <exception cref="EezEngineUnavailableException">The node has not taken the blocks yet; the next poll retries.</exception>
@@ -96,10 +97,20 @@ public sealed class UnsafeHeadFollower(
             await SetExistingHead(ancestor, heads, token);
             return;
         }
-        ulong targetNumber = ancestor.Number + Math.Min(latest.Number - ancestor.Number, (ulong)MaxBlocksPerAdvance);
+        ulong targetNumber = ancestor.Number + Math.Min(latest.Number - ancestor.Number, (ulong)_downloadLimit);
         EezL1Block target = targetNumber == latest.Number ? latest : await ReadNumber(targetNumber, token);
 
-        if (await Branch(target.Hash, heads.Safe, token) is not { } blocks)
+        List<Block>? blocks;
+        try
+        {
+            blocks = await Branch(target.Hash, heads.Safe, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            _downloadLimit = Math.Max(1, _downloadLimit / 2);
+            throw;
+        }
+        if (blocks is null)
         {
             Refuse(latest, $"it does not build on the local chain at or above safe {heads.Safe.Number}");
             return;
@@ -116,6 +127,7 @@ public sealed class UnsafeHeadFollower(
             return;
         }
 
+        Hash256? previousHead = heads.Head.Hash;
         try
         {
             BlockHeader parent = blockTree.FindHeader(blocks[^1].ParentHash!)!;
@@ -138,12 +150,18 @@ public sealed class UnsafeHeadFollower(
                 parent = blocks[i].Header;
             }
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            if (heads.Head.Hash == previousHead) _downloadLimit = Math.Max(1, _downloadLimit / 2);
+            throw;
+        }
         catch (Exception e) when (e is EezFollowerException or EezSettlementException)
         {
             Refuse(latest, e.Message);
             return;
         }
 
+        if (blocks.Count >= _downloadLimit && _downloadLimit < MaxBlocksPerAdvance) _downloadLimit++;
         if (_logger.IsDebug) _logger.Debug($"L2 unsafe head {heads.Head.Number} ({heads.Head.Hash}) from the sequencer.");
     }
 

@@ -39,7 +39,7 @@ namespace Nethermind.Eez;
 public partial class EezModule(IEezConfig config, EezChainRules rules) : Module
 {
     private const string L1RpcClientKey = "Eez.L1";
-    private const string SequencerRpcClientKey = "Eez.Sequencer";
+    internal const string SequencerRpcClientKey = "Eez.Sequencer";
     private const string BuilderRpcClientKey = "Eez.Builder";
     private const string L1BeaconClientKey = "Eez.L1Beacon";
 
@@ -130,7 +130,7 @@ public partial class EezModule(IEezConfig config, EezChainRules rules) : Module
                 .AddKeyedSingleton<IJsonRpcClient>(SequencerRpcClientKey, static ctx =>
                 {
                     IEezConfig eez = ctx.Resolve<IEezConfig>();
-                    return new BasicJsonRpcClient(new Uri(eez.SequencerRpcUrl!), ctx.Resolve<IJsonSerializer>(), ctx.Resolve<ILogManager>());
+                    return new BasicJsonRpcClient(new Uri(eez.SequencerRpcUrl!), ctx.Resolve<IJsonSerializer>(), ctx.Resolve<ILogManager>(), EezFollower.SequencerBudget);
                 })
                 .AddSingleton<IEezSequencerApi>(static ctx => new EezSequencerApi(ctx.ResolveKeyed<IJsonRpcClient>(SequencerRpcClientKey)))
                 .AddSingleton<IUnsafeHeadSource, UnsafeHeadFollower>();
