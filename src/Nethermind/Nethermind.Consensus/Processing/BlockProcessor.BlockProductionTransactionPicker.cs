@@ -31,8 +31,15 @@ namespace Nethermind.Consensus.Processing
 
             public event EventHandler<AddingTxEventArgs>? AddingTransaction;
 
+            // Returned for every rejected candidate, so a skip allocates nothing; valid until the next call. Only a
+            // candidate that passes every check gets args of its own, the instance the event raises and returns.
+            // A picker belongs to one producer env, whose builds are serialized.
+            private AddingTxEventArgs? _rejectionArgs;
+
             protected void OnAddingTransaction(AddingTxEventArgs e) => AddingTransaction?.Invoke(this, e);
 
+            /// <returns>For a rejected candidate, args that the next call reuses; for an added one, the args the
+            /// <see cref="AddingTransaction"/> event saw.</returns>
             public virtual AddingTxEventArgs CanAddTransaction(
                 Block block,
                 Transaction currentTx,
@@ -41,7 +48,9 @@ namespace Nethermind.Consensus.Processing
                 ulong cumulativeBlockExecutionGas,
                 ulong cumulativeBlockStateGas)
             {
-                AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
+                AddingTxEventArgs args = _rejectionArgs is null
+                    ? _rejectionArgs = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock)
+                    : _rejectionArgs.Reset(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
                 ulong gasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockExecutionGas);
 
@@ -82,12 +91,12 @@ namespace Nethermind.Consensus.Processing
 
                 if (executionReservation > gasRemaining)
                 {
-                    return args.Set(TxAction.Skip, $"Not enough execution gas in block, gas limit {executionReservation} > {gasRemaining}");
+                    return args.Set(TxAction.Skip, DeferredSkipReason.ExecutionGas, executionReservation, gasRemaining);
                 }
 
                 if (stateReservation > stateGasRemaining)
                 {
-                    return args.Set(TxAction.Skip, $"Not enough state gas in block, gas limit {stateReservation} > {stateGasRemaining}");
+                    return args.Set(TxAction.Skip, DeferredSkipReason.StateGas, stateReservation, stateGasRemaining);
                 }
 
                 if (currentTx.IsAboveInitCode(spec))
@@ -117,7 +126,7 @@ namespace Nethermind.Consensus.Processing
                     ulong expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
                     if (expectedNonce != currentTx.Nonce)
                     {
-                        return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
+                        return args.Set(TxAction.Skip, DeferredSkipReason.Nonce, expectedNonce);
                     }
                 }
 
@@ -132,8 +141,10 @@ namespace Nethermind.Consensus.Processing
                     }
                 }
 
-                OnAddingTransaction(args);
-                return args;
+                // Subscribers may keep or change the args they see, so they get an instance no later call reuses.
+                AddingTxEventArgs added = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
+                OnAddingTransaction(added);
+                return added;
             }
 
             /// <summary>Explains a keyed-nonce skip by naming the first key whose sequence disagrees with the candidate's.</summary>
