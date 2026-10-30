@@ -35,6 +35,7 @@ public class KeyedNonceDisjointnessFilterTests
     private static IEnumerable<TestCaseData> KeyedCases()
     {
         yield return new TestCaseData(new[] { Hub, K2 }, new[] { Hub, K1 }, AcceptTxResult.KeyedNonceOverlap).SetName("overlapping key set is rejected");
+        yield return new TestCaseData(new[] { UInt256.Zero, K2 }, new[] { UInt256.Zero, K1 }, AcceptTxResult.KeyedNonceOverlap).SetName("overlap on key 0 is rejected");
         yield return new TestCaseData(new[] { K2 }, new[] { K1 }, AcceptTxResult.Accepted).SetName("disjoint key sets are admitted");
         yield return new TestCaseData(new[] { K1 }, new[] { K1 }, AcceptTxResult.Accepted).SetName("same competing slot is not an overlap");
     }
@@ -50,7 +51,7 @@ public class KeyedNonceDisjointnessFilterTests
     private static IEnumerable<TestCaseData> UngatedCases()
     {
         yield return new TestCaseData(() => FrameTx(null)).SetName("frame transaction on the account nonce");
-        yield return new TestCaseData(() => FrameTx([UInt256.Zero])).SetName("frame transaction aliasing the account nonce");
+        yield return new TestCaseData(() => FrameTx([])).SetName("frame transaction with an empty key set");
         yield return new TestCaseData(() => Build.A.Transaction.WithNonce(0).WithSenderAddress(Sender).TestObject).SetName("plain transaction");
     }
 
