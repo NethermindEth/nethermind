@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -88,5 +89,62 @@ public class StartupListenerBindTests
 
         Assert.That(() => step.Execute(CancellationToken.None),
             Throws.TypeOf(portInUse ? typeof(PortInUseException) : typeof(ListenerBindException)));
+    }
+
+    public enum ExistingJwtSecret { None, WorkingDirectoryKeyStore, LegacyKeyStore }
+
+    [Test, NonParallelizable]
+    public async Task StartRpc_keeps_an_existing_default_jwt_secret_and_puts_a_new_one_next_to_the_node_key([Values] ExistingJwtSecret existingSecret)
+    {
+        string keyStoreDirectory = $"keystore-{Guid.NewGuid():N}";
+        string appKeyStorePath = Path.Join(PathUtils.ExecutingDirectory, keyStoreDirectory);
+        string appSecretPath = Path.Join(appKeyStorePath, "jwt-secret");
+        string previousWorkingDirectory = Directory.GetCurrentDirectory();
+        DirectoryInfo workingDirectory = Directory.CreateTempSubdirectory();
+        try
+        {
+            Directory.SetCurrentDirectory(workingDirectory.FullName);
+            string existingSecretPath = existingSecret switch
+            {
+                ExistingJwtSecret.WorkingDirectoryKeyStore => Path.Join(Directory.GetCurrentDirectory(), keyStoreDirectory, "jwt-secret"),
+                ExistingJwtSecret.LegacyKeyStore => Path.Join(Directory.GetCurrentDirectory(), "keystore", "jwt-secret"),
+                _ => null
+            };
+            if (existingSecretPath is not null)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(existingSecretPath)!);
+                File.WriteAllText(existingSecretPath, "secret");
+            }
+
+            // The node key keeps the application keystore directory present on upgraded installs.
+            Directory.CreateDirectory(appKeyStorePath);
+            if (existingSecret == ExistingJwtSecret.WorkingDirectoryKeyStore)
+                File.WriteAllText(appSecretPath, "stale");
+
+            JsonRpcConfig jsonRpcConfig = new() { Enabled = false };
+            INethermindApi api = Substitute.For<INethermindApi>();
+            api.Config<IJsonRpcConfig>().Returns(jsonRpcConfig);
+            api.Config<IKeyStoreConfig>().Returns(new KeyStoreConfig { KeyStoreDirectory = keyStoreDirectory });
+            api.LogManager.Returns(TestLogManager.Instance);
+
+            StartRpc step = new(api, new Lazy<IJsonRpcServiceConfigurer[]>([]), new WebSocketsManager(), Substitute.For<IJsonRpcLocalStats>(), new Lazy<IJsonRpcService>(Substitute.For<IJsonRpcService>()),
+                new Lazy<FlatStateActivationPolicy>(() => throw new AssertionException("JSON-RPC is disabled")), []);
+
+            await step.Execute(CancellationToken.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(jsonRpcConfig.JwtSecretFile, Is.EqualTo(existingSecretPath ?? appSecretPath));
+                Assert.That(existingSecretPath is null || File.Exists(existingSecretPath), "existing secret kept in place");
+                Assert.That(File.Exists(appSecretPath), Is.EqualTo(existingSecret == ExistingJwtSecret.WorkingDirectoryKeyStore), "secret in the application keystore");
+            }
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(previousWorkingDirectory);
+            workingDirectory.Delete(recursive: true);
+            File.Delete(appSecretPath);
+            Directory.Delete(appKeyStorePath);
+        }
     }
 }
