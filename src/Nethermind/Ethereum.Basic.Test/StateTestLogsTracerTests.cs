@@ -17,7 +17,7 @@ namespace Ethereum.Basic.Test;
 
 /// <summary>
 /// The state-test logs tracer must take the logs of a frame transaction whose <c>ASSERT</c> frame failed as the block
-/// processor's receipt does, and its composite must pass every frame report on to the caller's tracer.
+/// processor's receipt does, and its composite must pass the frame reports on to the caller's tracer as the processor would.
 /// </summary>
 public class StateTestLogsTracerTests
 {
@@ -46,18 +46,25 @@ public class StateTestLogsTracerTests
         }
     }
 
+    /// <remarks>
+    /// The processor sends the receipt report only to a tracer that traces receipts, and frame ends and rollbacks to any
+    /// frame tracer; a caller's frame tracer is found through a wrapper as the processor's own lookup does.
+    /// </remarks>
     [Test]
-    public void Composite_passes_every_frame_report_to_the_callers_tracer()
+    public void Composite_passes_frame_reports_to_the_callers_tracer([Values] bool tracesReceipts, [Values] bool wrapped)
     {
-        RecordingFrameTracer caller = new();
-        IFrameTxReceiptTracer frameTracer = new StateTestLogsTracer().Wrap(caller) as IFrameTxReceiptTracer;
+        RecordingFrameTracer caller = new(tracesReceipts);
+        ITxTracer callerTracer = wrapped ? new WrappingTracer(caller) : caller;
+        IFrameTxReceiptTracer frameTracer = new StateTestLogsTracer().Wrap(callerTracer) as IFrameTxReceiptTracer;
 
         Assert.That(frameTracer, Is.Not.Null);
         frameTracer.ReportFrameEnd(2, EvmExceptionType.Revert);
         frameTracer.ReportFramesRolledBack(1, 2);
         frameTracer.ReportFrameTxReceipt(TestItem.AddressC, FrameReceipts());
 
-        Assert.That(caller.Events, Is.EqualTo(new[] { "end 2 Revert", "rolledback 1 2", "receipt 3" }));
+        Assert.That(caller.Events, Is.EqualTo(tracesReceipts
+            ? new[] { "end 2 Revert", "rolledback 1 2", "receipt 3" }
+            : new[] { "end 2 Revert", "rolledback 1 2" }));
     }
 
     /// <summary>The validation prefix logged; the body's logs were scrubbed by the rollback; the ASSERT frame failed.</summary>
@@ -78,11 +85,11 @@ public class StateTestLogsTracerTests
         }
     }
 
-    private sealed class RecordingFrameTracer : TxTracer, IFrameTxReceiptTracer
+    private sealed class RecordingFrameTracer(bool tracesReceipts = true) : TxTracer, IFrameTxReceiptTracer
     {
         public List<string> Events { get; } = [];
 
-        public override bool IsTracingReceipt => true;
+        public override bool IsTracingReceipt => tracesReceipts;
 
         public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null) =>
             Events.Add("success");
@@ -95,5 +102,12 @@ public class StateTestLogsTracerTests
         public void ReportFrameEnd(int frameIndex, EvmExceptionType? error) => Events.Add($"end {frameIndex} {error}");
 
         public void ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex) => Events.Add($"rolledback {fromFrameIndex} {toFrameIndex}");
+    }
+
+    private sealed class WrappingTracer(ITxTracer inner) : TxTracer, ITxTracerWrapper
+    {
+        public ITxTracer InnerTracer => inner;
+
+        public override bool IsTracingReceipt => inner.IsTracingReceipt;
     }
 }
