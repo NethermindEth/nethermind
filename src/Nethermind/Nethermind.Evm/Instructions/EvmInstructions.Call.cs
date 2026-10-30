@@ -168,7 +168,7 @@ public static partial class EvmInstructions
         long initialStateSpill = TTracingInst.IsActive && TEip8037.IsActive ? TGasPolicy.GetStateGasSpill(in gas) : 0;
         ulong traceMemorySize = DispatchFlags.ConstTracing && vm.IsTracingActions ? vm.VmState.Memory.Size : 0;
         bool traceColdAccess = DispatchFlags.ConstTracing && vm.IsTracingActions && TSpec.UseHotAndColdStorage &&
-            vm.VmState.AccessTracker.IsCold(codeSource) && !spec.IsPrecompile(codeSource);
+            vm.VmState.AccessTracker.IsCold(codeSource) && !vm.VmState.AccessTracker.IsPrewarmedPrecompile(codeSource, spec);
 
         if (hasValueTransfer)
         {
@@ -234,7 +234,7 @@ public static partial class EvmInstructions
             // EIP-7928: decorator fast-path skips world-state reads; record explicitly.
             state.AddAccountRead(delegated);
 
-            codeInfo = vm.CodeInfoRepository.GetDelegatedCodeInfo(delegated, spec);
+            codeInfo = vm.ResolveDelegatedCodeInfo(codeSource, delegated, spec);
         }
 
         // EIP-150: forward the requested gas to the child frame, capped at 63/64 of remaining.
@@ -254,17 +254,35 @@ public static partial class EvmInstructions
             gasLimitUl += GasCostOf.CallStipend;
         }
 
+        ulong precheckGasUsed = 0;
+        byte[]? precheckRevert = TOpCall.ExecutionType == ExecutionType.CALL && hasValueTransfer
+            ? vm.OnValueTransferCallPrecheck(env.ExecutingAccount, target, in callValue, out precheckGasUsed)
+            : null;
+
         // Check call depth and balance of the caller.
-        if (env.CallDepth >= MaxCallDepth ||
+        if (precheckRevert is not null || env.CallDepth >= MaxCallDepth ||
             (hasValueTransfer && !HasAtLeast(state, env.ExecutingAccount, in callValue)))
         {
-            EvmExceptionType precheckError = env.CallDepth >= MaxCallDepth ? EvmExceptionType.CallDepthExceeded : EvmExceptionType.NotEnoughBalance;
+            EvmExceptionType? precheckError = precheckRevert is not null ? null
+                : env.CallDepth >= MaxCallDepth ? EvmExceptionType.CallDepthExceeded : EvmExceptionType.NotEnoughBalance;
+            // A rejecting precheck may consume part or all of the gas reserved for the call.
+            ulong returnedGas = precheckRevert is null ? gasLimitUl : gasLimitUl - Math.Min(precheckGasUsed, gasLimitUl);
             if (DispatchFlags.ConstTracing && vm.IsTracingActions)
-                TraceRejectedCall<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl, codeInfo.IsPrecompile, precheckError);
+            {
+                if (precheckError is { } error)
+                    TraceRejectedCall<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl, codeInfo.IsPrecompile, error);
+                else
+                    TraceRevertedCallPrecheck<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl, returnedGas, codeInfo.IsPrecompile, precheckRevert!);
+            }
 
-            // If the call cannot proceed, return an empty response and push zero on the stack.
-            vm.ReturnDataBuffer = default;
+            // If the call cannot proceed, return an empty response (or the precheck's revert data) and push zero on the stack.
+            vm.ReturnDataBuffer = precheckRevert;
             EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
+            if (precheckRevert is not null)
+            {
+                int copyLength = outputLength < (UInt256)precheckRevert.Length ? (int)outputLength.u0 : precheckRevert.Length;
+                vm.VmState.Memory.SaveAfterGas(in outputOffset, precheckRevert.AsSpan(0, copyLength));
+            }
 
             if (TTracingInst.IsActive)
             {
@@ -273,20 +291,21 @@ public static partial class EvmInstructions
             }
 
             // Refund the remaining gas to the caller.
-            TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+            TGasPolicy.UpdateGasUp(ref gas, returnedGas);
             // EIP-8037: no account is created when the call cannot proceed (depth exceeded or
             // balance too low), so refund the up-front NEW_ACCOUNT state charge.
             if (chargesNewAccount)
                 vm.CreditStateGasRefund<TEip8037>(ref gas, TGasPolicy.GetNewAccountStateCost());
             if (TTracingInst.IsActive)
             {
-                vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
+                vm.TxTracer.ReportGasUpdateForVmTrace(returnedGas, TGasPolicy.GetRemainingGas(in gas));
             }
             return pushResult;
         }
 
         // Fast-path for calls to externally owned accounts (non-contracts); EIP-8360 transfers need a frame to charge in.
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.IsTracingActions
+            && !vm.ShouldSkipEoaCallFastPath(TOpCall.ExecutionType, caller, target, codeSource, in callValue)
             && (!TSpec.IsEip8360Enabled || !hasValueTransfer || vm.VmState.AccessTracker.TransientCreates is null))
         {
             vm.ReturnDataBuffer = default;
@@ -455,7 +474,7 @@ public static partial class EvmInstructions
         string error = gas < constantCost ? "out of gas"
             : !TryGetTraceMemorySize(in inputOffset, in inputLength, out _) || !TryGetTraceMemorySize(in outputOffset, in outputLength, out _)
                 ? "gas uint64 overflow"
-                : spec.UseHotAndColdStorage && !spec.IsEip7702Enabled && vm.VmState.AccessTracker.IsCold(target) && !spec.IsPrecompile(target) && gas < coldCost
+                : spec.UseHotAndColdStorage && !spec.IsEip7702Enabled && vm.VmState.AccessTracker.IsCold(target) && !vm.VmState.AccessTracker.IsPrewarmedPrecompile(target, spec) && gas < coldCost
                     ? "out of gas: out of gas"
                     : "out of gas: write protection";
         vm.TraceOperationReady(constantCost, error);
@@ -578,6 +597,31 @@ public static partial class EvmInstructions
         bool loaded = vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> input);
         Debug.Assert(loaded, "The rejected call input was validated and expanded before its precheck.");
         vm.TxTracer.ReportRejectedAction(gas, gas, callValue, env.ExecutingAccount, codeSource, input, TOpCall.ExecutionType, error, isPrecompile);
+    }
+
+    /// <summary>
+    /// Reports a CALL that <see cref="VirtualMachine{TGasPolicy}.OnValueTransferCallPrecheck"/> rejected as an action that
+    /// reverted at once with the precheck's revert data and <paramref name="gasLeft"/> of its gas left.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceRevertedCallPrecheck<TGasPolicy, TOpCall>(
+        VirtualMachine<TGasPolicy> vm,
+        in UInt256 dataOffset,
+        in UInt256 dataLength,
+        Address codeSource,
+        in UInt256 callValue,
+        ulong gas,
+        ulong gasLeft,
+        bool isPrecompile,
+        byte[] revertData)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCall : struct, IOpCall
+    {
+        ExecutionEnvironment env = vm.VmState.Env;
+        bool loaded = vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> input);
+        Debug.Assert(loaded, "The rejected call input was validated and expanded before its precheck.");
+        vm.TxTracer.ReportAction(gas, callValue, env.ExecutingAccount, codeSource, input, TOpCall.ExecutionType, isPrecompile);
+        vm.TxTracer.ReportActionRevert(gasLeft, revertData);
     }
 
     [MethodImpl(FullCallFrameInlining)]

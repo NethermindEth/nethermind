@@ -456,7 +456,7 @@ public static partial class EvmInstructions
         bool newSameAsCurrent = currentValue == newValue;
 
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = (long)spec.GasCosts.SClearRefund;
+        long sClearRefunds = TGasPolicy.GetStorageClearRefund(spec);
 
         // Legacy metering: if storing zero and the value changes, grant a clearing refund.
         if (newIsZero)
@@ -595,7 +595,7 @@ public static partial class EvmInstructions
         bool newSameAsCurrent = currentValue == newValue;
 
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = (long)gasCosts.SClearRefund;
+        long sClearRefunds = TGasPolicy.GetStorageClearRefund(spec);
 
         ulong traceExecutionCost = traceStorageAccessCost + (Eip8038.IsActive ? 0 : gasCosts.NetMeteredSStoreCost);
 
@@ -611,6 +611,11 @@ public static partial class EvmInstructions
         {
             // Retrieve the original storage value to determine if this is a reversal.
             vm.WorldState.GetOriginal(in storageCell, out UInt256 originalValue);
+            EvmExceptionType accountingResult = TGasPolicy.ApplyStorageTransitionAccounting(
+                ref gas, vm, in storageCell, in currentValue, in newValue);
+            if (accountingResult != EvmExceptionType.None)
+                return accountingResult;
+
             bool originalIsZero = originalValue.IsZero;
             bool currentSameAsOriginal = originalValue == currentValue;
 
@@ -712,7 +717,7 @@ public static partial class EvmInstructions
                     // a freshly-created slot (original 0) additionally refunds its state gas in-frame.
                     long refundFromReversal = Eip8038.IsActive
                         ? (long)Eip8038Constants.StorageWrite
-                        : (long)gasCosts.RefundFromReversal(originalIsZero);
+                        : TGasPolicy.GetStorageReversalRefund(spec, originalIsZero);
 
                     if (TEip8037.IsActive && originalIsZero)
                     {

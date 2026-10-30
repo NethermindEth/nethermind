@@ -24,6 +24,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.State.Repositories;
 
 [assembly: InternalsVisibleTo("Nethermind.History.Test")]
@@ -66,6 +67,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly ulong _balRetentionEpochs;
     private readonly ulong _ancientReceiptsBarrier;
     private readonly bool _fastSync;
+    private readonly IStateBoundary _stateBoundary;
     private readonly ISyncConfig _syncConfig;
     private static readonly TimeSpan AncientHoldRelogInterval = TimeSpan.FromMinutes(10);
     private const int AncientHoldStaticRelogsBeforeWarn = 3;
@@ -98,6 +100,8 @@ public class HistoryPruner : IHistoryPruner
     // Consumed under _pruneLock after an eligible pass; the lock-free read only decides whether to enter the lock.
     private int _initialPruningPassPending = 1;
     private int _currentlyPruning;
+    private ulong _lastFullSyncHeadTriggerBucket;
+    private ulong _lastFullSyncPruningHead;
 
     public event EventHandler<OnNewOldestBlockArgs>? NewOldestBlock;
 
@@ -112,6 +116,8 @@ public class HistoryPruner : IHistoryPruner
         IHeaderStore headerStore,
         IDbProvider dbProvider,
         IHistoryConfig historyConfig,
+        IPruningConfig pruningConfig,
+        IStateBoundary stateBoundary,
         IBlocksConfig blocksConfig,
         ISyncConfig syncConfig,
         IProcessExitSource processExitSource,
@@ -133,8 +139,11 @@ public class HistoryPruner : IHistoryPruner
         _historyConfig = historyConfig;
         _receiptRetention = receiptRetention;
         _enabled = historyConfig.Enabled();
+        // An archive node keeps its access lists unless given a retention.
         _balPruningOnly = !_enabled
+            && (historyConfig.BalRetentionEpochs is not null || pruningConfig.Mode != PruningMode.None)
             && specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
+        _stateBoundary = stateBoundary;
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
         _minBalRetentionEpochs = specProvider.GenesisSpec.MinBalRetentionEpochs;
@@ -163,12 +172,20 @@ public class HistoryPruner : IHistoryPruner
             WarnIfDefaultRetentionPrunesBacklog(persistedPointer ?? ulong.Max(barrierFloor, _minDeletableBlockNumber));
 
             blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
+            if (!_fastSync)
+            {
+                blockTree.NewHeadBlock += OnFullSyncNewHeadBlock;
+            }
         }
         else if (_balPruningOnly)
         {
             if (historyConfig.BalRetentionEpochs is null && _logger.IsInfo) _logger.Info($"Pruning block access lists older than {_balRetentionEpochs} epochs. Set History.BalRetentionEpochs to {uint.MaxValue} to keep all of them.");
             Metrics.BlockAccessListPruningCutoffBlocknumber = BalCutoffBlockNumber;
             blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
+            if (!_fastSync)
+            {
+                blockTree.NewHeadBlock += OnFullSyncNewHeadBlock;
+            }
         }
     }
 
@@ -230,6 +247,21 @@ public class HistoryPruner : IHistoryPruner
 
     internal ulong BalsDeletePointer => _balsDeletePointer;
 
+    private ulong PruningUpperBound
+    {
+        get
+        {
+            if (_fastSync) return _blockTree.SyncPivot.BlockNumber;
+
+            ulong head = _blockTree.Head?.Number ?? 0;
+            ulong durable = _stateBoundary.BestPersistedState ?? 0;
+            ulong finality = _blockTree.FinalizedHash is { } finalizedHash
+                ? _blockTree.FindHeader(finalizedHash, BlockTreeLookupOptions.RequireCanonical)?.Number ?? 0
+                : head.SaturatingSub(Reorganization.MaxDepth);
+            return ulong.Min(ulong.Min(head, durable), finality);
+        }
+    }
+
     public BlockHeader? OldestBlockHeader
     {
         get
@@ -283,6 +315,21 @@ public class HistoryPruner : IHistoryPruner
     private void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
         => SchedulePruneHistory(_processExitSource.Token);
 
+    private void OnFullSyncNewHeadBlock(object? sender, BlockEventArgs e)
+    {
+        ulong triggerInterval = _pruningInterval == 0 ? SlotsPerEpoch : _pruningInterval;
+        ulong triggerBucket = e.Block.Header.Number / triggerInterval;
+        ulong previousBucket = Volatile.Read(ref _lastFullSyncHeadTriggerBucket);
+        if (triggerBucket <= previousBucket || Interlocked.CompareExchange(ref _lastFullSyncHeadTriggerBucket, triggerBucket, previousBucket) != previousBucket)
+        {
+            return;
+        }
+
+        SchedulePruneHistory(
+            _processExitSource.Token,
+            () => Interlocked.CompareExchange(ref _lastFullSyncHeadTriggerBucket, previousBucket, triggerBucket));
+    }
+
     /// <summary>
     /// Schedules a pruning operation if one is not already running. The first eligible pruning pass bypasses the
     /// configured pruning interval; subsequent passes require the interval to have elapsed.
@@ -291,6 +338,9 @@ public class HistoryPruner : IHistoryPruner
     public void SchedulePruneHistory() => SchedulePruneHistory(_processExitSource.Token);
 
     protected void SchedulePruneHistory(CancellationToken cancellationToken)
+        => SchedulePruneHistory(cancellationToken, onScheduleRejected: null);
+
+    private void SchedulePruneHistory(CancellationToken cancellationToken, Action? onScheduleRejected)
     {
         if (Volatile.Read(ref _currentlyPruning) == 0)
         {
@@ -321,16 +371,26 @@ public class HistoryPruner : IHistoryPruner
                                 }, timeout: pruningTimeout))
                         {
                             Interlocked.Exchange(ref _currentlyPruning, 0);
+                            onScheduleRejected?.Invoke();
                             if (_logger.IsDebug) _logger.Debug("Failed to schedule historical block pruning (queue full). Will retry on next trigger.");
                         }
                     }
                     catch
                     {
                         Interlocked.Exchange(ref _currentlyPruning, 0);
+                        onScheduleRejected?.Invoke();
                         throw;
                     }
                 }
+                else
+                {
+                    onScheduleRejected?.Invoke();
+                }
             });
+        }
+        else
+        {
+            onScheduleRejected?.Invoke();
         }
     }
 
@@ -344,7 +404,7 @@ public class HistoryPruner : IHistoryPruner
 
         // Trustworthy only once loaded: on in-memory defaults a collapsed cutoff would hide a persisted backlog.
         if (_blockTree.Head is null ||
-            _blockTree.SyncPivot.BlockNumber == 0 ||
+            PruningUpperBound == 0 ||
             (_hasLoadedDeletePointers && _stampsValidated && !ShouldPruneHistory(Volatile.Read(ref _initialPruningPassPending) != 0)))
         {
             SkipLocalPruning();
@@ -382,15 +442,19 @@ public class HistoryPruner : IHistoryPruner
                 }
 
                 _initialPruningPassPending = 0;
+                if (!_fastSync)
+                {
+                    _lastFullSyncPruningHead = _blockTree.Head!.Number;
+                }
 
                 ulong? blockCutoff = CutoffBlockNumber;
                 ulong? balCutoff = BalCutoffBlockNumber;
                 Metrics.PruningCutoffBlocknumber = blockCutoff;
                 Metrics.BlockAccessListPruningCutoffBlocknumber = balCutoff;
 
-                ulong syncPivot = _blockTree.SyncPivot.BlockNumber;
-                ulong blockUpper = blockCutoff is null ? _blocksDeletePointer : ulong.Min(blockCutoff.Value, syncPivot);
-                ulong balUpper = balCutoff is null ? _balsDeletePointer : ulong.Min(balCutoff.Value, syncPivot);
+                ulong pruningUpperBound = PruningUpperBound;
+                ulong blockUpper = ulong.Min(blockCutoff ?? _blocksDeletePointer, pruningUpperBound);
+                ulong balUpper = ulong.Min(balCutoff ?? _balsDeletePointer, pruningUpperBound);
 
                 // From the cursor, not the boundary: the boundary is raised before any reclaim happens.
                 ulong blocksRemaining = blockUpper.SaturatingSub(_blocksReclaimCursor);
@@ -448,7 +512,7 @@ public class HistoryPruner : IHistoryPruner
 
         ulong? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(
             _minDeletableBlockNumber,
-            _blockTree.SyncPivot.BlockNumber,
+            PruningUpperBound,
             BlockExists,
             BlockTree.BinarySearchDirection.Down);
 
@@ -546,7 +610,7 @@ public class HistoryPruner : IHistoryPruner
     /// </remarks>
     private void TryPruneBlockAccessListsOnly(CancellationToken cancellationToken)
     {
-        if (_blockTree.Head is null || _blockTree.SyncPivot.BlockNumber == 0) return;
+        if (_blockTree.Head is null || PruningUpperBound == 0) return;
 
         bool lockTaken = false;
         Monitor.TryEnter(_pruneLock, LockWaitTimeoutMs, ref lockTaken);
@@ -555,6 +619,11 @@ public class HistoryPruner : IHistoryPruner
         try
         {
             if (Interlocked.Exchange(ref _initialPruningPassPending, 0) == 0 && !PruningIntervalHasElapsed()) return;
+
+            if (!_fastSync)
+            {
+                _lastFullSyncPruningHead = _blockTree.Head.Number;
+            }
 
             LoadBalsDeletePointer();
             ulong? balCutoff = BalCutoffBlockNumber;
@@ -639,7 +708,14 @@ public class HistoryPruner : IHistoryPruner
     }
 
     private bool PruningIntervalHasElapsed()
-        => _pruningInterval == 0 || _blockTree.Head!.Number % _pruningInterval == 0;
+    {
+        if (_pruningInterval == 0) return true;
+
+        ulong head = _blockTree.Head!.Number;
+        return _fastSync
+            ? head % _pruningInterval == 0
+            : head / _pruningInterval > _lastFullSyncPruningHead / _pruningInterval;
+    }
 
     private const ulong ReclaimChunkBlocks = 1_000_000;
 
@@ -672,7 +748,7 @@ public class HistoryPruner : IHistoryPruner
     /// already declared absent, so interrupting it leaves the node honest and merely fat.</summary>
     private void PruneBlocksAndReceipts(ulong upperExclusive, CancellationToken cancellationToken)
     {
-        ulong target = ulong.Min(upperExclusive, _blockTree.SyncPivot.BlockNumber);
+        ulong target = ulong.Min(upperExclusive, PruningUpperBound);
 
         if (target > _blocksDeletePointer)
         {
@@ -682,7 +758,7 @@ public class HistoryPruner : IHistoryPruner
         }
 
         // Chases the published boundary, not the cutoff: they part company the moment a pass is interrupted.
-        ulong limit = ulong.Min(_blocksDeletePointer, _blockTree.SyncPivot.BlockNumber);
+        ulong limit = ulong.Min(_blocksDeletePointer, PruningUpperBound);
         ulong start = ulong.Max(_blocksReclaimCursor, _minDeletableBlockNumber);
         if (start >= limit) return;
 
@@ -1062,7 +1138,7 @@ public class HistoryPruner : IHistoryPruner
 
     private void PruneBlockAccessLists(ulong upperExclusive, CancellationToken cancellationToken)
     {
-        ulong limit = ulong.Min(upperExclusive, _blockTree.SyncPivot.BlockNumber);
+        ulong limit = ulong.Min(upperExclusive, PruningUpperBound);
         ulong start = ulong.Max(_balsDeletePointer, _minDeletableBlockNumber);
         if (start >= limit) return;
 

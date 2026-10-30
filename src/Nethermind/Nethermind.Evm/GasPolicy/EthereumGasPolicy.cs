@@ -263,7 +263,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         }
 
         // WarmUp first so the warm path skips IsPrecompile; precompiles are pre-warmed at tx start.
-        return (accessTracker.WarmUp(address) && !spec.IsPrecompile(address)) switch
+        return (accessTracker.WarmUp(address) && !accessTracker.IsPrewarmedPrecompile(address, spec)) switch
         {
             true => UpdateGas(ref gas, TColdCost.GasCost(spec)),
             false when kind == AccountAccessKind.SelfDestructBeneficiary => true,

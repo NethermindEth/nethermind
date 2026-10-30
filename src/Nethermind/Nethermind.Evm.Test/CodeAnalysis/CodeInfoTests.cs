@@ -16,6 +16,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
@@ -171,6 +172,38 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 Assert.That(execution, Is.SequenceEqualTo(code));
                 Assert.That(padding.ToArray(), Is.All.EqualTo(0));
                 Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(code.Span), ref MemoryMarshal.GetReference(execution)), Is.True);
+            }
+        }
+
+        [Test]
+        public void Precompile_descriptor_preserves_stored_code_for_inspection([Values] bool hasCode)
+        {
+            byte[] code = hasCode ? [(byte)Instruction.JUMPDEST] : [];
+            CodeInfo codeInfo = new(IdentityPrecompile.Instance, code);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(codeInfo.Precompile, Is.SameAs(IdentityPrecompile.Instance));
+                Assert.That(codeInfo.IsPrecompile, Is.True);
+                Assert.That(codeInfo.IsEmpty, Is.False);
+                Assert.That(codeInfo.Code.ToArray(), Is.EqualTo(code));
+                Assert.That(codeInfo.CodeSpan.SequenceEqual(code), Is.True);
+                Assert.That(codeInfo.ValidateJump(0), Is.False);
+            }
+        }
+
+        [Test]
+        public void Precompile_descriptor_without_stored_code_remains_a_nonempty_marker()
+        {
+            CodeInfo codeInfo = new(IdentityPrecompile.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(codeInfo.Precompile, Is.SameAs(IdentityPrecompile.Instance));
+                Assert.That(codeInfo.IsPrecompile, Is.True);
+                Assert.That(codeInfo.IsEmpty, Is.False);
+                Assert.That(codeInfo.CodeSpan.IsEmpty, Is.True);
+                Assert.That(codeInfo.ValidateJump(0), Is.False);
             }
         }
 

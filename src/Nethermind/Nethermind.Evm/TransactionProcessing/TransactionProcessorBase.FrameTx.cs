@@ -814,7 +814,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // is therefore uniform across contract code, delegated code and the default code. Precompiles are
         // checked explicitly because EIP-2929 pre-warms them without the shared tracker holding them.
         ulong entryExecution = spec.UseHotAndColdStorage
-            ? (accessTracker.IsCold(resolvedTarget) && !spec.IsPrecompile(resolvedTarget)
+            ? (accessTracker.IsCold(resolvedTarget) && !accessTracker.IsPrewarmedPrecompile(resolvedTarget, spec)
                 ? TGasPolicy.GetColdAccountAccessCost(spec)
                 : Eip8038Constants.WarmAccess)
             : 0;
@@ -872,7 +872,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             // resolve_delegated_code_address: the target counts as accessed by now, so a self-designation is warm.
             if (spec.UseHotAndColdStorage)
             {
-                ulong delegationAccess = delegation != resolvedTarget && accessTracker.IsCold(delegation) && !spec.IsPrecompile(delegation)
+                ulong delegationAccess = delegation != resolvedTarget && accessTracker.IsCold(delegation) && !accessTracker.IsPrewarmedPrecompile(delegation, spec)
                     ? TGasPolicy.GetColdAccountAccessCost(spec)
                     : Eip8038Constants.WarmAccess;
                 if (!TGasPolicy.TryConsume(ref frameGas, delegationAccess))
