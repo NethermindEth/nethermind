@@ -3784,6 +3784,7 @@ public class BlockTreeTests
     [TestCase(new[] { "a1", "b1" }, 1L, TestName = "SiblingReplacesHead")]
     [TestCase(new[] { "a1", "genesis", "b1" }, 1L, TestName = "HeadMovesBackToParentThenSibling")]
     [TestCase(new[] { "a1", "a2" }, 0L, TestName = "HeadExtended")]
+    [TestCase(new[] { "a2", "b1" }, 1L, TestName = "DeeperHeadReplacedByLowerSibling")]
     [NonParallelizable, MaxTime(Timeout.MaxTestTime)]
     public void TryUpdateMainChain_counts_a_reorganization_each_time_the_head_stops_being_canonical(string[] forkChoices, long expectedReorganizations)
     {
@@ -3802,6 +3803,45 @@ public class BlockTreeTests
         {
             Assert.That(blockTree.Head!.Hash, Is.EqualTo(blocks[forkChoices[^1]].Hash));
             Assert.That(Metrics.Reorganizations - reorganizationsBefore, Is.EqualTo(expectedReorganizations));
+        }
+    }
+
+    [Test, NonParallelizable, MaxTime(Timeout.MaxTestTime)]
+    public void TryUpdateMainChain_does_not_count_loading_genesis_into_an_empty_tree_as_a_reorganization()
+    {
+        BlockTree blockTree = BuildBlockTree();
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+
+        long reorganizationsBefore = Metrics.Reorganizations;
+        blockTree.TryUpdateMainChain(genesis.Header, wereProcessed: true, preloadedBlocks: new[] { genesis });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.Head!.Hash, Is.EqualTo(genesis.Hash));
+            Assert.That(Metrics.Reorganizations - reorganizationsBefore, Is.Zero);
+        }
+    }
+
+    [Test, NonParallelizable, MaxTime(Timeout.MaxTestTime)]
+    public void TryUpdateMainChain_does_not_count_a_sibling_made_canonical_while_the_head_stays()
+    {
+        (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis(forceUpdateHead: true);
+        Block a1 = Build.A.Block.WithParent(genesis).WithExtraData([0xA]).TestObject;
+        Block b1 = Build.A.Block.WithParent(genesis).WithExtraData([0xB]).TestObject;
+        blockTree.SuggestBlock(a1);
+        blockTree.SuggestBlock(b1);
+        blockTree.TryUpdateMainChain(a1.Header, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        long reorganizationsBefore = Metrics.Reorganizations;
+        // BlockDownloader marks downloaded blocks canonical before they are processed.
+        blockTree.TryUpdateMainChain(b1.Header, wereProcessed: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.IsMainChain(b1.Header), Is.True);
+            Assert.That(blockTree.Head!.Hash, Is.EqualTo(a1.Hash));
+            Assert.That(Metrics.Reorganizations - reorganizationsBefore, Is.Zero);
         }
     }
 
