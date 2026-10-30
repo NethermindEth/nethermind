@@ -695,12 +695,14 @@ public class OpcodeTracingPluginTests
         // Produce up to count + 5 blocks until every submitted tx is mined.
         int blocksProduced = 0;
         int maxBlocks = count + 5;
+        bool allMined = false;
         while (blocksProduced < maxBlocks)
         {
-            await Utils.CreateBlocksAsync(engineHttp, count: 1, version, timestamp ?? SepoliaGenesisTimestamp);
+            // An immediate getPayload returns the empty block unless the build with the pooled txs already finished.
+            await Utils.CreateBlocksAsync(engineHttp, count: 1, version, timestamp ?? SepoliaGenesisTimestamp, payloadBuildDelay: allMined ? null : TimeSpan.FromSeconds(1));
             blocksProduced++;
 
-            bool allMined = true;
+            allMined = true;
             foreach (string h in txHashes)
             {
                 JsonNode r = await Utils.SendJsonRpcRequestAsync(ethHttp, "eth_getTransactionReceipt", h);
