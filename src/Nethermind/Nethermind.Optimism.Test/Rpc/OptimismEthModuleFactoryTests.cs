@@ -34,7 +34,7 @@ namespace Nethermind.Optimism.Test.Rpc;
 
 public class OptimismEthModuleFactoryTests
 {
-    // The eth module is pooled, so two instances of one factory must still send one at a time for one account.
+    // The factory creates several eth module instances (pooled and shared), so two of them must still send one at a time for one account.
     [Test]
     public async Task Module_instances_of_one_factory_send_one_at_a_time_for_one_account()
     {

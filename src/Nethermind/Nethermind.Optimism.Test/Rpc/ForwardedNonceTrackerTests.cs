@@ -79,21 +79,6 @@ public class ForwardedNonceTrackerTests
     }
 
     [Test]
-    public void Forward_after_a_gap_does_not_move_the_next_nonce()
-    {
-        HeadNonces head = new() { [TestItem.AddressA] = 1 };
-        ForwardedNonceTracker tracker = head.CreateTracker();
-
-        tracker.OnForwarded(TestItem.AddressA, 5);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(tracker.GetNextNonce(TestItem.AddressA), Is.EqualTo(1UL));
-            Assert.That(tracker.Count, Is.EqualTo(0));
-        }
-    }
-
-    [Test]
     public async Task Sender_lock_holds_only_its_account_and_goes_once_unused()
     {
         ForwardedNonceTracker tracker = new HeadNonces().CreateTracker();

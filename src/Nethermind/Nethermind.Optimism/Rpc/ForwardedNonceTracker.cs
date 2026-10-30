@@ -18,13 +18,13 @@ namespace Nethermind.Optimism.Rpc;
 /// <remarks>
 /// Such a node has no transaction pool (<c>NullTxPool</c>), so it cannot read a pending nonce. It uses the
 /// account's nonce at the head instead, raised past the transactions it has forwarded that the head does not include yet.
-/// Only forwards that the sequencer accepted, and that continue the account's nonces without a gap, are counted.
-/// A forward is recorded only after the node signed it with a key of its own wallet, so the tracked accounts are at most
-/// the wallet's accounts; an entry goes once the head includes the account's forwarded transactions.
+/// The caller records only transactions the node signed with a key of its own wallet, that the sequencer accepted and
+/// that continue the account's nonces without a gap, so the tracked accounts are at most the wallet's accounts.
+/// An entry is dropped at the account's next lookup once the head includes its forwarded transactions.
 /// </remarks>
 public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader stateReader)
 {
-    // Guards both dictionaries; held only for the dictionary work, never across an await.
+    // Guards both dictionaries; held only briefly, never across an await or a state read.
     private readonly Lock _gate = new();
 
     // The nonce after the last accepted forward of each account.
@@ -85,6 +85,7 @@ public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader
 
     /// <summary>
     /// The nonce to fill for <paramref name="sender"/>. The caller holds the lock of <paramref name="sender"/>.
+    /// Throws <c>MissingTrieNodeException</c> when the head state is not available.
     /// </summary>
     public ulong GetNextNonce(Address sender)
     {
@@ -104,15 +105,11 @@ public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader
     }
 
     /// <summary>
-    /// Records that the sequencer accepted a transaction of <paramref name="sender"/> with <paramref name="nonce"/>.
-    /// The caller holds the lock of <paramref name="sender"/>.
+    /// Records that the sequencer accepted a transaction of <paramref name="sender"/> with <paramref name="nonce"/>, the
+    /// nonce <see cref="GetNextNonce"/> gave. The caller holds the lock of <paramref name="sender"/>.
     /// </summary>
     public void OnForwarded(Address sender, ulong nonce)
     {
-        // A nonce past a gap waits at the sequencer until the gap is filled, so the next nonce does not move.
-        if (nonce != GetNextNonce(sender))
-            return;
-
         lock (_gate)
             _nextNonces[sender] = nonce + 1;
     }

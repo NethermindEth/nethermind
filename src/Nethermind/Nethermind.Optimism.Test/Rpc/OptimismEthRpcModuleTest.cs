@@ -42,6 +42,7 @@ using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -346,22 +347,67 @@ public class OptimismEthRpcModuleTest
         public Task<T?> Post<T>(string method, params object?[] parameters) => throw new NotSupportedException();
     }
 
-    private static Task<TestRpcBlockchain> BuildSendRpc(IJsonRpcClient? sequencer, ITxSender? txSender = null)
+    private static async Task<TestRpcBlockchain> BuildSendRpc(IJsonRpcClient? sequencer, ITxSender? txSender = null, HeadState? headState = null)
     {
-        ITxSealer sealer = Substitute.For<ITxSealer>();
-        sealer.TrySeal(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(true);
+        TestSpecProvider specProvider = new(London.Instance);
         TestRpcBlockchain.Builder<TestRpcBlockchain> builder = TestRpcBlockchain.ForTest(sealEngineType: SealEngineType.Optimism);
         if (txSender is not null)
             builder = builder.WithTxSender(txSender);
 
-        return builder
+        TestRpcBlockchain rpcBlockchain = await builder
             .WithOptimismEthRpcModule(
                 sequencerRpcClient: sequencer,
                 accountStateProvider: Substitute.For<IAccountStateProvider>(),
                 ecdsa: Substitute.For<IEthereumEcdsa>(),
-                sealer: sealer,
-                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
-            .Build(new TestSpecProvider(London.Instance));
+                sealer: new TxSealer(new WalletTxSigner(WalletWithKeysOfABAndC(), specProvider.ChainId), Timestamper.Default),
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>(),
+                nonceStateReader: headState?.Reader)
+            .Build(specProvider);
+        if (headState is not null)
+            headState.Chain = rpcBlockchain;
+
+        return rpcBlockchain;
+    }
+
+    // The node's wallet: it signs for A, B and C, and for no other account.
+    private static IWallet WalletWithKeysOfABAndC()
+    {
+        PrivateKey[] keys = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
+        IWallet wallet = Substitute.For<IWallet>();
+        wallet.TrySignTransaction(Arg.Any<Transaction>(), Arg.Any<ulong>()).Returns(call =>
+        {
+            Transaction tx = call.Arg<Transaction>();
+            if (keys.FirstOrDefault(key => key.Address == tx.SenderAddress) is not { } key)
+                return false;
+
+            new EthereumEcdsa(call.ArgAt<ulong>(1)).Sign(key, tx);
+            return true;
+        });
+        return wallet;
+    }
+
+    /// <summary>
+    /// The chain's state as the nonce tracker reads it, which can go unavailable, as on a node that has not synced or has
+    /// pruned the head state.
+    /// </summary>
+    private sealed class HeadState
+    {
+        public HeadState() =>
+            Reader.TryGetAccount(Arg.Any<BlockHeader?>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(call =>
+            {
+                if (!Available)
+                    throw new MissingTrieNodeException("The head state is not available", null, TreePath.Empty, Keccak.EmptyTreeHash);
+
+                bool exists = Chain!.StateReader.TryGetAccount(call.ArgAt<BlockHeader?>(0), call.ArgAt<Address>(1), out AccountStruct account);
+                call[2] = account;
+                return exists;
+            });
+
+        public IStateReader Reader { get; } = Substitute.For<IStateReader>();
+
+        public TestRpcBlockchain? Chain { get; set; }
+
+        public bool Available { get; set; } = true;
     }
 
     private static Transaction SignedByC(TestRpcBlockchain rpcBlockchain, ulong nonce) =>
@@ -501,6 +547,65 @@ public class OptimismEthRpcModuleTest
         AssertSucceeded(await SendFromC(rpcBlockchain));
 
         Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new[] { explicitNonce, nextFilled }));
+    }
+
+    [Test]
+    public async Task Forwarding_node_does_not_count_a_transaction_signed_by_another_account()
+    {
+        RecordingSequencer sequencer = new();
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer);
+        // Signed by A and sent with C as its from: the node forwards the signature it was given, so C has sent nothing.
+        Transaction signedByA = Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressB).WithGasPrice(1.GWei)
+            .WithChainId(rpcBlockchain.SpecProvider.ChainId).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        LegacyTransactionForRpc request = new(signedByA, default) { From = TestItem.AddressC };
+
+        AssertSucceeded(await rpcBlockchain.TestEthRpc("eth_sendTransaction", request).WaitAsync(TimeSpan.FromSeconds(30)));
+        AssertSucceeded(await SendFromC(rpcBlockchain));
+
+        Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 0, 0 }), "a transaction the node did not sign must not use up a nonce of its from");
+    }
+
+    [Test]
+    public async Task Forwarding_node_forwards_an_explicit_nonce_without_the_head_state()
+    {
+        RecordingSequencer sequencer = new();
+        HeadState headState = new() { Available = false };
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer, headState: headState);
+
+        string withoutNonce = await SendFromC(rpcBlockchain);
+        AssertSucceeded(await SendFromC(rpcBlockchain, ",\"nonce\":\"0x5\""));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(withoutNonce)["error"], Is.Not.Null, "without the head state there is no nonce to fill");
+            Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 5 }), "a request with its nonce needs no head state");
+        }
+    }
+
+    [Test]
+    public async Task Forwarding_node_counts_an_accepted_forward_after_the_head_state_goes()
+    {
+        HeadState headState = new();
+        // The head state goes while the first forward is at the sequencer, which accepts it.
+        RecordingSequencer sequencer = new(index =>
+        {
+            if (index == 0)
+                headState.Available = false;
+
+            return Task.FromResult<string?>(AcceptedByTheSequencer);
+        });
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer, headState: headState);
+        await rpcBlockchain.AddBlock(SignedByC(rpcBlockchain, 0));
+
+        string accepted = await SendFromC(rpcBlockchain);
+        headState.Available = true;
+        AssertSucceeded(await SendFromC(rpcBlockchain));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(accepted)["error"], Is.Null, "a forward the sequencer accepted must be answered as accepted");
+            Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 1, 2 }), "the accepted forward must use up its nonce");
+        }
     }
 
     [Test]
@@ -1124,7 +1229,8 @@ internal static class TestRpcBlockchainExt
         IAccountStateProvider accountStateProvider,
         IEthereumEcdsa ecdsa,
         ITxSealer sealer,
-        IOptimismSpecHelper opSpecHelper) =>
+        IOptimismSpecHelper opSpecHelper,
+        IStateReader? nonceStateReader = null) =>
         @this.WithEthRpcModule(blockchain => new OptimismEthRpcModule(
             blockchain.RpcConfig,
             blockchain.Bridge,
@@ -1156,6 +1262,6 @@ internal static class TestRpcBlockchainExt
                 Substitute.For<IHistoryConfig>(),
                 Substitute.For<IHistoryPruner>()),
             new BlockForRpcFactory(),
-            new ForwardedNonceTracker(blockchain.BlockFinder, blockchain.StateReader)
+            new ForwardedNonceTracker(blockchain.BlockFinder, nonceStateReader ?? blockchain.StateReader)
         ));
 }
