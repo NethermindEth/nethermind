@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Crypto;
 
 [assembly: InternalsVisibleTo("Nethermind.Stateless.Executor")]
 
@@ -61,15 +62,26 @@ public static class ExecutableCodeMemory
     /// <param name="destination">Memory that never moves, with room for the code and <see cref="CodeInfo.ExecutionPadding"/>
     /// bytes; it may overlap <paramref name="code"/>.</param>
     /// <param name="code">The code.</param>
-    internal static unsafe ReadOnlyMemory<byte> Place(Span<byte> destination, ReadOnlySpan<byte> code)
+    /// <param name="codeHash">Receives the Keccak-256 hash of the code, computed as it is copied.</param>
+    internal static unsafe ReadOnlyMemory<byte> Place(Span<byte> destination, ReadOnlySpan<byte> code, out ValueHash256 codeHash)
     {
         destination = destination[..(code.Length + CodeInfo.ExecutionPadding)];
-        code.CopyTo(destination);
+        codeHash = KeccakHash.CopyAndComputeHash256(code, destination);
         destination[code.Length..].Clear();
         return new FixedManager((byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(destination)), code.Length, padded: true).Memory;
     }
 
-    /// <summary>Gets whether <paramref name="code"/> is the whole of a <see cref="Place"/> result.</summary>
+    /// <summary>Wraps the first <paramref name="codeLength"/> bytes of <paramref name="codeAndPadding"/> as code
+    /// <see cref="CodeInfo"/> executes in place, clearing the execution padding after them.</summary>
+    /// <param name="codeAndPadding">Memory that never moves: the code, then <see cref="CodeInfo.ExecutionPadding"/> bytes.</param>
+    /// <param name="codeLength">The code's length.</param>
+    internal static unsafe ReadOnlyMemory<byte> PlacePadded(Span<byte> codeAndPadding, int codeLength)
+    {
+        codeAndPadding.Slice(codeLength, CodeInfo.ExecutionPadding).Clear();
+        return new FixedManager((byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(codeAndPadding)), codeLength, padded: true).Memory;
+    }
+
+    /// <summary>Gets whether <paramref name="code"/> is the whole of a <see cref="Place"/> or <see cref="PlacePadded"/> result.</summary>
     internal static bool IsPlaced(ReadOnlyMemory<byte> code) =>
         MemoryMarshal.TryGetMemoryManager(code, out FixedManager? manager, out int start, out int length)
         && manager.IsPadded && start == 0 && length == manager.CodeLength;

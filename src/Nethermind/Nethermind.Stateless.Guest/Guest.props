@@ -7,6 +7,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <GuestInput Condition="'$(GuestInput)' == ''">Ssz</GuestInput>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +21,8 @@
          referenced: ZkvmThrow is an UnmanagedCallersOnly export the runtime
          looks up in the guest assembly itself. -->
     <Compile Include="$(MSBuildThisFileDirectory)Program.cs" Link="Guest\Program.cs" />
+    <!-- The input the guest takes: Ssz, the spec StatelessInput, or Trusted, the trusted-input format. -->
+    <Compile Include="$(MSBuildThisFileDirectory)Input.$(GuestInput).cs" Link="Guest\Input.$(GuestInput).cs" />
   </ItemGroup>
 
   <ItemGroup>

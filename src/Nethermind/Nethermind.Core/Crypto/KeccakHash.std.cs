@@ -56,6 +56,13 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static partial void NoteWitnessNodeLoaded(nint tag) { }
 
+    /// <inheritdoc cref="KeccakHash.CopyAndComputeHash256" />
+    internal static partial ValueHash256 CopyAndComputeHash256(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        source.CopyTo(destination);
+        return ComputeHash256(destination[..source.Length]);
+    }
+
     /// <inheritdoc cref="KeccakHash.DonateConsumedInput" />
     internal static partial void DonateConsumedInput(ReadOnlySpan<byte> consumed) { }
 

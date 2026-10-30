@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -241,7 +242,7 @@ namespace Nethermind.Trie
         /// per encoded branch would first-touch. A branch short enough to be embedded is kept as before: its parent copies it.
         /// Only where <see cref="FirstTouchMemoryFlag"/> is on: the other guests pay more for the scratch bookkeeping than they save.
         /// </remarks>
-        private static bool KeepsRlpOfHashedBranch => FirstTouchMemoryFlag.IsActive;
+        private static bool KeepsRlpOfHashedBranch => FirstTouchMemoryFlag.IsActive || AirbenderFlag.IsActive;
 
         /// <summary>The scratch branches are encoded into; see <see cref="KeepsRlpOfHashedBranch"/>.</summary>
         /// <remarks>A class of its own, with no initializer, so each access is a plain load rather than a class-initialization check.</remarks>
@@ -251,6 +252,45 @@ namespace Nethermind.Trie
             /// <remarks>A branch's children are all deeper, so one is hashed before any other branch at its depth is encoded.
             /// Sixty-four depths: a branch has a child one nibble deeper, and a path is at most sixty-four nibbles.</remarks>
             public static byte[]?[]? ByDepth;
+
+            /// <summary>Per depth and per offset modulo 32 of the encoding it is patched from, the scratch a full branch at
+            /// that depth is patched into; see <see cref="RentPatchedBranchRlp"/>.</summary>
+            public static byte[]?[]? ByDepthAndPhase;
+        }
+
+        /// <summary>Rents the buffer a full branch re-encoded from <paramref name="previousRlp"/> is patched into.</summary>
+        /// <remarks>On Airbender a copy runs on delegated 32-byte moves only between addresses equal modulo 32, so there each
+        /// depth keeps a scratch for each 8-byte offset modulo 32 that the previous encoding can start at.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe CappedArray<byte> RentPatchedBranchRlp(ICappedArrayPool? pool, ReadOnlySpan<byte> previousRlp, in TreePath path)
+        {
+            if (!AirbenderFlag.IsActive) return RentBranchRlp(pool, FullBranchRlpLength, path);
+
+            int phase = PhaseOf(ref MemoryMarshal.GetReference(previousRlp));
+            byte[]?[] byDepthAndPhase = BranchRlpScratch.ByDepthAndPhase ??= new byte[2 * Hash256.Size * Phases][];
+            int index = path.Length * Phases + phase;
+            byte[]? scratch = byDepthAndPhase[index];
+            if (scratch is null) byDepthAndPhase[index] = scratch = AllocateAtPhase(phase);
+            return new CappedArray<byte>(scratch, FullBranchRlpLength);
+        }
+
+        private const int Phases = 32 / sizeof(ulong);
+
+        private static unsafe int PhaseOf(ref byte data) => (int)((nuint)Unsafe.AsPointer(ref data) & 31) / sizeof(ulong);
+
+        /// <summary>Allocates a full branch's buffer whose data starts at <paramref name="phase"/> 8-byte offsets past a 32-byte boundary, if it can.</summary>
+        /// <remarks>Arrays are allocated one after another, and a filler array between two tries moves the next by 24 bytes,
+        /// so four tries reach every offset. Any other allocator only costs the copy its delegated moves.</remarks>
+        private static byte[] AllocateAtPhase(int phase)
+        {
+            byte[] candidate = new byte[FullBranchRlpLength];
+            for (int i = 0; i < Phases && PhaseOf(ref MemoryMarshal.GetArrayDataReference(candidate)) != phase; i++)
+            {
+                GC.KeepAlive(new byte[9]);
+                candidate = new byte[FullBranchRlpLength];
+            }
+
+            return candidate;
         }
 
         /// <summary>Rents the buffer the encoding of the branch at <paramref name="path"/> is written into: where
@@ -415,5 +455,49 @@ namespace Nethermind.Trie
         /// <summary>Undoes <see cref="EnterChildPath"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void LeaveChildPath(ref TreePath path) => path.TruncateDepth();
+
+        /// <summary>The child hash <paramref name="hash"/>, read from its parent's RLP.</summary>
+        /// <remarks>
+        /// A 32-bit guest writes the hash into the new object a word at a time, where the JIT reads an unaligned hash a byte
+        /// at a time and copies it once more. An unaligned hash is read as the nine aligned words that hold it, shifted and
+        /// merged; each of the words holds a byte of the hash, so nothing outside the RLP is read.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe Hash256 ReadChildHash(ReadOnlySpan<byte> hash)
+        {
+            if (IntPtr.Size != sizeof(uint))
+                return new(MemoryMarshal.Read<ValueHash256>(hash));
+
+            nuint address = (nuint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(hash));
+            int misalignment = (int)(address % sizeof(uint));
+            uint* words = (uint*)(address - (nuint)misalignment);
+            Hash256 keccak = new(default(ValueHash256));
+            // Written in place before anything else can read it: the new object is not yet shared.
+            ref uint merged = ref Unsafe.As<ValueHash256, uint>(ref Unsafe.AsRef(in keccak.ValueHash256));
+            if (misalignment == 0)
+            {
+                merged = words[0];
+                Unsafe.Add(ref merged, 1) = words[1];
+                Unsafe.Add(ref merged, 2) = words[2];
+                Unsafe.Add(ref merged, 3) = words[3];
+                Unsafe.Add(ref merged, 4) = words[4];
+                Unsafe.Add(ref merged, 5) = words[5];
+                Unsafe.Add(ref merged, 6) = words[6];
+                Unsafe.Add(ref merged, 7) = words[7];
+                return keccak;
+            }
+
+            int right = misalignment * 8;
+            int left = 32 - right;
+            merged = (words[0] >> right) | (words[1] << left);
+            Unsafe.Add(ref merged, 1) = (words[1] >> right) | (words[2] << left);
+            Unsafe.Add(ref merged, 2) = (words[2] >> right) | (words[3] << left);
+            Unsafe.Add(ref merged, 3) = (words[3] >> right) | (words[4] << left);
+            Unsafe.Add(ref merged, 4) = (words[4] >> right) | (words[5] << left);
+            Unsafe.Add(ref merged, 5) = (words[5] >> right) | (words[6] << left);
+            Unsafe.Add(ref merged, 6) = (words[6] >> right) | (words[7] << left);
+            Unsafe.Add(ref merged, 7) = (words[7] >> right) | (words[8] << left);
+            return keccak;
+        }
     }
 }

@@ -1512,8 +1512,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (Unsafe.IsNullRef(ref source))
                 return false;
 
-            // Memory holds the word big-endian; the slot takes it in limb layout, over the offset it held.
-            Unsafe.WriteUnaligned(ref slot, Unsafe.ReadUnaligned<EvmWord>(ref source).ByteSwap());
+            // Memory holds the word big-endian, or swizzled; the slot takes it in limb layout, over the offset it held.
+            if (EvmPooledMemory.IsSwizzled)
+                SwizzledMemory.LoadWord(ref Unsafe.As<byte, ulong>(ref slot), ref source);
+            else
+                Unsafe.WriteUnaligned(ref slot, Unsafe.ReadUnaligned<EvmWord>(ref source).ByteSwap());
             gasLeft -= GasPolicy.VeryLowGasCost.GasCost;
             return true;
         }
@@ -1562,8 +1565,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             // take a callee-saved register; the charge writes through a reference, so the JIT reloads them.
             ref byte top = ref stack.PeekBytesByRefUnchecked();
             ref byte destination = ref state.Vm.VmState.Memory.CommitWordOverwrite(Unsafe.As<byte, ulong>(ref top));
-            // The value sits below the offset in limb layout; memory holds it big-endian.
-            Unsafe.WriteUnaligned(ref destination, Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Subtract(ref top, EvmStack.WordSize)).ByteSwap());
+            // The value sits below the offset in limb layout; memory holds it big-endian, or swizzled.
+            if (EvmPooledMemory.IsSwizzled)
+                SwizzledMemory.StoreWord(ref destination, ref Unsafe.As<byte, ulong>(ref top));
+            else
+                Unsafe.WriteUnaligned(ref destination, Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Subtract(ref top, EvmStack.WordSize)).ByteSwap());
             stack.Head -= 2;
             return true;
         }

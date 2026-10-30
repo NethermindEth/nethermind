@@ -11,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Stateless.Execution.IO;
 
@@ -91,7 +92,8 @@ public static partial class StatelessExecutor
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
         => Execute(suggestedBlock, witness, specProvider, validateHashes: true);
 
-    private static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider, bool validateHashes)
+    private static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider, bool validateHashes,
+        IBlockTracer? blockTracer = null)
     {
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
         BlockHeader parentHeader;
@@ -144,7 +146,7 @@ public static partial class StatelessExecutor
         (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(
             suggestedBlock,
             ProcessingOptions.ReadOnlyChain,
-            NullBlockTracer.Instance,
+            blockTracer ?? NullBlockTracer.Instance,
             specProvider.GetSpec(suggestedBlock.Header));
 
         if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
@@ -171,6 +173,11 @@ public static partial class StatelessExecutor
     private static bool TryRecoverSenders(
         Transaction[] transactions, byte[][] encodedTransactions, ISpecProvider specProvider, IReleaseSpec spec)
     {
+        bool? recoveredInBatch = null;
+        TryRecoverSendersInBatch(transactions, encodedTransactions, specProvider, spec, ref recoveredInBatch);
+        if (recoveredInBatch is { } recoveredAll)
+            return recoveredAll;
+
         EthereumEcdsa ecdsa = new(specProvider.ChainId);
         Span<byte> recovered = stackalloc byte[PublicKey.PrefixedLengthInBytes];
 
@@ -186,6 +193,10 @@ public static partial class StatelessExecutor
 
         return true;
     }
+
+    /// <summary>Recovers every sender in one call where the guest can, setting <paramref name="recovered"/> to the outcome.</summary>
+    static partial void TryRecoverSendersInBatch(
+        Transaction[] transactions, byte[][] encodedTransactions, ISpecProvider specProvider, IReleaseSpec spec, ref bool? recovered);
 
     /// <summary>Returns whether <paramref name="transactions"/> commit to exactly <paramref name="expected"/>, in order.</summary>
     internal static bool BlobVersionedHashesMatch(Transaction[] transactions, ReadOnlySpan<Hash256> expected)

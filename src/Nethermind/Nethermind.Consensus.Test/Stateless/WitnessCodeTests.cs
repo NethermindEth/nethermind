@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Stateless.Execution.IO;
 using NUnit.Framework;
@@ -104,6 +105,7 @@ public class WitnessCodeTests
             Assert.That(ExecutableCodeMemory.IsPlaced(placed), Is.True);
             Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(placed.Span), ref input[offset]), Is.True);
             Assert.That(placed.ToArray(), Is.EqualTo(expected));
+            Assert.That(code.Bytes.Hash, Is.EqualTo(ValueKeccak.Compute(expected)));
             Assert.That(input.AsSpan(offset + expected.Length, Padding).ToArray(), Is.All.EqualTo(0));
         }
     }

@@ -106,45 +106,35 @@ public static partial class EvmInstructions
         Debug.Assert(vm.ReturnData is null, "Dispatch clears staged output before entering an opcode chain.");
 
         int traceStackHead;
-        // Pop the gas limit for the call.
-        if (!stack.PopUInt256(out UInt256 gasLimit))
+        // The operands are read in place in their popped slots, which stay intact until the next push.
+        const int MemoryOperands = 4;
+        int valueOperands = TOpCall.ExecutionType is ExecutionType.CALL or ExecutionType.CALLCODE ? 1 : 0;
+        int operands = 2 + valueOperands + MemoryOperands;
+        if (!stack.EnsureDepth(operands))
         {
-            traceStackHead = 0;
+            // As popping one operand at a time would leave it: the leading operands popped, the memory ones not.
+            traceStackHead = (int)stack.Head;
+            stack.Head = Math.Max(0, stack.Head - 2 - valueOperands);
             goto StackUnderflow;
         }
-        // Pop the code source address from the stack.
-        Address? codeSource = stack.PopAddress(vm.AddressCache);
-        if (codeSource is null)
-        {
-            traceStackHead = 1;
-            goto StackUnderflow;
-        }
+
+        ref byte deepest = ref stack.PopBytesByRefUnchecked(operands);
+        ref readonly UInt256 gasLimit = ref Operand(ref deepest, operands, 0);
+        Address codeSource = vm.AddressCache.GetOrCreate(in Operand(ref deepest, operands, 1));
 
         ExecutionEnvironment env = vm.VmState.Env;
-        // Determine the call value based on the call type.
-        UInt256 callValue;
-        if (TOpCall.ExecutionType == ExecutionType.STATICCALL)
-        {
-            // Static calls cannot transfer value.
-            callValue = default;
-        }
-        else if (TOpCall.ExecutionType == ExecutionType.DELEGATECALL)
-        {
-            // Delegate calls use the value from the current execution context.
-            callValue = env.Value;
-        }
-        else if (!stack.PopUInt256(out callValue))
-        {
-            traceStackHead = 2;
-            goto StackUnderflow;
-        }
+        // Static calls cannot transfer value; delegate calls use the value from the current execution context.
+        ref readonly UInt256 callValue = ref TOpCall.ExecutionType == ExecutionType.STATICCALL
+            ? ref UInt256.Zero
+            : ref TOpCall.ExecutionType == ExecutionType.DELEGATECALL
+                ? ref env.Value
+                : ref Operand(ref deepest, operands, 2);
 
-        // Pop additional parameters: data offset, data length, output offset, and output length.
-        if (!stack.PopUInt256(out UInt256 dataOffset, out UInt256 dataLength, out UInt256 outputOffset, out UInt256 outputLength))
-        {
-            traceStackHead = (int)stack.Head + (TOpCall.ExecutionType is ExecutionType.CALL or ExecutionType.CALLCODE ? 3 : 2);
-            goto StackUnderflow;
-        }
+        ref readonly UInt256 dataOffset = ref Operand(ref deepest, operands, 2 + valueOperands);
+        ref readonly UInt256 dataLength = ref Operand(ref deepest, operands, 3 + valueOperands);
+        ref readonly UInt256 outputOffset = ref Operand(ref deepest, operands, 4 + valueOperands);
+        // The slot a push takes first: copy it before any push that it outlives.
+        ref readonly UInt256 outputLength = ref AsWord(ref deepest);
 
         bool hasValueTransfer = TOpCall.ExecutionType != ExecutionType.DELEGATECALL && !callValue.IsZero;
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
@@ -264,11 +254,12 @@ public static partial class EvmInstructions
 
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = default;
+            UInt256 tracedOutputLength = TTracingInst.IsActive ? outputLength : default;
             EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
 
             if (TTracingInst.IsActive)
             {
-                vm.TraceCallOutputWindow(in outputOffset, in outputLength);
+                vm.TraceCallOutputWindow(in outputOffset, in tracedOutputLength);
                 vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas), precheckError);
             }
 
@@ -320,8 +311,8 @@ public static partial class EvmInstructions
         }
 
         return TSpec.IsEip8360Enabled
-            ? CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, OnFlag>(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount)
-            : CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, OffFlag>(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount);
+            ? CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, OnFlag>(vm, ref stack, ref gas, in dataOffset, in dataLength, in outputOffset, in outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount)
+            : CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, OffFlag>(vm, ref stack, ref gas, in dataOffset, in dataLength, in outputOffset, in outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount);
 
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
@@ -335,6 +326,15 @@ public static partial class EvmInstructions
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     }
+
+    /// <summary>The word in a stack slot, which holds it in limb layout.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ref UInt256 AsWord(ref byte slot) => ref Unsafe.As<byte, UInt256>(ref slot);
+
+    /// <summary>The <paramref name="index"/>-th of <paramref name="count"/> popped operands, the first having been on top.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ref UInt256 Operand(ref byte deepest, int count, int index) =>
+        ref AsWord(ref Unsafe.Add(ref deepest, (count - 1 - index) * EvmStack.WordSize));
 
     /// <summary>Whether a transfer to <paramref name="target"/> pays the new-account charge under the given fork rules.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -587,9 +587,9 @@ public static partial class EvmInstructions
         ref EvmStack stack,
         ref TGasPolicy gas,
         in UInt256 dataOffset,
-        UInt256 dataLength,
-        UInt256 outputOffset,
-        UInt256 outputLength,
+        in UInt256 dataLength,
+        in UInt256 outputOffset,
+        in UInt256 outputLength,
         CodeInfo codeInfo,
         Address target,
         Address caller,
@@ -610,7 +610,7 @@ public static partial class EvmInstructions
         if (TOpCall.ExecutionType != ExecutionType.DELEGATECALL && !callValue.IsZero) state.SubtractFromBalance(caller, in callValue, vm.Spec);
 
         // Load call data from memory.
-        ReadOnlyMemory<byte> callData = vm.VmState.Memory.LoadAfterGas(in dataOffset, in dataLength);
+        ReadOnlyMemory<byte> callData = vm.VmState.Memory.LoadInputAfterGas(in dataOffset, in dataLength);
         // Construct the execution environment for the call.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             vm.EnvironmentCache,
@@ -622,12 +622,8 @@ public static partial class EvmInstructions
             value: in callValue,
             inputData: in callData);
 
-        // Normalize output offset if output length is zero.
-        if (outputLength.IsZero)
-        {
-            // Output offset is inconsequential when output length is 0.
-            outputOffset = default;
-        }
+        // Output offset is inconsequential when output length is 0.
+        long outputDestination = outputLength.IsZero ? 0 : outputOffset.ToLong();
 
         TGasPolicy childGas = TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl);
 
@@ -638,14 +634,14 @@ public static partial class EvmInstructions
             && (!Eip8360.IsActive || callValue.IsZero || vm.VmState.AccessTracker.TransientCreates is null))
         {
             return InlinePrecompileFrame<TGasPolicy, TOpCall, TTracingInst>(
-                vm, callEnv, childGas, outputOffset.ToLong(), outputLength.ToLong(), in snapshot, ref stack, newAccountCharged);
+                vm, callEnv, childGas, outputDestination, outputLength.ToLong(), in snapshot, ref stack, newAccountCharged);
         }
 
         // Rent a new call frame for executing the call.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
             vm.FrameCache,
             gas: childGas,
-            outputDestination: outputOffset.ToLong(),
+            outputDestination: outputDestination,
             outputLength: outputLength.ToLong(),
             executionType: TOpCall.ExecutionType,
             isStatic: TOpCall.ExecutionType == ExecutionType.STATICCALL || vm.VmState.IsStatic,
@@ -735,7 +731,7 @@ public static partial class EvmInstructions
             goto OutOfGas;
         }
 
-        vm.StageReturnData(vm.VmState.Memory.LoadSpanAfterGas(in position, in length), isRevert: false);
+        vm.StageReturnData(vm.VmState.Memory.LoadLaidOutSpanAfterGas(in position, in length), isRevert: false, EvmPooledMemory.IsSwizzled);
 
         return EvmExceptionType.Stop;
         // Jump forward to be unpredicted by the branch predictor.

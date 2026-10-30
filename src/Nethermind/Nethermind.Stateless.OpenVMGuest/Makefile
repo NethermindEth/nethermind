@@ -50,7 +50,7 @@ ifeq ($(strip $(OPENVM_RUNNER)),)
 	docker run --rm -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
 		$(OPENVM_IMAGE) \
-		/n/nethermind - /n/$(INPUT).raw
+		/n/$(GUEST_NAME) - /n/$(INPUT).raw
 else
-	$(OPENVM_RUNNER) $(GUEST_DIR)/bin/nethermind - $(GUEST_DIR)/bin/$(INPUT).raw
+	$(OPENVM_RUNNER) $(GUEST_DIR)/bin/$(GUEST_NAME) - $(GUEST_DIR)/bin/$(INPUT).raw
 endif

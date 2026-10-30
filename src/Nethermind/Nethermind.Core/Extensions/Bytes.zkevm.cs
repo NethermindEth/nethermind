@@ -84,13 +84,14 @@ public static unsafe partial class Bytes
     /// that spills every callee-saved register, ~60 steps a call whatever the length. On SP1, corelib's
     /// <c>SpanHelpers.Memmove</c> adds ~13 instructions to each copy of more than 16 bytes before it reaches the same
     /// routine. Where <see cref="ZiskFlag"/> or <see cref="Sp1Flag"/> is on, this calls <c>memmove</c> directly, so
-    /// overlapping spans stay safe; elsewhere it keeps corelib's copy. See <c>Bytes.std.cs</c> for the host form.
+    /// overlapping spans stay safe; so it does on Airbender, whose libc copies a misaligned span by whole words where
+    /// corelib's copy moves bytes. Elsewhere it keeps corelib's copy. See <c>Bytes.std.cs</c> for the host form.
     /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="destination"/> is shorter than <paramref name="source"/>.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Copy(ReadOnlySpan<byte> source, Span<byte> destination)
     {
-        if (!ZiskFlag.IsActive && !Sp1Flag.IsActive)
+        if (!ZiskFlag.IsActive && !Sp1Flag.IsActive && !AirbenderFlag.IsActive)
         {
             source.CopyTo(destination);
             return;
@@ -115,7 +116,7 @@ public static unsafe partial class Bytes
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Memmove(void* destination, void* source, nuint length)
     {
-        if (ZiskFlag.IsActive || Sp1Flag.IsActive) Accelerators.Memmove(destination, source, length);
+        if (ZiskFlag.IsActive || Sp1Flag.IsActive || AirbenderFlag.IsActive) Accelerators.Memmove(destination, source, length);
         else Buffer.MemoryCopy(source, destination, length, length);
     }
 
@@ -125,7 +126,7 @@ public static unsafe partial class Bytes
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Memset(void* destination, byte value, nuint length)
     {
-        if (ZiskFlag.IsActive) Accelerators.Memset(destination, value, length);
+        if (ZiskFlag.IsActive || AirbenderFlag.IsActive) Accelerators.Memset(destination, value, length);
         else Unsafe.InitBlockUnaligned(destination, value, checked((uint)length));
     }
 

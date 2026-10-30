@@ -48,4 +48,41 @@ public class KeccakAbsorbTests
 
         Assert.That(actual, Is.EqualTo(BitConverter.ToUInt64(expected)));
     }
+
+    [Test]
+    public unsafe void Block_copy_moves_unaligned_bytes_down_and_absorbs_them(
+        [Range(1, 7)] int offset, [Values(0, 1, 17)] int gapWords, [Values(1, 2)] int blocks)
+    {
+        const int rateLanes = RateBytes / sizeof(ulong);
+        // The last block reads one source word past itself, which holds its last bytes.
+        ulong[] buffer = new ulong[gapWords + blocks * rateLanes + 1];
+        new Random(offset * 100 + gapWords * 10 + blocks).NextBytes(MemoryMarshal.AsBytes(buffer.AsSpan()));
+        byte[] source = MemoryMarshal.AsBytes(buffer.AsSpan()).Slice(gapWords * sizeof(ulong) + offset, blocks * RateBytes).ToArray();
+
+        ulong[] expectedLanes = new ulong[rateLanes];
+        for (int block = 0; block < blocks; block++)
+        {
+            ReadOnlySpan<ulong> words = MemoryMarshal.Cast<byte, ulong>(source.AsSpan(block * RateBytes, RateBytes));
+            for (int i = 0; i < rateLanes; i++) expectedLanes[i] ^= words[i];
+        }
+
+        ulong[] lanes = new ulong[StateBytes / sizeof(ulong)];
+        lanes.AsSpan().Fill(ulong.MaxValue);
+        fixed (ulong* start = buffer)
+        {
+            ulong* to = start;
+            ulong* from = start + gapWords;
+            ulong low = *from;
+            for (int block = 0; block < blocks; block++, from += rateLanes, to += rateLanes)
+            {
+                low = KeccakHash.CopyAndAbsorbBlock(ref lanes[0], from, to, low, offset * 8, intoZeroState: block == 0);
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MemoryMarshal.AsBytes(buffer.AsSpan(0, blocks * rateLanes)).ToArray(), Is.EqualTo(source));
+            Assert.That(lanes.AsSpan(0, rateLanes).ToArray(), Is.EqualTo(expectedLanes));
+        }
+    }
 }

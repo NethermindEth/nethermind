@@ -25,7 +25,7 @@ namespace Nethermind.StatelessInputGen;
 
 internal static class InputGenerator
 {
-    internal static async Task<int> Generate(string blockParam, Uri host, Uri? beaconUrl, string output, bool forZisk, CancellationToken cancellationToken = default)
+    internal static async Task<int> Generate(string blockParam, Uri host, Uri? beaconUrl, string output, bool forZisk, bool trusted, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(blockParam);
         ArgumentNullException.ThrowIfNull(host);
@@ -48,12 +48,15 @@ internal static class InputGenerator
         if (data is null)
             return 1;
 
+        if (trusted)
+            data = TrustedInput.FromStatelessInput(data);
+
         if (forZisk)
             data = ZiskFrame.Wrap(data);
 
         Directory.CreateDirectory(output);
 
-        string fileName = $"{EnsureBlockParamIsNumber(blockParam, block)}.ssz";
+        string fileName = $"{EnsureBlockParamIsNumber(blockParam, block)}{(trusted ? ".nti" : ".ssz")}";
         string path = Path.Join(output, fileName);
 
         await File.WriteAllBytesAsync(path, data, cancellationToken);

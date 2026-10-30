@@ -134,6 +134,10 @@ namespace Nethermind.Trie
         /// <summary>Throws where this build cannot commit a trie; see <c>PatriciaTree.zkevm.cs</c>.</summary>
         partial void ThrowIfCommitUnsupported();
 
+        /// <summary>Checks the node a write's climb collapsed a branch into, below the frames still on <paramref name="ancestors"/>,
+        /// where this build does; see <c>PatriciaTree.zkevm.cs</c>.</summary>
+        partial void ValidateCollapsedBranch(TraverseStack ancestors, TrieNode? node);
+
         /// <summary>Reads the value at <paramref name="rawKey"/> straight from its bytes, where this build does.</summary>
         /// <returns>Whether it did; when not, the caller walks the key's nibbles.</returns>
         private partial bool TryGetByRawKey(ReadOnlySpan<byte> rawKey, Hash256? rootHash, out ReadOnlySpan<byte> value);
@@ -756,6 +760,7 @@ namespace Nethermind.Trie
 
                 // About 1% reach here
                 node = MaybeCombineNode(ref path, node, null);
+                ValidateCollapsedBranch(traverseStack, node);
             }
 
             return node;
@@ -942,6 +947,9 @@ namespace Nethermind.Trie
                 _count = 0;
             }
             public int Count => (int)_count;
+
+            /// <summary>The frames not yet popped, the root's first.</summary>
+            public ReadOnlySpan<TraverseStackFrame> Frames => _entries[..(int)_count];
         }
 
         private CappedArray<byte> GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead)

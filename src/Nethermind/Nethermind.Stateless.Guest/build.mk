@@ -58,6 +58,15 @@ TRIM_FLAGS ?= --no-stacktrace-data --ldflags=--strip-all
 # assembled from the .S of the same name in the guest's directory.
 GUEST_OBJECTS ?=
 
+# What a guest whose toolchain is not the published image overrides: the target
+# architecture, its bindings manifest, the bflat command and the docker arguments
+# that bring a local bflat into the image (the Airbender guest).
+GUEST_ARCH ?= riscv64
+GUEST_EXTLIB_MANIFEST ?=
+comma := ,
+BFLAT ?= bflat
+BFLAT_DOCKER_ARGS ?=
+
 # Main, the ZkvmThrow export and the failure protocol are one file shared by all
 # three guests; each guest's Program.cs supplies only WriteOutput. bflat compiles
 # sources, not the managed assembly, so the shared file has to be mounted and
@@ -69,7 +78,11 @@ GUEST_OBJECTS ?=
 SHARED_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 SHARED_SRC_DIR := /nethermind/shared
 SHARED_MOUNT := --mount type=bind,source="$(SHARED_DIR)",target=$(SHARED_SRC_DIR),readonly
-GUEST_SOURCES := $(SHARED_SRC_DIR)/Program.cs $(SRC_DIR)/Program.cs
+# The input the guest takes - Ssz, the spec StatelessInput, or Trusted, the trusted-input format - picks the shared
+# file that implements Execute, and the guest's name.
+GUEST_INPUT ?= Ssz
+GUEST_NAME ?= $(if $(filter Trusted,$(GUEST_INPUT)),nethermind-trusted,nethermind)
+GUEST_SOURCES := $(SHARED_SRC_DIR)/Program.cs $(SHARED_SRC_DIR)/Input.$(GUEST_INPUT).cs $(SRC_DIR)/Program.cs
 # Pinned rather than derived: with more than one source bflat names the output
 # after the first, which is the shared one.
 GUEST_OUT := -o $(SRC_DIR)/Program
@@ -122,23 +135,25 @@ BFLAT_REFS := \
 .DEFAULT_GOAL := build
 
 dotnet-build:
-	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/$(GUEST_PROJECT).csproj
+	dotnet build -c release -p:EnableZkEvm=true -p:GuestInput=$(GUEST_INPUT) $(GUEST_DIR)/$(GUEST_PROJECT).csproj
 
 # ILC embeds every manifest resource of every input assembly and the guest reads
 # none, so they are dead weight (6.9 MB of chainspecs once rode along).
 build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
-	@[ -n "$(GUEST_PACKAGE_VERSION)" ] || { echo "error: no version of $(GUEST_PACKAGE) in Directory.Packages.props; the pin must be exact: Version=\"[x]\"" >&2; exit 1; }
-	@[ -f "$(GUEST_NUPKG_PATH)" ] || { echo "error: $(GUEST_NUPKG_PATH) is not there; restore puts it in NUGET_PACKAGES" >&2; exit 1; }
+	@# A guest with no runtime package (Airbender's, built from a local libairbender) links its own manifest.
+	@[ -z "$(GUEST_PACKAGE)" ] || [ -n "$(GUEST_PACKAGE_VERSION)" ] || { echo "error: no version of $(GUEST_PACKAGE) in Directory.Packages.props; the pin must be exact: Version=\"[x]\"" >&2; exit 1; }
+	@[ -z "$(GUEST_PACKAGE)" ] || [ -f "$(GUEST_NUPKG_PATH)" ] || { echo "error: $(GUEST_NUPKG_PATH) is not there; restore puts it in NUGET_PACKAGES" >&2; exit 1; }
 	docker run --platform linux/amd64 --rm \
 		-e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
 		-e DOTNET_TYPELOADER_TRACE_INTERFACE_RESOLUTION=0 \
 		-w $(SRC_DIR) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/$(GUEST_PROJECT)/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
-		--mount type=bind,source="$(GUEST_NUPKG_PATH)",target=$(PACKAGE_DIR)/$(GUEST_NUPKG),readonly \
+		$(if $(GUEST_PACKAGE),--mount type=bind$(comma)source="$(GUEST_NUPKG_PATH)"$(comma)target=$(PACKAGE_DIR)/$(GUEST_NUPKG)$(comma)readonly) \
 		$(SHARED_MOUNT) \
+		$(BFLAT_DOCKER_ARGS) \
 		$(BFLAT_IMAGE) \
-		bflat build --arch riscv64 --os linux --stdlib dotnet --libc $(GUEST_LIBC) \
+		$(BFLAT) build --arch $(GUEST_ARCH) --os linux --stdlib dotnet --libc $(GUEST_LIBC) \
 		$(OPT_FLAGS) \
 		$(TRIM_FLAGS) \
 		--no-pie \
@@ -147,7 +162,7 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		--nostdlibrefs \
 		$(GUEST_SUBSTITUTIONS) \
 		$(BFLAT_REFS) \
-		--extlib $(PACKAGE_DIR)/$(GUEST_NUPKG) \
+		--extlib $(if $(GUEST_PACKAGE),$(PACKAGE_DIR)/$(GUEST_NUPKG),$(GUEST_EXTLIB_MANIFEST)) \
 		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \
@@ -159,7 +174,11 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 	if [ "$$len" != "0" ]; then echo "error: the guest image embeds $$len bytes of manifest resources; the guest reads none, find the assembly that added them" >&2; exit 1; fi; \
 	echo "Resource verification: OK - no manifest resources in the guest image"
 	mkdir -p $(GUEST_DIR)/bin && \
-		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/nethermind
+		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/$(GUEST_NAME)
+	@# The flat ROM image and instruction section bflat writes beside an Airbender ELF.
+	@for ext in bin text; do \
+		if [ -f $(GUEST_DIR)/Program.$$ext ]; then mv -f $(GUEST_DIR)/Program.$$ext $(GUEST_DIR)/bin/$(GUEST_NAME).$$ext; fi; \
+	done
 
 # Assembled by the bflat image's own clang, for the ISA the gates above allow.
 $(GUEST_DIR)/%.o: $(GUEST_DIR)/%.S
@@ -190,6 +209,8 @@ clean:
 	rm -rf \
 		$(GUEST_DIR)/bin/** \
 		$(GUEST_DIR)/Program \
+		$(GUEST_DIR)/Program.bin \
+		$(GUEST_DIR)/Program.text \
 		$(GUEST_DIR)/Program.o \
 		$(GUEST_DIR)/Program.map.xml \
 		$(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))

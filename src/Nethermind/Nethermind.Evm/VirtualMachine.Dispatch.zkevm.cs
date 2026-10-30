@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using InlineIL;
 using Nethermind.Core;
 
@@ -69,11 +72,27 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType> AsTableEntry(
-        delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType> handler) =>
+        delegate*<ref EvmStack, nuint, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType> handler) =>
         (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)handler;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void SetExecutionGas(ref TGasPolicy gas, ulong value) => TGasPolicy.SetRemainingGas(ref gas, value);
+
+    /// <summary>The execution gas as the dispatch chain carries it: pointer-sized, in one register on a 32-bit guest.</summary>
+    /// <remarks>
+    /// A frame's gas never exceeds its transaction's gas limit, far below 2^31 under any block gas limit a chain can
+    /// reach. A 32-bit guest stops on gas it cannot carry, rather than run the frame with a different amount.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static nuint ChainGas(ulong gas)
+    {
+        if (IntPtr.Size == sizeof(uint) && gas > int.MaxValue)
+            ThrowGasOutOfRange();
+        return (nuint)gas;
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowGasOutOfRange() => throw new InvalidOperationException("The frame's gas does not fit the 32-bit dispatch chain.");
 
     /// <summary>Runs the current frame on the dispatch chain.</summary>
     /// <remarks>The guest never consults a frame code runner, so a frame always runs on the dispatch chain.</remarks>
@@ -110,19 +129,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         nint[] handlers = GetPairedHandlers<TTracingInst>(_opcodeHandlers);
 
-        // Safety: the paired table remains pinned for the complete tail-call chain. Every bytecode read lands in the
-        // code or in the padding that follows CodeInfo.ExecutionCodeSpan, and any two bytes are a valid table index.
-        fixed (nint* entries = handlers)
+        // Safety: PairHandlers allocates the table pinned. Every bytecode read lands in the code or in the padding that
+        // follows CodeInfo.ExecutionCodeSpan, and any two bytes are a valid table index.
         {
-            nint* table = entries + FollowerHandlersLength;
+            nint* table = (nint*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(handlers)) + FollowerHandlersLength;
             nint* dispatched = RawCalliHelper.DispatchTable(table);
             // Unscoped because a function pointer cannot declare its parameters scoped; the chain ends before this call does.
             DispatchState state = new() { Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = dispatched, Vm = this, Memory = ref VmState.Memory };
 
             ushort opcodes = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref stack.Code, programCounter));
             EvmExceptionType exceptionType =
-                ((delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[opcodes])(
-                    ref stack, GetExecutionGas(ref gas), ref state, ref Unsafe.Add(ref stack.Code, programCounter), stack.Head, dispatched, ref stack.Code, ref Unsafe.Add(ref stack.Bottom, stack.Head * EvmStack.WordSize));
+                ((delegate*<ref EvmStack, nuint, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[opcodes])(
+                    ref stack, ChainGas(GetExecutionGas(ref gas)), ref state, ref Unsafe.Add(ref stack.Code, programCounter), stack.Head, dispatched, ref stack.Code, ref Unsafe.Add(ref stack.Bottom, stack.Head * EvmStack.WordSize));
             stack.Head = state.Head;
             programCounter = state.FinalProgramCounter;
             return exceptionType;
@@ -149,7 +167,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecuteOpcode<TOpcode, TTracingInst, TCancelable, TContinuable>(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -163,6 +181,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             // The chain carries the instruction's address; the shared bodies count in offsets.
             nint pc = (nint)Unsafe.ByteOffset(ref code, ref ip);
+            // A shortfall the guest's handlers left untested ends here, before a body reads the gas.
+            if ((nint)gas < 0)
+                return ExitChain(ref state, 0, pc, head, EvmExceptionType.OutOfGas);
             nint entryHead = head;
             // Only a traced run reads the opcode out of the bytecode, and the tracer reads the head from memory.
             if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
@@ -181,7 +202,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 LoadFixedGas(out TGasPolicy fixedGas, gas);
                 if (!TOpcode.TryConsumeGas(ref fixedGas))
                     return ExitChain(ref state, GetExecutionGas(ref fixedGas), pc, head, EvmExceptionType.OutOfGas);
-                gas = GetExecutionGas(ref fixedGas);
+                gas = ChainGas(GetExecutionGas(ref fixedGas));
 
                 if (TOpcode.StackInputs != 0 && TOpcode.StackGrowth > 0)
                 {
@@ -236,15 +257,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 stack.Head = head;
                 exceptionType = TOpcode.Execute(ref stack, ref fixedGas, TOpcode.UsesVm ? state.Vm : null!, ref pc);
                 head = stack.Head;
-                gas = GetExecutionGas(ref fixedGas);
+                gas = ChainGas(GetExecutionGas(ref fixedGas));
             }
             else
             {
                 SetExecutionGas(ref state.Gas, gas);
                 stack.Head = head;
                 exceptionType = TOpcode.Execute(ref stack, ref state.Gas, state.Vm, ref pc);
+                if (exceptionType == EvmExceptionType.Suspend && typeof(TTracingInst) == typeof(OffFlag))
+                    state.Vm.TryRunStagedFrameNested(ref stack, out exceptionType);
                 head = stack.Head;
-                gas = GetExecutionGas(ref state.Gas);
+                gas = ChainGas(GetExecutionGas(ref state.Gas));
             }
 
             if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions &&
@@ -297,7 +320,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 CallingConventions.Standard,
                 TypeRef.Type<EvmExceptionType>(),
                 TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
+                TypeRef.Type<nuint>(),
                 TypeRef.Type<DispatchState>().MakeByRefType(),
                 TypeRef.Type<byte>().MakeByRefType(),
                 TypeRef.Type<nint>(),
@@ -325,7 +348,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecuteJumpIfOpcode<TTracingInst, TCancelable>(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -337,6 +360,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             VirtualMachine<TGasPolicy> vm = state.Vm;
             nint pc = (nint)Unsafe.ByteOffset(ref code, ref ip);
+            if ((nint)gas < 0)
+                return ExitChain(ref state, 0, pc, head, EvmExceptionType.OutOfGas);
 
             if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
             {
@@ -355,7 +380,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ? EvmInstructions.InstructionJumpIf(ref stack, ref fixedGas, vm, pc)
                 : EvmInstructions.InstructionJumpIfAndSkipJumpDest(ref stack, ref fixedGas, vm, pc);
             head = stack.Head;
-            gas = GetExecutionGas(ref fixedGas);
+            gas = ChainGas(GetExecutionGas(ref fixedGas));
             pc = result.ProgramCounter;
             handlers = state.OpcodeHandlers;
             code = ref stack.Code;
@@ -393,7 +418,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     CallingConventions.Standard,
                     TypeRef.Type<EvmExceptionType>(),
                     TypeRef.Type<EvmStack>().MakeByRefType(),
-                    TypeRef.Type<ulong>(),
+                    TypeRef.Type<nuint>(),
                     TypeRef.Type<DispatchState>().MakeByRefType(),
                     TypeRef.Type<byte>().MakeByRefType(),
                     TypeRef.Type<nint>(),
@@ -422,7 +447,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     CallingConventions.Standard,
                     TypeRef.Type<EvmExceptionType>(),
                     TypeRef.Type<EvmStack>().MakeByRefType(),
-                    TypeRef.Type<ulong>(),
+                    TypeRef.Type<nuint>(),
                     TypeRef.Type<DispatchState>().MakeByRefType(),
                     TypeRef.Type<byte>().MakeByRefType(),
                     TypeRef.Type<nint>(),

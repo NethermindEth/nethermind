@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -319,6 +318,10 @@ namespace Nethermind.Trie
             ResolveUnknownNodeWithContext(tree, path, readFlags, bufferPool);
         }
 
+        /// <summary>Reports a node that is resolved from the RLP it holds rather than loaded, where this build does; see
+        /// <c>TrieNode.std.cs</c>.</summary>
+        partial void OnEmbeddedNodeResolving(ITrieNodeResolver tree, in TreePath path, CappedArray<byte> rlp);
+
         /// <summary>
         /// Highly optimized
         /// </summary>
@@ -344,6 +347,10 @@ namespace Nethermind.Trie
                 WriteLoadedRlp(rlp = new CappedArray<byte>(fullRlp));
                 // A node referenced by hash is constructed persisted already.
                 if (!IsPersisted) IsPersisted = true;
+            }
+            else
+            {
+                OnEmbeddedNodeResolving(tree, path, rlp);
             }
 
             if (!DecodeRlp(rlp.AsSpan(), bufferPool, out int numberOfItems))
@@ -1343,7 +1350,7 @@ namespace Nethermind.Trie
         private static TrieNode ResolveHashedChild(ITrieNodeResolver tree, ref TreePath childPath, ref object? data, ReadOnlySpan<byte> hash)
         {
             // Not interned: both interned hashes are of payloads short enough to be embedded rather than hashed.
-            Hash256 keccak = new(in MemoryMarshal.AsRef<ValueHash256>(hash));
+            Hash256 keccak = ReadChildHash(hash);
             TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
             data = child;
             return child;

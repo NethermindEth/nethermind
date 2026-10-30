@@ -408,7 +408,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Unsafe.Add(ref MemoryMarshal.GetReference(buffer), (nuint)position) = 160;
-            Unsafe.As<byte, ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), (nuint)position + 1)) = hash.ValueHash256;
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), (nuint)position + 1), hash.ValueHash256);
             return newPosition;
 
             [DoesNotReturn, StackTraceHidden]
@@ -530,7 +530,7 @@ namespace Nethermind.Serialization.Rlp
 
             byte[] result = new byte[LengthOfKeccakRlp];
             result[0] = 160;
-            Unsafe.As<byte, ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(result), 1)) = keccak.ValueHash256;
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(result), 1), keccak.ValueHash256);
             return new Rlp(result);
         }
 

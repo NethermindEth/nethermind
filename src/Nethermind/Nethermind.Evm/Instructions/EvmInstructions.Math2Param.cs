@@ -289,13 +289,7 @@ public static partial class EvmInstructions
             }
             else
             {
-                // Prepare uninitialized result, so doesn't complain when passed by ref in As call.
-                SkipInit(out result);
-                // Convert operands to signed integers and perform division.
-                Int256.Divide(
-                    in As<UInt256, Int256>(ref AsRef(in a)),
-                    in As<UInt256, Int256>(ref AsRef(in b)),
-                    out As<UInt256, Int256>(ref result));
+                SignedDivide256(in a, in b, out result);
             }
         }
     }
