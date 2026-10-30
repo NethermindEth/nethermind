@@ -39,7 +39,7 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
     /// outcome is known rather than leaving the sponsor permanently short.</remarks>
     public bool PaymasterReserved;
 
-    /// <summary>Whether a filter has recorded this transaction's EIP-8298 code dependencies and still owes their release.</summary>
+    /// <summary>Whether a filter has recorded this transaction's code dependencies (EIP-8298, EIP-8151) and still owes their release.</summary>
     internal bool CodeDependenciesReserved;
 
     /// <summary>Whether a filter has reserved this transaction's EIP-8141 payer exposure and still owes its release.</summary>
