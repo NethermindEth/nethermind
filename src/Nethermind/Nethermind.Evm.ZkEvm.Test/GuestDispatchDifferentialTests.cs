@@ -53,8 +53,10 @@ public class GuestDispatchDifferentialTests
 
     public enum Table { Untraced, Cancelable, Traced }
 
+    /// <param name="WorldStateCalls">The world-state calls the run made, in order, with their arguments.</param>
     private readonly record struct Outcome(
-        EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize, EthereumGasPolicy Policy);
+        EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize, EthereumGasPolicy Policy,
+        string WorldStateCalls);
 
     [Test]
     public void Random_programs_match_the_shared_handlers([ValueSource(nameof(Forks))] IReleaseSpec spec, [Range(0, 7)] int seed)
@@ -537,6 +539,11 @@ public class GuestDispatchDifferentialTests
     public void Guest_storage_load_handler_is_installed_until_eip8038([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
         Assert.That(VirtualMachine<EthereumGasPolicy>.LoadsStorageThroughGuestHandlerForTests(spec), Is.EqualTo(!spec.IsEip8038Enabled));
 
+    /// <remarks>The guest call handler falls back to the shared one, so only the table shows that it is installed.</remarks>
+    [Test]
+    public void Guest_call_handlers_are_installed([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
+        Assert.That(VirtualMachine<EthereumGasPolicy>.CallsThroughGuestHandlerForTests(spec), Is.True);
+
     /// <remarks>
     /// Every amount of gas up to the program's need puts the end of the gas inside each charge. In a static frame the
     /// TSTORE faults instead.
@@ -627,16 +634,20 @@ public class GuestDispatchDifferentialTests
     /// <remarks>
     /// Two calls reach an account with no code, first cold and then warm, and a third reaches the target: an account
     /// with no code, one with code, one that delegates to code under EIP-7702, or the identity precompile. At code the
-    /// chain leaves to enter its frame; a precompile runs inline, and the chain goes on. The calls expand memory over their input or output, or need no expansion, and move no value. Every amount
+    /// chain leaves to enter its frame; a precompile runs inline, and the chain goes on. The calls expand memory over their input or output, or need no expansion. Every amount
     /// of gas up to the program's need puts the end of the gas inside each charge.
+    /// The calls move no value, except in a static frame, where each CALL moves value and faults.
     /// The reference is the cancelable table: a traced call enters a frame even at no code, so that the tracer sees it.
     /// </remarks>
     [Test]
     public void Calls_match_the_shared_handlers(
         [Values(Instruction.CALL, Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction op,
         [Values] CallTarget target,
-        [ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec)
+        [ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec,
+        [Values] bool isStatic)
     {
+        // A value transfer outside a static frame reads the balance, which the substitute world state cannot return by reference.
+        byte value = isStatic ? (byte)1 : (byte)0;
         Address noCode = new("0x00000000000000000000000000000000000000aa");
         Address withCode = new("0x00000000000000000000000000000000000000bb");
         Address delegating = new("0x00000000000000000000000000000000000000cc");
@@ -655,36 +666,41 @@ public class GuestDispatchDifferentialTests
         Address last = target switch { CallTarget.NoCode => noCode, CallTarget.Code => withCode, CallTarget.Precompile => identity, _ => delegating };
         byte[] program =
         [
-            .. Call(op, noCode, 0, 0x40, 0x40, 0x20),
-            .. Call(op, noCode, 0x20, 0x20, 0, 0x20),
-            .. Call(op, last, 0x10, 0x20, 0xe0, 0x20),
+            .. Call(op, noCode, 0, 0x40, 0x40, 0x20, value),
+            .. Call(op, noCode, 0x20, 0x20, 0, 0x20, value),
+            // A non-zero input byte shows where the precompile reads and writes.
+            (byte)Instruction.PUSH1, 0xff, (byte)Instruction.PUSH1, 0x10, (byte)Instruction.MSTORE,
+            .. Call(op, last, 0x10, 0x20, 0xe0, 0x20, value),
             (byte)Instruction.STOP
         ];
         const ulong ample = 100_000;
-        ulong needed = ample - Run(ample, [], 0, new CodeInfo(program), Table.Cancelable, spec, codeInfoRepository: repository).GasLeft;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(program), Table.Cancelable, spec, isStatic: isStatic, codeInfoRepository: repository).GasLeft;
 
         List<string> mismatches = [];
         for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
         {
-            Outcome untraced = Run(gas, [], 0, new CodeInfo(program), Table.Untraced, spec, codeInfoRepository: repository);
-            Outcome shared = Run(gas, [], 0, new CodeInfo(program), Table.Cancelable, spec, codeInfoRepository: repository);
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(program), Table.Untraced, spec, isStatic: isStatic, codeInfoRepository: repository);
+            Outcome shared = Run(gas, [], 0, new CodeInfo(program), Table.Cancelable, spec, isStatic: isStatic, codeInfoRepository: repository);
             // A frame entered is not a fault: the gas, stack and counter it leaves the caller at must match too.
             if (untraced.Exception == EvmExceptionType.Suspend ? untraced != shared : !Matches(untraced, shared))
                 mismatches.Add($"gas {gas}\n untraced {untraced}\n shared   {shared}");
         }
 
-        Outcome complete = Run(needed, [], 0, new CodeInfo(program), Table.Untraced, spec, codeInfoRepository: repository);
+        Outcome complete = Run(needed, [], 0, new CodeInfo(program), Table.Untraced, spec, isStatic: isStatic, codeInfoRepository: repository);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(mismatches, Is.Empty);
-            Assert.That(complete.Exception, Is.EqualTo(target is CallTarget.NoCode or CallTarget.Precompile ? EvmExceptionType.Stop : EvmExceptionType.Suspend));
+            Assert.That(complete.Exception, Is.EqualTo(
+                isStatic && op == Instruction.CALL ? EvmExceptionType.StaticCallViolation
+                : target is CallTarget.NoCode or CallTarget.Precompile ? EvmExceptionType.Stop
+                : EvmExceptionType.Suspend));
         }
 
-        static byte[] Call(Instruction op, Address to, byte inputOffset, byte inputLength, byte outputOffset, byte outputLength) =>
+        static byte[] Call(Instruction op, Address to, byte inputOffset, byte inputLength, byte outputOffset, byte outputLength, byte value) =>
         [
             (byte)Instruction.PUSH1, outputLength, (byte)Instruction.PUSH1, outputOffset,
             (byte)Instruction.PUSH1, inputLength, (byte)Instruction.PUSH1, inputOffset,
-            .. op == Instruction.CALL ? (byte[])[(byte)Instruction.PUSH0] : [],
+            .. op != Instruction.CALL ? [] : value == 0 ? (byte[])[(byte)Instruction.PUSH0] : [(byte)Instruction.PUSH1, value],
             (byte)Instruction.PUSH20, .. to.Bytes, (byte)Instruction.PUSH1, 0x40, (byte)op
         ];
     }
@@ -990,7 +1006,10 @@ public class GuestDispatchDifferentialTests
             memoryHex = Convert.ToHexString(memory);
         }
 
-        return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), pc, finalHead, stackHex, memoryHex, size, gasPolicy[0]);
+        // An out argument holds whatever the caller's stack held, so only the inputs are compared.
+        string worldStateCalls = string.Join("; ", vm.WorldState.ReceivedCalls().Select(static call =>
+            $"{call.GetMethodInfo().Name}({string.Join(", ", call.GetArguments().Where((_, i) => !call.GetParameterInfos()[i].IsOut))})"));
+        return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), pc, finalHead, stackHex, memoryHex, size, gasPolicy[0], worldStateCalls);
     }
 
     /// <summary>The value every test world state holds at <paramref name="key"/>.</summary>
