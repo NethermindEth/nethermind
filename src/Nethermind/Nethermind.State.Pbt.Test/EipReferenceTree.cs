@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.State.Pbt.Test;
@@ -12,6 +13,9 @@ namespace Nethermind.State.Pbt.Test;
 public sealed class EipReferenceTree
 {
     private readonly SortedDictionary<byte[], byte[]> _entries = new(Bytes.Comparer);
+
+    /// <summary>The live keys and their values, in key order.</summary>
+    public IEnumerable<(byte[] Key, byte[]? Value)> Entries => _entries.Select(static entry => (entry.Key, (byte[]?)entry.Value));
 
     /// <summary>Adds or replaces a complete key and its 32-byte value.</summary>
     public void Insert(ReadOnlySpan<byte> key, byte[] value)

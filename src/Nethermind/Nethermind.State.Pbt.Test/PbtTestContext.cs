@@ -100,6 +100,16 @@ internal sealed class PbtTestContext : IAsyncDisposable
         return builder.Build();
     }
 
+    /// <summary>An enabled config at stable compaction boundaries whose persisted snapshots share small arenas and bypass the page cache.</summary>
+    public static PbtConfig PersistedConfig() => new()
+    {
+        Enabled = true,
+        CompactionOffset = 0,
+        ArenaFileSizeBytes = 1048576,
+        PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
+        PersistedSnapshotArenaPageCacheBytes = 0,
+    };
+
     /// <summary>
     /// The contract code deployed by <see cref="RunReferenceBlocks"/>: more than 128 + 256 chunks (11904 bytes), so the
     /// overflow chunks not only land in the content-addressed code zone but span more than one stem of it.

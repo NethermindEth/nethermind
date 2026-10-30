@@ -419,33 +419,20 @@ public class PbtSnapshotRepositoryTests
         _repository.Dispose();
     }
 
-    [Test]
-    public void Rewind_rejects_unknown_or_divergent_base_without_mutation([Values] bool unavailable)
+    [TestCase(9, false, false, 0, 2, 2, TestName = "Rewind_rejects_unknown_base_without_mutation")]
+    [TestCase(1, true, false, 0, 2, 2, TestName = "Rewind_rejects_divergent_base_without_mutation")]
+    [TestCase(0, false, true, 2, 0, 0, TestName = "Rewind_to_exact_base_needs_no_snapshot_and_never_rewinds_it")]
+    public void Rewind_checks_target_against_persisted_base(int target, bool divergentBase, bool expectedOk, int expectedRemoved, int expectedCount, int expectedHead)
     {
         Add(State(0), State(1));
         Add(State(1), State(2));
-        StateId target = unavailable ? State(9) : State(1);
-        StateId persisted = unavailable ? State(0) : new(0, TestItem.KeccakB.ValueHash256);
-        Assert.That(_repository.TryRemoveUnreachableFrom(target, persisted, out int removed), Is.False);
+        StateId persisted = divergentBase ? new(0, TestItem.KeccakB.ValueHash256) : State(0);
+        Assert.That(_repository.TryRemoveUnreachableFrom(State(target), persisted, out int removed), Is.EqualTo(expectedOk));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(removed, Is.Zero);
-            Assert.That(_repository.Count, Is.EqualTo(2));
-            Assert.That(_repository.GetLastCommittedStateId(), Is.EqualTo(State(2)));
-        }
-    }
-
-    [Test]
-    public void Rewind_to_exact_base_needs_no_snapshot_and_never_rewinds_it()
-    {
-        Add(State(0), State(1));
-        Add(State(1), State(2));
-        Assert.That(_repository.TryRemoveUnreachableFrom(State(0), State(0), out int removed), Is.True);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(removed, Is.EqualTo(2));
-            Assert.That(_repository.Count, Is.Zero);
-            Assert.That(_repository.GetLastCommittedStateId(), Is.EqualTo(State(0)));
+            Assert.That(removed, Is.EqualTo(expectedRemoved));
+            Assert.That(_repository.Count, Is.EqualTo(expectedCount));
+            Assert.That(_repository.GetLastCommittedStateId(), Is.EqualTo(State(expectedHead)));
         }
     }
 
@@ -506,26 +493,25 @@ public class PbtSnapshotRepositoryTests
     public void Shared_persisted_bloom_preserves_history_and_excludes_forks_and_crossing_edges()
     {
         using PbtPersistedTestStore store = new();
-        using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         PbtPersistedSnapshot first = Persisted(store, State(0), State(1), SnapshotTier.PersistedBase, CodeContent(1));
         PbtPersistedSnapshot second = Persisted(store, State(1), State(2), SnapshotTier.PersistedBase, CodeContent(2));
         PbtPersistedSnapshot third = Persisted(store, State(2), State(3), SnapshotTier.PersistedBase, CodeContent(3));
         using PbtPersistedSnapshot fork = Persisted(store, State(1), new StateId(2, TestItem.KeccakB.ValueHash256), SnapshotTier.PersistedBase, CodeContent(4));
         using PbtPersistedSnapshot crossing = Persisted(store, StateId.PreGenesis, State(2), SnapshotTier.PersistedSmallCompacted, CodeContent(5));
         using PbtPersistedSnapshot wrongParent = Persisted(store, new StateId(1, TestItem.KeccakB.ValueHash256), State(3), SnapshotTier.PersistedSmallCompacted, CodeContent(6));
-        repository.TryAddPersisted(first);
-        repository.TryAddPersisted(second);
-        repository.TryAddPersisted(third);
-        repository.TryAddPersisted(fork);
-        repository.TryAddPersisted(crossing);
-        repository.TryAddPersisted(wrongParent);
+        _repository.TryAddPersisted(first);
+        _repository.TryAddPersisted(second);
+        _repository.TryAddPersisted(third);
+        _repository.TryAddPersisted(fork);
+        _repository.TryAddPersisted(crossing);
+        _repository.TryAddPersisted(wrongParent);
         RefCountedBloomFilter shared = new(new BloomFilter(32, 14));
         try
         {
-            repository.ShareBloomAcrossRange(State(0), State(3), shared);
+            _repository.ShareBloomAcrossRange(State(0), State(3), shared);
             for (int block = 1; block <= 3; block++)
             {
-                Assert.That(repository.TryLeasePersisted(State(block), 1, SnapshotTier.PersistedBase, out PbtPersistedSnapshot? snapshot), Is.True);
+                Assert.That(_repository.TryLeasePersisted(State(block), 1, SnapshotTier.PersistedBase, out PbtPersistedSnapshot? snapshot), Is.True);
                 using (snapshot)
                 {
                     Assert.That(snapshot!.BloomRef, Is.SameAs(shared));
@@ -540,20 +526,20 @@ public class PbtSnapshotRepositoryTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(repository.ContainsPersistedSource(fork), Is.True);
-                Assert.That(repository.ContainsPersistedSource(crossing), Is.True);
-                Assert.That(repository.ContainsPersistedSource(wrongParent), Is.True);
-                Assert.That(repository.ContainsPersistedSource(first), Is.False);
-                Assert.That(repository.ContainsPersistedStorageSource(first), Is.True);
+                Assert.That(_repository.ContainsPersistedSource(fork), Is.True);
+                Assert.That(_repository.ContainsPersistedSource(crossing), Is.True);
+                Assert.That(_repository.ContainsPersistedSource(wrongParent), Is.True);
+                Assert.That(_repository.ContainsPersistedSource(first), Is.False);
+                Assert.That(_repository.ContainsPersistedStorageSource(first), Is.True);
             }
-            repository.RemovePersistedStatesBefore(2);
-            Assert.That(repository.ContainsPersistedStorageSource(first), Is.False);
+            _repository.RemovePersistedStatesBefore(2);
+            Assert.That(_repository.ContainsPersistedStorageSource(first), Is.False);
             using PbtPersistedSnapshot reconverted = Persisted(store, State(0), State(1), SnapshotTier.PersistedBase, CodeContent(1));
-            repository.TryAddPersisted(reconverted);
-            Assert.That(repository.ContainsPersistedStorageSource(first), Is.False, "a different physical conversion is not the leased source");
+            _repository.TryAddPersisted(reconverted);
+            Assert.That(_repository.ContainsPersistedStorageSource(first), Is.False, "a different physical conversion is not the leased source");
             byte[] firstHash = new byte[32]; firstHash[^1] = 1;
             Assert.That(first.TryGetCode(new ValueHash256(firstHash), out _), Is.True, "held old handle remains readable after rebinding");
-            repository.Dispose();
+            _repository.Dispose();
         }
         finally
         {
@@ -566,26 +552,25 @@ public class PbtSnapshotRepositoryTests
     public void Shared_persisted_bloom_does_not_inflate_capacity_for_repeated_multi_tier_keys([Values(4, 32)] int blocks)
     {
         using PbtPersistedTestStore store = new();
-        using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         for (int block = 1; block <= blocks; block++)
         {
             using PbtPersistedSnapshot snapshot = Persisted(store, State(block - 1), State(block), SnapshotTier.PersistedBase, CodeContent(1));
-            repository.TryAddPersisted(snapshot);
+            _repository.TryAddPersisted(snapshot);
             if (block > 1)
             {
                 using PbtPersistedSnapshot compacted = Persisted(store, State(0), State(block), SnapshotTier.PersistedSmallCompacted, CodeContent(1));
-                repository.TryAddPersisted(compacted);
+                _repository.TryAddPersisted(compacted);
             }
         }
         using RefCountedBloomFilter shared = new(new BloomFilter(1, 14));
         byte[] hash = new byte[32]; hash[^1] = 1;
         shared.Filter.Add(PbtPersistedKey.BloomHash(PbtPersistedKey.CodeEntity(new ValueHash256(hash))));
-        repository.ShareBloomAcrossRange(State(0), State(blocks), shared);
-        repository.ShareBloomAcrossRange(State(0), State(blocks), shared);
+        _repository.ShareBloomAcrossRange(State(0), State(blocks), shared);
+        _repository.ShareBloomAcrossRange(State(0), State(blocks), shared);
         Assert.That(shared.Filter.Count, Is.EqualTo(1));
         using BloomFilter nextCompactionBloom = new(shared.Filter.Count, 14);
         Assert.That(nextCompactionBloom.DataBytes, Is.EqualTo(64));
-        repository.Dispose();
+        _repository.Dispose();
     }
 
     private static PbtSnapshotContent CodeContent(byte key)

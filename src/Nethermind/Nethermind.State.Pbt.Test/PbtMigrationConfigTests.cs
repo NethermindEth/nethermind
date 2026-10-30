@@ -108,7 +108,7 @@ public class PbtMigrationConfigTests
 
     [Test]
     public void Rejects_invalid_configuration([Values(
-        "fake", "import", "scan", "flat-disabled",
+        "fake", "import", "scan", "flat-disabled", "flat-history",
         "no-bal", "late-bal", "genesis-bal", "genesis-deletion", "no-deletion", "late-deletion", "mixed", "preimages-mixed", "preimages-preimage-layout", "preimages-no-anchor", "no-anchor", "negative-anchor", "overlap", "whitespace")] string invalid)
     {
         PbtConfig config = Config();
@@ -120,6 +120,7 @@ public class PbtMigrationConfigTests
             case "import": config.ImportFromPreimageFlat = true; break;
             case "scan": config.ScanTree = true; break;
             case "flat-disabled": flat.Enabled = false; break;
+            case "flat-history": flat.HistoryEnabled = true; break;
             case "no-bal": chain.Parameters.Eip7928TransitionTimestamp = null; break;
             case "late-bal": chain.Parameters.Eip7928TransitionTimestamp = 100; break;
             case "genesis-bal": chain.Parameters.Eip7928TransitionTimestamp = 11; break;
@@ -171,11 +172,10 @@ public class PbtMigrationConfigTests
     }
 
     [Test]
-    public void Migration_rejects_native_flat_history()
+    public void Native_flat_history_is_accepted_without_a_scheduled_migration()
     {
         FlatDbConfig flat = Flat();
         flat.HistoryEnabled = true;
-        Assert.Throws<InvalidConfigurationException>(() => PbtMigrationConfigValidator.Validate(Config(), flat, Chain(), "target"));
         Assert.DoesNotThrow(() => PbtMigrationConfigValidator.Validate(Config(), flat, new ChainSpec(), "target"));
     }
 

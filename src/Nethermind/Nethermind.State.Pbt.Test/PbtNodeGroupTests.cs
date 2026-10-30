@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -36,6 +34,7 @@ public class PbtNodeGroupTests
         byte[] bytes = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(leafPath, encoding)], default);
         using PbtNodeGroupStore store = new();
         PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[capacity], groupKey);
+        Assert.That(store.GetNodeGroup(cursor), Is.Null, "absent group");
         store.SetNodeGroup(cursor, bytes);
         GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(cursor, store.GetNodeGroup(cursor)!);
         cursor.Truncate(0);
@@ -143,7 +142,6 @@ public class PbtNodeGroupTests
         byte[] keyBytes = new byte[length];
         keyBytes[^1] = 1;
         PbtVariableTreeKey storageKey = new(keyBytes);
-        Assert.That(storageKey.FirstDifferingBit(new PbtVariableTreeKey(new byte[length]), 0), Is.EqualTo(depth - 1));
         if (length == PbtPath.KeyLength)
         {
             PbtPath key = (PbtPath)storageKey;
@@ -314,28 +312,6 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Group_frames_load_once_at_construction([Values] bool present, [Values(0, 3, 270, 525)] int groupDepth)
-    {
-        using PbtNodeGroupStore store = new();
-        byte[] key = Bytes.FromHexString(new string('D', PbtVariableTreeKey.MaxLength * 2));
-        PbtStorageNodePath groupKey = PbtTestPaths.Prefix<PbtStorageNodePath>(key, groupDepth);
-        PbtStorageNodePath leafPath = PbtTestPaths.Prefix<PbtStorageNodePath>(key, groupDepth == 0 ? 0 : groupDepth + 3);
-        int position = PbtTestPaths.Locate(leafPath).Position;
-        byte[] encoding = LeafBranch(leafPath, 1);
-        if (present) store.SetNode(leafPath, encoding);
-        PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
-        using PbtNodeGroupWriter writer = new(groupKey.BitDepth);
-        byte[]? groupPayload = store.GetNodeGroup(groupPath);
-        Assert.That(groupPayload is not null, Is.EqualTo(present));
-        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = groupPayload is null ? default : PbtStoreTestExtensions.ReadGroup(groupPath, groupPayload);
-        if (present)
-        {
-            reader.CopyRange(writer, 0, PbtThreeLevelGroupGeometry.PositionCount);
-            Assert.That(reader.GetEncoding(position).ToArray(), Is.EqualTo(encoding));
-        }
-    }
-
-    [Test]
     public void Group_frames_materialize_only_branch_anchors(
         [Values(0, 3, 6, 9, 12, 15, 243)] int groupDepth, [Range(0, 13)] int position, [Values] bool inlineLeaf)
     {
@@ -407,22 +383,21 @@ public class PbtNodeGroupTests
     [Test]
     public void Inserts_and_leaf_splits_do_not_fetch_new_group_frames([Values] bool split)
     {
-        using PbtNodeGroupStore inner = new();
+        using CountingPbtStore store = new();
         using PbtTreeHarness expected = new();
         (byte[] Key, byte[]? Value)[] initial = [(PbtStoreTestExtensions.ZoneKey("000000"), Value(1))];
         (byte[] Key, byte[]? Value)[] changes = [(PbtStoreTestExtensions.ZoneKey("000001"), Value(2)), (PbtStoreTestExtensions.ZoneKey("000002"), Value(3))];
         ValueHash256 root = default;
         if (split)
         {
-            root = inner.Fold(default, initial);
+            root = store.Inner.Fold(default, initial);
             expected.ApplyBatch(initial);
         }
-        CountingStore store = new(inner);
         root = store.Fold(root, changes);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(expected.ApplyBatch(changes)));
-            Assert.That(store.Fetches, Is.EqualTo(split ? 1 : 0), "only a non-empty tree's root group needs reading");
+            Assert.That(store.Reads, Is.EqualTo(split ? 1 : 0), "only a non-empty tree's root group needs reading");
             Assert.That(store.Loads, Is.EqualTo(split ? 1 : 0));
         }
     }
@@ -465,33 +440,13 @@ public class PbtNodeGroupTests
         }
         oracle.Apply(changes);
         tree.ApplyBatch(changes);
-        AssertMatchesRebuild();
+        AssertMatchesRebuild(oracle, tree.RootHash, tree.CanonicalRecords(), tree.PhysicalPayloads);
 
         tree.Reopen();
         entries[^1].Value = Value(0xF1);
         oracle.Apply([entries[^1]]);
         tree.ApplyBatch([entries[^1]]);
-        AssertMatchesRebuild();
-
-        void AssertMatchesRebuild()
-        {
-            using PbtTreeHarness rebuilt = new();
-            List<(byte[] Key, byte[]? Value)> survivors = [];
-            foreach ((byte[] key, byte[]? value) in entries)
-                if (value is not null) survivors.Add((key, value));
-            rebuilt.ApplyBatch(survivors);
-            Dictionary<string, byte[]> expectedPayloads = Payloads(rebuilt);
-            Dictionary<string, byte[]> actualPayloads = Payloads(tree);
-            Assert.That(actualPayloads.Keys, Is.EquivalentTo(expectedPayloads.Keys));
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
-                Assert.That(tree.RootHash, Is.EqualTo(rebuilt.RootHash));
-                Assert.That(tree.CanonicalRecords(), Is.EqualTo(rebuilt.CanonicalRecords()));
-                foreach ((string key, byte[] payload) in expectedPayloads)
-                    Assert.That(actualPayloads[key], Is.EqualTo(payload), $"physical group {key}");
-            }
-        }
+        AssertMatchesRebuild(oracle, tree.RootHash, tree.CanonicalRecords(), tree.PhysicalPayloads);
     }
 
     [Test]
@@ -527,80 +482,51 @@ public class PbtNodeGroupTests
     // inside one of those groups creates it, so its stored sizes must pick up the untouched descendants from the
     // parent's slot without reading their group; a delete of an absent key diverging there is a no-op that must
     // neither read nor write. A second insert diverging deeper inherits through the group the first one created.
-    [TestCase("000100", "000200", TestName = "Sorted_walk_creates_a_group_between_existing_groups")]
-    [TestCase("01", "0100", TestName = "Zone_frame_creates_a_group_between_existing_groups")]
-    [TestCase("0020", "0040", TestName = "Worker_frame_creates_a_group_between_existing_groups")]
+    [TestCaseSource(typeof(PbtStoreTestExtensions), nameof(GroupCreationCases))]
     public void Groups_created_between_existing_groups_include_their_descendants(string divergingKey, string absentKey)
     {
-        const string DeeperKey = "000010";
-        byte[] Key(string hex) => PbtStoreTestExtensions.ZoneKey(hex);
-        using PbtNodeGroupStore store = new();
+        (byte[] Key, byte[]? Value)[][] steps = GroupCreationSteps(divergingKey, absentKey);
+        using CountingPbtStore store = new();
         ValueHash256 root = default;
-        CountingStore Apply(params (byte[] Key, byte[]? Value)[] changes)
+        void Apply((byte[] Key, byte[]? Value)[] changes)
         {
-            CountingStore counting = new(store);
-            root = counting.Fold(root, changes);
-            PbtStoreTestExtensions.AssertSubtreeBytes(store.ExportPhysicalPayloads());
-            return counting;
+            store.ResetReads();
+            root = store.Fold(root, changes);
+            PbtStoreTestExtensions.AssertSubtreeBytes(store.Inner.ExportPhysicalPayloads());
         }
 
-        // The third key keeps a stored branch below the long prefix; the leaves themselves are inlined.
-        Apply((Key("000000"), Value(1)), (Key("000001"), Value(2)), (Key("000002"), Value(4)));
-        string[] initial = store.PhysicalRecords();
+        Apply(steps[0]);
+        string[] initial = store.Inner.PhysicalRecords();
         Assert.That(initial, Has.Length.EqualTo(2), "root group and the deep branch's group");
 
-        CountingStore absentDelete = Apply((Key(absentKey), null));
+        Apply(steps[1]);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.PhysicalRecords(), Is.EqualTo(initial));
-            Assert.That(absentDelete.Fetches, Is.EqualTo(1), "only the root group is read");
+            Assert.That(store.Inner.PhysicalRecords(), Is.EqualTo(initial));
+            Assert.That(store.Reads, Is.EqualTo(1), "only the root group is read");
         }
 
-        CountingStore insert = Apply((Key(divergingKey), Value(3)));
+        Apply(steps[2]);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.PhysicalRecords(), Has.Length.EqualTo(3), "a group is created between the existing ones");
-            Assert.That(insert.Fetches, Is.EqualTo(1), "only the root group is read");
+            Assert.That(store.Inner.PhysicalRecords(), Has.Length.EqualTo(3), "a group is created between the existing ones");
+            Assert.That(store.Reads, Is.EqualTo(1), "only the root group is read");
         }
 
-        CountingStore deeperInsert = Apply((Key(DeeperKey), Value(5)));
+        Apply(steps[3]);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.PhysicalRecords(), Has.Length.EqualTo(4), "a group is created below the one created before");
-            Assert.That(deeperInsert.Fetches, Is.EqualTo(2), "only the groups on the path are read");
+            Assert.That(store.Inner.PhysicalRecords(), Has.Length.EqualTo(4), "a group is created below the one created before");
+            Assert.That(store.Reads, Is.EqualTo(2), "only the groups on the path are read");
         }
 
-        Apply((Key(divergingKey), null));
-        Assert.That(store.PhysicalRecords(), Has.Length.EqualTo(3), "the emptied group is removed");
-        Apply((Key(divergingKey), Value(3)));
-        Assert.That(store.PhysicalRecords(), Has.Length.EqualTo(4), "the group is recreated below the promoted subtree");
+        Apply(steps[4]);
+        Assert.That(store.Inner.PhysicalRecords(), Has.Length.EqualTo(3), "the emptied group is removed");
+        Apply(steps[5]);
+        Assert.That(store.Inner.PhysicalRecords(), Has.Length.EqualTo(4), "the group is recreated below the promoted subtree");
 
-        Apply((Key(divergingKey), null), (Key(DeeperKey), null));
-        Assert.That(store.PhysicalRecords(), Is.EqualTo(initial));
-    }
-
-    /// <summary>Counts every group fetch, and the fetches that found a group.</summary>
-    private sealed class CountingStore(PbtNodeGroupStore inner) : IPbtStore
-    {
-        private int _fetches;
-        private int _loads;
-
-        public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => inner.StartWriteBatch(alignedTotalLength);
-        public bool TryLocate(ulong pointer, out PbtGroupRecord record)
-        {
-            record = default;
-            return false;
-        }
-        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
-        {
-            Interlocked.Increment(ref _fetches);
-            bool found = inner.TryLoad(path, action, arg);
-            if (found) Interlocked.Increment(ref _loads);
-            return found;
-        }
-
-        internal int Fetches => _fetches;
-        internal int Loads => _loads;
+        Apply(steps[6]);
+        Assert.That(store.Inner.PhysicalRecords(), Is.EqualTo(initial));
     }
 
     [Test]

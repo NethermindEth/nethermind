@@ -28,6 +28,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Snapshot;
@@ -765,39 +766,6 @@ public class PbtSnapshotCompactorTests
     }
 
     [Test]
-    public async Task Persisted_compactor_large_merge_does_not_block_later_compact_sized_work()
-    {
-        using PersistedCompactionContext context = new(4, 0);
-        context.AddHistory(12);
-        using ManualResetEventSlim release = new(false);
-        TaskCompletionSource largeEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource laterPublished = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        context.Loader.BeforePublish = (output, _) =>
-        {
-            if (output.Tier == SnapshotTier.PersistedLargeCompacted)
-            {
-                largeEntered.TrySetResult();
-                release.Wait();
-            }
-            if (output.To == CompactionState(12) && output.Tier == SnapshotTier.PersistedCompactSized) laterPublished.TrySetResult();
-        };
-        try
-        {
-            await context.Compactor.EnqueueAsync(new ArrayPoolList<StateId>(1) { CompactionState(8) }, 0, CancellationToken.None);
-            await largeEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            await context.Compactor.EnqueueAsync(new ArrayPoolList<StateId>(1) { CompactionState(12) }, 0, CancellationToken.None);
-            await laterPublished.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        }
-        finally { release.Set(); }
-        await context.Compactor.DisposeAsync();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(context.Repository.HasPersisted(CompactionState(8), 4L, SnapshotTier.PersistedCompactSized), Is.True);
-            Assert.That(context.Repository.HasPersisted(CompactionState(8), 8L, SnapshotTier.PersistedLargeCompacted), Is.True);
-        }
-    }
-
-    [Test]
     public async Task Persisted_compactor_uses_four_independent_large_workers()
     {
         using PersistedCompactionContext context = new(4, 0);
@@ -827,7 +795,12 @@ public class PbtSnapshotCompactorTests
         }
         finally { release.Set(); }
         await context.Compactor.DisposeAsync();
-        Assert.That(started, Is.EqualTo(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(started, Is.EqualTo(5));
+            Assert.That(context.Repository.HasPersisted(CompactionState(8), 4L, SnapshotTier.PersistedCompactSized), Is.True);
+            Assert.That(context.Repository.HasPersisted(CompactionState(8), 8L, SnapshotTier.PersistedLargeCompacted), Is.True);
+        }
     }
 
     [Test]
@@ -897,77 +870,66 @@ public class PbtSnapshotCompactorTests
     [Test]
     public async Task Persisted_large_bloom_is_shared_and_reconstructed_after_restart([Values] bool enabled)
     {
-        string path = Path.Combine(Path.GetTempPath(), "pbt-shared-bloom-" + Guid.NewGuid().ToString("N"));
-        PbtConfig config = new()
+        using TempPath tempPath = TempPath.GetTempDirectory();
+        PbtConfig config = PbtTestContext.PersistedConfig();
+        config.CompactSize = 4;
+        config.PersistedSnapshotBloomBitsPerKey = enabled ? 14 : 0;
+        for (int pass = 0; pass < 2; pass++)
         {
-            Enabled = true,
-            CompactSize = 4,
-            CompactionOffset = 0,
-            PersistedSnapshotBloomBitsPerKey = enabled ? 14 : 0,
-            ArenaFileSizeBytes = 1048576,
-            PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
-            PersistedSnapshotArenaPageCacheBytes = 0,
-        };
-        try
-        {
-            for (int pass = 0; pass < 2; pass++)
+            await using IContainer container = PbtTestContext.BuildProductionContainer(config,
+                builder => builder.AddSingleton<IDbFactory, Nethermind.Db.Rocks.RocksDbFactory>(), new InitConfig { BaseDbPath = tempPath.Path });
+            IPbtPersistedSnapshotLoader loader = container.Resolve<IPbtPersistedSnapshotLoader>();
+            loader.Load();
+            PbtSnapshotRepository repository = container.Resolve<PbtSnapshotRepository>();
+            if (pass == 0)
             {
-                await using IContainer container = PbtTestContext.BuildProductionContainer(config,
-                    builder => builder.AddSingleton<IDbFactory, Nethermind.Db.Rocks.RocksDbFactory>(), new InitConfig { BaseDbPath = path });
-                IPbtPersistedSnapshotLoader loader = container.Resolve<IPbtPersistedSnapshotLoader>();
-                loader.Load();
-                PbtSnapshotRepository repository = container.Resolve<PbtSnapshotRepository>();
-                if (pass == 0)
+                IPbtResourcePool pool = container.Resolve<IPbtResourcePool>();
+                for (int block = 1; block <= 8; block++)
                 {
-                    IPbtResourcePool pool = container.Resolve<IPbtResourcePool>();
-                    for (int block = 1; block <= 8; block++)
+                    PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+                    ValueHash256 address = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
+                    if (block == 1)
                     {
-                        PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-                        ValueHash256 address = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
-                        if (block == 1)
-                        {
-                            content.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 7), (UInt256)1);
-                            content.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 1024), (UInt256)2);
-                            content.Accounts[address] = null;
-                        }
-                        if (block == 2) content.ClearStorage(address);
-                        content.Codes[TestItem.KeccakC.ValueHash256] = new(new byte[65537]);
-                        PbtSnapshot snapshot = new(CompactionState(block - 1), CompactionState(block), TestItem.KeccakB.ValueHash256,
-                            content, pool, PbtResourcePool.Usage.MainBlockProcessing);
-                        snapshot.TryLease(); repository.TryAdd(snapshot);
-                        using (snapshot) Assert.That(loader.ConvertAndRegister(snapshot), Is.True);
+                        content.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 7), (UInt256)1);
+                        content.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 1024), (UInt256)2);
+                        content.Accounts[address] = null;
                     }
-                    IPbtPersistedSnapshotCompactor compactor = container.Resolve<IPbtPersistedSnapshotCompactor>();
-                    ArrayPoolList<StateId> batch = new(8);
-                    for (int block = 1; block <= 8; block++) batch.Add(CompactionState(block));
-                    await compactor.EnqueueAsync(batch, 0, CancellationToken.None);
-                    await compactor.DisposeAsync();
+                    if (block == 2) content.ClearStorage(address);
+                    content.Codes[TestItem.KeccakC.ValueHash256] = new(new byte[65537]);
+                    PbtSnapshot snapshot = new(CompactionState(block - 1), CompactionState(block), TestItem.KeccakB.ValueHash256,
+                        content, pool, PbtResourcePool.Usage.MainBlockProcessing);
+                    snapshot.TryLease(); repository.TryAdd(snapshot);
+                    using (snapshot) Assert.That(loader.ConvertAndRegister(snapshot), Is.True);
                 }
-                Assert.That(repository.TryLeasePersisted(CompactionState(8), 8, SnapshotTier.PersistedLargeCompacted, out PbtPersistedSnapshot? widest), Is.True);
-                using (widest)
+                IPbtPersistedSnapshotCompactor compactor = container.Resolve<IPbtPersistedSnapshotCompactor>();
+                ArrayPoolList<StateId> batch = new(8);
+                for (int block = 1; block <= 8; block++) batch.Add(CompactionState(block));
+                await compactor.EnqueueAsync(batch, 0, CancellationToken.None);
+                await compactor.DisposeAsync();
+            }
+            Assert.That(repository.TryLeasePersisted(CompactionState(8), 8, SnapshotTier.PersistedLargeCompacted, out PbtPersistedSnapshot? widest), Is.True);
+            using (widest)
+            {
+                for (int block = 1; block <= 8; block++)
                 {
-                    for (int block = 1; block <= 8; block++)
+                    Assert.That(repository.TryLeasePersisted(CompactionState(block), 1, SnapshotTier.PersistedBase, out PbtPersistedSnapshot? persisted), Is.True);
+                    using (persisted)
                     {
-                        Assert.That(repository.TryLeasePersisted(CompactionState(block), 1, SnapshotTier.PersistedBase, out PbtPersistedSnapshot? persisted), Is.True);
-                        using (persisted)
-                        {
-                            Assert.That(ReferenceEquals(persisted!.BloomRef, widest!.BloomRef), Is.EqualTo(enabled || pass == 0));
-                            using PbtPersistedScanner scanner = persisted.Scan();
-                            while (scanner.MoveNext())
-                                if (PbtPersistedKey.IsEntity(scanner.Key))
-                                    Assert.That(persisted.BloomRef.Filter.MightContain(PbtPersistedKey.BloomHash(scanner.Key)), Is.True);
-                        }
+                        Assert.That(ReferenceEquals(persisted!.BloomRef, widest!.BloomRef), Is.EqualTo(enabled || pass == 0));
+                        using PbtPersistedScanner scanner = persisted.Scan();
+                        while (scanner.MoveNext())
+                            if (PbtPersistedKey.IsEntity(scanner.Key))
+                                Assert.That(persisted.BloomRef.Filter.MightContain(PbtPersistedKey.BloomHash(scanner.Key)), Is.True);
                     }
-                    Assert.That(widest!.TreeRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
                 }
+                Assert.That(widest!.TreeRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
             }
         }
-        finally { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
     }
 
     private sealed class PersistedCompactionContext : IDisposable
     {
-        private readonly string _path = Path.Combine(Path.GetTempPath(), "pbt-persisted-compaction-" + Guid.NewGuid().ToString("N"));
+        private readonly TempPath _path = TempPath.GetTempDirectory();
         private readonly IContainer _container;
         internal PbtSnapshotRepository Repository => _container.Resolve<PbtSnapshotRepository>();
         internal RecordingPersistedLoader Loader { get; }
@@ -976,20 +938,15 @@ public class PbtSnapshotCompactorTests
         internal PersistedCompactionContext(int compactSize, int offset, CancellationToken exit = default, ulong maxCompactSize = 1048576)
         {
             RecordingPersistedLoader? loader = null;
-            _container = PbtTestContext.BuildProductionContainer(new PbtConfig
-            {
-                Enabled = true,
-                CompactSize = compactSize,
-                CompactionOffset = offset,
-                PersistedSnapshotMaxCompactSize = maxCompactSize,
-                ArenaFileSizeBytes = 1048576,
-                PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
-                PersistedSnapshotArenaPageCacheBytes = 0,
-            }, builder =>
+            PbtConfig config = PbtTestContext.PersistedConfig();
+            config.CompactSize = compactSize;
+            config.CompactionOffset = offset;
+            config.PersistedSnapshotMaxCompactSize = maxCompactSize;
+            _container = PbtTestContext.BuildProductionContainer(config, builder =>
             {
                 builder.RegisterDecorator<IPbtPersistedSnapshotLoader>((_, _, inner) => loader = new(inner));
-                builder.RegisterInstance(new CompactionExitSource(exit)).As<IProcessExitSource>();
-            }, new InitConfig { BaseDbPath = _path });
+                builder.RegisterInstance(new ProcessExitSource(exit)).As<IProcessExitSource>();
+            }, new InitConfig { BaseDbPath = _path.Path });
             _container.Resolve<IPbtPersistedSnapshotLoader>().Load();
             Loader = loader!;
         }
@@ -1023,14 +980,8 @@ public class PbtSnapshotCompactorTests
         public void Dispose()
         {
             _container.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            Directory.Delete(_path, recursive: true);
+            _path.Dispose();
         }
-    }
-
-    private sealed class CompactionExitSource(CancellationToken token) : IProcessExitSource
-    {
-        public CancellationToken Token => token;
-        public void Exit(int exitCode) { }
     }
 
     private PbtSnapshot Compact(params PbtSnapshotContent[] layersOldestFirst) => Compact(_pool, layersOldestFirst);

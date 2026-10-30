@@ -117,7 +117,6 @@ public class ParallelUpdateRootTests
     {
         using PbtNodeGroupStore store = new();
         EipReferenceTree oracle = new();
-        Dictionary<string, byte[]> surviving = [];
         List<(byte[] Key, byte[]? Value)> initial = [];
         foreach (string zone in new[] { "00", "01", "FF" })
             foreach (string sibling in new[] { "0F", "10", "F0" })
@@ -139,31 +138,8 @@ public class ParallelUpdateRootTests
         void ApplyAndCompare(PbtNodeGroupStore target, List<(byte[] Key, byte[]? Value)> writes)
         {
             root = target.Fold(root, writes, SplitFanOut(splitEveryFrame));
-            foreach ((byte[] key, byte[]? value) in writes)
-            {
-                if (value is null)
-                {
-                    oracle.Delete(key);
-                    surviving.Remove(Convert.ToHexString(key));
-                }
-                else
-                {
-                    oracle.Insert(key, value);
-                    surviving[Convert.ToHexString(key)] = value;
-                }
-            }
-            using PbtTreeHarness rebuilt = new();
-            List<(byte[] Key, byte[]? Value)> remaining = [];
-            foreach ((string key, byte[] value) in surviving)
-                remaining.Add((Bytes.FromHexString(key), value));
-            rebuilt.ApplyBatch(remaining);
-            string[] canonicalRecords = target.CanonicalRecords();
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
-                Assert.That(root, Is.EqualTo(rebuilt.RootHash));
-                Assert.That(canonicalRecords, Is.EqualTo(rebuilt.CanonicalRecords()));
-            }
+            oracle.Apply(writes);
+            AssertMatchesRebuild(oracle, root, target.CanonicalRecords(), target.ExportPhysicalPayloads());
         }
     }
 
@@ -349,14 +325,14 @@ public class ParallelUpdateRootTests
     public void Path_only_groups_preserve_roots_across_mutations(
         [Values] bool splitEveryFrame, [Values] bool compressed)
     {
-        using GroupRecordingStore store = new();
+        using CountingPbtStore store = new();
         EipReferenceTree oracle = new();
         ValueHash256 root = default;
         (byte[] Key, byte[]? Value)[] entries = ZoneEntries(3, compressed);
         int nonRootReads = 0;
         int nonRootWrites = 0;
         ApplyAndCheck(entries);
-        Assert.That(store.Reads, Is.Empty, "building from an empty tree reads no group");
+        Assert.That(store.GroupReads, Is.Empty, "building from an empty tree reads no group");
         ApplyAndCheck(Changes(entries));
         List<(byte[] Key, byte[]? Value)> promotions = [];
         List<(byte[] Key, byte[]? Value)> deletions = [];
@@ -378,18 +354,17 @@ public class ParallelUpdateRootTests
 
         void ApplyAndCheck((byte[] Key, byte[]? Value)[] changes)
         {
-            store.Reads.Clear();
-            store.Writes.Clear();
+            store.ResetReads();
+            store.GroupWrites.Clear();
             root = store.Fold(root, changes, SplitFanOut(splitEveryFrame));
 
-            foreach (PbtStorageNodePath path in store.Reads)
-                if (path.BitDepth != 0) nonRootReads++;
+            nonRootReads += store.GroupReads.Count(static read => read.Key.BitDepth != 0);
             oracle.Apply(changes);
-            IReadOnlyList<PbtStorageNodePath> storedGroups = store.StoredGroups;
+            IReadOnlyList<PbtStorageNodePath> storedGroups = store.Inner.EnumerateNodeGroupKeys();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
-                foreach (PbtStorageNodePath path in store.Writes)
+                foreach ((PbtStorageNodePath path, _) in store.GroupWrites)
                 {
                     Assert.That(storedGroups.Contains(path), Is.True, $"physical group at {path}");
                     if (path.BitDepth != 0) nonRootWrites++;
@@ -419,24 +394,17 @@ public class ParallelUpdateRootTests
         void Apply((byte[] Key, byte[]? Value)[] writes) => AssertLoggedFold(store, expected, writes, splitEveryFrame);
     }
 
-    [TestCase("000100", "000200")]
-    [TestCase("01", "0100")]
-    [TestCase("0020", "0040")]
+    [TestCaseSource(typeof(PbtStoreTestExtensions), nameof(GroupCreationCases))]
     public void Log_reference_folds_forward_descendants_through_created_and_removed_groups(string divergingKey, string absentKey)
     {
         using LoggedGroupStore store = new();
         using PbtTreeHarness expected = new();
-        Apply((ZoneKey("000000"), Value(1)), (ZoneKey("000001"), Value(2)), (ZoneKey("000002"), Value(4)));
+        (byte[] Key, byte[]? Value)[][] steps = GroupCreationSteps(divergingKey, absentKey);
+        AssertLoggedFold(store, expected, steps[0], splitEveryFrame: true);
         string[] initial = store.Payloads().PhysicalRecords();
-        Apply((ZoneKey(absentKey), null));
-        Apply((ZoneKey(divergingKey), Value(3)));
-        Apply((ZoneKey("000010"), Value(5)));
-        Apply((ZoneKey(divergingKey), null));
-        Apply((ZoneKey(divergingKey), Value(3)));
-        Apply((ZoneKey(divergingKey), null), (ZoneKey("000010"), null));
+        foreach ((byte[] Key, byte[]? Value)[] writes in steps[1..])
+            AssertLoggedFold(store, expected, writes, splitEveryFrame: true);
         Assert.That(store.Payloads().PhysicalRecords(), Is.EqualTo(initial));
-
-        void Apply(params (byte[] Key, byte[]? Value)[] writes) => AssertLoggedFold(store, expected, writes, splitEveryFrame: true);
     }
 
     private static void AssertLoggedFold(LoggedGroupStore store, PbtTreeHarness expected, (byte[] Key, byte[]? Value)[] writes, bool splitEveryFrame)
@@ -786,37 +754,6 @@ public class ParallelUpdateRootTests
             _persisted?.Dispose();
             if (_ownsBuffer) Buffer.Dispose();
         }
-    }
-
-    private sealed class GroupRecordingStore : IPbtStore, IDisposable
-    {
-        public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => _store.StartWriteBatch(alignedTotalLength, SetNodeGroup);
-        public bool TryLocate(ulong pointer, out PbtGroupRecord record)
-        {
-            record = default;
-            return false;
-        }
-        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), action, arg);
-
-        private readonly PbtNodeGroupStore _store = new();
-        internal List<PbtStorageNodePath> Reads { get; } = [];
-        internal List<PbtStorageNodePath> Writes { get; } = [];
-        internal IReadOnlyList<PbtStorageNodePath> StoredGroups => _store.EnumerateNodeGroupKeys();
-
-        public byte[]? GetNodeGroup(scoped in PbtTraversalPath groupKey)
-        {
-            lock (Reads) Reads.Add(groupKey.ToPath<PbtStorageNodePath>());
-            return _store.GetNodeGroup(groupKey);
-        }
-
-        private void SetNodeGroup(PbtGroupRecord record)
-        {
-            lock (Writes) Writes.Add(record.Path);
-            _store.SetNodeGroup(record);
-        }
-
-        public void Dispose() => _store.Dispose();
     }
 
     private static (byte[] Key, byte[]? Value)[] ZoneEntries(int populatedZones, bool compressed)

@@ -114,10 +114,10 @@ public class PbtSnapshotBundleTests
         using PbtPersistedTestStore persistedStore = new();
         PbtResourcePool pool = new(new PbtConfig());
         PbtStorageNodePath path = default;
-        byte[] database = Encoding(1);
-        byte[] older = Encoding(2);
-        byte[] newer = Encoding(3);
-        byte[] memory = Encoding(4);
+        byte[] database = GroupEncoding(path, 1);
+        byte[] older = GroupEncoding(path, 2);
+        byte[] newer = GroupEncoding(path, 3);
+        byte[] memory = GroupEncoding(path, 4);
         PbtPersistedSnapshotList persisted = new(2);
         if (persistedTier != 0)
         {
@@ -159,8 +159,6 @@ public class PbtSnapshotBundleTests
             Assert.That(loads, Is.EqualTo(new[] { expected, expected }), "a load reads only the persisted layers");
             Assert.That(reader.GroupReadCount, Is.EqualTo(persistedTier == 0 ? 2 : 0), "persisted entries stop the captured-reader fallback, and a load warms nothing");
         }
-
-        byte[] Encoding(byte seed) => PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(seed))], default);
     }
 
     [Test]
@@ -258,12 +256,7 @@ public class PbtSnapshotBundleTests
     {
         using PbtGroupRecordBuffer sourceBuffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes);
         PbtResourcePool pool = new(new PbtConfig());
-        PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-        content.BeginNodeGroupWrites(sourceBuffer);
-        PbtStorageNodePath path = default;
-        byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(1))], default);
-        content.SetTree((path, encoding));
-        PbtSnapshot source = new(StateId.PreGenesis, new StateId(1, default), TestItem.KeccakA.ValueHash256, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        PbtSnapshot source = RootGroupSnapshot(pool, sourceBuffer, GroupEncoding(default(PbtStorageNodePath), 1));
         PbtSnapshotPooledList chain = new(1) { source };
         PbtReadOnlySnapshotBundle readOnly = PbtSnapshotBundleTestExtensions.ReadOnlyBundle(chain, new Reader(), slotFilterBitsPerKey: 0);
         using PbtSnapshotBundle branch = new(new PbtSnapshotPooledList(0), readOnly, sourceBuffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
@@ -277,11 +270,8 @@ public class PbtSnapshotBundleTests
         PbtResourcePool pool = new(new PbtConfig());
         using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         PbtStorageNodePath path = default;
-        byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(1))], default);
-        PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-        content.BeginNodeGroupWrites(buffer);
-        content.SetTree((path, encoding));
-        PbtSnapshot source = new(StateId.PreGenesis, new StateId(1, default), TestItem.KeccakA.ValueHash256, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        byte[] encoding = GroupEncoding(path, 1);
+        PbtSnapshot source = RootGroupSnapshot(pool, buffer, encoding);
         ulong rootPointer = source.RootGroupPointer;
         buffer.SetRoot(source.TreeRoot, rootPointer);
         Assert.That(repository.TryAdd(source), Is.True);
@@ -490,9 +480,9 @@ public class PbtSnapshotBundleTests
         PbtResourcePool pool = new(new PbtConfig());
         byte[] persisted = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(1)),
             new PbtNodeRecord(PbtTestPaths.PathOf(groupKey, 6).ToPath<PbtStorageNodePath>(), BranchEncoding(2))], default);
-        byte[] shared = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(3))], default);
-        byte[] local = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(4))], default);
-        byte[] write = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(5))], default);
+        byte[] shared = GroupEncoding(groupKey, 3);
+        byte[] local = GroupEncoding(groupKey, 4);
+        byte[] write = GroupEncoding(groupKey, 5);
         // A non-empty persisted root that the buffer does not index, so only the newest in-memory tree can answer.
         Reader reader = new() { GroupPayload = persisted, CurrentRoot = TestItem.KeccakA.ValueHash256 };
         PbtSnapshotPooledList sharedSnapshots = newestTier >= 1
@@ -531,8 +521,8 @@ public class PbtSnapshotBundleTests
         using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         PbtResourcePool pool = new(new PbtConfig());
         PbtStorageNodePath path = new([], 0);
-        byte[] persistedEncoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(1))], default);
-        byte[] memoryEncoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(2))], default);
+        byte[] persistedEncoding = GroupEncoding(path, 1);
+        byte[] memoryEncoding = GroupEncoding(path, 2);
         using PbtSnapshot source = new(StateId.PreGenesis, new StateId(0, default), TestItem.KeccakA.ValueHash256,
             Content(path, !newerMemory && tombstone ? null : persistedEncoding), pool, PbtResourcePool.Usage.MainBlockProcessing);
         using PbtPersistedSnapshot persisted = store.Build(source);
@@ -976,6 +966,19 @@ public class PbtSnapshotBundleTests
     {
         ulong root = encoding is null ? 0 : bundle.GroupRecordBuffer.Append(default, encoding, default);
         bundle.PublishTreeRoot((default, root));
+    }
+
+    /// <summary>A node group at <paramref name="path"/> holding one branch, at the group root, marked by <paramref name="marker"/>.</summary>
+    private static byte[] GroupEncoding<TPath>(TPath path, byte marker) where TPath : struct, IPbtNodePath<TPath> =>
+        PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), BranchEncoding(marker))], default);
+
+    /// <summary>A block-1 snapshot writing to <paramref name="buffer"/> whose tree is the single root group <paramref name="encoding"/>.</summary>
+    private static PbtSnapshot RootGroupSnapshot(PbtResourcePool pool, IPbtGroupRecordBuffer buffer, byte[] encoding)
+    {
+        PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+        content.BeginNodeGroupWrites(buffer);
+        content.SetTree((default(PbtStorageNodePath), encoding));
+        return new(StateId.PreGenesis, new StateId(1, default), TestItem.KeccakA.ValueHash256, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
     }
 
     private static byte[] BranchEncoding(byte marker)

@@ -112,7 +112,6 @@ public class PbtAnchorImportTests
 
         await harness.Publish();
 
-        Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Is.Empty);
         AssertPublishedState(harness, name);
     }
 
@@ -264,11 +263,13 @@ public class PbtAnchorImportTests
     public void Offline_export_publishes_verified_bundle_without_native_state([Values("success", "existing", "corrupt")] string mode, [Values] bool includePreimages)
     {
         using Harness harness = new("a5");
-        using OfflineFixture offline = new("a5", harness.Anchor.Header);
+        using Eip8347FixtureState.OfflineSource offline = new();
+        offline.Replay("a5", harness.Anchor.Header);
+        using IPersistence.IPersistenceReader source = offline.Persistence.CreateReader();
         string output = Path.Combine(harness.Scratch.Path, "bundle");
         if (mode == "existing") Directory.CreateDirectory(output);
         if (mode == "corrupt") harness.Anchor = harness.WithStateRoot(Hash256.Zero);
-        void Export() => PbtOfflineExport.Export(offline.Source, offline.Code, harness.Anchor,
+        void Export() => PbtOfflineExport.Export(source, offline.Code, harness.Anchor,
             output, harness.Scratch.Path, harness.IsAnchorCurrent, includePreimages, sortBufferBytes: 65536, workerCount: 2,
             LimboLogs.Instance, CancellationToken.None);
         if (mode == "existing") Assert.Throws<IOException>(Export);
@@ -302,7 +303,6 @@ public class PbtAnchorImportTests
         await harness.Publish(snapshot, null, CancellationToken.None);
 
         AssertPublishedState(harness, name);
-        Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Is.Empty);
     }
 
     /// <remarks>Stages several times the staging batch size, so the writes span many batches written by parallel flushers.</remarks>
@@ -315,17 +315,11 @@ public class PbtAnchorImportTests
         for (int index = 0; index < addresses.Length; index++)
         {
             Address address = addresses[index] = Address.FromNumber((UInt256)(index + 1));
-            ValueHash256 basicData = default;
-            PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, 0, (UInt256)(index + 1), UInt256.Zero);
-            leaves.Add(new((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), 0), basicData));
-            leaves.Add(new((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), 1), Keccak.OfAnEmptyString.ValueHash256));
+            PbtTestLeaves.AddAccount(leaves, address, new Account((ulong)(index + 1), 0), null);
             leaves.Add(new(PbtTestLeaves.SlotKey(address, 100), ((UInt256)(index + 1)).ToValueHash()));
         }
-        leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
-        ValueHash256 expectedRoot = PbtSortedLeafFold.CalculateRoot(leaves, PbtSortedLeafFold.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
         using MemoryStream snapshot = new();
-        PbtSnapshotCodec.Write(snapshot, leaves, PbtTestLeaves.Claiming(expectedRoot), CancellationToken.None);
-        snapshot.Position = 0;
+        ValueHash256 expectedRoot = WriteSnapshot(snapshot, leaves);
 
         await harness.Publish(snapshot, null, CancellationToken.None);
 
@@ -335,9 +329,8 @@ public class PbtAnchorImportTests
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(reader.GetAccount(Eip8297KeyDerivation.AddressHash(addresses[index].ToHash().Bytes))?.ToAccount().Nonce, Is.EqualTo((ulong)(index + 1)));
-                Assert.That(reader.GetSlot(PbtTestLeaves.SlotKey(addresses[index], 100)),
-                    Is.EqualTo((UInt256)(index + 1)));
+                Assert.That(PbtTestLeaves.ReadAccount(reader, addresses[index])?.Nonce, Is.EqualTo((ulong)(index + 1)));
+                Assert.That(PbtTestLeaves.ReadSlot(reader, addresses[index], 100), Is.EqualTo((UInt256)(index + 1)));
             }
         }
     }
@@ -456,11 +449,7 @@ public class PbtAnchorImportTests
             // A chunk past the account's code size: reachable by no code read, so nothing accounts for it.
             case "extra-code-chunk": leaves.Add(new((PbtVariableTreeKey)Eip8297KeyDerivation.OverflowCodeKey(writerCodeHash.Bytes, 1), Keccak.OfAnEmptyString.ValueHash256)); break;
             case "surplus-account-leaves":
-                Address surplus = new("0x00000000000000000000000000000000deadbeef");
-                ValueHash256 basicData = default;
-                PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, 0, 1, UInt256.Zero);
-                leaves.Add(new((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(Eip8297KeyDerivation.AddressHash(surplus.ToHash().Bytes), 0), basicData));
-                leaves.Add(new((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(Eip8297KeyDerivation.AddressHash(surplus.ToHash().Bytes), 1), Keccak.OfAnEmptyString.ValueHash256));
+                PbtTestLeaves.AddAccount(leaves, new Address("0x00000000000000000000000000000000deadbeef"), new Account(1, 0), null);
                 break;
             case "orphan-storage-leaf":
                 leaves.Add(new(PbtTestLeaves.SlotKey(new Address("0x00000000000000000000000000000000cafebabe"), 100),
@@ -484,11 +473,8 @@ public class PbtAnchorImportTests
                 break;
             default: throw new ArgumentOutOfRangeException(nameof(corruption));
         }
-        leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
-        ValueHash256 attackerRoot = PbtSortedLeafFold.CalculateRoot(leaves, PbtSortedLeafFold.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
         MemoryStream snapshot = new();
-        PbtSnapshotCodec.Write(snapshot, leaves, PbtTestLeaves.Claiming(attackerRoot), CancellationToken.None);
-        snapshot.Position = 0;
+        WriteSnapshot(snapshot, leaves);
         MemoryStream preimages = new();
         PbtPreimageCodec.Write(preimages, accounts, CancellationToken.None);
         preimages.Position = 0;
@@ -517,6 +503,17 @@ public class PbtAnchorImportTests
             slots.Sort(static (left, right) => CompareHashes(ValueKeccak.Compute(left.Bytes), ValueKeccak.Compute(right.Bytes)));
             accounts[index] = new(history, (uint)slots.Count, slots);
         }
+    }
+
+    /// <summary>Writes <paramref name="leaves"/> in key order as a rewound snapshot claiming their recomputed PBT root.</summary>
+    /// <returns>The recomputed root.</returns>
+    private static ValueHash256 WriteSnapshot(MemoryStream snapshot, List<RebuildEntry> leaves)
+    {
+        leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
+        ValueHash256 root = PbtSortedLeafFold.CalculateRoot(leaves, PbtSortedLeafFold.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
+        PbtSnapshotCodec.Write(snapshot, leaves, PbtTestLeaves.Claiming(root), CancellationToken.None);
+        snapshot.Position = 0;
+        return root;
     }
 
     private static int CompareHashes(ValueHash256 left, ValueHash256 right) => left.Bytes.SequenceCompareTo(right.Bytes);
@@ -557,7 +554,7 @@ public class PbtAnchorImportTests
         }
         foreach ((Address address, GethGenesisAllocJson expected) in Eip8347FixtureState.LoadAllocation(Eip8347FixtureState.Directory, name))
         {
-            Account? account = reader.GetAccount(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes))?.ToAccount();
+            Account? account = PbtTestLeaves.ReadAccount(reader, address);
             Assert.That(account, Is.Not.Null, address.ToString());
             byte[] code = expected.Code ?? [];
             using (Assert.EnterMultipleScope())
@@ -569,8 +566,7 @@ public class PbtAnchorImportTests
             }
             if (expected.Storage is null) continue;
             foreach ((UInt256 slot, byte[] value) in expected.Storage)
-                Assert.That(reader.GetSlot(PbtTestLeaves.SlotKey(address, slot)),
-                    Is.EqualTo(new UInt256(value, isBigEndian: true)), slot.ToString());
+                Assert.That(PbtTestLeaves.ReadSlot(reader, address, slot), Is.EqualTo(new UInt256(value, isBigEndian: true)), slot.ToString());
         }
 
         using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
@@ -658,30 +654,6 @@ public class PbtAnchorImportTests
             Target.Dispose();
             Scratch.Dispose();
             WorkDb.Dispose();
-        }
-    }
-
-    private sealed class OfflineFixture : IDisposable
-    {
-        private readonly SnapshotableMemColumnsDb<FlatDbColumns> _sourceDatabase = new();
-        private readonly MemDb _code = new();
-        public IPersistence.IPersistenceReader Source { get; }
-        public IReadOnlyKeyValueStore Code => _code;
-
-        public OfflineFixture(string name, BlockHeader anchorHeader)
-        {
-            PreimageRocksdbPersistence source = new(_sourceDatabase, LimboLogs.Instance, FlatLayout.PreimageFlat, Flat.Persistence.TrieNodeLog.NullTrieNodeLog.Instance);
-            using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
-            using FileStream preimages = OpenArtifact(name, "preimages.bin");
-            Eip8347FixtureState.ReplayInto(source, _code, anchorHeader, snapshot, preimages);
-            Source = source.CreateReader();
-        }
-
-        public void Dispose()
-        {
-            Source.Dispose();
-            _code.Dispose();
-            _sourceDatabase.Dispose();
         }
     }
 

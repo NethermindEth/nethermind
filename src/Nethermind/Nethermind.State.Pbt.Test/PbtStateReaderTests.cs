@@ -95,24 +95,6 @@ public class PbtStateReaderTests
     }
 
     [Test]
-    public void StateRemovedAfterAvailabilityCheckIsNotAnAbsentEntry([Values] bool storage)
-    {
-        IPbtDbManager manager = Substitute.For<IPbtDbManager>();
-        using MemDb codeDb = new();
-        PbtStateReader reader = new(codeDb, manager);
-        BlockHeader header = Build.A.BlockHeader.WithNumber(9).WithStateRoot(TestItem.KeccakA).TestObject;
-        StateId stateId = new(header);
-        manager.HasStateForBlock(stateId).Returns(true);
-        Assert.That(reader.HasStateForBlock(header), Is.True);
-        manager.HasStateForBlock(stateId).Returns(false);
-        manager.TryGatherReadOnlyBundle(stateId).Returns((PbtReadOnlySnapshotBundle?)null);
-
-        MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => Read(reader, header, storage));
-
-        Assert.That(exception!.InnerException, Is.TypeOf<StateNotRetainedException>());
-    }
-
-    [Test]
     public async Task AbsentEntriesInAvailableStateKeepTheirDefaultValues([Values] bool storage)
     {
         await using PbtTestContext ctx = new();

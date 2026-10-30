@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -150,6 +153,85 @@ internal sealed class DifferentialTree(FoldFanOut fanOut, ConcurrencyController 
 
     private static string Describe(PbtPhysicalPayload payload) =>
         $"{payload.Key.ToEncodedArray().ToHexString()}:{payload.Payload.Span.ToHexString()}";
+}
+
+/// <summary>Counts and records the group reads and writes of the folds over its <see cref="Inner"/> store, whose reads it can override and whose writes it can fail.</summary>
+/// <remarks>Thread-safe, as parallel folds read and write groups concurrently.</remarks>
+public sealed class CountingPbtStore : IPbtStore, IDisposable
+{
+    private int _reads;
+    private int _loads;
+    private int _applies;
+
+    public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => Inner.StartWriteBatch(alignedTotalLength, SetNodeGroup);
+    public bool TryLocate(ulong pointer, out PbtGroupRecord record)
+    {
+        record = default;
+        return false;
+    }
+    public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), action, arg);
+
+    public PbtNodeGroupStore Inner { get; } = new();
+    public int Reads => _reads;
+    /// <summary>The reads that found a group.</summary>
+    public int Loads => _loads;
+    public int Applies => _applies;
+    public ConcurrentDictionary<PbtStorageNodePath, int> GroupReads { get; } = new();
+    public ConcurrentDictionary<PbtStorageNodePath, int> GroupWrites { get; } = new();
+    public Func<PbtStorageNodePath, byte[]?>? OverrideNode { get; set; }
+    public Func<PbtStorageNodePath, byte[]?>? OverrideGroup { get; set; }
+    public bool ThrowOnApply { get; set; }
+    /// <summary>Runs before each group write reaches <see cref="Inner"/>; throwing fails the write.</summary>
+    public Action<PbtStorageNodePath>? OnApply { get; set; }
+
+    public byte[]? GetNodeGroup(scoped in PbtTraversalPath groupKey)
+    {
+        Interlocked.Increment(ref _reads);
+        PbtStorageNodePath storageGroupKey = groupKey.ToPath<PbtStorageNodePath>();
+        GroupReads.AddOrUpdate(storageGroupKey, 1, static (_, count) => count + 1);
+        byte[]? payload = LoadNodeGroup(groupKey, storageGroupKey);
+        if (payload is not null) Interlocked.Increment(ref _loads);
+        return payload;
+    }
+
+    private byte[]? LoadNodeGroup(scoped in PbtTraversalPath groupKey, PbtStorageNodePath storageGroupKey)
+    {
+        if (OverrideGroup is { } overrideGroup) return overrideGroup(storageGroupKey);
+        if (OverrideNode is { } overrideNode)
+        {
+            List<PbtNodeRecord> records = [];
+            for (int position = 0; position < PbtThreeLevelGroupGeometry.PositionCount; position++)
+            {
+                if (position == PbtThreeLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
+                PbtStorageNodePath path = PbtTestPaths.PathOf(storageGroupKey, position);
+                byte[]? encoding = overrideNode(path);
+                if (encoding is not null) records.Add(new PbtNodeRecord(path, encoding));
+            }
+
+            if (records.Count == 0) return null;
+            return PbtNodeGroupEncoder.Encode(storageGroupKey, records, default);
+        }
+        return Inner.GetNodeGroup(groupKey);
+    }
+
+    private void SetNodeGroup(PbtGroupRecord record)
+    {
+        Interlocked.Increment(ref _applies);
+        GroupWrites.AddOrUpdate(record.Path, 1, static (_, count) => count + 1);
+        OnApply?.Invoke(record.Path);
+        if (ThrowOnApply) throw new InvalidOperationException("Configured write failure.");
+        Inner.SetNodeGroup(record);
+    }
+
+    public void ResetReads()
+    {
+        _reads = 0;
+        _loads = 0;
+        GroupReads.Clear();
+    }
+
+    public void Dispose() => Inner.Dispose();
 }
 
 internal static class PbtStoreTestExtensions
@@ -335,6 +417,49 @@ internal static class PbtStoreTestExtensions
         byte[] value = new byte[32];
         value[^1] = marker;
         return value;
+    }
+
+    /// <summary>The diverging and absent keys of <see cref="GroupCreationSteps"/>, diverging where the default fan-out folds them in the sorted walk, the zone frame and a worker frame.</summary>
+    public static IEnumerable<TestCaseData> GroupCreationCases()
+    {
+        yield return new TestCaseData("000100", "000200");
+        yield return new TestCaseData("01", "0100");
+        yield return new TestCaseData("0020", "0040");
+    }
+
+    /// <summary>Batches that create and remove groups between the root group and a deep branch's group, ending on the initial tree.</summary>
+    /// <remarks>
+    /// After a long shared prefix, a delete of <paramref name="absentKey"/>, an insert of <paramref name="divergingKey"/> creating a
+    /// group between the existing ones, a deeper insert creating one below it, then the removal and recreation of the first.
+    /// </remarks>
+    public static (byte[] Key, byte[]? Value)[][] GroupCreationSteps(string divergingKey, string absentKey)
+    {
+        const string DeeperKey = "000010";
+        return
+        [
+            // The third key keeps a stored branch below the long prefix; the leaves themselves are inlined.
+            [(ZoneKey("000000"), Value(1)), (ZoneKey("000001"), Value(2)), (ZoneKey("000002"), Value(4))],
+            [(ZoneKey(absentKey), null)],
+            [(ZoneKey(divergingKey), Value(3))],
+            [(ZoneKey(DeeperKey), Value(5))],
+            [(ZoneKey(divergingKey), null)],
+            [(ZoneKey(divergingKey), Value(3))],
+            [(ZoneKey(divergingKey), null), (ZoneKey(DeeperKey), null)],
+        ];
+    }
+
+    /// <summary>Asserts a tree at <paramref name="root"/> matches the oracle and a tree built in one batch from the oracle's live entries.</summary>
+    public static void AssertMatchesRebuild(EipReferenceTree oracle, in ValueHash256 root, string[] canonicalRecords, IReadOnlyList<PbtPhysicalPayload> physicalPayloads)
+    {
+        using PbtTreeHarness rebuilt = new();
+        rebuilt.ApplyBatch(oracle.Entries);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+            Assert.That(root, Is.EqualTo(rebuilt.RootHash));
+            Assert.That(canonicalRecords, Is.EqualTo(rebuilt.CanonicalRecords()));
+            Assert.That(physicalPayloads.PhysicalRecords(), Is.EqualTo(rebuilt.PhysicalPayloads.PhysicalRecords()));
+        }
     }
 
     /// <summary>Folds zone-key <paramref name="writes"/> into the tree at <paramref name="root"/> through the partitioned driver production folds with.</summary>

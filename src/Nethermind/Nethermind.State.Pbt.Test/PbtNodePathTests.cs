@@ -57,13 +57,18 @@ public class PbtNodePathTests<TPath> where TPath : struct, IPbtNodePath<TPath>
     }
 
     [Test]
-    public void Path_operations_preserve_logical_bits_and_copy_boundaries([Values(0, 4, 8, -1)] int depth)
+    public void Path_operations_preserve_logical_bits_and_copy_boundaries([Values(0, 1, 4, 7, 8, 271, 272, 527, 528)] int depth)
     {
-        if (depth == -1) depth = TPath.MaxBitDepth;
-        byte[] bytes = new byte[(depth + 7) >> 3];
-        Array.Fill(bytes, (byte)0xAD);
+        if (depth > TPath.MaxBitDepth) return;
+        byte[] source = new byte[TPath.MaxBitDepth / 8];
+        Array.Fill(source, (byte)0xAD);
+        TPath fromSource = PbtTestPaths.Prefix<TPath>(source, depth);
+        byte[] bytes = source[..((depth + 7) >> 3)];
         if ((depth & 7) != 0) bytes[^1] &= (byte)(0xFF << (8 - (depth & 7)));
-        TPath path = TPath.Create(bytes, depth);
+        byte[] constructorInput = (byte[])bytes.Clone();
+        TPath path = TPath.Create(constructorInput, depth);
+        constructorInput.AsSpan().Clear();
+        source.AsSpan().Clear();
         byte[] copiedBits = new byte[bytes.Length];
         PbtNodePathOperations.CopyTo(path, copiedBits);
         byte[] changed = (byte[])bytes.Clone();
@@ -72,6 +77,9 @@ public class PbtNodePathTests<TPath> where TPath : struct, IPbtNodePath<TPath>
         using (Assert.EnterMultipleScope())
         {
             Assert.That(copiedBits, Is.EqualTo(bytes));
+            Assert.That(fromSource, Is.EqualTo(path));
+            if (depth > 0)
+                Assert.That(PbtTestPaths.Prefix<TPath>(bytes, depth - 1).ToPath<PbtStorageNodePath>().CompareTo(path.ToPath<PbtStorageNodePath>()), Is.LessThan(0));
             Assert.That(Math.Sign(path.ToPath<PbtStorageNodePath>().CompareTo(changedPath)), Is.EqualTo(Math.Sign(bytes.AsSpan().SequenceCompareTo(changed))));
             for (int index = 0; index < bytes.Length; index++)
                 Assert.That(path.GetByte(index), Is.EqualTo(bytes[index]));

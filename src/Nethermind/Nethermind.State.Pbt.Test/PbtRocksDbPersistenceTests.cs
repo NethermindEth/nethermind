@@ -40,6 +40,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using Nethermind.State.Pbt.Snapshot;
+using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.State.Pbt.Test.PbtStoreTestExtensions;
 
@@ -50,6 +51,8 @@ public class PbtRocksDbPersistenceTests
     private static ReadOnlySpan<byte> CurrentStateKey => "currentState"u8;
     private static ReadOnlySpan<byte> SchemaEpochKey => "schemaEpoch"u8;
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
+    private static readonly StateId First = new(1, TestItem.KeccakA.ValueHash256);
+    private static readonly StateId Second = new(2, TestItem.KeccakB.ValueHash256);
 
     [TestCase(false)]
     [TestCase(true)]
@@ -84,10 +87,7 @@ public class PbtRocksDbPersistenceTests
         PbtRocksDbPersistence persistence = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
         UInt256 value = (UInt256)0x1234;
         static PbtPath Key(uint slot) => Eip8297KeyDerivation.HeaderStorageKey(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes), slot);
-        StateId first = new(1, TestItem.KeccakA.ValueHash256);
-        StateId second = new(2, TestItem.KeccakB.ValueHash256);
-        StateId third = new(3, TestItem.KeccakC.ValueHash256);
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default))
+        Commit(persistence, StateId.PreGenesis, First, batch =>
         {
             foreach (uint start in new[] { 0u, 16u })
             {
@@ -101,21 +101,12 @@ public class PbtRocksDbPersistenceTests
                 batch.SetSlotRun(SlotRun.RunKey(Key(start)), run);
                 SlotRun.Return(run);
             }
-            batch.Commit();
-        }
+        });
         byte[][] populatedRows = db.GetColumnDb(PbtColumns.Storages).GetAllKeys().ToArray();
         using IPbtPersistence.IReader populated = persistence.CreateReader();
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(first, second, default))
-        {
-            batch.SetSlot(Key(3), value);
-            batch.Commit();
-        }
+        Commit(persistence, First, Second, batch => batch.SetSlot(Key(3), value));
         using IPbtPersistence.IReader replaced = persistence.CreateReader();
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(second, third, default))
-        {
-            batch.SetSlotRun(SlotRun.RunKey(Key(3)), SlotRun.Empty);
-            batch.Commit();
-        }
+        Commit(persistence, Second, new StateId(3, TestItem.KeccakC.ValueHash256), static batch => batch.SetSlotRun(SlotRun.RunKey(Key(3)), SlotRun.Empty));
         using IPbtPersistence.IReader deleted = persistence.CreateReader();
         PackedSlotRun tail = populated.GetSlotRun(SlotRun.RunKey(Key(16)));
 
@@ -143,14 +134,12 @@ public class PbtRocksDbPersistenceTests
         PbtVariableTreeKey overflowKey = PbtTestLeaves.SlotKey(TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset);
         PbtVariableTreeKey otherAddressKey = PbtTestLeaves.SlotKey(TestItem.AddressB, otherAddressSlot);
         UInt256 value = (UInt256)0x1234;
-        StateId first = new(1, TestItem.KeccakA.ValueHash256);
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default))
+        Commit(persistence, StateId.PreGenesis, First, batch =>
         {
             batch.SetSlot(headerKey, value);
             batch.SetSlot(overflowKey, value);
             batch.SetSlot(otherAddressKey, value);
-            batch.Commit();
-        }
+        });
 
         using (Assert.EnterMultipleScope())
         {
@@ -171,17 +160,14 @@ public class PbtRocksDbPersistenceTests
         CodeInfo code = new(Bytes.FromHexString("0x6001600255"));
         ValueHash256 codeHash = Keccak.Compute(code.CodeSpan).ValueHash256;
         UInt256 slot = (UInt256)0xabcd;
-        StateId first = new(1, TestItem.KeccakA.ValueHash256);
-        StateId second = new(2, TestItem.KeccakB.ValueHash256);
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default))
+        Commit(persistence, StateId.PreGenesis, First, batch =>
         {
             batch.SetAccount(addressHash, Account.TotallyEmpty.ToPbtAccount());
             batch.SetSlot(storageKey, slot);
             batch.SetCode(codeHash, code);
-            batch.Commit();
-        }
-        Assert.That(() => persistence.CreateWriteBatch(StateId.PreGenesis, second, default), Throws.InvalidOperationException);
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(first, second, default))
+        });
+        Assert.That(() => persistence.CreateWriteBatch(StateId.PreGenesis, Second, default), Throws.InvalidOperationException);
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(First, Second, default))
         {
             batch.SetAccount(addressHash, null);
             batch.SetSlot(storageKey, default);
@@ -191,7 +177,7 @@ public class PbtRocksDbPersistenceTests
         using IPbtPersistence.IReader reader = new PbtRocksDbPersistence(db, new PbtConfig(), NullTrieNodeLog.Instance).CreateReader();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.CurrentState, Is.EqualTo(commit ? second : first));
+            Assert.That(reader.CurrentState, Is.EqualTo(commit ? Second : First));
             Assert.That(reader.GetAccount(addressHash), Is.EqualTo(commit ? null : Account.TotallyEmpty.ToPbtAccount()));
             Assert.That(reader.GetSlot(storageKey), Is.EqualTo(commit ? default : slot));
             Assert.That(db.GetColumnDb(PbtColumns.Accounts).GetAllKeys().Count(), Is.EqualTo(commit ? 0 : 1));
@@ -210,21 +196,10 @@ public class PbtRocksDbPersistenceTests
         PbtNodePath secondPath = new([0], 2);
         byte[] firstNode = BranchNode(1);
         byte[] secondNode = BranchNode(2);
-        StateId firstState = new(1, TestItem.KeccakA.ValueHash256);
-        StateId secondState = new(2, TestItem.KeccakB.ValueHash256);
 
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, firstState, default))
-        {
-            byte[] group = EncodeGroup(new(firstPath.ToPath<PbtStorageNodePath>(), firstNode), new(secondPath.ToPath<PbtStorageNodePath>(), secondNode));
-            batch.SetNodeGroup(PbtTestPaths.Locate(firstPath).GroupKey, group);
-            batch.Commit();
-        }
-
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(firstState, secondState, default))
-        {
-            WriteGroup(batch, secondPath, secondNode);
-            batch.Commit();
-        }
+        Commit(persistence, StateId.PreGenesis, First, batch => batch.SetNodeGroup(PbtTestPaths.Locate(firstPath).GroupKey,
+            EncodeGroup(new(firstPath.ToPath<PbtStorageNodePath>(), firstNode), new(secondPath.ToPath<PbtStorageNodePath>(), secondNode))));
+        Commit(persistence, First, Second, batch => WriteGroup(batch, secondPath, secondNode));
 
         using IPbtPersistence.IReader reader = persistence.CreateReader();
         using (Assert.EnterMultipleScope())
@@ -453,14 +428,8 @@ public class PbtRocksDbPersistenceTests
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig { ImportFromPreimageFlat = true }, NullTrieNodeLog.Instance);
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
-            StateId.PreGenesis,
-            StateId.PreGenesis,
-            default))
-        {
-            batch.SetAccount(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes), Account.TotallyEmpty.ToPbtAccount());
-            batch.Commit();
-        }
+        Commit(persistence, StateId.PreGenesis, StateId.PreGenesis, static batch =>
+            batch.SetAccount(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes), Account.TotallyEmpty.ToPbtAccount()));
 
         using (Assert.EnterMultipleScope())
         {
@@ -473,7 +442,7 @@ public class PbtRocksDbPersistenceTests
     public void Failed_final_commit_does_not_publish_state_or_validity()
     {
         using SnapshotableMemColumnsDb<PbtColumns> inner = new("pbt");
-        FailNextCommitColumnsDb db = new(inner);
+        IColumnsDb<PbtColumns> db = Forwarding(inner);
         PbtRocksDbPersistence persistence = new(db, new PbtConfig { ImportFromPreimageFlat = true }, NullTrieNodeLog.Instance);
         ValueHash256 stagedAddressHash = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         using (IPbtPersistence.IWriteBatch staging = persistence.CreateStagingWriteBatch())
@@ -482,7 +451,7 @@ public class PbtRocksDbPersistenceTests
             staging.Commit();
         }
 
-        db.FailNextCommit = true;
+        db.StartWriteBatch().Returns(_ => new ThrowOnDisposeBatch(inner.StartWriteBatch()), _ => inner.StartWriteBatch());
         IPbtPersistence.IWriteBatch final = persistence.CreateWriteBatch(
             StateId.PreGenesis,
             new StateId(7, TestItem.KeccakB.ValueHash256),
@@ -527,10 +496,11 @@ public class PbtRocksDbPersistenceTests
         if (epoch is not null) metadata[SchemaEpochKey] = epoch;
         if (currentState is not null) metadata[CurrentStateKey] = currentState;
         if (validity is not null) metadata[ValidStateKey] = validity;
-        ThrowOnNodeGroupsDb db = new(inner);
+        IColumnsDb<PbtColumns> db = Forwarding(inner);
 
         Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig(), NullTrieNodeLog.Instance), Throws.TypeOf<InvalidDataException>());
-        Assert.That(db.NodeGroupsAccessed, Is.False);
+        foreach (PbtColumns nodeGroups in new[] { PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups })
+            db.DidNotReceive().GetColumnDb(nodeGroups);
     }
 
     private static IEnumerable<TestCaseData> PartitionCases()
@@ -557,19 +527,9 @@ public class PbtRocksDbPersistenceTests
         PbtRocksDbPersistence persistence = new(db, config, NullTrieNodeLog.Instance);
         TPath groupKey = PbtTestPaths.Locate(path).GroupKey;
         byte[] physicalKey = groupKey.ToStorageKey(column);
-        StateId first = new(1, TestItem.KeccakA.ValueHash256);
-        StateId second = new(2, TestItem.KeccakB.ValueHash256);
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default))
-        {
-            WriteGroup(batch, path, BranchNode(1));
-            batch.Commit();
-        }
+        Commit(persistence, StateId.PreGenesis, First, batch => WriteGroup(batch, path, BranchNode(1)));
         using IPbtPersistence.IReader olderReader = persistence.CreateReader();
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(first, second, default))
-        {
-            WriteGroup(batch, path, BranchNode(2));
-            batch.Commit();
-        }
+        Commit(persistence, First, Second, batch => WriteGroup(batch, path, BranchNode(2)));
         using (IPbtPersistence.IReader reader = persistence.CreateReader())
         {
             using (Assert.EnterMultipleScope())
@@ -583,11 +543,7 @@ public class PbtRocksDbPersistenceTests
                 if (column != PbtColumns.Metadata) Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("rootNodeGroup"u8), Is.Null);
             }
         }
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(second, new StateId(3, default), default))
-        {
-            batch.SetNodeGroup(groupKey, default);
-            batch.Commit();
-        }
+        Commit(persistence, Second, new StateId(3, default), batch => batch.SetNodeGroup(groupKey, default));
         using IPbtPersistence.IReader deletedReader = persistence.CreateReader();
         using (Assert.EnterMultipleScope())
         {
@@ -617,6 +573,13 @@ public class PbtRocksDbPersistenceTests
         Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { MigrationSnapshotPath = "snapshot.pbt" }, NullTrieNodeLog.Instance),
             stamped ? Throws.Nothing : Throws.TypeOf<InvalidDataException>().With.Message.Contains("no schema epoch"));
         Assert.That(db.GetColumnDb(column).Get(key), Is.EqualTo(Bytes.FromHexString("01")));
+    }
+
+    private static void Commit(IPbtPersistence persistence, StateId from, StateId to, Action<IPbtPersistence.IWriteBatch> write)
+    {
+        using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(from, to, default);
+        write(batch);
+        batch.Commit();
     }
 
     private static byte[] EncodeGroup(params PbtNodeRecord[] records) =>
@@ -657,57 +620,27 @@ public class PbtRocksDbPersistenceTests
         return value;
     }
 
-    private sealed class FailNextCommitColumnsDb(IColumnsDb<PbtColumns> inner) : IColumnsDb<PbtColumns>
+    private static IColumnsDb<PbtColumns> Forwarding(IColumnsDb<PbtColumns> inner)
     {
-        public bool FailNextCommit { get; set; }
-        public IEnumerable<PbtColumns> ColumnKeys => inner.ColumnKeys;
-        public long EstimatedCount => inner.EstimatedCount;
-        public IDb GetColumnDb(PbtColumns key) => inner.GetColumnDb(key);
-        public IColumnDbSnapshot<PbtColumns> CreateSnapshot() => inner.CreateSnapshot();
-        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
-        public void Dispose() => inner.Dispose();
-
-        public IColumnsWriteBatch<PbtColumns> StartWriteBatch()
-        {
-            IColumnsWriteBatch<PbtColumns> batch = inner.StartWriteBatch();
-            if (!FailNextCommit) return batch;
-            FailNextCommit = false;
-            return new ThrowOnDisposeBatch(batch);
-        }
-
-        private sealed class ThrowOnDisposeBatch(IColumnsWriteBatch<PbtColumns> innerBatch) : IColumnsWriteBatch<PbtColumns>
-        {
-            public IWriteBatch GetColumnBatch(PbtColumns key) => innerBatch.GetColumnBatch(key);
-            public void Clear() => innerBatch.Clear();
-            public void Dispose()
-            {
-                innerBatch.Clear();
-                innerBatch.Dispose();
-                throw new IOException("commit failed");
-            }
-        }
+        IColumnsDb<PbtColumns> db = Substitute.For<IColumnsDb<PbtColumns>>();
+        db.ColumnKeys.Returns(inner.ColumnKeys);
+        db.GetColumnDb(Arg.Any<PbtColumns>()).Returns(call => inner.GetColumnDb(call.Arg<PbtColumns>()));
+        db.StartWriteBatch().Returns(_ => inner.StartWriteBatch());
+        db.CreateSnapshot().Returns(_ => inner.CreateSnapshot());
+        db.When(static substitute => substitute.Flush(Arg.Any<bool>())).Do(call => inner.Flush(call.Arg<bool>()));
+        return db;
     }
 
-    private sealed class ThrowOnNodeGroupsDb(IColumnsDb<PbtColumns> inner) : IColumnsDb<PbtColumns>
+    private sealed class ThrowOnDisposeBatch(IColumnsWriteBatch<PbtColumns> innerBatch) : IColumnsWriteBatch<PbtColumns>
     {
-        public bool NodeGroupsAccessed { get; private set; }
-        public IEnumerable<PbtColumns> ColumnKeys => inner.ColumnKeys;
-        public long EstimatedCount => inner.EstimatedCount;
-
-        public IDb GetColumnDb(PbtColumns key)
+        public IWriteBatch GetColumnBatch(PbtColumns key) => innerBatch.GetColumnBatch(key);
+        public void Clear() => innerBatch.Clear();
+        public void Dispose()
         {
-            if (key is PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups)
-            {
-                NodeGroupsAccessed = true;
-                throw new AssertionException("Node groups were accessed before metadata rejection.");
-            }
-            return inner.GetColumnDb(key);
+            innerBatch.Clear();
+            innerBatch.Dispose();
+            throw new IOException("commit failed");
         }
-
-        public IColumnsWriteBatch<PbtColumns> StartWriteBatch() => inner.StartWriteBatch();
-        public IColumnDbSnapshot<PbtColumns> CreateSnapshot() => inner.CreateSnapshot();
-        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
-        public void Dispose() => inner.Dispose();
     }
 }
 
@@ -741,13 +674,12 @@ public class PbtProtocolStorageClearTests
             ? [.. create, .. call, .. Prepare.EvmCode.Revert(0, 0).Done]
             : [.. create, (byte)Instruction.CALLDATASIZE, (byte)Instruction.PUSH2, (byte)(stop >> 8), (byte)stop,
                 (byte)Instruction.JUMPI, .. call, (byte)Instruction.STOP, (byte)Instruction.JUMPDEST, (byte)Instruction.STOP];
-        PbtConfig config = new()
-        {
-            Enabled = true, InlineCompaction = true, CompactSize = 2, CompactionOffset = 0,
-            MinReorgDepth = 128, MaxInMemoryBaseSnapshotCount = int.MaxValue,
-            ArenaFileSizeBytes = 1048576, PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
-            PersistedSnapshotArenaPageCacheBytes = 0, ValidatePersistedSnapshot = true,
-        };
+        PbtConfig config = PbtTestContext.PersistedConfig();
+        config.InlineCompaction = true;
+        config.CompactSize = 2;
+        config.MinReorgDepth = 128;
+        config.MaxInMemoryBaseSnapshotCount = int.MaxValue;
+        config.ValidatePersistedSnapshot = true;
         IContainer Open() => PbtTestContext.BuildProductionContainer(config, builder =>
         {
             builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance));
@@ -763,8 +695,7 @@ public class PbtProtocolStorageClearTests
         await using (IContainer container = Open())
         {
             IWorldStateManager manager = container.Resolve<IWorldStateManager>();
-            using ILifetimeScope processing = container.BeginLifetimeScope(builder =>
-                builder.AddSingleton<IWorldStateScopeProvider>(manager.GlobalWorldState));
+            using ILifetimeScope processing = BeginProcessing(container);
             IWorldState state = processing.Resolve<IWorldState>();
             ITransactionProcessor processor = processing.Resolve<ITransactionProcessor>();
             using (state.BeginScope(IWorldState.PreGenesis))
@@ -850,8 +781,7 @@ public class PbtProtocolStorageClearTests
         await using (IContainer reopened = Open())
         {
             IWorldStateManager manager = reopened.Resolve<IWorldStateManager>();
-            using ILifetimeScope processing = reopened.BeginLifetimeScope(builder =>
-                builder.AddSingleton<IWorldStateScopeProvider>(manager.GlobalWorldState));
+            using ILifetimeScope processing = BeginProcessing(reopened);
             IWorldState state = processing.Resolve<IWorldState>();
             using (state.BeginScope(head)) AssertFinalEntries(state, contract, survives);
             manager.FlushCache(CancellationToken.None);
@@ -865,12 +795,13 @@ public class PbtProtocolStorageClearTests
         }
         await using (IContainer final = Open())
         {
-            IWorldStateManager manager = final.Resolve<IWorldStateManager>();
-            using ILifetimeScope processing = final.BeginLifetimeScope(builder =>
-                builder.AddSingleton<IWorldStateScopeProvider>(manager.GlobalWorldState));
+            using ILifetimeScope processing = BeginProcessing(final);
             using (processing.Resolve<IWorldState>().BeginScope(head)) AssertFinalEntries(processing.Resolve<IWorldState>(), contract, survives);
         }
     }
+
+    private static ILifetimeScope BeginProcessing(IContainer container) => container.BeginLifetimeScope(builder =>
+        builder.AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState));
 
     private static BlockHeader Header(ulong number, Hash256 root) => Build.A.BlockHeader
         .WithNumber(number).WithStateRoot(root).WithGasLimit(8000000).WithBaseFee(0).WithBeneficiary(Sender).TestObject;
@@ -926,8 +857,7 @@ public class PbtProtocolStorageClearTests
         await using IContainer container = PbtTestContext.BuildProductionContainer(
             new PbtConfig { Enabled = true, EnableLongFinality = false },
             builder => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance)));
-        using ILifetimeScope processing = container.BeginLifetimeScope(builder =>
-            builder.AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState));
+        using ILifetimeScope processing = BeginProcessing(container);
         IWorldState state = processing.Resolve<IWorldState>();
         using (state.BeginScope(IWorldState.PreGenesis))
         {

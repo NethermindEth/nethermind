@@ -192,7 +192,7 @@ public class PbtGroupRecordBufferTests
         Assert.That(buffer.TryLocate(pointer, out PbtGroupRecord original), Is.True);
         if (compressed)
         {
-            AdvanceTo(LiveGenerations + 1);
+            AdvanceTo(buffer, generationBytes, LiveGenerations + 1);
             Assert.That(() => IsReleased(original, payload), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
         }
 
@@ -201,7 +201,7 @@ public class PbtGroupRecordBufferTests
         Assert.That(buffer.TryLocate(pointer, out PbtGroupRecord record), Is.True);
         ulong later = AppendAt(buffer, PathOf(-2), Payload(2, 1000));
         Assert.That(buffer.TryLocate(later, out PbtGroupRecord laterRecord), Is.True);
-        AdvanceTo(GenerationOf(later) + 2 * LiveGenerations);
+        AdvanceTo(buffer, generationBytes, GenerationOf(later) + 2 * LiveGenerations);
         if (overlapping) first.Dispose();
         using (Assert.EnterMultipleScope())
         {
@@ -216,11 +216,6 @@ public class PbtGroupRecordBufferTests
             Assert.That(() => IsReleased(laterRecord, Payload(2, 1000)), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "released generations are compacted");
             Assert.That(() => IsLocatable(buffer, pointer), Is.False.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "and evicted over the budget");
             Assert.That(() => IsReleased(record, payload), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the released native owner is freed or recycled");
-        }
-
-        void AdvanceTo(ulong generation)
-        {
-            while (GenerationOf(Reserve(buffer, generationBytes)) < generation) { }
         }
     }
 
@@ -260,9 +255,9 @@ public class PbtGroupRecordBufferTests
         byte[] current = Payload(2, 8);
         ulong pointer = Append(buffer, previous);
         Assert.That(buffer.TryLocate(pointer, out PbtGroupRecord original), Is.True);
-        AdvanceTo(LiveGenerations + 1);
+        AdvanceTo(buffer, generationBytes, LiveGenerations + 1);
         Assert.That(() => IsReleased(original, previous), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
-        AdvanceTo(4096);
+        AdvanceTo(buffer, generationBytes, 4096);
         ulong replacement = Append(buffer, current);
         using (Assert.EnterMultipleScope())
         {
@@ -271,11 +266,6 @@ public class PbtGroupRecordBufferTests
             Assert.That(IsLocatable(buffer, pointer), Is.False, "the older full generation id of the same slot and offset misses");
             Assert.That(buffer.TryLocate(replacement, out PbtGroupRecord record) && record.Payload.Span.SequenceEqual(current), Is.True);
             Assert.That(buffer.TryLocate(pointer + (8192UL << 32), out _), Is.False, "same slot and offset do not match another full generation id");
-        }
-
-        void AdvanceTo(ulong generation)
-        {
-            while (GenerationOf(Reserve(buffer, generationBytes)) < generation) { }
         }
     }
 
@@ -311,7 +301,7 @@ public class PbtGroupRecordBufferTests
     {
         using PbtGroupRecordBuffer buffer = new(0, GenerationBytes);
         Assert.That(buffer.TryLocate(Reserve(buffer, GenerationBytes), out PbtGroupRecord first), Is.True);
-        while (GenerationOf(Reserve(buffer, GenerationBytes)) < LiveGenerations + 1) { }
+        AdvanceTo(buffer, GenerationBytes, LiveGenerations + 1);
         buffer.Dispose();
         Assert.That(() => IsFreed(first), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
     }
@@ -330,7 +320,7 @@ public class PbtGroupRecordBufferTests
         }
 
         Assert.That(buffer.TryLocate(pointer, out PbtGroupRecord malformed), Is.True);
-        while (GenerationOf(Reserve(buffer, GenerationBytes)) < LiveGenerations + 1) { }
+        AdvanceTo(buffer, GenerationBytes, LiveGenerations + 1);
         Assert.That(CompactionFailed, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
         buffer.Dispose();
         Assert.That(() => IsFreed(malformed), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
@@ -399,7 +389,7 @@ public class PbtGroupRecordBufferTests
     {
         using PbtGroupRecordBuffer buffer = new(0, GenerationBytes);
         using PbtGroupRecordBufferPin retain = buffer.PinHead();
-        while (GenerationOf(Reserve(buffer, GenerationBytes)) < LiveGenerations + 1) { }
+        AdvanceTo(buffer, GenerationBytes, LiveGenerations + 1);
         retain.Dispose();
 
         // Copy may have passed its disposed check before the releasing thread acquired the buffer lock.
@@ -548,6 +538,11 @@ public class PbtGroupRecordBufferTests
     {
         using IPbtGroupRecordWriteBatch batch = buffer.StartWriteBatch(alignedTotalLength);
         return batch.BasePointer;
+    }
+
+    private static void AdvanceTo(PbtGroupRecordBuffer buffer, int generationBytes, ulong generation)
+    {
+        while (GenerationOf(Reserve(buffer, generationBytes)) < generation) { }
     }
 
     private static ulong Append(IPbtGroupRecordBuffer buffer, byte[] payload) => AppendAt(buffer, default, payload);

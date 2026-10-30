@@ -36,41 +36,30 @@ public class PbtRocksDbConfigAdjusterTests
         NodeGroupsAdditionalRocksDbOptions = "nodeGroupsAdditional=1;",
     };
 
-    [TestCase(nameof(PbtColumns.Metadata), "global=1;shared=1;column=Metadata;")]
-    [TestCase(nameof(PbtColumns.Accounts), "global=1;shared=1;flatEntries=1;column=Accounts;flatEntriesAdditional=1;")]
-    [TestCase(nameof(PbtColumns.Codes), "global=1;shared=1;flatEntries=1;column=Codes;flatEntriesAdditional=1;")]
-    [TestCase(nameof(PbtColumns.CodeLeaves), "global=1;shared=1;flatEntries=1;column=CodeLeaves;flatEntriesAdditional=1;")]
-    [TestCase(nameof(PbtColumns.Storages), "global=1;shared=1;flatEntries=1;column=Storages;flatEntriesAdditional=1;")]
-    [TestCase(nameof(PbtColumns.AccountNodeGroups), "global=1;shared=1;nodeGroups=1;nodeGroupsAdditional=1;")]
-    [TestCase(nameof(PbtColumns.CodeNodeGroups), "global=1;shared=1;nodeGroups=1;nodeGroupsAdditional=1;")]
-    [TestCase(nameof(PbtColumns.StorageNodeGroups), "global=1;shared=1;nodeGroups=1;nodeGroupsAdditional=1;")]
-    [TestCase(nameof(PbtColumns.TopNodeGroups), "global=1;shared=1;nodeGroups=1;nodeGroupsAdditional=1;")]
-    [TestCase(null, "global=1;shared=1;", TestName = "DatabaseItselfGetsTheSharedOptionsOnly")]
-    [TestCase("NodeGroups", "global=1;shared=1;", TestName = "LegacyNodeGroupsColumnGetsTheSharedOptionsOnly")]
-    public void ColumnGetsTheGlobalThenSharedThenGroupThenItsOwnThenGroupAdditionalOptions(string? columnName, string expectedOptions)
-    {
-        IRocksDbConfig config = CreateAdjuster(Substitute.For<IRocksDbConfigFactory>())
-            .GetForDatabase(nameof(DbNames.Pbt), columnName);
-
-        Assert.That(config.RocksDbOptions, Is.EqualTo(expectedOptions));
-    }
-
     /// <summary>Mirrors the flat account/storage split: the record columns get their own caches, everything else stays in the shared one.</summary>
-    [Test]
-    public void OnlyTheAccountAndStorageColumnsGetADedicatedBlockCache(
-        [Values(null, nameof(PbtColumns.Metadata), nameof(PbtColumns.Accounts), nameof(PbtColumns.Codes), nameof(PbtColumns.Storages),
-            nameof(PbtColumns.AccountNodeGroups), nameof(PbtColumns.CodeNodeGroups), nameof(PbtColumns.StorageNodeGroups), nameof(PbtColumns.TopNodeGroups))] string? columnName)
+    [TestCase(nameof(PbtColumns.Metadata), "global=1;shared=1;column=Metadata;", false)]
+    [TestCase(nameof(PbtColumns.Accounts), "global=1;shared=1;flatEntries=1;column=Accounts;flatEntriesAdditional=1;", true)]
+    [TestCase(nameof(PbtColumns.Codes), "global=1;shared=1;flatEntries=1;column=Codes;flatEntriesAdditional=1;", false)]
+    [TestCase(nameof(PbtColumns.CodeLeaves), "global=1;shared=1;flatEntries=1;column=CodeLeaves;flatEntriesAdditional=1;", false)]
+    [TestCase(nameof(PbtColumns.Storages), "global=1;shared=1;flatEntries=1;column=Storages;flatEntriesAdditional=1;", true)]
+    [TestCase(nameof(PbtColumns.AccountNodeGroups), "global=1;shared=1;nodeGroups=1;nodeGroupsAdditional=1;", false)]
+    [TestCase(nameof(PbtColumns.CodeNodeGroups), "global=1;shared=1;nodeGroups=1;nodeGroupsAdditional=1;", false)]
+    [TestCase(nameof(PbtColumns.StorageNodeGroups), "global=1;shared=1;nodeGroups=1;nodeGroupsAdditional=1;", false)]
+    [TestCase(nameof(PbtColumns.TopNodeGroups), "global=1;shared=1;nodeGroups=1;nodeGroupsAdditional=1;", false)]
+    [TestCase(null, "global=1;shared=1;", false, TestName = "DatabaseItselfGetsTheSharedOptionsOnly")]
+    [TestCase("NodeGroups", "global=1;shared=1;", false, TestName = "LegacyNodeGroupsColumnGetsTheSharedOptionsOnly")]
+    public void ColumnGetsTheGlobalThenSharedThenGroupThenItsOwnThenGroupAdditionalOptions(string? columnName, string expectedOptions, bool dedicatedCache)
     {
         IDisposableStack disposeStack = Substitute.For<IDisposableStack>();
 
         IRocksDbConfig config = CreateAdjuster(Substitute.For<IRocksDbConfigFactory>(), disposeStack)
             .GetForDatabase(nameof(DbNames.Pbt), columnName);
 
-        bool dedicated = columnName is nameof(PbtColumns.Accounts) or nameof(PbtColumns.Storages);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(config.BlockCache, dedicated ? Is.Not.Null : Is.Null);
-            disposeStack.Received(dedicated ? 1 : 0).Push(Arg.Any<HyperClockCacheWrapper>());
+            Assert.That(config.RocksDbOptions, Is.EqualTo(expectedOptions));
+            Assert.That(config.BlockCache, dedicatedCache ? Is.Not.Null : Is.Null);
+            disposeStack.Received(dedicatedCache ? 1 : 0).Push(Arg.Any<HyperClockCacheWrapper>());
         }
     }
 

@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -589,19 +590,28 @@ public class PbtTrieNodeLogTests
         }
     }
 
-    [Test]
-    public async Task A_generation_file_of_another_format_is_refused()
+    private static IEnumerable<TestCaseData> DamagedLogCases()
+    {
+        yield return new TestCaseData((Action<string[]>)(static files =>
+        {
+            using FileStream stream = new(files.Single(static file => file.Contains("account-0")), FileMode.Open, FileAccess.Write);
+            stream.Position = 4; // the version word after the magic
+            stream.Write(Bytes.FromHexString("0xffffffff"));
+        }), "format").SetName("A_generation_file_of_another_format_is_refused");
+        yield return new TestCaseData((Action<string[]>)(static files =>
+        {
+            foreach (string file in files) File.Delete(file);
+        }), "missing").SetName("A_database_restored_without_its_log_directory_is_refused");
+    }
+
+    [TestCaseSource(nameof(DamagedLogCases))]
+    public async Task A_damaged_log_is_refused(Action<string[]> damage, string expectedMessage)
     {
         WriteTop(Value1);
         await _log.DisposeAsync();
-        string file = LogFiles().Single(static file => file.Contains("account-0"));
-        using (FileStream stream = new(file, FileMode.Open, FileAccess.Write))
-        {
-            stream.Position = 4; // the version word after the magic
-            stream.Write(Bytes.FromHexString("0xffffffff"));
-        }
+        damage(LogFiles());
 
-        Assert.That(Open, Throws.TypeOf<InvalidDataException>().With.Message.Contains("format"));
+        Assert.That(Open, Throws.TypeOf<InvalidDataException>().With.Message.Contains(expectedMessage));
     }
 
     [Test]
@@ -691,16 +701,6 @@ public class PbtTrieNodeLogTests
             Assert.That(batch!.Cleared, Is.True);
             Assert.That(batch.Disposed, Is.True);
         }
-    }
-
-    [Test]
-    public async Task A_database_restored_without_its_log_directory_is_refused()
-    {
-        WriteTop(Value1);
-        await _log.DisposeAsync();
-        foreach (string file in LogFiles()) File.Delete(file);
-
-        Assert.That(Open, Throws.TypeOf<InvalidDataException>().With.Message.Contains("missing"));
     }
 
     [Test]

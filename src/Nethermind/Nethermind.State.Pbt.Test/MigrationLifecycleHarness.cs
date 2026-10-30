@@ -59,14 +59,19 @@ internal sealed class MigrationLifecycleHarness(IContainer container, Dictionary
 
     public byte[] BalRlp(string name) => Bytes.FromHexString(expected[name].GetProperty("balRlp").GetString()!);
 
-    /// <summary>Stores the fixture BAL of <paramref name="name"/>, recovers its senders and suggests the block to <see cref="Tree"/>.</summary>
+    /// <summary>Attaches the fixture BAL of <paramref name="name"/> and prepares its block.</summary>
     public void Prepare(string name)
     {
-        Block block = blocks[name];
+        blocks[name].EncodedBlockAccessList = BalRlp(name);
+        Prepare(blocks[name]);
+    }
+
+    /// <summary>Stores the BAL <paramref name="block"/> carries, recovers its senders and suggests it to <see cref="Tree"/>.</summary>
+    public void Prepare(Block block)
+    {
         block.Header.IsPostMerge = true;
-        block.EncodedBlockAccessList = BalRlp(name);
-        block.BlockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(block.EncodedBlockAccessList);
-        container.Resolve<IBlockAccessListStore>().Insert(block.Number, block.Hash!, block.EncodedBlockAccessList);
+        if (block.EncodedBlockAccessList is { } encoded) block.BlockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(encoded);
+        container.Resolve<IBlockAccessListStore>().InsertFromBlock(block);
         foreach (IBlockPreprocessorStep preprocessor in container.Resolve<IReadOnlyList<IBlockPreprocessorStep>>()) preprocessor.RecoverData(block);
         Tree.SuggestBlock(block);
     }

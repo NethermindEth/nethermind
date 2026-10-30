@@ -9,7 +9,9 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -96,6 +98,30 @@ internal static class Eip8347FixtureState
             Account account = new(nonce, balance, storage.Finish().ToHash256(), Keccak.Compute(code));
             batch.SetAccount(address!, account);
             if (code.Length != 0) codes[account.CodeHash.Bytes] = code;
+        }
+    }
+
+    /// <summary>An in-memory preimage-flat state and code store, as the offline export reads them.</summary>
+    public sealed class OfflineSource : IDisposable
+    {
+        private readonly SnapshotableMemColumnsDb<FlatDbColumns> _database = new();
+        public MemDb Code { get; } = new();
+        public PreimageRocksdbPersistence Persistence { get; }
+
+        public OfflineSource() => Persistence = new(_database, LimboLogs.Instance, FlatLayout.PreimageFlat, Flat.Persistence.TrieNodeLog.NullTrieNodeLog.Instance);
+
+        /// <summary>Replays the canonical artifacts of fixture <paramref name="name"/> as the transition to <paramref name="anchor"/>.</summary>
+        public void Replay(string name, BlockHeader anchor)
+        {
+            using FileStream snapshot = File.OpenRead(ArtifactPath(name, "snapshot.pbt"));
+            using FileStream preimages = File.OpenRead(ArtifactPath(name, "preimages.bin"));
+            ReplayInto(Persistence, Code, anchor, snapshot, preimages);
+        }
+
+        public void Dispose()
+        {
+            Code.Dispose();
+            _database.Dispose();
         }
     }
 }

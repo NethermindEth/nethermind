@@ -11,7 +11,6 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -182,7 +181,7 @@ public class MigrationLifecycleE2ETests
             Assert.That(produced, Is.Not.Null);
             Assert.That(produced.Transactions, Has.Length.EqualTo(1));
         }
-        Prepare(produced);
+        harness.Prepare(produced);
         Assert.That(processing.BlockchainProcessor.Process(produced, ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts,
             NullBlockTracer.Instance)?.Hash, Is.EqualTo(produced.Hash));
         TxReceipt[] receipts = harness.Container.Resolve<IReceiptStorage>().Get(produced);
@@ -199,16 +198,6 @@ public class MigrationLifecycleE2ETests
                 Assert.That(commitment.HasStateForBlock(produced.Header), Is.True, commitment.GetType().Name);
                 Assert.That(commitment.TryGetAccount(produced.Header, destroyed, out _), Is.False, $"{commitment.GetType().Name}: destroyed creation must not survive block commit");
             }
-        }
-
-        void Prepare(Block block)
-        {
-            block.Header.IsPostMerge = true;
-            if (block.EncodedBlockAccessList is { } encoded)
-                block.BlockAccessList = Rlp.Decode<Nethermind.Core.BlockAccessLists.ReadOnlyBlockAccessList>(encoded);
-            foreach (IBlockPreprocessorStep preprocessor in harness.Container.Resolve<IReadOnlyList<IBlockPreprocessorStep>>()) preprocessor.RecoverData(block);
-            harness.Tree.SuggestBlock(block);
-            harness.Container.Resolve<IBlockAccessListStore>().InsertFromBlock(block);
         }
     }
 

@@ -116,37 +116,27 @@ public class PbtCachedReaderPersistenceTests
     }
 
     [Test]
-    public async Task DisposingUncommittedBatch_DoesNotRefreshTheSnapshot()
+    public async Task UncommittedBatch_DoesNotRefreshTheSnapshot_AndDisposeReleasesThePin([Values] bool commitThrows)
     {
         Context ctx = new();
-        await using PbtCachedReaderPersistence persistence = ctx.Build();
-
-        using IPbtPersistence.IReader beforeAbort = persistence.CreateReader();
-        persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot).Dispose();
-        using IPbtPersistence.IReader afterAbort = persistence.CreateReader();
-
-        Assert.That(afterAbort, Is.SameAs(beforeAbort));
-        ctx.Batch.DidNotReceive().Commit();
-        ctx.Inner.Received(1).CreateReader();
-    }
-
-    [Test]
-    public async Task FailedCommit_DoesNotRefreshTheSnapshot_AndDisposeReleasesThePin()
-    {
-        Context ctx = new();
-        ctx.Batch.When(static batch => batch.Commit()).Do(static _ => throw new InvalidOperationException("commit failed"));
+        if (commitThrows)
+            ctx.Batch.When(static batch => batch.Commit()).Do(static _ => throw new InvalidOperationException("commit failed"));
         await using PbtCachedReaderPersistence persistence = ctx.Build();
 
         using IPbtPersistence.IReader beforeCommit = persistence.CreateReader();
         IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot);
 
-        Assert.That(() => batch.Commit(), Throws.InvalidOperationException);
-        using IPbtPersistence.IReader afterFailedCommit = persistence.CreateReader();
-        Assert.That(afterFailedCommit, Is.SameAs(beforeCommit));
+        if (commitThrows)
+        {
+            Assert.That(() => batch.Commit(), Throws.InvalidOperationException);
+            using IPbtPersistence.IReader afterFailedCommit = persistence.CreateReader();
+            Assert.That(afterFailedCommit, Is.SameAs(beforeCommit));
+        }
 
         batch.Dispose();
         using IPbtPersistence.IReader afterDispose = persistence.CreateReader();
         Assert.That(afterDispose, Is.SameAs(beforeCommit));
+        ctx.Batch.Received(commitThrows ? 1 : 0).Commit();
         ctx.Inner.Received(1).CreateReader();
     }
 

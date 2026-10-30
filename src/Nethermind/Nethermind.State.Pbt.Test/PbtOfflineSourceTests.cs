@@ -7,7 +7,6 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
@@ -20,24 +19,19 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtOfflineSourceTests
 {
     private string _directory = null!;
-    private SnapshotableMemColumnsDb<FlatDbColumns> _database = null!;
-    private MemDb _codes = null!;
-    private PreimageRocksdbPersistence _persistence = null!;
+    private Eip8347FixtureState.OfflineSource _source = null!;
 
     [SetUp]
     public void SetUp()
     {
         _directory = Directory.CreateTempSubdirectory("pbt-offline-").FullName;
-        _database = new SnapshotableMemColumnsDb<FlatDbColumns>("offline");
-        _codes = new MemDb();
-        _persistence = new PreimageRocksdbPersistence(_database, LimboLogs.Instance, FlatLayout.PreimageFlat, Flat.Persistence.TrieNodeLog.NullTrieNodeLog.Instance);
+        _source = new Eip8347FixtureState.OfflineSource();
     }
 
     [TearDown]
     public void TearDown()
     {
-        _database.Dispose();
-        _codes.Dispose();
+        _source.Dispose();
         Directory.Delete(_directory, recursive: true);
     }
 
@@ -49,12 +43,10 @@ public class PbtOfflineSourceTests
         PbtImageAnchor anchor = new("1", header.Hash!, header, 48);
         byte[] expectedSnapshot = File.ReadAllBytes(Eip8347FixtureState.ArtifactPath(name, "snapshot.pbt"));
         byte[] expectedPreimages = File.ReadAllBytes(Eip8347FixtureState.ArtifactPath(name, "preimages.bin"));
-        using MemoryStream inputSnapshot = new(expectedSnapshot);
-        using MemoryStream inputPreimages = new(expectedPreimages);
-        Eip8347FixtureState.ReplayInto(_persistence, _codes, header, inputSnapshot, inputPreimages);
-        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        _source.Replay(name, header);
+        using IPersistence.IPersistenceReader reader = _source.Persistence.CreateReader();
         using MemoryStream snapshot = new(), preimages = new();
-        PbtOfflineSource.WriteArtifacts(reader, _codes, anchor, _directory, snapshot, preimages, LimboLogs.Instance,
+        PbtOfflineSource.WriteArtifacts(reader, _source.Code, anchor, _directory, snapshot, preimages, LimboLogs.Instance,
             bufferBytes, workerCount, CancellationToken.None);
         using (Assert.EnterMultipleScope())
         {
@@ -73,12 +65,12 @@ public class PbtOfflineSourceTests
         Address address = new("0xffffffffffffffffffffffffffffffffffffffff");
         BlockHeader header = Build.A.BlockHeader.TestObject;
         PbtImageAnchor anchor = new("1", header.Hash!, header, ulong.MaxValue);
-        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(header), WriteFlags.None))
+        using (IPersistence.IWriteBatch batch = _source.Persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(header), WriteFlags.None))
             batch.SetAccount(address, new Account(1, 100));
-        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using IPersistence.IPersistenceReader reader = _source.Persistence.CreateReader();
         using MemoryStream snapshot = new(), preimages = new();
         TestLogger log = new();
-        PbtOfflineSource.WriteArtifacts(reader, _codes, anchor, _directory, snapshot, preimages,
+        PbtOfflineSource.WriteArtifacts(reader, _source.Code, anchor, _directory, snapshot, preimages,
             new OneLoggerLogManager(new ILogger(log)), 1024, workerCount, CancellationToken.None);
         preimages.Position = 0;
         PbtPreimageReader output = new(preimages);
@@ -95,11 +87,11 @@ public class PbtOfflineSourceTests
     [Test]
     public void Rejects_wrong_source_or_cancellation_without_writing_outputs([Values(false, true)] bool cancel)
     {
-        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using IPersistence.IPersistenceReader reader = _source.Persistence.CreateReader();
         BlockHeader header = Build.A.BlockHeader.TestObject;
         PbtImageAnchor anchor = new("1", header.Hash!, header, ulong.MaxValue);
         using MemoryStream snapshot = new(), preimages = new();
-        Assert.That(() => PbtOfflineSource.WriteArtifacts(reader, _codes, anchor, _directory, snapshot, preimages, LimboLogs.Instance,
+        Assert.That(() => PbtOfflineSource.WriteArtifacts(reader, _source.Code, anchor, _directory, snapshot, preimages, LimboLogs.Instance,
             sortBufferBytes: 1024, workerCount: 0, new CancellationToken(cancel)),
             cancel ? Throws.TypeOf<OperationCanceledException>() : Throws.TypeOf<InvalidDataException>());
         Assert.That(snapshot.Length + preimages.Length, Is.Zero);

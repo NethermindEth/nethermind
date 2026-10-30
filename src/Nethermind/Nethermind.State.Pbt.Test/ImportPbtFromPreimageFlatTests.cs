@@ -42,29 +42,23 @@ public class ImportPbtFromPreimageFlatTests
     public void Code_reassembly_writes_each_distinct_code_without_db_reads(
         [Values(4, PbtLeafIngestion.BatchSize + 2, 1000)] int distinctCodes, [Values(1, 3)] int concurrency)
     {
-        using TempPath scratch = TempPath.GetTempDirectory();
-        Directory.CreateDirectory(scratch.Path);
-        using RecordingColumnsDb db = new() { TrackCodeRebuild = true };
-        PbtRocksDbPersistence target = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
+        using CodeRebuild rebuild = new();
         // Each code is named by four accounts; the last two span several chunk stems and hold no nonzero chunk.
         List<byte[]> codes = [.. Enumerable.Range(0, distinctCodes).Select(RebuildTestCode),
             Enumerable.Range(0, 20_000).Select(static index => (byte)index).ToArray(), new byte[10_000]];
         List<RebuildEntry> leaves = CodeAccountLeaves([.. codes, .. codes, .. codes, .. codes]);
 
-        StageAndReassemble(target, scratch.Path, leaves, concurrency, CancellationToken.None);
+        rebuild.StageAndReassemble(leaves, concurrency, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(db.AccountsVisited, Is.Zero);
-            Assert.That(db.CodeReads, Is.Zero);
-            Assert.That(db.CodeWrites, Is.EqualTo(codes.Count));
-            Assert.That(db.MaxActiveCodeWrites, Is.EqualTo(1));
-            Assert.That(db.CodeBatchSizes, Is.EqualTo(Enumerable.Repeat(PbtLeafIngestion.BatchSize, codes.Count / PbtLeafIngestion.BatchSize)
+            Assert.That(rebuild.Db.CodeWrites, Is.EqualTo(codes.Count));
+            Assert.That(rebuild.Db.MaxActiveCodeWrites, Is.EqualTo(1));
+            Assert.That(rebuild.Db.CodeBatchSizes, Is.EqualTo(Enumerable.Repeat(PbtLeafIngestion.BatchSize, codes.Count / PbtLeafIngestion.BatchSize)
                 .Concat(codes.Count % PbtLeafIngestion.BatchSize == 0 ? [] : new[] { codes.Count % PbtLeafIngestion.BatchSize })));
-            Assert.That(Directory.GetFileSystemEntries(scratch.Path), Is.Empty);
         }
-        AssertCodeRebuildReleased(db, target);
-        using IPbtPersistence.IReader reader = target.CreateReader();
+        rebuild.AssertReleased();
+        using IPbtPersistence.IReader reader = rebuild.Target.CreateReader();
         foreach (byte[] code in codes) Assert.That(reader.GetCode(ValueKeccak.Compute(code))!.Code.ToArray(), Is.EqualTo(code));
     }
 
@@ -72,10 +66,7 @@ public class ImportPbtFromPreimageFlatTests
     public void Code_reassembly_failure_releases_resources(
         [Values("spool-cancel", "write-cancel", "invalid-leaf", "zero-leaf", "orphan-stem", "extra-chunk")] string failure)
     {
-        using TempPath scratch = TempPath.GetTempDirectory();
-        Directory.CreateDirectory(scratch.Path);
-        using RecordingColumnsDb db = new() { TrackCodeRebuild = true };
-        PbtRocksDbPersistence target = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
+        using CodeRebuild rebuild = new();
         using CancellationTokenSource cancellation = new();
         List<RebuildEntry> leaves = CodeAccountLeaves([.. Enumerable.Range(0, 4).Select(RebuildTestCode)]);
         ValueHash256 firstHash = ValueKeccak.Compute(RebuildTestCode(0));
@@ -84,7 +75,7 @@ public class ImportPbtFromPreimageFlatTests
         switch (failure)
         {
             case "spool-cancel": cancellation.Cancel(); break;
-            case "write-cancel": db.BeforeCodeWrite = cancellation.Cancel; break;
+            case "write-cancel": rebuild.Db.BeforeCodeWrite = cancellation.Cancel; break;
             case "invalid-leaf": leaves[firstChunkIndex] = new(firstChunk, Keccak.OfAnEmptyString.ValueHash256); break;
             case "zero-leaf": leaves[firstChunkIndex] = new(firstChunk, default); break;
             case "orphan-stem":
@@ -97,43 +88,32 @@ public class ImportPbtFromPreimageFlatTests
                 break;
         }
 
-        Action reassemble = () => StageAndReassemble(target, scratch.Path, leaves, 3, cancellation.Token);
+        Action reassemble = () => rebuild.StageAndReassemble(leaves, 3, cancellation.Token);
         if (failure.EndsWith("cancel", StringComparison.Ordinal)) Assert.That(reassemble, Throws.InstanceOf<OperationCanceledException>());
         else Assert.That(reassemble, Throws.InstanceOf<InvalidDataException>());
 
-        AssertCodeRebuildReleased(db, target);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(db.AccountsVisited, Is.Zero);
-            Assert.That(db.CodeReads, Is.Zero);
-            Assert.That(Directory.GetFileSystemEntries(scratch.Path), Is.Empty);
-        }
+        rebuild.AssertReleased();
     }
 
     [Test]
     public void Code_staging_excludes_codeless_and_delegation_accounts([Values] bool delegation)
     {
-        using TempPath scratch = TempPath.GetTempDirectory();
-        Directory.CreateDirectory(scratch.Path);
-        using RecordingColumnsDb db = new() { TrackCodeRebuild = true };
-        PbtRocksDbPersistence target = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
+        using CodeRebuild rebuild = new();
         byte[]? code = delegation ? Bytes.FromHexString("ef01000000000000000000000000000000000000000001") : null;
         List<RebuildEntry> leaves = [];
         PbtTestLeaves.AddAccount(leaves, TestItem.AddressA, new Account(1, 0), code);
 
-        StageAndReassemble(target, scratch.Path, leaves, 3, CancellationToken.None);
+        rebuild.StageAndReassemble(leaves, 3, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(db.AccountsVisited, Is.Zero);
-            Assert.That(db.CodeReads, Is.Zero);
-            Assert.That(db.CodeWrites, Is.EqualTo(delegation ? 1 : 0), "only staging writes the delegation code");
-            Assert.That(db.CodeBatchSizes, Is.EqualTo(delegation ? new[] { 1 } : []));
+            Assert.That(rebuild.Db.CodeWrites, Is.EqualTo(delegation ? 1 : 0), "only staging writes the delegation code");
+            Assert.That(rebuild.Db.CodeBatchSizes, Is.EqualTo(delegation ? new[] { 1 } : []));
         }
-        AssertCodeRebuildReleased(db, target);
+        rebuild.AssertReleased();
         if (delegation)
         {
-            using IPbtPersistence.IReader reader = target.CreateReader();
+            using IPbtPersistence.IReader reader = rebuild.Target.CreateReader();
             Assert.That(reader.GetCode(ValueKeccak.Compute(code!))!.Code.ToArray(), Is.EqualTo(code));
         }
     }
@@ -169,24 +149,20 @@ public class ImportPbtFromPreimageFlatTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.CodeWrites, Is.EqualTo(4));
-            Assert.That(db.ActiveSnapshots, Is.Zero);
-            Assert.That(db.ActiveCodeBatches, Is.Zero);
-            Assert.That(db.DisposedResourceUses, Is.Zero);
+            AssertResourcesReleased(db);
             Assert.That(target.IsValid, Is.True);
         }
         using IPbtPersistence.IReader reader = target.CreateReader();
         Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
     }
 
-    private static void AssertCodeRebuildReleased(RecordingColumnsDb db, PbtRocksDbPersistence target)
+    private static void AssertResourcesReleased(RecordingColumnsDb db)
     {
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.ActiveSnapshots, Is.Zero);
-            Assert.That(db.ActiveCodeWrites, Is.Zero);
             Assert.That(db.ActiveCodeBatches, Is.Zero);
             Assert.That(db.DisposedResourceUses, Is.Zero);
-            Assert.That(target.IsValid, Is.False, "code reconstruction alone must not publish staging");
         }
     }
 
@@ -200,17 +176,49 @@ public class ImportPbtFromPreimageFlatTests
         return [.. leaves.DistinctBy(entry => entry.Key)];
     }
 
-    private static void StageAndReassemble(PbtRocksDbPersistence target, string directory, List<RebuildEntry> leaves, int concurrency,
-        CancellationToken cancellationToken)
+    /// <summary>A code-rebuild-tracking staging target over its own scratch directory.</summary>
+    private sealed class CodeRebuild : IDisposable
     {
-        leaves.Sort(static (left, right) => left.Key.Bytes.SequenceCompareTo(right.Key.Bytes));
-        using PbtCodeReassembly codes = new(target, directory, SortBufferBytes, concurrency, LimboLogs.Instance, cancellationToken);
-        using (PbtLeafIngestion.LogicalBatch batch = new(target, 1, cancellationToken))
+        private readonly TempPath _scratch = TempPath.GetTempDirectory();
+        public RecordingColumnsDb Db { get; } = new() { TrackCodeRebuild = true };
+        public PbtRocksDbPersistence Target { get; }
+
+        public CodeRebuild()
         {
-            PbtLeafIngestion.Stage(batch, leaves.GetEnumerator(), codes, cancellationToken);
-            batch.Commit();
+            Directory.CreateDirectory(_scratch.Path);
+            Target = new(Db, new PbtConfig(), NullTrieNodeLog.Instance);
         }
-        codes.Complete();
+
+        public void StageAndReassemble(List<RebuildEntry> leaves, int concurrency, CancellationToken cancellationToken)
+        {
+            leaves.Sort(static (left, right) => left.Key.Bytes.SequenceCompareTo(right.Key.Bytes));
+            using PbtCodeReassembly codes = new(Target, _scratch.Path, SortBufferBytes, concurrency, LimboLogs.Instance, cancellationToken);
+            using (PbtLeafIngestion.LogicalBatch batch = new(Target, 1, cancellationToken))
+            {
+                PbtLeafIngestion.Stage(batch, leaves.GetEnumerator(), codes, cancellationToken);
+                batch.Commit();
+            }
+            codes.Complete();
+        }
+
+        public void AssertReleased()
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                AssertResourcesReleased(Db);
+                Assert.That(Db.ActiveCodeWrites, Is.Zero);
+                Assert.That(Db.AccountsVisited, Is.Zero);
+                Assert.That(Db.CodeReads, Is.Zero);
+                Assert.That(Directory.GetFileSystemEntries(_scratch.Path), Is.Empty);
+                Assert.That(Target.IsValid, Is.False, "code reconstruction alone must not publish staging");
+            }
+        }
+
+        public void Dispose()
+        {
+            Db.Dispose();
+            _scratch.Dispose();
+        }
     }
 
     private static byte[] RebuildTestCode(int index)
@@ -746,9 +754,7 @@ public class ImportPbtFromPreimageFlatTests
         {
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("validState"u8), Is.Null);
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("currentState"u8), Is.Null);
-            Assert.That(db.ActiveSnapshots, Is.Zero);
-            Assert.That(db.ActiveCodeBatches, Is.Zero);
-            Assert.That(db.DisposedResourceUses, Is.Zero);
+            AssertResourcesReleased(db);
             Assert.That(Directory.GetFileSystemEntries(Path.Combine(scratch.Path, "import")), Is.Empty);
         }
         db.AfterGroupCommit = null;

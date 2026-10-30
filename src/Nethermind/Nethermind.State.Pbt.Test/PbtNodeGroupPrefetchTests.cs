@@ -91,14 +91,7 @@ public class PbtNodeGroupPrefetchTests
             return Persisted(path);
         });
         using (bundle)
-        {
-            InterfaceLogger logger = ErrorLogger();
-            PbtWorldStateScope scope = HintBal(bundle, LifecyclePrefetchBal(), logger);
-            Assert.That(() => Volatile.Read(ref reads), Is.GreaterThanOrEqualTo(2).After(5000, 10));
-            scope.UpdateRootHash();
-
-            Assert.That(LoggedErrors(logger), Does.Contain("single prefetch read failed"));
-        }
+            HintAndAssertLogged(bundle, () => Assert.That(() => Volatile.Read(ref reads), Is.GreaterThanOrEqualTo(2).After(5000, 10)), "single prefetch read failed");
     }
 
     [Test]
@@ -109,13 +102,16 @@ public class PbtNodeGroupPrefetchTests
         PbtStorageNodePath firstRead = Walked(inMemory, [WalkStorage(TestItem.AddressB, 1000)])[0];
         (PbtSnapshotBundle bundle, PbtSnapshotTestExtensions.GroupLoadingReader reader) = Bundle(static _ => throw new System.IO.IOException("prefetch read failed"), inMemory);
         using (bundle)
-        {
-            InterfaceLogger logger = ErrorLogger();
-            PbtWorldStateScope scope = HintBal(bundle, LifecyclePrefetchBal(), logger);
-            Assert.That(() => reader.Reads, Is.EqualTo(new[] { firstRead }).After(5000, 10));
-            scope.UpdateRootHash();
-            Assert.That(LoggedErrors(logger), Does.Contain("prefetch read failed"));
-        }
+            HintAndAssertLogged(bundle, () => Assert.That(() => reader.Reads, Is.EqualTo(new[] { firstRead }).After(5000, 10)), "prefetch read failed");
+    }
+
+    private static void HintAndAssertLogged(PbtSnapshotBundle bundle, Action awaitReads, string message)
+    {
+        InterfaceLogger logger = ErrorLogger();
+        PbtWorldStateScope scope = HintBal(bundle, LifecyclePrefetchBal(), logger);
+        awaitReads();
+        scope.UpdateRootHash();
+        Assert.That(LoggedErrors(logger), Does.Contain(message));
     }
 
     /// <summary>The groups <paramref name="walks"/> read from persistence, run on a bundle of their own.</summary>

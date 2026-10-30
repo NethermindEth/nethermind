@@ -94,27 +94,42 @@ public class MigrationBalFollowerTests
     }
 
     [Test]
-    public async Task Missing_or_corrupt_bal_does_not_skip_gap_and_can_resume([Values] bool corrupt)
+    public async Task Failed_bal_acquisition_does_not_skip_gap_and_can_resume([Values("missing", "corrupt", "cancel", "reorg")] string failure)
     {
         using Harness harness = new();
+        using CancellationTokenSource cancellation = new();
         await harness.Publish();
         harness.Canonical("a");
-        Block missing = harness.Blocks["a2"];
-        if (corrupt) harness.Store.Insert(missing.Number, missing.Hash!, Bytes.FromHexString("c0"));
-        else harness.Store.Delete(missing.Number, missing.Hash!);
+        Block failing = harness.Blocks["a2"];
+        switch (failure)
+        {
+            case "missing": harness.Store.Delete(failing.Number, failing.Hash!); break;
+            case "corrupt": harness.Store.Insert(failing.Number, failing.Hash!, Bytes.FromHexString("c0")); break;
+            default:
+                harness.OnRead = hash =>
+                {
+                    if (hash != failing.Hash) return;
+                    harness.OnRead = null;
+                    if (failure == "reorg") harness.Canonical("b");
+                    else cancellation.Cancel();
+                };
+                break;
+        }
 
-        Assert.That(await harness.Follower.Follow(harness.Blocks["a3"].Header, default), Is.False);
+        if (failure == "cancel") await Assert.ThrowsAsync<OperationCanceledException>(() => harness.Follower.Follow(harness.Blocks["a3"].Header, cancellation.Token));
+        else Assert.That(await harness.Follower.Follow(harness.Blocks["a3"].Header, cancellation.Token), Is.False);
 
         AssertState(harness, "a1");
         AssertAbsent(harness, "a2");
-        Assert.That(harness.Follower.Error, Is.Not.Null.And.Not.Empty);
+        if (failure is "missing" or "corrupt") Assert.That(harness.Follower.Error, Is.Not.Null.And.Not.Empty);
         harness.Reopen();
         harness.RestoreBal("a2");
-        Assert.That(await harness.Follower.Follow(harness.Blocks["a3"].Header, default), Is.True, harness.Follower.Error);
-        AssertState(harness, "a3");
+        string target = failure == "reorg" ? "b3" : "a3";
+        Assert.That(await harness.Follower.Follow(harness.Blocks[target].Header, default), Is.True, harness.Follower.Error);
+        AssertState(harness, target);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(harness.Follower.Cursor!.Hash, Is.EqualTo(harness.Blocks["a3"].Hash));
+            Assert.That(harness.Follower.Cursor!.Hash, Is.EqualTo(harness.Blocks[target].Hash));
             Assert.That(harness.Follower.Error, Is.Null);
         }
     }
@@ -134,11 +149,8 @@ public class MigrationBalFollowerTests
         Block missing = harness.Blocks["b2"];
         harness.Store.Delete(missing.Number, missing.Hash!);
         BlockHeader b3 = harness.Blocks["b3"].Header;
-        BlockHeader child = Build.A.BlockHeader.WithParent(b3).WithStateRoot(b3.StateRoot!).WithTimestamp(b3.Timestamp + 1).TestObject;
-        byte[] emptyBal = Bytes.FromHexString("c0");
-        child.BlockAccessListHash = Keccak.Compute(emptyBal);
-        child.Hash = child.CalculateHash();
-        harness.Store.Insert(child.Number, child.Hash, emptyBal);
+        BlockHeader child = EmptyBalChild(b3, b3.Timestamp + 1);
+        harness.Store.Insert(child.Number, child.Hash!, EmptyBal);
         harness.BlockTree.SuggestBlock(new Block(child));
         Assert.That(() => follower.Error?.Contains("No BAL") == true, Is.True.After(10_000, 50), "a side branch's missing BAL fails the replay");
         AssertAbsent(harness, "b2");
@@ -185,46 +197,16 @@ public class MigrationBalFollowerTests
     }
 
     [Test]
-    public async Task Cancellation_or_reorg_during_acquisition_discards_private_replay([Values] bool reorg)
-    {
-        using Harness harness = new();
-        using CancellationTokenSource cancellation = new();
-        await harness.Publish();
-        harness.Canonical("a");
-        harness.OnRead = hash =>
-        {
-            if (hash != harness.Blocks["a2"].Hash) return;
-            harness.OnRead = null;
-            if (reorg) harness.Canonical("b");
-            else cancellation.Cancel();
-        };
-
-        if (reorg) Assert.That(await harness.Follower.Follow(harness.Blocks["a3"].Header, cancellation.Token), Is.False);
-        else await Assert.ThrowsAsync<OperationCanceledException>(() => harness.Follower.Follow(harness.Blocks["a3"].Header, cancellation.Token));
-
-        AssertState(harness, "a1");
-        AssertAbsent(harness, "a2");
-        harness.Reopen();
-        string target = reorg ? "b3" : "a3";
-        Assert.That(await harness.Follower.Follow(harness.Blocks[target].Header, default), Is.True, harness.Follower.Error);
-        AssertState(harness, target);
-    }
-
-    [Test]
     public async Task Empty_bal_child_retains_actual_pbt_root_not_mpt_header_root()
     {
         using Harness harness = new();
         await harness.Publish();
-        BlockHeader parent = harness.Blocks["anchor"].Header;
-        BlockHeader child = Build.A.BlockHeader.WithParent(parent).WithStateRoot(parent.StateRoot!).WithTimestamp(12).TestObject;
-        byte[] bal = Bytes.FromHexString("c0");
-        child.BlockAccessListHash = Keccak.Compute(bal);
-        child.Hash = child.CalculateHash();
-        harness.AddCanonical(new Block(child), bal);
+        BlockHeader child = EmptyBalChild(harness.Blocks["anchor"].Header, 12);
+        harness.AddCanonical(new Block(child), EmptyBal);
 
         Assert.That(await harness.Follower.Follow(child, default), Is.True, harness.Follower.Error);
 
-        Hash256 anchorRoot = harness.PbtRoot("anchor");
+        Hash256 anchorRoot = Eip8347FixtureState.PbtRoot("anchor");
         using (Assert.EnterMultipleScope())
         {
             Assert.That(harness.TreeRoot(child), Is.EqualTo(anchorRoot));
@@ -240,9 +222,16 @@ public class MigrationBalFollowerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(harness.Manager.HasStateForBlock(new StateId(header)), Is.True, name);
-            Assert.That(harness.TreeRoot(header), Is.EqualTo(harness.PbtRoot(name)), name);
+            Assert.That(harness.TreeRoot(header), Is.EqualTo(Eip8347FixtureState.PbtRoot(name)), name);
         }
     }
+
+    private static readonly byte[] EmptyBal = Bytes.FromHexString("c0");
+
+    /// <summary>A child of <paramref name="parent"/> with an empty BAL that leaves the parent's state root unchanged.</summary>
+    private static BlockHeader EmptyBalChild(BlockHeader parent, ulong timestamp) =>
+        Build.A.BlockHeader.WithParent(parent).WithStateRoot(parent.StateRoot!).WithTimestamp(timestamp)
+            .WithBlockAccessListHash(Keccak.Compute(EmptyBal)).TestObject;
 
     private static bool HasState(Harness harness, string name) => harness.Manager.HasStateForBlock(new StateId(harness.Blocks[name].Header));
 
@@ -333,8 +322,6 @@ public class MigrationBalFollowerTests
             _blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: [block]);
             Store.Insert(block.Number, block.Hash!, bal);
         }
-
-        public Hash256 PbtRoot(string name) => new(Metadata[name].GetProperty("pbtRoot").GetString()!);
 
         public void RestoreBal(string name) => Store.Insert(Blocks[name].Number, Blocks[name].Hash!, Bytes.FromHexString(Metadata[name].GetProperty("balRlp").GetString()!));
 

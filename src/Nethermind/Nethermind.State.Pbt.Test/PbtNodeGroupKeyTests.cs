@@ -17,23 +17,38 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtNodeGroupKeyTests
 {
-    [TestCase("", 0, 0x30)]
-    [TestCase("00", 3, 0x31)]
-    [TestCase("0100", 9, 0x31)]
-    [TestCase("e0", 3, 0x31)]
-    [TestCase("00000000", 30, 0x32)]
-    [TestCase("01000000000000000000000000000000000000000000000000000000000000000000", 264, 0x33)]
-    [TestCase("ff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", 525, 0x34)]
-    public void Persisted_keys_follow_the_database_column_and_key(string pathHex, int depth, byte family)
+    [TestCase("", 0, "", PbtPersistedKey.RootGroup)]
+    [TestCase("00", 3, "0003", PbtPersistedKey.TopGroup)]
+    [TestCase("0100", 9, "010001", PbtPersistedKey.TopGroup)]
+    [TestCase("e0", 3, "e003", PbtPersistedKey.TopGroup)]
+    [TestCase("fc", 6, "fc06", PbtPersistedKey.TopGroup)]
+    [TestCase("ff80", 9, "ff8001", PbtPersistedKey.TopGroup)]
+    [TestCase("abc0", 12, "abc004", PbtPersistedKey.TopGroup)]
+    [TestCase("abfe", 15, "abfe07", PbtPersistedKey.TopGroup)]
+    [TestCase("01ab00", 18, "01ab0002", PbtPersistedKey.TopGroup)]
+    [TestCase("abcdef", 24, "abcdef00", PbtPersistedKey.TopGroup)]
+    [TestCase("00000000", 30, "0000000006", PbtPersistedKey.AccountGroup)]
+    [TestCase("ff0000000000000000000000000000000000000000000000000000000000000000", 261, "ff000000000000000000000000000000000000000000000000000000000000000005", PbtPersistedKey.TopGroup)]
+    [TestCase("01000000000000000000000000000000000000000000000000000000000000000000", 264, "01000000000000000000000000000000000000000000000000000000000000000000", PbtPersistedKey.CodeGroup)]
+    [TestCase("ff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", 525, "ff000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005", PbtPersistedKey.StorageGroup)]
+    [TestCase("fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8", 525, "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff805", PbtPersistedKey.StorageGroup)]
+    public void Persisted_keys_follow_the_database_column_and_key(string pathHex, int depth, string keyHex, byte family)
     {
         PbtStorageNodePath path = new(Bytes.FromHexString(pathHex), depth);
+        byte[] storageKey = Bytes.FromHexString(keyHex);
         byte[] key = PbtPersistedKey.Group(path);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(key[0], Is.EqualTo(family));
-            Assert.That(key[1..], Is.EqualTo(depth == 0 ? Array.Empty<byte>() : path.ToStorageKey(PbtColumns.StorageNodeGroups)));
+            Assert.That(key, Is.EqualTo((byte[])[family, .. storageKey]));
             Assert.That(PbtPersistedKey.DecodeGroup(key), Is.EqualTo(path));
             Assert.That(key.Length, Is.LessThanOrEqualTo(255));
+            if (depth != 0)
+            {
+                Assert.That(path.ToStorageKey(PbtColumns.StorageNodeGroups), Is.EqualTo(storageKey));
+                if (depth <= PbtNodePath.MaxBitDepth)
+                    Assert.That(new PbtNodePath(Bytes.FromHexString(pathHex), depth).ToStorageKey(PbtColumns.StorageNodeGroups), Is.EqualTo(storageKey));
+                Assert.That(PbtNodeGroupKey.Decode(storageKey), Is.EqualTo(path));
+            }
         }
     }
 
@@ -62,29 +77,6 @@ public class PbtNodeGroupKeyTests
             Assert.That(ordered[0].Path, Is.EqualTo(default(PbtStorageNodePath)));
             Assert.That(ordered.Select(static group => group.Path), Is.Unique.And.SupersetOf(paths));
             Assert.That(keys, Is.EqualTo(keys.Order(Comparer<byte[]>.Create(static (a, b) => a.AsSpan().SequenceCompareTo(b))).ToArray()));
-        }
-    }
-
-    [TestCase("e0", 3, "e003")]
-    [TestCase("fc", 6, "fc06")]
-    [TestCase("ff80", 9, "ff8001")]
-    [TestCase("abc0", 12, "abc004")]
-    [TestCase("abfe", 15, "abfe07")]
-    [TestCase("01ab00", 18, "01ab0002")]
-    [TestCase("abcdef", 24, "abcdef00")]
-    [TestCase("ff0000000000000000000000000000000000000000000000000000000000000000", 261, "ff000000000000000000000000000000000000000000000000000000000000000005")]
-    [TestCase("fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8", 525, "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff805")]
-    public void Encode_trails_the_path_with_its_alignment(string pathHex, int bitDepth, string keyHex)
-    {
-        byte[] expected = Bytes.FromHexString(keyHex);
-        PbtStorageNodePath storagePath = new(Bytes.FromHexString(pathHex), bitDepth);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(storagePath.ToStorageKey(PbtColumns.StorageNodeGroups), Is.EqualTo(expected));
-            if (bitDepth <= PbtNodePath.MaxBitDepth)
-                Assert.That(new PbtNodePath(Bytes.FromHexString(pathHex), bitDepth).ToStorageKey(PbtColumns.StorageNodeGroups), Is.EqualTo(expected));
-            Assert.That(PbtNodeGroupKey.Decode(expected), Is.EqualTo(storagePath));
         }
     }
 
