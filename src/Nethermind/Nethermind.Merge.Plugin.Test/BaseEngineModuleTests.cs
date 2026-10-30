@@ -198,7 +198,7 @@ public abstract partial class BaseEngineModuleTests
         /// that reads the block's state, receipts or processed flag right after VALID waits here first.
         /// </summary>
         /// <exception cref="TimeoutException">The block is still in the processing queue when the test timeout ends.</exception>
-        public async Task WaitForCommitted(Hash256 blockHash)
+        public virtual async Task WaitForCommitted(Hash256 blockHash)
         {
             using AutoCancelTokenSource cts = CreateCancellationSource();
             try

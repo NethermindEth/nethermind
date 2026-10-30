@@ -2024,6 +2024,120 @@ public partial class EngineModuleTests
     }
 
     /// <summary>
+    /// <see cref="BuildAndInsertEmptyBlock"/> makes its block the head and the finalized block when the block's commit
+    /// lags behind its verdict for longer than a forkchoice update waits for it, and fails rather than returning with
+    /// the head on the parent when its wait ends before that commit.
+    /// </summary>
+    /// <remarks>
+    /// The forkchoice update's commit budget is cut to <see cref="CommitGatedBlockchain.CommitBudgetMs"/>, and the
+    /// commit of the helper's block is held after its verdict. With <paramref name="waitReachesCommit"/> the hold ends
+    /// when the helper awaits the block with <see cref="MergeTestBlockchain.WaitForCommitted"/>; without it that wait
+    /// returns at once, as it does for a block not in the processing queue, and the hold outlasts the head update.
+    /// A head update sent while the commit is held gets SYNCING once the budget runs out and leaves the head on the
+    /// parent.
+    /// </remarks>
+    [Test]
+    public async Task BuildAndInsertEmptyBlock_makes_its_block_the_head_when_its_commit_lags_its_verdict([Values] bool waitReachesCommit)
+    {
+        using CommitGatedBlockchain chain = (CommitGatedBlockchain)await new CommitGatedBlockchain(waitReachesCommit) { ParallelExecutionOverride = Parallel }
+            .Build(new Nethermind.Specs.TestSingleReleaseSpecProvider(Bogota.Instance));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        chain.HoldCommitOf(parent.Number + 1);
+
+        Hash256? helperBlock = null;
+        try
+        {
+            if (waitReachesCommit)
+            {
+                helperBlock = (await BuildAndInsertEmptyBlock(chain, parent.Hash!, slot: 2)).BlockHash;
+            }
+            else
+            {
+                AssertionException? failure = await Assert.ThrowsAsync<AssertionException>(() => BuildAndInsertEmptyBlock(chain, parent.Hash!, slot: 2));
+                Assert.That(failure!.Message, Does.Contain("must become the head"));
+            }
+        }
+        finally
+        {
+            chain.ReleaseCommit();
+        }
+
+        Hash256 held = chain.HeldBlock ?? throw new AssertionException("the helper's block never reached its verdict");
+        await chain.WaitForCommitted(held);
+        using (Assert.EnterMultipleScope())
+        {
+            if (waitReachesCommit)
+            {
+                Assert.That(helperBlock, Is.EqualTo(held), "the helper's block must be the one held");
+                Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(held));
+                Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(held));
+            }
+            else
+            {
+                // What the helper's failure stands in for: the commit landed, and the head stayed on the parent.
+                Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(parent.Hash));
+                Assert.That(chain.BlockTree.FinalizedHash, Is.Not.EqualTo(held));
+            }
+        }
+    }
+
+    /// <summary>
+    /// A chain whose forkchoice update waits only briefly for its head's commit, and which can hold one block's
+    /// commit after its verdict.
+    /// </summary>
+    /// <param name="waitReleasesCommit">
+    /// Whether <see cref="WaitForCommitted"/> for the held block ends the hold and waits for the commit, or returns at
+    /// once while the hold lasts.
+    /// </param>
+    private sealed class CommitGatedBlockchain(bool waitReleasesCommit)
+        : MergeTestBlockchain(new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = CommitBudgetMs })
+    {
+        /// <summary>The newPayload budget, and with it the forkchoice update's commit wait.</summary>
+        public const int CommitBudgetMs = 250;
+
+        private readonly ManualResetEventSlim _commitRelease = new();
+        private ulong? _heldNumber;
+        private Hash256? _heldBlock;
+
+        /// <summary>The block whose commit was held, once its verdict was given.</summary>
+        public Hash256? HeldBlock => Volatile.Read(ref _heldBlock);
+
+        /// <summary>Holds the commit of the first block executed at <paramref name="number"/> after its verdict.</summary>
+        public void HoldCommitOf(ulong number)
+        {
+            _heldNumber = number;
+            // Subscribed after the processing queue, so the verdict goes out before the hold.
+            BranchProcessor.BlockExecuted += HoldAfterVerdict;
+        }
+
+        public void ReleaseCommit() => _commitRelease.Set();
+
+        public override Task WaitForCommitted(Hash256 blockHash)
+        {
+            if (!_commitRelease.IsSet && _heldNumber is { } held
+                && BlockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.Number == held)
+            {
+                if (!waitReleasesCommit) return Task.CompletedTask;
+                ReleaseCommit();
+            }
+
+            return base.WaitForCommitted(blockHash);
+        }
+
+        private void HoldAfterVerdict(object? sender, BlockExecutedEventArgs e)
+        {
+            if (e.Block.Number != _heldNumber || Interlocked.CompareExchange(ref _heldBlock, e.Block.Hash, null) is not null) return;
+            _commitRelease.Wait(TimeSpan.FromMilliseconds(TestTimeout));
+        }
+
+        public override void Dispose()
+        {
+            ReleaseCommit();
+            base.Dispose();
+        }
+    }
+
+    /// <summary>
     /// A block that runs EIP-8360 TCREATE twice at one address and then pays the wiped account is accepted by a
     /// second node in the fixture's execution mode, and its witness re-executes statelessly to the same state root.
     /// </summary>
