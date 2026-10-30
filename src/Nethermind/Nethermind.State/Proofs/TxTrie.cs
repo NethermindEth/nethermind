@@ -82,7 +82,7 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         }
 
         using ArrayPoolDisposableReturn rental = ArrayPoolDisposableReturn.Rent(totalLength, out byte[] buffer);
-        LengthList lengthList = new(stackalloc int[8]);
+        LengthList lengthList = new(stackalloc int[LengthList.DefaultStackallocLength]);
         scoped RlpWriter writer;
         try
         {

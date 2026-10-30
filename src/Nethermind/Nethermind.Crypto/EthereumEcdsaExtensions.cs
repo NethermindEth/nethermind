@@ -169,7 +169,7 @@ public static class EthereumEcdsaExtensions
 
     private static ValueHash256 CalculateSigningHash(Transaction tx, bool isEip155Enabled, ulong chainId)
     {
-        LengthList lengths = new(stackalloc int[8]);
+        LengthList lengths = new(stackalloc int[LengthList.DefaultStackallocLength]);
         scoped KeccakRlpWriter writer = new();
         try
         {

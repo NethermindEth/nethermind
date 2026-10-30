@@ -220,7 +220,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
 
     public Rlp EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        LengthList lengths = new(stackalloc int[8]);
+        LengthList lengths = new(stackalloc int[LengthList.DefaultStackallocLength]);
         try
         {
             LengthListWriter root = lengths.BeginRootContainer();
