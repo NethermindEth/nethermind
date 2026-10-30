@@ -26,7 +26,7 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
         return createSnapshot(number, hash256, candidates);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, T item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -34,7 +34,7 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
             return;
         }
 
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
         EncodeContent(ref writer, item, rlpBehaviors);
     }
 
@@ -50,16 +50,16 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
             XdcRlpHelpers.EncodeAddressSequence(ref writer, item.NextEpochCandidates);
     }
 
-    public override int PopulateLength(T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(T item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            return Rlp.OfEmptyList.Length;
+            lengths.Add(Rlp.OfEmptyList.Length);
+            return;
         }
 
-        int contentLength = GetContentLength(item, rlpBehaviors);
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(GetContentLength(item, rlpBehaviors));
     }
 
     protected virtual int GetContentLength(T item, RlpBehaviors rlpBehaviors)

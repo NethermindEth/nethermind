@@ -41,7 +41,7 @@ public class GuestReceiptEncodingTests
     {
         IByteBuffer buffer = Unpooled.Buffer();
         scoped ByteBufferRlpWriter writer = new(buffer);
-        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        LengthList lengths = new(stackalloc int[LengthList.DefaultStackallocLength]);
         try
         {
             Decoder.PopulateAndEncode(ref writer, receipt, ref lengths, behaviors);

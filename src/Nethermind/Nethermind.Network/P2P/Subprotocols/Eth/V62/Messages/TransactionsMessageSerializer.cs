@@ -68,7 +68,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-        public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message, ref LengthStack lengths)
+        public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message, ref LengthList lengths)
         {
             ByteBufferRlpWriter writer = new(byteBuffer);
             TxDecoder.EncodeSequence(ref writer, message.Transactions.AsSpan(), ref lengths, RlpBehaviors.InMempoolForm);
@@ -77,8 +77,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public TransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(_deserializeTransactionsMessage);
 
-        public int PopulateLength(TransactionsMessage message, ref LengthStack lengths) =>
-            TxDecoder.PopulateSequenceLength(message.Transactions.AsSpan(), ref lengths, RlpBehaviors.InMempoolForm);
+        public void PopulateLength(TransactionsMessage message, in LengthListWriter lengths) =>
+            TxDecoder.PopulateSequenceLength(message.Transactions.AsSpan(), lengths, RlpBehaviors.InMempoolForm);
 
         public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx) =>
             DeserializeTxs(ref ctx, long.MaxValue, knownFilter: null, out _);

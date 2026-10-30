@@ -12,10 +12,10 @@ public interface ITxDecoder
 
     void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    /// <summary>Pushes the lengths <see cref="Encode{TWriter}"/> pops and returns the total encoded length.</summary>
-    /// <remarks>Follows the <see cref="IRlpDecoder{T}"/> length stack contract.</remarks>
-    int PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0);
+    /// <summary>Populates the lengths <see cref="Encode{TWriter}"/> reads and adds the total encoded length to <paramref name="lengths"/>.</summary>
+    /// <remarks>Follows the <see cref="IRlpDecoder{T}"/> length list contract.</remarks>
+    void PopulateLength(Transaction transaction, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0);
 
-    void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
         where TWriter : struct, IRlpWriteBackend, allows ref struct;
 }

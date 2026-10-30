@@ -28,7 +28,7 @@ internal sealed class ExtraConsensusDataDecoder : RlpDecoder<ExtraFieldsV2>
         return new ExtraFieldsV2(round, quorumCert);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, ExtraFieldsV2 item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, ExtraFieldsV2 item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -36,28 +36,28 @@ internal sealed class ExtraConsensusDataDecoder : RlpDecoder<ExtraFieldsV2>
             return;
         }
 
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
         writer.Encode(item.BlockRound);
         _quorumCertificateDecoder.Encode(ref writer, item.QuorumCert, ref lengths, rlpBehaviors);
     }
 
-    public override int PopulateLength(ExtraFieldsV2 item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(ExtraFieldsV2 item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            return Rlp.OfEmptyList.Length;
+            lengths.Add(Rlp.OfEmptyList.Length);
+            return;
         }
 
-        int contentLength = PopulateContentLength(item, ref lengths, rlpBehaviors);
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+        using LengthListWriter sequence = lengths.BeginContainer();
+        PopulateContentLength(item, sequence, rlpBehaviors);
     }
 
-    private int PopulateContentLength(ExtraFieldsV2 item, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
+    private void PopulateContentLength(ExtraFieldsV2 item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors)
     {
         if (item is null)
-            return 0;
-        int length = _quorumCertificateDecoder.PopulateLength(item.QuorumCert, ref lengths, rlpBehaviors);
-        return Rlp.LengthOf(item.BlockRound) + length;
+            return;
+        lengths.Add(Rlp.LengthOf(item.BlockRound));
+        _quorumCertificateDecoder.PopulateLength(item.QuorumCert, lengths, rlpBehaviors);
     }
 }

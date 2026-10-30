@@ -56,19 +56,19 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
         return slotChanges;
     }
 
-    public override int PopulateLength(ReadOnlySlotChanges item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(ReadOnlySlotChanges item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ArgumentNullException.ThrowIfNull(item);
-        return PopulateLength(item.Key, item.Changes, ref lengths, rlpBehaviors);
+        PopulateLength(item.Key, item.Changes, lengths, rlpBehaviors);
     }
 
-    public int PopulateLength(GeneratedSlotChanges item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => PopulateLength(item.Key, CollectionsMarshal.AsSpan(item.Changes), ref lengths, rlpBehaviors);
+    public void PopulateLength(GeneratedSlotChanges item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => PopulateLength(item.Key, CollectionsMarshal.AsSpan(item.Changes), lengths, rlpBehaviors);
 
-    public override void Encode<TWriter>(ref TWriter writer, ReadOnlySlotChanges item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, ReadOnlySlotChanges item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => Encode(ref writer, item.Key, item.Changes, ref lengths, rlpBehaviors);
 
-    public void Encode<TWriter>(ref TWriter writer, GeneratedSlotChanges item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode<TWriter>(ref TWriter writer, GeneratedSlotChanges item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
         => Encode(ref writer, item.Key, CollectionsMarshal.AsSpan(item.Changes), ref lengths, rlpBehaviors);
 
@@ -85,17 +85,17 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
         return len;
     }
 
-    private static int PopulateLength(in UInt256 key, ReadOnlySpan<StorageChange> changes, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
+    private static void PopulateLength(in UInt256 key, ReadOnlySpan<StorageChange> changes, in LengthListWriter lengths, RlpBehaviors rlpBehaviors)
     {
-        int contentLength = Rlp.LengthOf(key) + StorageChangeDecoder.Instance.PopulateSequenceLength(changes, ref lengths, rlpBehaviors);
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(Rlp.LengthOf(key));
+        StorageChangeDecoder.Instance.PopulateSequenceLength(changes, sequence, rlpBehaviors);
     }
 
-    private static void Encode<TWriter>(ref TWriter writer, in UInt256 key, ReadOnlySpan<StorageChange> changes, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
+    private static void Encode<TWriter>(ref TWriter writer, in UInt256 key, ReadOnlySpan<StorageChange> changes, ref LengthList lengths, RlpBehaviors rlpBehaviors)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
         writer.Encode(key);
         StorageChangeDecoder.Instance.EncodeSequence(ref writer, changes, ref lengths, rlpBehaviors);
     }

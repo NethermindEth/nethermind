@@ -9,7 +9,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
 {
     public class GetBlockAccessListsMessageSerializer : SnapSerializerBase<GetBlockAccessListsMessage>
     {
-        public override void Serialize(IByteBuffer byteBuffer, GetBlockAccessListsMessage message, ref LengthStack lengths)
+        public override void Serialize(IByteBuffer byteBuffer, GetBlockAccessListsMessage message, ref LengthList lengths)
         {
             ByteBufferRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, ref lengths);
 
@@ -30,14 +30,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
             return message;
         }
 
-        public override int PopulateLength(GetBlockAccessListsMessage message, ref LengthStack lengths)
+        public override void PopulateLength(GetBlockAccessListsMessage message, in LengthListWriter lengths)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
             contentLength += Rlp.LengthOf(message.BlockHashes, true);
             contentLength += Rlp.LengthOf(message.Bytes);
 
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+            using LengthListWriter sequence = lengths.BeginContainer();
+            sequence.Add(contentLength);
         }
     }
 }

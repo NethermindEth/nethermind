@@ -14,10 +14,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-        public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message, ref LengthStack lengths)
+        public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message, ref LengthList lengths)
         {
             ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             for (int i = 0; i < message.BlockHashes.Count; i++)
             {
                 writer.Encode(message.BlockHashes[i]);
@@ -27,16 +27,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public GetBlockBodiesMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        public int PopulateLength(GetBlockBodiesMessage message, ref LengthStack lengths)
+        public void PopulateLength(GetBlockBodiesMessage message, in LengthListWriter lengths)
         {
-            int contentLength = 0;
+            using LengthListWriter sequence = lengths.BeginContainer();
             for (int i = 0; i < message.BlockHashes.Count; i++)
             {
-                contentLength += Rlp.LengthOf(message.BlockHashes[i]);
+                sequence.Add(Rlp.LengthOf(message.BlockHashes[i]));
             }
-
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
         }
 
         public static GetBlockBodiesMessage Deserialize(ref RlpReader ctx)

@@ -43,7 +43,7 @@ public sealed class TimeoutCertificateDecoder : RlpDecoder<TimeoutCertificate>
         return new TimeoutCertificate(round, signatures, gapNumber);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, TimeoutCertificate item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, TimeoutCertificate item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -51,7 +51,7 @@ public sealed class TimeoutCertificateDecoder : RlpDecoder<TimeoutCertificate>
             return;
         }
 
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
 
         writer.Encode(item.Round);
 
@@ -71,16 +71,16 @@ public sealed class TimeoutCertificateDecoder : RlpDecoder<TimeoutCertificate>
         writer.Encode(item.GapNumber);
     }
 
-    public override int PopulateLength(TimeoutCertificate item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(TimeoutCertificate item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            return Rlp.OfEmptyList.Length;
+            lengths.Add(Rlp.OfEmptyList.Length);
+            return;
         }
 
-        int contentLength = GetContentLength(item, rlpBehaviors);
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(GetContentLength(item, rlpBehaviors));
     }
 
     private int GetContentLength(TimeoutCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

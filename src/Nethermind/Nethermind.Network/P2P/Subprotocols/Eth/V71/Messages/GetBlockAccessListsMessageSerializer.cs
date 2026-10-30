@@ -15,10 +15,10 @@ public class GetBlockAccessListsMessageSerializer : Eth66SerializerBase<GetBlock
     private static readonly RlpLimit RlpLimit = RlpLimit.For<GetBlockAccessListsMessage>(
         GethSyncLimits.MaxBodyFetch, nameof(GetBlockAccessListsMessage.Hashes));
 
-    protected override void SerializeInternal(IByteBuffer byteBuffer, GetBlockAccessListsMessage message, ref LengthStack lengths)
+    protected override void SerializeInternal(IByteBuffer byteBuffer, GetBlockAccessListsMessage message, ref LengthList lengths)
     {
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
 
         foreach (Hash256 hash in message.Hashes.AsSpan())
         {
@@ -34,11 +34,10 @@ public class GetBlockAccessListsMessageSerializer : Eth66SerializerBase<GetBlock
         return new GetBlockAccessListsMessage(requestId, hashes);
     }
 
-    protected override int PopulateLengthInternal(GetBlockAccessListsMessage message, ref LengthStack lengths)
+    protected override void PopulateLengthInternal(GetBlockAccessListsMessage message, in LengthListWriter lengths)
     {
-        int hashesContentLength = GetHashesContentLength(message.Hashes);
-        lengths.Push(hashesContentLength);
-        return Rlp.LengthOfSequence(hashesContentLength);
+        using LengthListWriter hashes = lengths.BeginContainer();
+        hashes.Add(GetHashesContentLength(message.Hashes));
     }
 
     private static int GetHashesContentLength(IOwnedReadOnlyList<Hash256> hashes)

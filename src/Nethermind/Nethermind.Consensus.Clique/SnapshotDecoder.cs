@@ -30,34 +30,28 @@ namespace Nethermind.Consensus.Clique
             return snapshot;
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, Snapshot item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, Snapshot item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             writer.Encode(item.Number);
             writer.Encode(item.Hash);
-            EncodeSigners(ref writer, item.Signers, lengths.Pop());
-            EncodeVotes(ref writer, item.Votes, lengths.Pop());
-            EncodeTally(ref writer, item.Tally, lengths.Pop());
+            EncodeSigners(ref writer, item.Signers, lengths.Read());
+            EncodeVotes(ref writer, item.Votes, lengths.Read());
+            EncodeTally(ref writer, item.Tally, lengths.Read());
 
         }
 
-        public override int PopulateLength(Snapshot item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(Snapshot item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            int signersLength = GetSignersContentLength(item.Signers);
-            int votesLength = GetVotesContentLength(item.Votes);
-            int tallyLength = GetTallyContentLength(item.Tally);
+            using LengthListWriter sequence = lengths.BeginContainer();
+            sequence.Add(Rlp.LengthOf((UInt256)item.Number) + Rlp.LengthOf(item.Hash));
 
-            int contentLength = Rlp.LengthOf((UInt256)item.Number);
-            contentLength += Rlp.LengthOf(item.Hash);
-            contentLength += Rlp.LengthOfSequence(signersLength);
-            contentLength += Rlp.LengthOfSequence(votesLength);
-            contentLength += Rlp.LengthOfSequence(tallyLength);
-
-            lengths.Push(tallyLength);
-            lengths.Push(votesLength);
-            lengths.Push(signersLength);
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+            using LengthListWriter signers = sequence.BeginContainer();
+            signers.Add(GetSignersContentLength(item.Signers));
+            using LengthListWriter votes = sequence.BeginContainer();
+            votes.Add(GetVotesContentLength(item.Votes));
+            using LengthListWriter tally = sequence.BeginContainer();
+            tally.Add(GetTallyContentLength(item.Tally));
         }
 
         private static SortedList<Address, ulong> DecodeSigners(ref RlpReader decoderContext)

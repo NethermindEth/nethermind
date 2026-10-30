@@ -17,11 +17,11 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
     private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockAccessListsMessage>(
         GethSyncLimits.MaxBodyFetch, nameof(BlockAccessListsMessage.BlockAccessLists));
 
-    protected override void SerializeInternal(IByteBuffer byteBuffer, BlockAccessListsMessage message, ref LengthStack lengths)
+    protected override void SerializeInternal(IByteBuffer byteBuffer, BlockAccessListsMessage message, ref LengthList lengths)
     {
         IOwnedReadOnlyList<byte[]?> blockAccessLists = message.BlockAccessLists;
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
         for (int i = 0; i < blockAccessLists.Count; i++)
         {
             WriteBlockAccessListEntry(ref writer, blockAccessLists[i]);
@@ -53,11 +53,10 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
         }
     }
 
-    protected override int PopulateLengthInternal(BlockAccessListsMessage message, ref LengthStack lengths)
+    protected override void PopulateLengthInternal(BlockAccessListsMessage message, in LengthListWriter lengths)
     {
-        int contentLength = GetBlockAccessListsContentLength(message.BlockAccessLists);
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(GetBlockAccessListsContentLength(message.BlockAccessLists));
     }
 
     protected override BlockAccessListsMessage DeserializeInternal(ref RlpReader ctx, long requestId) =>

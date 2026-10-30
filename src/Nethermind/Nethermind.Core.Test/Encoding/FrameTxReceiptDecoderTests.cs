@@ -358,7 +358,7 @@ public class FrameTxReceiptDecoderTests
         Assert.That(() =>
         {
             scoped RlpWriter writer = new(new byte[1024]);
-            LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+            LengthList lengths = new(stackalloc int[LengthList.DefaultStackallocLength]);
             FrameReceiptRlp.EncodePayload(ref writer, payerless, ref lengths);
         }, Throws.InstanceOf<RlpException>());
     }

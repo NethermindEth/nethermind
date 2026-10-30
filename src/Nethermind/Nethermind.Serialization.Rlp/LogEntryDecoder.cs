@@ -85,7 +85,7 @@ namespace Nethermind.Serialization.Rlp
             return new LogEntry(address, data, topics);
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, LogEntry? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, LogEntry? item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -106,9 +106,9 @@ namespace Nethermind.Serialization.Rlp
             writer.Encode(item.Data);
         }
 
-        /// <remarks>Pushes nothing: encoding recomputes the content length, which takes only the field lengths.</remarks>
-        public override int PopulateLength(LogEntry? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-            item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item));
+        /// <remarks>Begins no container: encoding recomputes the content length, which takes only the field lengths.</remarks>
+        public override void PopulateLength(LogEntry? item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            lengths.Add(item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item)));
 
         internal static int GetContentLength(LogEntry item) =>
             Rlp.LengthOf(item.Address) + Rlp.LengthOfSequence(GetTopicsLength(item)) + Rlp.LengthOf(item.Data);

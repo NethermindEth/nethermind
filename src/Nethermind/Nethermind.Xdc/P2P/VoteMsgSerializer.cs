@@ -14,7 +14,7 @@ internal class VoteMsgSerializer : IZeroInnerMessageSerializer<VoteMsg>
 
     public void Serialize(IByteBuffer byteBuffer, VoteMsg message) => this.SerializeWithLengths(byteBuffer, message);
 
-    public void Serialize(IByteBuffer byteBuffer, VoteMsg message, ref LengthStack lengths)
+    public void Serialize(IByteBuffer byteBuffer, VoteMsg message, ref LengthList lengths)
     {
         ByteBufferRlpWriter writer = new(byteBuffer);
         _voteDecoder.Encode(ref writer, message.Vote, ref lengths);
@@ -28,6 +28,6 @@ internal class VoteMsgSerializer : IZeroInnerMessageSerializer<VoteMsg>
         return new() { Vote = vote };
     }
 
-    public int PopulateLength(VoteMsg message, ref LengthStack lengths) =>
-        _voteDecoder.PopulateLength(message.Vote, ref lengths);
+    public void PopulateLength(VoteMsg message, in LengthListWriter lengths) =>
+        _voteDecoder.PopulateLength(message.Vote, lengths);
 }

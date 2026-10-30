@@ -124,7 +124,7 @@ public class ReceiptMessageDecoder69Tests
             }
 
             scoped RlpWriter writer = new(new byte[64]);
-            LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+            LengthList lengths = new(stackalloc int[LengthList.DefaultStackallocLength]);
             decoder.PopulateAndEncode(ref writer, receipt, ref lengths);
             lengths.Dispose();
         }

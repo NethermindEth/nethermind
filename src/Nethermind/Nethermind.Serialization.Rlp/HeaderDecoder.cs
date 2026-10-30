@@ -135,7 +135,7 @@ namespace Nethermind.Serialization.Rlp
         protected virtual int GetSealLength(BlockHeader header) =>
             Rlp.LengthOf(header.MixHash ?? Keccak.Zero) + Rlp.LengthOfNonce(header.Nonce);
 
-        public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (header is null)
             {
@@ -144,7 +144,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             writer.Encode(header.ParentHash ?? Keccak.Zero);
             writer.Encode(header.UnclesHash ?? Keccak.OfAnEmptySequenceRlp);
             writer.Encode(header.Beneficiary ?? Address.Zero);
@@ -177,11 +177,12 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[7]) writer.Encode(header.SlotNumber.GetValueOrDefault());
         }
 
-        public override int PopulateLength(BlockHeader? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(BlockHeader? item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                return Rlp.OfEmptyList.Length;
+                lengths.Add(Rlp.OfEmptyList.Length);
+                return;
             }
 
             bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
@@ -217,8 +218,8 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[6]) contentLength += Rlp.LengthOf(item.BlockAccessListHash);
             if (requiredItems[7]) contentLength += Rlp.LengthOf(item.SlotNumber.GetValueOrDefault());
 
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+            using LengthListWriter sequence = lengths.BeginContainer();
+            sequence.Add(contentLength);
         }
 
         private static void SetRequiredItems(BlockHeader header, Span<bool> requiredItems)

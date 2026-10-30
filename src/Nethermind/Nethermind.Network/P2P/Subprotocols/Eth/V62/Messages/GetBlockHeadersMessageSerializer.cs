@@ -35,10 +35,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public void Serialize(IByteBuffer byteBuffer, GetBlockHeadersMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-        public void Serialize(IByteBuffer byteBuffer, GetBlockHeadersMessage message, ref LengthStack lengths)
+        public void Serialize(IByteBuffer byteBuffer, GetBlockHeadersMessage message, ref LengthList lengths)
         {
             ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             if (message.StartBlockHash is null)
             {
                 writer.Encode(message.StartBlockNumber);
@@ -56,17 +56,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public GetBlockHeadersMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        public int PopulateLength(GetBlockHeadersMessage message, ref LengthStack lengths)
+        public void PopulateLength(GetBlockHeadersMessage message, in LengthListWriter lengths)
         {
-            int contentLength = message.StartBlockHash is null
+            using LengthListWriter sequence = lengths.BeginContainer();
+            sequence.Add(message.StartBlockHash is null
                 ? Rlp.LengthOf(message.StartBlockNumber)
-                : Rlp.LengthOf(message.StartBlockHash);
-            contentLength += Rlp.LengthOf(message.MaxHeaders);
-            contentLength += Rlp.LengthOf(message.Skip);
-            contentLength += Rlp.LengthOf(message.Reverse);
-
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+                : Rlp.LengthOf(message.StartBlockHash));
+            sequence.Add(Rlp.LengthOf(message.MaxHeaders) + Rlp.LengthOf(message.Skip) + Rlp.LengthOf(message.Reverse));
         }
     }
 }

@@ -276,13 +276,14 @@ public sealed class EraWriter : IDisposable
     /// </summary>
     private static ArrayPoolSpan<byte> EncodeSlimReceipts(TxReceipt[] receipts, bool isEip658)
     {
-        LengthStack lengths = new(stackalloc int[Math.Min(receipts.Length * 4, LengthStack.MaxStackallocLength)]);
+        LengthList lengths = new(stackalloc int[Math.Min(receipts.Length * 4, LengthList.MaxStackallocLength)]);
         scoped RlpWriter writer;
         try
         {
-            int totalLength = 0;
-            for (int i = receipts.Length - 1; i >= 0; i--)
-                totalLength += Rlp.LengthOfSequence(PopulateReceiptContentLength(receipts[i], isEip658, ref lengths));
+            LengthListWriter root = lengths.BeginRootContainer();
+            foreach (TxReceipt receipt in receipts)
+                PopulateReceiptLength(receipt, isEip658, root);
+            int totalLength = root.Length;
 
             ArrayPoolSpan<byte> bytes = new(Rlp.LengthOfSequence(totalLength));
             try
@@ -305,22 +306,21 @@ public sealed class EraWriter : IDisposable
         }
     }
 
-    private static int PopulateReceiptContentLength(TxReceipt receipt, bool isEip658, ref LengthStack lengths)
+    private static void PopulateReceiptLength(TxReceipt receipt, bool isEip658, in LengthListWriter lengths)
     {
-        int logsLength = LogEntryDecoder.Instance.PopulateSequenceLength(receipt.Logs ?? [], ref lengths);
+        using LengthListWriter sequence = lengths.BeginContainer();
 
         // txType: 0x80 (empty = legacy) or single self-encoding byte (type 1/2/3) — always 1 byte
         int statusLength = isEip658 ? 1 : Rlp.LengthOf(receipt.PostTransactionState);
 
-        int contentLength = 1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal) + logsLength;
-        lengths.Push(contentLength);
-        return contentLength;
+        sequence.Add(1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal));
+        LogEntryDecoder.Instance.PopulateSequenceLength(receipt.Logs ?? [], sequence);
     }
 
-    private static void WriteReceipt<TWriter>(ref TWriter writer, TxReceipt receipt, bool isEip658, ref LengthStack lengths)
+    private static void WriteReceipt<TWriter>(ref TWriter writer, TxReceipt receipt, bool isEip658, ref LengthList lengths)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
 
         // TxType: empty byte array for legacy, single byte for typed (EIP-2718)
         if (receipt.TxType == TxType.Legacy)

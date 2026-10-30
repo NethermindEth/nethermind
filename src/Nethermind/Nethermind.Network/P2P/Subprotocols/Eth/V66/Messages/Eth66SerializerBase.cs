@@ -14,10 +14,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, TMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-        public void Serialize(IByteBuffer byteBuffer, TMessage message, ref LengthStack lengths)
+        public void Serialize(IByteBuffer byteBuffer, TMessage message, ref LengthList lengths)
         {
             ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             writer.Encode(message.RequestId);
             SerializeInternal(byteBuffer, message, ref lengths);
         }
@@ -43,18 +43,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             }
         }
 
-        public int PopulateLength(TMessage message, ref LengthStack lengths)
+        public void PopulateLength(TMessage message, in LengthListWriter lengths)
         {
-            int contentLength = Rlp.LengthOf(message.RequestId) + PopulateLengthInternal(message, ref lengths);
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+            using LengthListWriter sequence = lengths.BeginContainer();
+            sequence.Add(Rlp.LengthOf(message.RequestId));
+            PopulateLengthInternal(message, sequence);
         }
 
-        /// <summary>Pops the lengths <see cref="PopulateLengthInternal"/> pushed and writes the payload.</summary>
-        protected abstract void SerializeInternal(IByteBuffer byteBuffer, TMessage message, ref LengthStack lengths);
+        /// <summary>Reads the lengths <see cref="PopulateLengthInternal"/> populated and writes the payload.</summary>
+        protected abstract void SerializeInternal(IByteBuffer byteBuffer, TMessage message, ref LengthList lengths);
         protected abstract TMessage DeserializeInternal(ref RlpReader ctx, long requestId);
 
-        /// <summary>Pushes the lengths <see cref="SerializeInternal"/> needs, then the length of the payload after the request id.</summary>
-        protected abstract int PopulateLengthInternal(TMessage message, ref LengthStack lengths);
+        /// <summary>Populates the lengths <see cref="SerializeInternal"/> reads and adds the length of the payload after the request id.</summary>
+        protected abstract void PopulateLengthInternal(TMessage message, in LengthListWriter lengths);
     }
 }

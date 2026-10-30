@@ -51,9 +51,9 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
         return new TxFrameSignature(scheme, signer, msg, signature);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, TxFrameSignature item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, TxFrameSignature item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
         EncodeContent(ref writer, item, elide: false);
     }
 
@@ -74,10 +74,10 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
     }
 
     /// <summary>Writes a sequence populated by <see cref="PopulateArrayLength"/>.</summary>
-    public void EncodeArray<TWriter>(ref TWriter writer, TxFrameSignature[]? items, ref LengthStack lengths, bool elideCanonicalSignatureBytes)
+    public void EncodeArray<TWriter>(ref TWriter writer, TxFrameSignature[]? items, ref LengthList lengths, bool elideCanonicalSignatureBytes)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
         if (items is null) return;
 
         for (int i = 0; i < items.Length; i++)
@@ -89,19 +89,17 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
         }
     }
 
-    public override int PopulateLength(TxFrameSignature item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(TxFrameSignature item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int contentLength = GetContentLength(item, elideCanonicalSignatureBytes: false);
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(GetContentLength(item, elideCanonicalSignatureBytes: false));
     }
 
-    /// <summary>Pushes the content length of the sequence of <paramref name="items"/>, a <see langword="null"/> one taking an empty list, and returns its total.</summary>
-    public int PopulateArrayLength(TxFrameSignature[]? items, ref LengthStack lengths, bool elideCanonicalSignatureBytes)
+    /// <summary>Populates the sequence of <paramref name="items"/>, a <see langword="null"/> one taking an empty list.</summary>
+    public void PopulateArrayLength(TxFrameSignature[]? items, in LengthListWriter lengths, bool elideCanonicalSignatureBytes)
     {
-        int contentLength = items is null ? 0 : GetArrayContentLength(items, elideCanonicalSignatureBytes);
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(items is null ? 0 : GetArrayContentLength(items, elideCanonicalSignatureBytes));
     }
 
     private static int GetArrayContentLength(TxFrameSignature[] items, bool elideCanonicalSignatureBytes)

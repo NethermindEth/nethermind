@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             return new ValidatorInfo(finalizingBlockNumber, previousFinalizingBlockNumber, addresses);
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, ValidatorInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, ValidatorInfo? item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -45,33 +45,28 @@ namespace Nethermind.Consensus.AuRa.Validators
                 return;
             }
 
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             writer.Encode(item.FinalizingBlockNumber);
             writer.Encode(item.PreviousFinalizingBlockNumber);
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             for (int i = 0; i < item.Validators.Length; i++)
             {
                 writer.Encode(item.Validators[i]);
             }
         }
 
-        public override int PopulateLength(ValidatorInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(ValidatorInfo? item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                return 1;
+                lengths.Add(1);
+                return;
             }
 
-            (int contentLength, int validatorLength) = GetContentLength(item, rlpBehaviors);
-            lengths.Push(validatorLength);
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
-        }
-
-        private static (int Total, int Validators) GetContentLength(ValidatorInfo item, RlpBehaviors rlpBehaviors)
-        {
-            int validatorsLength = Rlp.LengthOfAddressRlp * item.Validators.Length;
-            return (Rlp.LengthOf(item.FinalizingBlockNumber) + Rlp.LengthOf(item.PreviousFinalizingBlockNumber) + Rlp.LengthOfSequence(validatorsLength), validatorsLength);
+            using LengthListWriter sequence = lengths.BeginContainer();
+            sequence.Add(Rlp.LengthOf(item.FinalizingBlockNumber) + Rlp.LengthOf(item.PreviousFinalizingBlockNumber));
+            using LengthListWriter validators = sequence.BeginContainer();
+            validators.Add(Rlp.LengthOfAddressRlp * item.Validators.Length);
         }
     }
 }

@@ -38,7 +38,7 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
         return withdrawal;
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, Withdrawal? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, Withdrawal? item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -46,25 +46,25 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
             return;
         }
 
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
         writer.Encode(item.Index);
         writer.Encode(item.ValidatorIndex);
         writer.Encode(item.Address);
         writer.Encode(item.AmountInGwei);
     }
 
-    public override int PopulateLength(Withdrawal? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(Withdrawal? item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            return Rlp.OfEmptyList.Length;
+            lengths.Add(Rlp.OfEmptyList.Length);
+            return;
         }
 
-        int contentLength = Rlp.LengthOf(item.Index) +
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(Rlp.LengthOf(item.Index) +
             Rlp.LengthOf(item.ValidatorIndex) +
             Rlp.LengthOfAddressRlp +
-            Rlp.LengthOf(item.AmountInGwei);
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+            Rlp.LengthOf(item.AmountInGwei));
     }
 }

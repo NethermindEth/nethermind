@@ -70,7 +70,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             return accessListBuilder.Build();
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, AccessList? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, AccessList? item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -78,7 +78,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 return;
             }
 
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             foreach ((Address? address, AccessList.StorageKeysEnumerable storageKeys) in item)
             {
                 // {} brackets applied to show the content structure
@@ -103,11 +103,12 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             }
         }
 
-        public override int PopulateLength(AccessList? accessList, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(AccessList? accessList, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (accessList is null)
             {
-                return 1;
+                lengths.Add(1);
+                return;
             }
 
             int contentLength = 0;
@@ -117,8 +118,8 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 contentLength += Rlp.LengthOfSequence(Rlp.LengthOfSequence(indexesContentLength) + Rlp.LengthOfAddressRlp);
             }
 
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+            using LengthListWriter sequence = lengths.BeginContainer();
+            sequence.Add(contentLength);
         }
 
         /// <summary>

@@ -15,7 +15,7 @@ public abstract class RlpHashEqualityBase
     private Hash256 CalculateHash()
     {
         scoped KeccakRlpWriter writer = new();
-        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        LengthList lengths = new(stackalloc int[LengthList.DefaultStackallocLength]);
         try
         {
             Encode(ref writer, ref lengths);
@@ -26,7 +26,7 @@ public abstract class RlpHashEqualityBase
         }
         return writer.GetHash();
     }
-    protected abstract void Encode(ref KeccakRlpWriter writer, ref LengthStack lengths);
+    protected abstract void Encode(ref KeccakRlpWriter writer, ref LengthList lengths);
 
     public override bool Equals(object? obj) =>
                 obj is RlpHashEqualityBase other && Hash == other.Hash;

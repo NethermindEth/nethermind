@@ -17,12 +17,12 @@ namespace Nethermind.Serialization.Rlp;
 /// </remarks>
 public sealed partial class ReceiptMessageDecoder
 {
-    partial void EncodeInOnePass<TWriter>(ref TWriter writer, TxReceipt item, ref LengthStack lengths, RlpBehaviors rlpBehaviors, ref bool encoded)
+    partial void EncodeInOnePass<TWriter>(ref TWriter writer, TxReceipt item, ref LengthList lengths, RlpBehaviors rlpBehaviors, ref bool encoded)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         if (typeof(TWriter) != typeof(RlpWriter) || !IsOnePass(item, rlpBehaviors)) return;
 
-        int contentLength = lengths.Pop();
+        int contentLength = lengths.Read();
         int length = (item.TxType == TxType.Legacy ? 0 : 1) + Rlp.LengthOfSequence(contentLength);
         ref byte destination = ref MemoryMarshal.GetReference(Unsafe.As<TWriter, RlpWriter>(ref writer).Reserve(length));
 
@@ -31,7 +31,7 @@ public sealed partial class ReceiptMessageDecoder
         destination = ref WriteStatus(ref destination, item.StatusCode);
         destination = ref WriteUInt64(ref destination, item.GasUsedTotal);
         destination = ref WriteBloom(ref destination, GetBloom(item, rlpBehaviors));
-        destination = ref WriteSequencePrefix(ref destination, lengths.Pop());
+        destination = ref WriteSequencePrefix(ref destination, lengths.Read());
         foreach (LogEntry log in item.Logs!)
             destination = ref WriteLog(ref destination, log);
 

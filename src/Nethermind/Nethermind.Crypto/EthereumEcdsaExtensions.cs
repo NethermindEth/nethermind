@@ -169,11 +169,11 @@ public static class EthereumEcdsaExtensions
 
     private static ValueHash256 CalculateSigningHash(Transaction tx, bool isEip155Enabled, ulong chainId)
     {
-        LengthStack lengths = new(stackalloc int[8]);
+        LengthList lengths = new(stackalloc int[8]);
         scoped KeccakRlpWriter writer = new();
         try
         {
-            _txDecoder.PopulateTxLength(tx, ref lengths, RlpBehaviors.SkipTypedWrapping, true, isEip155Enabled, chainId);
+            _txDecoder.PopulateTxLength(tx, lengths.BeginRootContainer(), RlpBehaviors.SkipTypedWrapping, true, isEip155Enabled, chainId);
             _txDecoder.EncodeTx(ref writer, tx, ref lengths, RlpBehaviors.SkipTypedWrapping, true, isEip155Enabled, chainId);
             return writer.GetValueHash();
         }

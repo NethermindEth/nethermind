@@ -12,7 +12,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
     public class GetStorageRangesMessageSerializer : SnapSerializerBase<GetStorageRangeMessage>
     {
-        public override void Serialize(IByteBuffer byteBuffer, GetStorageRangeMessage message, ref LengthStack lengths)
+        public override void Serialize(IByteBuffer byteBuffer, GetStorageRangeMessage message, ref LengthList lengths)
         {
             ByteBufferRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, ref lengths);
 
@@ -48,7 +48,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             return message;
         }
 
-        public override int PopulateLength(GetStorageRangeMessage message, ref LengthStack lengths)
+        public override void PopulateLength(GetStorageRangeMessage message, in LengthListWriter lengths)
         {
             Hash256 rootHash = message.StorageRange.RootHash
                 ?? throw new InvalidOperationException("A storage range request requires a root hash.");
@@ -61,8 +61,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             contentLength += Rlp.LengthOf(message.StorageRange.LimitHash);
             contentLength += Rlp.LengthOf(message.ResponseBytes);
 
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+            using LengthListWriter sequence = lengths.BeginContainer();
+            sequence.Add(contentLength);
         }
     }
 }

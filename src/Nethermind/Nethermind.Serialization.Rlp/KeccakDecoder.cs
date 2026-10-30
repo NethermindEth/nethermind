@@ -14,14 +14,14 @@ namespace Nethermind.Serialization.Rlp
 
         protected override Hash256? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccakOrNull();
 
-        public override int PopulateLength(Hash256? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOf(item);
+        public override void PopulateLength(Hash256? item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => lengths.Add(Rlp.LengthOf(item));
 
-        public override void Encode<TWriter>(ref TWriter writer, Hash256? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, Hash256? item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             => writer.Encode(item);
 
         public override Rlp Encode(Hash256? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.Encode(item);
 
-        public override CappedArray<byte> EncodeToCappedArray(Hash256? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null, int stackSize = LengthStack.DefaultStackallocLength)
+        public override CappedArray<byte> EncodeToCappedArray(Hash256? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null, int stackSize = LengthList.DefaultStackallocLength)
         {
             int size = Rlp.LengthOf(item);
             CappedArray<byte> buffer = bufferPool.SafeRent(size);

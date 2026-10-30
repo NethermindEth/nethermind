@@ -12,10 +12,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public void Serialize(IByteBuffer byteBuffer, NewBlockMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-        public void Serialize(IByteBuffer byteBuffer, NewBlockMessage message, ref LengthStack lengths)
+        public void Serialize(IByteBuffer byteBuffer, NewBlockMessage message, ref LengthList lengths)
         {
             ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             _blockDecoder.Encode(ref writer, message.Block, ref lengths);
             writer.Encode(message.TotalDifficulty);
         }
@@ -23,11 +23,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public NewBlockMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        public int PopulateLength(NewBlockMessage message, ref LengthStack lengths)
+        public void PopulateLength(NewBlockMessage message, in LengthListWriter lengths)
         {
-            int contentLength = _blockDecoder.PopulateLength(message.Block, ref lengths) + Rlp.LengthOf(message.TotalDifficulty);
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+            using LengthListWriter sequence = lengths.BeginContainer();
+            _blockDecoder.PopulateLength(message.Block, sequence);
+            sequence.Add(Rlp.LengthOf(message.TotalDifficulty));
         }
 
         private NewBlockMessage Deserialize(ref RlpReader ctx)

@@ -250,9 +250,9 @@ public class FrameTxDecoderTests
         TxFrameSignature[] entries = [new(TxFrameSignature.SchemeSecp256k1, null, default, new byte[signatureLength])];
         byte[] buffer = new byte[16];
         scoped RlpWriter writer = new(buffer);
-        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        LengthList lengths = new(stackalloc int[LengthList.DefaultStackallocLength]);
 
-        TxFrameSignatureDecoder.Instance.PopulateArrayLength(entries, ref lengths, elideCanonicalSignatureBytes: true);
+        TxFrameSignatureDecoder.Instance.PopulateArrayLength(entries, lengths.BeginRootContainer(), elideCanonicalSignatureBytes: true);
         TxFrameSignatureDecoder.Instance.EncodeArray(ref writer, entries, ref lengths, elideCanonicalSignatureBytes: true);
 
         Assert.That(buffer.AsSpan(0, writer.Position).ToArray(), Is.EqualTo(Bytes.FromHexString(expectedHex)));

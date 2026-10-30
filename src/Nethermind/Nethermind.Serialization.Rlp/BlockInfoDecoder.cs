@@ -13,7 +13,7 @@ namespace Nethermind.Serialization.Rlp
     {
         public static BlockInfoDecoder Instance { get; } = new();
 
-        public override void Encode<TWriter>(ref TWriter writer, BlockInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, BlockInfo? item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -22,7 +22,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             bool hasMetadata = item.Metadata != BlockMetadata.None;
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             writer.Encode(item.BlockHash);
             writer.Encode(item.WasProcessed);
             writer.Encode(item.TotalDifficulty);
@@ -32,16 +32,16 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public override int PopulateLength(BlockInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(BlockInfo? item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                return Rlp.OfEmptyList.Length;
+                lengths.Add(Rlp.OfEmptyList.Length);
+                return;
             }
 
-            int contentLength = GetContentLength(item, rlpBehaviors);
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+            using LengthListWriter sequence = lengths.BeginContainer();
+            sequence.Add(GetContentLength(item, rlpBehaviors));
         }
 
         private static int GetContentLength(BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

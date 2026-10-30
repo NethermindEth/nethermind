@@ -14,7 +14,7 @@ internal class SyncInfoMsgSerializer : IZeroInnerMessageSerializer<SyncInfoMsg>
 
     public void Serialize(IByteBuffer byteBuffer, SyncInfoMsg message) => this.SerializeWithLengths(byteBuffer, message);
 
-    public void Serialize(IByteBuffer byteBuffer, SyncInfoMsg message, ref LengthStack lengths)
+    public void Serialize(IByteBuffer byteBuffer, SyncInfoMsg message, ref LengthList lengths)
     {
         ByteBufferRlpWriter writer = new(byteBuffer);
         _syncInfoDecoder.Encode(ref writer, message.SyncInfo, ref lengths);
@@ -28,6 +28,6 @@ internal class SyncInfoMsgSerializer : IZeroInnerMessageSerializer<SyncInfoMsg>
         return new() { SyncInfo = syncInfo };
     }
 
-    public int PopulateLength(SyncInfoMsg message, ref LengthStack lengths) =>
-        _syncInfoDecoder.PopulateLength(message.SyncInfo, ref lengths);
+    public void PopulateLength(SyncInfoMsg message, in LengthListWriter lengths) =>
+        _syncInfoDecoder.PopulateLength(message.SyncInfo, lengths);
 }

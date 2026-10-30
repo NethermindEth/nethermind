@@ -14,14 +14,14 @@ public static class RlpDecoderArrayPoolExtensions
     /// <summary>
     /// Encodes <paramref name="item"/> into a new disposable pooled byte span.
     /// </summary>
-    public static ArrayPoolSpan<byte> EncodeToArrayPoolSpan<T>(this IRlpDecoder<T> decoder, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSize = LengthStack.DefaultStackallocLength)
+    public static ArrayPoolSpan<byte> EncodeToArrayPoolSpan<T>(this IRlpDecoder<T> decoder, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSize = LengthList.DefaultStackallocLength)
     {
         if (item is null)
         {
             return EmptyListSpan();
         }
 
-        LengthStack lengths = new(stackalloc int[Math.Min(stackSize, LengthStack.MaxStackallocLength)]);
+        LengthList lengths = new(stackalloc int[Math.Min(stackSize, LengthList.MaxStackallocLength)]);
         try
         {
             ArrayPoolSpan<byte> buffer = new(decoder.PopulateLength(item, ref lengths, rlpBehaviors));
@@ -47,7 +47,7 @@ public static class RlpDecoderArrayPoolExtensions
     /// </summary>
     public static ArrayPoolSpan<byte> EncodeToArrayPoolSpan<T>(this IRlpDecoder<T> decoder, scoped ReadOnlySpan<T?> items, RlpBehaviors behaviors = RlpBehaviors.None, int stackSizePerItem = 2)
     {
-        LengthStack lengths = new(stackalloc int[Math.Min(items.Length * stackSizePerItem, LengthStack.MaxStackallocLength)]);
+        LengthList lengths = new(stackalloc int[Math.Min(items.Length * stackSizePerItem, LengthList.MaxStackallocLength)]);
         try
         {
             ArrayPoolSpan<byte> buffer = new(decoder.PopulateSequenceLength(items, ref lengths, behaviors));
@@ -89,9 +89,9 @@ public static class RlpDecoderArrayPoolExtensions
     /// the same bytes as <see cref="Rlp.Encode{T}"/> without the intermediate allocation. Ownership transfers
     /// to the caller, which MUST dispose the result.
     /// </summary>
-    public static ArrayPoolList<byte> EncodeToArrayPoolList<T>(this IRlpDecoder<T> decoder, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSize = LengthStack.DefaultStackallocLength)
+    public static ArrayPoolList<byte> EncodeToArrayPoolList<T>(this IRlpDecoder<T> decoder, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSize = LengthList.DefaultStackallocLength)
     {
-        LengthStack lengths = new(stackalloc int[Math.Min(stackSize, LengthStack.MaxStackallocLength)]);
+        LengthList lengths = new(stackalloc int[Math.Min(stackSize, LengthList.MaxStackallocLength)]);
         try
         {
             int length = decoder.PopulateLength(item, ref lengths, rlpBehaviors);

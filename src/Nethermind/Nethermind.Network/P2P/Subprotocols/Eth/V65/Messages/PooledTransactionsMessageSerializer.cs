@@ -19,9 +19,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
         private static PooledTransactionsMessage Deserialize(ref RlpReader ctx) =>
             new(TransactionsMessageSerializer.DeserializeTxs(ref ctx));
 
-        public int PopulateLength(PooledTransactionsMessage message, ref LengthStack lengths) => _txsMessageDeserializer.PopulateLength(message, ref lengths);
+        public void PopulateLength(PooledTransactionsMessage message, in LengthListWriter lengths) => _txsMessageDeserializer.PopulateLength(message, lengths);
 
-        public void Serialize(IByteBuffer byteBuffer, PooledTransactionsMessage message, ref LengthStack lengths) =>
+        public void Serialize(IByteBuffer byteBuffer, PooledTransactionsMessage message, ref LengthList lengths) =>
             _txsMessageDeserializer.Serialize(byteBuffer, message, ref lengths);
     }
 }

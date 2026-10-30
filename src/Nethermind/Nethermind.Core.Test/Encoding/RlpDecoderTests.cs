@@ -295,13 +295,13 @@ public class RlpDecoderTests
 
     private sealed class NonNullableItemDecoder : RlpDecoder<NonNullableItem>
     {
-        public override int PopulateLength(NonNullableItem? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(NonNullableItem? item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ArgumentNullException.ThrowIfNull(item);
-            return Rlp.OfEmptyByteArray.Length;
+            lengths.Add(Rlp.OfEmptyByteArray.Length);
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, NonNullableItem item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, NonNullableItem item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ArgumentNullException.ThrowIfNull(item);
             writer.Encode(Rlp.OfEmptyByteArray);

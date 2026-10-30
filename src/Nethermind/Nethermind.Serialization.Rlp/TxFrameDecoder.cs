@@ -49,9 +49,9 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
         return new TxFrame((FrameMode)mode, (FrameFlags)flags, target, executionGasLimit, stateGasLimit, value, data);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, TxFrame item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, TxFrame item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
         writer.Encode((ulong)item.Mode);
         writer.Encode((ulong)item.Flags);
         writer.Encode(item.Target);
@@ -62,11 +62,10 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
         writer.Encode(item.Data);
     }
 
-    public override int PopulateLength(TxFrame item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(TxFrame item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int contentLength = GetContentLength(item);
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(GetContentLength(item));
     }
 
     private static int GetContentLength(TxFrame item) =>

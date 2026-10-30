@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             return message;
         }
 
-        public override void Serialize(IByteBuffer byteBuffer, GetAccountRangeMessage message, ref LengthStack lengths)
+        public override void Serialize(IByteBuffer byteBuffer, GetAccountRangeMessage message, ref LengthList lengths)
         {
             ByteBufferRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, ref lengths);
 
@@ -34,7 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             writer.Encode(message.ResponseBytes == 0 ? 1000_000 : message.ResponseBytes);
         }
 
-        public override int PopulateLength(GetAccountRangeMessage message, ref LengthStack lengths)
+        public override void PopulateLength(GetAccountRangeMessage message, in LengthListWriter lengths)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
             contentLength += Rlp.LengthOf(message.AccountRange.RootHash);
@@ -42,8 +42,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             contentLength += Rlp.LengthOf(message.AccountRange.LimitHash ?? Keccak.MaxValue);
             contentLength += Rlp.LengthOf(message.ResponseBytes == 0 ? 1000_000 : message.ResponseBytes);
 
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+            using LengthListWriter sequence = lengths.BeginContainer();
+            sequence.Add(contentLength);
         }
     }
 }

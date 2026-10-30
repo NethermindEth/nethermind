@@ -153,7 +153,7 @@ namespace Nethermind.Serialization.Rlp
         // Refstruct decode does not generate bloom
         public bool CanDecodeBloom => false;
 
-        public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -164,7 +164,7 @@ namespace Nethermind.Serialization.Rlp
             bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
             // Note: Any byte saved here is about 3GB on mainnet.
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             if (isEip658receipts)
             {
                 writer.Encode(item.StatusCode);
@@ -190,36 +190,33 @@ namespace Nethermind.Serialization.Rlp
         private static LogEntry[] GetLogs(TxReceipt item)
             => item.Logs ?? throw new RlpException("Receipt logs are null.");
 
-        public override int PopulateLength(TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(TxReceipt? item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                return Rlp.OfEmptyList.Length;
+                lengths.Add(Rlp.OfEmptyList.Length);
+                return;
             }
 
-            int contentLength = 0;
-            if (item.TxType == TxType.FrameTx)
-            {
-                contentLength += FrameReceiptRlp.PopulateStoredExtensionLength(item, CompactLogEntryDecoder.Instance, ref lengths);
-            }
-
-            contentLength += CompactLogEntryDecoder.Instance.PopulateSequenceLength(GetLogs(item), ref lengths);
-
+            using LengthListWriter sequence = lengths.BeginContainer();
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
             if (isEip658Receipts)
             {
-                contentLength += Rlp.LengthOf(item.StatusCode);
+                sequence.Add(Rlp.LengthOf(item.StatusCode));
             }
             else
             {
-                contentLength += Rlp.LengthOf(item.PostTransactionState);
+                sequence.Add(Rlp.LengthOf(item.PostTransactionState));
             }
 
-            contentLength += Rlp.LengthOf(item.Sender);
-            contentLength += Rlp.LengthOf(item.GasUsedTotal);
+            sequence.Add(Rlp.LengthOf(item.Sender) + Rlp.LengthOf(item.GasUsedTotal));
 
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+            CompactLogEntryDecoder.Instance.PopulateSequenceLength(GetLogs(item), sequence);
+
+            if (item.TxType == TxType.FrameTx)
+            {
+                FrameReceiptRlp.PopulateStoredExtensionLength(item, CompactLogEntryDecoder.Instance, sequence);
+            }
         }
     }
 }

@@ -53,8 +53,8 @@ internal static class IndexedTrieRoot
     {
         LeafBatching Batching { get; }
         ReadOnlySpan<byte> GetEncodedValue(T item);
-        int PopulateLength(T item, ref LengthStack lengths);
-        void Encode<TWriter>(ref TWriter writer, T item, ref LengthStack lengths) where TWriter : struct, IRlpWriteBackend, allows ref struct;
+        int PopulateLength(T item, ref LengthList lengths);
+        void Encode<TWriter>(ref TWriter writer, T item, ref LengthList lengths) where TWriter : struct, IRlpWriteBackend, allows ref struct;
     }
 
     /// <summary>Holds eight padded rate blocks, hashes, indices, lengths, and an encoded path.</summary>
@@ -310,7 +310,7 @@ internal static class IndexedTrieRoot
             Span<byte> hashes = storage.Slice(hashesOffset, MaxHashBatchSize * Keccak.Size);
             Span<int> positions = MemoryMarshal.Cast<byte, int>(storage.Slice(positionsOffset, indicesLength));
             Span<int> lengths = MemoryMarshal.Cast<byte, int>(storage.Slice(positionsOffset + indicesLength, indicesLength));
-            Span<int> lengthBuffer = stackalloc int[LengthStack.DefaultStackallocLength];
+            Span<int> lengthBuffer = stackalloc int[LengthList.DefaultStackallocLength];
             for (int first = 0; first < end - start; first++)
             {
                 int paddedLength = paddedLengths[first];
@@ -370,7 +370,7 @@ internal static class IndexedTrieRoot
             Span<int> positions = MemoryMarshal.Cast<byte, int>(storage.Slice(blocksLength + hashesLength, indicesLength));
             Span<int> lengths = MemoryMarshal.Cast<byte, int>(storage.Slice(blocksLength + hashesLength + indicesLength, indicesLength));
             Span<byte> path = storage.Slice(blocksLength + hashesLength + 2 * indicesLength, 6);
-            Span<int> lengthBuffer = stackalloc int[LengthStack.DefaultStackallocLength];
+            Span<int> lengthBuffer = stackalloc int[LengthList.DefaultStackallocLength];
             int pending = 0;
             for (int position = start; position < end; position++)
             {
@@ -533,7 +533,7 @@ internal static class IndexedTrieRoot
         {
             T item = _items[GetIndex(position)];
             Span<byte> path = stackalloc byte[6];
-            LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+            LengthList lengths = new(stackalloc int[LengthList.DefaultStackallocLength]);
             int pathLength = EncodePath(key, depth, key.Length - depth, isLeaf: true, path);
             ReadOnlySpan<byte> encodedValue = encoder.GetEncodedValue(item);
             int valueLength = encodedValue.IsEmpty ? encoder.PopulateLength(item, ref lengths) : encodedValue.Length;
@@ -585,7 +585,7 @@ internal static class IndexedTrieRoot
         /// <param name="lengthBuffer">Stack memory from the frame that created <paramref name="writer"/>.</param>
         private void EncodeValue(ref RlpWriter writer, T item, Span<int> lengthBuffer)
         {
-            LengthStack lengths = new(lengthBuffer);
+            LengthList lengths = new(lengthBuffer);
             try
             {
                 encoder.PopulateLength(item, ref lengths);
@@ -599,7 +599,7 @@ internal static class IndexedTrieRoot
 
         private int MeasureLength(T item)
         {
-            LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+            LengthList lengths = new(stackalloc int[LengthList.DefaultStackallocLength]);
             try
             {
                 return encoder.PopulateLength(item, ref lengths);

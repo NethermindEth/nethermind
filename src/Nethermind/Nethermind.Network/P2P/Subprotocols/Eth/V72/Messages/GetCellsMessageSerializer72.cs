@@ -17,10 +17,10 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
 
     public void Serialize(IByteBuffer byteBuffer, GetCellsMessage72 message) => this.SerializeWithLengths(byteBuffer, message);
 
-    public void Serialize(IByteBuffer byteBuffer, GetCellsMessage72 message, ref LengthStack lengths)
+    public void Serialize(IByteBuffer byteBuffer, GetCellsMessage72 message, ref LengthList lengths)
     {
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
         writer.Encode(message.RequestId);
 
         int hashesLength = GetHashesContentLength(message.Hashes);
@@ -64,13 +64,12 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
         return new GetCellsMessage72(requestId, hashes, cellMask, hashCount);
     }
 
-    public int PopulateLength(GetCellsMessage72 message, ref LengthStack lengths)
+    public void PopulateLength(GetCellsMessage72 message, in LengthListWriter lengths)
     {
-        int contentLength = Rlp.LengthOf(message.RequestId)
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(Rlp.LengthOf(message.RequestId)
             + Rlp.LengthOfSequence(GetHashesContentLength(message.Hashes))
-            + Rlp.LengthOf(message.CellMask);
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+            + Rlp.LengthOf(message.CellMask));
     }
 
     private static int GetHashesContentLength(ValueHash256[] hashes)

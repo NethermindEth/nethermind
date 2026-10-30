@@ -11,10 +11,10 @@ public class BlockRangeUpdateMessageSerializer :
 {
     public void Serialize(IByteBuffer byteBuffer, BlockRangeUpdateMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-    public void Serialize(IByteBuffer byteBuffer, BlockRangeUpdateMessage message, ref LengthStack lengths)
+    public void Serialize(IByteBuffer byteBuffer, BlockRangeUpdateMessage message, ref LengthList lengths)
     {
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
 
         writer.Encode(message.EarliestBlock);
         writer.Encode(message.LatestBlock);
@@ -36,14 +36,12 @@ public class BlockRangeUpdateMessageSerializer :
         };
     }
 
-    public int PopulateLength(BlockRangeUpdateMessage message, ref LengthStack lengths)
+    public void PopulateLength(BlockRangeUpdateMessage message, in LengthListWriter lengths)
     {
-        int contentLength =
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(
             Rlp.LengthOf(message.EarliestBlock) +
             Rlp.LengthOf(message.LatestBlock) +
-            Rlp.LengthOf(message.LatestBlockHash);
-
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+            Rlp.LengthOf(message.LatestBlockHash));
     }
 }

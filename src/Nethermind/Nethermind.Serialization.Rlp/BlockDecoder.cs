@@ -18,29 +18,31 @@ namespace Nethermind.Serialization.Rlp
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockDecoder))]
         public BlockDecoder() : this(new HeaderDecoder()) { }
 
-        public override int PopulateLength(Block? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(Block? item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                return Rlp.OfEmptyList.Length;
+                lengths.Add(Rlp.OfEmptyList.Length);
+                return;
             }
 
-            int contentLength = item.Withdrawals is { } withdrawals ? _withdrawalDecoder.PopulateSequenceLength(withdrawals, ref lengths) : 0;
-            contentLength += _headerDecoder.PopulateSequenceLength(item.Uncles, ref lengths);
+            using LengthListWriter sequence = lengths.BeginContainer();
+            _headerDecoder.PopulateLength(item.Header, sequence, rlpBehaviors);
             if (item.EncodedTransactions is { } encodedTxs)
             {
-                int txsLength = GetPreEncodedTxLength(item.Transactions, encodedTxs);
-                lengths.Push(txsLength);
-                contentLength += Rlp.LengthOfSequence(txsLength);
+                using LengthListWriter txs = sequence.BeginContainer();
+                txs.Add(GetPreEncodedTxLength(item.Transactions, encodedTxs));
             }
             else
             {
-                contentLength += TxDecoder.Instance.PopulateSequenceLength(item.Transactions, ref lengths);
+                TxDecoder.Instance.PopulateSequenceLength(item.Transactions, sequence);
             }
 
-            contentLength += _headerDecoder.PopulateLength(item.Header, ref lengths, rlpBehaviors);
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+            _headerDecoder.PopulateSequenceLength(item.Uncles, sequence);
+            if (item.Withdrawals is { } withdrawals)
+            {
+                _withdrawalDecoder.PopulateSequenceLength(withdrawals, sequence);
+            }
         }
 
         private static int GetPreEncodedTxLength(Transaction[] txs, byte[][] encodedTxs)
@@ -75,10 +77,10 @@ namespace Nethermind.Serialization.Rlp
 
         public ArrayPoolSpan<byte> EncodeToArrayPoolSpan(Block block, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            LengthStack lengths = new(stackalloc int[LengthStack.MaxStackallocLength]);
+            LengthList lengths = new(stackalloc int[LengthList.MaxStackallocLength]);
             try
             {
-                ArrayPoolSpan<byte> buffer = new(PopulateLength(block, ref lengths, rlpBehaviors));
+                ArrayPoolSpan<byte> buffer = new(this.PopulateLength(block, ref lengths, rlpBehaviors));
                 try
                 {
                     RlpEncoderExtensions.EncodeTo(this, block, ref lengths, buffer, rlpBehaviors);
@@ -96,7 +98,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, Block? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, Block? item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -104,12 +106,12 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             _headerDecoder.Encode(ref writer, item.Header, ref lengths, rlpBehaviors);
 
             if (item.EncodedTransactions is { } encodedTxs)
             {
-                writer.StartSequence(lengths.Pop());
+                writer.StartSequence(lengths.Read());
                 for (int i = 0; i < encodedTxs.Length; i++)
                 {
                     TxDecoder.WriteWrappedFormat(ref writer, item.Transactions[i].Type, encodedTxs[i]);

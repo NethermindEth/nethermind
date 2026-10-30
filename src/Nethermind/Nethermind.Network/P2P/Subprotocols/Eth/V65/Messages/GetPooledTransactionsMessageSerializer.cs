@@ -20,18 +20,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 
         public void Serialize(IByteBuffer byteBuffer, T message) => this.SerializeWithLengths(byteBuffer, message);
 
-        public void Serialize(IByteBuffer byteBuffer, T message, ref LengthStack lengths)
+        public void Serialize(IByteBuffer byteBuffer, T message, ref LengthList lengths)
         {
             ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan()) writer.Encode(in hash);
         }
 
-        public int PopulateLength(T message, ref LengthStack lengths)
+        public void PopulateLength(T message, in LengthListWriter lengths)
         {
-            int contentLength = checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+            using LengthListWriter sequence = lengths.BeginContainer();
+            sequence.Add(checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp));
         }
 
         public T Deserialize(IByteBuffer byteBuffer)

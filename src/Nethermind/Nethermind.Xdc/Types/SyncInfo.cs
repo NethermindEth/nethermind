@@ -16,6 +16,6 @@ public class SyncInfo(QuorumCertificate highestQuorumCert, TimeoutCertificate hi
     /// <summary>Whether this is our own announcement rather than one relayed from a peer.</summary>
     public bool IsMine { get; } = isMine;
 
-    protected override void Encode(ref KeccakRlpWriter writer, ref LengthStack lengths) =>
+    protected override void Encode(ref KeccakRlpWriter writer, ref LengthList lengths) =>
         _decoder.PopulateAndEncode(ref writer, this, ref lengths);
 }

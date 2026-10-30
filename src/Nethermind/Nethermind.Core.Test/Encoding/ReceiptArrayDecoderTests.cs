@@ -111,7 +111,7 @@ namespace Nethermind.Core.Test.Encoding
             int encodedLength = decoder.GetEncodedLength(receipts, RlpBehaviors.Storage);
             byte[] encoded = new byte[encodedLength];
             scoped RlpWriter writer = new(encoded);
-            LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+            LengthList lengths = new(stackalloc int[LengthList.DefaultStackallocLength]);
 
             decoder.PopulateAndEncode(ref writer, receipts, ref lengths, RlpBehaviors.Storage);
             lengths.Dispose();

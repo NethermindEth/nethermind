@@ -16,10 +16,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-        public int PopulateLength(BlockBodiesMessage message, ref LengthStack lengths) =>
-            _blockBodyDecoder.PopulateSequenceLength(message.Bodies.Bodies, ref lengths);
+        public void PopulateLength(BlockBodiesMessage message, in LengthListWriter lengths) =>
+            _blockBodyDecoder.PopulateSequenceLength(message.Bodies.Bodies, lengths);
 
-        public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message, ref LengthStack lengths)
+        public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message, ref LengthList lengths)
         {
             ByteBufferRlpWriter writer = new(byteBuffer);
             _blockBodyDecoder.EncodeSequence(ref writer, message.Bodies.Bodies, ref lengths);

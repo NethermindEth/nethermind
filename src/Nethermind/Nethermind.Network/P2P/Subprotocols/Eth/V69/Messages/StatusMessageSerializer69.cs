@@ -15,10 +15,10 @@ public class StatusMessageSerializer69 :
 
     public void Serialize(IByteBuffer byteBuffer, StatusMessage69 message) => this.SerializeWithLengths(byteBuffer, message);
 
-    public void Serialize(IByteBuffer byteBuffer, StatusMessage69 message, ref LengthStack lengths)
+    public void Serialize(IByteBuffer byteBuffer, StatusMessage69 message, ref LengthList lengths)
     {
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
 
         writer.Encode(message.ProtocolVersion);
         writer.Encode(message.NetworkId);
@@ -29,19 +29,17 @@ public class StatusMessageSerializer69 :
         writer.Encode(message.LatestBlockHash);
     }
 
-    public int PopulateLength(StatusMessage69 message, ref LengthStack lengths)
+    public void PopulateLength(StatusMessage69 message, in LengthListWriter lengths)
     {
-        int contentLength =
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(
             Rlp.LengthOf(message.ProtocolVersion) +
             Rlp.LengthOf(message.NetworkId) +
             Rlp.LengthOf(message.GenesisHash) +
             LengthOfForkId(message.ForkId) +
             Rlp.LengthOf(message.EarliestBlock) +
             Rlp.LengthOf(message.LatestBlock) +
-            Rlp.LengthOf(message.LatestBlockHash);
-
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+            Rlp.LengthOf(message.LatestBlockHash));
     }
 
     public StatusMessage69 Deserialize(IByteBuffer byteBuffer) =>

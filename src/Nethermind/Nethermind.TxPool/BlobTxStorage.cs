@@ -572,14 +572,17 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     private static void SaveProcessedTransactions(IWriteBatch batch, Span<byte> key, ReadOnlySpan<Transaction> transactions)
     {
         const RlpBehaviors behaviors = RlpBehaviors.InMempoolForm | RlpBehaviors.Storage;
-        LengthStack lengths = new(stackalloc int[Math.Min(transactions.Length * 4, LengthStack.MaxStackallocLength)]);
+        LengthList lengths = new(stackalloc int[Math.Min(transactions.Length * 4, LengthList.MaxStackallocLength)]);
         scoped RlpWriter writer;
         try
         {
+            LengthListWriter root = lengths.BeginRootContainer();
             int maxLength = 0;
-            for (int i = transactions.Length - 1; i >= 0; i--)
+            foreach (Transaction transaction in transactions)
             {
-                maxLength = Math.Max(maxLength, _txDecoder.PopulateLength(transactions[i], ref lengths, behaviors));
+                int populatedLength = root.Length;
+                _txDecoder.PopulateLength(transaction, root, behaviors);
+                maxLength = Math.Max(maxLength, root.Length - populatedLength);
             }
 
             using ArrayPoolSpan<byte> rented = new(maxLength);

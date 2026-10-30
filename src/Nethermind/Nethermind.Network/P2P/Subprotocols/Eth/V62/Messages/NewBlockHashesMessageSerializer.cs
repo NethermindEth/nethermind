@@ -14,10 +14,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-        public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message, ref LengthStack lengths)
+        public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message, ref LengthList lengths)
         {
             ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             for (int i = 0; i < message.BlockHashes.Length; i++)
             {
                 int miniContentLength = Rlp.LengthOf(message.BlockHashes[i].Item1);
@@ -31,18 +31,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public NewBlockHashesMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        public int PopulateLength(NewBlockHashesMessage message, ref LengthStack lengths)
+        public void PopulateLength(NewBlockHashesMessage message, in LengthListWriter lengths)
         {
-            int contentLength = 0;
+            using LengthListWriter sequence = lengths.BeginContainer();
             for (int i = 0; i < message.BlockHashes.Length; i++)
             {
                 int miniContentLength = Rlp.LengthOf(message.BlockHashes[i].Item1);
                 miniContentLength += Rlp.LengthOf(message.BlockHashes[i].Item2);
-                contentLength += Rlp.LengthOfSequence(miniContentLength);
+                sequence.Add(Rlp.LengthOfSequence(miniContentLength));
             }
-
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
         }
 
         private static NewBlockHashesMessage Deserialize(ref RlpReader ctx)

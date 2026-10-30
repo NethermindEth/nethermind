@@ -77,10 +77,10 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
         }
     }
 
-    public abstract void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public abstract void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
         where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
-    public abstract int PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0);
+    public abstract void PopulateLength(Transaction transaction, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0);
 
     /// <summary>Decodes the <c>[nonce, gas_price, gas_limit, to, value, data]</c> fields, with <c>max_fee_per_gas</c>
     /// after the gas price when <paramref name="hasMaxFeePerGas"/> is set.</summary>
@@ -156,18 +156,16 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
         transaction.Signature = SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
     }
 
-    /// <summary>Pushes the content length of a typed transaction's payload sequence and returns the total encoded length.</summary>
-    protected static int PushTypedTransactionLength(int contentLength, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
-    {
-        lengths.Push(contentLength);
-        return GetTypedTransactionLength(Rlp.LengthOfSequence(contentLength), rlpBehaviors);
-    }
+    /// <summary>Adds the length of a typed transaction to <paramref name="lengths"/>, in place of disposing its <paramref name="payload"/>.</summary>
+    /// <param name="payload">The container begun under <paramref name="lengths"/> for the payload sequence.</param>
+    protected static void EndTypedTransaction(in LengthListWriter lengths, in LengthListWriter payload, RlpBehaviors rlpBehaviors) =>
+        lengths.Add(GetTypedTransactionLength(Rlp.LengthOfSequence(payload.Length), rlpBehaviors));
 
-    /// <summary>Pops the content length <see cref="PushTypedTransactionLength"/> pushed and writes the EIP-2718 prefix and the payload sequence prefix.</summary>
-    protected static void StartTypedTransaction<TWriter>(ref TWriter writer, TxType txType, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
+    /// <summary>Reads the payload content length <see cref="EndTypedTransaction"/> measured and writes the EIP-2718 prefix and the payload sequence prefix.</summary>
+    protected static void StartTypedTransaction<TWriter>(ref TWriter writer, TxType txType, ref LengthList lengths, RlpBehaviors rlpBehaviors)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        int contentLength = lengths.Pop();
+        int contentLength = lengths.Read();
         StartTypedTransaction(ref writer, txType, Rlp.LengthOfSequence(contentLength), rlpBehaviors);
         writer.StartSequence(contentLength);
     }

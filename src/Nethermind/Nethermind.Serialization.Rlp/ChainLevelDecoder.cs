@@ -12,7 +12,7 @@ namespace Nethermind.Serialization.Rlp
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ChainLevelDecoder))]
     public sealed class ChainLevelDecoder() : RlpDecoder<ChainLevelInfo>
     {
-        public override void Encode<TWriter>(ref TWriter writer, ChainLevelInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, ChainLevelInfo? item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -20,7 +20,7 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             writer.Encode(item.HasBlockOnMainChain);
             BlockInfoDecoder.Instance.EncodeSequence(ref writer, item.BlockInfos, ref lengths);
         }
@@ -55,11 +55,12 @@ namespace Nethermind.Serialization.Rlp
             return info;
         }
 
-        public override int PopulateLength(ChainLevelInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(ChainLevelInfo? item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                return Rlp.OfEmptyList.Length;
+                lengths.Add(Rlp.OfEmptyList.Length);
+                return;
             }
 
             foreach (BlockInfo? blockInfo in item.BlockInfos)
@@ -70,10 +71,9 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            int contentLength = Rlp.LengthOf(item.HasBlockOnMainChain)
-                + BlockInfoDecoder.Instance.PopulateSequenceLength(item.BlockInfos, ref lengths);
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+            using LengthListWriter sequence = lengths.BeginContainer();
+            sequence.Add(Rlp.LengthOf(item.HasBlockOnMainChain));
+            BlockInfoDecoder.Instance.PopulateSequenceLength(item.BlockInfos, sequence);
 
             [StackTraceHidden, DoesNotReturn]
             static void ThrowHasNull()

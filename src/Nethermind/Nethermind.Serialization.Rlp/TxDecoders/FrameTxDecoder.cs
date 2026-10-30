@@ -147,15 +147,15 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
         }
     }
 
-    public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         EncodeTransaction(transaction, ref writer, ref lengths, rlpBehaviors, forSigning);
 
-    public override int PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override void PopulateLength(Transaction transaction, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
-        PopulateTransactionLength(transaction, ref lengths, rlpBehaviors, forSigning);
+        PopulateTransactionLength(transaction, lengths, rlpBehaviors, forSigning);
 
-    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning)
+    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref TWriter writer, ref LengthList lengths, RlpBehaviors rlpBehaviors, bool forSigning)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         // A sidecar-less blob carrier still serialises to the plain form that Decode refuses; see PopulateTransactionLength.
@@ -170,37 +170,42 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
         }
         else
         {
-            int wrapperContentLength = lengths.Pop();
+            int wrapperContentLength = lengths.Read();
             StartTypedTransaction(ref writer, TxType.FrameTx, Rlp.LengthOfSequence(wrapperContentLength), rlpBehaviors);
             writer.StartSequence(wrapperContentLength);
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             // Elide on forSigning like the populated payload length, or the declared length and the bytes drift.
             EncodePayload(transaction, ref writer, ref lengths, elideCanonicalSignatureBytes: forSigning);
             ShardBlobNetworkWrapperRlp.Encode(ref writer, wrapper, rlpBehaviors);
         }
     }
 
-    internal static int PopulateTransactionLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning)
+    internal static void PopulateTransactionLength(Transaction transaction, in LengthListWriter lengths, RlpBehaviors rlpBehaviors, bool forSigning)
     {
-        int payloadContentLength = PopulateContentLength(transaction, ref lengths, forSigning);
-
         // The populated length is the pool's sizing call, so it must stay total and Encode must agree with it.
         ShardBlobNetworkWrapper? wrapper = rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm)
             ? transaction.NetworkWrapper as ShardBlobNetworkWrapper
             : null;
 
+        LengthListWriter body = lengths.BeginContainer();
         if (wrapper is null)
         {
-            return PushTypedTransactionLength(payloadContentLength, ref lengths, rlpBehaviors);
+            PopulateContentLength(transaction, body, forSigning);
+        }
+        else
+        {
+            using (LengthListWriter payload = body.BeginContainer())
+            {
+                PopulateContentLength(transaction, payload, forSigning);
+            }
+
+            body.Add(ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper, rlpBehaviors));
         }
 
-        lengths.Push(payloadContentLength);
-        int wrapperContentLength = Rlp.LengthOfSequence(payloadContentLength) + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper, rlpBehaviors);
-        lengths.Push(wrapperContentLength);
-        return GetTypedTransactionLength(Rlp.LengthOfSequence(wrapperContentLength), rlpBehaviors);
+        EndTypedTransaction(lengths, body, rlpBehaviors);
     }
 
-    private static void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, bool elideCanonicalSignatureBytes)
+    private static void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, ref LengthList lengths, bool elideCanonicalSignatureBytes)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         writer.Encode(transaction.ChainId ?? 0);
@@ -255,16 +260,15 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
     private static int GetFeesContentLength(Transaction transaction) =>
         Rlp.LengthOf(transaction.MaxFee) + Rlp.LengthOf(transaction.GasPrice);
 
-    private static int PopulateContentLength(Transaction transaction, ref LengthStack lengths, bool forSigning)
+    private static void PopulateContentLength(Transaction transaction, in LengthListWriter lengths, bool forSigning)
     {
-        int contentLength = TxFrameSignatureDecoder.Instance.PopulateArrayLength(transaction.FrameSignatures, ref lengths, elideCanonicalSignatureBytes: forSigning);
-        contentLength += TxFrameDecoder.Instance.PopulateSequenceLength(transaction.Frames, ref lengths);
-        return contentLength
-            + Rlp.LengthOf(transaction.ChainId ?? 0)
+        lengths.Add(Rlp.LengthOf(transaction.ChainId ?? 0)
             + FrameTxNonceCalldata.Length(transaction)
             + Rlp.LengthOf(transaction.SenderAddress)
             + Rlp.LengthOfSequence(GetFeesContentLength(transaction))
-            + GetVersionedHashesLength(transaction.BlobVersionedHashes);
+            + GetVersionedHashesLength(transaction.BlobVersionedHashes));
+        TxFrameDecoder.Instance.PopulateSequenceLength(transaction.Frames, lengths);
+        TxFrameSignatureDecoder.Instance.PopulateArrayLength(transaction.FrameSignatures, lengths, elideCanonicalSignatureBytes: forSigning);
     }
 
     private readonly struct Payload : ITxPayloadDecoder

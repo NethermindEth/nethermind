@@ -12,15 +12,24 @@ public static class ZeroInnerMessageSerializerExtensions
 {
     extension<T>(IZeroInnerMessageSerializer<T> serializer) where T : MessageBase
     {
-        /// <summary>Measures <paramref name="message"/> once, then appends it to <paramref name="byteBuffer"/>.</summary>
-        public void SerializeWithLengths(IByteBuffer byteBuffer, T message, int stackSize = LengthStack.DefaultStackallocLength)
+        /// <summary>Populates <paramref name="message"/> as the only item of <paramref name="lengths"/>, clearing it first.</summary>
+        /// <returns>The total serialized length of <paramref name="message"/>.</returns>
+        public int PopulateLength(T message, ref LengthList lengths)
         {
-            LengthStack lengths = new(stackalloc int[Math.Min(stackSize, LengthStack.MaxStackallocLength)]);
+            LengthListWriter root = lengths.BeginRootContainer();
+            serializer.PopulateLength(message, root);
+            return root.Length;
+        }
+
+        /// <summary>Measures <paramref name="message"/> once, then appends it to <paramref name="byteBuffer"/>.</summary>
+        public void SerializeWithLengths(IByteBuffer byteBuffer, T message, int stackSize = LengthList.DefaultStackallocLength)
+        {
+            LengthList lengths = new(stackalloc int[Math.Min(stackSize, LengthList.MaxStackallocLength)]);
             try
             {
                 byteBuffer.EnsureWritable(serializer.PopulateLength(message, ref lengths));
                 serializer.Serialize(byteBuffer, message, ref lengths);
-                Debug.Assert(lengths.Count == 0, "serializer left lengths on the stack");
+                Debug.Assert(lengths.UnreadCount == 0, "serializer left lengths unread");
             }
             finally
             {
@@ -28,9 +37,9 @@ public static class ZeroInnerMessageSerializerExtensions
             }
         }
 
-        public int GetLength(T message, int stackSize = LengthStack.DefaultStackallocLength)
+        public int GetLength(T message, int stackSize = LengthList.DefaultStackallocLength)
         {
-            LengthStack lengths = new(stackalloc int[Math.Min(stackSize, LengthStack.MaxStackallocLength)]);
+            LengthList lengths = new(stackalloc int[Math.Min(stackSize, LengthList.MaxStackallocLength)]);
             try
             {
                 return serializer.PopulateLength(message, ref lengths);

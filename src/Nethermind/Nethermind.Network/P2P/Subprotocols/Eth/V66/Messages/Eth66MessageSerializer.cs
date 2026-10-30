@@ -19,10 +19,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 
         public void Serialize(IByteBuffer byteBuffer, TEth66Message message) => this.SerializeWithLengths(byteBuffer, message);
 
-        public void Serialize(IByteBuffer byteBuffer, TEth66Message message, ref LengthStack lengths)
+        public void Serialize(IByteBuffer byteBuffer, TEth66Message message, ref LengthList lengths)
         {
             ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             writer.Encode(message.RequestId);
             _ethMessageSerializer.Serialize(byteBuffer, message.EthMessage, ref lengths);
         }
@@ -47,11 +47,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             return eth66Message;
         }
 
-        public int PopulateLength(TEth66Message message, ref LengthStack lengths)
+        public void PopulateLength(TEth66Message message, in LengthListWriter lengths)
         {
-            int contentLength = Rlp.LengthOf(message.RequestId) + _ethMessageSerializer.PopulateLength(message.EthMessage, ref lengths);
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+            using LengthListWriter sequence = lengths.BeginContainer();
+            sequence.Add(Rlp.LengthOf(message.RequestId));
+            _ethMessageSerializer.PopulateLength(message.EthMessage, sequence);
         }
 
         [DoesNotReturn, StackTraceHidden]

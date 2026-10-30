@@ -97,7 +97,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         return header;
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (header is null)
         {
@@ -112,7 +112,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
             return;
         }
 
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
 
         // Common fields
         writer.Encode(h.ParentHash ?? Keccak.Zero);
@@ -134,17 +134,19 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         EncodeHeaderSpecificFields(ref writer, h, rlpBehaviors);
     }
 
-    public override int PopulateLength(BlockHeader? header, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(BlockHeader? header, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (header is null)
         {
-            return Rlp.OfEmptyList.Length;
+            lengths.Add(Rlp.OfEmptyList.Length);
+            return;
         }
 
         if (header is not TH h)
         {
             EnsurePlainFallbackAllowed(header);
-            return FallbackDecoder.PopulateLength(header, ref lengths, rlpBehaviors);
+            FallbackDecoder.PopulateLength(header, lengths, rlpBehaviors);
+            return;
         }
 
         int contentLength =
@@ -165,8 +167,8 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
             + Rlp.LengthOfNonce(h.Nonce);
 
         contentLength += GetHeaderSpecificContentLength(h, rlpBehaviors);
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(contentLength);
     }
 
     // Only a genuine base BlockHeader may take the plain-shape fallback. Any other BlockHeader subtype

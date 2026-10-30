@@ -89,46 +89,46 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
             => throw new RlpException("Unexpected receipt field");
     }
 
-    /// <summary>Populates the receipt and returns its content length.</summary>
-    private int PopulateContentLength(TxReceipt item, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
+    /// <summary>Populates the receipt's content into <paramref name="sequence"/>, the container begun for the receipt.</summary>
+    private void PopulateContentLength(TxReceipt item, in LengthListWriter sequence, RlpBehaviors rlpBehaviors)
     {
         if (item.TxType == TxType.FrameTx)
         {
-            return Rlp.LengthOf((byte)item.TxType) + FrameReceiptRlp.PopulatePayloadLength(item, ref lengths);
+            sequence.Add(Rlp.LengthOf((byte)item.TxType));
+            FrameReceiptRlp.PopulatePayloadLength(item, sequence);
+            return;
         }
 
-        int contentLength = LogEntryDecoder.Instance.PopulateSequenceLength(GetLogs(item), ref lengths);
-        contentLength += Rlp.LengthOf((byte)item.TxType);
-        contentLength += Rlp.LengthOf(item.GasUsedTotal);
+        LogEntryDecoder.Instance.PopulateSequenceLength(GetLogs(item), sequence);
+        sequence.Add(Rlp.LengthOf((byte)item.TxType));
+        sequence.Add(Rlp.LengthOf(item.GasUsedTotal));
 
         bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
         if (!skipStateAndStatus)
         {
-            contentLength += isEip658Receipts
+            sequence.Add(isEip658Receipts
                 ? Rlp.LengthOf(item.StatusCode)
-                : Rlp.LengthOf(item.PostTransactionState);
+                : Rlp.LengthOf(item.PostTransactionState));
         }
-
-        return contentLength;
     }
 
     private static LogEntry[] GetLogs(TxReceipt item) =>
         item.Logs ?? throw new RlpException("Receipt logs are null.");
 
-    public override int PopulateLength(TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(TxReceipt? item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            return Rlp.OfEmptyList.Length;
+            lengths.Add(Rlp.OfEmptyList.Length);
+            return;
         }
 
-        int contentLength = PopulateContentLength(item, ref lengths, rlpBehaviors);
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+        using LengthListWriter sequence = lengths.BeginContainer();
+        PopulateContentLength(item, sequence, rlpBehaviors);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -136,7 +136,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
             return;
         }
 
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
 
         writer.Encode((byte)item.TxType);
 

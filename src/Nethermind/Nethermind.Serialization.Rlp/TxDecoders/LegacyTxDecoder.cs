@@ -39,15 +39,15 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
 
     private static bool IncludeSigChainIdHack(bool isEip155Enabled, ulong chainId) => isEip155Enabled && chainId != 0;
 
-    public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         EncodeTransaction(transaction, ref writer, ref lengths, forSigning, isEip155Enabled, chainId);
 
-    public override int PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override void PopulateLength(Transaction transaction, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
-        PopulateTransactionLength(transaction, ref lengths, forSigning, isEip155Enabled, chainId);
+        PopulateTransactionLength(transaction, lengths, forSigning, isEip155Enabled, chainId);
 
-    internal static int PopulateTransactionLength(Transaction transaction, ref LengthStack lengths, bool forSigning, bool isEip155Enabled, ulong chainId)
+    internal static void PopulateTransactionLength(Transaction transaction, in LengthListWriter lengths, bool forSigning, bool isEip155Enabled, ulong chainId)
     {
         int contentLength = GetLegacyFieldsLength(transaction);
 
@@ -61,14 +61,14 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
             contentLength += Rlp.LengthOf(chainId) + 2;
         }
 
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(contentLength);
     }
 
-    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, bool forSigning, bool isEip155Enabled, ulong chainId)
+    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref TWriter writer, ref LengthList lengths, bool forSigning, bool isEip155Enabled, ulong chainId)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
         EncodeLegacyFields(transaction, ref writer);
 
         if (!forSigning)

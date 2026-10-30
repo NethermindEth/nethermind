@@ -94,9 +94,9 @@ namespace Nethermind.Network
             return networkNode;
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, NetworkNode item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, NetworkNode item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             if (!ShouldEncodeNodeString(item))
             {
                 EncodeLegacyFormat(ref writer, item);
@@ -107,11 +107,10 @@ namespace Nethermind.Network
             writer.Encode(item.Reputation);
         }
 
-        public override int PopulateLength(NetworkNode item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(NetworkNode item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            int contentLength = GetContentLength(item, rlpBehaviors);
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+            using LengthListWriter sequence = lengths.BeginContainer();
+            sequence.Add(GetContentLength(item, rlpBehaviors));
         }
 
         private static void EncodeLegacyFormat<TWriter>(ref TWriter writer, NetworkNode item)

@@ -11,21 +11,21 @@ public interface IRlpDecoder;
 
 /// <remarks>
 /// Encoding takes two passes that measure every nested item only once.
-/// <see cref="PopulateLength"/> pushes the lengths <see cref="Encode{TWriter}(ref TWriter, T, ref LengthStack, RlpBehaviors)"/>
-/// needs in the reverse of the order it pops them, and returns the total encoded length of the item.
-/// The caller uses that total to size its own container or buffer;
-/// <see cref="Encode{TWriter}(ref TWriter, T, ref LengthStack, RlpBehaviors)"/> then pops the pushed lengths
-/// and writes exactly that many bytes at the writer position.
-/// Lengths that are cheap to recompute, such as fixed-width fields, are not pushed but are still part of the total.
-/// A parent populates its children last to first, so each child's lengths sit on the stack in encode order.
+/// <see cref="PopulateLength"/> adds the total encoded length of the item to the writer it is given,
+/// begins a container with <see cref="LengthListWriter.BeginContainer"/> for each length
+/// <see cref="Encode{TWriter}(ref TWriter, T, ref LengthList, RlpBehaviors)"/> needs, in the order it reads them,
+/// and disposes each container once everything in it has been added.
+/// <see cref="Encode{TWriter}(ref TWriter, T, ref LengthList, RlpBehaviors)"/> then reads those lengths
+/// and writes exactly the populated total at the writer position.
+/// Lengths that are cheap to recompute, such as fixed-width fields, take no container but are still added to the total.
 /// </remarks>
 public interface IRlpDecoder<T> : IRlpDecoder
 {
-    int PopulateLength(T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    void PopulateLength(T item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    /// <param name="writer">A writer with room for the total length <see cref="PopulateLength"/> returned.</param>
-    /// <param name="lengths">The stack <see cref="PopulateLength"/> filled.</param>
-    void Encode<TWriter>(ref TWriter writer, T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    /// <param name="writer">A writer with room for the total length <see cref="PopulateLength"/> added.</param>
+    /// <param name="lengths">The list <see cref="PopulateLength"/> filled, positioned at the first length this item reads.</param>
+    void Encode<TWriter>(ref TWriter writer, T item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
     Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
@@ -34,11 +34,11 @@ public interface IRlpDecoder<T> : IRlpDecoder
     /// Encodes <paramref name="item"/> into a freshly allocated <see cref="byte"/> array,
     /// without wrapping the result in a throwaway <see cref="Rlp"/>.
     /// </summary>
-    byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSize = LengthStack.DefaultStackallocLength);
+    byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSize = LengthList.DefaultStackallocLength);
 
     Rlp Encode(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSizePerItem = 2);
 
-    CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null, int stackSize = LengthStack.DefaultStackallocLength);
+    CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null, int stackSize = LengthList.DefaultStackallocLength);
 
     [return: MaybeNull]
     T Decode(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);

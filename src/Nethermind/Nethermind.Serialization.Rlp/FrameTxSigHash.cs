@@ -26,11 +26,11 @@ public static class FrameTxSigHash
     public static ValueHash256 ComputeValue(Transaction transaction)
     {
         // SkipTypedWrapping makes the decoder emit exactly FRAME_TX_TYPE || rlp(tx).
-        LengthStack lengths = new(stackalloc int[LengthStack.MaxStackallocLength]);
+        LengthList lengths = new(stackalloc int[LengthList.MaxStackallocLength]);
         scoped KeccakRlpWriter writer = new();
         try
         {
-            FrameTxDecoder.PopulateTransactionLength(transaction, ref lengths, RlpBehaviors.SkipTypedWrapping, forSigning: true);
+            FrameTxDecoder.PopulateTransactionLength(transaction, lengths.BeginRootContainer(), RlpBehaviors.SkipTypedWrapping, forSigning: true);
             FrameTxDecoder.EncodeTransaction(transaction, ref writer, ref lengths, RlpBehaviors.SkipTypedWrapping, forSigning: true);
             return writer.GetValueHash();
         }

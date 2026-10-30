@@ -94,7 +94,7 @@ namespace Nethermind.Serialization.Rlp
             return topics.ToArray();
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, LogEntry? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, LogEntry? item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -102,10 +102,10 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
 
             writer.Encode(item.Address);
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
 
             for (int i = 0; i < item.Topics.Length; i++)
             {
@@ -118,23 +118,24 @@ namespace Nethermind.Serialization.Rlp
             writer.Encode(withoutLeadingZero);
         }
 
-        public override int PopulateLength(LogEntry? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(LogEntry? item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                return 1;
+                lengths.Add(1);
+                return;
             }
 
-            int topicsLength = GetTopicsLength(item);
+            using LengthListWriter sequence = lengths.BeginContainer();
+            sequence.Add(Rlp.LengthOf(item.Address));
+            using (LengthListWriter topics = sequence.BeginContainer())
+            {
+                topics.Add(GetTopicsLength(item));
+            }
+
             ReadOnlySpan<byte> withoutLeadingZero = item.Data.WithoutLeadingZerosOrEmpty();
             int dataZeroPrefix = item.Data.Length - withoutLeadingZero.Length;
-            int contentLength = Rlp.LengthOf(item.Address)
-                + Rlp.LengthOfSequence(topicsLength)
-                + Rlp.LengthOf(dataZeroPrefix)
-                + Rlp.LengthOf(withoutLeadingZero);
-            lengths.Push(topicsLength);
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
+            sequence.Add(Rlp.LengthOf(dataZeroPrefix) + Rlp.LengthOf(withoutLeadingZero));
         }
 
         /// <summary>Decodes the leading-zero-stripped log data.</summary>

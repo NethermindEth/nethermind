@@ -49,11 +49,11 @@ namespace Nethermind.Network.Test.P2P
             }
         }
 
-        /// <summary>Serializes from a one-entry initial stack, so every message crosses into the pooled stack, and checks every length was consumed.</summary>
+        /// <summary>Serializes from a one-entry initial buffer, so every message crosses into the pooled list, and checks every length was read.</summary>
         private static void AssertLengthsMatchSerialization<T>(IZeroInnerMessageSerializer<T> serializer, T message, string expectedHex) where T : P2PMessage
         {
             using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
-            LengthStack lengths = new(new int[1]);
+            LengthList lengths = new(new int[1]);
             try
             {
                 int totalLength = serializer.PopulateLength(message, ref lengths);
@@ -62,7 +62,7 @@ namespace Nethermind.Network.Test.P2P
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(buffer.ReadableBytes, Is.EqualTo(totalLength), "populated total length");
-                    Assert.That(lengths.Count, Is.Zero, "lengths left on the stack");
+                    Assert.That(lengths.UnreadCount, Is.Zero, "lengths left unread");
                     Assert.That(buffer.ReadAllHex(), Is.EqualTo(expectedHex), "serialized with populated lengths");
                 }
             }

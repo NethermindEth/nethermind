@@ -12,11 +12,10 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
     where T : struct, IIndexedChange
 {
-    public override int PopulateLength(T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(T item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int contentLength = GetContentLength(item, rlpBehaviors);
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(GetContentLength(item, rlpBehaviors));
     }
 
     protected override T DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors)
@@ -34,10 +33,10 @@ public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
         return result;
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, T item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         // EIP-7928 v5.7.0 widened BlockAccessIndex to uint32 (commit 645099785a).
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
         writer.Encode(item.Index);
         EncodeValue(ref writer, item);
     }

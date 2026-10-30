@@ -207,12 +207,12 @@ public class TxTrieTests(bool useEip2718)
     {
         public IndexedTrieRoot.LeafBatching Batching => multiBlock ? IndexedTrieRoot.LeafBatching.MultiBlock : IndexedTrieRoot.LeafBatching.Encoded;
         public ReadOnlySpan<byte> GetEncodedValue(byte[] item) => multiBlock ? default : item;
-        public int PopulateLength(byte[] item, ref LengthStack lengths)
+        public int PopulateLength(byte[] item, ref LengthList lengths)
         {
             if (lengthCalls is not null) Interlocked.Increment(ref lengthCalls[BinaryPrimitives.ReadInt32LittleEndian(item)]);
             return reportedLength ?? item.Length;
         }
-        public void Encode<TWriter>(ref TWriter writer, byte[] item, ref LengthStack lengths)
+        public void Encode<TWriter>(ref TWriter writer, byte[] item, ref LengthList lengths)
             where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(item);
     }
 
@@ -540,14 +540,14 @@ public class TxTrieCodecTests
         public void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
             ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => throw new NotSupportedException();
 
-        public int PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+        public void PopulateLength(Transaction transaction, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
             bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
         {
             Assert.That(Environment.CurrentManagedThreadId, Is.EqualTo(_threadId));
-            return 3;
+            lengths.Add(3);
         }
 
-        public void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+        public void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
             bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
             where TWriter : struct, IRlpWriteBackend, allows ref struct
         {

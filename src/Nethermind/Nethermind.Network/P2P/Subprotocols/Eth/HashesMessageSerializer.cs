@@ -34,10 +34,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void Serialize(IByteBuffer byteBuffer, T message) => this.SerializeWithLengths(byteBuffer, message);
 
-        public void Serialize(IByteBuffer byteBuffer, T message, ref LengthStack lengths)
+        public void Serialize(IByteBuffer byteBuffer, T message, ref LengthList lengths)
         {
             ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
             ReadOnlySpan<Hash256> hashes = message.Hashes.AsSpan();
             for (int i = 0; i < hashes.Length; i++)
             {
@@ -46,17 +46,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         }
 
         public abstract T Deserialize(IByteBuffer byteBuffer);
-        public int PopulateLength(T message, ref LengthStack lengths)
+        public void PopulateLength(T message, in LengthListWriter lengths)
         {
-            int contentLength = 0;
+            using LengthListWriter sequence = lengths.BeginContainer();
             ReadOnlySpan<Hash256> hashes = message.Hashes.AsSpan();
             for (int i = 0; i < hashes.Length; i++)
             {
-                contentLength += Rlp.LengthOf(hashes[i]);
+                sequence.Add(Rlp.LengthOf(hashes[i]));
             }
-
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
         }
     }
 }

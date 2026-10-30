@@ -150,7 +150,7 @@ public class OptimismCompactReceiptStorageDecoder :
     // Refstruct decode does not generate bloom
     public bool CanDecodeBloom => false;
 
-    public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -161,7 +161,7 @@ public class OptimismCompactReceiptStorageDecoder :
         bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
         // Note: Any byte saved here is about 3GB on mainnet.
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
         if (isEip658receipts)
         {
             writer.Encode(item.StatusCode);
@@ -190,14 +190,18 @@ public class OptimismCompactReceiptStorageDecoder :
     private static LogEntry[] GetLogs(TxReceipt item)
         => item.Logs ?? throw new RlpException("Receipt logs are null.");
 
-    public override int PopulateLength(TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(TxReceipt? item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            return Rlp.OfEmptyList.Length;
+            lengths.Add(Rlp.OfEmptyList.Length);
+            return;
         }
 
-        int contentLength = LogEntryDecoder.PopulateSequenceLength(GetLogs(item), ref lengths);
+        using LengthListWriter sequence = lengths.BeginContainer();
+        LogEntryDecoder.PopulateSequenceLength(GetLogs(item), sequence);
+
+        int contentLength = 0;
 
         bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
         if (isEip658Receipts)
@@ -222,7 +226,6 @@ public class OptimismCompactReceiptStorageDecoder :
             }
         }
 
-        lengths.Push(contentLength);
-        return LengthOfSequence(contentLength);
+        sequence.Add(contentLength);
     }
 }

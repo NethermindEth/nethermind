@@ -36,10 +36,10 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
 
     public void Serialize(IByteBuffer byteBuffer, CellsMessage72 message) => this.SerializeWithLengths(byteBuffer, message);
 
-    public void Serialize(IByteBuffer byteBuffer, CellsMessage72 message, ref LengthStack lengths)
+    public void Serialize(IByteBuffer byteBuffer, CellsMessage72 message, ref LengthList lengths)
     {
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
         writer.Encode(message.RequestId);
 
         int hashesLength = checked(message.Hashes.Length * Rlp.LengthOfKeccakRlp);
@@ -50,14 +50,14 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
             writer.Encode(hash);
         }
 
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
 
         int cellIndexCount = message.CellMask.Length == BlobCellMask.FixedByteLength
             ? BlobCellMask.FromBytes(message.CellMask).Count
             : 0;
         foreach (byte[][] cells in message.Cells)
         {
-            EncodeCellGroup(ref writer, cells, cellIndexCount, lengths.Pop());
+            EncodeCellGroup(ref writer, cells, cellIndexCount, lengths.Read());
         }
 
         writer.Encode(message.CellMask);
@@ -112,24 +112,20 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
 
     private static ValueHash256 DecodeTransactionHash(ref RlpReader ctx) => ctx.DecodeValueKeccakNonNull();
 
-    public int PopulateLength(CellsMessage72 message, ref LengthStack lengths)
+    public void PopulateLength(CellsMessage72 message, in LengthListWriter lengths)
     {
-        byte[][][] cellsByTx = message.Cells;
-        int cellsContentLength = 0;
-        for (int i = cellsByTx.Length - 1; i >= 0; i--)
-        {
-            int cellGroupContentLength = GetCellGroupContentLength(cellsByTx[i]);
-            lengths.Push(cellGroupContentLength);
-            cellsContentLength += Rlp.LengthOfSequence(cellGroupContentLength);
-        }
-
-        lengths.Push(cellsContentLength);
-        int contentLength = Rlp.LengthOf(message.RequestId)
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(Rlp.LengthOf(message.RequestId)
             + Rlp.LengthOfSequence(checked(message.Hashes.Length * Rlp.LengthOfKeccakRlp))
-            + Rlp.LengthOfSequence(cellsContentLength)
-            + Rlp.LengthOf(message.CellMask);
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+            + Rlp.LengthOf(message.CellMask));
+
+        byte[][][] cellsByTx = message.Cells;
+        using LengthListWriter cells = sequence.BeginContainer();
+        for (int i = 0; i < cellsByTx.Length; i++)
+        {
+            using LengthListWriter cellGroup = cells.BeginContainer();
+            cellGroup.Add(GetCellGroupContentLength(cellsByTx[i]));
+        }
     }
 
     private static int GetCellGroupContentLength(byte[][] blobMajorCells)

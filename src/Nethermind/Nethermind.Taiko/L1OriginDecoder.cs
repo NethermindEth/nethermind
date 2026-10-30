@@ -43,9 +43,9 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
         return new(blockId, l2BlockHash, l1BlockHeight, l1BlockHash, buildPayloadArgsId, isForcedInclusion, signature);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, L1Origin item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, L1Origin item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
 
         writer.Encode(item.BlockId);
         writer.Encode(item.L2BlockHash);
@@ -94,11 +94,12 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
         }
     }
 
-    public override int PopulateLength(L1Origin? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(L1Origin? item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            return 1;
+            lengths.Add(1);
+            return;
         }
 
         int buildPayloadLength = 0;
@@ -115,14 +116,13 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
             isForcedInclusionLength = Rlp.LengthOf(item.IsForcedInclusion);
         }
 
-        int contentLength = Rlp.LengthOf(item.BlockId)
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(Rlp.LengthOf(item.BlockId)
             + Rlp.LengthOf(item.L2BlockHash)
             + Rlp.LengthOf(item.L1BlockHeight ?? 0)
             + Rlp.LengthOf(item.L1BlockHash)
             + buildPayloadLength
             + isForcedInclusionLength
-            + (item.Signature is null ? 0 : Rlp.LengthOfByteString(SignatureLength, 0));
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+            + (item.Signature is null ? 0 : Rlp.LengthOfByteString(SignatureLength, 0)));
     }
 }

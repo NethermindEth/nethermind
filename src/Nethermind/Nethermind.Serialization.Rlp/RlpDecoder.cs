@@ -10,9 +10,9 @@ namespace Nethermind.Serialization.Rlp;
 
 public abstract class RlpDecoder<T> : IRlpDecoder<T>
 {
-    public abstract int PopulateLength(T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    public abstract void PopulateLength(T item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    public abstract void Encode<TWriter>(ref TWriter writer, T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public abstract void Encode<TWriter>(ref TWriter writer, T item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
     [return: MaybeNull]
@@ -27,15 +27,15 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     /// <remarks>
     /// Equivalent to <see cref="Encode(T, RlpBehaviors)"/> without wrapping the result in a
     /// throwaway <see cref="Rlp"/>; prefer this when only the raw bytes are needed. The buffer is
-    /// allocated uninitialized because <see cref="Encode{TWriter}(ref TWriter, T, ref LengthStack, RlpBehaviors)"/>
-    /// fills exactly the total length <see cref="PopulateLength"/> returns.
+    /// allocated uninitialized because <see cref="Encode{TWriter}(ref TWriter, T, ref LengthList, RlpBehaviors)"/>
+    /// fills exactly the total length <see cref="PopulateLength"/> populates.
     /// </remarks>
-    public byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSize = LengthStack.DefaultStackallocLength)
+    public byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSize = LengthList.DefaultStackallocLength)
     {
-        LengthStack lengths = new(stackalloc int[Math.Min(stackSize, LengthStack.MaxStackallocLength)]);
+        LengthList lengths = new(stackalloc int[Math.Min(stackSize, LengthList.MaxStackallocLength)]);
         try
         {
-            byte[] bytes = GC.AllocateUninitializedArray<byte>(PopulateLength(item, ref lengths, rlpBehaviors));
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(this.PopulateLength(item, ref lengths, rlpBehaviors));
             RlpEncoderExtensions.EncodeTo(this, item, ref lengths, bytes, rlpBehaviors);
             return bytes;
         }
@@ -52,7 +52,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
             return Rlp.OfEmptyList;
         }
 
-        LengthStack lengths = new(stackalloc int[Math.Min(items.Length * stackSizePerItem, LengthStack.MaxStackallocLength)]);
+        LengthList lengths = new(stackalloc int[Math.Min(items.Length * stackSizePerItem, LengthList.MaxStackallocLength)]);
         try
         {
             byte[] bytes = new byte[this.PopulateSequenceLength(items, ref lengths, rlpBehaviors)];
@@ -182,7 +182,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         return DecodeCompleteNotNull(ref context, rlpBehaviors);
     }
 
-    public virtual CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null, int stackSize = LengthStack.DefaultStackallocLength)
+    public virtual CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null, int stackSize = LengthList.DefaultStackallocLength)
     {
         if (item is null)
         {
@@ -192,10 +192,10 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
             return nullBuffer;
         }
 
-        LengthStack lengths = new(stackalloc int[Math.Min(stackSize, LengthStack.MaxStackallocLength)]);
+        LengthList lengths = new(stackalloc int[Math.Min(stackSize, LengthList.MaxStackallocLength)]);
         try
         {
-            CappedArray<byte> buffer = bufferPool.SafeRent(PopulateLength(item, ref lengths, rlpBehaviors));
+            CappedArray<byte> buffer = bufferPool.SafeRent(this.PopulateLength(item, ref lengths, rlpBehaviors));
             RlpEncoderExtensions.EncodeTo(this, item, ref lengths, buffer.AsSpan(), rlpBehaviors);
             return buffer;
         }

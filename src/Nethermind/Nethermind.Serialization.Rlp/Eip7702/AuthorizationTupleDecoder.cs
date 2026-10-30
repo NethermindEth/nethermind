@@ -33,10 +33,10 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         return new AuthorizationTuple(chainId, codeAddress, nonce, yParity, r, s);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, AuthorizationTuple item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, AuthorizationTuple item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ArgumentNullException.ThrowIfNull(item);
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(lengths.Read());
         writer.Encode(item.ChainId);
         writer.Encode(item.CodeAddress);
         writer.Encode(item.Nonce);
@@ -62,15 +62,14 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         EncodeWithoutSignature(ref writer, chainId, codeAddress, nonce);
     }
 
-    public override int PopulateLength(AuthorizationTuple item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(AuthorizationTuple item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ArgumentNullException.ThrowIfNull(item);
-        int contentLength = GetContentLengthWithoutSig(item.ChainId, item.CodeAddress, item.Nonce)
+        using LengthListWriter sequence = lengths.BeginContainer();
+        sequence.Add(GetContentLengthWithoutSig(item.ChainId, item.CodeAddress, item.Nonce)
             + Rlp.LengthOf(item.AuthoritySignature.V - Signature.VOffset)
             + Rlp.LengthOf(new UInt256(item.AuthoritySignature.R.Span, true))
-            + Rlp.LengthOf(new UInt256(item.AuthoritySignature.S.Span, true));
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+            + Rlp.LengthOf(new UInt256(item.AuthoritySignature.S.Span, true)));
     }
 
     private static int GetContentLengthWithoutSig(in UInt256 chainId, Address codeAddress, ulong nonce) =>

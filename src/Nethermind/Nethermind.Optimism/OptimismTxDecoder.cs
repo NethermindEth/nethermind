@@ -16,7 +16,7 @@ public sealed class OptimismTxDecoder(Func<Transaction>? transactionFactory = nu
         ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
 
-    public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         StartTypedTransaction(ref writer, TxType.DepositTx, ref lengths, rlpBehaviors);
@@ -30,18 +30,20 @@ public sealed class OptimismTxDecoder(Func<Transaction>? transactionFactory = nu
         writer.Encode(transaction.Data);
     }
 
-    public override int PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
-        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
-        PushTypedTransactionLength(
-            Rlp.LengthOf(transaction.SourceHash)
+    public override void PopulateLength(Transaction transaction, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    {
+        LengthListWriter payload = lengths.BeginContainer();
+        payload.Add(Rlp.LengthOf(transaction.SourceHash)
             + Rlp.LengthOf(transaction.SenderAddress)
             + Rlp.LengthOf(transaction.To)
             + Rlp.LengthOf(transaction.Mint)
             + Rlp.LengthOf(transaction.ValueRef)
             + Rlp.LengthOf(transaction.GasLimit)
             + Rlp.LengthOf(transaction.IsOPSystemTransaction)
-            + Rlp.LengthOf(transaction.Data),
-            ref lengths, rlpBehaviors);
+            + Rlp.LengthOf(transaction.Data));
+        EndTypedTransaction(lengths, payload, rlpBehaviors);
+    }
 
     private readonly struct Payload : ITxPayloadDecoder
     {

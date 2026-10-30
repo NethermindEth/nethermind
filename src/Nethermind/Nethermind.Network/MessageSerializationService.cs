@@ -115,7 +115,7 @@ public class MessageSerializationService : IMessageSerializationService
 
         int p2pMessageLength = (message is P2PMessage ? sizeof(int) : 0);
         IZeroInnerMessageSerializer<T>? zeroInnerMessageSerializer = zeroMessageSerializer as IZeroInnerMessageSerializer<T>;
-        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        LengthList lengths = new(stackalloc int[LengthList.DefaultStackallocLength]);
         try
         {
             int length = zeroInnerMessageSerializer is null ? 64 : zeroInnerMessageSerializer.PopulateLength(message, ref lengths) + p2pMessageLength;

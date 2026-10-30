@@ -877,9 +877,9 @@ public class BlockAccessListDecoderTests
             return value;
         }
 
-        public override int PopulateLength(byte item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+        public override void PopulateLength(byte item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => lengths.Add(1);
 
-        public override void Encode<TWriter>(ref TWriter writer, byte item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode<TWriter>(ref TWriter writer, byte item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 
@@ -907,9 +907,9 @@ public class BlockAccessListDecoderTests
             return new DisposableElement();
         }
 
-        public override int PopulateLength(DisposableElement? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+        public override void PopulateLength(DisposableElement? item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => lengths.Add(1);
 
-        public override void Encode<TWriter>(ref TWriter writer, DisposableElement item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode<TWriter>(ref TWriter writer, DisposableElement item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 
@@ -930,9 +930,9 @@ public class BlockAccessListDecoderTests
             return new DisposableElement();
         }
 
-        public override int PopulateLength(object? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+        public override void PopulateLength(object? item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => lengths.Add(1);
 
-        public override void Encode<TWriter>(ref TWriter writer, object item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode<TWriter>(ref TWriter writer, object item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 
@@ -944,9 +944,9 @@ public class BlockAccessListDecoderTests
             throw new ArgumentException("semantic argument failure");
         }
 
-        public override int PopulateLength(byte item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+        public override void PopulateLength(byte item, in LengthListWriter lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => lengths.Add(1);
 
-        public override void Encode<TWriter>(ref TWriter writer, byte item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode<TWriter>(ref TWriter writer, byte item, ref LengthList lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 }

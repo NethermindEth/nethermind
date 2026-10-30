@@ -37,10 +37,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-        public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message, ref LengthStack lengths)
+        public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message, ref LengthList lengths)
         {
             ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(lengths.Read());
 
             ulong lastBlockNumber = NoBlockSeenYet;
             RlpBehaviors behaviors = RlpBehaviors.None;
@@ -53,7 +53,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                     continue;
                 }
 
-                writer.StartSequence(lengths.Pop());
+                writer.StartSequence(lengths.Read());
                 foreach (TxReceipt txReceipt in txReceipts)
                 {
                     // Only fetch a new spec when the block number changes
@@ -91,40 +91,34 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             return new ReceiptsMessage(data);
         }
 
-        public int PopulateLength(ReceiptsMessage message, ref LengthStack lengths)
+        public void PopulateLength(ReceiptsMessage message, in LengthListWriter lengths)
         {
-            int contentLength = 0;
+            using LengthListWriter sequence = lengths.BeginContainer();
 
             ReadOnlySpan<TxReceipt[]?> txReceiptsSpan = message.TxReceipts.AsSpan();
-            for (int i = txReceiptsSpan.Length - 1; i >= 0; i--)
+            for (int i = 0; i < txReceiptsSpan.Length; i++)
             {
                 TxReceipt[]? txReceipts = txReceiptsSpan[i];
                 if (txReceipts is null)
                 {
-                    contentLength += Rlp.OfEmptyList.Length;
+                    sequence.Add(Rlp.OfEmptyList.Length);
                     continue;
                 }
 
-                int innerLength = PopulateInnerLength(txReceipts, ref lengths);
-                lengths.Push(innerLength);
-                contentLength += Rlp.LengthOfSequence(innerLength);
+                using LengthListWriter blockReceipts = sequence.BeginContainer();
+                PopulateInnerLength(txReceipts, blockReceipts);
             }
-
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
         }
 
-        private int PopulateInnerLength(TxReceipt[] txReceipts, ref LengthStack lengths)
+        private void PopulateInnerLength(TxReceipt[] txReceipts, in LengthListWriter lengths)
         {
             if (txReceipts.Length == 0)
-                return 0;
-
-            int contentLength = 0;
+                return;
 
             ulong lastBlockNumber = NoBlockSeenYet;
             RlpBehaviors behaviors = RlpBehaviors.None;
 
-            for (int i = txReceipts.Length - 1; i >= 0; i--)
+            for (int i = 0; i < txReceipts.Length; i++)
             {
                 TxReceipt receipt = txReceipts[i];
 
@@ -136,10 +130,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                     behaviors = receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
                 }
 
-                contentLength += _decoder.PopulateLength(receipt, ref lengths, behaviors);
+                _decoder.PopulateLength(receipt, lengths, behaviors);
             }
-
-            return contentLength;
         }
     }
 }
