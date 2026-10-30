@@ -108,6 +108,7 @@ public class DbTrackerTests
         {
             Assert.That(Metrics.DbReads.GetValueOrDefault("TestDb"), Is.EqualTo(metricsEnabled ? 42 : 0));
             Assert.That(updateAction, metricsEnabled ? Is.Not.Null : Is.Null);
+            Assert.That(container.Resolve<DbMonitoringModule.DbTracker>().GetAllDbMeta().Count(), Is.EqualTo(metricsEnabled ? 1 : 0));
         }
     }
 

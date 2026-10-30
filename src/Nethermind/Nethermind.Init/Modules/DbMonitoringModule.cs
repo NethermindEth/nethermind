@@ -73,7 +73,7 @@ public class DbMonitoringModule : Module
 
         public void AddDb(string name, IDbMeta dbMeta)
         {
-            if (_createdDbs.TryAdd(name, dbMeta) && _publishDbMetrics)
+            if (_publishDbMetrics && _createdDbs.TryAdd(name, dbMeta))
             {
                 PublishDbMetrics(name, dbMeta);
             }
