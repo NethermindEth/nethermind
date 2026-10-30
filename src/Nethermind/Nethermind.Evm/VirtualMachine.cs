@@ -932,8 +932,9 @@ public partial class VirtualMachine<TGasPolicy>(
         EvmException? evmException = failure as EvmException;
         EvmExceptionType errorType = evmException?.ExceptionType ?? EvmExceptionType.Other;
 
-        // Errors are reported even when no instruction start is open.
-        if (TTracingInst.IsActive)
+        // Errors are reported even when no instruction start is open, except a nested precompile's: it runs no
+        // instructions, and its failure is the result of the caller's already completed call instruction.
+        if (TTracingInst.IsActive && (_currentState.IsTopLevel || !_currentState.IsPrecompile))
         {
             EndInstructionTrace(0, errorType);
         }
