@@ -103,7 +103,7 @@ namespace Nethermind.EthStats.Clients
                 if (!_client.Url.AbsoluteUri.EndsWith("/api"))
                 {
                     if (_logger.IsInfo) _logger.Info($"Failed to connect to ethstats at {websocketUrl}. Adding '/api' at the end and trying again.");
-                    _client.Url = new Uri(websocketUrl + "/api");
+                    _client.Url = new Uri(websocketUrl.TrimEnd('/') + "/api");
                 }
                 else
                 {
