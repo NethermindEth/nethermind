@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -142,6 +143,7 @@ public class RocksDbRewriter(
                 return ValueTask.CompletedTask;
             });
 
+        ProgressLogger progress = CreateProgress(source, sourceFamily, family);
         long count = 0;
         WriteBatch? batch = new();
         try
@@ -162,9 +164,10 @@ public class RocksDbRewriter(
                 await batches.Writer.WriteAsync(batch, writerFailed.Token);
                 batch = new();
 
+                progress.Update((ulong)count);
                 if (Stopwatch.GetElapsedTime(lastProgress) < ProgressInterval) continue;
                 lastProgress = Stopwatch.GetTimestamp();
-                if (_logger.IsInfo) _logger.Info($"Rewriting {source.Name} {family}: {count:N0} entries read");
+                progress.LogProgress();
             }
 
             // An iterator stops being valid on a read error too, which would otherwise swap in a truncated copy.
@@ -186,6 +189,26 @@ public class RocksDbRewriter(
         if (targetFamily is null) target._db.Flush(flushOptions);
         else target._db.Flush(flushOptions, targetFamily);
         if (_logger.IsInfo) _logger.Info($"Rewrote {source.Name} {family}: {count:N0} entries");
+    }
+
+    /// <remarks>The target is RocksDB's key count estimate, so the copy can finish short of or past it.</remarks>
+    private ProgressLogger CreateProgress(DbOnTheRocks source, IColumnFamilyHandle? sourceFamily, string? family)
+    {
+        const string estimateNumKeys = "rocksdb.estimate-num-keys";
+        bool hasEstimate = sourceFamily is null
+            ? source._db.TryGetIntProperty(estimateNumKeys, out ulong estimate)
+            : source._db.TryGetIntProperty(estimateNumKeys, sourceFamily, out estimate);
+
+        string prefix = $"Rewriting {source.Name} {family}";
+        ProgressLogger progress = new(prefix, logManager);
+        progress.Reset(0, hasEstimate ? estimate : 0);
+        progress.SetFormat(p =>
+        {
+            float percentage = Math.Clamp(p.CurrentValue / (float)Math.Max(p.TargetValue, 1UL), 0, 1);
+            return $"{prefix} {p.CurrentValue:N0} / ~{p.TargetValue:N0} ({percentage.ToString("P2", CultureInfo.InvariantCulture),8}) " +
+                $"{Progress.GetMeter(percentage, 1)}| {p.CurrentPerSecond:N0} keys/s";
+        });
+        return progress;
     }
 
     /// <summary>Opens a database that creates the column families it is given, as <see cref="ColumnsDb{T}"/> does.</summary>
