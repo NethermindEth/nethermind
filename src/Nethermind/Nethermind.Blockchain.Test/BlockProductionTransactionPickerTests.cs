@@ -135,6 +135,33 @@ public class BlockProductionTransactionPickerTests
         Assert.That((nullSender.Action, nullSender.Reason, nullSender.Transaction), Is.EqualTo((BlockProcessor.TxAction.Skip, "Null sender", noSender)));
     }
 
+    /// <summary>One picker rejects candidates for different deferred reasons in turn; each reports its own kind and numbers,
+    /// in both orders, so nothing of an earlier rejection's reason sticks to the reused args.</summary>
+    [Test]
+    public void Deferred_rejections_of_different_kinds_each_report_their_own_reason()
+    {
+        using FundedSender sender = new(1.Ether);
+        Block block = BlockWithoutBaseFee();
+        BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker(Amsterdam.Instance);
+        HashSet<Transaction> transactionsInBlock = [];
+
+        string Reason(Transaction tx, ulong cumulativeExecutionGas, ulong cumulativeStateGas)
+        {
+            BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, tx, transactionsInBlock, sender.State, cumulativeExecutionGas, cumulativeStateGas);
+            Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
+            return args.Reason;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Reason(Tx(), BlockGasLimit - 50_000, 0), Is.EqualTo("Not enough execution gas in block, gas limit 100000 > 50000"));
+            Assert.That(Reason(Tx(nonce: AccountNonce + 2), 0, 0), Is.EqualTo("Invalid nonce - expected 3"));
+            Assert.That(Reason(Tx(), BlockGasLimit - 60_000, 0), Is.EqualTo("Not enough execution gas in block, gas limit 100000 > 60000"));
+            Assert.That(Reason(Tx(), 0, BlockGasLimit - 70_000), Is.EqualTo("Not enough state gas in block, gas limit 100000 > 70000"));
+            Assert.That(Reason(Tx(nonce: AccountNonce + 1), 0, 0), Is.EqualTo("Invalid nonce - expected 3"));
+        }
+    }
+
     /// <summary>Subscribers such as AuRa's permission check may keep or change the args they are raised with, so a later
     /// candidate must never be written into them, and what they set must be what the caller gets back.</summary>
     [Test]
