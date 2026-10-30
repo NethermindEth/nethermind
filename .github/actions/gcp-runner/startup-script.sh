@@ -21,9 +21,9 @@ curl -fsSL --retry 3 https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.402/dot
 echo '1904a98dda2db34ba78ba3c4fb1b224455329af91c341d83547843c1839e112b04ae699ee92fa2449a8f62249196a938723078c0c60b9f65c88539d5687729c2  sdk.tar.gz' | sha512sum -c -
 tar xzf sdk.tar.gz -C dotnet
 rm sdk.tar.gz
-curl -sf -H 'Metadata-Flavor: Google' "$MD/attributes/runner-startup-source" -o Startup.cs
-curl -sf -H 'Metadata-Flavor: Google' "$MD/attributes/runner-startup-helpers" -o Gcp.Helpers.cs
-curl -sf -H 'Metadata-Flavor: Google' "$MD/attributes/runner-provision-helpers" -o StartupProvision.Helpers.cs
+curl -sf -H 'Metadata-Flavor: Google' "$MD/attributes/runner-startup-source" -o startup.cs
+curl -sf -H 'Metadata-Flavor: Google' "$MD/attributes/runner-startup-helpers" -o gcp.helpers.cs
+curl -sf -H 'Metadata-Flavor: Google' "$MD/attributes/runner-provision-helpers" -o startup-provision.helpers.cs
 export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-./dotnet/dotnet publish Startup.cs --no-self-contained -p:PublishAot=false -p:NuGetAudit=false -p:RestoreSources="$BOOTSTRAP_DIR" -o app
-./dotnet/dotnet app/Startup.dll
+./dotnet/dotnet publish startup.cs --no-self-contained -p:PublishAot=false -p:NuGetAudit=false -p:RestoreSources="$BOOTSTRAP_DIR" -o app
+./dotnet/dotnet app/startup.dll

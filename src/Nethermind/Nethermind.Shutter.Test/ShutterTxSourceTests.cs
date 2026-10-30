@@ -42,8 +42,11 @@ class ShutterTxSourceTests
         IShutterKeyValidator.ValidatedKeys keys = new() { Slot = ShutterTestsCommon.InitialSlot, Keys = new([], 0) };
         Task load = Task.Run(() => txSource.LoadTransactions(null, Build.A.BlockHeader.TestObject, keys));
 
-        Assert.That(load.Wait(TimeSpan.FromSeconds(10)), Is.True, "LoadTransactions deadlocked against the cancel callback");
-        Assert.That(waitTasks, Is.All.Matches<Task>(static t => t is { IsCompletedSuccessfully: true }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(load.Wait(TimeSpan.FromSeconds(10)), Is.True, "LoadTransactions deadlocked against the cancel callback");
+            Assert.That(waitTasks, Is.All.Matches<Task>(static t => t is { IsCompletedSuccessfully: true }));
+        }
     }
 
     // Register runs the callback inline for an already cancelled token, before the wait could be stored.

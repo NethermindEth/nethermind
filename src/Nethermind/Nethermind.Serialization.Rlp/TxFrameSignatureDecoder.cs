@@ -5,12 +5,12 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp;
 
 /// <summary>Decodes the EIP-8141 signature tuple <c>[scheme, signer, msg, signature]</c>; an empty signer decodes to
-/// null. Encoding can elide the signature bytes of canonical-hash (empty msg) entries, as <c>compute_sig_hash</c> needs.</summary>
+/// null. Encoding can replace the signature bytes of canonical-hash (empty msg) entries with their length, as
+/// <c>compute_sig_hash</c> needs.</summary>
 public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
 {
     public static readonly TxFrameSignatureDecoder Instance = new();
@@ -65,7 +65,7 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
         writer.Encode(item.Msg);
         if (elide)
         {
-            writer.Encode(Bytes.Empty);
+            writer.Encode((ulong)item.Signature.Length);
         }
         else
         {
@@ -121,7 +121,7 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
         Rlp.LengthOf((ulong)item.Scheme)
         + Rlp.LengthOf(item.Signer)
         + Rlp.LengthOf(item.Msg)
-        + (elideCanonicalSignatureBytes ? 1 : Rlp.LengthOf(item.Signature));
+        + (elideCanonicalSignatureBytes ? Rlp.LengthOf((ulong)item.Signature.Length) : Rlp.LengthOf(item.Signature));
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidMsgLength() => throw new RlpException("frame signature msg must be empty or a 32-byte digest");

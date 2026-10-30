@@ -3,7 +3,6 @@
 
 using System;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -20,7 +19,6 @@ using Nethermind.TxPool;
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
 public class AuraMainProcessingModule(
-    IAbiEncoder abiEncoder,
     IGasPriceOracle gasPriceOracle,
     IReadOnlyTxProcessingEnvFactory envFactory,
     AuRaChainSpecEngineParameters chainSpecAuRa
@@ -32,7 +30,6 @@ public class AuraMainProcessingModule(
     {
 
         IAuRaValidator validator = new AuRaValidatorFactory(
-                abiEncoder,
                 worldState,
                 transactionProcessor,
                 api.BlockTree,

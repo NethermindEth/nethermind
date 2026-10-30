@@ -13,11 +13,12 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
   # Superseded pull request runs are waste, but every master push must reach its save step: a merge
   # burst that cancels its predecessors leaves those commits without a baseline, and the pull requests
-  # based on them fall back to whichever older master cache `restore-keys` happens to match.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # based on them fall back to whichever older master cache `restore-keys` happens to match. A shared
+  # group is not enough even without cancel-in-progress, because a new run replaces a pending one.
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -46,7 +47,7 @@ jobs:
           filter: blob:none
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: ./.github/actions/setup-dotnet
         with:
           global-json-file: global.json
 
@@ -85,7 +86,7 @@ jobs:
             git fetch --depth=1 --filter=blob:none origin "$BASE_SHA" 2>/dev/null || true
           fi
           if [[ -n "$BASE_SHA" ]] && \
-            git cat-file -e "$BASE_SHA:scripts/zisk-bench/Report.cs" 2>/dev/null && \
+            git cat-file -e "$BASE_SHA:scripts/zisk-bench/report.cs" 2>/dev/null && \
             git cat-file -e "$BASE_SHA:$GUEST_DIR/inputs.json" 2>/dev/null; then
             git show "$BASE_SHA:$GUEST_DIR/inputs.json" > "$RUNNER_TEMP/base-inputs.json"
             if validate_inputs "$RUNNER_TEMP/base-inputs.json" > /dev/null; then
@@ -181,7 +182,7 @@ jobs:
               exit 1
             fi
 
-            dotnet run --file "$BENCH_DEFINITIONS/scripts/zisk-bench/ParseStats.cs" -- \
+            dotnet run --file "$BENCH_DEFINITIONS/scripts/zisk-bench/parse-stats.cs" -- \
               --input "${input}" --log "$RUNNER_TEMP/stats.log" --into "$RUNNER_TEMP/current.json"
           done
 
@@ -204,7 +205,7 @@ jobs:
           baseline="$RUNNER_TEMP/zisk-bench-baseline/baseline.json"
           [[ -f "$baseline" ]] || baseline=""
           [[ "$TRUSTED_DEFINITIONS" == true ]] || baseline=""
-          dotnet run --file "$BENCH_DEFINITIONS/scripts/zisk-bench/Report.cs" -- \
+          dotnet run --file "$BENCH_DEFINITIONS/scripts/zisk-bench/report.cs" -- \
             --current "$RUNNER_TEMP/current.json" \
             ${baseline:+--baseline "$baseline"} \
             --commit "${{ github.sha }}" \

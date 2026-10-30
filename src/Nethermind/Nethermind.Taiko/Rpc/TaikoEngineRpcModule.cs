@@ -608,25 +608,27 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 return null;
             }
 
-            // Read L1Origin to check if this is a preconfirmation block
-            L1Origin? l1Origin = l1OriginStore.ReadL1Origin((UInt256)currentBlock.Number);
-
-            // Skip preconfirmation blocks
-            if (l1Origin is not null && l1Origin.IsPreconfBlock)
-            {
-                currentBlock = blockFinder.FindBlock(currentBlock.Number - 1);
-                continue;
-            }
-
             UInt256? proposalId = currentBlock.Header.DecodeShastaProposalID();
             if (proposalId is null)
             {
                 return null;
             }
 
+            // Proposal ids never decrease along the chain, so the batch cannot appear further back.
+            if (proposalId.Value < batchId)
+            {
+                return null;
+            }
+
             if (proposalId.Value == batchId)
             {
-                return (UInt256)currentBlock.Number;
+                L1Origin? l1Origin = l1OriginStore.ReadL1Origin((UInt256)currentBlock.Number);
+
+                // Skip preconfirmation blocks
+                if (l1Origin is null || !l1Origin.IsPreconfBlock)
+                {
+                    return (UInt256)currentBlock.Number;
+                }
             }
 
             currentBlock = blockFinder.FindBlock(currentBlock.Number - 1);

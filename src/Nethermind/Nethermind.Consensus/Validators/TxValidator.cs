@@ -92,9 +92,9 @@ public sealed class TxValidator : ITxValidator
             new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
             NonceCapTxValidator.Instance,
             expectedChainIdTxValidator,
-            GasFieldsTxValidator.Instance,
-            // The frame-tx decoder always populates both blob fields, so the presence-based
-            // NonBlobFieldsTxValidator would reject every frame tx; this one checks them by value.
+            // EIP-8141 fees are [max_fee, max_priority_fee_per_gas]: there is no per-gas cap to order the tip against.
+            // The frame-tx decoder always populates blob_versioned_hashes, so the presence-based
+            // NonBlobFieldsTxValidator would reject every frame tx; this one checks it by value.
             FrameTxFieldsTxValidator.Instance,
             FrameTxNonceKeysTxValidator.Instance,
             MempoolBlobTxProofVersionValidator.Instance,
@@ -279,11 +279,6 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
         byte[]?[]? blobVersionedHashes = transaction.BlobVersionedHashes;
         if (blobVersionedHashes is { Length: > 0 })
         {
-            if (transaction.MaxFeePerBlobGas is null)
-            {
-                return TxErrorMessages.BlobTxMissingMaxFeePerBlobGas;
-            }
-
             ValidationResult blobGasLimitResult = BlobFieldsTxValidator.ValidateBlobGasLimits(blobVersionedHashes.Length, releaseSpec);
             return !blobGasLimitResult ? blobGasLimitResult : BlobFieldsTxValidator.ValidateBlobVersionedHashes(blobVersionedHashes);
         }
@@ -380,7 +375,7 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
             return FrameTxValidation.KeyedNoncesNotEnabled;
         }
 
-        return KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) && transaction.Nonce < Eip8250Constants.MaxNonceSeq
+        return KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) && (nonceKeys.Length != 0 || transaction.Nonce < Eip8250Constants.MaxNonceSeq)
             ? ValidationResult.Success
             : FrameTxValidation.MalformedNonceKeySet;
     }
@@ -692,5 +687,5 @@ public sealed class NonceCapTxValidator : ITxValidator
         IsWellFormed(transaction, releaseSpec);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.Nonce < ulong.MaxValue ? ValidationResult.Success : TxErrorMessages.NonceTooHigh;
+        transaction.Nonce < ulong.MaxValue || KeyedNonceManager.UsesKeyedNonce(transaction) ? ValidationResult.Success : TxErrorMessages.NonceTooHigh;
 }

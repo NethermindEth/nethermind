@@ -20,9 +20,12 @@ namespace Nethermind.Network.Test.P2P
                 serializer.Serialize(buffer, message);
                 using T deserialized = serializer.Deserialize(buffer);
 
-                Assert.That(deserialized, Is.Not.Null);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(deserialized, Is.Not.Null);
 
-                Assert.That(buffer.ReadableBytes, Is.EqualTo(0), "readable bytes");
+                    Assert.That(buffer.ReadableBytes, Is.EqualTo(0), "readable bytes");
+                }
 
                 serializer.Serialize(buffer2, deserialized);
 

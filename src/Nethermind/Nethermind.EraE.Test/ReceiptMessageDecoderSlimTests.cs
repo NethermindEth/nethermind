@@ -47,7 +47,9 @@ public class ReceiptMessageDecoderSlimTests
         RlpReader ctx = new(encoded.AsSpan());
         TxReceipt decoded = SlimDecoder.Decode(ref ctx, RlpBehaviors.Eip658Receipts)!;
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
         Assert.That(decoded.StatusCode, Is.EqualTo(original.StatusCode));
+#pragma warning restore NUnit2045
         Assert.That(decoded.GasUsedTotal, Is.EqualTo(original.GasUsedTotal));
         Assert.That(decoded.Logs!, Has.Length.EqualTo(original.Logs!.Length));
         Assert.That(decoded.Logs[0].Data, Is.EqualTo(original.Logs[0].Data));

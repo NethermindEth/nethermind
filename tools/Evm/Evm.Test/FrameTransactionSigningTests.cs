@@ -81,8 +81,11 @@ public class FrameTransactionSigningTests
         // The digest is recomputed from the decoded form, so a fill over a stale preimage fails here.
         Transaction decoded = EncodeDecode(transaction);
 
-        Assert.That(FrameTxValidation.IsWellFormed(decoded, assertEnabled: true, out error), Is.True, error);
-        Assert.That(transaction.Hash, Is.EqualTo(decoded.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.IsWellFormed(decoded, assertEnabled: true, out error), Is.True, error);
+            Assert.That(transaction.Hash, Is.EqualTo(decoded.Hash));
+        }
         AssertSignatureRecoversSigner(decoded, 0, key.Address);
     }
 

@@ -38,10 +38,13 @@ public class BlockDiffRecordDecoderTests
         byte[] bytes = Encode(original);
         BlockDiffRecord roundTripped = Decode(bytes);
 
-        Assert.That(roundTripped.BlockNumber, Is.EqualTo(original.BlockNumber));
-        Assert.That(roundTripped.StateRoot, Is.EqualTo(original.StateRoot));
-        Assert.That(roundTripped.CodeHashChanges, Is.Empty);
-        Assert.That(roundTripped.SlotCountChanges, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundTripped.BlockNumber, Is.EqualTo(original.BlockNumber));
+            Assert.That(roundTripped.StateRoot, Is.EqualTo(original.StateRoot));
+            Assert.That(roundTripped.CodeHashChanges, Is.Empty);
+            Assert.That(roundTripped.SlotCountChanges, Is.Empty);
+        }
     }
 
     [Test]
@@ -58,9 +61,12 @@ public class BlockDiffRecordDecoderTests
         BlockDiffRecord roundTripped = Decode(bytes);
 
         Assert.That(roundTripped.CodeHashChanges, Has.Count.EqualTo(1));
-        Assert.That(roundTripped.CodeHashChanges[0].OldHash, Is.EqualTo(CodeHashChange.NoCode));
-        Assert.That(roundTripped.CodeHashChanges[0].NewHash, Is.EqualTo(TestItem.KeccakB.ValueHash256));
-        Assert.That(roundTripped.CodeHashChanges[0].NewCodeSize, Is.EqualTo(24u));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundTripped.CodeHashChanges[0].OldHash, Is.EqualTo(CodeHashChange.NoCode));
+            Assert.That(roundTripped.CodeHashChanges[0].NewHash, Is.EqualTo(TestItem.KeccakB.ValueHash256));
+            Assert.That(roundTripped.CodeHashChanges[0].NewCodeSize, Is.EqualTo(24u));
+        }
     }
 
     [Test]
@@ -75,9 +81,12 @@ public class BlockDiffRecordDecoderTests
 
         BlockDiffRecord roundTripped = Decode(Encode(original));
 
-        Assert.That(roundTripped.CodeHashChanges[0].OldHash, Is.EqualTo(TestItem.KeccakA.ValueHash256));
-        Assert.That(roundTripped.CodeHashChanges[0].NewHash, Is.EqualTo(CodeHashChange.NoCode));
-        Assert.That(roundTripped.CodeHashChanges[0].NewCodeSize, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundTripped.CodeHashChanges[0].OldHash, Is.EqualTo(TestItem.KeccakA.ValueHash256));
+            Assert.That(roundTripped.CodeHashChanges[0].NewHash, Is.EqualTo(CodeHashChange.NoCode));
+            Assert.That(roundTripped.CodeHashChanges[0].NewCodeSize, Is.Zero);
+        }
     }
 
     [Test]
@@ -94,8 +103,11 @@ public class BlockDiffRecordDecoderTests
         BlockDiffRecord roundTripped = Decode(Encode(original));
 
         Assert.That(roundTripped.SlotCountChanges, Has.Count.EqualTo(2));
-        Assert.That(roundTripped.SlotCountChanges[0], Is.EqualTo(a));
-        Assert.That(roundTripped.SlotCountChanges[1], Is.EqualTo(b));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundTripped.SlotCountChanges[0], Is.EqualTo(a));
+            Assert.That(roundTripped.SlotCountChanges[1], Is.EqualTo(b));
+        }
     }
 
     [Test]
@@ -120,10 +132,13 @@ public class BlockDiffRecordDecoderTests
 
         BlockDiffRecord roundTripped = Decode(Encode(original));
 
-        Assert.That(roundTripped.BlockNumber, Is.EqualTo(original.BlockNumber));
-        Assert.That(roundTripped.StateRoot, Is.EqualTo(original.StateRoot));
-        Assert.That(roundTripped.CodeHashChanges, Is.EqualTo(codeChanges));
-        Assert.That(roundTripped.SlotCountChanges, Is.EqualTo(slotChanges));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundTripped.BlockNumber, Is.EqualTo(original.BlockNumber));
+            Assert.That(roundTripped.StateRoot, Is.EqualTo(original.StateRoot));
+            Assert.That(roundTripped.CodeHashChanges, Is.EqualTo(codeChanges));
+            Assert.That(roundTripped.SlotCountChanges, Is.EqualTo(slotChanges));
+        }
     }
 
     [Test]
@@ -183,9 +198,12 @@ public class BlockDiffRecordDecoderTests
 
         BlockDiffRecord roundTripped = Decode(Encode(original));
 
-        Assert.That(roundTripped.AccountTrieBytesDelta, Is.EqualTo(12_345L));
-        Assert.That(roundTripped.StorageTrieBytesDelta, Is.EqualTo(-6_789L));
-        Assert.That(roundTripped.AccountsAddedDelta, Is.EqualTo(42L));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundTripped.AccountTrieBytesDelta, Is.EqualTo(12_345L));
+            Assert.That(roundTripped.StorageTrieBytesDelta, Is.EqualTo(-6_789L));
+            Assert.That(roundTripped.AccountsAddedDelta, Is.EqualTo(42L));
+        }
     }
 
     /// <summary>Pre-extension (legacy four-field) payloads must still parse, with missing trailing fields read as zero.</summary>
@@ -200,13 +218,16 @@ public class BlockDiffRecordDecoderTests
 
         BlockDiffRecord decoded = Decode(legacyBytes);
 
-        Assert.That(decoded.BlockNumber, Is.EqualTo(7L));
-        Assert.That(decoded.StateRoot, Is.EqualTo(TestItem.KeccakA));
-        Assert.That(decoded.CodeHashChanges, Has.Count.EqualTo(1));
-        Assert.That(decoded.SlotCountChanges, Has.Count.EqualTo(1));
-        Assert.That(decoded.AccountTrieBytesDelta, Is.Zero);
-        Assert.That(decoded.StorageTrieBytesDelta, Is.Zero);
-        Assert.That(decoded.AccountsAddedDelta, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.BlockNumber, Is.EqualTo(7L));
+            Assert.That(decoded.StateRoot, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(decoded.CodeHashChanges, Has.Count.EqualTo(1));
+            Assert.That(decoded.SlotCountChanges, Has.Count.EqualTo(1));
+            Assert.That(decoded.AccountTrieBytesDelta, Is.Zero);
+            Assert.That(decoded.StorageTrieBytesDelta, Is.Zero);
+            Assert.That(decoded.AccountsAddedDelta, Is.Zero);
+        }
     }
 
     /// <summary>New-encoder payloads must stay readable by a legacy four-field decoder reading only the prefix.</summary>
@@ -228,10 +249,13 @@ public class BlockDiffRecordDecoderTests
             List<CodeHashEntry> codeChanges, List<SlotCountEntry> slotChanges) =
             DecodeLegacyPrefix(bytes);
 
-        Assert.That(blockNumber, Is.EqualTo(original.BlockNumber));
-        Assert.That(stateRoot, Is.EqualTo(original.StateRoot));
-        Assert.That(codeChanges, Is.EqualTo(original.CodeHashChanges));
-        Assert.That(slotChanges, Is.EqualTo(original.SlotCountChanges));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockNumber, Is.EqualTo(original.BlockNumber));
+            Assert.That(stateRoot, Is.EqualTo(original.StateRoot));
+            Assert.That(codeChanges, Is.EqualTo(original.CodeHashChanges));
+            Assert.That(slotChanges, Is.EqualTo(original.SlotCountChanges));
+        }
     }
 
     /// <summary>Hand-rolled encoder emitting the pre-extension four-field layout, byte-identical to the v18 plugin.</summary>

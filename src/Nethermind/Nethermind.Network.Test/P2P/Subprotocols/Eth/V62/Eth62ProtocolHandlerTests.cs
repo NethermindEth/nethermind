@@ -104,14 +104,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Metadata_correct()
         {
-            Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
-            Assert.That(_handler.Name, Is.EqualTo("eth62"));
-            Assert.That(_handler.ProtocolVersion, Is.EqualTo(62));
-            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(8));
-            Assert.That(_handler.IncludeInTxPool, Is.True);
-            Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
-            Assert.That(_handler.HeadHash, Is.Null);
-            Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+                Assert.That(_handler.Name, Is.EqualTo("eth62"));
+                Assert.That(_handler.ProtocolVersion, Is.EqualTo(62));
+                Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(8));
+                Assert.That(_handler.IncludeInTxPool, Is.True);
+                Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+                Assert.That(_handler.HeadHash, Is.Null);
+                Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+            }
         }
 
         [Test]
@@ -469,8 +472,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             BlockBody?[] bodies = RequestBlockBodies(TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC);
 
             Assert.That(bodies, Has.Length.EqualTo(2));
-            Assert.That(bodies[0], Is.SameAs(firstBlock.Body));
-            Assert.That(bodies[1], Is.SameAs(thirdBlock.Body));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bodies[0], Is.SameAs(firstBlock.Body));
+                Assert.That(bodies[1], Is.SameAs(thirdBlock.Body));
+            }
         }
 
         [Test]
@@ -604,7 +610,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(taskScheduler.RequestTypes, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(ContainsValueTuple(taskScheduler.RequestTypes[0]), Is.False);
         }
 
@@ -1149,7 +1157,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
 
             Assert.That(response, Is.Not.Null);
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
             Assert.That(response!.Bodies, Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That(response.Bodies!.Bodies, Is.Not.Null);
             return response.Bodies.Bodies!;
         }

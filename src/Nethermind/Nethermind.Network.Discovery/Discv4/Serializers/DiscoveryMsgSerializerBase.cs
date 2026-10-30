@@ -4,7 +4,6 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -26,100 +25,62 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
 
     private readonly INodeIdResolver _nodeIdResolver = nodeIdResolver ?? throw new ArgumentNullException(nameof(nodeIdResolver));
 
+    // [<mdc 32 Bytes><sig 64 Bytes><SigRecoveryId><MsgType><Data>]
     protected const int MdcSigOffset = 32 + 64 + 1;
+    private const int DataOffset = MdcSigOffset + 1;
 
-    protected void Serialize(byte type, Span<byte> data, IByteBuffer byteBuffer)
+    /// <summary>
+    /// Gets the length of a packet whose RLP data is <paramref name="dataLength"/> bytes long.
+    /// </summary>
+    protected static int GetPacketLength(int dataLength) => DataOffset + dataLength;
+
+    /// <summary>
+    /// Writes the message type into <paramref name="packet"/> and returns a writer for the RLP data that follows it.
+    /// </summary>
+    protected static RlpWriter StartPacket(Span<byte> packet, byte msgType)
     {
-        // [<mdc 32 Bytes><sig 64 Bytes><SigRecoveryId><MsgType><Data>]
-        int length = 32 + 1 + data.Length + 64 + 1;
-        byteBuffer.EnsureWritable(length);
-
-        int startReadIndex = byteBuffer.ReaderIndex;
-        int startWriteIndex = byteBuffer.WriterIndex;
-
-        byteBuffer.SetWriterIndex(startWriteIndex + 32 + 65);
-        byteBuffer.WriteByte(type);
-        byteBuffer.WriteBytes(data);
-
-        byteBuffer.SetReaderIndex(startReadIndex + 32 + 65);
-        ValueHash256 toSign = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
-        byteBuffer.SetReaderIndex(startReadIndex);
-
-        Signature signature = _ecdsa.Sign(_privateKey, in toSign);
-        byteBuffer.SetWriterIndex(startWriteIndex + 32);
-        byteBuffer.WriteBytes(signature.Bytes);
-        byteBuffer.WriteByte(signature.RecoveryId);
-
-        byteBuffer.SetReaderIndex(startReadIndex + 32);
-        byteBuffer.SetWriterIndex(startWriteIndex + length);
-        ValueHash256 mdc = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
-        byteBuffer.SetReaderIndex(startReadIndex);
-
-        byteBuffer.SetWriterIndex(startWriteIndex);
-        byteBuffer.WriteBytes(mdc.BytesAsSpan);
-        byteBuffer.SetWriterIndex(startWriteIndex + length);
+        packet[MdcSigOffset] = msgType;
+        return new RlpWriter(packet[DataOffset..]);
     }
 
-    protected void AddSignatureAndMdc(IByteBuffer byteBuffer, int dataLength)
+    /// <summary>
+    /// Signs the packet whose RLP data <paramref name="writer"/> has written and writes its hash in front.
+    /// </summary>
+    /// <param name="mdc">The packet hash, which identifies the message.</param>
+    /// <returns>The packet length.</returns>
+    protected int CompletePacket(Span<byte> packet, in RlpWriter writer, out ValueHash256 mdc)
     {
-        // [<mdc 32 Bytes><sig 64 Bytes><SigRecoveryId><MsgType><Data>]
-        int length = 32 + 64 + 1 + dataLength;
+        packet = packet[..GetPacketLength(writer.Position)];
 
-        int startReadIndex = byteBuffer.ReaderIndex;
-        int startWriteIndex = byteBuffer.WriterIndex;
-
-        byteBuffer.SetWriterIndex(startWriteIndex + length);
-        byteBuffer.SetReaderIndex(startReadIndex + 32 + 65);
-        ValueHash256 toSign = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
-        byteBuffer.SetReaderIndex(startReadIndex);
-
+        ValueHash256 toSign = ValueKeccak.Compute(packet[MdcSigOffset..]);
         Signature signature = _ecdsa.Sign(_privateKey, in toSign);
-        byteBuffer.SetWriterIndex(startWriteIndex + 32);
-        byteBuffer.WriteBytes(signature.Bytes);
-        byteBuffer.WriteByte(signature.RecoveryId);
+        signature.Bytes.CopyTo(packet[Hash256.Size..]);
+        packet[MdcSigOffset - 1] = signature.RecoveryId;
 
-        byteBuffer.SetWriterIndex(startWriteIndex + length);
-        byteBuffer.SetReaderIndex(startReadIndex + 32);
-        ValueHash256 mdc = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
-        byteBuffer.SetReaderIndex(startReadIndex);
-
-        byteBuffer.SetWriterIndex(startWriteIndex);
-        byteBuffer.WriteBytes(mdc.BytesAsSpan);
-
-        byteBuffer.SetReaderIndex(startReadIndex);
-        byteBuffer.SetWriterIndex(startWriteIndex + length);
+        mdc = ValueKeccak.Compute(packet[Hash256.Size..]);
+        mdc.Bytes.CopyTo(packet);
+        return packet.Length;
     }
 
-    protected (PublicKey FarPublicKey, ValueHash256 Mdc, IByteBuffer Data) PrepareForDeserialization(IByteBuffer msg)
+    protected (PublicKey FarPublicKey, ValueHash256 Mdc) PrepareForDeserialization(ReadOnlySpan<byte> msg, out ReadOnlySpan<byte> data)
     {
-        if (msg.ReadableBytes < 98)
+        if (msg.Length < DataOffset)
         {
             throw new NetworkingException("Incorrect message", NetworkExceptionType.Validation);
         }
-        IByteBuffer data = msg.Slice(98, msg.ReadableBytes - 98);
-        Memory<byte> msgBytes = msg.ReadAllBytesAsMemory();
-        ValueHash256 mdc = new(msgBytes.Span[..Hash256.Size]);
-        Span<byte> sigAndData = msgBytes.Span[32..];
-        Span<byte> computedMdc = ValueKeccak.Compute(sigAndData).BytesAsSpan;
 
-        if (!Bytes.AreEqual(mdc.Bytes, computedMdc))
+        data = msg[DataOffset..];
+        ValueHash256 mdc = new(msg[..Hash256.Size]);
+        ReadOnlySpan<byte> sigAndData = msg[Hash256.Size..];
+        ValueHash256 computedMdc = ValueKeccak.Compute(sigAndData);
+
+        if (mdc != computedMdc)
         {
             throw new NetworkingException("Invalid packet hash", NetworkExceptionType.Validation);
         }
 
         PublicKey nodeId = _nodeIdResolver.GetNodeId(sigAndData[..64], sigAndData[64], sigAndData[65..]);
-        return (nodeId, mdc, data);
-    }
-
-    protected static ValueHash256 ReadHash(IByteBuffer byteBuffer, int index)
-    {
-        Span<byte> hash = stackalloc byte[Hash256.Size];
-        for (int i = 0; i < Hash256.Size; i++)
-        {
-            hash[i] = byteBuffer.GetByte(index + i);
-        }
-
-        return new ValueHash256(hash);
+        return (nodeId, mdc);
     }
 
     protected static bool IsNextEnrSequence(RlpReader ctx)
@@ -167,9 +128,10 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         return length;
     }
 
-    protected static void SerializeNode<TWriter>(ref TWriter writer, Node node, int length)
+    protected static void SerializeNode<TWriter>(ref TWriter writer, Node node)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
+        int length = GetLengthSerializeNode(node);
         writer.StartSequence(length);
         IPAddressRlp.Encode(ref writer, node.Address.Address);
         writer.Encode(node.DiscoveryPort);
@@ -188,14 +150,6 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
     }
 
     private static int GetSerializedTcpPort(Node node) => node.Port;
-
-    protected static void PrepareBufferForSerialization(IByteBuffer byteBuffer, int dataLength, byte msgType)
-    {
-        byteBuffer.EnsureWritable(MdcSigOffset + 1 + dataLength);
-        byteBuffer.SetWriterIndex(byteBuffer.WriterIndex + MdcSigOffset);
-
-        byteBuffer.WriteByte(msgType);
-    }
 
     protected static IPEndPoint GetAddress(ReadOnlySpan<byte> ip, int port, bool allowZeroPort = false)
     {

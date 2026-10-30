@@ -61,7 +61,10 @@ public class NetworkNodePortTests
     {
         NetworkNode networkNode = new(string.Format(enodeFormat, TestItem.PublicKeyA.ToString(false)));
 
-        Assert.That(networkNode.Port, Is.EqualTo(expectedPort));
-        Assert.That(networkNode.DiscoveryPort, Is.EqualTo(expectedDiscoveryPort));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(networkNode.Port, Is.EqualTo(expectedPort));
+            Assert.That(networkNode.DiscoveryPort, Is.EqualTo(expectedDiscoveryPort));
+        }
     }
 }

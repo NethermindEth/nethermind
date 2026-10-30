@@ -274,9 +274,9 @@ public class FrameTxPaymasterFilterTests
             FrameSignatures = [],
             GasLimit = 1_000_000,
             GasPrice = gasPrice,
+            MaxFee = (UInt256)1_000_000 * gasPrice,
             DecodedMaxFeePerGas = gasPrice,
             BlobVersionedHashes = carriesBlobs ? [new byte[32]] : null,
-            MaxFeePerBlobGas = carriesBlobs ? UInt256.One : UInt256.Zero,
         };
         tx.Hash = tx.CalculateHash();
         return tx;

@@ -19,7 +19,6 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
 
     private static readonly RlpLimit _slotsLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);
     private static readonly RlpLimit _storageLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);
-    private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
 
     protected override ReadOnlyAccountChanges DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors)
     {
@@ -57,13 +56,14 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
             lastRead = storageRead;
         }
 
-        BalanceChange[] balanceChanges = BalanceChangeDecoder.Instance.DecodeNonNullArray(ref ctx, RlpBehaviors.None, _txLimit);
+        RlpLimit changesLimit = SlotChangesDecoder.ChangesLimit;
+        BalanceChange[] balanceChanges = BalanceChangeDecoder.Instance.DecodeNonNullArray(ref ctx, RlpBehaviors.None, changesLimit);
         ValidateSortedByIndex(balanceChanges, "Balance");
 
-        NonceChange[] nonceChanges = NonceChangeDecoder.Instance.DecodeNonNullArray(ref ctx, RlpBehaviors.None, _txLimit);
+        NonceChange[] nonceChanges = NonceChangeDecoder.Instance.DecodeNonNullArray(ref ctx, RlpBehaviors.None, changesLimit);
         ValidateSortedByIndex(nonceChanges, "Nonce");
 
-        CodeChange[] codeChanges = CodeChangeDecoder.Instance.DecodeNonNullArray(ref ctx, RlpBehaviors.None, _txLimit);
+        CodeChange[] codeChanges = CodeChangeDecoder.Instance.DecodeNonNullArray(ref ctx, RlpBehaviors.None, changesLimit);
         ValidateSortedByIndex(codeChanges, "Code");
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)

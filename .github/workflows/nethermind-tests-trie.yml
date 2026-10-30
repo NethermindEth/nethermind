@@ -8,7 +8,7 @@ name: Nethermind tests (Trie DB)
 # which covers both the patricia and flat configuration groups.
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 on:
@@ -46,7 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Projects under about 4 minutes share a job, run one after another (scripts/ci/RunTestProjects.cs).
+        # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.cs).
         project:
           - Nethermind.JsonRpc.Test
           - Nethermind.Mcp.Plugin.Test
@@ -137,7 +137,7 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
           PROJECTS: ${{ matrix.project.list || matrix.project }}
           CRASH_RETRY: false
-        run: dotnet run --file scripts/ci/RunTestProjects.cs
+        run: dotnet run --file scripts/ci/run-test-projects.cs
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
@@ -204,7 +204,7 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
           PROJECTS: ${{ matrix.project.list || matrix.project }}
           CRASH_RETRY: false
-        run: dotnet run --file scripts/ci/RunTestProjects.cs
+        run: dotnet run --file scripts/ci/run-test-projects.cs
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}

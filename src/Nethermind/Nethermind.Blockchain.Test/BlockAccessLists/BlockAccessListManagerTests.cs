@@ -142,7 +142,9 @@ public class BlockAccessListManagerTests
         }
 
         Task drain = Task.Run(h.Manager.WaitForBalWarmup);
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
         Assert.That(drain.Wait(DrainTimeout), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(drain.Exception, Is.Null);
     }
 

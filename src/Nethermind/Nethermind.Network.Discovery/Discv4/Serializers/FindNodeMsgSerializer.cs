@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
@@ -10,45 +9,39 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
 
-public sealed class FindNodeMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<FindNodeMsg>
+public sealed class FindNodeMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IMessageSerializer<FindNodeMsg>
 {
-    public void Serialize(IByteBuffer byteBuffer, FindNodeMsg msg) => this.SerializeWithLengths(byteBuffer, msg);
-
-    public void Serialize(IByteBuffer byteBuffer, FindNodeMsg msg, ref LengthStack lengths)
+    public int Serialize(Span<byte> destination, FindNodeMsg msg)
     {
-        int contentLength = lengths.Pop();
-        int length = Rlp.LengthOfSequence(contentLength);
+        GetDataLength(msg, out int contentLength);
 
-        byteBuffer.MarkIndex();
-        PrepareBufferForSerialization(byteBuffer, length, (byte)msg.MsgType);
-        ByteBufferRlpWriter writer = new(byteBuffer);
+        RlpWriter writer = StartPacket(destination, (byte)msg.MsgType);
         writer.StartSequence(contentLength);
         writer.Encode(msg.SearchedNodeId);
         writer.Encode(msg.ExpirationTime);
 
-        byteBuffer.ResetIndex();
-        AddSignatureAndMdc(byteBuffer, length + 1);
+        return CompletePacket(destination, in writer, out _);
     }
 
-    public FindNodeMsg Deserialize(IByteBuffer msgBytes)
+    public FindNodeMsg Deserialize(ReadOnlySpan<byte> msgBytes)
     {
-        (PublicKey FarPublicKey, _, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
-        RlpReader ctx = new(Data.AsSpan());
+        (PublicKey FarPublicKey, _) = PrepareForDeserialization(msgBytes, out ReadOnlySpan<byte> data);
+        RlpReader ctx = new(data);
         ctx.ReadSequenceLength();
         byte[] searchedNodeId = ctx.DecodeByteArray(NodeIdRlpLimit);
         long expirationTime = ctx.DecodeLong();
 
-        Data.SetReaderIndex(Data.ReaderIndex + ctx.Position);
         FindNodeMsg findNodeMsg = new(FarPublicKey, expirationTime, searchedNodeId);
         return findNodeMsg;
     }
 
-    public int PopulateLength(FindNodeMsg msg, ref LengthStack lengths)
+    public int GetLength(FindNodeMsg msg) => GetPacketLength(GetDataLength(msg, out _));
+
+    private static int GetDataLength(FindNodeMsg msg, out int contentLength)
     {
-        int contentLength = Rlp.LengthOf(msg.SearchedNodeId);
+        contentLength = Rlp.LengthOf(msg.SearchedNodeId);
         contentLength += Rlp.LengthOf(msg.ExpirationTime);
 
-        lengths.Push(contentLength);
         return Rlp.LengthOfSequence(contentLength);
     }
 }

@@ -551,8 +551,11 @@ public class TxTrieCodecTests
             bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
             where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
-            Assert.That(Environment.CurrentManagedThreadId, Is.EqualTo(_threadId));
-            Assert.That(rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Environment.CurrentManagedThreadId, Is.EqualTo(_threadId));
+                Assert.That(rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping), Is.True);
+            }
             writer.WriteByte((byte)Type);
             OnEncode?.Invoke();
             writer.StartSequence(1);

@@ -12,10 +12,10 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
@@ -38,22 +38,8 @@ public static class PersistedSnapshotBuilder
 {
     private const int TopPathThreshold = 7;
     private const int CompactPathThreshold = 15;
-
-    private static readonly Comparison<TreePath> StateNodeComparer = (a, b) =>
-    {
-        int cmp = a.Path.Bytes.SequenceCompareTo(b.Path.Bytes);
-        return cmp != 0 ? cmp : a.Length.CompareTo(b.Length);
-    };
-
-    // Sorts storage-trie node keys by 20-byte address-hash prefix (matching the column outer key)
-    // and then by encoded path so per-addressHash slices are contiguous and emitted in sorted order.
-    private static readonly Comparison<(ValueHash256 AddrHash, TreePath Path)> StorageNodeComparer = (a, b) =>
-    {
-        int cmp = a.AddrHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength].SequenceCompareTo(b.AddrHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength]);
-        if (cmp != 0) return cmp;
-        cmp = a.Path.Path.Bytes.SequenceCompareTo(b.Path.Path.Bytes);
-        return cmp != 0 ? cmp : a.Path.Length.CompareTo(b.Path.Length);
-    };
+    private const int NodeTableEntryUpperBound = 160;
+    private const int MinHashedNodeRlpLength = Hash256.Size;
 
     // Sorts slot entries by raw Address bytes then by slot value, so per-address slices are
     // contiguous and slot keys within a slice are in sorted big-endian order.
@@ -71,54 +57,43 @@ public static class PersistedSnapshotBuilder
     {
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         // To stay off the LOH, we keep only the unmanaged sort keys in NativeMemoryList
-        // (off-heap) and re-fetch the TrieNode value from the source ConcurrentDictionary
+        // (off-heap) and read the node RLP from the buffer by its record pointer
         // at write time. PooledSet is used for the small Address dedup map so its
         // backing entry array is pool-rented rather than freshly allocated each block.
-        NativeMemoryList<TreePath> stateTopKeys = null!, stateCompactKeys = null!, stateFallbackKeys = null!;
-        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> storTopKeys = null!, storCompactKeys = null!, storFallbackKeys = null!;
+        NativeMemoryList<(TreePath Path, ulong Pointer)> stateTopKeys = null!, stateCompactKeys = null!, stateFallbackKeys = null!;
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path, ulong Pointer)> storTopKeys = null!, storCompactKeys = null!, storFallbackKeys = null!;
         NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> sortedStorages = null!;
         NativeMemoryList<ValueAddress> uniqueAddresses = null!;
 
-        // Parallel extraction + sort: three independent jobs over disjoint dictionaries.
+        // Parallel extraction + sort: three independent jobs over disjoint collections. The node
+        // iterators emit in key order, so each node sublist is sorted as it fills.
         Action[] jobs =
         [
             () =>
             {
-                NativeMemoryList<TreePath> top = new(0);
-                NativeMemoryList<TreePath> compact = new(snapshot.StateNodesCount);
-                NativeMemoryList<TreePath> fallback = new(0);
-                foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes)
+                NativeMemoryList<(TreePath Path, ulong Pointer)> top = new(0);
+                NativeMemoryList<(TreePath Path, ulong Pointer)> compact = new(0);
+                NativeMemoryList<(TreePath Path, ulong Pointer)> fallback = new(0);
+                foreach ((TreePath path, ulong pointer, _) in snapshot.StateNodes)
                 {
-                    if (kv.Value.IsHashOnlyPlaceholder()) continue;
-                    TreePath path = kv.Key;
-                    if (path.Length <= TopPathThreshold) top.Add(path);
-                    else if (path.Length <= CompactPathThreshold) compact.Add(path);
-                    else fallback.Add(path);
-                    kv.Value.IsPersisted = true;
-                    kv.Value.PrunePersistedRecursively(1);
+                    if (path.Length <= TopPathThreshold) top.Add((path, pointer));
+                    else if (path.Length <= CompactPathThreshold) compact.Add((path, pointer));
+                    else fallback.Add((path, pointer));
                 }
-                ParallelUnbalancedWork.For(0, 3, i =>
-                    (i switch { 0 => top, 1 => compact, _ => fallback }).Sort(StateNodeComparer));
                 stateTopKeys = top; stateCompactKeys = compact; stateFallbackKeys = fallback;
             },
             () =>
             {
-                NativeMemoryList<(ValueHash256, TreePath)> top = new(0);
-                NativeMemoryList<(ValueHash256, TreePath)> compact = new(snapshot.StorageNodesCount);
-                NativeMemoryList<(ValueHash256, TreePath)> fallback = new(0);
-                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
+                NativeMemoryList<(ValueHash256, TreePath, ulong)> top = new(0);
+                NativeMemoryList<(ValueHash256, TreePath, ulong)> compact = new(0);
+                NativeMemoryList<(ValueHash256, TreePath, ulong)> fallback = new(0);
+                foreach ((Hash256 addr, TreePath path, ulong pointer, _) in snapshot.StorageNodes)
                 {
-                    if (kv.Value.IsHashOnlyPlaceholder()) continue;
-                    (Hash256 addr, TreePath path) = kv.Key.Key;
                     ValueHash256 addrHash = addr.ValueHash256;
-                    if (path.Length <= TopPathThreshold) top.Add((addrHash, path));
-                    else if (path.Length <= CompactPathThreshold) compact.Add((addrHash, path));
-                    else fallback.Add((addrHash, path));
-                    kv.Value.IsPersisted = true;
-                    kv.Value.PrunePersistedRecursively(1);
+                    if (path.Length <= TopPathThreshold) top.Add((addrHash, path, pointer));
+                    else if (path.Length <= CompactPathThreshold) compact.Add((addrHash, path, pointer));
+                    else fallback.Add((addrHash, path, pointer));
                 }
-                ParallelUnbalancedWork.For(0, 3, i =>
-                    (i switch { 0 => top, 1 => compact, _ => fallback }).Sort(StorageNodeComparer));
                 storTopKeys = top; storCompactKeys = compact; storFallbackKeys = fallback;
             },
             () =>
@@ -189,18 +164,44 @@ public static class PersistedSnapshotBuilder
 
     /// <summary>
     /// Upper bound on the serialized snapshot size, used to pre-size the destination arena. The
-    /// in-memory snapshot size bounds it comfortably: the metadata table stores only compact keys,
-    /// small inline values, and 6-byte <see cref="NodeRef"/>s (the trie-node RLP it references lives in
-    /// the blob arena), so the serialized table is far smaller than the in-memory snapshot it is built
-    /// from. There is no artificial 2 GiB ceiling — the streaming
+    /// in-memory snapshot size bounds the flat entries, and each reachable trie node adds at most
+    /// <see cref="NodeTableEntryUpperBound"/> bytes for its key, 6-byte <see cref="NodeRef"/>,
+    /// restart/index entries and page padding (the trie-node RLP it references lives in the blob arena).
+    /// There is no artificial 2 GiB ceiling — the streaming
     /// <see cref="Sorted.SortedTableBuilder{TWriter}"/> builds tables past 2 GiB and the arena is
     /// long-addressed.
     /// </summary>
+    /// <remarks>
+    /// Every node but a trie root is referenced by its hash, so its RLP is at least <see cref="MinHashedNodeRlpLength"/> bytes,
+    /// and <see cref="EstimateTotalRlpSize"/> bounds the node count without a traversal for a base snapshot.
+    /// </remarks>
     public static long EstimateSize(Snapshot snapshot) =>
         // The arena writer throws if the write overruns the extent sized from this estimate, so a mutable
         // snapshot must be measured live at persist time: Snapshot.EstimateMemory serves counts sealed at
-        // first observation (for repository-ledger consistency), which may predate late content writes.
-        (snapshot.IsSorted ? snapshot.EstimateMemory() : snapshot.Content.EstimateMemory()) + 1.KiB;
+        // first observation (for repository-ledger consistency), and the arena must not overrun even if
+        // the content changes after that.
+        checked((snapshot.IsSorted ? snapshot.EstimateMemory() : snapshot.Content.EstimateMemory())
+            + (EstimateTotalRlpSize(snapshot) / MinHashedNodeRlpLength + RootCount(snapshot)) * NodeTableEntryUpperBound + 1.KiB);
+
+    private static long RootCount(Snapshot snapshot) =>
+        1 + (snapshot.IsSorted ? snapshot.SortedContent.StorageRoots.Count : snapshot.Content.StorageRoots.Count);
+
+    /// <summary>Estimates the trie-node RLP bytes <see cref="Build"/> writes to the blob arena, used to pick a blob arena with room for them.</summary>
+    /// <remarks>
+    /// In practice this is only called on base snapshots. A base snapshot's nodes are records between its pin and its state root,
+    /// which is published last, so those buffer bytes bound their RLP without a traversal; the slack covers the state root record.
+    /// A compacted snapshot's range spans every block it merged, including the nodes later blocks replaced, so its RLP is summed instead.
+    /// Neither counts the padding that keeps an RLP within one page.
+    /// </remarks>
+    public static long EstimateTotalRlpSize(Snapshot snapshot)
+    {
+        if (snapshot.To.BlockNumber - snapshot.From.BlockNumber == 1) return snapshot.EstimatePinnedNodeBytes() + 4.KiB;
+
+        long size = 0;
+        foreach ((TreePath Path, ulong Pointer, NodeRecord Record) node in snapshot.StateNodes) size += node.Record.Rlp.Length;
+        foreach ((Hash256 Address, TreePath Path, ulong Pointer, NodeRecord Record) node in snapshot.StorageNodes) size += node.Record.Rlp.Length;
+        return size;
+    }
 
     private static void WritePerAddress<TWriter>(
         ref SortedTableBuilder<TWriter> table, Snapshot snapshot,
@@ -243,7 +244,9 @@ public static class PersistedSnapshotBuilder
             }
 
             // Self-destruct sorts after the account and before slots.
-            if (snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
+            if (snapshot.IsSorted
+                ? snapshot.SortedContent.SortedSelfDestructs.TryGetValue(address, out bool sdValue)
+                : snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out sdValue))
             {
                 int len = PersistedSnapshotKey.WriteSelfDestructKey(keyBuf, addressBytes);
                 table.Add(keyBuf[..len],
@@ -271,15 +274,13 @@ public static class PersistedSnapshotBuilder
 
     private static void WriteStateNodes<TWriter>(
         ref SortedTableBuilder<TWriter> table, Snapshot snapshot,
-        NativeMemoryList<TreePath> keys, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriter
+        NativeMemoryList<(TreePath Path, ulong Pointer)> keys, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriter
     {
         Span<byte> keyBuf = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
         for (int i = 0; i < keys.Count; i++)
         {
-            TreePath path = keys[i];
-            if (!snapshot.TryGetStateNode(path, out TrieNode? node) || node is null)
-                throw new InvalidOperationException($"State node {path} disappeared between extraction and persist.");
-            NodeRef nr = blobWriter.WriteRlp(node.FullRlp.AsSpan());
+            (TreePath path, ulong pointer) = keys[i];
+            NodeRef nr = blobWriter.WriteRlp(snapshot.GetRlp(pointer));
             int len = PersistedSnapshotKey.WriteStateNodeKey(keyBuf, in path);
             table.Add(keyBuf[..len], MemoryMarshal.AsBytes(new Span<NodeRef>(ref nr)));
             bloom.Add(PersistedSnapshotBloomBuilder.StatePathKey(in path));
@@ -295,16 +296,12 @@ public static class PersistedSnapshotBuilder
     /// </summary>
     private static void WriteStorageNodes<TWriter>(
         ref SortedTableBuilder<TWriter> table, Snapshot snapshot,
-        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> fallback,
-        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> compact,
-        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> top,
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path, ulong Pointer)> fallback,
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path, ulong Pointer)> compact,
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path, ulong Pointer)> top,
         BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriter
     {
         Span<byte> keyBuf = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
-        // Cache the materialised Hash256 across a per-addressHash run — the merge keeps all of an
-        // address-hash's nodes (across sublists) contiguous, so one Gen0 alloc per address-hash.
-        ValueHash256 cachedHash = default;
-        Hash256? cachedRef = null;
         int fi = 0, ci = 0, ti = 0;
         while (true)
         {
@@ -322,15 +319,8 @@ public static class PersistedSnapshotBuilder
             else
                 pick = 2;
 
-            (ValueHash256 addressHash, TreePath path) = pick == 0 ? fallback[fi++] : pick == 1 ? compact[ci++] : top[ti++];
-            if (cachedRef is null || !cachedHash.Equals(addressHash))
-            {
-                cachedHash = addressHash;
-                cachedRef = new Hash256(in addressHash);
-            }
-            if (!snapshot.TryGetStorageNode((cachedRef, path), out TrieNode? node) || node is null)
-                throw new InvalidOperationException($"Storage node {addressHash}:{path} disappeared between extraction and persist.");
-            NodeRef nr = blobWriter.WriteRlp(node.FullRlp.AsSpan());
+            (ValueHash256 addressHash, TreePath path, ulong pointer) = pick == 0 ? fallback[fi++] : pick == 1 ? compact[ci++] : top[ti++];
+            NodeRef nr = blobWriter.WriteRlp(snapshot.GetRlp(pointer));
             int len = PersistedSnapshotKey.WriteStorageNodeKey(keyBuf, addressHash.Bytes, in path);
             table.Add(keyBuf[..len], MemoryMarshal.AsBytes(new Span<NodeRef>(ref nr)));
             bloom.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));

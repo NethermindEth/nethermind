@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
@@ -10,25 +9,20 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
 
-public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<PongMsg>
+public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IMessageSerializer<PongMsg>
 {
-    public void Serialize(IByteBuffer byteBuffer, PongMsg msg) => this.SerializeWithLengths(byteBuffer, msg);
-
-    public void Serialize(IByteBuffer byteBuffer, PongMsg msg, ref LengthStack lengths)
+    public int Serialize(Span<byte> destination, PongMsg msg)
     {
         if (msg.FarAddress is null)
         {
             throw new NetworkingException($"Sending discovery message without {nameof(msg.FarAddress)} set.", NetworkExceptionType.Discovery);
         }
 
-        int contentLength = lengths.Pop();
-        int totalLength = Rlp.LengthOfSequence(contentLength);
+        (_, int contentLength, int farAddressLength) = GetDataLength(msg);
 
-        byteBuffer.MarkIndex();
-        PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
-        ByteBufferRlpWriter writer = new(byteBuffer);
+        RlpWriter writer = StartPacket(destination, (byte)msg.MsgType);
         writer.StartSequence(contentLength);
-        Encode(ref writer, msg.FarAddress, lengths.Pop());
+        Encode(ref writer, msg.FarAddress, farAddressLength);
         ValueHash256? pingMdc = msg.PingMdc;
         writer.Encode(in pingMdc);
         writer.Encode(msg.ExpirationTime);
@@ -37,16 +31,14 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
             writer.Encode(msg.EnrSequence.Value);
         }
 
-        byteBuffer.ResetIndex();
-
-        AddSignatureAndMdc(byteBuffer, totalLength + 1);
+        return CompletePacket(destination, in writer, out _);
     }
 
-    public PongMsg Deserialize(IByteBuffer msgBytes)
+    public PongMsg Deserialize(ReadOnlySpan<byte> msgBytes)
     {
-        (PublicKey farPublicKey, _, IByteBuffer data) = PrepareForDeserialization(msgBytes);
+        (PublicKey farPublicKey, _) = PrepareForDeserialization(msgBytes, out ReadOnlySpan<byte> data);
 
-        RlpReader ctx = new(data.AsSpan());
+        RlpReader ctx = new(data);
 
         int messageEnd = ctx.ReadSequenceLength() + ctx.Position;
         int addressEnd = ctx.ReadSequenceLength() + ctx.Position;
@@ -75,12 +67,13 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
         }
 
         ctx.Check(messageEnd);
-        data.SetReaderIndex(data.ReaderIndex + ctx.Position);
         PongMsg msg = new(farPublicKey, expirationTime, new ValueHash256(token), enrSequence);
         return msg;
     }
 
-    public int PopulateLength(PongMsg message, ref LengthStack lengths)
+    public int GetLength(PongMsg message) => GetPacketLength(GetDataLength(message).totalLength);
+
+    private static (int totalLength, int contentLength, int farAddressLength) GetDataLength(PongMsg message)
     {
         if (message.FarAddress is null)
         {
@@ -98,8 +91,6 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
             contentLength += Rlp.LengthOf(message.EnrSequence.Value);
         }
 
-        lengths.Push(farAddressLength);
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+        return (Rlp.LengthOfSequence(contentLength), contentLength, farAddressLength);
     }
 }

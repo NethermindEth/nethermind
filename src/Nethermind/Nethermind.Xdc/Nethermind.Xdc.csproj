@@ -8,14 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="Contracts\MasternodeVotingContract.json" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="Contracts\MasternodeVotingContract.json" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />

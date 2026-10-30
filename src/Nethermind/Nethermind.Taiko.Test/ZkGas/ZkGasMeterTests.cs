@@ -93,15 +93,21 @@ public class ZkGasMeterTests
         ZkGasMeter meter = new();
 
         bool ok = meter.ChargeOpcode(0x01, 1);
-        Assert.That(ok, Is.True);
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo((ulong)ZkGasSchedule.FailsafeMultiplier),
-            "failsafe multiplier is applied to every unlisted entry");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ok, Is.True);
+            Assert.That(meter.TxZkGasUsed, Is.EqualTo((ulong)ZkGasSchedule.FailsafeMultiplier),
+                "failsafe multiplier is applied to every unlisted entry");
+        }
 
         Address ecrecover = Address.FromNumber(0x01);
         meter.CancelTransaction();
         bool okPrecompile = meter.ChargePrecompile(ecrecover, 1);
-        Assert.That(okPrecompile, Is.True);
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo((ulong)ZkGasSchedule.FailsafeMultiplier));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(okPrecompile, Is.True);
+            Assert.That(meter.TxZkGasUsed, Is.EqualTo((ulong)ZkGasSchedule.FailsafeMultiplier));
+        }
     }
 
     [Test]
@@ -235,8 +241,11 @@ public class ZkGasMeterTests
 
         meter.ChargeOpcode(0x01, 1);
         bool committed = meter.CommitTransaction();
-        Assert.That(committed, Is.True);
-        Assert.That(meter.IsLimitExceeded, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(committed, Is.True);
+            Assert.That(meter.IsLimitExceeded, Is.False);
+        }
     }
 
     [Test]
@@ -266,8 +275,11 @@ public class ZkGasMeterTests
 
         meter.CancelTransaction();
 
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo(0UL));
-        Assert.That(meter.IsLimitExceeded, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(meter.TxZkGasUsed, Is.EqualTo(0UL));
+            Assert.That(meter.IsLimitExceeded, Is.False);
+        }
     }
 
     // ── block-limit enforcement ───────────────────────────────────────────────
@@ -372,12 +384,18 @@ public class ZkGasMeterTests
         ulong halfMax = ulong.MaxValue / 2 + 1;
 
         bool first = meter.ChargeOpcode(0xf0, halfMax);
-        Assert.That(first, Is.True);
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo(halfMax));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.True);
+            Assert.That(meter.TxZkGasUsed, Is.EqualTo(halfMax));
+        }
 
         bool second = meter.ChargeOpcode(0xf0, halfMax);
-        Assert.That(second, Is.False);
-        Assert.That(meter.IsLimitExceeded, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.False);
+            Assert.That(meter.IsLimitExceeded, Is.True);
+        }
     }
 
     // ── TX intrinsic ZK gas ───────────────────────────────────────────────────
@@ -393,8 +411,11 @@ public class ZkGasMeterTests
 
         bool result = meter.ChargeTxIntrinsic();
 
-        Assert.That(result, Is.True);
-        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.TxIntrinsicZkGas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.TxIntrinsicZkGas));
+        }
 
         meter.CommitTransaction();
         Assert.That(meter.BlockZkGasUsed, Is.EqualTo(ZkGasSchedule.TxIntrinsicZkGas));
@@ -440,8 +461,11 @@ public class ZkGasMeterTests
         Assert.That(meter.IsLimitExceeded, Is.True);
 
         bool committed = meter.CommitTransaction();
-        Assert.That(committed, Is.False);
-        Assert.That(meter.IsLimitExceeded, Is.True);
-        Assert.That(meter.BlockZkGasUsed, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(committed, Is.False);
+            Assert.That(meter.IsLimitExceeded, Is.True);
+            Assert.That(meter.BlockZkGasUsed, Is.EqualTo(0UL));
+        }
     }
 }

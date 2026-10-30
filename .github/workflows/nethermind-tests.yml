@@ -1,7 +1,7 @@
 name: Nethermind/Ethereum tests
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 on:
@@ -52,7 +52,7 @@ jobs:
         runner:
           - ubuntu-latest
           - ubuntu-24.04-arm
-        # Projects under about 4 minutes share a job, run one after another (scripts/ci/RunTestProjects.cs);
+        # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.cs);
         # each pack takes about 6 minutes, sized from the job times of a master run.
         project:
           - Nethermind.JsonRpc.Test
@@ -75,7 +75,6 @@ jobs:
               Nethermind.Abi.Test
               Nethermind.AuRa.Test
               Nethermind.Ethash.Test
-              Nethermind.Experimental.Abi.Test
               Nethermind.SendPolicy.Plugin.Test
               Nethermind.Specs.Test
               Nethermind.State.Test
@@ -179,7 +178,7 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
           PROJECTS: ${{ matrix.project.list || matrix.project }}
           COVERAGE: ${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' }}
-        run: dotnet run --file scripts/ci/RunTestProjects.cs
+        run: dotnet run --file scripts/ci/run-test-projects.cs
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() || steps.test.outputs.crashed == 'true' }}
@@ -308,7 +307,7 @@ jobs:
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
           PROJECTS: ${{ matrix.project.list || matrix.project }}
-        run: dotnet run --file scripts/ci/RunTestProjects.cs
+        run: dotnet run --file scripts/ci/run-test-projects.cs
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() || steps.test.outputs.crashed == 'true' }}

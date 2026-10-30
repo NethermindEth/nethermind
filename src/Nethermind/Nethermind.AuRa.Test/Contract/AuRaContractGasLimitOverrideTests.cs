@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
@@ -66,8 +65,11 @@ public class AuRaContractGasLimitOverrideTests
     {
         using TestGasLimitContractBlockchain chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
         bool isValid = ((AuRaContractGasLimitOverride)chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Head.Header, 100000001, out ulong? expectedGasLimit);
-        Assert.That(isValid, Is.False);
-        Assert.That(expectedGasLimit, Is.EqualTo(CorrectHeadGasLimit));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.False);
+            Assert.That(expectedGasLimit, Is.EqualTo(CorrectHeadGasLimit));
+        }
     }
 
     [Test]
@@ -168,7 +170,7 @@ public class AuRaContractGasLimitOverrideTests
             KeyValuePair<ulong, Address> blockGasLimitContractTransition = chainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>().BlockGasLimitContractTransitions
                 .First();
-            BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value,
+            BlockGasLimitContract gasLimitContract = new(blockGasLimitContractTransition.Value,
                 blockGasLimitContractTransition.Key,
                 txProcessingEnvFactory.Create());
 

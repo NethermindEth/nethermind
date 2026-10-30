@@ -5,7 +5,7 @@ Conventions for GitHub Actions, CODEOWNERS, and repo automation under `.github/`
 ## Workflows
 
 - **Naming**: Use kebab-case; descriptive name (e.g. `nethermind-tests.yml`, `run-expb-reproducible-benchmarks.yml`).
-- **Concurrency**: Prefer `concurrency: group: ${{ github.workflow }}-${{ github.ref }}` with `cancel-in-progress: true` for PR/push workflows to avoid duplicate runs.
+- **Concurrency**: `group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}`, `cancel-in-progress: true`.
 - **Triggers**: Be explicit — `pull_request:`, `push: branches: [master]`, or `workflow_dispatch:` with inputs as needed.
 - **Secrets**: Never log or echo secrets; use `${{ secrets.X }}` and restrict env vars to the job that needs them.
 - **Matrix**: For test workflows, the project list in `nethermind-tests.yml` is the source of truth; keep matrix project names in sync with actual test project names (e.g. `Nethermind.Evm.Test`).
@@ -16,7 +16,7 @@ Conventions for GitHub Actions, CODEOWNERS, and repo automation under `.github/`
 
 ## Actions (composite or custom)
 
-- Custom actions live under `.github/actions/<name>/` with `action.yaml` and scripts (e.g. `Create.cs`, `startup-script.sh`).
+- Custom actions live under `.github/actions/<name>/` with `action.yaml` and scripts (e.g. `create.cs`, `startup-script.sh`).
 - Scripts must be executable and safe for the runner OS (Linux unless noted).
 - Prefer `actions/checkout` and standard `actions/*` where possible; document any third-party action version and reason.
 
