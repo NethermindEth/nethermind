@@ -18,7 +18,6 @@ using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Network.P2P;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
