@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Execution.Settlement.RollupX;
@@ -64,9 +65,23 @@ internal sealed class NativeCanonicalHistory(NativeL1Rpc source, EezChainRules r
         NativeL1HeaderChain? previous;
         long generation;
         lock (_gate) (previous, generation) = (_ready, _generation);
-        NativeL1Header genesis = await source.Read(0, token);
-        if (genesis.Hash != source.Rules.GenesisHash || source.Rules.Specs.ChainId != rules.Schedule!.L1Reference.ChainId)
+        RollupXL1Reference reference = rules.Schedule!.L1Reference;
+        if (source.Rules.Specs.ChainId != reference.ChainId)
             throw NativeL1Header.Invalid("configured L1 differs from the canonical source");
+        if (reference.ChainId == BlockchainIds.Chiado)
+        {
+            source.Rules.ValidateBootstrap(reference);
+            NativeL1Header bootstrap = await source.Read(reference.Number, token);
+            if (bootstrap.Hash != reference.Hash.ValueHash256 || bootstrap.Timestamp != reference.Timestamp ||
+                bootstrap.PrevRandao != reference.PrevRandao.ValueHash256)
+                throw NativeL1Header.Invalid("canonical L1 differs from the configured post-merge bootstrap");
+        }
+        else
+        {
+            NativeL1Header genesis = await source.Read(0, token);
+            if (genesis.Hash != source.Rules.GenesisHash)
+                throw NativeL1Header.Invalid("configured L1 differs from the canonical source");
+        }
         NativeL1Header first = await source.Read(firstNumber, token);
         NativeL1HeaderChain prepared = new();
         if (previous is not null && previous.FirstNumber <= firstNumber && previous.Endpoint.Number >= firstNumber &&

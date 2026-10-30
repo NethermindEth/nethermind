@@ -90,8 +90,7 @@ internal sealed partial class NativeL1Rules
     internal NativeOfflineProfile.Inputs Profile(NativeGenesisSnapshot l2)
     {
         RollupXSchedule schedule = l2.Rules.Schedule!;
-        if (schedule.L1Reference.ChainId != Specs.ChainId || schedule.L1Reference.Number < _lastBlockFork)
-            throw Invalid("L2 bootstrap differs from L1 chain or precedes a block-based fork");
+        ValidateBootstrap(schedule.L1Reference);
         ValueHash256 runtimeHash = NativeHistoryBlockExecutor.GetRuntimeHash(l2.Rules.NativeFormat);
         NativeOfflineProfile.Inputs result = new(Specs.ChainId, l2.Specs.ChainId, l2.GenesisHash, schedule.GenesisTimestamp,
             schedule.BlockIntervalSeconds, schedule.SyncIntervalBlocks, checked((uint)(l2.History.Delay / l2.History.BlockInterval - 1)),
@@ -105,6 +104,12 @@ internal sealed partial class NativeL1Rules
             });
         NativeOfflineProfile.Validate(in result, _ruleTimes, result.L1ChainId, runtimeHash);
         return result;
+    }
+
+    internal void ValidateBootstrap(RollupXL1Reference reference)
+    {
+        if (reference.ChainId != Specs.ChainId || reference.Number < _lastBlockFork)
+            throw Invalid("L2 bootstrap differs from L1 chain or precedes a block-based fork");
     }
 
     internal ulong PostingBlobLimit(ulong? timestamp, ulong parentNumber)

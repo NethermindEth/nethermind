@@ -336,7 +336,7 @@ public partial class RollupXGenesisTests
         return EezChainRules.NativeRollupX(schedule, Address.FromNumber(123), format);
     }
 
-    private static IContainer NativeFollowerContainer(NativeHistoryTestSource source, EezChainRules rules)
+    private static IContainer NativeFollowerContainer(NativeHistoryTestSource source, EezChainRules rules, string? l1Config = null)
     {
         EezConfig config = new()
         {
@@ -344,8 +344,8 @@ public partial class RollupXGenesisTests
             FollowerEnabled = true,
             L1RpcUrl = "http://l1.test/",
             L1BeaconUrl = "http://beacon.test/",
-            L1ChainId = 1337,
-            L1ChainConfigPath = StatelessFixtures.PathOf(L1Capture, "l1-genesis.json"),
+            L1ChainId = rules.Schedule!.L1Reference.ChainId,
+            L1ChainConfigPath = l1Config ?? StatelessFixtures.PathOf(L1Capture, "l1-genesis.json"),
             RegistryAddress = Address.FromNumber(456).ToString(),
             RegistryDeployBlock = 1,
             RollupId = 1

@@ -2,11 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Net;
+using System.Net.Http;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,6 +24,7 @@ using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Execution.Settlement.RollupX;
+using Nethermind.Eez.Follower;
 using Nethermind.Eez.Follower.RollupX;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
@@ -159,6 +165,75 @@ public partial class RollupXGenesisTests
     }
 
     [Test]
+    public async Task NativeCanonicalHistory_ChiadoPreset_UsesTheTrustedPostMergeBootstrap()
+    {
+        NativeGenesisSnapshot genesis = NativeGenesisSnapshot.Load(File.ReadAllBytes(StatelessFixtures.PathOf(ChiadoCapture, "genesis.json")), NativeSystemTxFormat.ContractV7);
+        using NativeHistoryTestSource source = ChiadoHistorySource();
+        using IContainer container = NativeFollowerContainer(source, genesis.Rules, "chiado");
+        List<ulong> reads = [];
+        source.OnRead = reads.Add;
+        NativeCanonicalHistory history = container.Resolve<NativeCanonicalHistory>();
+        L1Anchor anchor = source.Anchor(genesis.Rules.Schedule!.L1Reference.Number);
+        NativeL1HeaderChain prepared = await history.Prepare(anchor.Number, anchor, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prepared.Count, Is.EqualTo(1));
+            Assert.That(prepared.Endpoint.Hash, Is.EqualTo(anchor.Hash.ValueHash256));
+            Assert.That(history.Read(), Is.SameAs(prepared));
+            Assert.That(reads, Does.Not.Contain(0UL), "the profile's execution-envelope genesis is not canonical AuRa evidence");
+        }
+    }
+
+    [Test]
+    public async Task NativeCanonicalHistory_ChiadoBootstrapMismatch_RejectsWithoutPublishing(
+        [Values("hash", "timestamp", "randao")] string field)
+    {
+        NativeGenesisSnapshot genesis = NativeGenesisSnapshot.Load(File.ReadAllBytes(StatelessFixtures.PathOf(ChiadoCapture, "genesis.json")), NativeSystemTxFormat.ContractV7);
+        RollupXL1Reference reference = genesis.Rules.Schedule!.L1Reference;
+        reference = field switch
+        {
+            "hash" => reference with { Hash = TestItem.KeccakA },
+            "timestamp" => reference with { Timestamp = reference.Timestamp + 1 },
+            _ => reference with { PrevRandao = TestItem.KeccakA },
+        };
+        EezChainRules rules = EezChainRules.NativeRollupX(genesis.Rules.Schedule with { L1Reference = reference },
+            genesis.Rules.FeeCollector!, NativeSystemTxFormat.ContractV7);
+        using NativeHistoryTestSource source = ChiadoHistorySource();
+        using IContainer container = NativeFollowerContainer(source, rules, "chiado");
+        NativeCanonicalHistory history = container.Resolve<NativeCanonicalHistory>();
+        await Assert.ThrowsAsync<L1SourceIncompleteException>(async () =>
+            await history.Prepare(reference.Number, source.Anchor(reference.Number), CancellationToken.None));
+        Assert.That(() => history.Read(), Throws.TypeOf<L1SourceIncompleteException>(), "mismatched bootstrap evidence cannot become ready");
+    }
+
+    [Test]
+    public async Task NativeCanonicalHistory_ChiadoBootstrapBeforeMerge_RejectsBeforeRpc()
+    {
+        NativeGenesisSnapshot genesis = NativeGenesisSnapshot.Load(File.ReadAllBytes(StatelessFixtures.PathOf(ChiadoCapture, "genesis.json")), NativeSystemTxFormat.ContractV7);
+        RollupXL1Reference reference = genesis.Rules.Schedule!.L1Reference with { Number = 680_929 };
+        EezChainRules rules = EezChainRules.NativeRollupX(genesis.Rules.Schedule with { L1Reference = reference },
+            genesis.Rules.FeeCollector!, NativeSystemTxFormat.ContractV7);
+        using NativeHistoryTestSource source = ChiadoHistorySource();
+        using IContainer container = NativeFollowerContainer(source, rules, "chiado");
+        NativeCanonicalHistory history = container.Resolve<NativeCanonicalHistory>();
+        L1Anchor anchor = new(reference.Number, reference.Hash, reference.Timestamp, reference.PrevRandao);
+        await Assert.ThrowsAsync<InvalidDataException>(async () => await history.Prepare(reference.Number, anchor, CancellationToken.None));
+        Assert.That(source.Methods, Is.Empty, "unsupported bootstrap history must be rejected before reading canonical evidence");
+    }
+
+    private static NativeHistoryTestSource ChiadoHistorySource()
+    {
+        using JsonDocument capture = JsonDocument.Parse(File.ReadAllBytes(StatelessFixtures.PathOf(ChiadoCapture, "headers.json")));
+        Dictionary<ulong, BlockHeaderForRpc> headers = [];
+        EthereumJsonSerializer serializer = new();
+        foreach (JsonProperty row in capture.RootElement.EnumerateObject())
+            headers.Add(ulong.Parse(row.Name, CultureInfo.InvariantCulture), serializer.Deserialize<BlockHeaderForRpc>(row.Value.GetRawText())!);
+        NativeHistoryTestSource source = new(headers);
+        source.Http = new HttpClient(source, disposeHandler: false) { BaseAddress = new Uri("http://l1.test/") };
+        return source;
+    }
+
+    [Test]
     public void StreamingRuntime_ChiadoPreset_StartsOnlyForTheSelectedNetworkAndSigner([Values] bool wrongKey)
     {
         using TempPath directory = TempPath.GetTempDirectory();
@@ -188,10 +263,16 @@ public partial class RollupXGenesisTests
         string settings = Path.Combine(directory.Path, "streaming.json");
         File.WriteAllText(settings, JsonSerializer.Serialize(new
         {
-            profile = "rollupx-native", listenAddress = "127.0.0.1:0", l1ChainId = BlockchainIds.Chiado,
-            l1ChainConfigPath = "chiado", l2GenesisHash = "0x283b471b65276c23867b5351fe1973fc9438310d865b6f833d1cd6666478ccb0",
-            registry = registry.ToString(), manager = manager.ToString(), serverCertificate = "server.pfx",
-            serverPasswordFile = "password", composerCertificates = new[] { "composer.cer" },
+            profile = "rollupx-native",
+            listenAddress = "127.0.0.1:0",
+            l1ChainId = BlockchainIds.Chiado,
+            l1ChainConfigPath = "chiado",
+            l2GenesisHash = "0x283b471b65276c23867b5351fe1973fc9438310d865b6f833d1cd6666478ccb0",
+            registry = registry.ToString(),
+            manager = manager.ToString(),
+            serverCertificate = "server.pfx",
+            serverPasswordFile = "password",
+            composerCertificates = new[] { "composer.cer" },
         }));
         WindowLimits limits = new(64, 64 * 1024 * 1024, 1_000_000);
         AttesterOptions options = new(new IPEndPoint(IPAddress.Loopback, 0), chainPath, context.RollupId, context.VerificationKey,
