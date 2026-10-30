@@ -899,15 +899,27 @@ namespace Nethermind.Core.Extensions
         /// The tail of <see cref="CountZeros(ReadOnlySpan{byte})"/>, and its whole loop on targets without vector
         /// acceleration (e.g. the zkVM guest), where a byte-at-a-time scan of transaction calldata dominates
         /// intrinsic gas calculation. Each byte lane of an accumulator counts the non-zero bytes at its position,
-        /// so a word costs a few ALU ops and the lanes are summed once per chunk.
+        /// so a word costs a few ALU ops and the lanes are summed once per chunk. The bytes before the first word
+        /// boundary are counted one by one, so every word load is aligned: a strict-alignment target such as the
+        /// SP1 guest reads a misaligned word a byte at a time.
         /// </remarks>
-        internal static int CountZerosWordAtATime(ReadOnlySpan<byte> data)
+        internal static unsafe int CountZerosWordAtATime(ReadOnlySpan<byte> data)
         {
             if (IntPtr.Size == sizeof(uint)) return CountZerosInAlignedWords(data);
 
             // Lanes reach at most 28, so the sum of all eight fits the byte a multiply-fold leaves it in, and a chunk
             // is a whole number of the four-word steps below.
             const int maxChunkBytes = 28 * sizeof(ulong);
+            int headZeros = 0;
+            // The span is not pinned, but only the low address bits are read; a GC move keeps them, as array data
+            // stays 8-byte aligned.
+            int head = Math.Min(data.Length, (int)((nuint)(-(nint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(data))) & (sizeof(ulong) - 1)));
+            foreach (byte b in data[..head])
+            {
+                if (b == 0) headZeros++;
+            }
+
+            data = data[head..];
             ref byte bytes = ref MemoryMarshal.GetReference(data);
             int wordBytes = data.Length & ~(sizeof(ulong) - 1);
             int nonZeros = 0;
@@ -935,7 +947,7 @@ namespace Nethermind.Core.Extensions
                 nonZeros += (int)((laneCounts * 0x0101010101010101UL) >> 56);
             }
 
-            int zeros = wordBytes - nonZeros;
+            int zeros = headZeros + wordBytes - nonZeros;
             for (; offset < data.Length; offset++)
             {
                 if (Unsafe.Add(ref bytes, offset) == 0)

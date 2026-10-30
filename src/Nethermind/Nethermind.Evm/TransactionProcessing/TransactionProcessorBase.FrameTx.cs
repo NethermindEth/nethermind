@@ -53,12 +53,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     }
 
     /// <summary>Checks a frame transaction's nonce against the sender's state, under either nonce shape.</summary>
-    /// <remarks>With <see cref="Transaction.NonceKeys"/> every key must sit at <see cref="Transaction.Nonce"/>,
+    /// <remarks>With a non-empty <see cref="Transaction.NonceKeys"/> every key must sit at <see cref="Transaction.Nonce"/>, or for a single-use set every key must read 0,
     /// so the set is consumed as a unit. Assumes the caller has already checked well-formedness.</remarks>
     private TransactionResult ValidateFrameTxNonce(Transaction tx, Address sender)
     {
         UInt256[]? nonceKeys = tx.NonceKeys;
-        if (nonceKeys is null)
+        if (nonceKeys is null or [])
         {
             UInt256 accountNonce = WorldState.GetNonce(sender);
             return accountNonce == tx.Nonce
@@ -71,9 +71,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.Ok;
         }
 
-        if (tx.Nonce >= Eip8250Constants.MaxNonceSeq)
+        if (tx.Nonce == Eip8250Constants.MaxNonceSeq)
         {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce sequence is exhausted");
+            return FrameTxNonceMismatch(tooLow: true);
         }
 
         // Cold path only: re-read to report the same too-low / too-high distinction as the account nonce.
@@ -116,7 +116,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             // Structural, so it holds even where validation is skipped: the fixed-size buffers keyed on the set
             // take a well-formed one as their precondition, and eth_call and the simulator arrive without a validator.
-            if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
+            if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) || (nonceKeys.Length == 0 && tx.Nonce == Eip8250Constants.MaxNonceSeq))
             {
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
             }
