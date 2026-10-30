@@ -14,6 +14,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -97,8 +98,8 @@ public class RewriteDbTests
         new(CreateConfigFactory(dbConfig), dbConfig, sharedCache, LimboLogs.Instance, basePath);
 
     private static RewriteDb CreateStep(DbConfig dbConfig, HyperClockCacheWrapper sharedCache, string basePath, string[] arguments) =>
-        new([new StepCommandSelection("rewrite-db", arguments)], new InitConfig { BaseDbPath = basePath }, dbConfig,
-            CreateConfigFactory(dbConfig), sharedCache, LimboLogs.Instance);
+        new([new StepCommandSelection("rewrite-db", arguments)], new InitConfig { BaseDbPath = basePath },
+            new RocksDbRewriter(new InitConfig { BaseDbPath = basePath }, dbConfig, CreateConfigFactory(dbConfig), sharedCache, LimboLogs.Instance));
 
     private static (IDisposable Db, IDb[] Columns) Open(IDbFactory factory, string dbName) => dbName switch
     {

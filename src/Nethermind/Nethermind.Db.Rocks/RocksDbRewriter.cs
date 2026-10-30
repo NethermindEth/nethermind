@@ -10,7 +10,6 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -21,45 +20,35 @@ using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks;
 
-/// <summary>Rewrites one database under the current RocksDB configuration.</summary>
+/// <summary>Rewrites a database under the current RocksDB configuration.</summary>
 /// <remarks>
 /// Some RocksDB options only apply to newly written files, so changing them otherwise needs a resync. This copies
 /// every column family of the database into a new one opened with the current configuration, then swaps the new
-/// database into place and deletes the old one. The database name is the directory under the base DB path, e.g.
-/// <c>rewrite-db receipts</c>.
+/// database into place and deletes the old one.
 /// </remarks>
-[StepCommand("rewrite-db", "Rewrite a database with the current RocksDB configuration, e.g. `rewrite-db receipts`.")]
-[RunnerStepDependencies]
-public class RewriteDb(
-    IEnumerable<StepCommandSelection> commandSelections,
+public class RocksDbRewriter(
     IInitConfig initConfig,
     IDbConfig dbConfig,
     IRocksDbConfigFactory rocksDbConfigFactory,
     HyperClockCacheWrapper sharedCache,
-    ILogManager logManager) : IStep
+    ILogManager logManager)
 {
     private const string RewriteSuffix = "_rewrite";
     private const string OldSuffix = "_old";
     private static readonly long ChunkBytes = 1.MiB;
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(10);
 
-    private readonly ILogger _logger = logManager.GetClassLogger<RewriteDb>();
+    private readonly ILogger _logger = logManager.GetClassLogger<RocksDbRewriter>();
 
-    /// <inheritdoc/>
+    /// <summary>Rewrites the database in <paramref name="dbPath"/> and swaps it into place.</summary>
+    /// <param name="dbPath">The database directory under the base DB path, e.g. <c>receipts</c>.</param>
+    /// <param name="cancellationToken">Stops the copy, leaving the original database in place.</param>
     /// <exception cref="InvalidConfigurationException">
-    /// The arguments do not name exactly one existing RocksDB database, or an earlier rewrite was interrupted
-    /// after the old database was moved aside.
+    /// There is no RocksDB database at <paramref name="dbPath"/>, or an earlier rewrite was interrupted after the
+    /// old database was moved aside.
     /// </exception>
-    public async Task Execute(CancellationToken cancellationToken)
+    public async Task Rewrite(string dbPath, CancellationToken cancellationToken)
     {
-        // Resolvable without a command line, so the container can build it even when nothing selected it by name.
-        IReadOnlyList<string> arguments = commandSelections.SingleOrDefault()?.Arguments ?? [];
-        if (arguments.Count != 1)
-            throw new InvalidConfigurationException(
-                $"rewrite-db takes exactly one database name, the directory under {initConfig.BaseDbPath}, e.g. `rewrite-db receipts`.",
-                ExitCodes.ForbiddenOptionValue);
-
-        string dbPath = arguments[0];
         string fullPath = DbOnTheRocks.GetFullDbPath(dbPath, initConfig.BaseDbPath);
         string rewriteFullPath = fullPath + RewriteSuffix;
         string oldFullPath = fullPath + OldSuffix;

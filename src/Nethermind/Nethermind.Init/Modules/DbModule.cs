@@ -12,6 +12,7 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rpc;
+using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -74,6 +75,7 @@ public class DbModule(
             .AddSingleton<HyperClockCacheWrapper>((ctx) => new HyperClockCacheWrapper(ctx.Resolve<IDbConfig>().SharedBlockCacheSize))
 
             // [StepCommand] keeps it out of a normal node start; it runs only as `nethermind rewrite-db <db>`.
+            .AddSingleton<RocksDbRewriter>()
             .AddStep(typeof(RewriteDb))
             ;
 
