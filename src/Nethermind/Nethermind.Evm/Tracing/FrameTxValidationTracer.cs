@@ -30,8 +30,31 @@ public sealed class FrameTxValidationTracer(
     CancellationToken token = default,
     Func<bool>? preempt = null,
     ulong maxVerifyGas = Eip8141Constants.MaxVerifyGas)
-    : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
+    : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer, IInstructionTracingFilter
 {
+    public UInt256 InstructionMask => InspectedInstructions;
+
+    internal static readonly UInt256 InspectedInstructions = CreateInspectedInstructions();
+
+    private static UInt256 CreateInspectedInstructions()
+    {
+        UInt256 mask = UInt256.Zero;
+        foreach (Instruction instruction in (ReadOnlySpan<Instruction>)[
+            Instruction.GAS, Instruction.TIMESTAMP, Instruction.SLOTNUM,
+            Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL,
+            Instruction.EXTCODESIZE, Instruction.EXTCODEHASH, Instruction.EXTCODECOPY,
+            Instruction.GASPRICE, Instruction.BLOCKHASH, Instruction.COINBASE, Instruction.NUMBER,
+            Instruction.PREVRANDAO, Instruction.GASLIMIT, Instruction.BASEFEE, Instruction.BLOBBASEFEE,
+            Instruction.INVALID, Instruction.SELFDESTRUCT, Instruction.PAY, Instruction.BALANCE,
+            Instruction.SELFBALANCE, Instruction.SETCODEFROM, Instruction.CREATE, Instruction.TCREATE,
+            Instruction.CREATE2, Instruction.SSTORE, Instruction.SLOAD])
+        {
+            mask |= UInt256.One << (int)instruction;
+        }
+
+        return mask;
+    }
+
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
 
     private readonly long _deadline = Deadline(timeProvider ?? TimeProvider.System, timeout);
@@ -65,6 +88,7 @@ public sealed class FrameTxValidationTracer(
     public override bool IsTracingInstructions => true;
     public override bool IsTracingOpLevelStorage => true;
     public override bool IsTracingStack => true;
+    public override bool IsTracingStackPushes => false;
     public override bool IsTracingReceipt => true;
 
     // Explicit: ITxTracer declares these as default members, so the mapping must be made on this type
