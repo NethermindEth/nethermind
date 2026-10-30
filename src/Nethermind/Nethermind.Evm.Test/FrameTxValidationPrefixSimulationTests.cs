@@ -492,7 +492,11 @@ public class FrameTxValidationPrefixSimulationTests
             if (tracer.Violated) reacted.Add((Instruction)op);
         }
 
-        Assert.That(reacted, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reacted, Is.Empty);
+            Assert.That((mask & (UInt256.One << (int)Instruction.SLOAD)).IsZero, Is.False);
+        }
     }
 
     [Test]
