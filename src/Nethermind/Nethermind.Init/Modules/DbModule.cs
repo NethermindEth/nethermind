@@ -4,6 +4,7 @@
 using System;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -71,6 +72,9 @@ public class DbModule(
             .AddColumnDatabase<BlobTxsColumns>(DbNames.BlobTransactions)
 
             .AddSingleton<HyperClockCacheWrapper>((ctx) => new HyperClockCacheWrapper(ctx.Resolve<IDbConfig>().SharedBlockCacheSize))
+
+            // [StepCommand] keeps it out of a normal node start; it runs only as `nethermind rewrite-db <db>`.
+            .AddStep(typeof(RewriteDb))
             ;
 
         switch (initConfig.DiagnosticMode)
