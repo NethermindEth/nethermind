@@ -183,5 +183,10 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
                 jsonRpcConfig.JwtSecretFile = oldPath;
             }
         }
+        // Existing secrets keep their working-directory paths, which consensus clients are configured with.
+        else if (!File.Exists(newPath))
+        {
+            jsonRpcConfig.JwtSecretFile = Path.GetFullPath("jwt-secret".GetApplicationResourcePath(keyStoreConfig.KeyStoreDirectory));
+        }
     }
 }
