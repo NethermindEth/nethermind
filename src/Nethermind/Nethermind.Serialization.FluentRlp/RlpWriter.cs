@@ -339,7 +339,6 @@ public ref struct RlpWriter
     }
 
     [DoesNotReturn]
-    [MethodImpl(MethodImplOptions.NoInlining)]
     private static void ThrowUnbalancedSequence()
         => throw new InvalidOperationException("RLP payload has another length than the sequence declares, or a nested sequence did not end");
 

@@ -503,11 +503,9 @@ public ref struct RlpReader
 
     // Throws from a separate method keep the hot read paths small after inlining.
     [DoesNotReturn]
-    [MethodImpl(MethodImplOptions.NoInlining)]
     private static void ThrowInvalid(string message) => throw new RlpReaderException(message);
 
     [DoesNotReturn]
-    [MethodImpl(MethodImplOptions.NoInlining)]
     private static void ThrowLimit(int maxCount) => throw new RlpLimitException($"RLP has more than {maxCount} items");
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
