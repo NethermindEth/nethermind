@@ -8,7 +8,7 @@ namespace Nethermind.Consensus.Processing
 {
     public class TxEventArgs(int index, Transaction transaction) : EventArgs
     {
-        public int Index { get; } = index;
-        public Transaction Transaction { get; } = transaction;
+        public int Index { get; private protected set; } = index;
+        public Transaction Transaction { get; private protected set; } = transaction;
     }
 }
