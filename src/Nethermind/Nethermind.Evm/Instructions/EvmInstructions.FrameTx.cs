@@ -86,7 +86,7 @@ public static unsafe partial class EvmInstructions
     /// <summary>TXPARAM (0xb0): read a transaction-scoped field.</summary>
     /// <typeparam name="TEip8250">Whether the fork defines the keyed-nonce indices 0x0D through 0x10.</typeparam>
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static EvmExceptionType InstructionTxParam<TGasPolicy, TTracingInst, TEip8250>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
