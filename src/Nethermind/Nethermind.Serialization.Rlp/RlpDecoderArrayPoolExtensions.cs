@@ -30,7 +30,7 @@ public static class RlpDecoderArrayPoolExtensions
         ArrayPoolSpan<byte> buffer = new(decoder.GetLength(item, rlpBehaviors));
         try
         {
-            decoder.EncodeTo(buffer, item, rlpBehaviors);
+            decoder.EncodeExact(buffer, item, rlpBehaviors);
             return buffer;
         }
         catch
@@ -102,7 +102,7 @@ public static class RlpDecoderArrayPoolExtensions
         ArrayPoolList<byte> buffer = new(length, length);
         try
         {
-            decoder.EncodeTo(buffer.AsSpan(), item, rlpBehaviors);
+            decoder.EncodeExact(buffer.AsSpan(), item, rlpBehaviors);
             return buffer;
         }
         catch
@@ -119,10 +119,18 @@ public static class RlpDecoderArrayPoolExtensions
     public static int EncodeTo<T>(this IRlpDecoder<T> decoder, Span<byte> destination, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int length = decoder.GetLength(item, rlpBehaviors);
-        RlpWriter writer = RlpWriter.ContentWriter(destination[..length]);
-        decoder.Encode(ref writer, item, rlpBehaviors);
-        Rlp.CheckLength(in writer, length);
+        decoder.EncodeExact(destination[..length], item, rlpBehaviors);
         return length;
+    }
+
+    /// <summary>Encodes <paramref name="item"/> to <paramref name="destination"/>, which has exactly the length of the item.</summary>
+    /// <remarks>For callers that know the length already, so that it is not computed again.</remarks>
+    /// <exception cref="InvalidOperationException">The decoder wrote another number of bytes than <paramref name="destination"/> has.</exception>
+    internal static void EncodeExact<T>(this IRlpDecoder<T> decoder, Span<byte> destination, T item, RlpBehaviors rlpBehaviors)
+    {
+        RlpWriter writer = RlpWriter.ContentWriter(destination);
+        decoder.Encode(ref writer, item, rlpBehaviors);
+        Rlp.CheckLength(in writer, destination.Length);
     }
 
     /// <summary>Computes the Keccak hash of the encoding of <paramref name="item"/>.</summary>

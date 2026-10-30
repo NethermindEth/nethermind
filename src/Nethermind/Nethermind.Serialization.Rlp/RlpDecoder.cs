@@ -35,7 +35,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     public byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         byte[] bytes = GC.AllocateUninitializedArray<byte>(GetLength(item, rlpBehaviors));
-        this.EncodeTo(bytes, item, rlpBehaviors);
+        this.EncodeExact(bytes, item, rlpBehaviors);
         return bytes;
     }
 

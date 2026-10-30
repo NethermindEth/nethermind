@@ -286,9 +286,10 @@ public static class RlpWriterExtensions
     [SkipLocalsInit]
     public static void Encode(this ref RlpWriter writer, in UInt256 value, int length = -1)
     {
-        if (length == -1 && value.IsZero)
+        if (length == -1 && (value.u1 | value.u2 | value.u3) == 0)
         {
-            writer.EncodeEmptyByteArray();
+            // A value of one word needs no big-endian copy on the stack.
+            writer.Write(value.u0);
             return;
         }
 
