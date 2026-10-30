@@ -11,6 +11,8 @@ namespace Nethermind.Consensus.Transactions
     /// <summary>Filtering transactions that have lower MaxFeePerGas than BaseFee</summary>
     public class BaseFeeTxFilter : ITxFilter
     {
+        private readonly ParentBaseFeeCache _baseFee = new();
+
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
         {
             bool isEip1559Enabled = spec.IsEip1559Enabled;
@@ -20,7 +22,7 @@ namespace Nethermind.Consensus.Transactions
                 return AcceptTxResult.Accepted;
             }
 
-            UInt256 baseFee = BaseFeeCalculator.Calculate(parentHeader, spec);
+            UInt256 baseFee = _baseFee.Get(parentHeader, spec);
             bool allowed = tx.MaxFeePerGas >= baseFee;
             return allowed
                 ? AcceptTxResult.Accepted
