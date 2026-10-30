@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -22,7 +23,7 @@ namespace Nethermind.Taiko.Test;
 public class TaikoPayloadPreparationServiceTests
 {
     [Test]
-    public void StartPreparingPayload_repeated_attributes_keep_built_block_hash_in_l1_origin()
+    public async Task StartPreparingPayload_repeated_attributes_keep_built_block_hash_in_l1_origin()
     {
         L1OriginStore l1OriginStore = new(new TestMemDb(), new L1OriginDecoder());
         TaikoPayloadPreparationService service = new(
@@ -42,12 +43,14 @@ public class TaikoPayloadPreparationServiceTests
         TaikoPayloadAttributes resent = BuildAttributes();
         resent.L1Origin = new L1Origin(1, Keccak.Zero, 6, TestItem.KeccakD, null);
         string? secondId = service.StartPreparingPayload(parent, resent);
+        // GetPayload removes the payload, so it is read only after the second call.
+        Block built = (await service.GetPayload(firstId!))!.CurrentBestBlock!;
 
         L1Origin stored = l1OriginStore.ReadL1Origin(1)!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(secondId, Is.EqualTo(firstId));
-            Assert.That(builtBlockHash, Is.Not.Null.And.Not.EqualTo(Keccak.Zero.ValueHash256));
+            Assert.That(builtBlockHash, Is.EqualTo(built.Hash!.ValueHash256));
             Assert.That(stored.L2BlockHash, Is.EqualTo(builtBlockHash));
             Assert.That(stored.L1BlockHeight, Is.EqualTo(6));
             Assert.That(stored.L1BlockHash, Is.EqualTo(TestItem.KeccakD.ValueHash256));
