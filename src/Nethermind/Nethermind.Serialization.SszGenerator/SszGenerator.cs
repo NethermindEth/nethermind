@@ -1115,7 +1115,7 @@ internal static partial class SszCodecHelpers
             return false;
         }
 
-        return (property.IsNullable && CanEncodeNullAsDefault(property)) || !property.Type.IsStruct;
+        return (property.IsNullable && CanEncodeNullAsDefault(property)) || (!property.Type.IsStruct && property.IsReferenceType);
     }
 
     private static string UsingsBlock(SszType decl) =>

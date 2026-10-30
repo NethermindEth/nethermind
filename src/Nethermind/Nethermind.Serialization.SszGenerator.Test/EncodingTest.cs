@@ -129,8 +129,10 @@ public class EncodingTest
         byte[] encoded = ByteListItself.Encode(arrays);
 
         SpanBuiltByteListItself.Decode(encoded, out SpanBuiltByteListItself[] decoded);
+        SpanBuiltByteStructListItself.Decode(encoded, out SpanBuiltByteStructListItself[] decodedStructs);
         ByteListItself.Merkleize(arrays[1], out UInt256 expectedRoot);
         SpanBuiltByteListItself.Merkleize(decoded[1], out UInt256 root);
+        SpanBuiltByteStructListItself.Merkleize(decodedStructs[1], out UInt256 structRoot);
 
         using (Assert.EnterMultipleScope())
         {
@@ -139,6 +141,9 @@ public class EncodingTest
             Assert.That(decoded[1].Bytes!.AsSpan().ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
             Assert.That(SpanBuiltByteListItself.Encode(decoded), Is.EqualTo(encoded));
             Assert.That(root, Is.EqualTo(expectedRoot));
+            Assert.That(decodedStructs[1].Bytes.AsSpan().ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(SpanBuiltByteStructListItself.Encode(decodedStructs), Is.EqualTo(encoded));
+            Assert.That(structRoot, Is.EqualTo(expectedRoot));
         }
     }
 
