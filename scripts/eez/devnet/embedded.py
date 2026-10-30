@@ -46,11 +46,130 @@ CASES = {
 }
 
 
+NATIVE_CASES = {
+    "queue_reorg": {
+        "imported_history_reorg_recovers_twenty_ordinary_transactions_without_settlement":
+            ("unsafe-history-reorg", ("before-reorg", "after-reorg", "after-restart", "after-settlement")),
+        "native_l1_reorg_recovers_confirmed_and_unresolved_source_generations_in_nonce_order":
+            ("native-source-reorg", ("before-reorg", "after-reorg", "after-settlement")),
+    },
+}
+
+
+def selected_cases(profile):
+    if profile == "rollup0":
+        return CASES
+    if profile == "rollupx":
+        return NATIVE_CASES
+    raise ValueError("unexpected embedded profile")
+
+
+def adapt_native(source):
+    additions = []
+
+    def after(name, marker, addition):
+        nonlocal source
+        start = source.index("async fn " + name + "(")
+        end = source.find("#[tokio::test", start + 1)
+        end = len(source) if end < 0 else end
+        body = source[start:end]
+        if body.count(marker) != 1:
+            raise ValueError("upstream native observation boundary changed: " + name)
+        source = source[:start] + body.replace(marker, marker + addition) + source[end:]
+        additions.append(addition)
+
+    module = '\n\n#[path = "nethermind/mod.rs"]\nmod nethermind;'
+    source = insert(source, "use std::time::Duration;", module)
+    additions.append(module)
+    first, second = NATIVE_CASES["queue_reorg"]
+    marker = "    let l1 = ProviderBuilder::new().connect_http(world.l1_rpc().parse().unwrap());"
+    for name in (first, second):
+        label = NATIVE_CASES["queue_reorg"][name][0]
+        binding = "mut " if name == first else ""
+        after(name, marker, '\n    let ' + binding + 'candidate = nethermind::Candidate::start_native("' + label + '", &world).await.unwrap();')
+    after(first, "    assert!(ancestor.number >= setup_tip);",
+          '\n    candidate.verify_unsafe(&world.l2_rpc(), &serde_json::json!(hashes), "before-reorg").await.unwrap();')
+    after(first, "    assert_eq!(after_chain.state_root, before_chain.state_root);",
+          '\n    candidate.verify_unsafe(&world.l2_rpc(), &serde_json::json!(hashes), "after-reorg").await.unwrap();\n'
+          '    candidate.restart().await.unwrap();\n'
+          '    candidate.verify_unsafe(&world.l2_rpc(), &serde_json::json!(hashes), "after-restart").await.unwrap();')
+    after(first, "    assert!(settled.status());",
+          '\n    candidate.verify(&world.l2_rpc(), settled.block_number.unwrap(), "after-settlement").await.unwrap();')
+    after(second, "    sources.push(send(2).await.unwrap());",
+          '\n    candidate.verify_unsafe(&world.l2_rpc(), &serde_json::json!([sources[0], sources[1]]), "before-reorg").await.unwrap();')
+    marker = "    wait_for_safe_prefix_convergence(&[&world.node, &follower], covered, TIMEOUT)\n        .await\n        .unwrap();"
+    after(second, marker,
+          '\n    candidate.verify_unsafe(&world.l2_rpc(), &serde_json::json!(sources), "after-reorg").await.unwrap();\n'
+          '    candidate.verify(&world.l2_rpc(), covered, "after-settlement").await.unwrap();')
+    restored = source
+    for addition in reversed(additions):
+        if restored.count(addition) != 1:
+            raise ValueError("native candidate observation is not unique")
+        restored = restored.replace(addition, "", 1)
+    return source, restored
+
+
+def verify_unsafe(settings, directory, l1, reference, candidate, genesis, call, deadline):
+    transactions = settings["unsafe_transactions"]
+    if not isinstance(transactions, list) or not transactions or any(not re.fullmatch(r"0x[a-fA-F0-9]{64}", item) for item in transactions):
+        raise ValueError("unsafe scenario requires exact transaction hashes")
+    while time.monotonic() < deadline:
+        snapshot = l1.call("eth_getBlockByNumber", "latest", False)
+        commitment = registry(l1, settings["registry"], call, snapshot)
+        endpoint = reference.call("eth_getBlockByNumber", "latest", False)
+        height = int(endpoint["number"], 16)
+        own = candidate.call("eth_getBlockByNumber", endpoint["number"], False)
+        safe = candidate.call("eth_getBlockByNumber", "safe", False)
+        if own is None or own["hash"] != endpoint["hash"] or safe["hash"] != commitment or height <= int(safe["number"], 16):
+            time.sleep(0.25)
+            continue
+        expected = [reference.call("eth_getTransactionReceipt", transaction) for transaction in transactions]
+        actual = [candidate.call("eth_getTransactionReceipt", transaction) for transaction in transactions]
+        if any(left is None for left in expected):
+            raise AssertionError("upstream unsafe fixture did not execute its required transactions")
+        if any(right is None or left["blockHash"] != right["blockHash"] for left, right in zip(expected, actual)):
+            time.sleep(0.25)
+            continue
+        result = verify_prefix(reference, candidate, endpoint["hash"], genesis, 8192, "rollupx")
+        for transaction, left, right in zip(transactions, expected, actual):
+            for field in ("transactionHash", "blockHash", "blockNumber", "status", "gasUsed", "logs"):
+                equal(left[field], right[field], "unsafe receipt " + transaction + " " + field)
+        equal(l1.call("eth_getBlockByNumber", snapshot["number"], False)["hash"], snapshot["hash"], "unsafe canonical L1 recheck")
+        for node in (reference, candidate):
+            equal(node.call("eth_getBlockByNumber", endpoint["number"], False)["hash"], endpoint["hash"], "unsafe canonical L2 recheck")
+        finality = {}
+        finalized_l1 = l1.call("eth_getBlockByNumber", "finalized", False)
+        finalized_commitment = (genesis if int(finalized_l1["number"], 16) < settings["registry_deploy_block"]
+                                else registry(l1, settings["registry"], call, finalized_l1))
+        finalized = candidate.call("eth_getBlockByNumber", "finalized", False)
+        if finalized["hash"] != finalized_commitment:
+            time.sleep(0.25)
+            continue
+        for tag, right in (("safe", safe), ("finalized", finalized)):
+            equal(candidate.call("eth_getBlockByNumber", right["number"], False)["hash"], right["hash"], "candidate canonical " + tag)
+            equal(reference.call("eth_getBlockByNumber", right["number"], False)["hash"], right["hash"], "reference canonical " + tag)
+            finality[tag + "_height"] = int(right["number"], 16)
+            finality[tag + "_hash"] = right["hash"]
+        equal(l1.call("eth_getBlockByNumber", finalized_l1["number"], False)["hash"], finalized_l1["hash"], "canonical finalized L1")
+        if finality["safe_height"] >= height:
+            time.sleep(0.25)
+            continue
+        if settings["case"] == "unsafe-history-reorg":
+            equal(finality["safe_height"], 0, "upstream no-settlement case must remain unsettled")
+        result.update(finality, unsafe_height=height, unsafe_transactions=transactions, mode="unsafe", result="pass", case=settings["case"], phase=settings["phase"],
+                      image_id=settings["image_id"], candidate_revision=settings["candidate_revision"], canonical_l1_hash=snapshot["hash"],
+                      database_id=settings["database_id"], container=settings["container"])
+        (directory / (settings["case"] + "-" + settings["phase"] + ".json")).write_text(json.dumps(result, indent=2) + "\n")
+        print(json.dumps(result))
+        return
+    raise TimeoutError("candidate did not execute the live unsafe chain and required receipts")
+
+
 def digest(text):
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def inventory(upstream):
+def inventory(upstream, profile="rollup0"):
     cases = []
     for path in sorted(upstream.glob("crates/*/tests/**/*.rs")):
         source = path.read_text()
@@ -60,7 +179,7 @@ def inventory(upstream):
             if not re.search(r"#\[(?:tokio::)?test(?:\(|\])", attributes):
                 continue
             ignored = "#[ignore" in attributes
-            selected = path.parent == upstream / "crates/eez-node-e2e/tests" and name in CASES.get(path.stem, {})
+            selected = path.parent == upstream / "crates/eez-node-e2e/tests" and name in selected_cases(profile).get(path.stem, {})
             cases.append({"source": str(path.relative_to(upstream)), "test": name,
                           "source_sha256": digest(source), "upstream_ignored": ignored,
                           "asynchronous": "async fn " in match[0],
@@ -161,31 +280,40 @@ def adapt(suite, source):
     return source, original
 
 
+def candidate_helper(profile):
+    selected_cases(profile)
+    source = Path(__file__).with_name("embedded.rs").read_text()
+    unused, following = ("start_native(", "start(case:") if profile == "rollup0" else ("start_cross_chain(", "start_native(")
+    start = source.index("    pub async fn " + unused)
+    end = source.index("    pub async fn " + following, start)
+    return source[:start] + source[end:]
+
+
 def prepare(args):
     manifest = json.loads(args.manifest.read_text())
     upstream = args.upstream.resolve()
-    if manifest.get("profile") != "rollup0":
-        raise ValueError("embedded candidate adapter requires Rollup0")
+    profile = manifest.get("profile", "rollup0")
+    selected = selected_cases(profile)
     for root, expected in ((upstream, manifest["revision"]), (upstream / "eez-core-protocol", manifest["core_revision"])):
         actual = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
         equal(actual, expected, "embedded source revision")
-    cases = inventory(upstream)
+    cases = inventory(upstream, profile)
     directory = upstream / "crates/eez-node-e2e/tests"
     changes = []
-    for suite, selected in CASES.items():
+    for suite, expected in selected.items():
         path = directory / (suite + ".rs")
         source = path.read_text()
         found = [case for case in cases if case["source"] == str(path.relative_to(upstream)) and not case["upstream_ignored"] and case["asynchronous"]]
-        if {case["test"] for case in found} != set(selected):
+        if {case["test"] for case in found} != set(expected):
             raise ValueError("upstream suite inventory changed; candidate observations required: " + suite)
-        changed, restored = adapt(suite, source)
+        changed, restored = adapt_native(source) if profile == "rollupx" else adapt(suite, source)
         equal(restored, source, "all original upstream bytes and assertions must remain")
         changes.append((path, changed))
     helper = directory / "nethermind/mod.rs"
     if helper.exists():
         raise ValueError("candidate module already exists")
     helper.parent.mkdir()
-    shutil.copyfile(Path(__file__).with_name("embedded.rs"), helper)
+    helper.write_text(candidate_helper(profile))
     for path, changed in changes:
         path.write_text(changed)
     args.output.write_text(json.dumps({"upstream": manifest, "cases": cases}, indent=2) + "\n")
@@ -206,7 +334,7 @@ def verify(settings_path):
         raise ValueError("candidate must be an independent node")
     equal(image["Config"]["Labels"]["org.opencontainers.image.revision"], settings["candidate_revision"], "candidate image source")
     case, phase = settings["case"], settings["phase"]
-    allowed = [phases for selected in CASES.values() for label, phases in selected.values() if label == case]
+    allowed = [phases for selected in {**CASES, **NATIVE_CASES}.values() for label, phases in selected.values() if label == case]
     if len(allowed) != 1 or phase not in allowed[0]:
         raise ValueError("untracked candidate observation")
     call = subprocess.check_output(["cast", "calldata", "rollups(uint64)", settings["rollup_id"]], text=True).strip()
@@ -215,6 +343,8 @@ def verify(settings_path):
     equal(l1.call("eth_chainId"), hex(int(settings["l1_chain_id"])), "L1 chain identity")
     equal(reference.call("eth_chainId"), candidate.call("eth_chainId"), "L2 chain identity")
     genesis = reference.call("eth_getBlockByNumber", "0x0", False)["hash"]
+    if "unsafe_transactions" in settings:
+        return verify_unsafe(settings, directory, l1, reference, candidate, genesis, call, deadline)
     expected_hash = settings.get("settled_hash")
     expected_height = 0
     if expected_hash is not None:
@@ -251,7 +381,7 @@ def verify(settings_path):
             equal(commitment, genesis, "unsettled scenario must remain at the registered genesis")
             result = check_unsettled(reference, candidate, genesis, settings["staged_transaction"], phase)
         else:
-            result = verify_prefix(reference, candidate, commitment, genesis, 8192)
+            result = verify_prefix(reference, candidate, commitment, genesis, 8192, settings.get("profile", "rollup0"))
         if finality is not None:
             result.update(finality)
         if case == "native-system":
@@ -351,7 +481,7 @@ def report(args):
         partition = os.environ.get("EEZ_SUITE")
         if partition and partition != "embedded-" + suite:
             continue
-        label, phases = CASES[suite][case["test"]]
+        label, phases = {**CASES, **NATIVE_CASES}[suite][case["test"]]
         observations = []
         for phase in phases:
             observation = json.loads((args.directory / (label + "-" + phase + ".json")).read_text())
@@ -360,6 +490,18 @@ def report(args):
             equal(observation["candidate_revision"], os.environ["GITHUB_SHA"], "candidate test source")
             equal(observation["image_id"], os.environ["EEZ_CANDIDATE_IMAGE"], "candidate test image")
             observations.append(observation)
+        if suite == "queue_reorg":
+            for observation in observations:
+                if observation["phase"] != "after-settlement":
+                    if observation.get("mode") != "unsafe" or not observation.get("unsafe_transactions") or observation.get("unsafe_height", 0) <= observation.get("safe_height", 0):
+                        raise ValueError("missing live candidate execution before settlement")
+            if label == "unsafe-history-reorg":
+                before, repaired, restarted, _ = observations
+                equal(before["unsafe_transactions"], repaired["unsafe_transactions"], "same recovered unsafe transactions")
+                equal(repaired["unsafe_transactions"], restarted["unsafe_transactions"], "same restarted unsafe transactions")
+                equal(repaired["database_id"], restarted["database_id"], "unsafe restart retains database")
+                if repaired["container"] == restarted["container"]:
+                    raise ValueError("unsafe recovery requires an actual candidate restart")
         if suite in ("contract_post", "partial_consumption"):
             for observation in observations:
                 if not re.fullmatch(r"0x[a-fA-F0-9]{64}", observation.get("settled_hash", "")) or not 0 < observation.get("settled_height", 0) <= observation["height"]:

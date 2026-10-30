@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -32,6 +33,11 @@ public class UnsafeHeadFollowerTests
         _chain = Build.A.BlockTree().OfChainLength(3).TestObject;
         _engine = new ChainEngine(_chain);
         _sequencer = Substitute.For<IEezSequencerApi>();
+        _sequencer.GetBlockByNumber(Arg.Any<ulong>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            BlockHeader? header = _chain.FindHeader(call.ArgAt<ulong>(0));
+            return header is null ? (EezL1Block?)null : new EezL1Block { Number = header.Number, Hash = header.Hash! };
+        });
         _heads = new FollowerHeads(_engine, _chain, _chain.Genesis!);
         await _heads.AdvanceSafe(_chain.FindHeader(2UL)!);
         _engine.Forkchoices.Clear();
@@ -133,14 +139,135 @@ public class UnsafeHeadFollowerTests
     }
 
     [Test]
-    public async Task Advance_SequencerTooFarAhead_WaitsForL1()
+    public async Task Advance_LargeUnsettledRange_CatchesUpInBoundedSteps()
     {
-        _sequencer.GetLatestBlock(Arg.Any<CancellationToken>())
-            .Returns(new EezL1Block { Hash = Keccak.Compute("far ahead"), Number = _heads.Head.Number + UnsafeHeadFollower.MaxDepth + 1 });
+        Block[] ahead = Serve(Branch(_heads.Safe, UnsafeHeadFollower.MaxDepth + 1, extraData: 0xb1));
+        Hash256 safe = _heads.Safe.Hash!, finalized = _heads.Finalized.Hash!;
 
         await _follower.Advance(_heads, CancellationToken.None);
 
-        Assert.That(RawBlockReads(), Is.Zero, "a sequencer far ahead of the local head is not walked back block by block");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_engine.Inserted, Has.Count.EqualTo(UnsafeHeadFollower.MaxBlocksPerAdvance));
+            Assert.That(RawBlockReads(), Is.EqualTo(UnsafeHeadFollower.MaxBlocksPerAdvance));
+        }
+        while (_heads.Head.Number < ahead[^1].Number)
+            await _follower.Advance(_heads, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_heads.Head.Hash, Is.EqualTo(ahead[^1].Hash));
+            Assert.That(_heads.Safe.Hash, Is.EqualTo(safe));
+            Assert.That(_heads.Finalized.Hash, Is.EqualTo(finalized));
+        }
+    }
+
+    [Test]
+    public async Task Advance_UnsafeReorg_ReplacesOnlyTheUnsettledBranch()
+    {
+        Block[] first = Serve(Branch(_heads.Safe, 2 * UnsafeHeadFollower.MaxBlocksPerAdvance, extraData: 0xb2));
+        while (_heads.Head.Hash != first[^1].Hash)
+            await _follower.Advance(_heads, CancellationToken.None);
+        Block[] replacement = Serve(Branch(_heads.Safe, UnsafeHeadFollower.MaxBlocksPerAdvance + 1, extraData: 0xb3));
+        Hash256 safe = _heads.Safe.Hash!, finalized = _heads.Finalized.Hash!;
+
+        while (_heads.Head.Hash != replacement[^1].Hash)
+            await _follower.Advance(_heads, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_chain.Head!.Hash, Is.EqualTo(replacement[^1].Hash));
+            Assert.That(_heads.Safe.Hash, Is.EqualTo(safe));
+            Assert.That(_heads.Finalized.Hash, Is.EqualTo(finalized));
+        }
+    }
+
+    [Test]
+    public async Task Advance_SequencerReturnsToSafe_DropsOnlyUnsafeBlocks()
+    {
+        Serve(Branch(_heads.Safe, 2, extraData: 0xb4));
+        await _follower.Advance(_heads, CancellationToken.None);
+        _sequencer.GetLatestBlock(Arg.Any<CancellationToken>()).Returns(new EezL1Block { Number = _heads.Safe.Number, Hash = _heads.Safe.Hash! });
+
+        await _follower.Advance(_heads, CancellationToken.None);
+
+        Assert.That(_heads.Head.Hash, Is.EqualTo(_heads.Safe.Hash));
+    }
+
+    [Test]
+    public async Task Advance_HistoryParentReorganized_ReturnsToSafeBeforeExecution()
+    {
+        Serve(Branch(_heads.Safe, 1, extraData: 0xb5));
+        IUnsafeBlockPreparation preparation = Substitute.For<IUnsafeBlockPreparation>();
+        preparation.Prepare(Arg.Any<BlockHeader>(), Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(new ValueTask<UnsafeBlockPreparationResult>(UnsafeBlockPreparationResult.ParentReorganized));
+        _follower = new UnsafeHeadFollower(_sequencer, _chain, _engine, new Rollup0HeaderRules(DerivedChain.SpecProvider, DerivedChain.Context), LimboLogs.Instance, preparation);
+
+        await _follower.Advance(_heads, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_engine.Inserted, Is.Empty);
+            Assert.That(_heads.Head.Hash, Is.EqualTo(_heads.Safe.Hash));
+        }
+    }
+
+    [Test]
+    public async Task Advance_DeadlineAfterSomeBlocks_RetainsValidatedProgress()
+    {
+        Block[] ahead = Serve(Branch(_heads.Safe, 3, extraData: 0xb6));
+        IUnsafeBlockPreparation preparation = Substitute.For<IUnsafeBlockPreparation>();
+        int calls = 0;
+        preparation.Prepare(Arg.Any<BlockHeader>(), Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            if (++calls == 3) throw new OperationCanceledException();
+            return new ValueTask<UnsafeBlockPreparationResult>(UnsafeBlockPreparationResult.Ready);
+        });
+        _follower = new UnsafeHeadFollower(_sequencer, _chain, _engine, new Rollup0HeaderRules(DerivedChain.SpecProvider, DerivedChain.Context), LimboLogs.Instance, preparation);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => _follower.Advance(_heads, CancellationToken.None));
+        Assert.That(_heads.Head.Hash, Is.EqualTo(ahead[1].Hash));
+
+        await _follower.Advance(_heads, CancellationToken.None);
+
+        Assert.That(_heads.Head.Hash, Is.EqualTo(ahead[2].Hash));
+    }
+
+    [Test]
+    public async Task Advance_MissingSourceHash_IsRetryableWithoutEngineCalls([Values] bool numbered)
+    {
+        EezL1Block latest = new() { Number = 100, Hash = numbered ? Keccak.Compute("source") : null! };
+        _sequencer.GetLatestBlock(Arg.Any<CancellationToken>()).Returns(latest);
+        if (numbered)
+            _sequencer.GetBlockByNumber(_heads.Head.Number + UnsafeHeadFollower.MaxBlocksPerAdvance, Arg.Any<CancellationToken>())
+                .Returns(new EezL1Block { Number = _heads.Head.Number + UnsafeHeadFollower.MaxBlocksPerAdvance, Hash = null! });
+
+        await Assert.ThrowsAsync<L1SourceIncompleteException>(() => _follower.Advance(_heads, CancellationToken.None));
+
+        Assert.That(_engine.Inserted, Is.Empty);
+    }
+
+    [Test]
+    public async Task Advance_KnownHeadLosesL1History_ReturnsToSafeWithoutCachedAcceptance([Values] bool sourceRetreats)
+    {
+        Block[] ahead = Serve(Branch(_heads.Safe, sourceRetreats ? 2 : 1, extraData: 0xb7));
+        IUnsafeBlockPreparation preparation = Substitute.For<IUnsafeBlockPreparation>();
+        preparation.Prepare(Arg.Any<BlockHeader>(), Arg.Any<Block>(), Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<UnsafeBlockPreparationResult>(UnsafeBlockPreparationResult.Ready));
+        _follower = new UnsafeHeadFollower(_sequencer, _chain, _engine, new Rollup0HeaderRules(DerivedChain.SpecProvider, DerivedChain.Context), LimboLogs.Instance, preparation);
+        await _follower.Advance(_heads, CancellationToken.None);
+        Assert.That(_heads.Head.Hash, Is.EqualTo(ahead[^1].Hash));
+        _sequencer.GetLatestBlock(Arg.Any<CancellationToken>()).Returns(new EezL1Block { Number = ahead[0].Number, Hash = ahead[0].Hash! });
+        _engine.Inserted.Clear();
+        preparation.Prepare(Arg.Any<BlockHeader>(), Arg.Any<Block>(), Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<UnsafeBlockPreparationResult>(UnsafeBlockPreparationResult.SourceNotCanonical));
+
+        await _follower.Advance(_heads, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_heads.Head.Hash, Is.EqualTo(_heads.Safe.Hash));
+            Assert.That(_engine.Inserted, Is.Empty);
+        }
     }
 
     private int RawBlockReads() => _sequencer.ReceivedCalls().Count(static call => call.GetMethodInfo().Name == nameof(IEezSequencerApi.GetRawBlock));
@@ -151,6 +278,7 @@ public class UnsafeHeadFollowerTests
         foreach (Block block in blocks)
         {
             _sequencer.GetRawBlock(block.Hash!, Arg.Any<CancellationToken>()).Returns(Rlp.Encode(block).Bytes);
+            _sequencer.GetBlockByNumber(block.Number, Arg.Any<CancellationToken>()).Returns(new EezL1Block { Number = block.Number, Hash = block.Hash! });
         }
 
         return blocks;

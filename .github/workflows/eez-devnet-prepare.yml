@@ -77,7 +77,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/eez/devnet/upstream.py runtime --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --output "$EEZ_RUNTIME_DIR" --checkout "$EEZ_UPSTREAM"
       - name: Install upstream integration test toolchain
-        if: inputs.profile == 'rollup0' && steps.prepared.outputs.cache-hit != 'true'
+        if: steps.prepared.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libclang-dev pkg-config libssl-dev cmake protobuf-compiler
@@ -88,11 +88,11 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
       - name: Reuse compiled Rust dependencies
-        if: inputs.profile == 'rollup0' && steps.prepared.outputs.cache-hit != 'true'
+        if: steps.prepared.outputs.cache-hit != 'true'
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           workspaces: upstream -> target
-          shared-key: eez-rollup0-ubuntu24-ci-e2e
+          shared-key: eez-${{ inputs.profile }}-ubuntu24-tests
           env-vars: LLVM_SYS
           cache-bin: false
       - name: Build matching runtime and test executables

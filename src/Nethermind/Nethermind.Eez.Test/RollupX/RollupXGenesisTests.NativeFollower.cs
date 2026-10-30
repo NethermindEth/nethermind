@@ -222,7 +222,7 @@ public partial class RollupXGenesisTests
     }
 
     [Test]
-    public void NativeFollower_UnsafeSource_RefusesUnavailablePreparation()
+    public void NativeFollower_UnsafeSource_UsesCanonicalPreparation()
     {
         using NativeHistoryTestSource source = CreateHistorySource();
         EezConfig config = new()
@@ -233,8 +233,72 @@ public partial class RollupXGenesisTests
             L1BeaconUrl = "http://beacon.test/",
             SequencerRpcUrl = "http://sequencer.test/"
         };
-        Assert.That(() => EezPlugin.EnsureRolesSupported(config, FollowerRules(source)),
-            Throws.TypeOf<InvalidConfigurationException>().With.Message.Contains(nameof(IEezConfig.SequencerRpcUrl)));
+        EezChainRules rules = FollowerRules(source);
+        using IContainer container = NativeFollowerContainer(source, rules);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => EezPlugin.EnsureRolesSupported(config, rules), Throws.Nothing);
+            Assert.That(container.Resolve<IUnsafeBlockPreparation>(), Is.TypeOf<NativeUnsafeBlockPreparation>());
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task NativeFollower_UnsafeBlock_PreparesHistoryBeforeRealNodeExecution([Values] bool import, [Values(4, 6, 7)] int version)
+    {
+        NativeSystemTxFormat format = (NativeSystemTxFormat)version;
+        using NativeHistoryTestSource source = CreateHistorySource();
+        EezChainRules rules = FollowerRules(source, format);
+        using IContainer container = NativeFollowerContainer(source, rules);
+        BlockHeader parent = NativeFollowerParent(container, source, rules);
+        TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder(format));
+        try
+        {
+            NativeHistoryEnvelope envelope = format.UsesProxyHistory()
+                ? NativeHistoryEnvelope.CreateBlocks(1, [new(1, source.Headers[1].Hash!.ValueHash256)])
+                : NativeHistoryEnvelope.Create(1, [source.Headers[1].Hash!.ValueHash256]);
+            ReadOnlyMemory<byte>[] ordinary = import ? [envelope.Encode()] : [];
+            byte[] operations = OperationsPayload.Encode([
+                new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, ordinary),
+                new OperationsRun(5, Address.Zero, ReadOnlyMemory<byte>.Empty, [])]);
+            DecodedBatch batch = container.Resolve<IBatchDerivation>().Decode(NativeStream.Encode(1, operations, []));
+            DerivedBlock[] derived = await batch.DeriveAsync(new ProducingSlice(0, 0),
+                new DerivationInputs(0, parent.MixHash!, parent, source.Anchor(2) with { ParentHash = source.Headers[2].ParentHash }, false)
+                { ExecutionParent = parent }, CancellationToken.None);
+            Block block;
+            using (IDerivedBlockSession session = container.Resolve<IDerivedBlockExecutor>().BeginSession())
+                block = await session.ExecuteAsync(parent, derived[0]);
+            NativeCanonicalHistory history = container.Resolve<NativeCanonicalHistory>();
+            history.Invalidate();
+            Assert.That(() => history.Read(), Throws.TypeOf<L1SourceIncompleteException>());
+
+            UnsafeBlockPreparationResult canonical = await container.Resolve<IUnsafeBlockPreparation>().Prepare(parent, block, CancellationToken.None);
+
+            Assert.That(canonical, Is.EqualTo(UnsafeBlockPreparationResult.Ready));
+            PersistFollowerBlock(container, parent, block);
+        }
+        finally { TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder()); }
+    }
+
+    [Test]
+    public async Task NativeFollower_UnsafeOrphanedHistory_IsRejectedBeforeEngineReuse([Values] bool parentImported, [Values] bool previouslyChecked)
+    {
+        using NativeHistoryTestSource source = CreateHistorySource();
+        EezChainRules rules = FollowerRules(source, NativeSystemTxFormat.ContractV7);
+        using IContainer container = NativeFollowerContainer(source, rules);
+        BlockHeader parent = NativeFollowerParent(container, source, rules, importedEndpoint: parentImported ? 1UL : null);
+        NativeHistoryEnvelope envelope = NativeHistoryEnvelope.CreateBlocks(1, [new(1, source.Headers[1].Hash!.ValueHash256)]);
+        Block block = Build.A.Block.WithParent(parent).WithTimestamp(rules.Schedule!.Timestamp(parent.Number + 1)!.Value)
+            .WithMixHash(source.Headers[1].MixHash!).WithTransactions(parentImported ? [] : [new NativeHistoryTransaction(envelope)]).TestObject;
+        if (previouslyChecked)
+            Assert.That(await container.Resolve<IUnsafeBlockPreparation>().Prepare(parent, block, CancellationToken.None),
+                Is.EqualTo(UnsafeBlockPreparationResult.Ready), "the remembered import must remain canonical even when parent storage stays at bootstrap");
+        source.Headers[1] = RpcHeader(L1HeaderBytes(1, (ulong)source.Headers[1].Timestamp,
+            source.Headers[0].Hash!.ValueHash256, 21, 12, Rlp.Encode(new byte[] { 7 })), 21);
+
+        UnsafeBlockPreparationResult result = await container.Resolve<IUnsafeBlockPreparation>().Prepare(parent, block, CancellationToken.None);
+
+        Assert.That(result, Is.EqualTo(parentImported || previouslyChecked ? UnsafeBlockPreparationResult.ParentReorganized : UnsafeBlockPreparationResult.SourceNotCanonical));
     }
 
     [Test]

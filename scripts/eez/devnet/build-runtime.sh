@@ -17,6 +17,17 @@ if [[ "$EEZ_PROFILE" == rollup0 ]]; then
   cp target/cargo-timings/cargo-timing.html "$EEZ_CI_RESULT_DIR/cargo-timing.html"
   python3 "$HERE/bundle.py" tests --directory "$EEZ_CI_RESULT_DIR"
 fi
+if [[ "$EEZ_PROFILE" == rollupx ]]; then
+  cd "$EEZ_UPSTREAM"
+  mkdir -p "$EEZ_CI_RESULT_DIR/embedded"
+  python3 "$HERE/embedded.py" prepare --upstream "$EEZ_UPSTREAM" \
+    --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --output "$EEZ_CI_RESULT_DIR/embedded/inventory.json"
+  CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_SPLIT_DEBUGINFO=off \
+    cargo build --locked -p eez-node-e2e --test node_e2e --message-format=json --timings \
+    > "$EEZ_CI_RESULT_DIR/test-build.jsonl"
+  cp target/cargo-timings/cargo-timing.html "$EEZ_CI_RESULT_DIR/cargo-timing.html"
+  python3 "$HERE/bundle.py" tests --directory "$EEZ_CI_RESULT_DIR"
+fi
 if test ! -x "$EEZ_RUNTIME_DIR/eez-composer"; then
   if [[ "$EEZ_PROFILE" == rollup0 ]]; then
     cp target/ci-e2e/eez-composer target/ci-e2e/eez-follower target/ci-e2e/eez-proof-signer "$EEZ_RUNTIME_DIR/"

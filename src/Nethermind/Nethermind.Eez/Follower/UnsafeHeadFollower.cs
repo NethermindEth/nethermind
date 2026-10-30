@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,6 +19,21 @@ public interface IUnsafeHeadSource
 {
     /// <summary>Moves the head to the latest blocks the source offers that build on <see cref="FollowerHeads.Safe"/>.</summary>
     Task Advance(FollowerHeads heads, CancellationToken token);
+}
+
+/// <summary>The unsafe block's relationship to current canonical L1 history.</summary>
+public enum UnsafeBlockPreparationResult
+{
+    Ready,
+    ParentReorganized,
+    SourceNotCanonical,
+}
+
+/// <summary>Prepares execution evidence before an unsafe block enters the engine.</summary>
+public interface IUnsafeBlockPreparation
+{
+    /// <returns>Whether the block is ready, its parent lost L1 ancestry, or its source disagrees with canonical L1.</returns>
+    ValueTask<UnsafeBlockPreparationResult> Prepare(BlockHeader parent, Block block, CancellationToken token);
 }
 
 /// <summary>No unsafe head: the head is the last derived block.</summary>
@@ -43,13 +59,15 @@ public sealed class UnsafeHeadFollower(
     IBlockTree blockTree,
     IEezL2Engine engine,
     IDerivedHeaderRules headerRules,
-    ILogManager logManager) : IUnsafeHeadSource
+    ILogManager logManager,
+    IUnsafeBlockPreparation? preparation = null) : IUnsafeHeadSource
 {
     /// <summary>
-    /// How far the sequencer may be ahead of the local head for its blocks to be fetched; further behind, the follower
-    /// catches up from L1 first.
+    /// The most candidate ancestors inspected before requiring a new source snapshot.
     /// </summary>
     public const int MaxDepth = 1024;
+
+    internal const int MaxBlocksPerAdvance = 32;
 
     private readonly ILogger _logger = logManager.GetClassLogger<UnsafeHeadFollower>();
     private Hash256? _refused;
@@ -59,18 +77,29 @@ public sealed class UnsafeHeadFollower(
     public async Task Advance(FollowerHeads heads, CancellationToken token)
     {
         EezL1Block latest = await sequencer.GetLatestBlock(token) ?? throw new L1SourceIncompleteException(0, "The sequencer does not report its latest block.");
-        if (latest.Hash == _refused || latest.Hash == heads.Head.Hash || latest.Number <= heads.Safe.Number)
+        if (latest.Hash is null) throw new L1SourceIncompleteException(latest.Number, "The sequencer returned a head without a hash.");
+        if (latest.Hash == _refused || latest.Number < heads.Safe.Number) return;
+        if (latest.Hash == heads.Head.Hash)
         {
+            await SetExistingHead(heads.Head, heads, token);
             return;
         }
 
-        if (latest.Number > heads.Head.Number + MaxDepth)
+        BlockHeader? ancestor = await CommonAncestor(latest, heads, token);
+        if (ancestor is null)
         {
-            if (_logger.IsDebug) _logger.Debug($"Sequencer head {latest.Number} is more than {MaxDepth} blocks ahead; following L1 until it is closer.");
+            Refuse(latest, $"it conflicts with safe {heads.Safe.Number}");
             return;
         }
+        if (ancestor.Number == latest.Number)
+        {
+            await SetExistingHead(ancestor, heads, token);
+            return;
+        }
+        ulong targetNumber = ancestor.Number + Math.Min(latest.Number - ancestor.Number, (ulong)MaxBlocksPerAdvance);
+        EezL1Block target = targetNumber == latest.Number ? latest : await ReadNumber(targetNumber, token);
 
-        if (await Branch(latest.Hash, heads.Safe, token) is not { } blocks)
+        if (await Branch(target.Hash, heads.Safe, token) is not { } blocks)
         {
             Refuse(latest, $"it does not build on the local chain at or above safe {heads.Safe.Number}");
             return;
@@ -89,20 +118,78 @@ public sealed class UnsafeHeadFollower(
 
         try
         {
+            BlockHeader parent = blockTree.FindHeader(blocks[^1].ParentHash!)!;
             for (int i = blocks.Count - 1; i >= 0; i--)
             {
+                token.ThrowIfCancellationRequested();
+                if (preparation is not null)
+                {
+                    UnsafeBlockPreparationResult prepared = await preparation.Prepare(parent, blocks[i], token);
+                    if (prepared != UnsafeBlockPreparationResult.Ready)
+                    {
+                        if (prepared == UnsafeBlockPreparationResult.ParentReorganized || blockTree.IsMainChain(blocks[i].Header))
+                            await heads.Reset(heads.Safe);
+                        if (_logger.IsWarn) _logger.Warn($"Unsafe block {blocks[i].Hash} disagrees with canonical L1 history; waiting for the source.");
+                        return;
+                    }
+                }
                 await engine.Insert(blocks[i]);
+                await heads.SetHead(blocks[i].Header);
+                parent = blocks[i].Header;
             }
-
-            await heads.SetHead(blocks[0].Header);
         }
-        catch (EezFollowerException e)
+        catch (Exception e) when (e is EezFollowerException or EezSettlementException)
         {
             Refuse(latest, e.Message);
             return;
         }
 
-        if (_logger.IsDebug) _logger.Debug($"L2 unsafe head {latest.Number} ({latest.Hash}) from the sequencer.");
+        if (_logger.IsDebug) _logger.Debug($"L2 unsafe head {heads.Head.Number} ({heads.Head.Hash}) from the sequencer.");
+    }
+
+    private async Task SetExistingHead(BlockHeader header, FollowerHeads heads, CancellationToken token)
+    {
+        if (preparation is not null && header.Number > heads.Safe.Number)
+        {
+            Block current = blockTree.FindBlock(header.Hash!)
+                ?? throw new L1SourceIncompleteException(header.Number, "The known unsafe block is unavailable.");
+            BlockHeader parent = blockTree.FindHeader(current.ParentHash!)
+                ?? throw new L1SourceIncompleteException(header.Number, "The known unsafe parent is unavailable.");
+            if (await preparation.Prepare(parent, current, token) != UnsafeBlockPreparationResult.Ready)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Known unsafe block {header.Hash} lost canonical L1 history; returning to safe.");
+                await heads.Reset(heads.Safe);
+                return;
+            }
+        }
+        await heads.SetHead(header);
+    }
+
+    private async Task<BlockHeader?> CommonAncestor(EezL1Block latest, FollowerHeads heads, CancellationToken token)
+    {
+        ulong high = Math.Min(latest.Number, heads.Head.Number);
+        EezL1Block candidate = high == latest.Number ? latest : await ReadNumber(high, token);
+        if (blockTree.FindHeader(high) is { } known && known.Hash == candidate.Hash) return known;
+        EezL1Block safe = high == heads.Safe.Number ? candidate : await ReadNumber(heads.Safe.Number, token);
+        if (safe.Hash != heads.Safe.Hash) return null;
+
+        ulong low = heads.Safe.Number;
+        while (high - low > 1)
+        {
+            ulong middle = low + (high - low) / 2;
+            candidate = await ReadNumber(middle, token);
+            if (blockTree.FindHeader(middle)?.Hash == candidate.Hash) low = middle;
+            else high = middle;
+        }
+        return blockTree.FindHeader(low);
+    }
+
+    private async Task<EezL1Block> ReadNumber(ulong number, CancellationToken token)
+    {
+        EezL1Block block = await sequencer.GetBlockByNumber(number, token)
+            ?? throw new L1SourceIncompleteException(number, $"The sequencer does not serve block {number}.");
+        if (block.Hash is null || block.Number != number) throw new L1SourceIncompleteException(number, "The sequencer returned another block height.");
+        return block;
     }
 
     /// <summary>A sequencer block derivation would never rebuild is the sequencer's fault, not the follower's: it keeps following L1.</summary>
@@ -114,9 +201,10 @@ public sealed class UnsafeHeadFollower(
 
     /// <summary>
     /// The sequencer's blocks from <paramref name="head"/> down to the first one whose parent is canonical, newest first;
-    /// <see langword="null"/> when that parent is below <paramref name="safe"/> or the walk runs past <see cref="MaxDepth"/>.
+    /// <see langword="null"/> when that parent is below <paramref name="safe"/> or the source hash differs.
     /// Blocks the node already holds off the canonical chain, such as the ones a head reset left, are taken locally.
     /// </summary>
+    /// <exception cref="L1SourceIncompleteException">The walk exceeds <see cref="MaxDepth"/> and needs a fresh source snapshot.</exception>
     private async Task<List<Block>?> Branch(Hash256 head, BlockHeader safe, CancellationToken token)
     {
         List<Block> blocks = [];
@@ -138,7 +226,9 @@ public sealed class UnsafeHeadFollower(
             next = block.ParentHash!;
         }
 
-        return null;
+        if (blockTree.FindHeader(next) is { } ancestor && blockTree.IsMainChain(ancestor))
+            return ancestor.Number >= safe.Number ? blocks : null;
+        throw new L1SourceIncompleteException(safe.Number, "Unsafe ancestry exceeds the walk limit; retry with a fresh source snapshot.");
     }
 
     private async Task<Block> Fetch(Hash256 hash, CancellationToken token)

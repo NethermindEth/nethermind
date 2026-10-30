@@ -127,10 +127,29 @@ class BundleTests(unittest.TestCase):
                 if mutation == "not-executable": Path(records[0]["executable"]).chmod(0o644)
                 if mutation == "outside-root": records[0]["executable"] = str(root / "untrusted")
                 (root / "test-build.jsonl").write_text("\n".join(json.dumps(item) for item in records))
-                with patch.dict(os.environ, {"EEZ_UPSTREAM": str(upstream)}):
+                with patch.dict(os.environ, {"EEZ_PROFILE": "rollup0", "EEZ_UPSTREAM": str(upstream)}):
                     if mutation is None:
                         bundle.tests(root)
                         self.assertEqual(set(names), set(json.loads((root / "test-binaries.json").read_text())))
+                    else:
+                        with self.assertRaises(ValueError): bundle.tests(root)
+
+    def test_native_inventory_requires_the_single_upstream_test_target(self):
+        for mutation in (None, "wrong-target", "missing", "duplicate", "not-executable"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                binary = root / "upstream/target/debug/deps/node_e2e-fixture"
+                binary.parent.mkdir(parents=True)
+                binary.write_text("compiled native tests")
+                binary.chmod(0o644 if mutation == "not-executable" else 0o755)
+                record = {"reason": "compiler-artifact", "target": {"name": "other" if mutation == "wrong-target" else "node_e2e", "kind": ["test"]},
+                          "profile": {"test": True}, "executable": str(binary)}
+                records = [] if mutation == "missing" else [record] * (2 if mutation == "duplicate" else 1)
+                (root / "test-build.jsonl").write_text("\n".join(json.dumps(item) for item in records))
+                with patch.dict(os.environ, {"EEZ_PROFILE": "rollupx", "EEZ_UPSTREAM": str(root / "upstream")}):
+                    if mutation is None:
+                        bundle.tests(root)
+                        self.assertEqual({"node_e2e": "target/debug/deps/node_e2e-fixture"}, json.loads((root / "test-binaries.json").read_text()))
                     else:
                         with self.assertRaises(ValueError): bundle.tests(root)
 

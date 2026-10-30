@@ -10,6 +10,40 @@ from embedded import CASES
 
 
 class RuntimeBuildTests(unittest.TestCase):
+    def test_native_test_target_builds_once_and_failure_stops_publication(self):
+        script = Path(__file__).with_name("build-runtime.sh")
+        for failed in (False, True):
+            with self.subTest(failed=failed), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                upstream, output, commands = [root / name for name in ("source", "output", "commands")]
+                runtime = output / "runtime"
+                for path in (upstream, runtime, commands): path.mkdir(parents=True)
+                for name in ("cargo", "python3"):
+                    command = commands / name
+                    command.write_text("#!" + sys.executable + "\n" + DRIVER)
+                    command.chmod(0o755)
+                (runtime / "eez-composer").write_text("trusted native runtime")
+                (runtime / "eez-composer").chmod(0o555)
+                environment = {**os.environ, "PATH": str(commands) + os.pathsep + os.environ["PATH"],
+                    "EEZ_PROFILE": "rollupx", "EEZ_UPSTREAM": str(upstream), "EEZ_CI_RESULT_DIR": str(output),
+                    "EEZ_RUNTIME_DIR": str(runtime), "EEZ_BUILD_CALLS": str(root / "calls.jsonl"),
+                    "EEZ_BUILD_FAIL": str(int(failed)), "GITHUB_WORKSPACE": str(script.parents[3]),
+                    "GITHUB_PATH": str(root / "github-path")}
+                result = subprocess.run(["bash", str(script)], env=environment, capture_output=True, text=True, timeout=15)
+                calls = [json.loads(line) for line in (root / "calls.jsonl").read_text().splitlines()]
+                builds = [call for call in calls if call[0] == "cargo"]
+                self.assertEqual(1, len(builds))
+                self.assertEqual(["cargo", "build", "--locked", "-p", "eez-node-e2e", "--test", "node_e2e", "--message-format=json", "--timings"], builds[0])
+                self.assertEqual("embedded.py", Path(calls[0][1]).name)
+                self.assertEqual(1 if failed else 0, result.returncode, result.stderr)
+                self.assertEqual(not failed, (root / "github-path").exists())
+                if failed:
+                    self.assertEqual(builds[0], calls[-1])
+                else:
+                    self.assertEqual("tests", calls[-1][2])
+                    self.assertEqual("bundle.py", Path(calls[-1][1]).name)
+                    self.assertEqual("compiler timing fixture", (output / "cargo-timing.html").read_text())
+
     def test_selected_tests_build_with_missing_or_prebuilt_runtime_and_failures_stop_publication(self):
         script = Path(__file__).with_name("build-runtime.sh")
         selected = list(CASES) + ["nethermind_streaming_controls"]

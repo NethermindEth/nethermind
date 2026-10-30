@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import re
 
-from embedded import CASES
+from embedded import CASES, NATIVE_CASES
 from verify import equal
 
 
@@ -25,6 +25,8 @@ def suites(profile):
     if profile == "rollup0":
         result += ["ingress", "faults", "contracts"]
         result += ["embedded-" + suite for suite in CASES]
+    else:
+        result += ["embedded-" + suite for suite in NATIVE_CASES]
     return result
 
 
@@ -192,7 +194,7 @@ def report(directory):
     if suite.startswith("embedded-"):
         coverage = json.loads((directory / "embedded/candidate-coverage.json").read_text())
         selected = [case for case in coverage["cases"] if Path(case["source"]).stem == suite[9:] and case["candidate_status"] == "passed"]
-        equal(len(selected), len(CASES[suite[9:]]), "embedded candidate case count")
+        equal(len(selected), len(({**CASES, **NATIVE_CASES})[suite[9:]]), "embedded candidate case count")
     elif suite == "contracts":
         if not (directory / "contracts.json").stat().st_size:
             raise ValueError("missing contract test output")

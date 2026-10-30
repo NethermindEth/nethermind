@@ -93,6 +93,30 @@ internal sealed class NativeHistorySchedule
         return new NativeHistoryExecution(cutoff, source.Number, source.Hash, source.PrevRandao, default);
     }
 
+    internal NativeHistoryExecution VerifyContractTransaction(ulong timestamp, in NativeHistoryState state,
+        NativeL1HeaderChain chain, NativeHistoryEnvelope? envelope, bool proxy)
+    {
+        if (envelope is not null && envelope.HasExplicitBlocks != proxy)
+            throw NativeL1Header.Invalid("history envelope differs from selected profile");
+        if (proxy) return VerifyBlocks(timestamp, in state, chain, envelope);
+        ulong? selected = null;
+        if (envelope is not null)
+        {
+            ulong count = (ulong)envelope.Hashes.Length;
+            if (state.Endpoint > ulong.MaxValue - count) throw NativeL1Header.Invalid("history endpoint overflow");
+            selected = state.Endpoint + count;
+        }
+        NativeHistoryExecution execution = VerifyContractV3(timestamp, in state, chain, selected);
+        if (envelope is not null)
+        {
+            ReadOnlySpan<ValueHash256> hashes = envelope.Hashes;
+            for (int index = 0; index < hashes.Length; index++)
+                if (hashes[index] != chain.At(state.Endpoint + (ulong)index + 1).Hash)
+                    throw NativeL1Header.Invalid("history transaction differs from authenticated headers");
+        }
+        return execution;
+    }
+
     internal NativeHistoryExecution VerifyBlocks(ulong timestamp, in NativeHistoryState state, NativeL1HeaderChain chain, NativeHistoryEnvelope? envelope)
     {
         if (timestamp <= FirstCutoff || (timestamp - FirstCutoff) % BlockInterval != 0)

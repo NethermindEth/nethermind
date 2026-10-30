@@ -25,6 +25,7 @@ public partial class EezModule
             .AddSingleton<NativeL1Rules>(_ => NativeL1Rules.Load(config.L1ChainConfigPath!))
             .AddKeyedSingleton<HttpClient>(NativeL1ClientKey, _ => NativeL1Client(config.L1RpcUrl!))
             .AddSingleton<NativeCanonicalHistory>()
+            .AddSingleton<IUnsafeBlockPreparation, NativeUnsafeBlockPreparation>()
             .Bind<IEezL1History, NativeCanonicalHistory>()
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
             .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, NativeNodeHistoryExecutor>();

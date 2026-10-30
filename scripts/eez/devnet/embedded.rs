@@ -33,6 +33,17 @@ impl Candidate {
         Self::start(case, &world.cfg.l2_genesis.0, &env).await
     }
 
+    pub async fn start_native(case: &str, world: &eez_testkit::CrossChainWorld) -> Result<Self> {
+        let mut env = world.partial_follower_env();
+        let (_, block) = env
+            .iter_mut()
+            .find(|(name, _)| *name == "EEZ_REGISTRY_DEPLOY_BLOCK")
+            .context("missing registry deployment block")?;
+        *block = world.dep.deploy_block.to_string();
+        env.push(("EEZ_CANDIDATE_SEQUENCER_RPC", world.l2_rpc()));
+        Self::start(case, &world.cfg.l2_genesis.0, &env).await
+    }
+
     pub async fn start(case: &str, genesis: &Path, env: &[(&str, String)]) -> Result<Self> {
         let required = |name| {
             env.iter()
@@ -50,15 +61,18 @@ impl Candidate {
         if interval == 0 || interval % 1000 != 0 || !matches!(skip.as_str(), "true" | "false") {
             bail!("unsupported execution timing/profile");
         }
+        let profile = std::env::var("EEZ_PROFILE")?;
+        let native = profile == "rollupx";
         let settings = json!({
-            "case": case, "l1": required("EEZ_L1_RPC_URL")?,
+            "profile": profile, "case": case, "l1": required("EEZ_L1_RPC_URL")?,
             "database_id": directory.path().file_name().unwrap().to_string_lossy(),
             "l1_chain_id": required("EEZ_L1_CHAIN_ID")?,
             "registry": required("EEZ_REGISTRY_ADDRESS")?, "rollup_id": required("EEZ_ROLLUP_ID")?,
+            "registry_deploy_block": required("EEZ_REGISTRY_DEPLOY_BLOCK")?.parse::<u64>()?,
             "candidate_revision": std::env::var("GITHUB_SHA")?, "image_id": image,
             "result_directory": std::env::var("EEZ_EMBEDDED_RESULTS")?,
         });
-        let args = vec![
+        let mut args = vec![
             "run".into(),
             "--rm".into(),
             "--network=host".into(),
@@ -116,6 +130,20 @@ impl Candidate {
             "--JsonRpc.EnabledModules".into(),
             "Eth,Net,Web3,Debug,Trace".into(),
         ];
+        if native {
+            fs::copy(
+                required("EEZ_L1_CHAIN_PATH")?,
+                directory.path().join("l1.json"),
+            )?;
+            args.extend([
+                "--Eez.L1ChainConfigPath".into(),
+                "/data/l1.json".into(),
+                "--Eez.L1BeaconUrl".into(),
+                required("EEZ_L1_BEACON_URL")?,
+                "--Eez.SequencerRpcUrl".into(),
+                required("EEZ_CANDIDATE_SEQUENCER_RPC")?,
+            ]);
+        }
         let mut candidate = Self {
             directory,
             settings,
@@ -188,6 +216,21 @@ impl Candidate {
 
     fn url(&self) -> String {
         format!("http://127.0.0.1:{}", self.port)
+    }
+
+    pub async fn verify_unsafe(
+        &self,
+        reference: &str,
+        transactions: &Value,
+        phase: &str,
+    ) -> Result<()> {
+        self.observe(
+            reference,
+            1,
+            phase,
+            json!({"unsafe_transactions": transactions}),
+        )
+        .await
     }
 
     pub async fn verify(&self, reference: &str, minimum: u64, phase: &str) -> Result<()> {

@@ -114,24 +114,7 @@ internal sealed class NativeHistoryBlockExecutor(
         if (import is not null && (history is null ||
             history.Envelope.HasExplicitBlocks != (rules.NativeFormat.UsesProxyHistory())))
             throw new InvalidBlockException(block, "Invalid dedicated history transaction.");
-        if (rules.NativeFormat.UsesProxyHistory())
-            return schedule.VerifyBlocks(block.Timestamp, in prior, evidence, history?.Envelope);
-        ulong? selected = null;
-        if (history is not null)
-        {
-            ulong count = (ulong)history.Envelope.Hashes.Length;
-            if (prior.Endpoint > ulong.MaxValue - count) throw NativeL1Header.Invalid("history endpoint overflow");
-            selected = prior.Endpoint + count;
-        }
-        NativeHistoryExecution execution = schedule.VerifyContractV3(block.Timestamp, in prior, evidence, selected);
-        if (history is not null)
-        {
-            ReadOnlySpan<ValueHash256> hashes = history.Envelope.Hashes;
-            for (int index = 0; index < hashes.Length; index++)
-                if (hashes[index] != evidence.At(prior.Endpoint + (ulong)index + 1).Hash)
-                    throw NativeL1Header.Invalid("history transaction differs from authenticated headers");
-        }
-        return execution;
+        return schedule.VerifyContractTransaction(block.Timestamp, in prior, evidence, history?.Envelope, rules.NativeFormat.UsesProxyHistory());
     }
 
     private NativeHistoryState ReadState()

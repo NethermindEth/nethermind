@@ -11,7 +11,7 @@ from embedded import CASES
 
 
 def libraries(executables, destination):
-    destination.mkdir()
+    destination.mkdir(exist_ok=True)
     base = {"libc.so.6", "libm.so.6", "libpthread.so.0", "libdl.so.2", "librt.so.1", "libresolv.so.2", "libutil.so.1"}
     for executable in executables:
         result = subprocess.run(["ldd", str(executable)], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
@@ -28,7 +28,7 @@ def libraries(executables, destination):
 
 
 def tests(directory):
-    selected = set(CASES) | {"nethermind_streaming_controls"}
+    selected = {"node_e2e"} if os.environ.get("EEZ_PROFILE") == "rollupx" else set(CASES) | {"nethermind_streaming_controls"}
     binaries = {}
     for line in (directory / "test-build.jsonl").read_text().splitlines():
         item = json.loads(line)
@@ -52,7 +52,7 @@ def pack(directory):
     upstream = Path(os.environ["EEZ_UPSTREAM"]).resolve()
     keep = directory / "executables"
     keep.mkdir()
-    if os.environ["EEZ_PROFILE"] == "rollup0":
+    if (directory / "test-binaries.json").is_file():
         binaries = json.loads((directory / "test-binaries.json").read_text())
         for relative in binaries.values():
             destination = keep / relative
@@ -60,6 +60,7 @@ def pack(directory):
             shutil.copy2(upstream / relative, destination)
         for name in ("eez-composer", "eez-follower", "eez-proof-signer"):
             destination = keep / "target/ci-e2e" / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(Path(os.environ["EEZ_RUNTIME_DIR"]) / name, destination)
         runtime = directory / "runtime"
         libraries([*(upstream / name for name in binaries.values()),

@@ -80,8 +80,6 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig, IInitConfig in
 
         string? refused = config switch
         {
-            { SequencerRpcUrl: { Length: > 0 } } when rules.UsesNativeContract =>
-                $"{nameof(IEezConfig.SequencerRpcUrl)} is not supported for native RollupX until unsafe history preparation is available",
             { MaxFollowerBatchBlocks: <= 0 } when rules.UsesNativeContract =>
                 $"{nameof(IEezConfig.MaxFollowerBatchBlocks)} must be positive for a native RollupX follower",
             { FollowerEnabled: false } when rules.UsesNativeContract =>

@@ -4,6 +4,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Client;
 
 namespace Nethermind.Eez.Follower;
@@ -13,6 +14,8 @@ public interface IEezSequencerApi
 {
     Task<EezL1Block?> GetLatestBlock(CancellationToken token);
 
+    Task<EezL1Block?> GetBlockByNumber(ulong number, CancellationToken token);
+
     /// <returns>The RLP of the block, or <see langword="null"/> when the sequencer does not serve it.</returns>
     Task<byte[]?> GetRawBlock(Hash256 hash, CancellationToken token);
 }
@@ -21,6 +24,9 @@ public interface IEezSequencerApi
 public sealed class EezSequencerApi(IJsonRpcClient rpcClient) : IEezSequencerApi
 {
     public Task<EezL1Block?> GetLatestBlock(CancellationToken token) => rpcClient.Post<EezL1Block?>("eth_getBlockByNumber", "latest", false).WaitAsync(token);
+
+    public Task<EezL1Block?> GetBlockByNumber(ulong number, CancellationToken token) =>
+        rpcClient.Post<EezL1Block?>("eth_getBlockByNumber", number.ToHexString(true), false).WaitAsync(token);
 
     public Task<byte[]?> GetRawBlock(Hash256 hash, CancellationToken token) => rpcClient.Post<byte[]?>("debug_getRawBlock", hash.ToString()).WaitAsync(token);
 }

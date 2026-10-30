@@ -14,6 +14,109 @@ from test_canonical_snapshot import Node
 
 
 class EmbeddedCoverageTests(unittest.TestCase):
+    def test_candidate_helper_only_references_the_selected_upstream_testkit_api(self):
+        rollup0, native = [embedded.candidate_helper(profile) for profile in ("rollup0", "rollupx")]
+        self.assertIn("world.follower_env()", rollup0)
+        self.assertNotIn("world.partial_follower_env()", rollup0)
+        self.assertIn("world.partial_follower_env()", native)
+        self.assertNotIn("world.follower_env()", native)
+        for source in (rollup0, native):
+            self.assertEqual(1, source.count("pub async fn start(case:"))
+            self.assertIn("pub async fn restart(", source)
+
+    def test_live_native_verification_requires_receipts_above_l1_safe_and_canonical_roots(self):
+        transaction = "0x" + "12" * 32
+        for failure in (None, "settled-only", "missing-receipt", "bad-receipt", "state-root", "finalized-overclaim", "reorg"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                def l1_call(method, tag, full):
+                    if tag in ("latest", "finalized"): return {"number": "0x2", "hash": "canonical"}
+                    return {"number": "0x2", "hash": "fork" if failure == "reorg" else "canonical"}
+                def call(role, method, *args):
+                    if method == "eth_getTransactionReceipt":
+                        if role == "candidate" and failure == "missing-receipt": return None
+                        return {"transactionHash": transaction, "blockHash": "head", "blockNumber": "0x1", "status": "0x1",
+                                "gasUsed": "0x2" if role == "candidate" and failure == "bad-receipt" else "0x1", "logs": []}
+                    tag = args[0]
+                    if tag in ("safe", "0x0"): return {"number": "0x0", "hash": "genesis"}
+                    if tag == "finalized": return {"number": "0x0", "hash": "wrong" if failure == "finalized-overclaim" else "genesis"}
+                    return {"number": "0x1", "hash": "head"}
+                reference = Mock(call=Mock(side_effect=lambda method, *args: call("reference", method, *args)))
+                candidate = Mock(call=Mock(side_effect=lambda method, *args: call("candidate", method, *args)))
+                l1 = Mock(call=Mock(side_effect=l1_call))
+                settings = {"unsafe_transactions": [transaction], "registry": "registry", "registry_deploy_block": 1, "case": "unsafe-history-reorg", "phase": "before-reorg",
+                            "image_id": "image", "candidate_revision": "revision", "database_id": "database", "container": "container"}
+                prefix = Mock(return_value={"verified_blocks": 2, "height": 1})
+                if failure == "state-root": prefix.side_effect = AssertionError("state root mismatch")
+                def commitment(*args): return "head" if failure == "settled-only" else "genesis"
+                with patch("embedded.registry", side_effect=commitment), patch("embedded.verify_prefix", prefix), \
+                     patch("embedded.time.monotonic", side_effect=[0, 2]), patch("embedded.time.sleep"), contextlib.redirect_stdout(io.StringIO()):
+                    if failure is None:
+                        embedded.verify_unsafe(settings, root, l1, reference, candidate, "genesis", "call", 1)
+                        result = json.loads((root / "unsafe-history-reorg-before-reorg.json").read_text())
+                        self.assertEqual(("unsafe", 1, 0), (result["mode"], result["unsafe_height"], result["safe_height"]))
+                        prefix.assert_called_once_with(reference, candidate, "head", "genesis", 8192, "rollupx")
+                    else:
+                        with self.assertRaises((AssertionError, TimeoutError)):
+                            embedded.verify_unsafe(settings, root, l1, reference, candidate, "genesis", "call", 1)
+                        self.assertFalse(list(root.glob("*.json")))
+
+    def test_native_adaptation_retains_every_original_byte_and_observes_both_reorgs(self):
+        first, second = embedded.NATIVE_CASES["queue_reorg"]
+        source = "use std::time::Duration;\n" + "\n".join(
+            "#[tokio::test]\nasync fn " + name + "() {\n" + body + "\n}"
+            for name, body in ((first, '''    let l1 = ProviderBuilder::new().connect_http(world.l1_rpc().parse().unwrap());
+    assert!(ancestor.number >= setup_tip);
+    assert_eq!(after_chain.state_root, before_chain.state_root);
+    assert!(settled.status());'''), (second, '''    let l1 = ProviderBuilder::new().connect_http(world.l1_rpc().parse().unwrap());
+    sources.push(send(2).await.unwrap());
+    wait_for_safe_prefix_convergence(&[&world.node, &follower], covered, TIMEOUT)
+        .await
+        .unwrap();''')))
+        adapted, restored = embedded.adapt_native(source)
+        self.assertEqual(source, restored)
+        self.assertEqual(5, adapted.count("candidate.verify_unsafe("))
+        self.assertEqual(1, adapted.count("candidate.restart().await.unwrap();"))
+        self.assertEqual(2, adapted.count("Candidate::start_native("))
+        for marker in ("assert!(ancestor.number >= setup_tip);", "assert_eq!(after_chain.state_root, before_chain.state_root);", "assert!(settled.status());"):
+            with self.subTest(marker=marker), self.assertRaises((ValueError, AssertionError)):
+                embedded.adapt_native(source.replace(marker, "upstream boundary changed"))
+
+    def test_native_report_rejects_settled_only_execution_and_fake_restart(self):
+        revision, image = "a" * 40, "sha256:" + "b" * 64
+        for name, (label, phases) in embedded.NATIVE_CASES["queue_reorg"].items():
+            for failure in (None, "settled-only", "missing-receipts", "missing-mode", "source", "image", "missing-phase", "database", "container"):
+                if label != "unsafe-history-reorg" and failure in ("database", "container"):
+                    continue
+                with self.subTest(label=label, failure=failure), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    inventory = root / "inventory.json"
+                    inventory.write_text(json.dumps({"cases": [{"source": "crates/eez-node-e2e/tests/queue_reorg.rs",
+                        "test": name, "candidate_status": "planned"}]}))
+                    for index, phase in enumerate(phases):
+                        observation = {"result": "pass", "case": label, "phase": phase, "verified_blocks": 5,
+                            "candidate_revision": revision, "image_id": image, "database_id": "same",
+                            "container": "restarted" if index >= 2 else "original", "mode": "unsafe",
+                            "unsafe_height": 4, "safe_height": 0, "unsafe_transactions": ["0x" + "12" * 32]}
+                        if phase == "after-reorg":
+                            if failure == "settled-only": observation["safe_height"] = 4
+                            if failure == "missing-receipts": observation["unsafe_transactions"] = []
+                            if failure == "missing-mode": observation.pop("mode")
+                            if failure == "source": observation["candidate_revision"] = "c" * 40
+                            if failure == "image": observation["image_id"] = "sha256:" + "c" * 64
+                            if failure == "missing-phase": continue
+                        if phase == "after-restart":
+                            if failure == "database": observation["database_id"] = "fresh"
+                            if failure == "container": observation["container"] = "original"
+                        (root / (label + "-" + phase + ".json")).write_text(json.dumps(observation))
+                    args = SimpleNamespace(inventory=inventory, directory=root)
+                    with patch.dict(os.environ, {"GITHUB_SHA": revision, "EEZ_CANDIDATE_IMAGE": image, "EEZ_SUITE": "embedded-queue_reorg"}):
+                        if failure is None:
+                            embedded.report(args)
+                            self.assertEqual("passed", json.loads((root / "candidate-coverage.json").read_text())["cases"][0]["candidate_status"])
+                        else:
+                            with self.assertRaises((ValueError, AssertionError, FileNotFoundError)): embedded.report(args)
+
     def test_native_accounting_checks_genesis_and_settled_state_on_both_nodes(self):
         expected = {"system_balance": "0x7", "system_nonce": "0x2", "recipient": "recipient", "recipient_balance": "0x10"}
         values = {("eth_getBalance", embedded.SYSTEM, "0x0"): "0x0",

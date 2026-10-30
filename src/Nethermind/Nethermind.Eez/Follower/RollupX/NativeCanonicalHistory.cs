@@ -21,6 +21,11 @@ internal sealed class NativeCanonicalHistory(NativeL1Rpc source, EezChainRules r
 
     internal Task<NativeL1Header> ReadCanonical(ulong number, CancellationToken token) => source.Read(number, token);
 
+    internal NativeL1HeaderChain? TryRead()
+    {
+        lock (_gate) return _ready;
+    }
+
     internal NativeL1HeaderChain Read()
     {
         lock (_gate)
