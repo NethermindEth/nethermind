@@ -463,13 +463,14 @@ internal class NodeRecordBulkSetTests
         trieRetain.Dispose();
         // Few large filler leaves per generation keep false positives out of the blooms the dropped trie is compacted against.
         FillUntil(newestTrieGeneration + NodeRecordBufferTests.LiveGenerations);
-        Assert.That(() => NodeRecordBufferTests.IsLocatable(buffer, root.Pointer), Is.False.After(NodeRecordBufferTests.CompactionTimeoutMilliseconds, NodeRecordBufferTests.PollingMilliseconds),
-            "the generations of the trie are compacted");
+        // A dropped generation misses for every lookup until it is compacted, so wait for the expected records rather than for the root to miss.
+        Assert.That(() => nodes.Select(node => NodeRecordBufferTests.IsLocatable(buffer, node.Pointer)).ToArray(),
+            Is.EqualTo(nodes.Select(node => !rewrittenPaths.Contains(node.Path)).ToArray()).After(NodeRecordBufferTests.CompactionTimeoutMilliseconds, NodeRecordBufferTests.PollingMilliseconds),
+            "once the generations of the trie are compacted, records resolve unless their path was rewritten");
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(NodeRecordBufferTests.GenerationOf(newRoot.Pointer), Is.GreaterThan(newestTrieGeneration), "generation of the rewrite");
-            Assert.That(nodes.Select(node => NodeRecordBufferTests.IsLocatable(buffer, node.Pointer)), Is.EqualTo(nodes.Select(node => !rewrittenPaths.Contains(node.Path))), "records resolve unless their path was rewritten");
             Assert.That(ReadValues(buffer, source, newRoot, items.Select(item => item.key)), Is.EqualTo(items.Select((item, index) => index == 0 ? NewValue : item.value)), "values");
             Assert.That(source.FetchCount, Is.Zero, "nodes read from the buffer");
         }
