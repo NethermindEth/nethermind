@@ -30,6 +30,7 @@ public class ShutterEventQueueTests
     [TestCase(Eon, 3, 3, 0UL)]
     [TestCase(Eon - 1, 3, 0, 0UL)]
     [TestCase(Eon, 2, 2, 1UL)]
+    [TestCase(Eon, 3, 2, 1UL)]
     [NonParallelizable]
     public void Reports_encrypted_gas_used_for_dequeued_events(ulong dequeueEon, int gasLimitInTxs, int expectedDequeued, ulong txPointer)
     {
