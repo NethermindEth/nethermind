@@ -20,6 +20,7 @@ public class ColumnDb : IDb, ISnapshotSortedKeyValueStore, IMergeableKeyValueSto
 
     private readonly DisposableLazy<DbOnTheRocks.IteratorManager>? _iteratorManager;
     private readonly DisposableLazy<DbOnTheRocks.IteratorManager> _seekIteratorManager;
+    private readonly DisposableLazy<DbOnTheRocks.IteratorManager> _epochSeekIteratorManager;
     private readonly RocksDbReader _reader;
 
     public ColumnDb(RocksDb rocksDb, DbOnTheRocks mainDb, string name)
@@ -32,6 +33,7 @@ public class ColumnDb : IDb, ISnapshotSortedKeyValueStore, IMergeableKeyValueSto
 
         _iteratorManager = _mainDb.CreateLazyReadAheadIteratorManager(_columnFamily);
         _seekIteratorManager = _mainDb.CreateLazySeekIteratorManager(_columnFamily);
+        _epochSeekIteratorManager = _mainDb.CreateLazyEpochSeekIteratorManager(_columnFamily);
         _reader = new RocksDbReader(mainDb, mainDb.CreateReadOptions, _iteratorManager, _columnFamily);
     }
 
@@ -40,6 +42,7 @@ public class ColumnDb : IDb, ISnapshotSortedKeyValueStore, IMergeableKeyValueSto
         _reader.Dispose();
         _iteratorManager?.Dispose();
         _seekIteratorManager.Dispose();
+        _epochSeekIteratorManager.Dispose();
     }
 
     public string Name { get; }
@@ -216,6 +219,15 @@ public class ColumnDb : IDb, ISnapshotSortedKeyValueStore, IMergeableKeyValueSto
             lowerBoundIncl, upperBoundExcl, _seekIteratorManager.Value,
             keyBuffer, out keyLength, valueBuffer, out valueLength
         );
+    }
+
+    public bool TryGetCeilingAtEpoch(
+        scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl, long epoch,
+        Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength)
+    {
+        _mainDb.ThrowIfDisposing();
+        return DbOnTheRocks.TryGetCeilingAtEpochWithIterator(lowerBoundIncl, upperBoundExcl, epoch, _epochSeekIteratorManager.Value,
+            keyBuffer, out keyLength, valueBuffer, out valueLength);
     }
 
     public IKeyValueStoreSnapshot CreateSnapshot()

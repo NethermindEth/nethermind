@@ -45,15 +45,12 @@ internal sealed class HistoryStoreV3
 
     /// <summary>The recorded change nearest above <paramref name="block"/>. -1 when none is recorded - this store
     /// makes no claim about the live value. 0 for an empty pre-value, otherwise the bytes written.</summary>
+    /// <param name="captureGeneration">The capture generation sampled before the read. Lets the store reuse a
+    /// per-thread snapshot iterator until a capture publishes new rows, so concurrent readers of one block share no
+    /// view and no lock; without it the read takes a fresh snapshot.</param>
     [SkipLocalsInit]
     public int TryGetValueBeforeNextChange(ulong block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer, out ulong nextChangeBlock,
-        ReadScope? scope = null, long generation = 0) => scope is null
-        ? Read(block, flatKey, outBuffer, out nextChangeBlock, null, generation)
-        : scope.Read(this, block, flatKey, outBuffer, out nextChangeBlock, generation);
-
-    [SkipLocalsInit]
-    private int Read(ulong block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer, out ulong nextChangeBlock,
-        ReadScope? scope, long generation)
+        long? captureGeneration = null)
     {
         nextChangeBlock = 0;
 
@@ -67,19 +64,22 @@ internal sealed class HistoryStoreV3
         flatKey.CopyTo(upperBound);
         upperBound[flatKey.Length..].Fill(0xFF);
 
-        if (scope is null && _history is ISnapshotSortedKeyValueStore snapshotHistory)
+        Span<byte> found = stackalloc byte[seekKey.Length];
+        if (captureGeneration is { } generation)
         {
-            Span<byte> found = stackalloc byte[seekKey.Length];
-            if (!snapshotHistory.TryGetCeilingInSnapshot(seekKey, upperBound, found, out int keyLength, outBuffer, out int valueLength)
-                || keyLength != found.Length || !found[..flatKey.Length].SequenceEqual(flatKey)) return -1;
-
-            nextChangeBlock = BinaryPrimitives.ReadUInt64BigEndian(found[flatKey.Length..]);
-            ValidateValueLength(valueLength, outBuffer.Length, nextChangeBlock);
-            return valueLength;
+            return _history.TryGetCeilingAtEpoch(seekKey, upperBound, generation, found, out int keyLength, outBuffer, out int valueLength)
+                ? Resolved(found, keyLength, valueLength, flatKey, outBuffer.Length, out nextChangeBlock)
+                : -1;
         }
 
-        using ISortedView? ownedView = scope is null ? _history.GetViewBetween(seekKey, upperBound) : null;
-        ISortedView view = ownedView ?? scope!.GetView(_history, seekKey, upperBound, generation);
+        if (_history is ISnapshotSortedKeyValueStore snapshotHistory)
+        {
+            return snapshotHistory.TryGetCeilingInSnapshot(seekKey, upperBound, found, out int keyLength, outBuffer, out int valueLength)
+                ? Resolved(found, keyLength, valueLength, flatKey, outBuffer.Length, out nextChangeBlock)
+                : -1;
+        }
+
+        using ISortedView view = _history.GetViewBetween(seekKey, upperBound);
         if (!view.MoveNext()) return -1;
 
         ReadOnlySpan<byte> foundKey = view.CurrentKey;
@@ -94,57 +94,23 @@ internal sealed class HistoryStoreV3
         return value.Length;
     }
 
+    private static int Resolved(ReadOnlySpan<byte> found, int keyLength, int valueLength, ReadOnlySpan<byte> flatKey, int bufferLength,
+        out ulong nextChangeBlock)
+    {
+        nextChangeBlock = 0;
+        if (keyLength != found.Length || !found[..flatKey.Length].SequenceEqual(flatKey)) return -1;
+
+        nextChangeBlock = BinaryPrimitives.ReadUInt64BigEndian(found[flatKey.Length..]);
+        ValidateValueLength(valueLength, bufferLength, nextChangeBlock);
+        return valueLength;
+    }
+
     private static void ValidateValueLength(int valueLength, int bufferLength, ulong nextChangeBlock)
     {
         if (valueLength > bufferLength)
         {
             throw new StateUnavailableException(
                 $"History value of {valueLength} bytes at block {nextChangeBlock} exceeds the {bufferLength}-byte encoder maximum - the row is corrupt; resync the flatHistory database.");
-        }
-    }
-
-    /// <summary>Retains a bounded view until its capture generation changes.</summary>
-    /// <remarks>Reuse relies on capture appending rows above the published watermark, then calling
-    /// <see cref="HistoryAvailability.MarkCapturePublished"/> before live state changes. Existing rows stay
-    /// unchanged while <see cref="HistoryScopeGate"/> protects the reader from pruning. Any future rewrite of
-    /// retained rows must also invalidate the capture generation before readers can observe updated live state.</remarks>
-    internal sealed class ReadScope : IDisposable
-    {
-        private readonly Lock _lock = new();
-        private ISortedView? _view;
-        private long _generation;
-        private bool _disposed;
-
-        internal int Read(HistoryStoreV3 store, ulong block, ReadOnlySpan<byte> flatKey, Span<byte> output,
-            out ulong nextChangeBlock, long generation)
-        {
-            lock (_lock)
-            {
-                ObjectDisposedException.ThrowIf(_disposed, this);
-                return store.Read(block, flatKey, output, out nextChangeBlock, this, generation);
-            }
-        }
-
-        internal ISortedView GetView(ISortedKeyValueStore history, ReadOnlySpan<byte> lower, ReadOnlySpan<byte> upper, long generation)
-        {
-            if (_generation == generation && _view is IRebindableSortedView reusable && reusable.TryResetBounds(lower, upper)) return _view;
-
-            _view?.Dispose();
-            _view = null;
-            _view = history.GetViewBetween(lower, upper, ReadFlags.HintRepeatedReads);
-            _generation = generation;
-            return _view;
-        }
-
-        public void Dispose()
-        {
-            lock (_lock)
-            {
-                if (_disposed) return;
-                _disposed = true;
-                _view?.Dispose();
-                _view = null;
-            }
         }
     }
 

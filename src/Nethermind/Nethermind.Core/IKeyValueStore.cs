@@ -166,6 +166,15 @@ namespace Nethermind.Core
             value.TryCopyTo(valueBuffer);
             return true;
         }
+
+        /// <summary>Same as <see cref="TryGetCeiling"/>, but may reuse a per-thread point-in-time view while the
+        /// caller's <paramref name="epoch"/> stays the same.</summary>
+        /// <remarks>The caller must change the epoch, before it reads them, whenever rows it must observe were
+        /// written. Writes it need not observe leave the epoch unchanged, so the view outlives them.</remarks>
+        bool TryGetCeilingAtEpoch(
+            scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl, long epoch,
+            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength) =>
+            TryGetCeiling(lowerBoundIncl, upperBoundExcl, keyBuffer, out keyLength, valueBuffer, out valueLength);
     }
 
     /// <summary>Provides ceiling reads whose key and value come from one point-in-time view.</summary>

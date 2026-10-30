@@ -274,7 +274,7 @@ public class HistoryBackedPersistenceReaderTests
     private HistoryReader WarmedHistoryReader()
     {
         HistoryReader history = CreateHistoryReader();
-        history.GetAccount(1, ContractAddress, null);
+        history.GetAccount(1, ContractAddress);
         return history;
     }
 

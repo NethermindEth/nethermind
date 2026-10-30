@@ -66,6 +66,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private const int BlockCacheTier = 1;
     private ReadOptions? _readAheadReadOptions;
     private ReadOptions _seekReadOptions = null!;
+    private ReadOptions _epochSeekReadOptions = null!;
 
     internal DbOptions? DbOptions { get; private set; }
     private readonly IRocksDbConfigFactory _rocksDbConfigFactory;
@@ -113,6 +114,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private readonly DisposableLazy<IteratorManager>? _iteratorManager;
     private readonly DisposableLazy<IteratorManager> _seekIteratorManager;
+    private readonly DisposableLazy<IteratorManager> _epochSeekIteratorManager;
     private ulong _writeBufferSize;
     private int _maxWriteBufferNumber;
     private readonly RocksDbReader _reader;
@@ -140,6 +142,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
         _iteratorManager = CreateLazyReadAheadIteratorManager(null);
         _seekIteratorManager = CreateLazySeekIteratorManager(null);
+        _epochSeekIteratorManager = CreateLazyEpochSeekIteratorManager(null);
 
         _reader = new RocksDbReader(this, CreateReadOptions, _iteratorManager, null);
 
@@ -759,6 +762,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // They also don't support SeekForPrev and SeekToLast
         _seekReadOptions = CreateReadOptions();
         _seekReadOptions.SetTailing(true);
+
+        _epochSeekReadOptions = CreateReadOptions();
         #endregion
     }
 
@@ -823,11 +828,26 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl, IteratorManager iteratorManager,
         Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength)
     {
+        using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(ReadFlags.None);
+        return SeekCeiling(wrapper.Iterator, lowerBoundIncl, upperBoundExcl, keyBuffer, out keyLength, valueBuffer, out valueLength);
+    }
+
+    // Uses a pool of per-thread snapshot iterators, each replaced once the caller's epoch moves past the one it was
+    // created at. Unlike a tailing iterator, a backward seek does not re-seek every immutable child.
+    internal static bool TryGetCeilingAtEpochWithIterator(
+        scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl, long epoch, IteratorManager iteratorManager,
+        Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength)
+    {
+        using IteratorManager.RentWrapper wrapper = iteratorManager.RentAtEpoch(epoch);
+        return SeekCeiling(wrapper.Iterator, lowerBoundIncl, upperBoundExcl, keyBuffer, out keyLength, valueBuffer, out valueLength);
+    }
+
+    private static bool SeekCeiling(Iterator iterator,
+        scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,
+        Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength)
+    {
         keyLength = 0;
         valueLength = 0;
-
-        using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(ReadFlags.None);
-        Iterator iterator = wrapper.Iterator;
 
         iterator.Seek(lowerBoundIncl);
         if (!iterator.Valid()) return false;
@@ -851,6 +871,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// <summary> Pool for ceiling seeks - tailing iterators. </summary>
     internal DisposableLazy<IteratorManager> CreateLazySeekIteratorManager(IColumnFamilyHandle? cf) =>
         CreateLazyIteratorManager(cf, _seekReadOptions);
+
+    /// <summary> Pool for ceiling seeks at a caller's epoch - non-tailing iterators. </summary>
+    internal DisposableLazy<IteratorManager> CreateLazyEpochSeekIteratorManager(IColumnFamilyHandle? cf) =>
+        CreateLazyIteratorManager(cf, _epochSeekReadOptions);
 
     private DisposableLazy<IteratorManager> CreateLazyIteratorManager(IColumnFamilyHandle? cf, ReadOptions readOptions) =>
         new(() => new IteratorManager(_db, cf, readOptions));
@@ -1954,6 +1978,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         _iteratorManager?.Dispose();
         _seekIteratorManager.Dispose();
+        _epochSeekIteratorManager.Dispose();
         _db.Dispose();
 
         _defaultReadOptions.Dispose();
@@ -1961,6 +1986,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _cacheOnlyReadOptions.Dispose();
         _readAheadReadOptions?.Dispose();
         _seekReadOptions.Dispose();
+        _epochSeekReadOptions.Dispose();
 
         _rowCache?.Dispose();
     }
@@ -2303,6 +2329,27 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
         }
 
+        /// <summary>Rents the thread's iterator, replacing it when it was created at another <paramref name="epoch"/>.</summary>
+        /// <remarks>Only for a manager whose read options do not tail, so an iterator is a point-in-time view.</remarks>
+        public RentWrapper RentAtEpoch(long epoch)
+        {
+            IteratorHolder holder = _readaheadIterators.Value!;
+            Iterator? iterator = Interlocked.Exchange(ref holder.Iterator, null);
+            if (iterator is not null && holder.Epoch != epoch)
+            {
+                iterator.Dispose();
+                iterator = null;
+            }
+
+            if (iterator is null)
+            {
+                holder.Epoch = epoch;
+                iterator = _rocksDb.NewIterator(_cf, _readOptions);
+            }
+
+            return new RentWrapper(iterator, ReadFlags.None, this);
+        }
+
         public RentWrapper Rent(ReadFlags flags)
         {
             ManagedIterators iterators = GetIterators(flags);
@@ -2381,6 +2428,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         {
             public Iterator? Iterator = null;
             public int Usage = 0;
+            public long Epoch;
 
             public void Dispose() => Interlocked.Exchange(ref Iterator, null)?.Dispose();
         }
@@ -2471,6 +2519,15 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             lowerBoundIncl, upperBoundExcl, _seekIteratorManager.Value,
             keyBuffer, out keyLength, valueBuffer, out valueLength
         );
+    }
+
+    public bool TryGetCeilingAtEpoch(
+        scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl, long epoch,
+        Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength)
+    {
+        ThrowIfDisposing();
+        return TryGetCeilingAtEpochWithIterator(lowerBoundIncl, upperBoundExcl, epoch, _epochSeekIteratorManager.Value,
+            keyBuffer, out keyLength, valueBuffer, out valueLength);
     }
 
     public IKeyValueStoreSnapshot CreateSnapshot()
