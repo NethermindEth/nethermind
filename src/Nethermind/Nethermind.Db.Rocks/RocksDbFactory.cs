@@ -73,9 +73,22 @@ public class RocksDbFactory : IDbFactory
 
         using RocksDbInstance instance = Open(dbSettings, tableConfig, columns.Select(static column => (column.Name, column.Config)).ToArray());
         Dictionary<T, ColumnDb> columnDbs = [];
-        foreach ((T key, string name, IRocksDbConfig config) in columns)
+        try
         {
-            columnDbs[key] = new ColumnDb(instance, ToColumnFamilyName(name), config, _logManager);
+            foreach ((T key, string name, IRocksDbConfig config) in columns)
+            {
+                columnDbs[key] = new ColumnDb(instance, ToColumnFamilyName(name), config, _logManager);
+            }
+        }
+        catch
+        {
+            // Each column built so far holds a lease, which would otherwise keep the database open.
+            foreach (ColumnDb columnDb in columnDbs.Values)
+            {
+                columnDb.Dispose();
+            }
+
+            throw;
         }
 
         return new ColumnsDb<T>(instance, tableConfig, columnDbs);
@@ -125,34 +138,42 @@ public class RocksDbFactory : IDbFactory
             if (_logger.IsDebug) _logger.Debug($"Loading DB {name,-13} from {fullPath} with max memory footprint of {accounting.MaxSize / 1000 / 1000,5} MB");
             bool wasRepairedOnOpen = RepairIfCorrupted(settings, fullPath, dbOptions);
             RocksDb db = DoOpen(fullPath, dbOptions, columnFamilies);
+            if (accounting.MemoryPressure > 0) GC.AddMemoryPressure(accounting.MemoryPressure);
 
             List<IDisposable> metricsUpdaters = [];
-            if (_dbConfig.EnableMetricsUpdater)
+            RocksDbInstance instance = new(db, settings, fullPath, dbOptions, columnFamilies, metricsUpdaters, accounting.RowCaches,
+                accounting.MemoryPressure, accounting.UsesSharedBlockCache, wasRepairedOnOpen, _fileSystem, FatalShutdown, _logger);
+            try
             {
-                metricsUpdaters.Add(StartMetricsUpdater(name, dbOptions, db, null, accounting.UsesSharedBlockCache));
-
-                if (columnFamilies is not null)
+                if (_dbConfig.EnableMetricsUpdater)
                 {
-                    foreach (ColumnFamilies.Descriptor columnFamily in columnFamilies)
+                    metricsUpdaters.Add(StartMetricsUpdater(name, dbOptions, db, null, accounting.UsesSharedBlockCache));
+
+                    if (columnFamilies is not null)
                     {
-                        if (columnFamily.Name == "default") continue;
-                        if (db.TryGetColumnFamily(columnFamily.Name, out IColumnFamilyHandle? handle))
+                        foreach (ColumnFamilies.Descriptor columnFamily in columnFamilies)
                         {
-                            metricsUpdaters.Add(StartMetricsUpdater(name + "_" + columnFamily.Name, columnFamily.Options, db, handle, accounting.UsesSharedBlockCache));
+                            if (columnFamily.Name == "default") continue;
+                            if (db.TryGetColumnFamily(columnFamily.Name, out IColumnFamilyHandle? handle))
+                            {
+                                metricsUpdaters.Add(StartMetricsUpdater(name + "_" + columnFamily.Name, columnFamily.Options, db, handle, accounting.UsesSharedBlockCache));
+                            }
                         }
                     }
                 }
-            }
 
-            if (tableConfig.EnableFileWarmer)
+                if (tableConfig.EnableFileWarmer)
+                {
+                    WarmupFile(name, fullPath, db);
+                }
+
+                return instance;
+            }
+            catch
             {
-                WarmupFile(name, fullPath, db);
+                instance.Dispose();
+                throw;
             }
-
-            if (accounting.MemoryPressure > 0) GC.AddMemoryPressure(accounting.MemoryPressure);
-
-            return new RocksDbInstance(db, settings, fullPath, dbOptions, columnFamilies, metricsUpdaters, accounting.RowCaches,
-                accounting.MemoryPressure, accounting.UsesSharedBlockCache, wasRepairedOnOpen, _fileSystem, FatalShutdown, _logger);
         }
         catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
         {

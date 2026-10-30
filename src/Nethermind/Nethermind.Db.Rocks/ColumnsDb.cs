@@ -23,6 +23,7 @@ public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, 
 {
     private readonly IDictionary<T, ColumnDb> _columnDbs = columnDbs;
     // Write batches and the write-ahead log belong to the whole database, so any column can serve them.
+    // A batch spanning columns writes with this column's write options, e.g. its WriteAheadLogSync.
     private readonly ColumnDb _anyColumn = columnDbs.Values.First();
 
     // Cached for ColumnDbSnapshot to avoid per-snapshot recomputation.
@@ -82,6 +83,12 @@ public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, 
     /// </remarks>
     public void Flush(bool onlyWal = false)
     {
+        if (onlyWal)
+        {
+            _anyColumn.Flush(onlyWal: true);
+            return;
+        }
+
         foreach (ColumnDb column in _columnDbs.Values)
         {
             column.Flush(onlyWal);
