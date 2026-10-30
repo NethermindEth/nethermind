@@ -203,9 +203,12 @@ public class P2PProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceDisconnect(int reason, EthDisconnectReason disconnectReason)
-            => Logger.Trace(!FastEnum.IsDefined((EthDisconnectReason)reason)
-                ? $"{Session} unknown disconnect reason ({reason}) on {Session.RemotePort}"
-                : $"{Session} Received disconnect ({disconnectReason}) on {Session.RemotePort}");
+        {
+            if (!FastEnum.IsDefined((EthDisconnectReason)reason))
+                Logger.Trace($"{Session:hide} unknown disconnect reason ({reason}) on {Session.RemotePort:hide}");
+            else
+                Logger.Trace($"{Session:hide} Received disconnect ({disconnectReason}) on {Session.RemotePort:hide}");
+        }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TracePing()

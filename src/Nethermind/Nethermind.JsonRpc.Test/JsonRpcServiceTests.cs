@@ -1584,6 +1584,7 @@ public class JsonRpcServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(logged.Text, Does.Contain("eth_getBalance").And.Contain("exception:").And.Not.Contain(marker));
+            Assert.That(logged.Text, Does.Contain(nameof(OutOfMemoryException)).And.Not.Contain(nameof(TargetInvocationException)));
             Assert.That(logged.Exception, Is.Null);
         }
     }

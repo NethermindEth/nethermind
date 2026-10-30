@@ -718,7 +718,7 @@ namespace Nethermind.Synchronization.Blocks
             if (now < next || Interlocked.CompareExchange(ref _nextUnservedAccessListWarningMs, now + UnservedAccessListWarningIntervalMs, next) != next) return;
 
             string reason = insideServingWindow ? "withheld" : "withheld or past the retention window";
-            _logger.Warn($"{(node.IsStatic ? "Static" : "Trusted")} peer {peer} did not serve the block access list of {header.ToString(BlockHeader.Format.Short)} ({reason}); sync cannot pass this block until another peer serves it.");
+            _logger.Warn($"{(node.IsStatic ? "Static" : "Trusted")} peer {peer:hide} did not serve the block access list of {header.ToString(BlockHeader.Format.Short)} ({reason}); sync cannot pass this block until another peer serves it.");
         }
 
         private enum BlocksRequestContentType
@@ -846,6 +846,7 @@ namespace Nethermind.Synchronization.Blocks
                     peer.SyncPeer.HeadHash = header.Hash;
                 }
             }
+            string DescribePeer() => SensitiveLogMasking.Enabled ? "[redacted]" : peerInfo.ToString();
             switch (addResult)
             {
                 // this generally should not happen as there is a consistency check before
@@ -854,21 +855,21 @@ namespace Nethermind.Synchronization.Blocks
                         if (_logger.IsTrace) _logger.Trace($"Block/header {block.Number} ignored (unknown parent)");
                         string blockId = $"#{block.Number} ({block.Hash}, parent {block.ParentHash})";
                         string message = isFirstInBatch
-                            ? $"Peer {peerInfo} sent orphaned blocks/headers inside the batch: {blockId}"
-                            : $"Peer {peerInfo} sent an inconsistent batch of blocks/headers: {blockId}";
+                            ? $"Peer {DescribePeer()} sent orphaned blocks/headers inside the batch: {blockId}"
+                            : $"Peer {DescribePeer()} sent an inconsistent batch of blocks/headers: {blockId}";
                         _logger.Error(message);
                         throw new EthSyncException(message);
                     }
                 case AddBlockResult.CannotAccept:
                     {
-                        throw new BlockTreeNotReadyException($"Block tree cannot accept block/header from peer {peerInfo}: #{block.Number} ({block.Hash}, parent {block.ParentHash})");
+                        throw new BlockTreeNotReadyException($"Block tree cannot accept block/header from peer {DescribePeer()}: #{block.Number} ({block.Hash}, parent {block.ParentHash})");
                     }
                 case AddBlockResult.InvalidBlock:
                     {
                         // Validator-level reason (e.g. InvalidReceiptsRoot, BAL hash mismatch) is logged
                         // separately via InvalidBlockException by the validator/processor; see preceding
                         // 'Rejected invalid block' log lines and the RLP dump at /tmp/block_<hash>.rlp.
-                        string message = $"Peer {peerInfo} sent an invalid block/header: " +
+                        string message = $"Peer {DescribePeer()} sent an invalid block/header: " +
                                          $"#{block.Number} ({block.Hash}, parent {block.ParentHash})";
                         throw new EthSyncException(message);
                     }

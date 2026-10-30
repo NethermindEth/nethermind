@@ -141,15 +141,30 @@ namespace Nethermind.Network.Test.P2P
         }
 
         [Test]
-        public void Received_disconnect_is_logged_at_trace()
+        public void Received_disconnect_is_logged_at_trace([Values] bool maskSensitiveData, [Values] bool knownReason)
         {
-            TestLogger logger = new() { IsDebug = false };
-            P2PProtocolHandler p2PProtocolHandler = CreateSession(new OneLoggerLogManager(new(logger)));
-            using DisconnectMessage message = new(EthDisconnectReason.BreachOfProtocol);
+            bool previous = SensitiveLogMasking.Enabled;
+            SensitiveLogMasking.Enabled = maskSensitiveData;
+            try
+            {
+                _session.RemotePort.Returns(31417);
+                TestLogger logger = new() { IsDebug = false };
+                P2PProtocolHandler p2PProtocolHandler = CreateSession(new OneLoggerLogManager(new(logger)));
+                using DisconnectMessage message = new(knownReason ? EthDisconnectReason.BreachOfProtocol : (EthDisconnectReason)255);
 
-            p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
+                p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
 
-            Assert.That(logger.LogList, Has.Some.Contains("P2P received disconnect [BreachOfProtocol]"));
+                string diagnostic = logger.LogList.Single(line => line.Contains(knownReason ? "Received disconnect" : "unknown disconnect reason"));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(diagnostic, Does.Contain(maskSensitiveData ? "[redacted]" : "31417"));
+                    if (maskSensitiveData) Assert.That(diagnostic, Does.Not.Contain("31417"));
+                }
+            }
+            finally
+            {
+                SensitiveLogMasking.Enabled = previous;
+            }
         }
 
         [Test]

@@ -103,8 +103,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return GetErrorResponse(rpcRequest.Method, errorCode, errorText, suppressWarning ? null : GetExceptionText(ex), in rpcRequest.IdRef, suppressWarning: suppressWarning);
     }
 
-    private static string DescribeRequestForLog(JsonRpcRequest? request) =>
-        request is null ? "null" : $"Id:{request.Id}, {request.Method}(params omitted)";
+    private static string DescribeRequestForLog(JsonRpcRequest? request) => request?.ToString() ?? "null";
 
     private static string DiagnosticStackTrace(Exception ex) =>
         SensitiveLogMasking.Enabled || ex.StackTrace is not { } stack ? string.Empty : Environment.NewLine + stack;
@@ -702,12 +701,14 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         // HandleException already logs at Error, so it does not need a second line here.
         JsonRpcErrorResponse LogFailureType(Exception ex, JsonRpcErrorResponse response)
         {
+            ex = (ex as TargetInvocationException)?.InnerException ?? ex;
             if (_logger.IsDebug) _logger.Debug($"Exception during {methodName} execution: {ex.GetType().Name}{DiagnosticStackTrace(ex)}");
             return response;
         }
 
         JsonRpcErrorResponse HandleException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction)
         {
+            ex = (ex as TargetInvocationException)?.InnerException ?? ex;
             if (_logger.IsError) _logger.Error($"Error during method execution, request: {DescribeRequestForLog(request)}, exception: {ex.GetType().Name}{DiagnosticStackTrace(ex)}");
             return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", GetExceptionText(ex), in request.IdRef, returnAction);
         }

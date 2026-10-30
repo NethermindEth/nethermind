@@ -241,11 +241,11 @@ namespace Nethermind.Synchronization.ParallelSync
                 catch (SubprotocolException e)
                 {
                     // A peer fault, not a node fault: the feed handles the missing response below and re-requests the data.
-                    if (Logger.IsDebug) Logger.Debug($"{request} - invalid response: {e.Message}. Peer: {allocatedPeer}");
+                    if (Logger.IsDebug) Logger.Debug($"{request} - invalid response: {e.Message:hide}. Peer: {allocatedPeer:hide}");
                 }
                 catch (Exception e)
                 {
-                    if (Logger.IsWarn) Logger.Warn($"Failure when executing request {e}");
+                    if (Logger.IsWarn) Logger.Warn($"Failure when executing request {e:hide}");
                 }
                 Metrics.SyncDispatcherDispatchTimeMicros.Observe(Stopwatch.GetElapsedTime(dispatchTimeStart).TotalMicroseconds, new StringLabel(_feedName));
 

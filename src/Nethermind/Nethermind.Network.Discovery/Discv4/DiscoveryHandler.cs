@@ -161,7 +161,7 @@ public class DiscoveryHandler(
 
         if (!_globalInboundMessageLimiter.TryAcquire())
         {
-            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message globally, type: {type}, sender: {address}");
+            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message globally, type: {type}, sender: {address:hide}");
             return false;
         }
 
