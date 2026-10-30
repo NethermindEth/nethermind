@@ -33,6 +33,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary>The paired table in the form <see cref="RawCalliHelper.DispatchTable"/> gives, where the chain carries a handler cache instead.</summary>
         public nint* PairedHandlers;
 
+        /// <summary>Whether handlers may write the handler cache the chain carries: not the shared one past the caches' memory bound.</summary>
+        public bool HandlerCacheWritable;
+
         public VirtualMachine<TGasPolicy> Vm;
 
         /// <summary>The running frame's memory, which handlers that stay in line reach without going through <see cref="Vm"/>.</summary>
@@ -143,16 +146,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint* carried = dispatched;
             nint uncached = 0;
             nint outerUncached = 0;
+            bool readOnly = true;
             if (RawCalliHelper.CachesHandlers)
             {
-                nint[] cache = stack.GetHandlerCache(handlers, out bool readOnly);
+                nint[] cache = stack.GetHandlerCache(handlers, out readOnly);
                 outerUncached = RawCalliHelper.ResolveEmptySlots(readOnly, out uncached);
                 carried = RawCalliHelper.HandlerCacheBias(cache, ref stack.Code);
             }
             // Unscoped because a function pointer cannot declare its parameters scoped; the chain ends before this call does.
             DispatchState state = new()
             {
-                Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = carried, PairedHandlers = dispatched, Vm = this, Memory = ref VmState.Memory
+                Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = carried, PairedHandlers = dispatched, HandlerCacheWritable = !readOnly,
+                Vm = this, Memory = ref VmState.Memory
             };
 
             // The cache resolves the entries the paired table tags (see RawCalliHelper.ResolveHandler).

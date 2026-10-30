@@ -519,7 +519,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     if (TShape.Kind == TestedShape.Kind
                         ? CodeByte(ref opcode, branch, 1, 1) == (byte)Instruction.PUSH2 && CodeByte(ref opcode, branch, 1, 4) == (byte)Instruction.JUMPI
-                        : TShape.Kind == Push2JumpIShape.Kind)
+                        : TShape.Kind == Push2JumpIShape.Kind || TShape.Kind == VerifiedPush2JumpIShape.Kind)
                     {
                         // The fused step charges the comparison with every opcode after it in one test.
                         if (condition == 0)
@@ -536,9 +536,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         {
                             ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
                             nuint destination = CodeUInt16(ref opcode, branch, 1, 2);
-                            if (destination < (nuint)AlignedStack(ref stack).CodeLength && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost + jumpGas))
+                            bool verified = TShape.Kind == VerifiedPush2JumpIShape.Kind;
+                            if ((verified || destination < (nuint)AlignedStack(ref stack).CodeLength) &&
+                                TryCharge(ref gas, 2 * VeryLowGasCost.GasCost + jumpGas))
                             {
-                                if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(destination))
+                                if (!verified && !AlignedStack(ref stack).IsAnalyzedJumpDestination(destination))
                                 {
                                     analyzed = destination;
                                     skipped = 1 + 3;
@@ -547,6 +549,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     goto AnalyzeBranch;
                                 }
 
+                                if (TShape.Kind == Push2JumpIShape.Kind)
+                                    CacheVerified(handlers, ref opcode, ref state, Entry(&ExecuteCondition<TCondition, VerifiedPush2JumpIShape>));
                                 head -= TCondition.Inputs;
                                 sp = ref Moved(ref sp, -TCondition.Inputs);
                                 ip = ref Unsafe.Add(ref code, (nint)destination + 1);
@@ -557,7 +561,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     // An ISZERO between the comparison and the branch only inverts what the branch tests.
                     else if (TShape.Kind == TestedShape.Kind
                         ? CodeByte(ref opcode, branch, 1, 1) == (byte)Instruction.ISZERO
-                        : TShape.Kind == IsZeroPush2JumpIShape.Kind)
+                        : TShape.Kind == IsZeroPush2JumpIShape.Kind || TShape.Kind == VerifiedIsZeroPush2JumpIShape.Kind)
                     {
                         uint inverted = CodeWord(ref opcode, 2);
                         if (TShape.Kind != TestedShape.Kind ||
@@ -577,9 +581,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             {
                                 ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
                                 nuint destination = CodeUInt16(ref opcode, inverted, 2, 3);
-                                if (destination < (nuint)AlignedStack(ref stack).CodeLength && TryCharge(ref gas, 3 * VeryLowGasCost.GasCost + jumpGas))
+                                bool verified = TShape.Kind == VerifiedIsZeroPush2JumpIShape.Kind;
+                                if ((verified || destination < (nuint)AlignedStack(ref stack).CodeLength) &&
+                                    TryCharge(ref gas, 3 * VeryLowGasCost.GasCost + jumpGas))
                                 {
-                                    if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(destination))
+                                    if (!verified && !AlignedStack(ref stack).IsAnalyzedJumpDestination(destination))
                                     {
                                         analyzed = destination;
                                         skipped = 1 + 1 + 3;
@@ -588,6 +594,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                         goto AnalyzeBranch;
                                     }
 
+                                    if (TShape.Kind == IsZeroPush2JumpIShape.Kind)
+                                        CacheVerified(handlers, ref opcode, ref state, Entry(&ExecuteCondition<TCondition, VerifiedIsZeroPush2JumpIShape>));
                                     head -= TCondition.Inputs;
                                     sp = ref Moved(ref sp, -TCondition.Inputs);
                                     ip = ref Unsafe.Add(ref code, (nint)destination + 1);
@@ -718,6 +726,30 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>POP follows.</summary>
         internal readonly struct PopShape : ICodeShape { public static int Kind => 7; }
+
+        /// <summary>JUMP follows, onto a destination the handler already proved valid.</summary>
+        internal readonly struct VerifiedJumpShape : ICodeShape { public static int Kind => 9; }
+
+        /// <summary>JUMPI follows, onto a destination the handler already proved valid.</summary>
+        internal readonly struct VerifiedJumpIShape : ICodeShape { public static int Kind => 10; }
+
+        /// <summary><see cref="Push2JumpIShape"/>, onto a destination the handler already proved valid.</summary>
+        internal readonly struct VerifiedPush2JumpIShape : ICodeShape { public static int Kind => 11; }
+
+        /// <summary><see cref="IsZeroPush2JumpIShape"/>, onto a destination the handler already proved valid.</summary>
+        internal readonly struct VerifiedIsZeroPush2JumpIShape : ICodeShape { public static int Kind => 12; }
+
+        /// <summary>
+        /// Puts <paramref name="verified"/> in the cache slot of <paramref name="ip"/>, a variant of the handler running there
+        /// that skips the tests a constant jump destination has just passed, where the chain may write its cache.
+        /// </summary>
+        /// <remarks>The handler running is the one the cache holds for <paramref name="ip"/>: only the cache enters a variant for a shape.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void CacheVerified(nint* handlers, ref byte ip, ref DispatchState state, nint verified)
+        {
+            if (state.HandlerCacheWritable)
+                *HandlerSlot(handlers, ref ip) = verified;
+        }
 
         /// <summary>AND follows the sequence.</summary>
         internal readonly struct AndShape : ICodeShape { public static int Kind => 8; }
@@ -1808,19 +1840,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nuint value = ReadBigEndianUInt16(ref Unsafe.Add(ref opcode, 1));
             // Only the tested variant reads the byte; the others know it, and the cache ignores it as a table index.
             byte following = TShape.Kind == TestedShape.Kind ? Unsafe.Add(ref opcode, 3)
-                : TShape.Kind == JumpShape.Kind ? (byte)Instruction.JUMP
-                : TShape.Kind == JumpIShape.Kind ? (byte)Instruction.JUMPI
+                : TShape.Kind == JumpShape.Kind || TShape.Kind == VerifiedJumpShape.Kind ? (byte)Instruction.JUMP
+                : TShape.Kind == JumpIShape.Kind || TShape.Kind == VerifiedJumpIShape.Kind ? (byte)Instruction.JUMPI
                 : (byte)Instruction.STOP;
+            // A verified variant's destination passed the bound and the bitmap tests before; the bytes do not change.
+            bool verified = TShape.Kind == VerifiedJumpShape.Kind || TShape.Kind == VerifiedJumpIShape.Kind;
             nint analyze;
             if (following == (byte)Instruction.JUMP)
             {
-                if (value < (nuint)AlignedStack(ref stack).CodeLength)
+                if (verified || value < (nuint)AlignedStack(ref stack).CodeLength)
                 {
                     ulong jumpGas = JumpGasCost.GasCost + JumpDestGasCost.GasCost;
                     if (!TryCharge(ref gas, pushGas + jumpGas))
                         goto Shared;
 
-                    if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(value))
+                    if (!verified && !AlignedStack(ref stack).IsAnalyzedJumpDestination(value))
                     {
                         // The analysis charges the jump itself.
                         gas += (nuint)(jumpGas);
@@ -1828,6 +1862,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         goto Analyze;
                     }
 
+                    if (TShape.Kind == JumpShape.Kind)
+                        CacheVerified(handlers, ref opcode, ref state, Entry(&ExecutePush2<VerifiedJumpShape>));
                     ip = ref Unsafe.Add(ref code, (nint)value + 1);
                     goto Dispatch;
                 }
@@ -1850,13 +1886,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     goto Dispatch;
                 }
 
-                if (value < (nuint)AlignedStack(ref stack).CodeLength)
+                if (verified || value < (nuint)AlignedStack(ref stack).CodeLength)
                 {
                     ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
                     if (!TryCharge(ref gas, pushGas + jumpGas))
                         goto Shared;
 
-                    if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(value))
+                    if (!verified && !AlignedStack(ref stack).IsAnalyzedJumpDestination(value))
                     {
                         // The analysis charges the jump itself.
                         gas += (nuint)(jumpGas);
@@ -1864,6 +1900,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         goto Analyze;
                     }
 
+                    if (TShape.Kind == JumpIShape.Kind)
+                        CacheVerified(handlers, ref opcode, ref state, Entry(&ExecutePush2<VerifiedJumpIShape>));
                     head--;
                     sp = ref Moved(ref sp, -1);
                     ip = ref Unsafe.Add(ref code, (nint)value + 1);
