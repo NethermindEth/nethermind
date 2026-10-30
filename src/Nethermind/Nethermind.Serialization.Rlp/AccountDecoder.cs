@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -22,6 +23,7 @@ namespace Nethermind.Serialization.Rlp
         private const byte HashPrefix = Rlp.EmptyByteArrayByte + Hash256.Size;
         private const int MaxShortLength = 55;
         private const int UInt256Bytes = 32;
+        private const int MaxStorageRootPosition = 1 + sizeof(ulong) + 1 + UInt256Bytes;
 
         private readonly bool _slimFormat;
 
@@ -67,15 +69,22 @@ namespace Nethermind.Serialization.Rlp
         [SkipLocalsInit]
         public Hash256 DecodeStorageRootOnly<TCanonicalChecks>(ReadOnlySpan<byte> accountRlp) where TCanonicalChecks : struct, IFlag
         {
-            if (TryEnterAccount<TCanonicalChecks>(accountRlp, out int start, out int length))
+            // The integers are at most 9 and 33 bytes long here, so with a longer payload every prefix up to the storage
+            // root is in bounds, and only the storage root needs a check.
+            if (TryEnterAccount<TCanonicalChecks>(accountRlp, out int start, out int length) && length > MaxStorageRootPosition)
             {
-                ReadOnlySpan<byte> content = accountRlp.Slice(start, length);
+                ref byte content = ref Unsafe.Add(ref MemoryMarshal.GetReference(accountRlp), (nint)(uint)start);
                 int position = 0;
-                if (TrySkipShortBytes<TCanonicalChecks>(content, ref position)
-                    && TrySkipShortBytes<TCanonicalChecks>(content, ref position)
-                    && TryReadHash(content, ref position, out int storageRoot))
+                if (TrySkipInteger<TCanonicalChecks>(ref content, ref position, sizeof(ulong))
+                    && TrySkipInteger<TCanonicalChecks>(ref content, ref position, UInt256Bytes))
                 {
-                    return storageRoot < 0 ? Keccak.EmptyTreeHash : RlpReaderExtensions.InternKeccak(content.Slice(storageRoot, Hash256.Size));
+                    byte prefix = Unsafe.Add(ref content, (nint)(uint)position);
+                    if (prefix == HashPrefix && length - position > Hash256.Size)
+                    {
+                        return RlpReaderExtensions.InternKeccak(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref content, (nint)(uint)position + 1), Hash256.Size));
+                    }
+
+                    if (prefix == Rlp.EmptyByteArrayByte && _slimFormat) return Keccak.EmptyTreeHash;
                 }
             }
 
@@ -143,34 +152,20 @@ namespace Nethermind.Serialization.Rlp
             return true;
         }
 
-        /// <summary>Splits an account item into its fields, as offsets into the item.</summary>
-        /// <remarks>Offsets rather than spans keep the fast path free of tracked references, so its frame is not zeroed.</remarks>
+        /// <summary>Splits an account in one pass over its bytes, as offsets into the item.</summary>
+        /// <remarks>
+        /// Every canonical account fits the forms read here: a list with a length of at most 255 bytes, integers of at
+        /// most 8 and 32 bytes, and 32-byte hashes or, in the slim format, <c>0x80</c>. Each prefix is checked as
+        /// <see cref="RlpReader"/> checks it in the same mode, and the list must hold the four fields and nothing else.
+        /// For any other input it returns <see langword="false"/>, and <see cref="SplitWithReader"/> reads or rejects
+        /// the input. Offsets rather than spans keep the fast path free of tracked references, so its frame is not zeroed.
+        /// </remarks>
         /// <param name="item">The whole account item.</param>
         /// <param name="nonce">The nonce.</param>
         /// <param name="balance">The offset of the big-endian bytes of the balance.</param>
         /// <param name="balanceLength">The count of the big-endian bytes of the balance.</param>
         /// <param name="storageRoot">The offset of the 32 bytes of the storage root, or -1 for the slim empty form.</param>
         /// <param name="codeHash">The offset of the 32 bytes of the code hash, or -1 for the slim empty form.</param>
-        /// <exception cref="RlpReaderException">The item is not a canonical account.</exception>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void Split<TCanonicalChecks>(ReadOnlySpan<byte> item, out ulong nonce, out int balance, out int balanceLength, out int storageRoot, out int codeHash)
-            where TCanonicalChecks : struct, IFlag
-        {
-            if (!TrySplit<TCanonicalChecks>(item, out nonce, out balance, out balanceLength, out storageRoot, out codeHash))
-            {
-                SplitWithReader(item, out nonce, out balance, out balanceLength, out storageRoot, out codeHash);
-            }
-        }
-
-        /// <summary>Splits an account in one pass over its bytes.</summary>
-        /// <remarks>
-        /// Every canonical account fits the forms read here: a list with a length of at most 255 bytes, integers of at
-        /// most 8 and 32 bytes, and 32-byte hashes or, in the slim format, <c>0x80</c>. Each prefix is checked as
-        /// <see cref="RlpReader"/> checks it in the same mode, and the list must hold the four fields and nothing else.
-        /// For any other input it returns <see langword="false"/>, and <see cref="SplitWithReader"/> reads or rejects
-        /// the input.
-        /// </remarks>
-        /// <inheritdoc cref="Split" path="/param"/>
         /// <returns><see langword="true"/> when the input is a canonical account.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool TrySplit<TCanonicalChecks>(ReadOnlySpan<byte> item, out ulong nonce, out int balance, out int balanceLength, out int storageRoot, out int codeHash)
@@ -200,8 +195,8 @@ namespace Nethermind.Serialization.Rlp
         }
 
         /// <summary>Splits an account with <see cref="RlpReader"/>, for the input that <see cref="TrySplit"/> does not read.</summary>
-        /// <inheritdoc cref="Split" path="/param|/exception"/>
-        [MethodImpl(MethodImplOptions.NoInlining)]
+        /// <inheritdoc cref="TrySplit" path="/param"/>
+        /// <exception cref="RlpReaderException">The item is not a canonical account.</exception>
         private void SplitWithReader(ReadOnlySpan<byte> item, out ulong nonce, out int balance, out int balanceLength, out int storageRoot, out int codeHash)
         {
             RlpReader reader = new(item);
@@ -285,14 +280,13 @@ namespace Nethermind.Serialization.Rlp
             return true;
         }
 
-        /// <summary>Moves past a byte string with a short-form prefix; the prefix is checked, the payload is not.</summary>
+        /// <summary>Moves past an integer of at most <paramref name="maxLength"/> bytes; the prefix is checked, the payload is not.</summary>
+        /// <remarks>The caller makes sure that the bytes up to <paramref name="position"/> + 1 + <paramref name="maxLength"/> are in bounds.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool TrySkipShortBytes<TCanonicalChecks>(ReadOnlySpan<byte> content, scoped ref int position)
+        private static bool TrySkipInteger<TCanonicalChecks>(ref byte content, scoped ref int position, int maxLength)
             where TCanonicalChecks : struct, IFlag
         {
-            if ((uint)position >= (uint)content.Length) return false;
-
-            int prefix = At(content, position);
+            int prefix = Unsafe.Add(ref content, (nint)(uint)position);
             if (prefix < Rlp.EmptyByteArrayByte)
             {
                 position++;
@@ -300,11 +294,10 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int length = prefix - Rlp.EmptyByteArrayByte;
-            int start = position + 1;
-            if (length > MaxShortLength || length > content.Length - start) return false;
-            if (TCanonicalChecks.IsActive && length == 1 && At(content, start) < Rlp.EmptyByteArrayByte) return false;
+            if (length > maxLength) return false;
+            if (TCanonicalChecks.IsActive && length == 1 && Unsafe.Add(ref content, (nint)(uint)position + 1) < Rlp.EmptyByteArrayByte) return false;
 
-            position = start + length;
+            position += 1 + length;
             return true;
         }
 
@@ -340,11 +333,34 @@ namespace Nethermind.Serialization.Rlp
             return Unsafe.Add(ref MemoryMarshal.GetReference(bytes), (nint)(uint)index);
         }
 
+        /// <summary>Builds the balance from its <paramref name="length"/> big-endian bytes at <paramref name="start"/>.</summary>
+        /// <remarks>
+        /// The words go into the result as one vector. The callers copy the balance with 32-byte loads, and such a load
+        /// cannot take its data from four 8-byte stores that are still in the store buffer, so it waits for them.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static UInt256 ReadBalance(ReadOnlySpan<byte> item, int start, int length)
+        {
+            if (length == UInt256Bytes) return RlpReaderExtensions.ToUInt256(item.Slice(start, UInt256Bytes));
+
+            int end = start + length;
+            int end1 = Math.Max(end - sizeof(ulong), start);
+            int end2 = Math.Max(end1 - sizeof(ulong), start);
+            int end3 = Math.Max(end2 - sizeof(ulong), start);
+            ulong u0 = RlpReaderExtensions.Word(item, end1, end);
+            ulong u1 = RlpReaderExtensions.Word(item, end2, end1);
+            ulong u2 = RlpReaderExtensions.Word(item, end3, end2);
+            ulong u3 = RlpReaderExtensions.Word(item, start, end3);
+            return Vector256.IsHardwareAccelerated
+                ? Unsafe.BitCast<Vector256<ulong>, UInt256>(Vector256.Create(u0, u1, u2, u3))
+                : new UInt256(u0, u1, u2, u3);
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static AccountStruct CreateStruct(ReadOnlySpan<byte> item, ulong nonce, int balance, int balanceLength, int storageRoot, int codeHash)
             => new(
                 nonce,
-                RlpReaderExtensions.ToUInt256(item.Slice(balance, balanceLength)),
+                ReadBalance(item, balance, balanceLength),
                 storageRoot < 0 ? Keccak.EmptyTreeHash.ValueHash256 : new ValueHash256(item.Slice(storageRoot, Hash256.Size)),
                 codeHash < 0 ? Keccak.OfAnEmptyString.ValueHash256 : new ValueHash256(item.Slice(codeHash, Hash256.Size)));
 
@@ -528,8 +544,23 @@ namespace Nethermind.Serialization.Rlp
             }
 
             ReadOnlySpan<byte> item = reader.ReadEncodedItem<TCanonicalChecks>();
-            Split<TCanonicalChecks>(item, out ulong nonce, out int balanceStart, out int balanceLength, out int storageRootStart, out int codeHashStart);
-            UInt256 balance = RlpReaderExtensions.ToUInt256(item.Slice(balanceStart, balanceLength));
+            return TrySplit<TCanonicalChecks>(item, out ulong nonce, out int balanceStart, out int balanceLength, out int storageRootStart, out int codeHashStart)
+                ? CreateAccount(item, nonce, balanceStart, balanceLength, storageRootStart, codeHashStart)
+                : CreateAccountWithReader(item);
+        }
+
+        // Out of line, so that the out arguments of the fast path need no address and stay in registers.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private Account CreateAccountWithReader(ReadOnlySpan<byte> item)
+        {
+            SplitWithReader(item, out ulong nonce, out int balanceStart, out int balanceLength, out int storageRootStart, out int codeHashStart);
+            return CreateAccount(item, nonce, balanceStart, balanceLength, storageRootStart, codeHashStart);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Account CreateAccount(ReadOnlySpan<byte> item, ulong nonce, int balanceStart, int balanceLength, int storageRootStart, int codeHashStart)
+        {
+            UInt256 balance = ReadBalance(item, balanceStart, balanceLength);
             if (storageRootStart < 0 && codeHashStart < 0)
             {
                 return new(nonce, balance);
@@ -578,9 +609,18 @@ namespace Nethermind.Serialization.Rlp
             }
 
             ReadOnlySpan<byte> item = reader.ReadEncodedItem<TCanonicalChecks>();
-            Split<TCanonicalChecks>(item, out ulong nonce, out int balance, out int balanceLength, out int storageRoot, out int codeHash);
-            account = CreateStruct(item, nonce, balance, balanceLength, storageRoot, codeHash);
+            account = TrySplit<TCanonicalChecks>(item, out ulong nonce, out int balance, out int balanceLength, out int storageRoot, out int codeHash)
+                ? CreateStruct(item, nonce, balance, balanceLength, storageRoot, codeHash)
+                : CreateStructWithReader(item);
             return true;
+        }
+
+        // Out of line, so that the out arguments of the fast path need no address and stay in registers.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private AccountStruct CreateStructWithReader(ReadOnlySpan<byte> item)
+        {
+            SplitWithReader(item, out ulong nonce, out int balance, out int balanceLength, out int storageRoot, out int codeHash);
+            return CreateStruct(item, nonce, balance, balanceLength, storageRoot, codeHash);
         }
     }
 }

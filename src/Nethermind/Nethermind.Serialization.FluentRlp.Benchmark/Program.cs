@@ -69,7 +69,7 @@ public class CurrentFluentBenchmark
         CurrentRlp.Eip2930.AccessListDecoder decoder = CurrentRlp.Eip2930.AccessListDecoder.Instance;
         int length = decoder.GetLength(_current, CurrentRlp.RlpBehaviors.None);
         byte[] buffer = new byte[length];
-        CurrentRlp.RlpWriter writer = new(buffer);
+        RlpWriter writer = RlpWriter.ContentWriter(buffer);
         decoder.Encode(ref writer, _current);
         return buffer;
     }
@@ -84,7 +84,7 @@ public class CurrentFluentBenchmark
     {
         CurrentRlp.Eip2930.AccessListDecoder decoder = CurrentRlp.Eip2930.AccessListDecoder.Instance;
         int length = decoder.GetLength(_current, CurrentRlp.RlpBehaviors.None);
-        CurrentRlp.RlpWriter writer = new(_buffer.AsSpan(0, length));
+        RlpWriter writer = RlpWriter.ContentWriter(_buffer.AsSpan(0, length));
         decoder.Encode(ref writer, _current);
         return length;
     }
