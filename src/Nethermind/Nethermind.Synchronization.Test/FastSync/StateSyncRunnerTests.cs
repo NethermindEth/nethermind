@@ -204,6 +204,33 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         _snapTrieFactory.DidNotReceive().SaveCheckpoint(Arg.Is<SnapCheckpoint?>(static c => c != null));
     }
 
+    // The snap sync runner can return normally on a shutdown during the state ranges, having saved the checkpoint of
+    // the partial ranges, which must then stay as it is.
+    [Test]
+    public async Task Leaves_the_checkpoint_untouched_at_a_graceful_stop_during_the_ranges()
+    {
+        using IContainer container = BuildRunnerContainer();
+        StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
+        BlockHeader pivot = container.Resolve<IBlockTree>().FindHeader(10)!;
+
+        using CancellationTokenSource shutdown = new();
+        _snapSyncRunner.Run(Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            shutdown.Cancel();
+            return Task.CompletedTask;
+        });
+        _snapTrieFactory.LoadCheckpoint().Returns(null, CreateCheckpoint(pivot));
+        _healing.Reassemble(Arg.Any<IReadOnlyCollection<Hash256>>(), Arg.Any<CancellationToken>()).Returns(static c =>
+        {
+            c.Arg<CancellationToken>().ThrowIfCancellationRequested();
+            return TestItem.KeccakA;
+        });
+
+        await Assert.ThatAsync(() => runner.RunSnapSyncWithBalHealing(pivot, shutdown.Token), Throws.InstanceOf<OperationCanceledException>());
+
+        _snapTrieFactory.DidNotReceiveWithAnyArgs().SaveCheckpoint(default);
+    }
+
     public enum HealingStop { DuringReassembly, DuringApply, AfterRound, AwaitingFinalPivot }
 
     // A graceful shutdown lands between the chunks healing writes, so once they are flushed the checkpoint of the

@@ -159,6 +159,7 @@ public class StateSyncRunner(
         {
             await RunSnapSync(token);
 
+            token.ThrowIfCancellationRequested();
             SnapCheckpoint? checkpoint = syncConfig.SnapResume ? snapTrieFactory.LoadCheckpoint() : null;
             if (checkpoint is not null) snapTrieFactory.SaveCheckpoint(null);
 
