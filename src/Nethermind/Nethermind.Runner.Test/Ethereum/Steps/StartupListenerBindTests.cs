@@ -121,16 +121,7 @@ public class StartupListenerBindTests
             if (existingSecret == ExistingJwtSecret.WorkingDirectoryKeyStore)
                 File.WriteAllText(appSecretPath, "stale");
 
-            JsonRpcConfig jsonRpcConfig = new() { Enabled = false };
-            INethermindApi api = Substitute.For<INethermindApi>();
-            api.Config<IJsonRpcConfig>().Returns(jsonRpcConfig);
-            api.Config<IKeyStoreConfig>().Returns(new KeyStoreConfig { KeyStoreDirectory = keyStoreDirectory });
-            api.LogManager.Returns(TestLogManager.Instance);
-
-            StartRpc step = new(api, new Lazy<IJsonRpcServiceConfigurer[]>([]), new WebSocketsManager(), Substitute.For<IJsonRpcLocalStats>(), new Lazy<IJsonRpcService>(Substitute.For<IJsonRpcService>()),
-                new Lazy<FlatStateActivationPolicy>(() => throw new AssertionException("JSON-RPC is disabled")), []);
-
-            await step.Execute(CancellationToken.None);
+            JsonRpcConfig jsonRpcConfig = await ExecuteStartRpcWithJsonRpcDisabled(keyStoreDirectory);
 
             using (Assert.EnterMultipleScope())
             {
@@ -146,5 +137,41 @@ public class StartupListenerBindTests
             File.Delete(appSecretPath);
             Directory.Delete(appKeyStorePath);
         }
+    }
+
+    [Test, NonParallelizable]
+    public async Task StartRpc_puts_a_new_default_jwt_secret_in_a_rooted_or_explicitly_relative_keystore([Values] bool rooted)
+    {
+        string previousWorkingDirectory = Directory.GetCurrentDirectory();
+        DirectoryInfo workingDirectory = Directory.CreateTempSubdirectory();
+        try
+        {
+            Directory.SetCurrentDirectory(workingDirectory.FullName);
+            string keyStoreDirectory = rooted ? Path.Join(workingDirectory.FullName, "rooted-ks") : "./relative-ks";
+
+            JsonRpcConfig jsonRpcConfig = await ExecuteStartRpcWithJsonRpcDisabled(keyStoreDirectory);
+
+            Assert.That(jsonRpcConfig.JwtSecretFile, Is.EqualTo(Path.GetFullPath(Path.Join(keyStoreDirectory, "jwt-secret"))));
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(previousWorkingDirectory);
+            workingDirectory.Delete(recursive: true);
+        }
+    }
+
+    private static async Task<JsonRpcConfig> ExecuteStartRpcWithJsonRpcDisabled(string keyStoreDirectory)
+    {
+        JsonRpcConfig jsonRpcConfig = new() { Enabled = false };
+        INethermindApi api = Substitute.For<INethermindApi>();
+        api.Config<IJsonRpcConfig>().Returns(jsonRpcConfig);
+        api.Config<IKeyStoreConfig>().Returns(new KeyStoreConfig { KeyStoreDirectory = keyStoreDirectory });
+        api.LogManager.Returns(TestLogManager.Instance);
+
+        StartRpc step = new(api, new Lazy<IJsonRpcServiceConfigurer[]>([]), new WebSocketsManager(), Substitute.For<IJsonRpcLocalStats>(), new Lazy<IJsonRpcService>(Substitute.For<IJsonRpcService>()),
+            new Lazy<FlatStateActivationPolicy>(() => throw new AssertionException("JSON-RPC is disabled")), []);
+
+        await step.Execute(CancellationToken.None);
+        return jsonRpcConfig;
     }
 }
