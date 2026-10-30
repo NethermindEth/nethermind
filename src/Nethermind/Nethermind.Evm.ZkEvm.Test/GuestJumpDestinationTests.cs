@@ -169,6 +169,15 @@ public class GuestJumpDestinationTests
     public void Scan_matches_the_reference_over_random_bytecode([Range(1, 300)] int length, [Values] bool pushDense)
         => AssertMatchesReference(RandomCode(length, pushDense));
 
+    [Test]
+    public void Highest_set_bit_ignores_the_bits_below_it([Range(0, 63)] int bit)
+    {
+        ulong highest = 1UL << bit;
+        ulong below = (ulong)new Random(bit).NextInt64() & (highest - 1);
+
+        Assert.That(JumpDestinationAnalyzer.HighestSetBit(highest | below), Is.EqualTo((nint)bit));
+    }
+
     private static TestCaseData Shape(string name, byte[] code) => new TestCaseData(code).SetName($"{{m}}({name})");
 
     /// <summary>Bytecode of <paramref name="length"/> STOPs with each <paramref name="ops"/> entry stamped in.</summary>
