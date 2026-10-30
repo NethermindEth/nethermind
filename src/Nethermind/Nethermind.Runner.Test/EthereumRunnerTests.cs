@@ -92,6 +92,7 @@ using NUnit.Framework;
 using Testably.Abstractions;
 using BlockchainMetrics = Nethermind.Blockchain.Metrics;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
+using KeeperMetrics = Nethermind.Core.Memory.Metrics;
 
 namespace Nethermind.Runner.Test;
 
@@ -397,6 +398,24 @@ public class EthereumRunnerTests
         ulong liveHead = live.BlockTree.Head!.Number;
         Assert.That((BlockchainMetrics.Blocks, BlockchainMetrics.BlockchainHeight, BlockchainMetrics.BestKnownBlockNumber),
             Is.EqualTo((liveHead, liveHead, live.BlockTree.BestKnownNumber)));
+    }
+
+    [Test]
+    public async Task Startup_pipeline_warmup_leaves_keeper_metrics_at_start_values()
+    {
+        // The warm keeper handles real payloads, so it publishes its post-block delay; the counter stands in for anything else it moved.
+        KeeperMetrics.GcKeeperPostBlockCollections = 7;
+        using TempPath dataDirectory = TempPath.GetTempDirectory();
+        using CancellationTokenSource cancellation = new(RunnerTimeout);
+
+        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), WarmupConfig(dataDirectory.Path), false, cancellation.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(KeeperMetrics.GcKeeperPostBlockCollections, Is.Zero);
+            Assert.That(KeeperMetrics.GcKeeperPostBlockDelayMs, Is.Zero);
+            Assert.That(KeeperMetrics.GcKeeperMedianIdleGapMs, Is.EqualTo(-1));
+        }
     }
 
     [Test]

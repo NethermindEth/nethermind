@@ -21,6 +21,12 @@ public interface IGCStrategy
     int CollectionsPerUnconditionalDecommit => -1;
     /// <summary>Gets the delay in milliseconds before attempting a post-payload collection.</summary>
     int PostBlockDelayMs { get; }
+    /// <summary>Gets whether the keeper may shorten <see cref="PostBlockDelayMs"/> to fit the idle gap payloads leave.</summary>
+    /// <remarks>Defaults to <c>false</c>, so a strategy that does not implement it keeps a fixed delay.</remarks>
+    bool AdaptivePostBlockDelay => false;
+    /// <summary>Gets whether an eligible payload enters a runtime no-GC region; the keeper's collections run either way.</summary>
+    /// <remarks>Defaults to <see cref="NoGcRegionMode.Always"/>.</remarks>
+    NoGcRegionMode NoGcRegionOnNewPayload => NoGcRegionMode.Always;
     /// <summary>Returns whether no-GC-region entry is currently permitted.</summary>
     bool CanStartNoGCRegion();
     /// <summary>Returns ordinary collection settings; NoGC disables scheduling and a due decommit overrides these settings.</summary>
@@ -37,6 +43,14 @@ public enum GcLevel
     Gen1 = 1,
     [Description("Enables garbage collection of generation 2.")]
     Gen2 = 2
+}
+
+public enum NoGcRegionMode
+{
+    [Description("Enters a no-GC region for every eligible `engine_newPayload` call.")]
+    Always,
+    [Description("Never enters a no-GC region; the call still holds off scheduled collections and is followed by the post-block collection.")]
+    Never
 }
 
 public enum GcCompaction

@@ -44,6 +44,10 @@ public interface IMergeConfig : IConfig
     [ConfigItem(Description = "Whether to reduce block latency by disabling garbage collection during Engine API calls.", DefaultValue = "true")]
     public bool PrioritizeBlockLatency { get; set; }
 
+    [ConfigItem(Description = $"Whether an `engine_newPayload` call enters a runtime no-GC region while `{nameof(PrioritizeBlockLatency)}` is enabled. With `{nameof(NoGcRegionMode.Never)}`, the call enters none, so the runtime collects inside it whenever its allocation budget runs out, but it still holds off scheduled collections, counts toward `{nameof(CollectionsPerDecommit)}` and is followed by the post-block collection; the re-commit after a decommit is skipped.",
+        DefaultValue = nameof(NoGcRegionMode.Always))]
+    public NoGcRegionMode NoGcRegionOnNewPayload { get; set; }
+
     [ConfigItem(Description = "The garbage collection (GC) mode between Engine API calls.", DefaultValue = nameof(GcLevel.Gen1))]
     public GcLevel SweepMemory { get; set; }
 
@@ -52,7 +56,7 @@ public interface IMergeConfig : IConfig
     public GcCompaction CompactMemory { get; set; }
 
     [ConfigItem(Description = """
-            The number of eligible newPayload calls between compacting collections that release process memory. Once due, the decommit runs only while the memory load is at or above `DecommitMemoryLoadPercent`, or once `CollectionsPerUnconditionalDecommit` calls have been counted; until then it is checked again after every call. Decommit waits for at least three seconds after payload completion (or PostBlockGcDelayMs, if longer); a new payload cancels the wait without clearing the count.
+            The number of eligible newPayload calls between compacting collections that release process memory. Once due, the decommit runs only while the memory load is at or above `DecommitMemoryLoadPercent`, or once `CollectionsPerUnconditionalDecommit` calls have been counted; until then it is checked again after every call. Decommit waits for at least three seconds after payload completion (or PostBlockGcDelayMs, if longer), after the ordinary post-block collection has run; a new payload cancels the wait without clearing the count.
 
             Allowed values:
 
@@ -97,6 +101,6 @@ public interface IMergeConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Simulate block production for every possible slot. Just for stress-testing purposes.", DefaultValue = "false", HiddenFromDocs = true)]
     bool SimulateBlockProduction { get; set; }
 
-    [ConfigItem(Description = "Delay, in milliseconds, between `newPayload` and GC trigger. If not set, defaults to 1/8th of `Blocks.SecondsPerSlot`.", DefaultValue = null, HiddenFromDocs = true)]
+    [ConfigItem(Description = "Delay, in milliseconds, between `newPayload` and GC trigger. If not set, defaults to 1/8th of `Blocks.SecondsPerSlot`, shortened to a quarter of the median idle time payloads leave (at least 10 ms) once they leave at least 40 ms; when set, the delay is fixed.", DefaultValue = null, HiddenFromDocs = true)]
     int? PostBlockGcDelayMs { get; set; }
 }
