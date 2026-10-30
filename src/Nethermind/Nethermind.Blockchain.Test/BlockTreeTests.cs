@@ -3781,6 +3781,30 @@ public class BlockTreeTests
         Assert.That(events, Is.EqualTo(new[] { (chain[1].Hash, (Hash256?)null, false), (chain[0].Hash, null, true), (sibling.Hash, null, true) }));
     }
 
+    [TestCase(new[] { "a1", "b1" }, 1L, TestName = "SiblingReplacesHead")]
+    [TestCase(new[] { "a1", "genesis", "b1" }, 1L, TestName = "HeadMovesBackToParentThenSibling")]
+    [TestCase(new[] { "a1", "a2" }, 0L, TestName = "HeadExtended")]
+    [NonParallelizable, MaxTime(Timeout.MaxTestTime)]
+    public void TryUpdateMainChain_counts_a_reorganization_each_time_the_head_stops_being_canonical(string[] forkChoices, long expectedReorganizations)
+    {
+        (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis(forceUpdateHead: true);
+        Block a1 = Build.A.Block.WithParent(genesis).WithExtraData([0xA]).TestObject;
+        Block a2 = Build.A.Block.WithParent(a1).TestObject;
+        Block b1 = Build.A.Block.WithParent(genesis).WithExtraData([0xB]).TestObject;
+        Dictionary<string, Block> blocks = new() { ["genesis"] = genesis, ["a1"] = a1, ["a2"] = a2, ["b1"] = b1 };
+        foreach (Block block in new[] { a1, a2, b1 }) blockTree.SuggestBlock(block);
+
+        long reorganizationsBefore = Metrics.Reorganizations;
+        foreach (string forkChoice in forkChoices)
+            blockTree.TryUpdateMainChain(blocks[forkChoice].Header, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.Head!.Hash, Is.EqualTo(blocks[forkChoices[^1]].Hash));
+            Assert.That(Metrics.Reorganizations - reorganizationsBefore, Is.EqualTo(expectedReorganizations));
+        }
+    }
+
     [TestCase(1, TestName = "SingleStaleLevel")]
     [TestCase(3, TestName = "MultipleStaleLevel")]
     [MaxTime(Timeout.MaxTestTime)]

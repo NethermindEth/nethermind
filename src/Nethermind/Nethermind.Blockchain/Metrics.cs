@@ -30,7 +30,7 @@ public static class Metrics
     public static ulong Blocks;
 
     [CounterMetric]
-    [Description("Total number of chain reorganizations")]
+    [Description("Total number of chain reorganizations: each time the canonical head stops being canonical, so a pure rewind counts once")]
     public static long Reorganizations { get; set; }
 
     [GaugeMetric]
