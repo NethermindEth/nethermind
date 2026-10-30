@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -21,6 +22,13 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperationStart, ITraceOperationGasCost, ITraceRevertFault
 {
     private static readonly TimeSpan MaxTimeout = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// The Geth-style error texts that <c>exit</c> reports, by the exception name a failed substate reports as its error.
+    /// </summary>
+    private static readonly FrozenDictionary<string, string> ErrorDescriptionsBySubstateError = FastEnum.GetValues<EvmExceptionType>()
+        .Where(static type => type.GetEvmExceptionDescription() is not null)
+        .ToFrozenDictionary(static type => type.FastToString(), static type => type.GetEvmExceptionDescription()!);
 
     private readonly dynamic _tracer;
     private readonly Log _log = new();
@@ -358,7 +366,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         _ctx.gasUsed = gasSpent.SpentGas;
         _ctx.Output = output;
-        _ctx.error = error;
+        // A revert reason is decoded from the output, which an exceptional halt never has.
+        // The halting step's error carries Geth's detailed text; a failed code deposit or a precompile call has no such step.
+        _ctx.error = output.Length == 0 && error is not null && ErrorDescriptionsBySubstateError.TryGetValue(error, out string? description) ? _log.error ?? description : error;
     }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)

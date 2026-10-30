@@ -1244,6 +1244,38 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(results, Is.EqualTo(new[] { "\"error\"", "\"none\"" }));
     }
 
+    [TestCase("5b600056", null, "out of gas")]
+    [TestCase("600056", null, "invalid jump destination")]
+    [TestCase(null, 2, "out of gas")]
+    [TestCase("5b5f600056", null, "stack limit reached 1024 (1023)", 100_000UL)]
+    // A revert reason that reads as an exception name is kept as is: revert(Error("OutOfGas")).
+    [TestCase("6308c379a0600052602060205260086040527f4f75744f664761730000000000000000000000000000000000000000000000006060526064601cfd",
+        null, "OutOfGas", 100_000UL)]
+    public void Failed_transaction_reports_geth_error_text_in_ctx_error(string? code, int? precompile, string expected, ulong gasLimit = 21050UL)
+    {
+        const string errorTracer = @"{
+                    step: function(log, db) { },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return ctx.error; }
+                }";
+        Transaction? precompileCall = precompile is null ? null : Build.A.Transaction
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(1)
+            .To(Address.FromNumber((uint)precompile.Value))
+            .SignedAndResolved(SenderKey)
+            .TestObject;
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation, gasLimit,
+            code is null ? null : Bytes.FromHexString(code), transaction: precompileCall);
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(errorTracer);
+
+        tracer.StartNewBlockTrace(block);
+        ExecuteTraced(tracer, block, transaction);
+        tracer.EndBlockTrace();
+
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, expected);
+    }
+
     [Test]
     [NonParallelizable]
     public void Heap_limit_violation_still_trips_after_an_earlier_transaction_re_armed_it()
