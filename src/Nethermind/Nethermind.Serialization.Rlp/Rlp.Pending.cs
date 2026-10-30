@@ -12,19 +12,12 @@ namespace Nethermind.Serialization.Rlp;
 
 public partial class Rlp
 {
-    public static int LengthOf(BlockInfo? item) => BlockInfoDecoder.Instance.GetLength(item, RlpBehaviors.None);
-
     static partial void RegisterPendingDecoders()
     {
 #if ZK_EVM
         RegisterDecoder(typeof(ReadOnlyAccountChanges), AccountChangesDecoder.Instance);
         RegisterDecoder(typeof(BalanceChange), BalanceChangeDecoder.Instance);
-        RegisterDecoder(typeof(Block), new BlockDecoder());
         RegisterDecoder(typeof(ReadOnlyBlockAccessList), BlockAccessListDecoder.Instance);
-        RegisterDecoder(typeof(BlockBody), BlockBodyDecoder.Instance);
-        RegisterDecoder(typeof(BlockHeader), new HeaderDecoder());
-        RegisterDecoder(typeof(BlockInfo), BlockInfoDecoder.Instance);
-        RegisterDecoder(typeof(ChainLevelInfo), new ChainLevelDecoder());
         RegisterDecoder(typeof(CodeChange), CodeChangeDecoder.Instance);
         RegisterDecoder(typeof(NonceChange), NonceChangeDecoder.Instance);
         RegisterDecoder(typeof(ReadOnlySlotChanges), SlotChangesDecoder.Instance);

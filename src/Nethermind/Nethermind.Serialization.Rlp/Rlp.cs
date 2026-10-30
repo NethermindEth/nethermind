@@ -849,6 +849,8 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(LogEntry? item) => LogEntryDecoder.Instance.GetLength(item, RlpBehaviors.None);
 
+        public static int LengthOf(BlockInfo? item) => BlockInfoDecoder.Instance.GetLength(item, RlpBehaviors.None);
+
         [AttributeUsage(AttributeTargets.Class)]
         public class SkipGlobalRegistration : Attribute;
 

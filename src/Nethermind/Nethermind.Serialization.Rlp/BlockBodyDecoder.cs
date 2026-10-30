@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
@@ -91,42 +93,49 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         return sum;
     }
 
-    protected override BlockBody? DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        int sequenceLength = ctx.ReadSequenceLength();
-        int startingPosition = ctx.Position;
-        if (sequenceLength == 0)
-        {
-            return null;
-        }
+    protected override BlockBody? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
 
-        return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength,
-            usePooledTransactions: (rlpBehaviors & RlpBehaviors.SkipPooledTransactions) == 0);
+    private BlockBody? Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
+    {
+        RlpReader body = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
+        BlockBody? result = body.HasNext
+            ? DecodeUnwrapped<TCanonicalChecks>(ref body, rlpBehaviors, usePooledTransactions: (rlpBehaviors & RlpBehaviors.SkipPooledTransactions) == 0)
+            : null;
+        reader.ExitSequence(in body, itemLength);
+        return result;
     }
 
-    /// <summary>Decodes body contents after the outer sequence prefix, with optional transaction pooling.</summary>
-    /// <param name="ctx">Reader positioned at the transaction sequence.</param>
-    /// <param name="lastPosition">Expected reader position after the body contents.</param>
+    /// <summary>Decodes body contents without the outer sequence prefix, with optional transaction pooling.</summary>
+    /// <param name="reader">Reader over the body contents, from the transaction sequence to the end of the body.</param>
     /// <param name="usePooledTransactions">
     /// Rent exclusively owned transactions. Return them to <see cref="TxDecoder.TxObjectPool"/> at most once,
     /// after all consumers finish. Pass false for retained blocks.
     /// </param>
+    /// <param name="rlpBehaviors">Only <see cref="RlpBehaviors.TrustedInput"/> applies, also to the nested items.</param>
     /// <remarks>The JSON-RPC <c>HashesOnlyBlockReader</c> reads the same layout without this decoder and leaves any block
     /// it does not recognise to it; a body field added here needs adding there to keep that fast path.</remarks>
-    public BlockBody DecodeUnwrapped(ref RlpReader ctx, int lastPosition, bool usePooledTransactions)
+    public BlockBody DecodeUnwrapped(ref RlpReader reader, bool usePooledTransactions, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+            ? DecodeUnwrapped<OffFlag>(ref reader, rlpBehaviors, usePooledTransactions)
+            : DecodeUnwrapped<OnFlag>(ref reader, rlpBehaviors, usePooledTransactions);
+
+    internal BlockBody DecodeUnwrapped<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors, bool usePooledTransactions) where TCanonicalChecks : struct, IFlag
     {
-        Transaction[] transactions = DecodeTransactions(ref ctx, usePooledTransactions);
+        // The nested items get only the input mode, so that the other behaviors apply to this item only.
+        RlpBehaviors itemBehaviors = rlpBehaviors & RlpBehaviors.TrustedInput;
+        Transaction[] transactions = DecodeTransactions<TCanonicalChecks>(ref reader, itemBehaviors, usePooledTransactions);
         try
         {
-            BlockHeader[] uncles = ctx.DecodeNonNullArray(_headerDecoder, limit: UnclesCountLimit);
+            BlockHeader[] uncles = _headerDecoder.DecodeNonNullArray(ref reader, itemBehaviors, UnclesCountLimit);
             Withdrawal[]? withdrawals = null;
 
-            if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
+            if (reader.HasNext)
             {
-                withdrawals = ctx.DecodeNonNullArray(_withdrawalDecoderDecoder, limit: WithdrawalsCountLimit);
+                withdrawals = DecodeWithdrawals<TCanonicalChecks>(ref reader, itemBehaviors);
             }
 
-            ctx.Check(lastPosition);
+            reader.CheckEnd();
             return new BlockBody(transactions, uncles, withdrawals);
         }
         catch
@@ -140,27 +149,26 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         }
     }
 
-    private Transaction[] DecodeTransactions(ref RlpReader ctx, bool usePooledTransactions)
+    private Transaction[] DecodeTransactions<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors itemBehaviors, bool usePooledTransactions) where TCanonicalChecks : struct, IFlag
     {
-        int end = ctx.ReadSequenceLength() + ctx.Position;
-        int count = ctx.PeekNumberOfItemsRemaining(end, TransactionsCountLimit.Limit + 1);
-        ctx.GuardLimit(count, TransactionsCountLimit);
+        RlpReader items = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
+        int count = items.CountItems<TCanonicalChecks>(TransactionsCountLimit);
         Transaction[] transactions = new Transaction[count];
         int decoded = 0;
         try
         {
             for (int i = 0; i < count; i++)
             {
-                if (ctx.PeekByte() == Rlp.EmptyListByte) RlpHelpers.ThrowNullArrayElement(i);
+                if (items.IsNextItemEmptyList()) ThrowNullArrayElement(i);
                 Transaction? transaction = usePooledTransactions ? TxDecoder.TxObjectPool.Get() : new Transaction();
                 transactions[decoded++] = transaction;
-                _txDecoder.Decode(ref ctx, ref transaction);
-                if (transaction is null) RlpHelpers.ThrowNullArrayElement(i);
+                _txDecoder.Decode(ref items, ref transaction, itemBehaviors);
+                if (transaction is null) ThrowNullArrayElement(i);
                 if (usePooledTransactions && !ReferenceEquals(transaction, transactions[i]))
                     TxDecoder.TxObjectPool.Return(transactions[i]);
                 transactions[i] = transaction;
             }
-            ctx.Check(end);
+            reader.ExitSequence(in items, itemLength);
             return transactions;
         }
         catch
@@ -173,29 +181,60 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         }
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    // The sealed decoder is called directly: a call through the array decode of the base class is several times slower per item.
+    private static Withdrawal[] DecodeWithdrawals<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors itemBehaviors) where TCanonicalChecks : struct, IFlag
     {
+        RlpReader items = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
+        Withdrawal[] withdrawals = new Withdrawal[items.CountItems<TCanonicalChecks>(WithdrawalsCountLimit)];
+        for (int i = 0; i < withdrawals.Length; i++)
+        {
+            if (items.IsNextItemEmptyList()) ThrowNullArrayElement(i);
+            withdrawals[i] = WithdrawalDecoder.Decode<TCanonicalChecks>(ref items, itemBehaviors)!;
+        }
+
+        reader.ExitSequence(in items, itemLength);
+        return withdrawals;
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowNullArrayElement(int index)
+        => throw new RlpReaderException($"Unexpected null array element at index {index}");
+
+    public override void Encode(ref RlpWriter writer, BlockBody? body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (body is null)
+        {
+            writer.EncodeNullObject();
+            return;
+        }
+
         (int Txs, int Uncles, int? Withdrawals) lengths = GetBodyComponentLength(body);
-        writer.StartSequence(GetBodyLength(lengths));
-        writer.StartSequence(lengths.Txs);
+        RlpSequence sequence = writer.StartSequence(GetBodyLength(lengths));
+        RlpSequence txs = writer.StartSequence(lengths.Txs);
         foreach (Transaction? txn in body.Transactions)
         {
             _txDecoder.Encode(ref writer, txn);
         }
 
-        writer.StartSequence(lengths.Uncles);
+        writer.EndSequence(txs);
+        RlpSequence uncles = writer.StartSequence(lengths.Uncles);
         foreach (BlockHeader? uncle in body.Uncles)
         {
             _headerDecoder.Encode(ref writer, uncle);
         }
 
+        writer.EndSequence(uncles);
         if (body.Withdrawals is not null)
         {
-            writer.StartSequence(lengths.Withdrawals.GetValueOrDefault());
+            RlpSequence withdrawals = writer.StartSequence(lengths.Withdrawals.GetValueOrDefault());
             foreach (Withdrawal? withdrawal in body.Withdrawals)
             {
                 _withdrawalDecoderDecoder.Encode(ref writer, withdrawal);
             }
+
+            writer.EndSequence(withdrawals);
         }
+
+        writer.EndSequence(sequence);
     }
 }
