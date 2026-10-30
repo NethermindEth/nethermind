@@ -133,7 +133,7 @@ public class NewPayloadHandler(
                 // If the validation flow fails due to unsupported methods, log and fall back to normal flow
                 if (ex.Message.Contains("is not supported"))
                 {
-                    _logger.Warn($"Validation flow skipped due to unsupported methods: {ex.Message}");
+                    _logger.Warn($"Validation flow skipped due to unsupported methods: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}");
                     _logger.Info("Falling back to direct forwarding of request to execution client");
                     return await _requestForwarder.ForwardRequestToExecutionClient(request);
                 }
@@ -209,7 +209,7 @@ public class NewPayloadHandler(
             catch (Exception ex)
             {
                 // If the validation flow fails, log the error but continue with the original request
-                _logger.Error($"Error in {_config.ValidationMode} validation flow: {ex.Message}", ex);
+                _logger.Error($"Error in {_config.ValidationMode} validation flow: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             }
 
             // Register this newPayload for future reference

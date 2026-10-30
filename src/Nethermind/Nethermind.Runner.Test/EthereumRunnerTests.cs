@@ -362,6 +362,28 @@ public class EthereumRunnerTests
     private static string WarmupToken(JwtAuthentication authentication) =>
         (string)typeof(JwtAuthentication).GetMethod("CreateWarmupToken", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(authentication, null)!;
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Startup_screen_masks_sensitive_values_when_enabled(bool maskSensitiveData)
+    {
+        using (new NodeInfoScope())
+        {
+            bool previous = SensitiveLogMasking.Enabled;
+            try
+            {
+                SensitiveLogMasking.Enabled = maskSensitiveData;
+                ThisNodeInfo.AddInfo("JSON RPC     :", "http://private.example:8545", sensitive: true);
+                string screen = ThisNodeInfo.BuildNodeInfoScreen();
+                Assert.That(screen, Does.Contain(maskSensitiveData ? "JSON RPC     : [redacted]" : "JSON RPC     : http://private.example:8545"));
+                if (maskSensitiveData) Assert.That(screen, Does.Not.Contain("private.example"));
+            }
+            finally
+            {
+                SensitiveLogMasking.Enabled = previous;
+            }
+        }
+    }
+
     private sealed class NodeInfoScope : IDisposable
     {
         private const string Key = "JSON RPC     :";

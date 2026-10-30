@@ -28,7 +28,7 @@ internal sealed class SnapshotCheckpoint(ISnapshotConfig config, ILogManager log
             return stage;
 
         if (_logger.IsWarn)
-            _logger.Warn($"Checkpoint file '{_path}' contains unrecognized value '{content}'. Restarting from the beginning.");
+            _logger.Warn($"Checkpoint file '{_path:hide}' contains unrecognized value '{content}'. Restarting from the beginning.");
         return SnapshotStage.Started;
     }
 

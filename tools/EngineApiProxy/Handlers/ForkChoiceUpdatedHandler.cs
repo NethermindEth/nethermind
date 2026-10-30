@@ -76,7 +76,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error handling forkChoiceUpdated in Merged mode: {ex.Message}", ex);
+            _logger.Error($"Error handling forkChoiceUpdated in Merged mode: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
         }
     }
@@ -94,7 +94,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error handling forkChoiceUpdated in Lighthouse mode: {ex.Message}", ex);
+            _logger.Error($"Error handling forkChoiceUpdated in Lighthouse mode: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
         }
     }
@@ -117,7 +117,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error handling forkChoiceUpdated: {ex.Message}", ex);
+            _logger.Error($"Error handling forkChoiceUpdated: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error handling forkChoiceUpdated: {ex.Message}");
         }
     }
@@ -190,7 +190,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
                 // If the validation flow fails due to unsupported methods, log and fall back to normal flow
                 if (ex.Message.Contains("is not supported") || ex.Message.Contains("is not implemented"))
                 {
-                    _logger.Warn($"Validation flow skipped due to unsupported methods: {ex.Message}");
+                    _logger.Warn($"Validation flow skipped due to unsupported methods: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}");
                     _logger.Info("Falling back to direct forwarding of request to execution client");
                     return await _requestForwarder.ForwardRequestToExecutionClient(request);
                 }
@@ -286,7 +286,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error handling merged FCU: {ex.Message}", ex);
+            _logger.Error($"Error handling merged FCU: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error handling merged FCU: {ex.Message}");
         }
     }
@@ -366,7 +366,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error handling LH FCU: {ex.Message}", ex);
+            _logger.Error($"Error handling LH FCU: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error handling LH FCU: {ex.Message}");
         }
     }

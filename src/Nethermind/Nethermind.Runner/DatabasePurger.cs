@@ -29,7 +29,7 @@ internal static class DatabasePurger
         // Safety guard: refuse to delete filesystem roots
         if (Path.GetPathRoot(fullPath) == fullPath)
         {
-            logger.Error($"Refusing to delete path that looks like a filesystem root: {fullPath}");
+            logger.Error($"Refusing to delete path that looks like a filesystem root: {fullPath:hide}");
             return;
         }
 
@@ -46,27 +46,27 @@ internal static class DatabasePurger
                 {
                     if (!NetworkDbNames.Contains(Path.GetFileName(dir)))
                     {
-                        if (logger.IsInfo) logger.Info($"{action}: deleting {dir}");
+                        if (logger.IsInfo) logger.Info($"{action}: deleting {dir:hide}");
                         Directory.Delete(dir, recursive: true);
                     }
                 }
 
                 foreach (string file in Directory.EnumerateFiles(fullPath))
                 {
-                    if (logger.IsInfo) logger.Info($"{action}: deleting {file}");
+                    if (logger.IsInfo) logger.Info($"{action}: deleting {file:hide}");
                     File.Delete(file);
                 }
             }
             else
             {
-                if (logger.IsInfo) logger.Info($"{action}: deleting {fullPath}");
+                if (logger.IsInfo) logger.Info($"{action}: deleting {fullPath:hide}");
                 Directory.Delete(fullPath, recursive: true);
             }
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            logger.Error($"{action} failed on {fullPath}", ex);
-            throw new InvalidOperationException($"Database {action.ToLowerInvariant()} failed. Some files may be locked or read-only.", ex);
+            logger.Error($"{action} failed on {fullPath:hide}", SensitiveLogMasking.Enabled ? null : ex);
+            throw new InvalidOperationException($"Database {action.ToLowerInvariant()} failed. Some files may be locked or read-only.", SensitiveLogMasking.Enabled ? null : ex);
         }
     }
 
@@ -93,12 +93,12 @@ internal static class DatabasePurger
 
         try
         {
-            if (logger.IsInfo) logger.Info($"Removing orphaned database directory: {fullPath}");
+            if (logger.IsInfo) logger.Info($"Removing orphaned database directory: {fullPath:hide}");
             Directory.Delete(fullPath, recursive: true);
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            if (logger.IsWarn) logger.Warn($"Failed to remove orphaned database directory {fullPath}: {ex.Message}");
+            if (logger.IsWarn) logger.Warn($"Failed to remove orphaned database directory {fullPath:hide}: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}");
         }
     }
 }

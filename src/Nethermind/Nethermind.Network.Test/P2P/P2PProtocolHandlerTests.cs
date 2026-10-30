@@ -27,7 +27,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P
 {
-    [Parallelizable(ParallelScope.Self)]
+    [NonParallelizable]
     [TestFixture]
     public class P2PProtocolHandlerTests
     {
@@ -141,15 +141,30 @@ namespace Nethermind.Network.Test.P2P
         }
 
         [Test]
-        public void Received_disconnect_is_logged_at_trace()
+        public void Received_disconnect_is_logged_at_trace([Values] bool maskSensitiveData, [Values] bool knownReason)
         {
-            TestLogger logger = new() { IsDebug = false };
-            P2PProtocolHandler p2PProtocolHandler = CreateSession(new OneLoggerLogManager(new(logger)));
-            using DisconnectMessage message = new(EthDisconnectReason.BreachOfProtocol);
+            bool previous = SensitiveLogMasking.Enabled;
+            SensitiveLogMasking.Enabled = maskSensitiveData;
+            try
+            {
+                _session.RemotePort.Returns(31417);
+                TestLogger logger = new() { IsDebug = false };
+                P2PProtocolHandler p2PProtocolHandler = CreateSession(new OneLoggerLogManager(new(logger)));
+                using DisconnectMessage message = new(knownReason ? EthDisconnectReason.BreachOfProtocol : (EthDisconnectReason)255);
 
-            p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
+                p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
 
-            Assert.That(logger.LogList, Has.Some.Contains("P2P received disconnect [BreachOfProtocol]"));
+                string diagnostic = logger.LogList.Single(line => line.Contains(knownReason ? "Received disconnect" : "unknown disconnect reason"));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(diagnostic, Does.Contain(maskSensitiveData ? "[redacted]" : "31417"));
+                    if (maskSensitiveData) Assert.That(diagnostic, Does.Not.Contain("31417"));
+                }
+            }
+            finally
+            {
+                SensitiveLogMasking.Enabled = previous;
+            }
         }
 
         [Test]
@@ -340,6 +355,50 @@ namespace Nethermind.Network.Test.P2P
                 Assert.That(requestedProtocols, Is.Empty);
                 Assert.That(p2PProtocolHandler.AgreedCapabilities, Is.Empty);
                 Assert.That(p2PProtocolHandler.AvailableCapabilities, Is.Empty);
+            }
+        }
+
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void Hello_diagnostics_mask_peer_identity(bool isOutbound, bool mismatchedIdentity)
+        {
+            bool previous = SensitiveLogMasking.Enabled;
+            SensitiveLogMasking.Enabled = true;
+            try
+            {
+                TestLogger logger = new();
+                P2PProtocolHandler handler = CreateSession(new OneLoggerLogManager(new(logger)));
+                handler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+                if (isOutbound) handler.Init();
+
+                using HelloMessage hello = new()
+                {
+                    Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) },
+                    NodeId = mismatchedIdentity ? TestItem.PublicKeyC : TestItem.PublicKeyB,
+                    ClientId = "remote-client-secret",
+                    ListenPort = 31417,
+                    P2PVersion = 5,
+                };
+
+                handler.HandleMessage(CreateP2PPacket(hello));
+
+                string diagnostic = logger.LogList.Single(line => line.Contains(mismatchedIdentity ? "Inconsistent Node ID details" : "P2P initiating"));
+                string expectedDirection = mismatchedIdentity
+                    ? isOutbound ? "OUT connection" : "IN connection"
+                    : isOutbound ? "outbound" : "inbound";
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(diagnostic, Does.Contain("[redacted]"));
+                    Assert.That(diagnostic, Does.Contain(expectedDirection));
+                    Assert.That(diagnostic, Does.Not.Contain(TestItem.PublicKeyB.ToString()).And.Not.Contain(TestItem.PublicKeyC.ToString())
+                        .And.Not.Contain("remote-client-secret").And.Not.Contain("31417"));
+                }
+            }
+            finally
+            {
+                SensitiveLogMasking.Enabled = previous;
             }
         }
 

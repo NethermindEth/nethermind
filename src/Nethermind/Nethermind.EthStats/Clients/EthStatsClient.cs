@@ -59,7 +59,7 @@ namespace Nethermind.EthStats.Clients
                     ThrowIncorrectUrl();
                 }
                 websocketUrl = uriBuilder.ToString();
-                if (_logger.IsInfo) _logger.Info($"Moved ETH stats to: {websocketUrl}");
+                if (_logger.IsInfo) _logger.Info($"Moved ETH stats to: {SensitiveLogMasking.SafeUrl(websocketUrl)}");
 
             }
             return websocketUrl;
@@ -67,7 +67,7 @@ namespace Nethermind.EthStats.Clients
 
         public async Task<IWebsocketClient> InitAsync()
         {
-            if (_logger.IsInfo) _logger.Info($"Starting ETH stats [{_urlFromConfig}]...");
+            if (_logger.IsInfo) _logger.Info($"Starting ETH stats [{SensitiveLogMasking.SafeUrl(_urlFromConfig)}]...");
             string websocketUrl = BuildUrl();
             Uri url = new(websocketUrl);
             _client = new WebsocketClient(url)
@@ -102,12 +102,12 @@ namespace Nethermind.EthStats.Clients
 
                 if (!_client.Url.AbsoluteUri.EndsWith("/api"))
                 {
-                    if (_logger.IsInfo) _logger.Info($"Failed to connect to ethstats at {websocketUrl}. Adding '/api' at the end and trying again.");
+                    if (_logger.IsInfo) _logger.Info($"Failed to connect to ethstats at {SensitiveLogMasking.SafeUrl(websocketUrl)}. Adding '/api' at the end and trying again.");
                     _client.Url = new Uri(websocketUrl + "/api");
                 }
                 else
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Failed to connect to ethstats at {websocketUrl}. Retrying every {_reconnectionInterval} ms.");
+                    if (_logger.IsWarn) _logger.Warn($"Failed to connect to ethstats at {SensitiveLogMasking.SafeUrl(websocketUrl)}. Retrying every {_reconnectionInterval} ms.");
                 }
 
                 await _client.Start();
@@ -120,8 +120,8 @@ namespace Nethermind.EthStats.Clients
 
         private void ThrowIncorrectUrl()
         {
-            if (_logger.IsError) _logger.Error($"Incorrect ETH stats url: {_urlFromConfig}");
-            throw new ArgumentException($"Incorrect ETH stats url: {_urlFromConfig}");
+            if (_logger.IsError) _logger.Error("Incorrect ETH stats URL");
+            throw new ArgumentException("Incorrect ETH stats URL");
         }
 
         private async Task HandlePingAsync(string message)

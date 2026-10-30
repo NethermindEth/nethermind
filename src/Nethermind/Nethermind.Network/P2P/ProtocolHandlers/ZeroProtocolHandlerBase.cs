@@ -45,7 +45,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             if (!HandleMessageCore(message))
             {
                 string details = $"Unknown message type {message.PacketType} received on protocol {ProtocolCode}/{ProtocolVersion}";
-                if (Logger.IsDebug) Logger.Debug($"{Session} {details}");
+                if (Logger.IsDebug) Logger.Debug($"{Session:hide} {details:hide}");
                 Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, details);
             }
         }
@@ -98,13 +98,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 {
                     long elapsed = request.FinishMeasuringTime();
                     long bytesPerMillisecond = (long)((decimal)request.ResponseSize / Math.Max(1, elapsed));
-                    if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                    if (Logger.IsTrace) Logger.Trace($"{this:hide} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
                     StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, bytesPerMillisecond);
                 }
                 else
                 {
                     StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
-                    if (Logger.IsTrace) Logger.Trace($"{Session} Request {(task.IsCanceled ? "cancelled" : "failed")}: {describeRequestFunc(request.Message)}");
+                    if (Logger.IsTrace) Logger.Trace($"{Session:hide} Request {(task.IsCanceled ? "cancelled" : "failed")}: {describeRequestFunc(request.Message)}");
                 }
             }
             else
@@ -134,6 +134,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceRequestTimeout(string requestDescription) =>
-            Logger.Trace($"{Session} Request timeout in {requestDescription}");
+            Logger.Trace($"{Session:hide} Request timeout in {requestDescription:hide}");
     }
 }

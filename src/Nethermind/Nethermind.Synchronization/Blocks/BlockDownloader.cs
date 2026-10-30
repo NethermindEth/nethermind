@@ -234,7 +234,7 @@ namespace Nethermind.Synchronization.Blocks
                     if (!IsValidDownloadedBlock(currentBlock, entry.ParentHeader, out string? errorMessage))
                     {
                         PeerInfo peer = entry.PeerInfo;
-                        if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer}, {errorMessage}");
+                        if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer:hide}, {errorMessage:hide}");
 
                         if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {currentBlock.Header.ToString(BlockHeader.Format.Short)}");
                         entry.RetryBlockRequest();
@@ -507,7 +507,7 @@ namespace Nethermind.Synchronization.Blocks
                                       && _blockValidator.ValidateBodyAgainstHeader(header, body, out bodyError);
                 if (!bodyFitsHeader)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Body {bodyIndex} from {peer} does not fit {header.ToString(BlockHeader.Format.Short)}: {bodyError ?? "tx root differs"}");
+                    if (_logger.IsTrace) _logger.Trace($"Body {bodyIndex} from {peer:hide} does not fit {header.ToString(BlockHeader.Format.Short)}: {bodyError ?? "tx root differs"}");
                     rejectedBodyTxRoot ??= TxTrie.CalculateRoot(body.Transactions);
                     entry?.RetryBlockRequest();
                     continue;
@@ -534,7 +534,7 @@ namespace Nethermind.Synchronization.Blocks
 
             if (bodyIndex < (bodies?.Length ?? 0))
             {
-                if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer}, a body matches none of the requested headers");
+                if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer:hide}, a body matches none of the requested headers");
 
                 if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid block received: body matches none of the requested headers");
                 result = SyncResponseHandlingResult.LesserQuality;
@@ -590,7 +590,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (_receiptsRecovery.TryRecover(block, receipts, false) == ReceiptsRecoveryResult.Fail)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Recovery failure from {peer} for block {header.ToString(BlockHeader.Format.Short)}");
+                    if (_logger.IsDebug) _logger.Debug($"Recovery failure from {peer:hide} for block {header.ToString(BlockHeader.Format.Short)}");
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "receipt recovery failed");
                     result = SyncResponseHandlingResult.LesserQuality;
                     entry.RetryReceiptRequest();
@@ -598,7 +598,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
                 if (!ValidateReceiptsRoot(block, receipts))
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Invalid receipt root from {peer} for block {header.ToString(BlockHeader.Format.Short)}");
+                    if (_logger.IsDebug) _logger.Debug($"Invalid receipt root from {peer:hide} for block {header.ToString(BlockHeader.Format.Short)}");
 
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid receipt root");
                     result = SyncResponseHandlingResult.LesserQuality;
@@ -688,7 +688,7 @@ namespace Nethermind.Synchronization.Blocks
 
             if (!BlockAccessListHashValidator.Validate(header, encodedAccessList, out string? errorMessage))
             {
-                if (_logger.IsDebug) _logger.Debug($"Invalid block access list from {peer} for block {header.ToString(BlockHeader.Format.Short)}, {errorMessage}");
+                if (_logger.IsDebug) _logger.Debug($"Invalid block access list from {peer:hide} for block {header.ToString(BlockHeader.Format.Short)}, {errorMessage:hide}");
 
                 if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block access list received: {errorMessage}. Block: {header.ToString(BlockHeader.Format.Short)}");
                 result = SyncResponseHandlingResult.LesserQuality;
@@ -718,7 +718,7 @@ namespace Nethermind.Synchronization.Blocks
             if (now < next || Interlocked.CompareExchange(ref _nextUnservedAccessListWarningMs, now + UnservedAccessListWarningIntervalMs, next) != next) return;
 
             string reason = insideServingWindow ? "withheld" : "withheld or past the retention window";
-            _logger.Warn($"{(node.IsStatic ? "Static" : "Trusted")} peer {peer} did not serve the block access list of {header.ToString(BlockHeader.Format.Short)} ({reason}); sync cannot pass this block until another peer serves it.");
+            _logger.Warn($"{(node.IsStatic ? "Static" : "Trusted")} peer {peer:hide} did not serve the block access list of {header.ToString(BlockHeader.Format.Short)} ({reason}); sync cannot pass this block until another peer serves it.");
         }
 
         private enum BlocksRequestContentType
@@ -846,6 +846,7 @@ namespace Nethermind.Synchronization.Blocks
                     peer.SyncPeer.HeadHash = header.Hash;
                 }
             }
+            string DescribePeer() => SensitiveLogMasking.Enabled ? "[redacted]" : peerInfo.ToString();
             switch (addResult)
             {
                 // this generally should not happen as there is a consistency check before
@@ -854,21 +855,21 @@ namespace Nethermind.Synchronization.Blocks
                         if (_logger.IsTrace) _logger.Trace($"Block/header {block.Number} ignored (unknown parent)");
                         string blockId = $"#{block.Number} ({block.Hash}, parent {block.ParentHash})";
                         string message = isFirstInBatch
-                            ? $"Peer {peerInfo} sent orphaned blocks/headers inside the batch: {blockId}"
-                            : $"Peer {peerInfo} sent an inconsistent batch of blocks/headers: {blockId}";
+                            ? $"Peer {DescribePeer()} sent orphaned blocks/headers inside the batch: {blockId}"
+                            : $"Peer {DescribePeer()} sent an inconsistent batch of blocks/headers: {blockId}";
                         _logger.Error(message);
                         throw new EthSyncException(message);
                     }
                 case AddBlockResult.CannotAccept:
                     {
-                        throw new BlockTreeNotReadyException($"Block tree cannot accept block/header from peer {peerInfo}: #{block.Number} ({block.Hash}, parent {block.ParentHash})");
+                        throw new BlockTreeNotReadyException($"Block tree cannot accept block/header from peer {DescribePeer()}: #{block.Number} ({block.Hash}, parent {block.ParentHash})");
                     }
                 case AddBlockResult.InvalidBlock:
                     {
                         // Validator-level reason (e.g. InvalidReceiptsRoot, BAL hash mismatch) is logged
                         // separately via InvalidBlockException by the validator/processor; see preceding
                         // 'Rejected invalid block' log lines and the RLP dump at /tmp/block_<hash>.rlp.
-                        string message = $"Peer {peerInfo} sent an invalid block/header: " +
+                        string message = $"Peer {DescribePeer()} sent an invalid block/header: " +
                                          $"#{block.Number} ({block.Hash}, parent {block.ParentHash})";
                         throw new EthSyncException(message);
                     }
@@ -897,17 +898,17 @@ namespace Nethermind.Synchronization.Blocks
                     string reason;
                     if (t.HasTimeoutException())
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Block download from {peerInfo} timed out. {t.Exception?.Message}");
+                        if (_logger.IsDebug) _logger.Debug($"Block download from {peerInfo:hide} timed out. {t.Exception?.Message:hide}");
                         reason = "timeout";
                     }
                     else if (t.HasCanceledException())
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Block download from {peerInfo} was canceled.");
+                        if (_logger.IsDebug) _logger.Debug($"Block download from {peerInfo:hide} was canceled.");
                         reason = "cancel";
                     }
                     else
                     {
-                        _logger.DebugError($"Block download from {peerInfo} failed. {t.Exception}");
+                        _logger.DebugError($"Block download from {peerInfo:hide} failed. {t.Exception:hide}");
                         // ReSharper disable once RedundantAssignment
                         reason = $"sync fault";
 #if DEBUG
@@ -924,11 +925,11 @@ namespace Nethermind.Synchronization.Blocks
 
                     break;
                 case { IsCanceled: true }:
-                    if (_logger.IsTrace) _logger.Trace($"Blocks download from {peerInfo} canceled. Removing node from sync peers.");
+                    if (_logger.IsTrace) _logger.Trace($"Blocks download from {peerInfo:hide} canceled. Removing node from sync peers.");
 
                     break;
                 case { IsCompletedSuccessfully: true } t:
-                    if (_logger.IsDebug) _logger.Debug($"Blocks download from {peerInfo} completed.");
+                    if (_logger.IsDebug) _logger.Debug($"Blocks download from {peerInfo:hide} completed.");
                     if (peerInfo is not null) // fix this for node data sync
                     {
                         InvokeEvent(new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Completed));

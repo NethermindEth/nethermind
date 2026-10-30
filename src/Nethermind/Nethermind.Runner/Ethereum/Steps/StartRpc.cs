@@ -61,7 +61,7 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
                 : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, api.Timestamper, logger));
 
         // Added before the warmup, whose own RPC host would otherwise claim this entry.
-        ThisNodeInfo.AddInfo("JSON RPC     :", string.Join(" ; ", jsonRpcUrlCollection.Urls));
+        ThisNodeInfo.AddInfo("JSON RPC     :", string.Join(" ; ", jsonRpcUrlCollection.Urls), sensitive: true);
         if (GetPipelineWarmupSkipReason(api) is { } skipReason)
         {
             if (logger.IsDebug) logger.Debug($"Skipping startup payload pipeline warmup: {skipReason}");
@@ -174,11 +174,11 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
             {
                 File.Move(oldPath, newPath);
 
-                if (logger.IsWarn) logger.Warn($"Moved JWT secret from {oldPath} to {newPath}");
+                if (logger.IsWarn) logger.Warn($"Moved JWT secret from {oldPath:hide} to {newPath:hide}");
             }
             catch (Exception ex)
             {
-                if (logger.IsError) logger.Error($"Failed moving JWT secret to {newPath}.", ex);
+                if (logger.IsError) logger.Error($"Failed moving JWT secret to {newPath:hide}.", SensitiveLogMasking.Enabled ? null : ex);
 
                 jsonRpcConfig.JwtSecretFile = oldPath;
             }

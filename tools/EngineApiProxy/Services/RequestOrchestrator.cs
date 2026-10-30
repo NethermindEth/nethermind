@@ -65,7 +65,7 @@ public class RequestOrchestrator(
     public async Task<string> GetPayloadID(JsonRpcRequest originalRequest, string headBlockHash, bool fromCL = false)
     {
         _logger.Debug($"Getting payload ID for head block: {headBlockHash}");
-        string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
+        string targetHost = LogEndpoint.Url(_httpClient.BaseAddress?.ToString());
         _logger.Debug($"Will use execution client at: {targetHost}");
 
         try
@@ -185,7 +185,7 @@ public class RequestOrchestrator(
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error in getting payload ID: {ex.Message}", ex);
+            _logger.Error($"Error in getting payload ID: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             throw;
         }
     }
@@ -240,7 +240,7 @@ public class RequestOrchestrator(
                 return false;
             }
 
-            _logger.Error($"Error in payload validation: {ex.Message}", ex);
+            _logger.Error($"Error in payload validation: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             return false;
         }
     }
@@ -261,7 +261,7 @@ public class RequestOrchestrator(
 
         try
         {
-            string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
+            string targetHost = LogEndpoint.Url(_httpClient.BaseAddress?.ToString());
             _logger.Debug($"Getting payload from execution client at: {targetHost}");
 
             // Log the parentBeaconBlockRoot to track it through the validation flow
@@ -343,7 +343,7 @@ public class RequestOrchestrator(
                 catch (Exception ex)
                 {
                     // If newPayload fails, just log the error but don't stop the process
-                    _logger.Warn($"Error in synthetic newPayload validation, continuing: {ex.Message}");
+                    _logger.Warn($"Error in synthetic newPayload validation, continuing: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}");
                     return JsonRpcResponse.CreateErrorResponse(payloadResponse.Id, JsonRpcResponse.InternalErrorCode, $"Error in synthetic newPayload validation: {ex.Message}");
                 }
             }
@@ -354,7 +354,7 @@ public class RequestOrchestrator(
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error getting and processing payload: {ex.Message}", ex);
+            _logger.Error($"Error getting and processing payload: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             throw;
         }
     }
@@ -410,7 +410,7 @@ public class RequestOrchestrator(
                     }
                     catch (Exception ex)
                     {
-                        _logger.Error($"Error retrieving parentBeaconBlockRoot for block hash {blockHash}: {ex.Message}");
+                        _logger.Error($"Error retrieving parentBeaconBlockRoot for block hash {blockHash}: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}");
                         parentBeaconBlockRoot = null;
                     }
                 }
@@ -444,7 +444,7 @@ public class RequestOrchestrator(
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error creating newPayload request: {ex.Message}", ex);
+            _logger.Error($"Error creating newPayload request: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             throw;
         }
     }
@@ -460,7 +460,7 @@ public class RequestOrchestrator(
         {
             // Serialize request
             string requestJson = JsonSerializer.Serialize(request);
-            string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
+            string targetHost = LogEndpoint.Url(_httpClient.BaseAddress?.ToString());
             _logger.Debug($"Forwarding validation request to EL at: {targetHost}");
             _logger.Info($"PR -> EL|{request.Method}|V|{requestJson}");
             StringContent httpContent = new(requestJson, Encoding.UTF8, "application/json");
@@ -514,14 +514,14 @@ public class RequestOrchestrator(
             }
             catch (JsonException ex)
             {
-                _logger.Error($"Failed to deserialize JSON-RPC response: {ex.Message}", ex);
+                _logger.Error($"Failed to deserialize JSON-RPC response: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
 
                 return JsonRpcResponse.CreateErrorResponse(request.Id, -32700, "Proxy error: Invalid JSON response");
             }
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error sending JSON-RPC request: {ex.Message}", ex);
+            _logger.Error($"Error sending JSON-RPC request: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
 
             // Return an error response instead of throwing
             return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error: Sending JSON-RPC request: {ex.Message}");
@@ -603,7 +603,7 @@ public class RequestOrchestrator(
         }
         catch (Exception ex)
         {
-            _logger.Warn($"Error checking payload against block hash: {ex.Message}");
+            _logger.Warn($"Error checking payload against block hash: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}");
             return false;
         }
     }

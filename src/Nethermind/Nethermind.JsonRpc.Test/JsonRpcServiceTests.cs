@@ -51,7 +51,7 @@ using Testably.Abstractions;
 
 namespace Nethermind.JsonRpc.Test;
 
-[Parallelizable(ParallelScope.Self)]
+[NonParallelizable]
 [TestFixture]
 public class JsonRpcServiceTests
 {
@@ -1229,6 +1229,101 @@ public class JsonRpcServiceTests
         }
     }
 
+    [Test]
+    public async Task Validation_error_log_omits_request_parameters()
+    {
+        const string secret = "validation-secret-5349";
+        TestLogger logger = new();
+        IRpcModuleProvider provider = Substitute.For<IRpcModuleProvider>();
+        provider.Check(Arg.Any<string>(), Arg.Any<JsonRpcContext>(), out Arg.Any<string?>(), out Arg.Any<RpcModuleProvider.ResolvedMethodInfo?>())
+            .Returns(ModuleResolution.Unknown);
+        JsonRpcService service = new(provider, new OneLoggerLogManager(new(logger)), new JsonRpcConfig(), _gcKeeper);
+        using JsonDocument parameters = JsonDocument.Parse($"[\"{secret}\"]");
+        JsonRpcRequest request = new() { Id = 67, Method = "unknown_method", Params = parameters.RootElement };
+
+        using JsonRpcResponse response = await service.SendRequestAsync(request, _context);
+
+        string log = logger.LogList.Single(line => line.Contains("Validation error when handling request"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log, Does.Contain("unknown_method").And.Contain("67"));
+            Assert.That(log, Does.Not.Contain(secret));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Parameter_binding_logs_omit_request_values(bool useUtf8)
+    {
+        const string secret = "binding-secret-5349";
+        IEthRpcModule module = Substitute.For<IEthRpcModule>();
+        TestLogger logger = new();
+        _logManager = new OneLoggerLogManager(new(logger));
+
+        using JsonRpcResponse response = useUtf8
+            ? TestRawRequest(module, nameof(IEthRpcModule.eth_getBalance), $"[\"{secret}\",\"latest\"]")
+            : TestRequest(module, nameof(IEthRpcModule.eth_getBalance), secret, "latest");
+
+        AssertJsonRpcError(response, ErrorCodes.InvalidParams);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.LogList.Any(line => line.Contains("Incorrect JSON RPC parameters when calling eth_getBalance")), Is.True);
+            Assert.That(logger.LogList.Any(line => line.Contains("Executing JSON RPC call eth_getBalance")), Is.True);
+            Assert.That(logger.LogList, Has.None.Contains(secret));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Invocation_error_log_omits_request_parameters(bool maskSensitiveData)
+    {
+        bool previous = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = maskSensitiveData;
+        try
+        {
+            const string secret = "invocation-secret-5349";
+            IMetadataTestRpcModule module = Substitute.For<IMetadataTestRpcModule>();
+            module.test_string(Arg.Any<string>()).Throws(new InvalidOperationException($"failure {secret}"));
+            TestLogger logger = new();
+            _logManager = new OneLoggerLogManager(new(logger));
+
+            using JsonRpcResponse response = TestRequest(module, "test_string", secret);
+
+            AssertJsonRpcError(response, ErrorCodes.InternalError);
+            string log = logger.LogList.Single(line => line.Contains("Error during method execution, request"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(log, Does.Contain("test_string").And.Contain("67").And.Contain(nameof(InvalidOperationException)));
+                Assert.That(log.Contains(Environment.NewLine), Is.EqualTo(!maskSensitiveData));
+                Assert.That(logger.LogList, Has.None.Contains(secret));
+            }
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+        }
+    }
+
+    [Test]
+    public void Module_rental_error_log_omits_exception_message()
+    {
+        const string secret = "rental-secret-5349";
+        IRpcModulePool<IMetadataTestRpcModule> pool = Substitute.For<IRpcModulePool<IMetadataTestRpcModule>>();
+        pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IMetadataTestRpcModule>(new InvalidOperationException($"failure {secret}")));
+        TestLogger logger = new();
+        _logManager = new OneLoggerLogManager(new(logger));
+
+        using JsonRpcResponse response = TestRequestWithPool(pool, "test_string", secret);
+
+        AssertJsonRpcError(response, ErrorCodes.InternalError);
+        string log = logger.LogList.Single(line => line.Contains("Error during method execution, request"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log, Does.Contain("test_string").And.Contain(nameof(InvalidOperationException)));
+            Assert.That(logger.LogList, Has.None.Contains(secret));
+        }
+    }
+
     // The counterpart to the test above: the catch around parameter binding is broad, so it also swallows faults
     // the params cannot cause. Those are a condition of the node and must stay visible - at this site, and at the
     // processor, which would otherwise demote every -32602 from an unauthenticated caller to Debug.
@@ -1485,8 +1580,13 @@ public class JsonRpcServiceTests
 
         AssertJsonRpcError(TestRequestWithPool(pool, "eth_getBalance", marker, "latest"), ErrorCodes.InternalError);
 
-        TestErrorLogManager.Error logged = logManager.Errors.Single(e => e.Exception is OutOfMemoryException or { InnerException: OutOfMemoryException });
-        Assert.That(logged.Text, Does.Contain("eth_getBalance").And.Not.Contain(marker));
+        TestErrorLogManager.Error logged = logManager.Errors.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logged.Text, Does.Contain("eth_getBalance").And.Contain("exception:").And.Not.Contain(marker));
+            Assert.That(logged.Text, Does.Contain(nameof(OutOfMemoryException)).And.Not.Contain(nameof(TargetInvocationException)));
+            Assert.That(logged.Exception, Is.Null);
+        }
     }
 
     // #13156 follow-up: -32600 is overloaded. It is returned both for a request the caller got wrong ("Method is
@@ -1614,14 +1714,32 @@ public class JsonRpcServiceTests
         }
     }
 
-    [Test]
-    public void Missing_trie_node_exception_returns_resource_not_found()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Missing_trie_node_exception_returns_resource_not_found(bool maskSensitiveData)
     {
-        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_getLogs(Arg.Any<Filter>())
-            .Throws(new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA));
+        bool previous = SensitiveLogMasking.Enabled;
+        try
+        {
+            SensitiveLogMasking.Enabled = maskSensitiveData;
+            TestLogger logger = new();
+            _logManager = new OneLoggerLogManager(new(logger));
+            IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+            ethRpcModule.eth_getLogs(Arg.Any<Filter>())
+                .Throws(new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA));
 
-        using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), ErrorCodes.ResourceNotFound, "Node missing");
+            using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), ErrorCodes.ResourceNotFound, "Node missing");
+            string warning = logger.LogList.Single(static line => line.Contains("Missing trie node during eth_getLogs"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(warning.Contains(TestItem.KeccakA.ToString()), Is.EqualTo(!maskSensitiveData));
+                Assert.That(warning, Does.Not.Contain("Node missing"));
+            }
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+        }
     }
 
     [TestCaseSource(nameof(StateUnavailableShapes))]

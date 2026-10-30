@@ -8,7 +8,7 @@ namespace Nethermind.Api.Monitoring;
 [ConfigCategory(Description = "Configuration of the metrics provided by a Nethermind node for both, the Prometheus and the dotnet-counters.")]
 public interface IMetricsConfig : IConfig
 {
-    [ConfigItem(Description = "The IP address to expose Prometheus metrics at. The value of `+` means listening on all available hostnames. Setting this to `localhost` prevents remote access.", DefaultValue = "+")]
+    [ConfigItem(Description = "The IP address to expose Prometheus metrics at. The value of `+` means listening on all available hostnames. Setting this to `localhost` prevents remote access.", DefaultValue = "+", IsSensitiveWhenMasked = true)]
     string ExposeHost { get; }
 
     [ConfigItem(Description = "The port to expose Prometheus metrics at.")]

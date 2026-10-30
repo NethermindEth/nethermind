@@ -208,8 +208,41 @@ public class JsonRpcProcessorTests
             Assert.That(logger.LogList.IndexOf($"JSON RPC batch request 1/1 eth_chainId{expectedSuffix}"),
                 Is.LessThan(logger.LogList.FindIndex(l => l.StartsWith("Error response handling JsonRpc Id:2 ", StringComparison.Ordinal))),
                 "a batch item is logged before it runs");
-            Assert.That(logger.LogList, Has.Some.Match($@"^DEBUG/ERROR: Error during parsing/validation[^\n]*\.{Regex.Escape(expectedSuffix)} Data"));
+            Assert.That(logger.LogList, Has.Some.Match($@"^DEBUG/ERROR: Error during parsing/validation[^\n]*\.{Regex.Escape(expectedSuffix)}$"));
         }
+    }
+
+    [Test]
+    public async Task Trace_logs_omit_request_parameters([Values] bool inBatch)
+    {
+        const string secret = "private-passphrase-74031";
+        IJsonRpcService service = CreateService(request => new JsonRpcErrorResponse
+        {
+            Id = request.Id,
+            Error = new Error { Code = ErrorCodes.InvalidParams, Message = "Invalid params" }
+        });
+        TestLogger logger = new();
+        string request = CreateRequest("1", "personal_unlockAccount", $"[\"0x1234\",\"{secret}\"]");
+        if (inBatch) request = CreateBatchRequest(request);
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateProcessorWithLogger(service, logger), request, CreateHttpContext());
+
+        Assert.That(logger.LogList, Has.Some.Contains("personal_unlockAccount(params omitted)"));
+        Assert.That(logger.LogList, Has.None.Contains(secret));
+    }
+
+    [Test]
+    public async Task Parse_error_log_omits_request_body()
+    {
+        const string secret = "private-passphrase-74031";
+        TestLogger logger = new();
+        string request = $"{{\"jsonrpc\":\"2.0\",\"params\":[\"{secret}\"]";
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(
+            CreateProcessorWithLogger(CreateService(r => new JsonRpcSuccessResponse { Id = r.Id }), logger), request, CreateHttpContext());
+
+        Assert.That(logger.LogList, Has.Some.Contains("Error during parsing/validation"));
+        Assert.That(logger.LogList, Has.None.Contains(secret));
     }
 
     [Test]

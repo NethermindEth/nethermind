@@ -22,11 +22,11 @@ namespace Nethermind.Network.IP
 
                 if (result)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Using the local IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)} = {_config.LocalIp}");
+                    if (_logger.IsInfo) _logger.Info($"Using the local IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)} = {_config.LocalIp:hide}");
                 }
                 else
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Local IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)} = {_config.LocalIp} has incorrect format.");
+                    if (_logger.IsWarn) _logger.Warn($"Local IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)} = {_config.LocalIp:hide} has incorrect format.");
                 }
 
                 return Task.FromResult((result, ipAddress));

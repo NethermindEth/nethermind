@@ -12,7 +12,7 @@ public interface IJsonRpcConfig : IConfig
         DefaultValue = "false")]
     bool Enabled { get; set; }
 
-    [ConfigItem(Description = "The JSON-RPC service host.", DefaultValue = "127.0.0.1")]
+    [ConfigItem(Description = "The JSON-RPC service host.", DefaultValue = "127.0.0.1", IsSensitiveWhenMasked = true)]
     string Host { get; set; }
 
     [ConfigItem(Description = "The request timeout, in milliseconds.", DefaultValue = "20000")]
@@ -47,7 +47,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "The path to the base file for diagnostic recording.",
-        DefaultValue = "logs/rpc.{counter}.txt")]
+        DefaultValue = "logs/rpc.{counter}.txt", IsSensitiveWhenMasked = true)]
     string RpcRecorderBaseFilePath { get; set; }
 
     [ConfigItem(Description = "The diagnostic recording mode.", DefaultValue = "None")]
@@ -59,7 +59,7 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The JSON-RPC service WebSockets port.", DefaultValue = "8545", IsPortOption = true)]
     int WebSocketsPort { get; set; }
 
-    [ConfigItem(Description = "The path to connect a UNIX domain socket over.")]
+    [ConfigItem(Description = "The path to connect a UNIX domain socket over.", IsSensitiveWhenMasked = true)]
     string IpcUnixDomainSocketPath { get; set; }
 
     [ConfigItem(Description = "Whether to set the IPC socket UNIX file permissions to owner-only (600).", DefaultValue = "true")]
@@ -102,7 +102,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "An array of additional JSON-RPC URLs to listen at with protocol and JSON-RPC namespace list. For instance, `[http://localhost:8546|http;ws|eth;web3]`.",
-        DefaultValue = "[]")]
+        DefaultValue = "[]", IsSensitiveWhenMasked = true)]
     string[] AdditionalRpcUrls { get; set; }
 
     [ConfigItem(Description = "The maximum gas limit for `eth_call` and `eth_estimateGas`.", DefaultValue = "100000000")]
@@ -120,7 +120,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "The path to a file with the list of new-line-separated JSON-RPC calls. If specified, only the calls from that file are allowed.",
-        DefaultValue = "Data/jsonrpc.filter")]
+        DefaultValue = "Data/jsonrpc.filter", IsSensitiveWhenMasked = true)]
     string CallsFilterFilePath { get; set; }
 
     [ConfigItem(Description = "The max length of an HTTP request body or a WebSocket message, in bytes.", DefaultValue = "30000000")]
@@ -188,7 +188,7 @@ public interface IJsonRpcConfig : IConfig
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
-    [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null")]
+    [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     public string JwtSecretFile { get; set; }
 
     [ConfigItem(Description = "Whether to disable authentication of the Engine API. Should not be used in production environments.", DefaultValue = "false", HiddenFromDocs = true)]
@@ -204,7 +204,7 @@ public interface IJsonRpcConfig : IConfig
         DefaultValue = "[engine_newPayloadV1,engine_newPayloadV2,engine_newPayloadV3,engine_forkchoiceUpdatedV1,engine_forkchoiceUpdatedV2,flashbots_validateBuilderSubmissionV3,eth_signTransaction]")]
     public string[]? MethodsLoggingFiltering { get; set; }
 
-    [ConfigItem(Description = "The Engine API host.", DefaultValue = "127.0.0.1")]
+    [ConfigItem(Description = "The Engine API host.", DefaultValue = "127.0.0.1", IsSensitiveWhenMasked = true)]
     string EngineHost { get; set; }
 
     [ConfigItem(Description = "The Engine API port.", DefaultValue = "null", IsPortOption = true)]
@@ -236,13 +236,13 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "Whether to enable eth_signTransaction. Disabled by default; enable only on nodes that explicitly manage unlocked accounts.", DefaultValue = "false")]
     bool EnableEthSignTransaction { get; set; }
 
-    [ConfigItem(Description = "The JSON-RPC server CORS origins. Also limits WebSocket connections: a handshake with an `Origin` header not in this list is refused with HTTP 403; handshakes without an `Origin` header are accepted.", DefaultValue = "*")]
+    [ConfigItem(Description = "The JSON-RPC server CORS origins. Also limits WebSocket connections: a handshake with an `Origin` header not in this list is refused with HTTP 403; handshakes without an `Origin` header are accepted.", DefaultValue = "*", IsSensitiveWhenMasked = true)]
     string[] CorsOrigins { get; set; }
 
-    [ConfigItem(Description = "The `Host` header values the JSON-RPC server accepts on URLs without authentication, as host names without a port, for example `localhost` or `*.example.com`. Matching ignores the port and case. Requests with other host names get HTTP 403. Requests with an IP address or without a `Host` header are always accepted. `*` accepts all hosts. To stop web pages from calling the server, also limit `CorsOrigins`.", DefaultValue = "*")]
+    [ConfigItem(Description = "The `Host` header values the JSON-RPC server accepts on URLs without authentication, as host names without a port, for example `localhost` or `*.example.com`. Matching ignores the port and case. Requests with other host names get HTTP 403. Requests with an IP address or without a `Host` header are always accepted. `*` accepts all hosts. To stop web pages from calling the server, also limit `CorsOrigins`.", DefaultValue = "*", IsSensitiveWhenMasked = true)]
     string[] AllowedHosts { get; set; }
 
-    [ConfigItem(Description = "The `Host` header values the JSON-RPC server accepts on authenticated (Engine API) URLs. The rules are the same as for `AllowedHosts`.", DefaultValue = "*")]
+    [ConfigItem(Description = "The `Host` header values the JSON-RPC server accepts on authenticated (Engine API) URLs. The rules are the same as for `AllowedHosts`.", DefaultValue = "*", IsSensitiveWhenMasked = true)]
     string[] EngineAllowedHosts { get; set; }
 
     [ConfigItem(Description = "The number of requests one public WebSocket connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. Connections that are authenticated or enable the Engine module always process their requests one by one. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]

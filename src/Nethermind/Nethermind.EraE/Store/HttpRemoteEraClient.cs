@@ -30,12 +30,12 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
     {
         Uri manifestUri = new(_baseUrl, _manifestFilename);
 
-        if (_logger.IsInfo) _logger.Info($"Fetching eraE manifest from {manifestUri}");
+        if (_logger.IsInfo) _logger.Info($"Fetching eraE manifest from {SensitiveLogMasking.SafeUrl(manifestUri)}");
 
         using HttpResponseMessage response = await _httpClient.GetAsync(manifestUri, HttpCompletionOption.ResponseHeadersRead, cancellation).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
-            throw new EraException($"Failed to fetch eraE manifest from {manifestUri}: HTTP {(int)response.StatusCode} {response.ReasonPhrase}.");
+            throw new EraException($"Failed to fetch eraE manifest from {SensitiveLogMasking.SafeUrl(manifestUri)}: HTTP {(int)response.StatusCode} {response.ReasonPhrase}.");
 
         await using Stream stream = await response.Content.ReadAsStreamAsync(cancellation).ConfigureAwait(false);
         using StreamReader reader = new(stream);
@@ -72,7 +72,7 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
         if (!string.IsNullOrEmpty(destinationDir))
             Directory.CreateDirectory(destinationDir);
 
-        if (_logger.IsInfo) _logger.Info($"Downloading eraE file {filename} from {fileUri}");
+        if (_logger.IsInfo) _logger.Info($"Downloading eraE file {filename:hide} from {SensitiveLogMasking.SafeUrl(fileUri)}");
 
         try
         {
