@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -621,12 +622,12 @@ public class GuestDispatchDifferentialTests
         Assert.That(mismatches, Is.Empty);
     }
 
-    public enum CallTarget { NoCode, Code, Delegation }
+    public enum CallTarget { NoCode, Code, Delegation, Precompile }
 
     /// <remarks>
     /// Two calls reach an account with no code, first cold and then warm, and a third reaches the target: an account
-    /// with no code, one with code, or one that delegates to code under EIP-7702. At code the chain leaves to enter its
-    /// frame. The calls expand memory over their input or output, or need no expansion, and move no value. Every amount
+    /// with no code, one with code, one that delegates to code under EIP-7702, or the identity precompile. At code the
+    /// chain leaves to enter its frame; a precompile runs inline, and the chain goes on. The calls expand memory over their input or output, or need no expansion, and move no value. Every amount
     /// of gas up to the program's need puts the end of the gas inside each charge.
     /// The reference is the cancelable table: a traced call enters a frame even at no code, so that the tracer sees it.
     /// </remarks>
@@ -639,6 +640,7 @@ public class GuestDispatchDifferentialTests
         Address noCode = new("0x00000000000000000000000000000000000000aa");
         Address withCode = new("0x00000000000000000000000000000000000000bb");
         Address delegating = new("0x00000000000000000000000000000000000000cc");
+        Address identity = new("0x0000000000000000000000000000000000000004");
         CodeInfo code = new(new[] { (byte)Instruction.STOP });
         ICodeInfoRepository repository = Substitute.For<ICodeInfoRepository>();
         repository.GetCachedCodeInfo(Arg.Any<Address>(), Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address?>())
@@ -646,11 +648,11 @@ public class GuestDispatchDifferentialTests
             {
                 Address account = (Address)call[0];
                 call[3] = account == delegating ? withCode : null;
-                return account == withCode ? code : CodeInfo.Empty;
+                return account == withCode ? code : account == identity ? new CodeInfo(IdentityPrecompile.Instance) : CodeInfo.Empty;
             });
         repository.GetDelegatedCodeInfo(withCode, Arg.Any<IReleaseSpec>()).Returns(code);
 
-        Address last = target switch { CallTarget.NoCode => noCode, CallTarget.Code => withCode, _ => delegating };
+        Address last = target switch { CallTarget.NoCode => noCode, CallTarget.Code => withCode, CallTarget.Precompile => identity, _ => delegating };
         byte[] program =
         [
             .. Call(op, noCode, 0, 0x40, 0x40, 0x20),
@@ -675,7 +677,7 @@ public class GuestDispatchDifferentialTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(mismatches, Is.Empty);
-            Assert.That(complete.Exception, Is.EqualTo(target == CallTarget.NoCode ? EvmExceptionType.Stop : EvmExceptionType.Suspend));
+            Assert.That(complete.Exception, Is.EqualTo(target is CallTarget.NoCode or CallTarget.Precompile ? EvmExceptionType.Stop : EvmExceptionType.Suspend));
         }
 
         static byte[] Call(Instruction op, Address to, byte inputOffset, byte inputLength, byte outputOffset, byte outputLength) =>
@@ -918,7 +920,12 @@ public class GuestDispatchDifferentialTests
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
         if (returnData is not null) vm.ReturnDataBuffer = returnData;
-        if (codeInfoRepository is not null) vm.UseCodeInfoRepository(codeInfoRepository);
+        if (codeInfoRepository is not null)
+        {
+            vm.UseCodeInfoRepository(codeInfoRepository);
+            // A precompile the calls reach runs inline, through the frame handlers.
+            vm.PrepareFrameHandlersForTests();
+        }
         using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, 0, UInt256.Zero, inputData);
         using VmState<EthereumGasPolicy> frame = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default, isStatic);
