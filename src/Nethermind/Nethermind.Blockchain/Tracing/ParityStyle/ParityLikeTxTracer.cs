@@ -173,6 +173,9 @@ public partial class ParityLikeTxTracer : TxTracer
 
     protected virtual void ReturnInputBytes(in CappedArray<byte> input) { }
 
+    /// <summary>Takes back an action that left its frame without joining the trace, which nothing references any more.</summary>
+    protected virtual void ReturnExcludedAction(ParityTraceAction action) { }
+
     // Only the action tree reads the input, and BuildResult drops it unless Trace was requested.
     private CappedArray<byte> CopyActionInput(ReadOnlyMemory<byte> input) =>
         (_parityTraceTypes & ParityTraceTypes.Trace) != 0 ? CopyInput(input) : CappedArray<byte>.Empty;
@@ -260,6 +263,11 @@ public partial class ParityLikeTxTracer : TxTracer
 
         _actionStack.Pop();
         _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
+
+        if (!popped.IncludeInTrace && popped != _trace.Action)
+        {
+            ReturnExcludedAction(popped);
+        }
     }
 
     protected virtual void OnLeaveVmFrame(ParityTraceAction action)

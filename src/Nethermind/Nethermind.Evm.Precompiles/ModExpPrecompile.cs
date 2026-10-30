@@ -257,9 +257,8 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
                 return GetInputLengthsMayOverflow(inputData);
             }
         }
-        else if (inputData.Slice(StartBaseLength, LengthSize - sizeof(uint)).IndexOfAnyExcept((byte)0) >= 0 ||
-                inputData.Slice(StartExpLength, LengthSize - sizeof(uint)).IndexOfAnyExcept((byte)0) >= 0 ||
-                inputData.Slice(StartModLength, LengthSize - sizeof(uint)).IndexOfAnyExcept((byte)0) >= 0)
+        else if ((HighLengthBytes(inputData, StartBaseLength) | HighLengthBytes(inputData, StartExpLength) |
+                  HighLengthBytes(inputData, StartModLength)) != 0)
         {
             return GetInputLengthsMayOverflow(inputData);
         }
@@ -268,6 +267,16 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         uint expLength = BinaryPrimitives.ReadUInt32BigEndian(inputData.Slice(64 - sizeof(uint), sizeof(uint)));
         uint modulusLength = BinaryPrimitives.ReadUInt32BigEndian(inputData.Slice(96 - sizeof(uint), sizeof(uint)));
         return (baseLength, expLength, modulusLength);
+    }
+
+    /// <summary>The bytes of the length at <paramref name="start"/> above its low 32 bits, ORed together: zero when the length fits a <see cref="uint"/>.</summary>
+    /// <remarks>Word reads rather than a byte search: without vectors, <c>IndexOfAnyExcept</c> tests the bytes one at a time.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong HighLengthBytes(ReadOnlySpan<byte> inputData, int start)
+    {
+        ref byte length = ref MemoryMarshal.GetReference(inputData.Slice(start, LengthSize - sizeof(uint)));
+        return Unsafe.ReadUnaligned<ulong>(ref length) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref length, 8)) |
+            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref length, 16)) | Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref length, 24));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

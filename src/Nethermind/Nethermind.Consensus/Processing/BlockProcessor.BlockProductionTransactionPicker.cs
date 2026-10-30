@@ -45,10 +45,13 @@ namespace Nethermind.Consensus.Processing
 
                 ulong gasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockExecutionGas);
 
-                // No more gas available in block for any transactions, the only case we have to really stop. An
-                // EIP-8141 frame transaction reserves from its own lower intrinsic cost, so the legacy floor gates the spec read.
+                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+
+                // No more gas available in block for any transactions, the only case we have to really stop. EIP-2780
+                // lowers the base cost and an EIP-8141 frame transaction reserves from its own lower intrinsic cost.
                 if (GasCostOf.Transaction > gasRemaining
-                    && (!_specProvider.GetSpec(block.Header).IsEip8141Enabled || (ulong)Eip8141Constants.IntrinsicGasCost > gasRemaining))
+                    && (!spec.IsEip2780Enabled || GasCostOf.TransactionEip2780 > gasRemaining)
+                    && (!spec.IsEip8141Enabled || (ulong)Eip8141Constants.IntrinsicGasCost > gasRemaining))
                 {
                     return args.Set(TxAction.Stop, "Block full");
                 }
@@ -65,8 +68,6 @@ namespace Nethermind.Consensus.Processing
                 {
                     return args.Set(TxAction.Skip, "Null sender");
                 }
-
-                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
                 if (transactionsInBlock.Contains(currentTx))
                 {
@@ -146,17 +147,17 @@ namespace Nethermind.Consensus.Processing
                     return "Invalid nonce sequence - malformed key set";
                 }
 
+                ulong expected = currentTx.Nonce == Eip8250Constants.MaxNonceSeq ? 0 : currentTx.Nonce;
                 foreach (ref readonly UInt256 nonceKey in nonceKeys.AsSpan())
                 {
                     ulong current = KeyedNonceManager.CurrentNonceSeq(stateProvider, currentTx.SenderAddress!, in nonceKey);
-                    if (current != currentTx.Nonce)
+                    if (current != expected)
                     {
                         return $"Invalid nonce sequence - key {nonceKey} expected {current}";
                     }
                 }
 
-                // Well-formed and every key at nonce_seq leaves exhaustion as the only reason the set was rejected.
-                return $"Invalid nonce sequence - exhausted at {currentTx.Nonce}";
+                return "Invalid nonce sequence";
             }
 
             private static bool HasEnoughFunds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)
