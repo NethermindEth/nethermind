@@ -1,0 +1,499 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
+using FastEnumUtility;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
+using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
+using Nethermind.Pbt;
+using Nethermind.Pbt.NodeBuffer;
+using Nethermind.State.Pbt.Persistence;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.State.Pbt.Test;
+
+/// <summary>Drives the partitioned <see cref="TrieUpdater"/> over a persistent node-group store.</summary>
+internal sealed class PbtTreeHarness : IDisposable
+{
+    private PbtNodeGroupStore _store = new();
+
+    /// <summary>A fresh processor-count fold quota, so concurrently running fixtures never starve each other.</summary>
+    public static ConcurrencyController FoldQuota() => new(Environment.ProcessorCount);
+
+    /// <summary>A fan-out with one worker minimum whatever the subtree size.</summary>
+    public static FoldFanOut FanOut(int minOperationsPerWorker) => new(minOperationsPerWorker, long.MaxValue, minOperationsPerWorker);
+
+    public static readonly FoldFanOut DefaultFanOut = FoldFanOut.Default;
+
+    /// <summary>The code chunks of <paramref name="code"/>, copied out of the native list <see cref="PbtKeyDerivation.ChunkifyCode(ReadOnlySpan{byte})"/> returns.</summary>
+    public static byte[] ChunkifyCode(ReadOnlySpan<byte> code)
+    {
+        using NativeMemoryList<byte> chunks = PbtKeyDerivation.ChunkifyCode(code);
+        return chunks.AsSpan().ToArray();
+    }
+
+    /// <summary>Encodes a single-leaf tree's root leaf.</summary>
+    public static byte[] EncodeLeaf<TKey>(TKey key) where TKey : struct, IPbtKey<TKey>
+    {
+        byte[] encoding = new byte[PbtNodeCodec.LeafLength(key.Length)];
+        PbtNodeCodec.EncodeLeaf(encoding, key);
+        return encoding;
+    }
+
+    /// <summary>The hash of a branch encoding: BLAKE3 over its preimage.</summary>
+    public static ValueHash256 HashBranch(ReadOnlySpan<byte> encoding) => Blake3Hash.Hash(PbtBranchReader.FromValidated(encoding).Preimage);
+
+    /// <summary>Hashes a leaf from its complete key and 32-byte value, per EIP-8297.</summary>
+    public static ValueHash256 HashLeaf(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+    {
+        byte[] preimage = new byte[PbtNodeCodec.LeafPreimageLength(key.Length)];
+        PbtNodeCodec.WriteLeafPreimage(preimage, key, value);
+        return Blake3Hash.Hash(preimage);
+    }
+
+    /// <summary>Encodes a branch whose children are both branches.</summary>
+    public static byte[] EncodeBranch(ReadOnlySpan<byte> prefix, int bitCount, in ValueHash256 left, in ValueHash256 right) =>
+        EncodeBranch(prefix, bitCount, left, right, [], []);
+
+    /// <summary>Encodes a branch; a non-empty key, past <see cref="PbtNodeCodec.InlineKeyOffset"/>, inlines that child as a leaf.</summary>
+    public static byte[] EncodeBranch(ReadOnlySpan<byte> prefix, int bitCount, in ValueHash256 left, in ValueHash256 right,
+        ReadOnlySpan<byte> leftKey, ReadOnlySpan<byte> rightKey)
+    {
+        if (prefix.Length != PbtBitPrefix.ByteCount(bitCount)) throw new ArgumentException("Prefix length does not match its bit count.", nameof(prefix));
+        byte[] encoding = new byte[PbtNodeCodec.BranchLength(bitCount, leftKey.Length, rightKey.Length)];
+        PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, left, right);
+        prefix.CopyTo(encoding.AsSpan(3));
+        PbtNodeCodec.WriteBranchTrailer(encoding.AsSpan(PbtNodeCodec.BranchPreimageLength(bitCount)), leftKey, rightKey);
+        PbtNodeCodec.ThrowIfNotExact(encoding);
+        return encoding;
+    }
+
+    public ValueHash256 RootHash { get; private set; }
+
+    public IReadOnlyList<PbtNodeRecord> Nodes => _store.EnumerateRecords();
+    public IReadOnlyList<PbtPhysicalPayload> PhysicalPayloads => _store.ExportPhysicalPayloads();
+
+    public ValueHash256 ApplyBatch(IEnumerable<(byte[] Key, byte[]? Value)> writes) => RootHash = _store.Fold(RootHash, writes);
+
+    public bool TryGetNode<TPath>(TPath path, out byte[]? encoding) where TPath : struct, IPbtNodePath<TPath>
+    {
+        encoding = _store.GetNode(path);
+        return encoding is not null;
+    }
+
+    public void Reopen()
+    {
+        IReadOnlyList<PbtPhysicalPayload> payloads = PhysicalPayloads;
+        PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(payloads);
+        PbtNodeGroupStore prior = _store;
+        _store = reopened;
+        prior.Dispose();
+    }
+
+    public void Dispose() => _store.Dispose();
+
+    public string[] CanonicalRecords() => _store.CanonicalRecords();
+}
+
+/// <summary>Folds every batch serially and with the fan-out and quota under test, each on its own store, and asserts identical roots and groups matching the reference tree.</summary>
+internal sealed class DifferentialTree(FoldFanOut fanOut, ConcurrencyController foldQuota) : IDisposable
+{
+    private readonly PbtNodeGroupStore _serialStore = new();
+    private readonly PbtNodeGroupStore _parallelStore = new();
+    private readonly EipReferenceTree _oracle = new();
+    private ValueHash256 _parallelRoot;
+    private int _round;
+
+    /// <summary>The root of the serially folded store.</summary>
+    public ValueHash256 Root { get; private set; }
+
+    /// <summary>The group payloads of the serially folded store.</summary>
+    public IReadOnlyList<PbtPhysicalPayload> ExportPhysicalPayloads() => _serialStore.ExportPhysicalPayloads();
+
+    public void Apply(IEnumerable<(byte[] Key, byte[]? Value)> writes)
+    {
+        string round = $"round {_round++}";
+        _oracle.Apply(writes);
+
+        // A quota of one folds every zone and frame on the calling thread.
+        Root = _serialStore.Fold(Root, writes, new ConcurrencyController(1), PbtTreeHarness.DefaultFanOut);
+        _parallelRoot = _parallelStore.Fold(_parallelRoot, writes, foldQuota, fanOut);
+
+        IReadOnlyList<PbtPhysicalPayload> expected = _serialStore.ExportPhysicalPayloads();
+        IReadOnlyList<PbtPhysicalPayload> actual = _parallelStore.ExportPhysicalPayloads();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_parallelRoot, Is.EqualTo(Root), round);
+            Assert.That(Root.Bytes.ToArray(), Is.EqualTo(_oracle.Merkelize()), round);
+            Assert.That(actual.Select(Describe), Is.EqualTo(expected.Select(Describe)), round);
+        }
+        PbtStoreTestExtensions.AssertSubtreeBytes(actual);
+    }
+
+    public void Dispose()
+    {
+        _serialStore.Dispose();
+        _parallelStore.Dispose();
+    }
+
+    private static string Describe(PbtPhysicalPayload payload) =>
+        $"{payload.Key.ToEncodedArray().ToHexString()}:{payload.Payload.Span.ToHexString()}";
+}
+
+internal static class PbtStoreTestExtensions
+{
+    internal static long[] ReadDescendantBytes(ReadOnlySpan<byte> payload)
+    {
+        ushort descendantMask = PbtNodeGroupCodec.ReadDescendantMask(payload);
+        long[] descendantBytes = new long[PbtThreeLevelGroupGeometry.BoundarySlots];
+        for (int slot = 0; slot < descendantBytes.Length; slot++)
+            descendantBytes[slot] = (descendantMask & (1 << slot)) == 0 ? 0 : PbtNodeGroupCodec.ReadDescendantBytes(payload, descendantMask, slot);
+        return descendantBytes;
+    }
+
+    internal static PbtWriteOperation<TKey>[] ConsumeOperations<TKey>(this PbtWriteBatch<TKey> batch) where TKey : struct, IPbtKey<TKey>
+    {
+        batch.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
+        using ArrayPoolList<PbtWriteOperation<TKey>> operationsLease = operations;
+        using ArrayPoolList<int> tableLease = table;
+        return operations.AsSpan().ToArray();
+    }
+
+    internal static void Write(this PbtNodeGroupWriter writer, scoped in PbtTraversalPath path, int position, ReadOnlySpan<byte> encoding)
+    {
+        if (PbtNodeGroupCodec.ShouldOmit(position, encoding)) return;
+        writer.ValidateEntry(path, position, encoding);
+        encoding.CopyTo(writer.Append(position, encoding.Length));
+    }
+
+    internal static byte[]? GetNodeGroup<TPath>(this IPbtStore store, TPath groupKey)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
+        using PbtLoadedRecordBuffer loaded = new();
+        return loaded.TryLoad(store, cursor, out PbtGroupRecord record) ? record.Payload.ToArray() : null;
+    }
+
+    internal static void SetNodeGroup<TPath>(this PbtNodeGroupStore store, TPath groupKey, byte[]? payload)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
+        store.SetNodeGroup(cursor, payload);
+    }
+
+    internal static GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> ReadGroup<TPath>(TPath groupKey, ReadOnlySpan<byte> payload)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        PbtNodeGroupCodec.ValidateNodes(groupKey, payload);
+        byte[] record = new byte[PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(payload.Length))];
+        PbtStorageNodePath path = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey).ToPath<PbtStorageNodePath>();
+        payload.CopyTo(PbtGroupRecordCodec.WriteGroup(record, path, default, payload.Length));
+        return new(new PbtGroupRecord(record, 0));
+    }
+
+    /// <summary>Reads the group <paramref name="payload"/> holds at <paramref name="path"/>.</summary>
+    internal static GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> ReadGroup(scoped in PbtTraversalPath path, byte[] payload) =>
+        ReadGroup(path.ToPath<PbtStorageNodePath>(), payload);
+
+    /// <summary>Finishes the writer's group into an array of its own, or returns null for an empty group.</summary>
+    internal static byte[]? Detach(this PbtNodeGroupWriter writer, ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
+    {
+        byte[] payload = new byte[writer.GetPayloadLength(descendantBytes, candidateSlots, out ushort descendantMask)];
+        writer.DetachTo(payload, descendantBytes, descendantMask);
+        return payload.Length == 0 ? null : payload;
+    }
+
+    internal static List<(int Position, ReadOnlyMemory<byte> Encoding)> Nodes(this GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader)
+    {
+        List<(int Position, ReadOnlyMemory<byte> Encoding)> nodes = [];
+        for (uint stored = reader.StoredPositions; stored != 0; stored &= stored - 1)
+        {
+            int position = BitOperations.TrailingZeroCount(stored);
+            nodes.Add((position, reader.GetEncoding(position)));
+        }
+        return nodes;
+    }
+
+    /// <summary>Asserts every stored descendant size equals the summed payload lengths of the groups keyed below that boundary slot.</summary>
+    internal static void AssertSubtreeBytes(IReadOnlyList<PbtPhysicalPayload> payloads)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (PbtPhysicalPayload group in payloads)
+            {
+                int groupDepth = group.Key.BitDepth;
+                long[] expected = new long[PbtThreeLevelGroupGeometry.BoundarySlots];
+                foreach (PbtPhysicalPayload candidate in payloads)
+                {
+                    if (candidate.Key.BitDepth <= groupDepth || !candidate.Key.Prefix(groupDepth).Equals(group.Key)) continue;
+                    expected[PbtTestPaths.SlotOf(candidate.Key, groupDepth)] += candidate.Payload.Length;
+                }
+                long[] stored = ReadDescendantBytes(group.Payload.Span);
+                Assert.That(stored, Is.EqualTo(expected), $"descendant bytes of group {Convert.ToHexString(group.Key.ToEncodedArray())}");
+            }
+        }
+    }
+
+    internal static byte[]? GetPhysicalNodeGroup<TPath>(this PbtNodeGroupStore store, TPath groupKey)
+        where TPath : struct, IPbtNodePath<TPath>
+        => store.GetNodeGroup(groupKey);
+
+    internal static byte[]? GetNode<TPath>(this IPbtStore store, TPath path)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        if (path.BitDepth != 0) throw new ArgumentException("Use canonical traversal for non-root reads.", nameof(path));
+        byte[]? payload = store.GetNodeGroup(path);
+        if (payload is null) return null;
+        return ResolveNode(PbtStoreTestExtensions.ReadGroup(path, payload), path, PbtThreeLevelGroupGeometry.RootPosition);
+    }
+
+    internal static byte[] ToPathArray<TPath>(this TPath path) where TPath : struct, IPbtNodePath<TPath>
+    {
+        byte[] bytes = new byte[(path.BitDepth + 7) >> 3];
+        PbtNodePathOperations.CopyTo(path, bytes);
+        return bytes;
+    }
+
+    internal static int GetBit<TPath>(this TPath path, int bitIndex) where TPath : struct, IPbtNodePath<TPath> =>
+        TrieUpdater.GetBit(path.ToPathArray(), bitIndex);
+
+    /// <summary>The path's capacity-independent identity as bytes: its big-endian depth, then its canonical bytes.</summary>
+    internal static byte[] ToEncodedArray<TPath>(this TPath path) where TPath : struct, IPbtNodePath<TPath>
+    {
+        byte[] encoding = new byte[4 + ((path.BitDepth + 7) >> 3)];
+        BinaryPrimitives.WriteInt32BigEndian(encoding, path.BitDepth);
+        PbtNodePathOperations.CopyTo(path, encoding.AsSpan(4));
+        return encoding;
+    }
+
+    internal static byte[] ToStorageKey<TPath>(this TPath path, PbtColumns column) where TPath : struct, IPbtNodePath<TPath> =>
+        column == PbtColumns.Metadata
+            ? PbtRocksDbPersistence.RootNodeGroupKey.ToArray()
+            : PbtNodeGroupKey.Encode(path, new byte[PbtNodeGroupKey.MaxLength]).ToArray();
+
+    internal static List<PbtStorageNodePath> PersistedNodeGroupKeys(IColumnsDb<PbtColumns> db)
+    {
+        List<PbtStorageNodePath> groupKeys = [];
+        if (db.GetColumnDb(PbtColumns.Metadata).Get(PbtRocksDbPersistence.RootNodeGroupKey) is not null) groupKeys.Add(new PbtStorageNodePath([], 0));
+        foreach (PbtColumns column in (PbtColumns[])[PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups])
+            groupKeys.AddRange(db.GetColumnDb(column).GetAllKeys().Select(key => PbtNodeGroupKey.Decode(key)));
+        return groupKeys;
+    }
+
+    /// <summary>Each group as key-then-payload hex, sorted ordinally.</summary>
+    internal static string[] CanonicalGroups(IEnumerable<PbtStorageNodePath> groupKeys, Func<PbtStorageNodePath, byte[]?> getNodeGroup)
+    {
+        List<string> result = [];
+        foreach (PbtStorageNodePath groupKey in groupKeys)
+            result.Add($"{Convert.ToHexString(groupKey.ToEncodedArray())}:{Convert.ToHexString(getNodeGroup(groupKey)!)}");
+        result.Sort(StringComparer.Ordinal);
+        return [.. result];
+    }
+
+    /// <summary>Asserts the groups persisted in <paramref name="db"/>, read through <paramref name="reader"/>, are exactly those of <paramref name="expected"/>.</summary>
+    internal static void AssertSameGroups(IColumnsDb<PbtColumns> db, IPbtPersistence.IReader reader, PbtNodeGroupStore expected, string message) =>
+        Assert.That(CanonicalGroups(PersistedNodeGroupKeys(db), reader.LoadNodeGroup),
+            Is.EqualTo(CanonicalGroups(expected.EnumerateNodeGroupKeys(), expected.GetPhysicalNodeGroup)), message);
+
+    /// <inheritdoc cref="AssertSameGroups(IColumnsDb{PbtColumns}, IPbtPersistence.IReader, PbtNodeGroupStore, string)"/>
+    internal static void AssertSameGroups(IColumnsDb<PbtColumns> db, IPbtPersistence.IReader reader, PbtNodeGroupStore expected) =>
+        Assert.That(CanonicalGroups(PersistedNodeGroupKeys(db), reader.LoadNodeGroup),
+            Is.EqualTo(CanonicalGroups(expected.EnumerateNodeGroupKeys(), expected.GetPhysicalNodeGroup)));
+
+    /// <summary>Opens the on-disk PBT RocksDB at <paramref name="path"/> with the default <see cref="DbConfig"/> and the production column options for <paramref name="config"/>.</summary>
+    internal static ColumnsDb<PbtColumns> OpenPbtRocksDb(string path, PbtConfig config)
+    {
+        DbConfig dbConfig = new();
+        PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, config, Substitute.For<IDisposableStack>(), LimboLogs.Instance);
+        return new ColumnsDb<PbtColumns>(path, new DbSettings(nameof(DbNames.Pbt), DbNames.Pbt), dbConfig, adjuster, LimboLogs.Instance, FastEnum.GetValues<PbtColumns>());
+    }
+
+    /// <summary>Zero-pads a zone prefix to the fixed <see cref="PbtStoragePath"/> or <see cref="PbtPath"/> length the partition fold requires.</summary>
+    internal static byte[] ZoneKey(string hexPrefix)
+    {
+        byte[] prefix = Bytes.FromHexString(hexPrefix);
+        byte[] key = new byte[prefix[0] == Eip8297KeyDerivation.StorageZone ? PbtStoragePath.KeyLength : PbtPath.KeyLength];
+        prefix.CopyTo(key, 0);
+        return key;
+    }
+
+    /// <summary>A 32-byte leaf value whose last byte is <paramref name="marker"/>.</summary>
+    internal static byte[] Value(byte marker)
+    {
+        byte[] value = new byte[32];
+        value[^1] = marker;
+        return value;
+    }
+
+    /// <summary>Folds zone-key <paramref name="writes"/> into the tree at <paramref name="root"/> through the partitioned driver production folds with.</summary>
+    internal static ValueHash256 Fold(this IPbtStore store, in ValueHash256 root, IEnumerable<(byte[] Key, byte[]? Value)> writes) =>
+        store.Fold(root, writes, PbtTreeHarness.DefaultFanOut);
+
+    /// <inheritdoc cref="Fold(IPbtStore, in ValueHash256, IEnumerable{ValueTuple{byte[], byte[]}})"/>
+    internal static ValueHash256 Fold(this IPbtStore store, in ValueHash256 root, IEnumerable<(byte[] Key, byte[]? Value)> writes,
+        FoldFanOut fanOut) =>
+        store.Fold(root, writes, PbtTreeHarness.FoldQuota(), fanOut);
+
+    /// <inheritdoc cref="Fold(IPbtStore, in ValueHash256, IEnumerable{ValueTuple{byte[], byte[]}})"/>
+    internal static ValueHash256 Fold(this IPbtStore store, in ValueHash256 root, IEnumerable<(byte[] Key, byte[]? Value)> writes,
+        ConcurrencyController foldQuota, FoldFanOut fanOut)
+    {
+        using PbtPartitionBatches changes = PreparePartitions(writes);
+        ValueHash256 folded = TrieUpdater.UpdateRoot(store, (root, 0), changes, foldQuota, fanOut, null, null).Hash;
+        // An emptied tree writes no root group, so nothing pruned its groups.
+        if (folded == default && root != default && store is PbtNodeGroupStore groups) groups.RetainTreeGroups(emptyTree: true);
+        return folded;
+    }
+
+    internal static PbtPartitionBatches PreparePartitions(IEnumerable<(byte[] Key, byte[]? Value)> changes)
+    {
+        using PbtWriteBatchBuilder<PbtPath> account = new();
+        using PbtWriteBatchBuilder<PbtPath> code = new();
+        using PbtWriteBatchBuilder<PbtStoragePath> storage = new();
+        foreach ((byte[] key, byte[]? value) in changes)
+        {
+            switch (key[0])
+            {
+                case 0x00: Apply(account, new PbtPath(key), value); break;
+                case 0x01: Apply(code, new PbtPath(key), value); break;
+                case 0xFF: Apply(storage, new PbtStoragePath(key), value); break;
+                default: throw new ArgumentException("Unsupported partition zone.", nameof(changes));
+            }
+        }
+        return new PbtPartitionBatches
+        {
+            Account = account.Count == 0 ? null : account.Build(),
+            Code = code.Count == 0 ? null : code.Build(),
+            Storage = storage.Count == 0 ? null : storage.Build(),
+        };
+    }
+
+    private static void Apply<TKey>(PbtWriteBatchBuilder<TKey> builder, TKey key, byte[]? value) where TKey : struct, IPbtKey<TKey>
+    {
+        if (value is null) builder.SetLeaf(key, null);
+        else builder.Set(key, new ValueHash256(value));
+    }
+
+    internal static byte[]? GetNode<TPath>(this PbtNodeGroupStore store, TPath path) where TPath : struct, IPbtNodePath<TPath>
+    {
+        PbtStorageNodePath currentPath = new([], 0);
+        while (currentPath.BitDepth <= path.BitDepth)
+        {
+            byte[]? encoding = GetLogicalNode(store, currentPath);
+            if (encoding is null || currentPath.Equals(path.ToPath<PbtStorageNodePath>())) return encoding;
+            if (PbtNodeCodec.IsLeaf(encoding)) return null;
+            PbtBranchReader node = PbtBranchReader.FromValidated(encoding);
+            if (currentPath.BitDepth + node.Prefix.BitCount >= path.BitDepth) return null;
+            int directionBit = currentPath.BitDepth + node.Prefix.BitCount;
+            int direction = path.GetBit(directionBit);
+            if (!(direction == 0 ? node.LeftKeyPostfix : node.RightKeyPostfix).IsEmpty) return null;
+            currentPath = currentPath.Append(node.Prefix, direction);
+            for (int bit = 0; bit < currentPath.BitDepth; bit++)
+                if (currentPath.GetBit(bit) != path.GetBit(bit)) return null;
+        }
+        return null;
+    }
+
+    private static byte[]? GetLogicalNode<TPath>(PbtNodeGroupStore store, TPath path) where TPath : struct, IPbtNodePath<TPath>
+    {
+        PbtNodeGroupLocation<TPath> location = PbtTestPaths.Locate(path);
+        byte[]? payload = store.GetPhysicalNodeGroup(location.GroupKey);
+        if (payload is null) return null;
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(location.GroupKey, payload);
+        return ResolveNode(reader, location.GroupKey, location.Position);
+    }
+
+    private static byte[]? ResolveNode<TPath>(GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader, TPath groupKey, int position) where TPath : struct, IPbtNodePath<TPath>
+    {
+        ReadOnlySpan<byte> encoding = reader.GetEncoding(position).Span;
+        if (!encoding.IsEmpty) return encoding.ToArray();
+        TPath path = PbtTestPaths.PathOf(groupKey, position);
+        int relativeDepth = path.BitDepth - groupKey.BitDepth;
+        if (relativeDepth < 1 || relativeDepth >= PbtThreeLevelGroupGeometry.LevelsPerGroup) return null;
+        int width = 1 << (PbtThreeLevelGroupGeometry.LevelsPerGroup - relativeDepth);
+        byte[]? left = ResolveNode(reader, groupKey, position - width);
+        byte[]? right = ResolveNode(reader, groupKey, position - 1);
+        return left is null || right is null ? null : PbtTreeHarness.EncodeBranch([], 0,
+            PbtTreeHarness.HashBranch(left), PbtTreeHarness.HashBranch(right));
+    }
+
+    internal static void SetNode<TPath>(this PbtNodeGroupStore store, TPath path, byte[]? encoding) where TPath : struct, IPbtNodePath<TPath>
+    {
+        PbtNodeGroupLocation<TPath> location = PbtTestPaths.Locate(path);
+        byte[]? priorPayload = store.GetPhysicalNodeGroup(location.GroupKey);
+        List<PbtNodeRecord> records = [];
+        if (priorPayload is not null)
+        {
+            foreach ((int position, ReadOnlyMemory<byte> node) in PbtStoreTestExtensions.ReadGroup(location.GroupKey, priorPayload).Nodes())
+            {
+                if (position != location.Position)
+                    records.Add(new PbtNodeRecord(PbtTestPaths.PathOf(location.GroupKey, position).ToPath<PbtStorageNodePath>(), node.Span));
+            }
+        }
+        if (encoding is not null) records.Add(new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), encoding));
+        if (records.Count == 0)
+        {
+            store.SetNodeGroup(location.GroupKey, null);
+            return;
+        }
+
+        store.SetNodeGroup(location.GroupKey, PbtNodeGroupEncoder.Encode(location.GroupKey, records, default));
+    }
+
+    /// <summary>The store's canonical records as path-then-encoding hex, in path order.</summary>
+    internal static string[] CanonicalRecords(this PbtNodeGroupStore store)
+    {
+        IReadOnlyList<PbtNodeRecord> records = store.EnumerateRecords();
+        string[] result = new string[records.Count];
+        for (int index = 0; index < result.Length; index++)
+        {
+            PbtNodeRecord record = records[index];
+            result[index] = Convert.ToHexString(record.Path.ToEncodedArray()) + Convert.ToHexString(record.Encoding.Span);
+        }
+        return result;
+    }
+
+    /// <summary>The physical group payloads as key-then-payload hex, sorted ordinally.</summary>
+    internal static string[] PhysicalRecords(this IEnumerable<PbtPhysicalPayload> payloads)
+    {
+        List<string> records = [];
+        foreach (PbtPhysicalPayload payload in payloads)
+            records.Add(Convert.ToHexString(payload.Key.ToEncodedArray()) + Convert.ToHexString(payload.Payload.Span));
+        records.Sort(StringComparer.Ordinal);
+        return [.. records];
+    }
+
+    /// <inheritdoc cref="PhysicalRecords(IEnumerable{PbtPhysicalPayload})"/>
+    internal static string[] PhysicalRecords(this PbtNodeGroupStore store) => store.ExportPhysicalPayloads().PhysicalRecords();
+
+    internal static IReadOnlyList<PbtNodeRecord> EnumerateRecords(this PbtNodeGroupStore store)
+    {
+        List<PbtNodeRecord> records = [];
+        Stack<PbtStorageNodePath> pending = new();
+        pending.Push(new PbtStorageNodePath([], 0));
+        while (pending.TryPop(out PbtStorageNodePath path))
+        {
+            byte[]? encoding = GetLogicalNode(store, path);
+            if (encoding is null) continue;
+            records.Add(new PbtNodeRecord(path, encoding));
+            if (PbtNodeCodec.IsLeaf(encoding)) continue;
+            PbtBranchReader node = PbtBranchReader.FromValidated(encoding);
+            if (node.LeftKeyPostfix.IsEmpty) pending.Push(path.Append(node.Prefix, 0));
+            if (node.RightKeyPostfix.IsEmpty) pending.Push(path.Append(node.Prefix, 1));
+        }
+        records.Sort(static (left, right) => left.Path.CompareTo(right.Path));
+        return records;
+    }
+}

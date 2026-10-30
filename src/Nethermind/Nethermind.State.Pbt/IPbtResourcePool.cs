@@ -1,0 +1,39 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core.Buffers;
+using Nethermind.Pbt;
+using Nethermind.State.Pbt.Snapshot;
+
+namespace Nethermind.State.Pbt;
+
+/// <summary>Hands out and takes back the per-layer collections, pooled per <see cref="PbtResourcePool.Usage"/>.</summary>
+public interface IPbtResourcePool
+{
+    /// <summary>Rents an empty content for a new diff layer.</summary>
+    PbtSnapshotContent GetSnapshotContent(PbtResourcePool.Usage usage);
+
+    /// <summary>
+    /// Returns <paramref name="content"/>, resetting it. It must be returned to the
+    /// <paramref name="usage"/> it was rented from, and the caller must not touch it afterwards.
+    /// </summary>
+    void ReturnSnapshotContent(PbtResourcePool.Usage usage, PbtSnapshotContent content);
+
+    /// <summary>Rents an empty canonical leaf accumulator for one key-zone partition.</summary>
+    PbtWriteBatchBuilder<PbtPath> GetWriteBatch(PbtResourcePool.Usage usage);
+
+    /// <summary>Returns a partition batch to its original rental usage, discarding pending mutations.</summary>
+    /// <remarks>The caller must not access the batch after returning it.</remarks>
+    void ReturnWriteBatch(PbtResourcePool.Usage usage, PbtWriteBatchBuilder<PbtPath> batch);
+    /// <summary>Rents an empty storage-zone accumulator.</summary>
+    PbtWriteBatchBuilder<PbtStoragePath> GetStorageWriteBatch(PbtResourcePool.Usage usage);
+
+    /// <summary>Returns a storage accumulator to its original rental usage.</summary>
+    void ReturnStorageWriteBatch(PbtResourcePool.Usage usage, PbtWriteBatchBuilder<PbtStoragePath> batch);
+
+    /// <summary>Rents a reset per-block resource, armed with one lease that returns it here on its final release.</summary>
+    PbtTransientResource GetCachedResource(PbtResourcePool.Usage usage);
+
+    /// <summary>Returns a transient resource to its original rental usage, resetting it.</summary>
+    void ReturnCachedResource(PbtResourcePool.Usage usage, PbtTransientResource transientResource);
+}

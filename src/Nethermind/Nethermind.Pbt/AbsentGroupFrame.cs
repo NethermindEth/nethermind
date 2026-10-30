@@ -1,0 +1,38 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+namespace Nethermind.Pbt;
+
+/// <summary>A frame for a group that is not stored, which the fold composes from its boundary node alone.</summary>
+/// <remarks>
+/// A group is absent when its boundary node owns none: an empty subtree, a leaf, a branch over two inlined leaves, or a
+/// branch whose prefix spans past the group, and the tree root's group when the tree is empty. A spanning branch keeps
+/// the descendants its owner recorded under the boundary slot, all below its own slot here. The same frame stands in
+/// for an owner frame that cannot be shared across threads, where only its depth and one slot's size are read.
+/// Nothing is stored, so there is no node to take.
+/// </remarks>
+/// <param name="slot">The boundary slot everything stored below the group lies under.</param>
+/// <param name="descendantBytes">The summed payload lengths of the groups stored below <paramref name="slot"/>.</param>
+/// <param name="descendantPointer">The first physical group below the continuing compressed route.</param>
+public readonly struct AbsentGroupFrame(int bitDepth, int slot, long descendantBytes, ulong descendantPointer) : IGroupFrame
+{
+    private readonly ushort _descendantMask = descendantBytes == 0 ? (ushort)0 : (ushort)(1 << slot);
+    private readonly long _descendantBytes = descendantBytes;
+
+    public int BitDepth { get; } = bitDepth;
+
+    public int PayloadLength => 0;
+
+    public long DescendantBytes(int slot) => (_descendantMask & (1 << slot)) == 0 ? 0 : _descendantBytes;
+
+    public ushort DescendantMask => _descendantMask;
+
+    /// <inheritdoc/>
+    public ulong DescendantPointer(int slot) => (_descendantMask & (1 << slot)) == 0 ? 0 : descendantPointer;
+
+    public uint StoredPositions => 0;
+
+    public ReadOnlyMemory<byte> GetEncoding(int position) => default;
+
+    public void CopyRange(PbtNodeGroupWriter writer, int startPosition, int endPosition) { }
+}

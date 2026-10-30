@@ -781,11 +781,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags) => _reader.GetSpan(key, flags);
 
-    MemoryManager<byte>? IReadOnlyKeyValueStore.GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags)
-    {
-        Span<byte> span = ((IReadOnlyKeyValueStore)this).GetSpan(key, flags);
-        return span.IsNullOrEmpty() ? null : new DbSpanMemoryManager(this, span);
-    }
+    MemoryManager<byte>? IReadOnlyKeyValueStore.GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags) =>
+        _reader.GetOwnedMemory(key, flags);
 
     int IReadOnlyKeyValueStore.Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags) => _reader.Get(key, output, flags);
 
@@ -1244,7 +1241,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out nint handle, ReadFlags flags)
         => GetNativeSlice(key, null, out handle, flags);
 
-    public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, out nint handle, ReadFlags flags)
+    public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, out nint handle, ReadFlags flags) =>
+        GetNativeSlice(key, cf, (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions, out handle);
+
+    /// <summary>Pins the value of <paramref name="key"/> as read with <paramref name="readOptions"/>, such as a snapshot's.</summary>
+    /// <returns>The value, or null when the key is missing; a found value's <paramref name="handle"/> goes to <see cref="DangerousReleaseHandle"/>.</returns>
+    internal ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, ReadOptions readOptions, out nint handle)
     {
         // Counted before the disposing check, so Dispose either waits for this slice or this read sees it disposing.
         Interlocked.Increment(ref _pinnedSlices);
@@ -1253,7 +1255,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         {
             ObjectDisposedException.ThrowIf(_isDisposing, this);
 
-            ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions;
             PinnedSlice slice;
             try
             {

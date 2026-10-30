@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -184,6 +186,31 @@ public class ColumnsDbTests
 
         if (!disposeSnapshotFirst) snapshot.Dispose();
         Assert.DoesNotThrow(() => prefetcher.Prefetch(keys, 0));
+    }
+
+    [Test]
+    public void Snapshot_column_lends_the_snapshot_version_pinned([Values] bool flush)
+    {
+        IDb column = _db.GetColumnDb(ReceiptsColumns.Blocks);
+        byte[] key = [1, 2, 3];
+        column.Set(key, [1, 1]);
+        if (flush) _db.Flush();
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
+        column.Set(key, [2, 2]);
+        IReadOnlyKeyValueStore reader = snapshot.GetColumn(ReceiptsColumns.Blocks);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Read(key), Is.EqualTo(new byte[] { 1, 1 }), "a snapshot reads its own version");
+            Assert.That(Read([9]), Is.Null, "a miss");
+        }
+
+        byte[]? Read(byte[] readKey)
+        {
+            StrongBox<byte[]?> value = new();
+            reader.TryGet(readKey, static (span, value) => value.Value = span.ToArray(), value);
+            return value.Value;
+        }
     }
 
     [Test]
@@ -477,6 +504,30 @@ public class ColumnsDbTests
 
         // Disposing the snapshot tears down its iterators; the head db must stay fully usable.
         Assert.That(colA.Get(keys[0]), Is.EqualTo(new byte[] { 0, 2 }));
+    }
+
+    [Test]
+    public void Snapshot_owned_memory_survives_snapshot_disposal()
+    {
+        IDb column = _db.GetColumnDb(ReceiptsColumns.Blocks);
+        byte[] original = TestItem.KeccakA.BytesToArray();
+        column.PutSpan(TestItem.KeccakA.Bytes, original);
+
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
+        long baseline = _db._allocatedSpan.Sum;
+        MemoryManager<byte>? owned = snapshot.GetColumn(ReceiptsColumns.Blocks).GetOwnedMemory(TestItem.KeccakA.Bytes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(owned, Is.Not.Null);
+            Assert.That(_db._allocatedSpan.Sum, Is.EqualTo(baseline + 1));
+        }
+
+        column.PutSpan(TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes);
+        snapshot.Dispose();
+
+        Assert.That(owned!.GetSpan().ToArray(), Is.EqualTo(original));
+        ((IDisposable)owned).Dispose();
+        Assert.That(_db._allocatedSpan.Sum, Is.EqualTo(baseline));
     }
 
     [Test]
