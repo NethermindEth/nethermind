@@ -16,7 +16,11 @@ public abstract class LegacyStateTestFixture<TSelf, TPrefix> : GeneralStateTestB
     where TPrefix : ITestDirectoryPrefix
 {
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(GeneralStateTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
+    public async Task Test(GeneralStateTest test)
+    {
+        EthereumTestResult result = await RunTest(test);
+        Assert.That(result.Pass, Is.True, result.Error);
+    }
 
     public static IEnumerable<GeneralStateTest> LoadTests() =>
         new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(),
@@ -35,7 +39,11 @@ public abstract class LegacyRetryStateTestFixture<TSelf, TPrefix> : GeneralState
 {
     [TestCaseSource(nameof(LoadTests))]
     [Retry(3)]
-    public async Task Test(GeneralStateTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
+    public async Task Test(GeneralStateTest test)
+    {
+        EthereumTestResult result = await RunTest(test);
+        Assert.That(result.Pass, Is.True, result.Error);
+    }
 
     public static IEnumerable<GeneralStateTest> LoadTests() =>
         new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(),
