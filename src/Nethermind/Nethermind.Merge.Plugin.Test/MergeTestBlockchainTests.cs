@@ -2,11 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -20,21 +17,11 @@ public class MergeTestBlockchainTests
     {
         using BaseEngineModuleTests.MergeTestBlockchain chain =
             await new ShortTimeoutBlockchain().Build(new TestSingleReleaseSpecProvider(London.Instance));
-        Block head = chain.BlockTree.Head!;
-        Block block = Build.A.Block.WithNumber(head.Number + 1).WithParent(head)
-            .WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
-        block.Header.TotalDifficulty = head.TotalDifficulty;
 
-        TestBranchProcessorInterceptor branchProcessor = (TestBranchProcessorInterceptor)chain.BranchProcessor;
         TaskCompletionSource processingRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        using ManualResetEventSlim processingStarted = new(false);
-        branchProcessor.ProcessingStarted = processingStarted;
-        branchProcessor.ProcessingRelease = processingRelease.Task;
         try
         {
-            _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
-                block, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
-            Assert.That(processingStarted.Wait(TimeSpan.FromSeconds(5)), Is.True, "the block never reached the processor");
+            Block block = EngineModuleTests.OccupyBlockProcessor(chain, chain.BlockTree.Head!, processingRelease.Task);
 
             Task wait = chain.WaitForCommitted(block.Hash!);
             Task first = await Task.WhenAny(wait, Task.Delay(ShortTimeoutBlockchain.Timeout * 5));
@@ -44,14 +31,17 @@ public class MergeTestBlockchainTests
         }
         finally
         {
-            branchProcessor.ProcessingStarted = null;
             processingRelease.TrySetResult();
         }
     }
 
+    /// <remarks>
+    /// The test timeout also bounds the fixture's own build (the wait for genesis), so it stays wide enough for a cold
+    /// start on a busy runner while keeping the test short.
+    /// </remarks>
     private sealed class ShortTimeoutBlockchain : BaseEngineModuleTests.MergeTestBlockchain
     {
-        public const int Timeout = 2_000;
+        public const int Timeout = 5_000;
 
         public ShortTimeoutBlockchain() => TestTimeout = Timeout;
     }

@@ -1712,7 +1712,8 @@ public partial class EngineModuleTests
     }
 
     /// <summary>Occupies the block processor so the payload sent next has to queue and its newPayload times out.</summary>
-    private static void OccupyBlockProcessor(MergeTestBlockchain chain, Block parent, Task processingRelease)
+    /// <returns>The block that holds the processor until <paramref name="processingRelease"/> completes.</returns>
+    internal static Block OccupyBlockProcessor(MergeTestBlockchain chain, Block parent, Task processingRelease)
     {
         using ManualResetEventSlim processingStarted = new(false);
         TestBranchProcessorInterceptor branchProcessor = (TestBranchProcessorInterceptor)chain.BranchProcessor;
@@ -1732,6 +1733,8 @@ public partial class EngineModuleTests
             // Later blocks must not signal an event disposed here while the chain is still processing.
             branchProcessor.ProcessingStarted = null;
         }
+
+        return occupyBlock;
     }
 
     /// <summary>A transfer that fits an empty Bogota payload, so a list holding it is unsatisfied unless the block includes it.</summary>
