@@ -502,7 +502,7 @@ class EmbeddedCoverageTests(unittest.TestCase):
                         output = root / (case + "-" + phase + ".json")
                         if failure in (None, "scenario-lag", "finality-lag"):
                             embedded.verify(settings_path)
-                            prefix.assert_called_once_with(nodes["reference"], nodes["candidate"], "end", "genesis", 8192)
+                            prefix.assert_called_once_with(nodes["reference"], nodes["candidate"], "end", "genesis", 8192, "rollup0")
                             observation = json.loads(output.read_text())
                             self.assertEqual("container-id", observation["container"])
                             if scenario:
