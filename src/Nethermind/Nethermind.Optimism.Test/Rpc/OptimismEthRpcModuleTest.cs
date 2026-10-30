@@ -371,8 +371,13 @@ public class OptimismEthRpcModuleTest
             .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
 
     private static Task<string> SendFromC(TestRpcBlockchain rpcBlockchain, string extraFields = "") =>
+        SendFrom(rpcBlockchain, TestItem.AddressC, extraFields);
+
+    // A send left waiting on a lock fails the test instead of hanging it.
+    private static Task<string> SendFrom(TestRpcBlockchain rpcBlockchain, Address from, string extraFields = "") =>
         rpcBlockchain.TestEthRpc("eth_sendTransaction", JsonSerializer.Deserialize<object>(
-            $$"""{"from":"{{TestItem.AddressC}}","to":"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c","value":"0x1"{{extraFields}}}"""));
+            $$"""{"from":"{{from}}","to":"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c","value":"0x1"{{extraFields}}}"""))
+            .WaitAsync(TimeSpan.FromSeconds(30));
 
     private static void AssertSucceeded(string serialized) => Assert.That(JToken.Parse(serialized)["error"], Is.Null, serialized);
 
@@ -388,6 +393,40 @@ public class OptimismEthRpcModuleTest
 
         Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 1, 2 }),
             "the second send must follow the first, which the head does not include yet");
+    }
+
+    [Test]
+    public async Task Forwarding_node_sends_from_another_account_while_a_forward_is_held()
+    {
+        TaskCompletionSource firstArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseFirst = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        RecordingSequencer sequencer = new(async index =>
+        {
+            if (index == 0)
+            {
+                firstArrived.SetResult();
+                await releaseFirst.Task;
+            }
+
+            return AcceptedByTheSequencer;
+        });
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer);
+        await rpcBlockchain.AddBlock(SignedByC(rpcBlockchain, 0));
+
+        Task<string> fromC = SendFromC(rpcBlockchain);
+        await firstArrived.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Task<string> fromB = SendFrom(rpcBlockchain, TestItem.AddressB);
+        // The forward of C stays at the sequencer until B is done or has waited long enough to show it is blocked.
+        bool bDoneWhileCHeld = await Task.WhenAny(fromB, Task.Delay(TimeSpan.FromSeconds(5))) == fromB;
+        releaseFirst.SetResult();
+        AssertSucceeded(await fromC);
+        AssertSucceeded(await fromB);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bDoneWhileCHeld, Is.True, "a forward held for one account must not hold the sends of another");
+            Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 1, 0 }), "C follows its mined transaction, B starts at 0");
+        }
     }
 
     [Test]

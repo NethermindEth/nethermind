@@ -34,9 +34,9 @@ namespace Nethermind.Optimism.Test.Rpc;
 
 public class OptimismEthModuleFactoryTests
 {
-    // The eth module is pooled, so two instances of one factory must still send one at a time.
+    // The eth module is pooled, so two instances of one factory must still send one at a time for one account.
     [Test]
-    public async Task Module_instances_of_one_factory_send_one_at_a_time()
+    public async Task Module_instances_of_one_factory_send_one_at_a_time_for_one_account()
     {
         TaskCompletionSource firstArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource secondArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -108,7 +108,7 @@ public class OptimismEthModuleFactoryTests
         {
             Assert.That((await first).Result.ResultType, Is.EqualTo(ResultType.Success), (await first).Result.Error);
             Assert.That((await second).Result.ResultType, Is.EqualTo(ResultType.Success), (await second).Result.Error);
-            Assert.That(secondSentWhileFirstHeld, Is.False, "instances of one factory must share the send lock");
+            Assert.That(secondSentWhileFirstHeld, Is.False, "instances of one factory must share the lock of an account");
         }
     }
 }

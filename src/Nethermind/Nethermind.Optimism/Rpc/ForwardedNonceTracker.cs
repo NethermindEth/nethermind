@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.State;
@@ -10,7 +12,8 @@ using Nethermind.State;
 namespace Nethermind.Optimism.Rpc;
 
 /// <summary>
-/// The next nonce of an account that <c>eth_sendTransaction</c> signs on a node that forwards to the sequencer.
+/// The next nonce of an account that <c>eth_sendTransaction</c> signs on a node that forwards to the sequencer, and the
+/// per-account lock that keeps sends from one account in order on any node.
 /// </summary>
 /// <remarks>
 /// Such a node has no transaction pool (<c>NullTxPool</c>), so it cannot read a pending nonce. It uses the
@@ -21,36 +24,88 @@ public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader
 {
     public const int DefaultMaxAccounts = 1024;
 
-    // The nonce after the last accepted forward of each account; guarded by SendLock.
+    // Guards both dictionaries; held only for the dictionary work, never across an await.
+    private readonly Lock _gate = new();
+
+    // The nonce after the last accepted forward of each account.
     private readonly Dictionary<AddressAsKey, ulong> _nextNonces = [];
 
+    // One lock per account with a send running or waiting; removed when the last of them is done.
+    private readonly Dictionary<AddressAsKey, SenderLock> _senderLocks = [];
+
+    internal int Count
+    {
+        get
+        {
+            lock (_gate)
+                return _nextNonces.Count;
+        }
+    }
+
+    internal int SenderLockCount
+    {
+        get
+        {
+            lock (_gate)
+                return _senderLocks.Count;
+        }
+    }
+
     /// <summary>
-    /// Held from filling a nonce until the transaction is sent, so that concurrent sends get consecutive nonces.
+    /// Waits until no other send from <paramref name="sender"/> runs, so that its sends get consecutive nonces.
+    /// Sends from other accounts do not wait. Dispose the result once the transaction is sent.
     /// </summary>
-    public SemaphoreSlim SendLock { get; } = new(1, 1);
+    public async Task<IDisposable> LockSenderAsync(Address sender)
+    {
+        SenderLock? senderLock;
+        lock (_gate)
+        {
+            if (!_senderLocks.TryGetValue(sender, out senderLock))
+            {
+                senderLock = new SenderLock(this, sender);
+                _senderLocks[sender] = senderLock;
+            }
 
-    internal int Count => _nextNonces.Count;
+            senderLock.Users++;
+        }
+
+        await senderLock.Semaphore.WaitAsync();
+        return senderLock;
+    }
+
+    private void Release(SenderLock senderLock)
+    {
+        lock (_gate)
+        {
+            senderLock.Semaphore.Release();
+            if (--senderLock.Users == 0)
+                _senderLocks.Remove(senderLock.Sender);
+        }
+    }
 
     /// <summary>
-    /// The nonce to fill for <paramref name="sender"/>. The caller holds <see cref="SendLock"/>.
+    /// The nonce to fill for <paramref name="sender"/>. The caller holds the lock of <paramref name="sender"/>.
     /// </summary>
     public ulong GetNextNonce(Address sender)
     {
         ulong headNonce = GetHeadNonce(sender);
-        if (!_nextNonces.TryGetValue(sender, out ulong forwardedNonce))
+        lock (_gate)
+        {
+            if (!_nextNonces.TryGetValue(sender, out ulong forwardedNonce))
+                return headNonce;
+
+            if (forwardedNonce > headNonce)
+                return forwardedNonce;
+
+            // The head includes every transaction forwarded so far.
+            _nextNonces.Remove(sender);
             return headNonce;
-
-        if (forwardedNonce > headNonce)
-            return forwardedNonce;
-
-        // The head includes every transaction forwarded so far.
-        _nextNonces.Remove(sender);
-        return headNonce;
+        }
     }
 
     /// <summary>
     /// Records that the sequencer accepted a transaction of <paramref name="sender"/> with <paramref name="nonce"/>.
-    /// The caller holds <see cref="SendLock"/>.
+    /// The caller holds the lock of <paramref name="sender"/>.
     /// </summary>
     public void OnForwarded(Address sender, ulong nonce)
     {
@@ -58,12 +113,16 @@ public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader
         if (nonce != GetNextNonce(sender))
             return;
 
-        if (!_nextNonces.ContainsKey(sender) && _nextNonces.Count >= maxAccounts)
-            MakeRoom();
+        lock (_gate)
+        {
+            if (!_nextNonces.ContainsKey(sender) && _nextNonces.Count >= maxAccounts)
+                MakeRoom();
 
-        _nextNonces[sender] = nonce + 1;
+            _nextNonces[sender] = nonce + 1;
+        }
     }
 
+    // Runs under _gate; reached only when maxAccounts accounts wait for a forwarded transaction.
     private void MakeRoom()
     {
         List<AddressAsKey>? included = null;
@@ -92,4 +151,16 @@ public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader
         blockFinder.Head?.Header is { } head && stateReader.TryGetAccount(head, account, out AccountStruct state)
             ? state.Nonce
             : 0;
+
+    private sealed class SenderLock(ForwardedNonceTracker tracker, AddressAsKey sender) : IDisposable
+    {
+        public SemaphoreSlim Semaphore { get; } = new(1, 1);
+
+        public AddressAsKey Sender => sender;
+
+        // Sends running or waiting on this lock; guarded by the tracker's _gate.
+        public int Users { get; set; }
+
+        public void Dispose() => tracker.Release(this);
+    }
 }

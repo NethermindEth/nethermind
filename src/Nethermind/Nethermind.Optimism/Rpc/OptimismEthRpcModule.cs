@@ -123,24 +123,18 @@ public class OptimismEthRpcModule(
         if (rpcTx is not LegacyTransactionForRpc { From: { } from } legacy)
             return await SignAndSend(rpcTx);
 
-        // One send at a time: the next one fills its nonce after this one is in the pool or with the sequencer.
-        await nonceTracker.SendLock.WaitAsync();
-        try
-        {
-            // A node that forwards to the sequencer has no pool (NullTxPool), so the tracker stands in for it.
-            ulong? forwardedNonce = sequencerRpcClient is null ? null : nonceTracker.GetNextNonce(from);
-            ulong nonce = legacy.Nonce ??= forwardedNonce ?? _txPool.GetLatestPendingNonce(from);
+        // Sends from one account run one at a time: the next fills its nonce after this one is in the pool or with the sequencer.
+        using IDisposable senderLock = await nonceTracker.LockSenderAsync(from);
 
-            ResultWrapper<Hash256> result = await SignAndSend(rpcTx);
-            if (forwardedNonce is not null && result.Result.ResultType == ResultType.Success)
-                nonceTracker.OnForwarded(from, nonce);
+        // A node that forwards to the sequencer has no pool (NullTxPool), so the tracker stands in for it.
+        ulong? forwardedNonce = sequencerRpcClient is null ? null : nonceTracker.GetNextNonce(from);
+        ulong nonce = legacy.Nonce ??= forwardedNonce ?? _txPool.GetLatestPendingNonce(from);
 
-            return result;
-        }
-        finally
-        {
-            nonceTracker.SendLock.Release();
-        }
+        ResultWrapper<Hash256> result = await SignAndSend(rpcTx);
+        if (forwardedNonce is not null && result.Result.ResultType == ResultType.Success)
+            nonceTracker.OnForwarded(from, nonce);
+
+        return result;
     }
 
     private async Task<ResultWrapper<Hash256>> SignAndSend(SignableTransactionForRpc rpcTx)

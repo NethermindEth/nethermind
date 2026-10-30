@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Optimism.Rpc;
 using Nethermind.State;
 using NSubstitute;
@@ -112,6 +116,52 @@ public class ForwardedNonceTrackerTests
             Assert.That(countAfterC, Is.EqualTo(2));
             Assert.That(tracker.Count, Is.EqualTo(2));
             Assert.That(tracker.GetNextNonce(TestItem.AddressD), Is.EqualTo(1UL), "the newest forward is tracked");
+        }
+    }
+
+    [Test]
+    public async Task Sender_lock_holds_only_its_account_and_goes_once_unused()
+    {
+        ForwardedNonceTracker tracker = new HeadNonces().CreateTracker();
+
+        IDisposable first = await tracker.LockSenderAsync(TestItem.AddressA);
+        Task<IDisposable> sameAccount = tracker.LockSenderAsync(TestItem.AddressA);
+        Task<IDisposable> otherAccount = tracker.LockSenderAsync(TestItem.AddressB);
+        bool sameAccountWaited = !sameAccount.IsCompleted;
+        bool otherAccountWaited = !otherAccount.IsCompleted;
+        int locksWhileHeld = tracker.SenderLockCount;
+
+        first.Dispose();
+        (await sameAccount.WaitAsync(TimeSpan.FromSeconds(10))).Dispose();
+        (await otherAccount).Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sameAccountWaited, Is.True, "a second send from the account waits for the first");
+            Assert.That(otherAccountWaited, Is.False, "a send from another account does not wait");
+            Assert.That(locksWhileHeld, Is.EqualTo(2));
+            Assert.That(tracker.SenderLockCount, Is.EqualTo(0), "a lock no send uses is removed");
+        }
+    }
+
+    [Test]
+    public void Forwards_from_many_accounts_at_once_are_all_tracked()
+    {
+        const int accounts = 4096;
+        // No head: every account starts at nonce 0, without a state read.
+        ForwardedNonceTracker tracker = new(Substitute.For<IBlockFinder>(), Substitute.For<IStateReader>(), accounts);
+        Address[] senders = Enumerable.Range(1, accounts).Select(static i => Address.FromNumber((UInt256)i)).ToArray();
+
+        Parallel.ForEach(senders, new ParallelOptions { MaxDegreeOfParallelism = 8 }, sender =>
+        {
+            tracker.OnForwarded(sender, 0);
+            tracker.OnForwarded(sender, 1);
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracker.Count, Is.EqualTo(accounts));
+            Assert.That(senders.Count(sender => tracker.GetNextNonce(sender) != 2), Is.EqualTo(0), "every account must be at nonce 2");
         }
     }
 }
