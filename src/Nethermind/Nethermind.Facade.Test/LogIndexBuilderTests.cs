@@ -414,9 +414,12 @@ public class LogIndexBuilderTests
         }
     }
 
-    [Test]
+    // Without fast sync the config pivot reads 0 wherever it came from, so one row covers that mode.
+    [TestCase(true, true)]
+    [TestCase(true, false)]
+    [TestCase(false, false)]
     [CancelAfter(60_000)]
-    public async Task Should_StopBackwardSync_AtTheReceiptsBarrier_OfTheTreePivot([Values] bool fastSync, [Values] bool pivotFromConsensusLayer, CancellationToken cancellation)
+    public async Task Should_StopBackwardSync_AtTheReceiptsBarrier_OfTheTreePivot(bool fastSync, bool pivotFromConsensusLayer, CancellationToken cancellation)
     {
         const ulong barrier = 50;
         _syncConfig.FastSync = fastSync;
@@ -450,6 +453,21 @@ public class LogIndexBuilderTests
             Assert.That(storage.MinBlockNumber, Is.EqualTo((int)expectedMin));
             Assert.That(builder.MinTargetBlockNumber, Is.EqualTo(expectedMin));
         }
+    }
+
+    [TestCase(100UL, 60UL, 50UL, 60UL)] // bodies barrier above the receipts barrier
+    [TestCase(100UL, 50UL, 60UL, 60UL)] // receipts barrier above the bodies barrier
+    [TestCase(40UL, 50UL, 50UL, 40UL)] // tree pivot below the barriers
+    [TestCase(0UL, 50UL, 50UL, 0UL)] // no pivot yet
+    public void MinTarget_is_keyed_on_the_tree_pivot(ulong treePivot, ulong bodies, ulong receipts, ulong expected)
+    {
+        _syncConfig.PivotNumber = 0;
+        _syncConfig.AncientBodiesBarrier = bodies;
+        _syncConfig.AncientReceiptsBarrier = receipts;
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        tree.SyncPivot.Returns((treePivot, Keccak.Zero));
+
+        Assert.That(GetService(new TestLogIndexStorage(), tree).MinTargetBlockNumber, Is.EqualTo(expected));
     }
 
     [Test]

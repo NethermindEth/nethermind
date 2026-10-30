@@ -309,6 +309,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     /// <remarks>
     /// With fast sync it is keyed on the tree pivot, like the receipts feed: a CL-discovered pivot never reaches the sync config.
     /// Without fast sync no feed runs and it keeps the config value.
+    /// It stays at the configured barrier even when an earlier feed run from a lower pivot left receipts below it: the barrier names the oldest receipts
+    /// the operator asked for, and queries below the index are still answered from receipts.
     /// </remarks>
     private ulong AncientReceiptsBarrier => !_syncConfig.FastSync
         ? _syncConfig.AncientReceiptsBarrierCalc
