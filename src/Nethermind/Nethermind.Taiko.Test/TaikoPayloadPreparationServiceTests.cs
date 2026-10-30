@@ -47,7 +47,7 @@ public class TaikoPayloadPreparationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(secondId, Is.EqualTo(firstId));
-            Assert.That(builtBlockHash, Is.Not.Null);
+            Assert.That(builtBlockHash, Is.Not.Null.And.Not.EqualTo(Keccak.Zero.ValueHash256));
             Assert.That(stored.L2BlockHash, Is.EqualTo(builtBlockHash));
             Assert.That(stored.L1BlockHeight, Is.EqualTo(6));
             Assert.That(stored.L1BlockHash, Is.EqualTo(TestItem.KeccakD.ValueHash256));
