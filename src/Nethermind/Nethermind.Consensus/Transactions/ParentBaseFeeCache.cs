@@ -13,8 +13,9 @@ namespace Nethermind.Consensus.Transactions;
 /// transactions against one parent, as block building does, computes it once rather than once per transaction.
 /// </summary>
 /// <remarks>
-/// A filter can serve block production and tx-pool admission at the same time, so the cached pair is one immutable
-/// entry replaced by reference: a reader sees either the previous entry or the new one, never a mix of the two.
+/// A filter can be called from several threads at once, such as tx-pool admission threads that see a new head, so the
+/// cached pair is one immutable entry replaced by reference: a reader sees either the previous entry or the new one,
+/// never a mix of the two.
 /// The key is the parent and spec instances. A header is not modified once it is a parent, so a new head, a different
 /// parent or a different spec (a fork boundary) computes the base fee again.
 /// </remarks>
