@@ -1227,6 +1227,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("5b600056", null, "out of gas")]
     [TestCase("600056", null, "invalid jump destination")]
     [TestCase(null, 2, "out of gas")]
+    [TestCase("5b5f600056", null, "stack limit reached 1024 (1023)", 100_000UL)]
     // A revert reason that reads as an exception name is kept as is: revert(Error("OutOfGas")).
     [TestCase("6308c379a0600052602060205260086040527f4f75744f664761730000000000000000000000000000000000000000000000006060526064601cfd",
         null, "OutOfGas", 100_000UL)]

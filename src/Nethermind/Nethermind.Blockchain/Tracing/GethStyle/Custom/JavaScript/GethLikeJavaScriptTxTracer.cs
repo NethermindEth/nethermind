@@ -367,7 +367,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         _ctx.gasUsed = gasSpent.SpentGas;
         _ctx.Output = output;
         // A revert reason is decoded from the output, which an exceptional halt never has.
-        _ctx.error = output.Length == 0 && error is not null && ErrorDescriptionsBySubstateError.TryGetValue(error, out string? description) ? description : error;
+        // The halting step's error carries Geth's detailed text; a failed code deposit or a precompile call has no such step.
+        _ctx.error = output.Length == 0 && error is not null && ErrorDescriptionsBySubstateError.TryGetValue(error, out string? description) ? _log.error ?? description : error;
     }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
