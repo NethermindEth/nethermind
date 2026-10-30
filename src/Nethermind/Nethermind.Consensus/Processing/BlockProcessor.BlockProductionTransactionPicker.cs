@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Processing
             // Returned for every rejected candidate, so a skip allocates nothing; valid until the next call. Only a
             // candidate that passes every check gets args of its own, the instance the event raises and returns.
             // A picker belongs to one producer env, whose builds are serialized.
-            private AddingTxEventArgs? _rejectionArgs;
+            private RejectionArgs? _rejectionArgs;
 
             protected void OnAddingTransaction(AddingTxEventArgs e) => AddingTransaction?.Invoke(this, e);
 
@@ -48,9 +48,7 @@ namespace Nethermind.Consensus.Processing
                 ulong cumulativeBlockExecutionGas,
                 ulong cumulativeBlockStateGas)
             {
-                AddingTxEventArgs args = _rejectionArgs is null
-                    ? _rejectionArgs = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock)
-                    : _rejectionArgs.Reset(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
+                RejectionArgs args = (_rejectionArgs ??= new()).Reset(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
                 ulong gasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockExecutionGas);
 
@@ -91,12 +89,12 @@ namespace Nethermind.Consensus.Processing
 
                 if (executionReservation > gasRemaining)
                 {
-                    return args.Set(TxAction.Skip, DeferredSkipReason.ExecutionGas, executionReservation, gasRemaining);
+                    return args.Skip(DeferredSkipReason.ExecutionGas, executionReservation, gasRemaining);
                 }
 
                 if (stateReservation > stateGasRemaining)
                 {
-                    return args.Set(TxAction.Skip, DeferredSkipReason.StateGas, stateReservation, stateGasRemaining);
+                    return args.Skip(DeferredSkipReason.StateGas, stateReservation, stateGasRemaining);
                 }
 
                 if (currentTx.IsAboveInitCode(spec))
@@ -126,7 +124,7 @@ namespace Nethermind.Consensus.Processing
                     ulong expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
                     if (expectedNonce != currentTx.Nonce)
                     {
-                        return args.Set(TxAction.Skip, DeferredSkipReason.Nonce, expectedNonce);
+                        return args.Skip(DeferredSkipReason.Nonce, expectedNonce);
                     }
                 }
 
@@ -201,6 +199,48 @@ namespace Nethermind.Consensus.Processing
                     }
                 }
                 return true;
+            }
+
+            /// <summary>The skip reasons formatted from numbers, so only when they are read.</summary>
+            private enum DeferredSkipReason
+            {
+                ExecutionGas,
+                StateGas,
+                Nonce
+            }
+
+            /// <summary>The args the picker returns for every rejected candidate, reset for each call.</summary>
+            private sealed class RejectionArgs() : AddingTxEventArgs(0, null!, null!, null!)
+            {
+                private DeferredSkipReason _reason;
+                private ulong _first;
+                private ulong _second;
+
+                public RejectionArgs Reset(int index, Transaction transaction, Block block, IReadOnlyCollection<Transaction> transactionsInBlock)
+                {
+                    Index = index;
+                    Transaction = transaction;
+                    Block = block;
+                    TransactionsInBlock = transactionsInBlock;
+                    Set(TxAction.Add, string.Empty);
+                    return this;
+                }
+
+                public AddingTxEventArgs Skip(DeferredSkipReason reason, ulong first, ulong second = 0)
+                {
+                    _reason = reason;
+                    _first = first;
+                    _second = second;
+                    return SetDeferred(TxAction.Skip);
+                }
+
+                private protected override string FormatDeferredReason() => _reason switch
+                {
+                    DeferredSkipReason.ExecutionGas => $"Not enough execution gas in block, gas limit {_first} > {_second}",
+                    DeferredSkipReason.StateGas => $"Not enough state gas in block, gas limit {_first} > {_second}",
+                    DeferredSkipReason.Nonce => $"Invalid nonce - expected {_first}",
+                    _ => throw new ArgumentOutOfRangeException(nameof(_reason), _reason, null)
+                };
             }
         }
 
