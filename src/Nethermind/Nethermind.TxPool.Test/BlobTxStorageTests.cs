@@ -25,6 +25,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.TxPool.Test;
 
@@ -549,8 +550,9 @@ public class BlobTxStorageTests
         Transaction[] expected = new Transaction[count + 1];
         expected[^1] = stored[0];
         using IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
-        using (ColumnsDb<BlobTxsColumns> db = new(directory.Path, new DbSettings(DbNames.BlobTransactions, "blobs"),
-            configs.Resolve<IDbConfig>(), configs.Resolve<IRocksDbConfigFactory>(), LimboLogs.Instance, Enum.GetValues<BlobTxsColumns>()))
+        using (IColumnsDb<BlobTxsColumns> db = new RocksDbFactory(configs.Resolve<IRocksDbConfigFactory>(), configs.Resolve<IDbConfig>(),
+                   new HyperClockCacheWrapper(), new RealFileSystem(), LimboLogs.Instance, directory.Path)
+               .CreateColumnsDb<BlobTxsColumns>(new DbSettings(DbNames.BlobTransactions, "blobs")))
         {
             using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule())
