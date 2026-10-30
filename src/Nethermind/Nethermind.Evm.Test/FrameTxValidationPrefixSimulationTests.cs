@@ -382,15 +382,21 @@ public class FrameTxValidationPrefixSimulationTests
     [TestCase(Instruction.EXTCODESIZE, 0, false, TestName = "EXTCODESIZE of a helper contract is allowed")]
     [TestCase(Instruction.EXTCODESIZE, 0, true, TestName = "EXTCODESIZE of a codeless target is refused")]
     [TestCase(Instruction.EXTCODEHASH, 0, true, TestName = "EXTCODEHASH of a codeless target is refused")]
+    [TestCase(Instruction.EXTCODEHASH, 0, true, true, false, TestName = "EXTCODEHASH of an empty precompile is refused")]
+    [TestCase(Instruction.EXTCODEHASH, 0, true, true, true, TestName = "EXTCODEHASH of a funded precompile is refused")]
+    [TestCase(Instruction.EXTCODESIZE, 0, false, true, false, TestName = "EXTCODESIZE of a precompile is allowed")]
     [TestCase(Instruction.EXTCODECOPY, 3, false, TestName = "EXTCODECOPY of a helper contract is allowed")]
     [TestCase(Instruction.EXTCODECOPY, 3, true, TestName = "EXTCODECOPY of a codeless target is refused")]
-    public void Simulate_PrefixReadsForeignCode_IsClassifiedByTheTarget(Instruction opcode, int extraOperands, bool violates)
+    [TestCase(Instruction.EXTCODECOPY, 3, false, true, false, TestName = "EXTCODECOPY of a precompile is allowed")]
+    public void Simulate_PrefixReadsForeignCode_IsClassifiedByTheTarget(Instruction opcode, int extraOperands, bool violates, bool precompile = false, bool funded = false)
     {
-        if (!violates) DeployContract(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        Address target = precompile ? IdentityPrecompile : TestItem.AddressC;
+        if (funded) FundAccount(target, 1.Ether);
+        if (!violates && !precompile) DeployContract(target, Prepare.EvmCode.Op(Instruction.STOP).Done);
 
         Prepare prologue = Prepare.EvmCode;
         for (int i = 0; i < extraOperands; i++) prologue = prologue.PushData(0);
-        byte[] code = prologue.PushData(TestItem.AddressC).Op(opcode)
+        byte[] code = prologue.PushData(target).Op(opcode)
             .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, code, 1.Ether);
 
