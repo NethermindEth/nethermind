@@ -416,6 +416,44 @@ public class LogIndexBuilderTests
 
     [Test]
     [CancelAfter(60_000)]
+    public async Task Should_StopBackwardSync_AtTheReceiptsBarrier_OfTheTreePivot([Values] bool fastSync, [Values] bool pivotFromConsensusLayer, CancellationToken cancellation)
+    {
+        const ulong barrier = 50;
+        _syncConfig.FastSync = fastSync;
+        _syncConfig.SnapSync = fastSync;
+        // A pivot supplied by the consensus layer reaches only the block tree, never the config.
+        _syncConfig.PivotNumber = pivotFromConsensusLayer ? 0UL : _blockTree.SyncPivot.BlockNumber;
+        _syncConfig.AncientBodiesBarrier = barrier;
+        _syncConfig.AncientReceiptsBarrier = barrier;
+        ulong expectedMin = fastSync ? barrier : 0UL;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        tree.SyncPivot.Returns(realTree.SyncPivot);
+        tree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        tree.GetLowestBlock().Returns(_syncConfig.AncientBodiesBarrierCalc);
+        tree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci => ci.ArgAt<ulong>(0) < expectedMin
+                ? null
+                : realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1)));
+
+        TestLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(storage, tree);
+
+        await builder.StartAsync();
+        await builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MinBlockNumber, Is.EqualTo((int)expectedMin));
+            Assert.That(builder.MinTargetBlockNumber, Is.EqualTo(expectedMin));
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
     public async Task Should_ContinueBackwardSyncThroughRetainedIslands_BelowTheOldestStoredBlock_WhenSlicesAreConfigured(CancellationToken cancellation)
     {
         const int oldestStored = 50;
