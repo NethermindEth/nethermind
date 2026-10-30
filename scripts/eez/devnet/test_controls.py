@@ -111,7 +111,7 @@ class StreamingControlInputTests(unittest.TestCase):
                         preparation.index('Build matching runtime and test executables'))
         for profile in ('rollup0', 'rollupx'):
             self.assertIn('needs: [candidate, prepare-' + profile + ']', workflow)
-        self.assertIn("timeout-minutes: ${{ inputs.profile == 'rollupx' && matrix.suite == 'protocol' && 20 || 15 }}", consumer)
+        self.assertIn("timeout-minutes: ${{ (matrix.suite == 'protocol' || matrix.suite == 'wave-mixed') && 20 || 15 }}", consumer)
         self.assertIn('fromJSON(inputs.suites)', consumer)
 
     def invoke(self, directory, mode, context, failure):
