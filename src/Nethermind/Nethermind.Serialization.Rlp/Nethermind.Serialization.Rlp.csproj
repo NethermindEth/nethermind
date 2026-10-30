@@ -27,7 +27,6 @@
     <Compile Remove="CompactReceiptStorageDecoder.cs" />
     <Compile Remove="Eip7928/**/*.cs" />
     <Compile Remove="FrameReceiptRlp.cs" />
-    <Compile Remove="FrameTxSigHash.cs" />
     <Compile Remove="HeaderDecoder.cs" />
     <Compile Remove="IReceiptRefDecoder.cs" />
     <Compile Remove="OwnedBlockBodies.cs" />
@@ -37,12 +36,6 @@
     <Compile Remove="ReceiptRecoveryBlock.cs" />
     <Compile Remove="ReceiptStorageDecoder.cs" />
     <Compile Remove="Rlp.Pending.cs" />
-    <Compile Remove="TxDecoder.cs" />
-    <Compile Remove="TxDecoder.std.cs" />
-    <Compile Remove="TxDecoder.zkevm.cs" />
-    <Compile Remove="TxDecoders/**/*.cs" />
-    <Compile Remove="TxFrameDecoder.cs" />
-    <Compile Remove="TxFrameSignatureDecoder.cs" />
     <Compile Remove="TxsDecoder.cs" />
     <Compile Remove="TxsDecoder.std.cs" />
     <Compile Remove="TxsDecoder.zkevm.cs" />

@@ -12,11 +12,6 @@ namespace Nethermind.Serialization.Rlp;
 
 public partial class Rlp
 {
-    public static Rlp Encode(Transaction? transaction) => Encode(transaction, false);
-
-    public static Rlp Encode(Transaction? transaction, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) =>
-        TxDecoder.Instance.EncodeTx(transaction, RlpBehaviors.SkipTypedWrapping, forSigning, isEip155Enabled, chainId);
-
     public static int LengthOf(BlockInfo? item) => BlockInfoDecoder.Instance.GetLength(item, RlpBehaviors.None);
 
     static partial void RegisterPendingDecoders()
@@ -34,15 +29,12 @@ public partial class Rlp
         RegisterDecoder(typeof(NonceChange), NonceChangeDecoder.Instance);
         RegisterDecoder(typeof(ReadOnlySlotChanges), SlotChangesDecoder.Instance);
         RegisterDecoder(typeof(StorageChange), StorageChangeDecoder.Instance);
-        RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
 
         // Receipt decoders with explicit keys.
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Default), new ReceiptMessageDecoder());
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.LegacyStorage), new ReceiptStorageDecoder());
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Storage), CompactReceiptStorageDecoder.Instance);
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Trie), new ReceiptMessageDecoder());
-#else
-        RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
 #endif
     }
 }

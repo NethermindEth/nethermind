@@ -7,6 +7,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -18,7 +19,9 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
     protected override AuthorizationTuple DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
 
-    private static AuthorizationTuple Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
+    // Not inlined into the list loop of a transaction, so that its reads keep their own inline budget.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static AuthorizationTuple Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
     {
         RlpReader fields = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
         UInt256 chainId = fields.DecodeUInt256<TCanonicalChecks>();

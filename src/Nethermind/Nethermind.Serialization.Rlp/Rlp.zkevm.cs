@@ -80,6 +80,7 @@ public partial class Rlp
         RegisterDecoder(typeof(AuthorizationTuple), new AuthorizationTupleDecoder());
         RegisterDecoder(typeof(Hash256), KeccakDecoder.Instance);
         RegisterDecoder(typeof(LogEntry), LogEntryDecoder.Instance);
+        RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
         RegisterDecoder(typeof(Withdrawal), new WithdrawalDecoder());
 
         RegisterPendingDecoders();

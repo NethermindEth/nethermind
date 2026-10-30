@@ -21,7 +21,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
 
-        private static AccessList? Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
+        internal static AccessList? Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
         {
             if (reader.TryReadEmptySequence())
             {

@@ -167,8 +167,13 @@ public static class RlpReaderExtensions
     /// <remarks>When the value is not in <paramref name="source"/>, for example a shared single byte, it returns a copy.</remarks>
     /// <inheritdoc cref="DecodeByteArraySpan" path="/param|/exception"/>
     public static Memory<byte> DecodeByteArrayMemory(this scoped ref RlpReader reader, Memory<byte> source, RlpLimit? limit = null, int size = -1)
+        => reader.DecodeByteArrayMemory<OnFlag>(source, limit, size);
+
+    /// <inheritdoc cref="DecodeByteArrayMemory(ref RlpReader, Memory{byte}, RlpLimit?, int)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    public static Memory<byte> DecodeByteArrayMemory<TCanonicalChecks>(this scoped ref RlpReader reader, Memory<byte> source, RlpLimit? limit = null, int size = -1) where TCanonicalChecks : struct, IFlag
     {
-        ReadOnlySpan<byte> span = reader.DecodeByteArraySpan(limit, size);
+        ReadOnlySpan<byte> span = reader.DecodeByteArraySpan<TCanonicalChecks>(limit, size);
         if (span.IsEmpty) return Memory<byte>.Empty;
         return TryGetOffset(source.Span, span, out int offset) ? source.Slice(offset, span.Length) : span.ToArray();
     }
@@ -193,12 +198,20 @@ public static class RlpReaderExtensions
     /// <param name="limit">The maximum count of items; <see langword="null"/> means <see cref="RlpLimit.DefaultLimit"/>.</param>
     /// <param name="innerSize">The exact length of each item, or -1 for any length.</param>
     public static byte[][] DecodeByteArrays(this scoped ref RlpReader reader, RlpLimit? limit = null, int innerSize = -1)
+        => reader.DecodeByteArrays<OnFlag>(limit, innerSize);
+
+    /// <inheritdoc cref="DecodeByteArrays(ref RlpReader, RlpLimit?, int)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    public static byte[][] DecodeByteArrays<TCanonicalChecks>(this scoped ref RlpReader reader, RlpLimit? limit = null, int innerSize = -1) where TCanonicalChecks : struct, IFlag
     {
-        RlpReader items = reader.EnterSequence(out int itemLength);
-        byte[][] result = items.HasNext ? new byte[items.CountItems(limit)][] : [];
+        RlpReader items = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
+        byte[][] result = items.HasNext ? new byte[items.CountItems<TCanonicalChecks>(limit)][] : [];
         for (int i = 0; i < result.Length; i++)
         {
-            result[i] = items.DecodeByteArray(size: innerSize);
+            // A fixed size above one byte needs neither the length limit nor the shared single-byte arrays.
+            result[i] = innerSize > 1
+                ? items.ReadBytes<TCanonicalChecks>(innerSize).ToArray()
+                : items.DecodeByteArray<TCanonicalChecks>(size: innerSize);
         }
 
         reader.ExitSequence(in items, itemLength);
