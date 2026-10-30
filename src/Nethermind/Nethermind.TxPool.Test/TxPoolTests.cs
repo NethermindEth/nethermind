@@ -2404,26 +2404,38 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        [Test]
-        public async Task Pending_tx_is_not_evicted_by_an_included_tx_with_the_same_nonce_in_another_nonce_domain([Values] bool keyedInBlock)
+        [TestCase(null, 0ul, 0xbeeful, false, TestName = "account-nonce tx pending, keyed tx included")]
+        [TestCase(0xbeeful, 0ul, null, false, TestName = "keyed tx pending, account-nonce tx included")]
+        [TestCase(0xbeeful, 0ul, 0xbeeful, true, TestName = "keyed txs sharing a key and sequence")]
+        [TestCase(0xbeeful, 1ul, 0xbeeful, false, TestName = "keyed tx pending at the shared key's next sequence")]
+        [TestCase(0xbeeful, 0ul, 0xcafeul, false, TestName = "keyed txs on different keys")]
+        public async Task Pending_tx_is_evicted_by_an_included_tx_only_at_its_sequence_in_a_shared_nonce_domain(ulong? pendingKey, ulong pendingSeq, ulong? includedKey, bool expectEvicted)
         {
             _txPool = CreatePool(null, KeyedNonceSpecProvider());
             Address sender = TestItem.PrivateKeyA.Address;
             EnsureSenderBalance(sender, 100.Ether);
-            Transaction plain = Build.A.Transaction
-                .WithNonce(0)
-                .WithMaxFeePerGas(1.GWei)
-                .WithMaxPriorityFeePerGas(1.GWei)
-                .WithGasLimit(21_000)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            Transaction keyed = BuildKeyedFrameTx(sender, nonceKey: 0xbeef, seq: 0, value: UInt256.Zero, maxFee: 1.GWei);
-            (Transaction pending, Transaction included) = keyedInBlock ? (plain, keyed) : (keyed, plain);
+            // The pool admits a keyed tx only at its key's current sequence.
+            if (pendingKey is { } advancedKey && pendingSeq > 0)
+            {
+                _stateProvider.Set(KeyedNonceManager.StorageSlot(sender, advancedKey), (UInt256)pendingSeq);
+            }
+
+            Transaction pending = pendingKey is { } key
+                ? BuildKeyedFrameTx(sender, nonceKey: key, seq: pendingSeq, value: UInt256.Zero, maxFee: 1.GWei)
+                : PlainTx(1.GWei);
+            Transaction included = includedKey is { } blockKey
+                ? BuildKeyedFrameTx(sender, nonceKey: blockKey, seq: 0, value: UInt256.Zero, maxFee: 2.GWei)
+                : PlainTx(2.GWei);
             Assert.That(_txPool.SubmitTx(pending, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
             List<Transaction> evicted = [];
             _txPool.EvictedPending += (_, e) => evicted.Add(e.Transaction);
 
-            if (!keyedInBlock)
+            if (includedKey is { } consumedKey)
+            {
+                _stateProvider.Set(KeyedNonceManager.StorageSlot(sender, consumedKey), UInt256.One);
+            }
+            else
             {
                 _stateProvider.IncrementNonce(sender);
             }
@@ -2432,9 +2444,16 @@ namespace Nethermind.TxPool.Test
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(evicted, Is.Empty);
-                Assert.That(_txPool.TryGetPendingTransaction(pending.Hash!, out _), Is.True);
+                Assert.That(evicted, Is.EqualTo(expectEvicted ? new[] { pending } : Array.Empty<Transaction>()));
+                Assert.That(_txPool.TryGetPendingTransaction(pending.Hash!, out _), Is.EqualTo(!expectEvicted));
             }
+
+            Transaction PlainTx(UInt256 fee) => Build.A.Transaction
+                .WithNonce(0)
+                .WithMaxFeePerGas(fee)
+                .WithMaxPriorityFeePerGas(fee)
+                .WithGasLimit(21_000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
         }
 
         [Test]

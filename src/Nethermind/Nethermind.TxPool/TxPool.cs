@@ -19,6 +19,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Trie;
 using Nethermind.TxPool.Collections;
+using Nethermind.TxPool.Comparison;
 using Nethermind.TxPool.Filters;
 using System;
 using System.Collections.Concurrent;
@@ -1209,15 +1210,15 @@ namespace Nethermind.TxPool
             return removed;
         }
 
-        /// <summary>Evicts the pending transactions whose account nonce <paramref name="blockTx"/>, included without
-        /// passing through the pool, has taken.</summary>
+        /// <summary>Evicts the pending transactions whose nonce <paramref name="blockTx"/>, included without passing
+        /// through the pool, has taken.</summary>
         /// <remarks>Decided from the block alone, not from the head state, which may already be past this block: a
-        /// pending transaction with an included transaction's sender and account nonce can never be included on this
-        /// chain, while one that only looks stale against the head state may be in a block the pool has not processed
-        /// yet.</remarks>
+        /// pending transaction with an included transaction's sender and nonce, in a nonce domain the two share, can
+        /// never be included on this chain, while one that only looks stale against the head state may be in a block
+        /// the pool has not processed yet.</remarks>
         private void EvictSameNonceCompetitors(Transaction blockTx)
         {
-            if (blockTx.SenderAddress is not { } sender || KeyedNonceManager.UsesKeyedNonce(blockTx)) return;
+            if (blockTx.SenderAddress is not { } sender) return;
 
             EvictSameNonceCompetitors(_transactions, sender, blockTx);
             EvictSameNonceCompetitors(_blobTransactions, sender, blockTx);
@@ -1230,7 +1231,7 @@ namespace Nethermind.TxPool
             foreach (Transaction pooled in bucket)
             {
                 if (pooled.Nonce == blockTx.Nonce
-                    && !KeyedNonceManager.UsesKeyedNonce(pooled)
+                    && CompetingTransactionEqualityComparer.OverlapsNonceDomain(blockTx, pooled)
                     && RemoveTransaction(pooled.Hash, out Transaction? removed))
                 {
                     EvictedPending?.Invoke(this, new TxEventArgs(removed));
