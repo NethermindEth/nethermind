@@ -281,24 +281,30 @@ public partial class RollupXGenesisTests
     }
 
     [Test]
+    [NonParallelizable]
     public async Task NativeFollower_UnsafeOrphanedHistory_IsRejectedBeforeEngineReuse([Values] bool parentImported, [Values] bool previouslyChecked)
     {
         using NativeHistoryTestSource source = CreateHistorySource();
         EezChainRules rules = FollowerRules(source, NativeSystemTxFormat.ContractV7);
         using IContainer container = NativeFollowerContainer(source, rules);
         BlockHeader parent = NativeFollowerParent(container, source, rules, importedEndpoint: parentImported ? 1UL : null);
-        NativeHistoryEnvelope envelope = NativeHistoryEnvelope.CreateBlocks(1, [new(1, source.Headers[1].Hash!.ValueHash256)]);
-        Block block = Build.A.Block.WithParent(parent).WithTimestamp(rules.Schedule!.Timestamp(parent.Number + 1)!.Value)
-            .WithMixHash(source.Headers[1].MixHash!).WithTransactions(parentImported ? [] : [new NativeHistoryTransaction(envelope)]).TestObject;
-        if (previouslyChecked)
-            Assert.That(await container.Resolve<IUnsafeBlockPreparation>().Prepare(parent, block, CancellationToken.None),
-                Is.EqualTo(UnsafeBlockPreparationResult.Ready), "the remembered import must remain canonical even when parent storage stays at bootstrap");
-        source.Headers[1] = RpcHeader(L1HeaderBytes(1, (ulong)source.Headers[1].Timestamp,
-            source.Headers[0].Hash!.ValueHash256, 21, 12, Rlp.Encode(new byte[] { 7 })), 21);
+        TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder(NativeSystemTxFormat.ContractV7));
+        try
+        {
+            NativeHistoryEnvelope envelope = NativeHistoryEnvelope.CreateBlocks(1, [new(1, source.Headers[1].Hash!.ValueHash256)]);
+            Block block = Build.A.Block.WithParent(parent).WithTimestamp(rules.Schedule!.Timestamp(parent.Number + 1)!.Value)
+                .WithMixHash(source.Headers[1].MixHash!).WithTransactions(parentImported ? [] : [new NativeHistoryTransaction(envelope)]).TestObject;
+            if (previouslyChecked)
+                Assert.That(await container.Resolve<IUnsafeBlockPreparation>().Prepare(parent, block, CancellationToken.None),
+                    Is.EqualTo(UnsafeBlockPreparationResult.Ready), "the remembered import must remain canonical even when parent storage stays at bootstrap");
+            source.Headers[1] = RpcHeader(L1HeaderBytes(1, (ulong)source.Headers[1].Timestamp,
+                source.Headers[0].Hash!.ValueHash256, 21, 12, Rlp.Encode(new byte[] { 7 })), 21);
 
-        UnsafeBlockPreparationResult result = await container.Resolve<IUnsafeBlockPreparation>().Prepare(parent, block, CancellationToken.None);
+            UnsafeBlockPreparationResult result = await container.Resolve<IUnsafeBlockPreparation>().Prepare(parent, block, CancellationToken.None);
 
-        Assert.That(result, Is.EqualTo(parentImported || previouslyChecked ? UnsafeBlockPreparationResult.ParentReorganized : UnsafeBlockPreparationResult.SourceNotCanonical));
+            Assert.That(result, Is.EqualTo(parentImported || previouslyChecked ? UnsafeBlockPreparationResult.ParentReorganized : UnsafeBlockPreparationResult.SourceNotCanonical));
+        }
+        finally { TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder()); }
     }
 
     [Test]
