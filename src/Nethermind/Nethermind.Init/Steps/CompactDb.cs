@@ -20,9 +20,6 @@ public class CompactDb(
 {
     /// <inheritdoc/>
     /// <exception cref="InvalidConfigurationException">The arguments do not name exactly one existing RocksDB database.</exception>
-    public Task Execute(CancellationToken cancellationToken)
-    {
+    public Task Execute(CancellationToken cancellationToken) =>
         rewriter.Compact(RewriteDb.GetDbName(commandSelections, initConfig, "compact-db"), cancellationToken);
-        return Task.CompletedTask;
-    }
 }

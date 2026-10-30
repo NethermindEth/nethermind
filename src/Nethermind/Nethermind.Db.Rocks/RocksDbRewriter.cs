@@ -38,6 +38,9 @@ public class RocksDbRewriter(
     private const string OldSuffix = "_old";
     private static readonly nuint ChunkBytes = (nuint)1.MiB;
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan CompactionLogInterval = TimeSpan.FromSeconds(1);
+    private const string CompactReadBytes = "rocksdb.compact.read.bytes";
+    private const string CompactWriteBytes = "rocksdb.compact.write.bytes";
 
     private readonly ILogger _logger = logManager.GetClassLogger<RocksDbRewriter>();
 
@@ -89,7 +92,7 @@ public class RocksDbRewriter(
     /// The bottommost level is forced too, so every file is rewritten under the current configuration rather than
     /// only the ones the default compaction would pick.
     /// </remarks>
-    public void Compact(string dbPath, CancellationToken cancellationToken)
+    public async Task Compact(string dbPath, CancellationToken cancellationToken)
     {
         string fullPath = GetExistingFullPath(dbPath);
         (DbOnTheRocks db, string[] families, List<string>? columns) = OpenExisting(dbPath, fullPath);
@@ -100,19 +103,81 @@ public class RocksDbRewriter(
         {
             foreach (string family in families)
             {
-                long start = Stopwatch.GetTimestamp();
                 try
                 {
-                    db.CompactOpenRange(GetFamily(db, columns is null ? null : family), forceBottommost: true);
+                    await CompactFamily(db, columns is null ? null : family, family);
                 }
                 catch (RocksDbException) when (cancellationToken.IsCancellationRequested)
                 {
                     throw new OperationCanceledException(cancellationToken);
                 }
-
-                if (_logger.IsInfo) _logger.Info($"Compacted {db.Name} {family} in {Stopwatch.GetElapsedTime(start)}");
             }
         }
+    }
+
+    /// <remarks>
+    /// Logs every <see cref="CompactionLogInterval"/> from RocksDB's compaction byte counters. They are database-wide,
+    /// so a background compaction running alongside is counted too. Progress is bytes read against the family's
+    /// size on disk when it started, which a forced compaction reads at least once.
+    /// </remarks>
+    private async Task CompactFamily(DbOnTheRocks db, string? family, string familyName)
+    {
+        IColumnFamilyHandle? familyHandle = GetFamily(db, family);
+        string prefix = $"Compacting {db.Name} {familyName}";
+        ulong sizeOnDisk = GetIntProperty(db, familyHandle, "rocksdb.total-sst-files-size");
+        (long startRead, long startWritten) = ReadCompactionBytes(db);
+        (long lastRead, long lastWritten) = (startRead, startWritten);
+        long start = Stopwatch.GetTimestamp();
+        long lastLog = start;
+
+        Task compaction = Task.Factory.StartNew(
+            () => db.CompactOpenRange(familyHandle, forceBottommost: true), TaskCreationOptions.LongRunning);
+        while (await Task.WhenAny(compaction, Task.Delay(CompactionLogInterval)) != compaction)
+        {
+            (long read, long written) = ReadCompactionBytes(db);
+            double seconds = Stopwatch.GetElapsedTime(lastLog).TotalSeconds;
+            lastLog = Stopwatch.GetTimestamp();
+            float percentage = Math.Clamp((read - startRead) / (float)Math.Max(sizeOnDisk, 1UL), 0, 1);
+            if (_logger.IsInfo)
+                _logger.Info($"{prefix} {Mib(read - startRead):N0} / ~{Mib((long)sizeOnDisk):N0} MiB read " +
+                    $"({percentage.ToString("P2", CultureInfo.InvariantCulture),8}) {Progress.GetMeter(percentage, 1)}| " +
+                    $"{Mib(read - lastRead) / seconds:N1} MiB/s read | {Mib(written - lastWritten) / seconds:N1} MiB/s written");
+            (lastRead, lastWritten) = (read, written);
+        }
+
+        await compaction;
+        (long totalRead, long totalWritten) = ReadCompactionBytes(db);
+        if (_logger.IsInfo)
+            _logger.Info($"Compacted {db.Name} {familyName} in {Stopwatch.GetElapsedTime(start)}: " +
+                $"{Mib(totalRead - startRead):N0} MiB read, {Mib(totalWritten - startWritten):N0} MiB written");
+    }
+
+    private static double Mib(long bytes) => bytes / 1024.0 / 1024.0;
+
+    private static ulong GetIntProperty(DbOnTheRocks db, IColumnFamilyHandle? family, string property) =>
+        (family is null ? db._db.TryGetIntProperty(property, out ulong value) : db._db.TryGetIntProperty(property, family, out value))
+            ? value
+            : 0;
+
+    private static (long Read, long Written) ReadCompactionBytes(DbOnTheRocks db)
+    {
+        string statistics = db.DbOptions!.GetStatisticsString() ?? "";
+        return (ReadTicker(statistics, CompactReadBytes), ReadTicker(statistics, CompactWriteBytes));
+    }
+
+    /// <remarks>
+    /// A ticker is a line of the statistics string reading <c>name COUNT : value</c>. The compaction tickers are
+    /// never the first line, so matching after a line break keeps a longer name ending in the same text out.
+    /// </remarks>
+    private static long ReadTicker(string statistics, string name)
+    {
+        string label = "\n" + name + " COUNT : ";
+        int start = statistics.IndexOf(label, StringComparison.Ordinal);
+        if (start < 0) return 0;
+
+        start += label.Length;
+        int end = statistics.IndexOf('\n', start);
+        return long.Parse(statistics.AsSpan(start, (end < 0 ? statistics.Length : end) - start), CultureInfo.InvariantCulture);
     }
 
     private string GetExistingFullPath(string dbPath)
@@ -264,7 +329,10 @@ public class RocksDbRewriter(
         return progress;
     }
 
-    /// <summary>Opens a database that creates the column families it is given, as <see cref="ColumnsDb{T}"/> does.</summary>
+    /// <summary>
+    /// Opens a database that creates the column families it is given, as <see cref="ColumnsDb{T}"/> does, and
+    /// collects statistics for the compaction progress log.
+    /// </summary>
     private sealed class ColumnCreatingDb(
         string basePath,
         DbSettings dbSettings,
@@ -279,6 +347,7 @@ public class RocksDbRewriter(
         {
             base.BuildOptions(dbConfig, options, sharedCache, mergeOperator);
             options.SetCreateMissingColumnFamilies();
+            options.EnableStatistics();
         }
     }
 }
