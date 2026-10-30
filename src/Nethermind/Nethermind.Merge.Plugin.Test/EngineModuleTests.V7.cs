@@ -2015,7 +2015,8 @@ public partial class EngineModuleTests
         Hash256 checkpoint = finalize ? payload.BlockHash : finalizedHash ?? parent;
         ResultWrapper<ForkchoiceUpdatedV2Result> head = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(payload.BlockHash, checkpoint, checkpoint), payloadAttributes: null);
-        Assert.That(head.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid), $"block {payload.BlockHash} must become the head");
+        Assert.That(head.Data?.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid),
+            $"block {payload.BlockHash} must become the head (error: {head.Result.Error ?? "none"})");
         return payload;
     }
 
