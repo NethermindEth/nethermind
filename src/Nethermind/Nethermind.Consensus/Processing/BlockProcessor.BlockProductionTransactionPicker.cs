@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -31,9 +32,11 @@ namespace Nethermind.Consensus.Processing
 
             public event EventHandler<AddingTxEventArgs>? AddingTransaction;
 
-            // Returned for every rejected candidate, so a skip allocates nothing; valid until the next call. Only a
+            // Returned for every rejected candidate, so a rejection allocates no args; valid until the next call. Only a
             // candidate that passes every check gets args of its own, the instance the event raises and returns.
-            // A picker belongs to one producer env, whose builds are serialized.
+            // A picker belongs to one block producer env and is only reached through the env's chain processor, which
+            // processes one block at a time under a lock (OneTimeChainProcessor, MainStateBlockBuildingChainProcessor),
+            // so calls never overlap.
             private RejectionArgs? _rejectionArgs;
 
             protected void OnAddingTransaction(AddingTxEventArgs e) => AddingTransaction?.Invoke(this, e);
@@ -48,8 +51,6 @@ namespace Nethermind.Consensus.Processing
                 ulong cumulativeBlockExecutionGas,
                 ulong cumulativeBlockStateGas)
             {
-                RejectionArgs args = (_rejectionArgs ??= new()).Reset(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
-
                 ulong gasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockExecutionGas);
 
                 IReleaseSpec spec = _specProvider.GetSpec(block.Header);
@@ -60,12 +61,12 @@ namespace Nethermind.Consensus.Processing
                     && (!spec.IsEip2780Enabled || GasCostOf.TransactionEip2780 > gasRemaining)
                     && (!spec.IsEip8141Enabled || (ulong)Eip8141Constants.IntrinsicGasCost > gasRemaining))
                 {
-                    return args.Set(TxAction.Stop, "Block full");
+                    return Reject(block, currentTx, transactionsInBlock).Set(TxAction.Stop, "Block full");
                 }
 
                 if (block is BlockToProduce blockToProduce && blockToProduce.TxByteLength + currentTx.GetLength(false) > _maxTxLengthBytes)
                 {
-                    return args.Set(
+                    return Reject(block, currentTx, transactionsInBlock).Set(
                         // If smallest tx is too large, stop picking
                         currentTx.GasLimit == GasCostOf.Transaction ? TxAction.Stop : TxAction.Skip,
                         "Too large for CL");
@@ -73,33 +74,33 @@ namespace Nethermind.Consensus.Processing
 
                 if (currentTx.SenderAddress is null)
                 {
-                    return args.Set(TxAction.Skip, "Null sender");
+                    return Reject(block, currentTx, transactionsInBlock).Set(TxAction.Skip, "Null sender");
                 }
 
                 if (transactionsInBlock.Contains(currentTx))
                 {
-                    return args.Set(TxAction.Skip, "Transaction already in block");
+                    return Reject(block, currentTx, transactionsInBlock).Set(TxAction.Skip, "Transaction already in block");
                 }
 
                 ulong stateGasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockStateGas);
                 if (!Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(currentTx, spec, out ulong executionReservation, out ulong stateReservation))
                 {
-                    return args.Set(TxAction.Skip, "Cannot calculate frame transaction gas reservations");
+                    return Reject(block, currentTx, transactionsInBlock).Set(TxAction.Skip, "Cannot calculate frame transaction gas reservations");
                 }
 
                 if (executionReservation > gasRemaining)
                 {
-                    return args.Skip(DeferredSkipReason.ExecutionGas, executionReservation, gasRemaining);
+                    return Reject(block, currentTx, transactionsInBlock).Skip(DeferredSkipReason.ExecutionGas, executionReservation, gasRemaining);
                 }
 
                 if (stateReservation > stateGasRemaining)
                 {
-                    return args.Skip(DeferredSkipReason.StateGas, stateReservation, stateGasRemaining);
+                    return Reject(block, currentTx, transactionsInBlock).Skip(DeferredSkipReason.StateGas, stateReservation, stateGasRemaining);
                 }
 
                 if (currentTx.IsAboveInitCode(spec))
                 {
-                    return args.Set(TxAction.Skip, TransactionResult.TransactionSizeOverMaxInitCodeSize.ErrorDescription);
+                    return Reject(block, currentTx, transactionsInBlock).Set(TxAction.Skip, TransactionResult.TransactionSizeOverMaxInitCodeSize.ErrorDescription);
                 }
 
                 // EIP-8141 exempts frame transactions from EIP-3607 ("Do not apply the restriction put
@@ -107,7 +108,7 @@ namespace Nethermind.Consensus.Processing
                 // sender; without the same exemption here it could never be built into a block.
                 if (!ignoreEip3607 && !currentTx.SupportsFrames && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
                 {
-                    return args.Set(TxAction.Skip, $"Sender is contract");
+                    return Reject(block, currentTx, transactionsInBlock).Set(TxAction.Skip, $"Sender is contract");
                 }
 
                 // EIP-8250 moves a keyed transaction's replay protection to NONCE_MANAGER; both arms read the state
@@ -116,7 +117,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     if (!KeyedNonceManager.IsNonceSetValid(stateProvider, currentTx.SenderAddress, currentTx.NonceKeys!, currentTx.Nonce))
                     {
-                        return args.Set(TxAction.Skip, KeyedNonceSkipReason(stateProvider, currentTx));
+                        return Reject(block, currentTx, transactionsInBlock).Set(TxAction.Skip, KeyedNonceSkipReason(stateProvider, currentTx));
                     }
                 }
                 else
@@ -124,7 +125,7 @@ namespace Nethermind.Consensus.Processing
                     ulong expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
                     if (expectedNonce != currentTx.Nonce)
                     {
-                        return args.Skip(DeferredSkipReason.Nonce, expectedNonce);
+                        return Reject(block, currentTx, transactionsInBlock).Skip(DeferredSkipReason.Nonce, expectedNonce);
                     }
                 }
 
@@ -133,9 +134,9 @@ namespace Nethermind.Consensus.Processing
                 if (!currentTx.SupportsFrames)
                 {
                     UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
-                    if (!HasEnoughFunds(currentTx, balance, args, block, spec))
+                    if (!HasEnoughFunds(currentTx, balance, block, spec, out string? fundsReason))
                     {
-                        return args;
+                        return Reject(block, currentTx, transactionsInBlock).Set(TxAction.Skip, fundsReason);
                     }
                 }
 
@@ -169,14 +170,18 @@ namespace Nethermind.Consensus.Processing
                 return "Invalid nonce sequence";
             }
 
-            private static bool HasEnoughFunds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)
+            /// <summary>The reused args, reset for this candidate; only a rejected candidate pays for the reset.</summary>
+            private RejectionArgs Reject(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock) =>
+                (_rejectionArgs ??= new()).Reset(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
+
+            private static bool HasEnoughFunds(Transaction transaction, in UInt256 senderBalance, Block block, IReleaseSpec releaseSpec, [NotNullWhen(false)] out string? reason)
             {
                 bool eip1559Enabled = releaseSpec.IsEip1559Enabled;
                 UInt256 transactionPotentialCost = transaction.CalculateTransactionPotentialCost(eip1559Enabled, block.BaseFeePerGas);
 
                 if (senderBalance < transactionPotentialCost)
                 {
-                    e.Set(TxAction.Skip, $"Transaction cost ({transactionPotentialCost}) is higher than sender balance ({senderBalance})");
+                    reason = $"Transaction cost ({transactionPotentialCost}) is higher than sender balance ({senderBalance})";
                     return false;
                 }
 
@@ -186,7 +191,7 @@ namespace Nethermind.Consensus.Processing
 
                     if (senderBalance < maxFee)
                     {
-                        e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}");
+                        reason = $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}";
                         return false;
                     }
 
@@ -194,10 +199,11 @@ namespace Nethermind.Consensus.Processing
                         !BlobGasCalculator.TryCalculateBlobBaseFee(block.Header, transaction, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee) ||
                         senderBalance < (maxFee += blobBaseFee)))
                     {
-                        e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}, BlobBaseFee: {blobBaseFee}");
+                        reason = $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}, BlobBaseFee: {blobBaseFee}";
                         return false;
                     }
                 }
+                reason = null;
                 return true;
             }
 
