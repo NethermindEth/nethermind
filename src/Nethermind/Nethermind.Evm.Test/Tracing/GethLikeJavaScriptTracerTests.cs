@@ -1227,9 +1227,11 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("5b600056", null, "out of gas")]
     [TestCase("600056", null, "invalid jump destination")]
     [TestCase(null, 2, "out of gas")]
-    public void Failed_transaction_reports_geth_error_text_in_ctx_error(string? code, int? precompile, string expected)
+    // A revert reason that reads as an exception name is kept as is: revert(Error("OutOfGas")).
+    [TestCase("6308c379a0600052602060205260086040527f4f75744f664761730000000000000000000000000000000000000000000000006060526064601cfd",
+        null, "OutOfGas", 100_000UL)]
+    public void Failed_transaction_reports_geth_error_text_in_ctx_error(string? code, int? precompile, string expected, ulong gasLimit = 21050UL)
     {
-        const ulong gasLimit = 21050UL;
         const string errorTracer = @"{
                     step: function(log, db) { },
                     fault: function(log, db) { },
