@@ -143,29 +143,68 @@ public class StateSyncRunner(
         if (_logger.IsInfo) _logger.Info("Snap sync completed.");
     }
 
-    /// <remarks>A deep reorg orphans the synced state, so it is discarded and synced again from a canonical pivot.</remarks>
+    /// <remarks>
+    /// A deep reorg orphans the synced state, so it is discarded and synced again from a canonical pivot, as is the state
+    /// of a resumed sync that healing fails on.
+    /// <para>
+    /// Healing writes are not durable until they are flushed, so the checkpoint of the finished state ranges is deleted
+    /// before healing starts, and a crash during healing starts the sync over. A graceful shutdown flushes them and saves
+    /// the checkpoint again, so that the restarted sync heals again from its anchor.
+    /// </para>
+    /// </remarks>
     public async Task RunSnapSyncWithBalHealing(BlockHeader pivot, CancellationToken token)
     {
+        bool resumed = syncConfig.SnapResume && snapTrieFactory.LoadCheckpoint() is not null;
         while (true)
         {
             await RunSnapSync(token);
+
+            SnapCheckpoint? checkpoint = syncConfig.SnapResume ? snapTrieFactory.LoadCheckpoint() : null;
+            if (checkpoint is not null) snapTrieFactory.SaveCheckpoint(null);
 
             try
             {
                 await RunBalHealing(pivot, token);
                 return;
             }
+            catch (OperationCanceledException) when (token.IsCancellationRequested && checkpoint is not null)
+            {
+                SaveCheckpointAtShutdown(checkpoint);
+                throw;
+            }
             catch (PivotReorgedException e)
             {
                 if (_logger.IsWarn) _logger.Warn($"{e.Message} Discarding the synced state and starting over.");
-
-                pivot = await WaitForStateSyncPivot(token);
-                while (!blockTree.IsMainChain(pivot))
-                {
-                    await Task.Delay(1000, token);
-                    pivot = await WaitForStateSyncPivot(token);
-                }
             }
+            catch (Exception e) when (resumed && !token.IsCancellationRequested)
+            {
+                if (_logger.IsWarn) _logger.Warn($"BAL healing of the resumed snap sync failed. Discarding the synced state and starting over: {e}");
+            }
+
+            resumed = false;
+            pivot = await WaitForStateSyncPivot(token);
+            while (!blockTree.IsMainChain(pivot))
+            {
+                await Task.Delay(1000, token);
+                pivot = await WaitForStateSyncPivot(token);
+            }
+        }
+    }
+
+    /// <remarks>
+    /// Kept short, as the shutdown waits for state sync only so long. A failure is logged rather than thrown, so that it
+    /// does not read as a failed sync: the restarted sync then starts over.
+    /// </remarks>
+    private void SaveCheckpointAtShutdown(SnapCheckpoint checkpoint)
+    {
+        try
+        {
+            snapTrieFactory.SaveCheckpoint(checkpoint);
+            if (_logger.IsInfo) _logger.Info($"Saved the snap sync checkpoint at shutdown; BAL healing resumes from block {checkpoint.AnchorNumber} on restart.");
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Could not save the snap sync checkpoint at shutdown, so the sync starts over on restart: {e}");
         }
     }
 
@@ -230,6 +269,8 @@ public class StateSyncRunner(
             currentPivot = roundPivot;
         }
 
+        // A shutdown between rounds has to throw as one during a round does, so that the checkpoint is saved again.
+        token.ThrowIfCancellationRequested();
         if (finalPivot is null) return;
 
         while (!await balHealing.TryRecoverMissingCode(token))

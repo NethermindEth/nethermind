@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -152,18 +153,26 @@ public class ProgressTrackerTests
         request.Dispose();
     }
 
-    // Healing is not checkpointed, so once it may start a restart must find no checkpoint to resume. A backend that
-    // cannot resume is never checkpointed at all.
+    // Healing resumes after a graceful stop from the checkpoint of the finished ranges, which keeps the anchor and the
+    // accounts to heal. The last periodic checkpoint is deleted first, so a failed save leaves none that still has
+    // ranges to download. A backend that cannot resume is never checkpointed at all.
     [Test]
     [NonParallelizable]
     public void Will_mark_range_phase_finished_when_ranges_drain([Values] bool snapResume, [Values] bool supportsCheckpoints)
     {
         ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
         snapTrieFactory.SupportsCheckpoints.Returns(supportsCheckpoints);
+        List<SnapCheckpoint?> saved = [];
+        snapTrieFactory.When(static f => f.SaveCheckpoint(Arg.Any<SnapCheckpoint?>())).Do(call => saved.Add(call.Arg<SnapCheckpoint?>()));
         bool checkpointed = snapResume && supportsCheckpoints;
+        BlockHeader pivotHeader = Build.A.BlockHeader.WithNumber(5).WithStateRoot(Keccak.EmptyTreeHash).TestObject;
+        IStateSyncPivot pivot = Substitute.For<IStateSyncPivot>();
+        pivot.GetPivotHeader().Returns(pivotHeader);
+        pivot.UpdatedStorages.Returns([]);
         TestLogger logger = new();
-        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory, logManager: new OneLoggerLogManager(new ILogger(logger)), snapResume: snapResume);
+        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory, logManager: new OneLoggerLogManager(new ILogger(logger)), snapResume: snapResume, pivot: pivot);
 
+        progressTracker.TrackAccountToHeal(TestItem.ValueKeccaks[0]);
         progressTracker.IsFinished(out SnapSyncBatch? request);
         Assert.That(request!.AccountRangeRequest, Is.Not.Null);
         progressTracker.UpdateAccountRangePartitionProgress(request.AccountRangeRequest!.LimitHash!.Value, Keccak.MaxValue, false);
@@ -179,10 +188,22 @@ public class ProgressTrackerTests
         }
 
         snapTrieFactory.Received(1).MarkRangePhaseFinished();
-        if (checkpointed) snapTrieFactory.Received(1).SaveCheckpoint(null);
-        else snapTrieFactory.DidNotReceiveWithAnyArgs().SaveCheckpoint(default);
         using (Assert.EnterMultipleScope())
         {
+            if (checkpointed)
+            {
+                Assert.That(saved[^2], Is.Null, "the last periodic checkpoint is deleted first");
+                Assert.That(saved[^1]?.Partitions.Select(static p => p.MoreAccountsToRight), Is.EqualTo(new[] { false }), "finished partitions");
+                Assert.That(saved[^1]?.StorageRangesToRefetch(), Is.Empty, "storage left to download");
+                Assert.That(saved[^1]?.CodesToRetrieve, Is.Empty, "codes left to download");
+                Assert.That(saved[^1]?.UpdatedStorages, Is.EqualTo(new[] { TestItem.ValueKeccaks[0].ToCommitment() }), "accounts to heal");
+                Assert.That((saved[^1]?.AnchorNumber, saved[^1]?.AnchorHash), Is.EqualTo((pivotHeader.Number, pivotHeader.Hash)), "anchor");
+            }
+            else
+            {
+                Assert.That(saved, Is.Empty);
+            }
+
             Assert.That(logger.LogList, Has.Some.StartsWith("Snap         State Ranges (Phase 1 of 2): ("));
             Assert.That(logger.LogList, Has.Some.EqualTo("Snap - State Ranges (Phase 1 of 2) finished."));
         }
