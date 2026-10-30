@@ -94,7 +94,7 @@ public class LightTxDecoderTests
 
     private static IEnumerable<TestCaseData> TrailingFieldCases()
     {
-        // [0] aliases the account nonce, so it must survive as itself rather than collapse to an absent field.
+        // [0] is a keyed domain, not the account nonce, so it must survive as itself rather than collapse to an absent field.
         // [] selects the account nonce under EIP-8250, where an absent set is the refused legacy shape.
         UInt256[][] nonceKeySets = [null, [], [UInt256.Zero], [0xbeef], [1, UInt256.MaxValue], FullWidthKeys()];
         foreach (ulong? deadline in (ulong?[])[null, 0ul, 1_000ul])
