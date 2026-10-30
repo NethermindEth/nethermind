@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.FluentRlp;
@@ -259,7 +260,12 @@ public ref struct RlpReader
             return buffer.Slice(position, 1);
         }
 
-        if (prefix > RlpPrefix.LongString) return ReadLongBytes(prefix, TCanonicalChecks.IsActive);
+        if (prefix > RlpPrefix.LongString)
+        {
+            int longStart = ReadLongBytesStart(ref MemoryMarshal.GetReference(buffer), buffer.Length, position, prefix, TCanonicalChecks.IsActive, out int longLength);
+            _position = longStart + longLength;
+            return buffer.Slice(longStart, longLength);
+        }
 
         int start = position + 1;
         int length = prefix - RlpPrefix.ShortString;
@@ -271,18 +277,18 @@ public ref struct RlpReader
     }
 
     // Long strings are rare in hot paths, so their prefix decode stays out of line and the short path inlines small.
+    // The buffer goes in as a reference and a length, and the result comes back as integers: a span argument or
+    // result is a stack copy with a GC reference, which every caller that inlines the read must zero in its prolog.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private ReadOnlySpan<byte> ReadLongBytes(byte prefix, bool canonical)
+    private static int ReadLongBytesStart(ref byte data, int dataLength, int position, byte prefix, bool canonical, out int length)
     {
         if (prefix >= RlpPrefix.ShortList) ThrowInvalid("RLP does not correspond to a byte string");
 
-        ReadOnlySpan<byte> buffer = _buffer;
-        int position = _position;
-        int length = ReadLongLength(buffer, position, prefix - RlpPrefix.LongString, canonical);
+        ReadOnlySpan<byte> buffer = MemoryMarshal.CreateReadOnlySpan(ref data, dataLength);
+        length = ReadLongLength(buffer, position, prefix - RlpPrefix.LongString, canonical);
         int start = position + 1 + prefix - RlpPrefix.LongString;
         if ((long)start + length > buffer.Length) ThrowInvalid("RLP is truncated");
-        _position = start + length;
-        return buffer.Slice(start, length);
+        return start;
     }
 
     /// <summary>Reads a byte string of exactly <paramref name="length"/> bytes.</summary>
@@ -360,7 +366,7 @@ public ref struct RlpReader
         int length;
         if (prefix > RlpPrefix.LongList)
         {
-            length = ReadLongListLength(buffer, position, prefix, TCanonicalChecks.IsActive, out start);
+            length = ReadLongListLength(ref MemoryMarshal.GetReference(buffer), buffer.Length, position, prefix, TCanonicalChecks.IsActive, out start);
         }
         else
         {
@@ -379,8 +385,9 @@ public ref struct RlpReader
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static int ReadLongListLength(ReadOnlySpan<byte> buffer, int position, byte prefix, bool canonical, out int start)
+    private static int ReadLongListLength(ref byte data, int dataLength, int position, byte prefix, bool canonical, out int start)
     {
+        ReadOnlySpan<byte> buffer = MemoryMarshal.CreateReadOnlySpan(ref data, dataLength);
         int length = ReadLongLength(buffer, position, prefix - RlpPrefix.LongList, canonical);
         start = position + 1 + prefix - RlpPrefix.LongList;
         if ((long)start + length > buffer.Length) ThrowInvalid("RLP is truncated");

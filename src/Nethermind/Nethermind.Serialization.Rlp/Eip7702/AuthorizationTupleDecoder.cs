@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
@@ -28,12 +29,26 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         Address codeAddress = fields.DecodeAddress();
         ulong nonce = fields.DecodeULong<TCanonicalChecks>();
         byte yParity = fields.DecodeByte<TCanonicalChecks>();
-        UInt256 r = fields.DecodeUInt256<TCanonicalChecks>();
-        UInt256 s = fields.DecodeUInt256<TCanonicalChecks>();
+        ReadOnlySpan<byte> r = DecodeScalar<TCanonicalChecks>(ref fields);
+        ReadOnlySpan<byte> s = DecodeScalar<TCanonicalChecks>(ref fields);
         reader.ExitSequence(in fields, itemLength, rlpBehaviors);
 
-        return new AuthorizationTuple(chainId, codeAddress, nonce, yParity, r, s);
+        // The signature takes the big-endian bytes as they are, which gives the same signature as a round trip
+        // through UInt256 without its copies.
+        return new AuthorizationTuple(chainId, codeAddress, nonce, new Signature(r, s, (ulong)yParity + Signature.VOffset));
     }
+
+    /// <summary>Reads an integer of at most 32 bytes, as <see cref="RlpReaderExtensions.DecodeUInt256{TCanonicalChecks}"/> does, as its big-endian bytes.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> DecodeScalar<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag
+    {
+        ReadOnlySpan<byte> bytes = reader.ReadIntegerBytes<TCanonicalChecks>();
+        if (bytes.Length > Hash256.Size) ThrowScalarTooLarge();
+        return bytes;
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowScalarTooLarge() => throw new RlpReaderException("RLP integer is too large");
 
     public override void Encode(ref RlpWriter writer, AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
