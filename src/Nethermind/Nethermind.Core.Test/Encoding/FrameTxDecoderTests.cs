@@ -225,14 +225,37 @@ public class FrameTxDecoderTests
     [Test]
     public void ComputeSigHash_CanonicalHashSignatureBytesChange_HashUnchanged()
     {
-        // Empty msg means the entry signs compute_sig_hash itself, so its raw bytes are elided
-        // from the preimage — otherwise the hash would depend on the signature over it.
         Transaction first = CreateFrameTx(signatures:
             [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, FilledBytes(65, 0x11))]);
         Transaction second = CreateFrameTx(signatures:
             [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, FilledBytes(65, 0x22))]);
 
         Assert.That(FrameTxSigHash.ComputeValue(second), Is.EqualTo(FrameTxSigHash.ComputeValue(first)));
+    }
+
+    [Test]
+    public void ComputeSigHash_CanonicalHashSignatureLengthChange_HashChanges()
+    {
+        Transaction first = CreateFrameTx(signatures:
+            [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(65, 0x11))]);
+        Transaction second = CreateFrameTx(signatures:
+            [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(66, 0x11))]);
+
+        Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
+    }
+
+    [TestCase(0, "c4018080" + "80")]
+    [TestCase(65, "c4018080" + "41")]
+    [TestCase(128, "c5018080" + "8180")]
+    public void ElidedCanonicalSignature_EncodesLengthAsRlpInteger(int signatureLength, string expectedHex)
+    {
+        TxFrameSignature entry = new(TxFrameSignature.SchemeSecp256k1, null, default, new byte[signatureLength]);
+        byte[] buffer = new byte[16];
+        RlpWriter writer = new(buffer);
+
+        TxFrameSignatureDecoder.Instance.Encode(ref writer, entry, elideCanonicalSignatureBytes: true);
+
+        Assert.That(buffer.AsSpan(0, writer.Position).ToArray(), Is.EqualTo(Bytes.FromHexString(expectedHex)));
     }
 
     [Test]
@@ -530,6 +553,18 @@ public class FrameTxDecoderTests
         keyed.NonceKeys = keys;
 
         Assert.That(() => FrameTxNonceCalldata.Measure(keyed), Throws.InstanceOf<ArgumentOutOfRangeException>());
+    }
+
+    [TestCase(true, 1UL, 3, TestName = "MeasureNonceCalldata_SequentialKeyedNonce_PricesTheSequence")]
+    [TestCase(true, Eip8250Constants.MaxNonceSeq, 2, TestName = "MeasureNonceCalldata_SingleUseKeyedNonce_ExemptsTheSequence")]
+    [TestCase(false, Eip8250Constants.MaxNonceSeq, 9, TestName = "MeasureNonceCalldata_PlainNonceAtMax_PricesTheSequence")]
+    public void MeasureNonceCalldata_PricesTheSequenceUnlessSingleUse(bool keyed, ulong nonceSeq, int nonZeroBytes)
+    {
+        Transaction tx = CreateFrameTx();
+        tx.Nonce = nonceSeq;
+        tx.NonceKeys = keyed ? [(UInt256)7] : null;
+
+        Assert.That(FrameTxNonceCalldata.Measure(tx), Is.EqualTo((0, nonZeroBytes)));
     }
 
     [TestCase(Eip8141Constants.MaxFrames, false)]

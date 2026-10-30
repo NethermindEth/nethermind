@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -494,6 +495,14 @@ public static class BasePersistence
     {
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
+        /// <summary>Passes the RLP of the state trie node at <paramref name="path"/> to <paramref name="action"/>, borrowed for the duration of the call.</summary>
+        /// <remarks><paramref name="action"/> runs synchronously, at most once, and only when the node is found.</remarks>
+        /// <returns>Whether the node was found and passed.</returns>
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
+
+        /// <summary>Passes the RLP of the node at <paramref name="path"/> in the storage trie of <paramref name="address"/> to <paramref name="action"/>, borrowed for the duration of the call.</summary>
+        /// <inheritdoc cref="TryLoadStateRlp{TArg}(in TreePath, ReadFlags, ReadOnlySpanAction{byte, TArg}, TArg)"/>
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
     }
 
     public interface ITrieWriteBatch
@@ -834,6 +843,12 @@ public static class BasePersistence
 
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStorageRlp(address, path, flags);
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            _trieReader.TryLoadStateRlp(path, flags, action, arg);
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            _trieReader.TryLoadStorageRlp(address, path, flags, action, arg);
 
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             _flatReader.GetAccountRaw(addrHash);

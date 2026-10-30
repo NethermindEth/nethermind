@@ -8,6 +8,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -532,6 +533,42 @@ public partial class DebugRpcModuleTests
         }
 
         public void Dispose() => Blockchain.Dispose();
+    }
+
+    private static IEnumerable<TestCaseData> DebugConfigSpecProviders()
+    {
+        yield return new TestCaseData(MainnetSpecProvider.Instance, 0).SetArgDisplayNames("pre-merge genesis");
+        // Cancun is folded into genesis and the next fork is scheduled after the test chain's head.
+        yield return new TestCaseData(new TestSpecProvider(Cancun.Instance) { TransitionActivations = [new ForkActivation(0, 2_000_000_000)] }, 0)
+            .SetArgDisplayNames("post-merge genesis");
+        yield return new TestCaseData(new TestSpecProvider(Cancun.Instance) { TransitionActivations = [new ForkActivation(0, 1), new ForkActivation(0, 2_000_000_000)] }, 1)
+            .SetArgDisplayNames("timestamp fork");
+    }
+
+    [TestCaseSource(nameof(DebugConfigSpecProviders))]
+    public async Task Debug_config_returns_all_forks_with_current_marked_active(ISpecProvider specProvider, int activeIndex)
+    {
+        using Context ctx = await Context.Create(specProvider);
+        JArray forks = (JArray)JToken.Parse(await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_config"))["result"]!["forks"]!;
+        JToken current = JToken.Parse(await ctx.Blockchain.TestEthRpc("eth_config"))["result"]!["current"]!;
+        string[] scheduledForkIds = ctx.Blockchain.ForkInfo.GetAllForks().ToArray().Select(static fork => fork.Id.HashBytes.ToHexString(true)).ToArray();
+        JObject[] active = forks.Children<JObject>().Where(static fork => fork.ContainsKey("active")).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forks, Has.Count.GreaterThan(1));
+            Assert.That(forks.Select(static fork => (string?)fork["forkId"]), Is.EqualTo(scheduledForkIds));
+            Assert.That(active, Has.Length.EqualTo(1));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forks.IndexOf(active[0]), Is.EqualTo(activeIndex));
+            Assert.That((bool?)active[0]["active"], Is.True);
+        }
+
+        active[0].Remove("active");
+        Assert.That(active[0], Is.EqualTo(current).Using(JToken.EqualityComparer));
     }
 
     [TestCaseSource(nameof(TraceCallGethCompatFailureCases))]

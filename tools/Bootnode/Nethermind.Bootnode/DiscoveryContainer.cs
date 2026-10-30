@@ -29,7 +29,7 @@ namespace Nethermind.Bootnode;
 internal static class DiscoveryContainer
 {
     /// <summary>
-    /// Points the general and discovery buffers at one small pooled allocator.
+    /// Points the general buffers at one small pooled allocator.
     /// </summary>
     /// <remarks>
     /// A bootnode only serializes discovery traffic, so one arena of 2 MiB chunks replaces the process-wide default's
@@ -37,7 +37,7 @@ internal static class DiscoveryContainer
     /// the default allocator's chunks remain reachable.
     /// </remarks>
     internal static void ConfigureNetworkBuffers() =>
-        NethermindBuffers.Default = NethermindBuffers.DiscoveryAllocator = NethermindBuffers.CreateAllocator(
+        NethermindBuffers.Default = NethermindBuffers.CreateAllocator(
             arenaOrder: 8,
             arenaCount: 1);
 
@@ -180,5 +180,7 @@ internal static class DiscoveryContainer
         public bool IsForkIdCompatible(ForkId peerId) => true;
 
         public ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head) => default;
+
+        public ReadOnlySpan<Fork> GetAllForks() => [];
     }
 }

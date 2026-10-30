@@ -64,7 +64,7 @@ public static unsafe partial class EvmInstructions
         result = product;
     }
 
-    private struct Sp1MulModOperands
+    internal struct Sp1MulModOperands
     {
         public UInt256 Multiplier;
         public UInt256 Modulus;

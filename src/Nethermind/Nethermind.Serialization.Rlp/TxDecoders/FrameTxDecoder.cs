@@ -393,18 +393,29 @@ public static class FrameTxNonceCalldata
         return contentLength;
     }
 
-    /// <summary>Zero and non-zero byte counts of what <see cref="Encode{TWriter}"/> writes, measured off the encoded
-    /// bytes so the EIP-8141 calldata charge cannot drift from the wire form.</summary>
+    /// <summary>Zero and non-zero byte counts of the priced part of what <see cref="Encode{TWriter}"/> writes,
+    /// measured off the encoded bytes so the EIP-8141 calldata charge cannot drift from the wire form.</summary>
+    /// <remarks>A non-empty key set with <see cref="Eip8250Constants.MaxNonceSeq"/> prices only the keys: the
+    /// single-use sequence is encoded and signed but exempt from data pricing.</remarks>
     public static (int ZeroBytes, int NonZeroBytes) Measure(Transaction transaction)
     {
-        int length = Length(transaction);
+        bool isSequencePriced = transaction.NonceKeys is not { Length: > 0 } || transaction.Nonce != Eip8250Constants.MaxNonceSeq;
+        int length = isSequencePriced ? Length(transaction) : KeysLength(transaction.NonceKeys!);
         // A dynamic stackalloc turns an out-of-range length into an uncatchable stack overflow, and this is
         // public: the keys can reach it from an RPC-built transaction the decoder never bounded.
         ArgumentOutOfRangeException.ThrowIfNegative(length);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxCalldataLength);
         Span<byte> calldata = stackalloc byte[length];
         RlpWriter writer = new(calldata);
-        Encode(transaction, ref writer);
+        if (isSequencePriced)
+        {
+            Encode(transaction, ref writer);
+        }
+        else
+        {
+            EncodeKeys(transaction.NonceKeys!, ref writer);
+        }
+
         int zeros = calldata.CountZeros();
         return (zeros, length - zeros);
     }
