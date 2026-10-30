@@ -194,8 +194,46 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Hash256 ComputeKeccak(ReadOnlySpan<byte> rlp, in PreviousRlp previous) =>
             KeccakHash.IsResumable(rlp.Length)
-                ? new Hash256(KeccakHash.ComputeHash256OfEdited(rlp, previous.Array, previous.Tag))
+                ? new Hash256(KeccakHash.ComputeHash256OfEdited(rlp, previous.Array, previous.Tag, TakeUnchangedLength(rlp)))
                 : Nethermind.Core.Crypto.Keccak.Compute(rlp);
+
+        /// <summary>The full branch <see cref="TrieNodeDecoder.TryPatchFullBranch"/> patched last, and how many of its
+        /// leading bytes the patch left unchanged.</summary>
+        /// <remarks>A class of its own, with no initializer, so each access is a plain load or store rather than a
+        /// class-initialization check.</remarks>
+        private static class PatchedBranch
+        {
+            public static unsafe byte* Rlp;
+            public static int Unchanged;
+        }
+
+        /// <summary>Records that <paramref name="rlp"/> holds a patched full branch whose first <paramref name="unchanged"/>
+        /// bytes are those of the encoding it was patched from, or with a negative <paramref name="unchanged"/>, forgets the
+        /// branch recorded.</summary>
+        /// <remarks>A patch forgets the branch before it writes and records its own only if it succeeds, so a recorded
+        /// buffer always holds what the patch that recorded it wrote. Only on Airbender, where a patch writes into scratch
+        /// of its own (see <see cref="RentPatchedBranchRlp"/>); elsewhere other encoders can write the same buffer.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void NoteFullBranchPatched(Span<byte> rlp, int unchanged)
+        {
+            if (!AirbenderFlag.IsActive) return;
+
+            PatchedBranch.Rlp = unchanged < 0 ? null : (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(rlp));
+            PatchedBranch.Unchanged = unchanged;
+        }
+
+        /// <summary>How many leading bytes of <paramref name="rlp"/> are known to equal those of the encoding it was
+        /// re-encoded from, or -1 if none are; see <see cref="NoteFullBranchPatched"/>.</summary>
+        /// <remarks>Spares <see cref="KeccakHash.ComputeHash256OfEdited"/> comparing the leading rate blocks. The record
+        /// is taken: a branch is hashed once per encoding.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe int TakeUnchangedLength(ReadOnlySpan<byte> rlp)
+        {
+            if (!AirbenderFlag.IsActive || PatchedBranch.Rlp != Unsafe.AsPointer(ref MemoryMarshal.GetReference(rlp))) return -1;
+
+            PatchedBranch.Rlp = null;
+            return PatchedBranch.Unchanged;
+        }
 
         /// <summary>Loads, if it has none, and decodes the RLP of this node of unknown type.</summary>
         /// <remarks>
