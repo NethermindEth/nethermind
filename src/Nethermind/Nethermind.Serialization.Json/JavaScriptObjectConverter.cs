@@ -45,7 +45,14 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
                 dictionary.Remove("error");
             }
 
-            TypeInfoJsonSerializer.Serialize(writer, dictionary, options);
+            // Keys are the script's own data, so they skip options.DictionaryKeyPolicy and stay verbatim, as in JSON.stringify.
+            writer.WriteStartObject();
+            foreach ((string key, object? item) in dictionary)
+            {
+                writer.WritePropertyName(key);
+                TypeInfoJsonSerializer.Serialize(writer, item, options);
+            }
+            writer.WriteEndObject();
         }
         else if (o is IList<object> list)
         {

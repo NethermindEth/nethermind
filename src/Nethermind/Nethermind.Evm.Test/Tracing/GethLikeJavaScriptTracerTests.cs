@@ -38,7 +38,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("[0, 1, 255]", "[0,1,255]")]
     [TestCase("toHex(new Uint8Array([]))", "\"0x\"")]
     [TestCase("toHex(new Uint8Array([0, 1, 255]))", "\"0x0001ff\"")]
-    public void Javascript_byte_results_match_json_stringify(string expression, string expected)
+    [TestCase("({ DUP1: 'a', PUSH1: 'b', LOG2: 'c', Foo: 'd', add: 'e' })", "{\"DUP1\":\"a\",\"PUSH1\":\"b\",\"LOG2\":\"c\",\"Foo\":\"d\",\"add\":\"e\"}")]
+    [TestCase("({ counts: { SSTORE: 'x' } })", "{\"counts\":{\"SSTORE\":\"x\"}}")]
+    public void Javascript_results_match_json_stringify(string expression, string expected)
     {
         using Engine engine = new(Shanghai.Instance);
         dynamic tracer = engine.CreateTracer("{result:function(){return " + expression + ";}}");
