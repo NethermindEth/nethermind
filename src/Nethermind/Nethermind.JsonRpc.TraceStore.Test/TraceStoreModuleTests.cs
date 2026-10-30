@@ -12,7 +12,9 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.JsonRpc.TraceStore.Ots;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -53,13 +55,31 @@ public class TraceStoreModuleTests
         Assert.That(scope.Resolve<ITraceRpcModule>(), Is.InstanceOf<TraceStoreRpcModule>());
     }
 
+    [Test]
+    public void Registers_configured_ots_pool_capacity([Values(null, -1, 0, 1, 4)] int? configuredCapacity)
+    {
+        TraceStoreConfig config = new() { Enabled = true };
+        if (configuredCapacity.HasValue)
+            config.OtsModuleConcurrentInstances = configuredCapacity.Value;
+
+        IRpcModuleFactory<IOtsRpcModule> factory = Substitute.For<IRpcModuleFactory<IOtsRpcModule>>();
+        factory.Create().Returns(_ => Substitute.For<IOtsRpcModule>());
+        using IContainer container = BuildContainer(config, builder => builder
+            .AddSingleton<IRpcModuleFactory<IOtsRpcModule>>(factory));
+
+        container.Resolve<IEnumerable<RpcModuleInfo>>().Single().Pool.Preload();
+
+        int expectedCapacity = configuredCapacity.HasValue ? int.Max(1, configuredCapacity.Value) : 2;
+        factory.Received(expectedCapacity + 1).Create();
+    }
+
     private static IContainer BuildContainer(ITraceStoreConfig config, System.Action<ContainerBuilder>? configure = null)
     {
         ContainerBuilder builder = new ContainerBuilder()
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IDbFactory>(new MemDbFactory())
             .AddSingleton(config)
-            .AddModule(new TraceStorePlugin(config).Module!);
+            .AddModule(new TraceStorePlugin(config, new JsonRpcConfig()).Module!);
         configure?.Invoke(builder);
         return builder.Build();
     }
