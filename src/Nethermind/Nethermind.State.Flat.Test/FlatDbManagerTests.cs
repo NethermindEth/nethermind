@@ -688,10 +688,52 @@ public class FlatDbManagerTests
         }
     }
 
-    private HistoricalFlatDbManager WrapHistory(FlatDbManager inner) => new(
+    [TestCase(false, TestName = "GatherReadOnlySnapshotBundle_repeated_on_one_block_reads_availability_once")]
+    [TestCase(true, TestName = "GatherReadOnlySnapshotBundle_repeated_on_one_block_reads_availability_once_with_a_floor")]
+    public async Task GatherReadOnlySnapshotBundle_repeated_on_one_block_reads_availability_once(bool withFloor)
+    {
+        const int Scopes = 8;
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        RecordHistoryWindow();
+
+        SnapshotableMemDb availableBlocks = new();
+        using (IWriteBatch batch = availableBlocks.StartWriteBatch())
+        {
+            for (ulong block = 0; block < HistoryBarrier; block++)
+            {
+                HistoryAvailability.MarkBlock(batch, block, CreateStateId(block, (byte)block).StateRoot, HistoryAvailability.FormatVersion);
+            }
+        }
+
+        HistoryAvailability availability = new(availableBlocks);
+        availability.PublishWatermark(HistoryBarrier - 1, HistoryAvailability.FormatVersion);
+        HistoryReader reader = new(_historyDb, _historyColumns, availability, HistoryRowFormat.Resolve(availability, _config), LimboLogs.Instance);
+        if (withFloor) availability.PublishGlobalFloor(10);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = WrapHistory(inner, reader);
+        StateId state = CreateStateId(25, rootByte: 25);
+
+        ReadScope(manager, state);
+        long readsBefore = availableBlocks.ReadsCount;
+        for (int i = 1; i < Scopes; i++) ReadScope(manager, state);
+
+        Assert.That(availableBlocks.ReadsCount - readsBefore, Is.Zero, "every later scope on the same block answers availability from memory");
+
+        static void ReadScope(HistoricalFlatDbManager manager, in StateId state)
+        {
+            Assert.That(manager.HasStateForBlock(state), Is.True);
+            using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(state);
+            Assert.That(bundle.GetAccount(HistoryAddr)?.Balance, Is.EqualTo((UInt256)2000));
+        }
+    }
+
+    private HistoricalFlatDbManager WrapHistory(FlatDbManager inner) => WrapHistory(inner, _historyReader);
+
+    private HistoricalFlatDbManager WrapHistory(FlatDbManager inner, HistoryReader historyReader) => new(
         inner,
         _persistenceManager,
-        _historyReader,
+        historyReader,
         _resourcePool,
         enableDetailedMetrics: false,
         new HistoryScopeGate(),

@@ -291,7 +291,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
     [Test]
     public void Failed_frame_uses_parity_error_label(
-        [Values("Mutable Call In Static Context", "Out of stack", "Out of bounds", "Invalid code")] string expectedError)
+        [Values("Mutable Call In Static Context", "Out of stack", "Out of bounds", "Invalid code", "Out of gas")] string expectedError)
     {
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done, Spec);
@@ -302,6 +302,8 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             "Mutable Call In Static Context" => ExecuteAndTraceParityCall(Prepare.EvmCode.StaticCall(TestItem.AddressC, 50000).Op(Instruction.STOP).Done),
             "Out of stack" => ExecuteAndTraceParityCall(outOfStack.Done),
             "Out of bounds" => ExecuteAndTraceParityCall(Prepare.EvmCode.PushData(1).PushData(0).PushData(0).Op(Instruction.RETURNDATACOPY).Done),
+            // A precompile call with value is kept in the trace; the stipend still leaves it short of gas.
+            "Out of gas" => ExecuteAndTraceParityCall(Prepare.EvmCode.CallWithValue(BN254MulPrecompile.Address, 10, 1).Op(Instruction.STOP).Done),
             // EIP-3541: returned code must not begin with 0xEF.
             _ => ExecuteAndTraceParityCall(MainnetSpecProvider.ShanghaiActivation,
                 Prepare.EvmCode.Create(Prepare.EvmCode.PushData(0xEF).PushData(0).Op(Instruction.MSTORE8).Return(1, 0).Done, 0).Op(Instruction.STOP).Done),

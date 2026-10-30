@@ -39,8 +39,19 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
     /// </summary>
     /// <param name="reader">The RLP reader to read the serialized data from.</param>
     /// <returns>A deserialized <see cref="NodeRecord"/></returns>
+    /// <exception cref="RlpException">The record is malformed.</exception>
     public NodeRecord Deserialize(ref RlpReader reader)
-        => DeserializeCore(ref reader) ?? throw new RlpException("Invalid ENR list structure.");
+    {
+        try
+        {
+            return DeserializeCore(ref reader) ?? throw new RlpException("Invalid ENR list structure.");
+        }
+        catch (Exception e) when (e is not RlpException && IsMalformedRecordException(e))
+        {
+            // The value types reject a malformed value with their own exceptions; report it as malformed RLP.
+            throw new RlpException($"Invalid ENR: {e.Message}", e);
+        }
+    }
 
     /// <summary>
     /// Deserializes a record, returning false for malformed input. Does not verify its signature.
@@ -52,11 +63,27 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
             nodeRecord = DeserializeCore(ref reader);
             return nodeRecord is not null;
         }
-        catch (Exception e) when (e is RlpException or ArgumentException or InvalidOperationException or FormatException)
+        catch (Exception e) when (IsMalformedRecordException(e))
         {
             nodeRecord = null;
             return false;
         }
+    }
+
+    private static bool IsMalformedRecordException(Exception exception)
+        => exception is RlpException or ArgumentException or InvalidOperationException or FormatException;
+
+    /// <summary>
+    /// Tells whether the next item ends at or before <paramref name="end"/>.
+    /// </summary>
+    /// <remarks>
+    /// The RLP readers bound their reads by the input rather than by the enclosing item, so a value whose declared
+    /// length runs past the end of the record is rejected here before it is read.
+    /// </remarks>
+    private static bool NextItemFits(ref RlpReader reader, int end)
+    {
+        int left = end - reader.Position;
+        return left > 0 && reader.PeekPrefixLength() <= left && reader.PeekNextRlpLength() <= left;
     }
 
     private static NodeRecord? DeserializeCore(ref RlpReader reader)
@@ -74,16 +101,18 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
         NodeRecord nodeRecord = new();
         ReadOnlySpan<byte> previousKey = default;
 
+        if (!NextItemFits(ref reader, checkPosition)) return null;
         ReadOnlySpan<byte> sigBytes = reader.DecodeByteArraySpan(RlpLimit.L65);
-        if (reader.Position >= checkPosition) return null;
+        if (!NextItemFits(ref reader, checkPosition)) return null;
         Signature signature = new(sigBytes, 0);
 
         bool hasV4Id = false;
         ulong enrSequence = reader.DecodeULong();
         while (reader.Position < checkPosition)
         {
+            if (!NextItemFits(ref reader, checkPosition)) return null;
             ReadOnlySpan<byte> key = reader.DecodeByteArraySpan();
-            if (reader.Position >= checkPosition) return null;
+            if (!NextItemFits(ref reader, checkPosition)) return null;
             if (previousKey.Length != 0 && key.SequenceCompareTo(previousKey) <= 0)
             {
                 throw new RlpException("ENR keys must be sorted and unique.");
@@ -120,9 +149,11 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                     int start = reader.Position;
                     if (start >= checkPosition || !reader.IsSequenceNext()) return null;
                     int end = reader.ReadSequenceLength() + reader.Position;
-                    if (reader.Position >= end || !reader.IsSequenceNext()) return null;
+                    if (!NextItemFits(ref reader, end) || !reader.IsSequenceNext()) return null;
                     int forkIdEnd = reader.ReadSequenceLength() + reader.Position;
+                    if (!NextItemFits(ref reader, forkIdEnd)) return null;
                     byte[] forkHash = reader.DecodeByteArray(size: ForkId.ForkHashLength);
+                    if (!NextItemFits(ref reader, forkIdEnd)) return null;
                     ulong next = reader.DecodeULong();
                     reader.Check(forkIdEnd);
                     bool hasAdditionalEthFields = reader.Position < end;

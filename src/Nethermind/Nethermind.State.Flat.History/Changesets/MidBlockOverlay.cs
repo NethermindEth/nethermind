@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -12,9 +14,25 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// the state as of the previous block, which the existing history answers.</summary>
 internal sealed class MidBlockOverlay
 {
+    // An overlay whose storage or account capacity grew past this is let go of rather than kept. Capacity grown from
+    // empty steps from 8,419 to 17,519, so the largest overlay kept holds 8,419 entries of either kind.
+    private const int MaxCapacity = 1 << 14;
+    private const int MaxSpares = 32;
+
+    /// <summary>The entries all spares together may hold: seven of the largest overlays kept, or many smaller ones. A
+    /// storage entry is about 100 B and an account entry with its pooled <see cref="AccountOverlay"/> about 150 B, so
+    /// the spares hold about 10 MB at most. A return that would exceed it lets the overlay go.</summary>
+    internal const int MaxSpareEntries = 1 << 16;
+
+    private static readonly Stack<MidBlockOverlay> Spares = new(MaxSpares);
+    private static readonly Lock SparesLock = new();
+    private static int _spareEntries;
+
     private readonly Dictionary<AddressAsKey, AccountOverlay> _accounts = [];
     private readonly Dictionary<StorageCell, StorageWrite> _storage = [];
     private readonly HashSet<AddressAsKey> _storageAccounts = [];
+    private readonly Dictionary<ulong, Address> _addresses = [];
+    private readonly Stack<AccountOverlay> _spareAccounts = [];
 
     public ulong Block { get; private set; }
 
@@ -34,13 +52,65 @@ internal sealed class MidBlockOverlay
 
     internal Dictionary<StorageCell, StorageWrite>.Enumerator Writes => _storage.GetEnumerator();
 
+    internal int WriteCount => _storage.Count;
+
+    internal HashSet<AddressAsKey>.Enumerator StorageAccounts => _storageAccounts.GetEnumerator();
+
+    /// <summary>An overlay emptied for <paramref name="block"/>, one a previous fold left warm when there is one.</summary>
+    public static MidBlockOverlay Rent(ulong block)
+    {
+        MidBlockOverlay overlay = TakeSpare() ?? new MidBlockOverlay();
+        overlay.Reset(block);
+        return overlay;
+    }
+
+    internal static int SpareEntries
+    {
+        get
+        {
+            using Lock.Scope scope = SparesLock.EnterScope();
+            return _spareEntries;
+        }
+    }
+
+    private static MidBlockOverlay? TakeSpare()
+    {
+        using Lock.Scope scope = SparesLock.EnterScope();
+        if (!Spares.TryPop(out MidBlockOverlay? overlay)) return null;
+        _spareEntries -= overlay.Capacity;
+        return overlay;
+    }
+
+    /// <summary>The caller gives up the overlay: nothing may read or fold it afterwards.</summary>
+    public static void Return(MidBlockOverlay overlay)
+    {
+        if (overlay.Oversized) return;
+        overlay.Reset(0);
+
+        int capacity = overlay.Capacity;
+        using Lock.Scope scope = SparesLock.EnterScope();
+        if (Spares.Count >= MaxSpares || _spareEntries + capacity > MaxSpareEntries) return;
+        Spares.Push(overlay);
+        _spareEntries += capacity;
+    }
+
+    /// <summary>Grew too large to keep for another fold, whether as a spare or as a cached entry.</summary>
+    internal bool Oversized => _storage.EnsureCapacity(0) > MaxCapacity || _accounts.EnsureCapacity(0) > MaxCapacity;
+
+    /// <summary>Does not change while the overlay is a spare, so the same amount is added on return and taken on rent.</summary>
+    private int Capacity =>
+        _storage.EnsureCapacity(0) + _accounts.EnsureCapacity(0) + _storageAccounts.EnsureCapacity(0) + _addresses.EnsureCapacity(0);
+
     public void Reset(ulong block) => Reset(block, default);
 
+    /// <summary>Keeps the capacity the previous fold grew, so folding a block of a similar size again grows nothing.</summary>
     public void Reset(ulong block, in ValueHash256 hash)
     {
+        foreach (AccountOverlay account in _accounts.Values) _spareAccounts.Push(account);
         _accounts.Clear();
         _storage.Clear();
         _storageAccounts.Clear();
+        _addresses.Clear();
         Block = block;
         Hash = hash;
         Folded = 0;
@@ -88,17 +158,18 @@ internal sealed class MidBlockOverlay
 
     private void FoldStorage(ref ChangesetCodec.Enumerator entries, ushort transactionIndex)
     {
-        StorageCell cell = new(new Address(entries.Address), new UInt256(entries.Index, isBigEndian: true));
+        StorageCell cell = new(AddressOf(entries.Address), new UInt256(entries.Index, isBigEndian: true));
         _storage[cell] = new StorageWrite(transactionIndex, new UInt256(entries.Value, isBigEndian: true));
         _storageAccounts.Add(cell.Address);
     }
 
     private void FoldAccount(ref ChangesetCodec.Enumerator entries, ushort transactionIndex)
     {
-        Address address = new(entries.Address);
+        Address address = AddressOf(entries.Address);
         if (!_accounts.TryGetValue(address, out AccountOverlay? overlay))
         {
-            overlay = new AccountOverlay();
+            if (_spareAccounts.TryPop(out overlay)) overlay.Clear();
+            else overlay = new AccountOverlay();
             _accounts[address] = overlay;
         }
 
@@ -131,6 +202,19 @@ internal sealed class MidBlockOverlay
         overlay.Exists = true;
     }
 
+    /// <summary>One instance per distinct address of the fold, however many entries name it. The key only spreads
+    /// the addresses; a different address under the same key is compared, refused and allocated on its own.</summary>
+    private Address AddressOf(ReadOnlySpan<byte> bytes)
+    {
+        ulong key = BinaryPrimitives.ReadUInt64LittleEndian(bytes) ^ BinaryPrimitives.ReadUInt64LittleEndian(bytes[(Address.Size - sizeof(ulong))..]);
+        ref Address? known = ref CollectionsMarshal.GetValueRefOrAddDefault(_addresses, key, out bool exists);
+        if (exists && known!.Equals(bytes)) return known;
+
+        Address address = new(bytes);
+        if (!exists) known = address;
+        return address;
+    }
+
     internal readonly struct StorageWrite(ushort transaction, in UInt256 value)
     {
         public int Transaction { get; } = transaction;
@@ -142,6 +226,8 @@ internal sealed class MidBlockOverlay
     /// block, unless <see cref="Emptied"/> says the account was deleted, when it takes the empty account's value.</summary>
     internal sealed class AccountOverlay
     {
+        public AccountOverlay() => Clear();
+
         public UInt256? Balance { get; set; }
 
         public UInt256? Nonce { get; set; }
@@ -150,8 +236,19 @@ internal sealed class MidBlockOverlay
 
         public bool Emptied { get; set; }
 
-        public bool Exists { get; set; } = true;
+        public bool Exists { get; set; }
 
-        public int StorageClearedAt { get; set; } = NeverCleared;
+        public int StorageClearedAt { get; set; }
+
+        /// <summary>The only place the defaults are set: a new entry and a reused one both start from here.</summary>
+        public void Clear()
+        {
+            Balance = null;
+            Nonce = null;
+            CodeHash = null;
+            Emptied = false;
+            Exists = true;
+            StorageClearedAt = NeverCleared;
+        }
     }
 }
