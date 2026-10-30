@@ -86,6 +86,7 @@ public static unsafe partial class EvmInstructions
     /// <summary>TXPARAM (0xb0): read a transaction-scoped field.</summary>
     /// <typeparam name="TEip8250">Whether the fork defines the keyed-nonce indices 0x0D through 0x10.</typeparam>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionTxParam<TGasPolicy, TTracingInst, TEip8250>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -96,7 +97,7 @@ public static unsafe partial class EvmInstructions
 
         if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         if (!stack.PopUInt256(out UInt256 param)) return EvmExceptionType.StackUnderflow;
-        if (param > 0x10U) return EvmExceptionType.BadInstruction;
+        if (!param.IsUint64 || param.u0 > 0x10) return EvmExceptionType.BadInstruction;
 
         byte[]?[]? blobHashes = vm.TxExecutionContext.BlobVersionedHashes;
         return param.u0 switch
@@ -124,6 +125,7 @@ public static unsafe partial class EvmInstructions
 
     /// <summary>FRAMEDATALOAD (0xb1): load a 32-byte word from another frame's data.</summary>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionFrameDataLoad<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -134,7 +136,7 @@ public static unsafe partial class EvmInstructions
         if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         // Spec stack order: offset on top, frameIndex second (matching CALLDATALOAD).
         if (!stack.PopUInt256(out UInt256 offset, out UInt256 frameIndex)) return EvmExceptionType.StackUnderflow;
-        if (frameIndex >= (UInt256)ctx.Frames.Length) return EvmExceptionType.BadInstruction;
+        if (!frameIndex.IsUint64 || frameIndex.u0 >= (ulong)ctx.Frames.Length) return EvmExceptionType.BadInstruction;
 
         ReadOnlySpan<byte> data = ctx.Frames[(int)frameIndex.u0].Data.Span;
         if (!offset.IsUint64 || offset.u0 >= (uint)data.Length)
@@ -168,6 +170,7 @@ public static unsafe partial class EvmInstructions
 
     /// <summary>FRAMEPARAM (0xb3): read a frame-scoped field.</summary>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionFrameParam<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -178,8 +181,8 @@ public static unsafe partial class EvmInstructions
         if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         // Spec stack order: frameIndex on top, param second.
         if (!stack.PopUInt256(out UInt256 frameIndex, out UInt256 param)) return EvmExceptionType.StackUnderflow;
-        if (frameIndex >= (UInt256)ctx.Frames.Length) return EvmExceptionType.BadInstruction;
-        if (param > 0x0B) return EvmExceptionType.BadInstruction;
+        if (!frameIndex.IsUint64 || frameIndex.u0 >= (ulong)ctx.Frames.Length) return EvmExceptionType.BadInstruction;
+        if (!param.IsUint64 || param.u0 > 0x0B) return EvmExceptionType.BadInstruction;
 
         int index = (int)frameIndex.u0;
         TxFrame frame = ctx.Frames[index];
@@ -226,6 +229,7 @@ public static unsafe partial class EvmInstructions
 
     /// <summary>SIGPARAM (0xb4): read a signature-scoped field.</summary>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionSigParam<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -235,8 +239,8 @@ public static unsafe partial class EvmInstructions
 
         // Spec stack order: signatureIndex on top, param second.
         if (!stack.PopUInt256(out UInt256 signatureIndex, out UInt256 param)) return EvmExceptionType.StackUnderflow;
-        if (signatureIndex >= (UInt256)ctx.Signatures.Length) return EvmExceptionType.BadInstruction;
-        if (param > 0x03) return EvmExceptionType.BadInstruction;
+        if (!signatureIndex.IsUint64 || signatureIndex.u0 >= (ulong)ctx.Signatures.Length) return EvmExceptionType.BadInstruction;
+        if (!param.IsUint64 || param.u0 > 0x03) return EvmExceptionType.BadInstruction;
 
         int index = (int)signatureIndex.u0;
         TxFrameSignature signature = ctx.Signatures[index];
