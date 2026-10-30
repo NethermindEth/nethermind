@@ -123,15 +123,16 @@ public static unsafe partial class Bytes
     /// <remarks>
     /// Where <see cref="StrictAlignmentFlag"/> is on, a misaligned 32-byte copy is 32 byte loads and stores. This
     /// writes the five aligned words that hold the destination instead, and keeps the bytes of the first and the last
-    /// that lie outside it. Those bytes share an aligned word with the destination, so they are part of the same
-    /// object, and the guest is single-threaded, so writing them back is not a race.
+    /// that lie outside it. The words are aligned and the guest is single-threaded, so writing those bytes back is not a
+    /// race. The destination must be misaligned: with a skew of 0 the shifts by 64 wrap and the write is wrong.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void WriteMisalignedWords(byte* destination, ulong* source)
     {
         int skew = (int)((nuint)destination & (sizeof(ulong) - 1));
+        Debug.Assert(skew != 0);
         // Rounding both addresses lets the JIT drop the alignment test of every access.
-        ulong* words = (ulong*)((nuint)destination - (nuint)skew);
+        ulong* words = (ulong*)((nuint)destination & ~(nuint)(sizeof(ulong) - 1));
         source = (ulong*)((nuint)source & ~(nuint)(sizeof(ulong) - 1));
         int low = skew * 8;
         int high = 64 - low;
