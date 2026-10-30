@@ -464,9 +464,9 @@ internal class NodeRecordBulkSetTests
         // Few large filler leaves per generation keep false positives out of the blooms the dropped trie is compacted against.
         FillUntil(newestTrieGeneration + NodeRecordBufferTests.LiveGenerations);
         // A dropped generation misses for every lookup until it is compacted, so wait for the expected records rather than for the root to miss.
-        Assert.That(() => nodes.Select(node => NodeRecordBufferTests.IsLocatable(buffer, node.Pointer)).ToArray(),
-            Is.EqualTo(nodes.Select(node => !rewrittenPaths.Contains(node.Path)).ToArray()).After(NodeRecordBufferTests.CompactionTimeoutMilliseconds, NodeRecordBufferTests.PollingMilliseconds),
-            "once the generations of the trie are compacted, records resolve unless their path was rewritten");
+        Assert.That(() => nodes.Where(node => NodeRecordBufferTests.IsLocatable(buffer, node.Pointer) == rewrittenPaths.Contains(node.Path)).Select(node => node.Path).ToArray(),
+            Is.Empty.After(NodeRecordBufferTests.CompactionTimeoutMilliseconds, NodeRecordBufferTests.PollingMilliseconds),
+            "paths of the records that resolve although rewritten, or miss although unchanged, once the generations of the trie are compacted");
 
         using (Assert.EnterMultipleScope())
         {
