@@ -89,6 +89,8 @@ public class EezSequencerApiTests
     public async Task RawBlock_MissingOnBothMethods_RemainsRetryable()
     {
         IJsonRpcClient rpc = Substitute.For<IJsonRpcClient>();
+        rpc.Post<byte[]?>("debug_getRawBlock", TestItem.KeccakA.ToString()).Returns((byte[]?)null);
+        rpc.Post<SequencerRpcBlock?>("eth_getBlockByHash", TestItem.KeccakA.ToString(), false).Returns((SequencerRpcBlock?)null);
         using IContainer container = Container(rpc);
         IEezSequencerApi source = container.Resolve<IEezSequencerApi>();
 
@@ -165,6 +167,7 @@ public class EezSequencerApiTests
         BlockForRpc value = new(block, false, new TestSpecProvider(Osaka.Instance)) { SlotNumber = block.Header.SlotNumber };
         wire = serializer.Deserialize<SequencerRpcBlock>(serializer.Serialize(value))!;
         IJsonRpcClient rpc = Substitute.For<IJsonRpcClient>();
+        rpc.Post<byte[]?>("debug_getRawBlock", block.Hash!.ToString()).Returns((byte[]?)null);
         rpc.Post<SequencerRpcBlock?>("eth_getBlockByHash", block.Hash!.ToString(), false).Returns(wire);
         foreach (Transaction transaction in block.Transactions)
             rpc.Post<byte[]?>("eth_getRawTransactionByHash", transaction.Hash!.ToString()).Returns(TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes);
@@ -178,6 +181,8 @@ public class EezSequencerApiTests
             transactions[index] = native
                 ? new NativeHistoryTransaction(NativeHistoryEnvelope.CreateBlocks(1, [new(1, TestItem.KeccakA.ValueHash256)]))
                 : Build.A.Transaction.WithNonce((ulong)index + 2).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        foreach (Transaction transaction in transactions)
+            transaction.Hash ??= Keccak.Compute(TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes);
         Block block = Build.A.Block.WithNumber(7).WithTransactions(transactions).WithWithdrawals([]).TestObject;
         BlockHeader header = block.Header;
         header.BaseFeePerGas = 7;
