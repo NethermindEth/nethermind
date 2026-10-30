@@ -119,6 +119,28 @@ public class ForwardedNonceTrackerTests
     }
 
     [Test]
+    public async Task Sender_lock_stays_while_a_send_waits_on_it()
+    {
+        ForwardedNonceTracker tracker = new HeadNonces().CreateTracker();
+
+        IDisposable first = await tracker.LockSenderAsync(TestItem.AddressA);
+        Task<IDisposable> second = tracker.LockSenderAsync(TestItem.AddressA);
+        first.Dispose();
+        IDisposable secondHeld = await second.WaitAsync(TimeSpan.FromSeconds(10));
+        // The second send holds the lock now, so a third one from the account must wait for it.
+        Task<IDisposable> third = tracker.LockSenderAsync(TestItem.AddressA);
+        bool thirdWaited = !third.IsCompleted;
+        secondHeld.Dispose();
+        (await third.WaitAsync(TimeSpan.FromSeconds(10))).Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thirdWaited, Is.True, "a lock must not be removed while a send still waits on it");
+            Assert.That(tracker.SenderLockCount, Is.EqualTo(0), "a lock no send uses is removed");
+        }
+    }
+
+    [Test]
     public void Forwards_from_many_accounts_at_once_are_all_tracked()
     {
         const int accounts = 4096;
