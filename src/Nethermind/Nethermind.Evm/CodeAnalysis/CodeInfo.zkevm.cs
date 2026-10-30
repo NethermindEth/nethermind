@@ -35,28 +35,60 @@ public sealed partial class CodeInfo
 
     internal partial ReadOnlySpan<byte> ExecutionCodeSpan => _code.Span;
 
+    /// <summary>The most memory all handler caches together take.</summary>
+    /// <remarks>
+    /// The guest never frees memory, and a block can run many large codes for little gas, such as creations with
+    /// large init code, so the caches need a bound of their own. Real blocks take a few MiB.
+    /// </remarks>
+    private const long HandlerCacheBudget = 64L << 20;
+
+    private static long s_handlerCacheBytes;
+    private static nint[]? s_readOnlyHandlerCache;
+
     private nint[]? _handlerCache;
     private nint[]? _handlerCacheTable;
 
-    /// <summary>The handlers guest dispatch has resolved for this code under the paired table <paramref name="table"/>, by position.</summary>
+    /// <summary>
+    /// The handlers guest dispatch has resolved for this code under the paired table <paramref name="table"/>, by
+    /// position, or <see langword="null"/> once the caches have taken <see cref="HandlerCacheBudget"/>.
+    /// </summary>
     /// <remarks>Another table, as a traced run uses, starts a new cache.</remarks>
-    internal nint[] GetHandlerCache(nint[] table)
+    internal nint[]? GetHandlerCache(nint[] table)
     {
         if (!ReferenceEquals(_handlerCacheTable, table))
         {
-            _handlerCache = CreateHandlerCache(CodeLength);
+            _handlerCache = TryCreateHandlerCache(CodeLength);
+            if (_handlerCache is null) return null;
             _handlerCacheTable = table;
         }
 
-        return _handlerCache!;
+        return _handlerCache;
     }
 
-    /// <summary>An empty handler cache for <paramref name="codeLength"/> code bytes.</summary>
+    /// <summary>An empty handler cache for <paramref name="codeLength"/> code bytes, or <see langword="null"/> past <see cref="HandlerCacheBudget"/>.</summary>
+    internal static nint[]? TryCreateHandlerCache(int codeLength)
+    {
+        long bytes = (long)HandlerCacheLength(codeLength) * IntPtr.Size;
+        if (s_handlerCacheBytes + bytes > HandlerCacheBudget) return null;
+        s_handlerCacheBytes += bytes;
+        return GC.AllocateArray<nint>(HandlerCacheLength(codeLength), pinned: true);
+    }
+
+    /// <summary>An empty handler cache for <paramref name="codeLength"/> code bytes that dispatch only reads, shared by every code past <see cref="HandlerCacheBudget"/>.</summary>
+    internal static nint[] ReadOnlyHandlerCache(int codeLength)
+    {
+        nint[]? cache = s_readOnlyHandlerCache;
+        if (cache is null || cache.Length < HandlerCacheLength(codeLength))
+            s_readOnlyHandlerCache = cache = GC.AllocateArray<nint>(HandlerCacheLength(codeLength), pinned: true);
+        return cache;
+    }
+
+    /// <summary>The slots a handler cache for <paramref name="codeLength"/> code bytes takes.</summary>
     /// <remarks>
     /// One slot for each position dispatch reaches: past a PUSH32 in the last byte, the next opcode is read at the
     /// next-to-last padding byte (see <see cref="ExecutionPadding"/>).
     /// </remarks>
-    internal static nint[] CreateHandlerCache(int codeLength) => GC.AllocateArray<nint>(codeLength + ExecutionPadding - 1, pinned: true);
+    private static int HandlerCacheLength(int codeLength) => codeLength + ExecutionPadding - 1;
 
     // Guest execution is single-threaded; bitmap writes and the resume cursor are not synchronized.
     private long[]? _incrementalJumpBitmap;

@@ -352,14 +352,34 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         private static nint CachedHandlerAt(nint* bias, ref byte ip) => *HandlerSlot(bias, ref ip);
 
         /// <summary>The handler the chain starts with at <paramref name="ip"/>, where it carries the handler cache.</summary>
-        internal static nint FirstHandler(nint* bias, ref byte ip)
+        /// <param name="bias">The cache as the chain carries it.</param>
+        /// <param name="ip">The first instruction.</param>
+        /// <param name="uncached">What an empty slot resolves through, as <see cref="ResolveEmptySlots"/> returns it.</param>
+        internal static nint FirstHandler(nint* bias, ref byte ip, nint uncached)
         {
             nint handler = CachedHandlerAt(bias, ref ip);
-            return handler != 0 ? handler : Entry(&ExecuteUncached);
+            return handler != 0 ? handler : uncached;
         }
 
-        /// <summary>Points Airbender's jump to address 0 at <see cref="ExecuteUncached"/>, before the chain first dispatches through the cache.</summary>
-        internal static void ResolveEmptySlots() => AirbenderZeroJump.airbender_set_zero_jump_target(Entry(&ExecuteUncached));
+        /// <summary>
+        /// Points Airbender's jump to address 0 at the handler that resolves an empty slot of the cache the chain is about
+        /// to carry: <see cref="ExecuteUncached"/>, or <see cref="ExecuteUncachedReadOnly"/> for the shared cache that
+        /// dispatch must not write.
+        /// </summary>
+        /// <returns>The target it replaces, which <see cref="RestoreEmptySlots"/> puts back once the chain ends.</returns>
+        /// <remarks>A chain that runs nested in another's ends before the outer one dispatches again, so restoring keeps each chain's target.</remarks>
+        internal static nint ResolveEmptySlots(bool readOnly, out nint uncached)
+        {
+            uncached = readOnly ? Entry(&ExecuteUncachedReadOnly) : Entry(&ExecuteUncached);
+            return AirbenderZeroJump.Set(uncached);
+        }
+
+        /// <summary>Puts back the target <see cref="ResolveEmptySlots"/> replaced, unless no chain had set one.</summary>
+        internal static void RestoreEmptySlots(nint previous)
+        {
+            if (previous != 0)
+                AirbenderZeroJump.Set(previous);
+        }
 
         /// <summary>The cache slot for the instruction at <paramref name="ip"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

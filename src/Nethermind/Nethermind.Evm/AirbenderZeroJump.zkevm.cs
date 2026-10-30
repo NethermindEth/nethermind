@@ -13,7 +13,22 @@ namespace Nethermind.Evm;
 /// </remarks>
 internal static class AirbenderZeroJump
 {
+    private static nint s_target;
+
+    /// <summary>Sends a jump to address 0 to <paramref name="target"/>, and returns the target it replaces.</summary>
+    public static nint Set(nint target)
+    {
+        nint previous = s_target;
+        if (previous != target)
+        {
+            s_target = target;
+            airbender_set_zero_jump_target(target);
+        }
+
+        return previous;
+    }
+
     // Named as its entry point in bflat's Airbender start module.
     [DllImport("*")]
-    public static extern void airbender_set_zero_jump_target(nint target);
+    private static extern void airbender_set_zero_jump_target(nint target);
 }

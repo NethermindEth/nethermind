@@ -141,10 +141,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint* table = (nint*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(handlers)) + FollowerHandlersLength;
             nint* dispatched = RawCalliHelper.DispatchTable(table);
             nint* carried = dispatched;
+            nint uncached = 0;
+            nint outerUncached = 0;
             if (RawCalliHelper.CachesHandlers)
             {
-                RawCalliHelper.ResolveEmptySlots();
-                carried = RawCalliHelper.HandlerCacheBias(stack.GetHandlerCache(handlers), ref stack.Code);
+                nint[] cache = stack.GetHandlerCache(handlers, out bool readOnly);
+                outerUncached = RawCalliHelper.ResolveEmptySlots(readOnly, out uncached);
+                carried = RawCalliHelper.HandlerCacheBias(cache, ref stack.Code);
             }
             // Unscoped because a function pointer cannot declare its parameters scoped; the chain ends before this call does.
             DispatchState state = new()
@@ -154,11 +157,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             // The cache resolves the entries the paired table tags (see RawCalliHelper.ResolveHandler).
             nint first = RawCalliHelper.CachesHandlers
-                ? RawCalliHelper.FirstHandler(carried, ref Unsafe.Add(ref stack.Code, programCounter))
+                ? RawCalliHelper.FirstHandler(carried, ref Unsafe.Add(ref stack.Code, programCounter), uncached)
                 : table[Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref stack.Code, programCounter))];
             EvmExceptionType exceptionType =
                 ((delegate*<ref EvmStack, nuint, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)first)(
                     ref stack, ChainGas(GetExecutionGas(ref gas)), ref state, ref Unsafe.Add(ref stack.Code, programCounter), stack.Head, carried, ref stack.Code, ref Unsafe.Add(ref stack.Bottom, stack.Head * EvmStack.WordSize));
+            // The guest fails fast on any exception, so the chain always returns here.
+            if (RawCalliHelper.CachesHandlers)
+                RawCalliHelper.RestoreEmptySlots(outerUncached);
             stack.Head = state.Head;
             programCounter = state.FinalProgramCounter;
             return exceptionType;

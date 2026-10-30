@@ -121,9 +121,15 @@ public ref partial struct EvmStack
     }
 
     /// <summary>The handler cache of <see cref="Code"/> for the paired table <paramref name="table"/>.</summary>
+    /// <param name="table">The paired table.</param>
+    /// <param name="readOnly">Whether the cache is the shared one that dispatch must not write, past the caches' memory bound.</param>
     /// <remarks>Code without its code info gets a cache of its own on every call.</remarks>
-    internal readonly nint[] GetHandlerCache(nint[] table) =>
-        _codeInfo?.GetHandlerCache(table) ?? CodeInfo.CreateHandlerCache((int)CodeLength);
+    internal readonly nint[] GetHandlerCache(nint[] table, out bool readOnly)
+    {
+        nint[]? cache = _codeInfo is null ? CodeInfo.TryCreateHandlerCache((int)CodeLength) : _codeInfo.GetHandlerCache(table);
+        readOnly = cache is null;
+        return cache ?? CodeInfo.ReadOnlyHandlerCache((int)CodeLength);
+    }
 
     /// <summary>The bottom slot of the stack.</summary>
     /// <remarks>

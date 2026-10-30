@@ -809,6 +809,23 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
+        /// <summary><see cref="ExecuteUncached"/> for the shared cache past the caches' memory bound, which stays empty.</summary>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static EvmExceptionType ExecuteUncachedReadOnly(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            nint next = ResolveHandler(state.PairedHandlers, ref ip);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+        }
+
         /// <summary>
         /// Set in the paired table, where the chain carries the handler cache, on the entries whose handler
         /// <see cref="ResolveHandler"/> replaces with one for the code bytes after the opcode.
