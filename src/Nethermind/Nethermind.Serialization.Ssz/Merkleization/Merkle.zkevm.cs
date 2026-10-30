@@ -222,6 +222,8 @@ public static partial class Merkle
     /// Since ZisK v1.4.0-alpha the precompile takes the state and input addresses directly, with no parameter
     /// block; the new state overwrites <paramref name="state"/>. This mirrors the ZiskOS <c>syscall_sha256_f</c>
     /// ABI and nothing checks the two agree at compile time, so recheck it when Nethermind.ZiskOS.Runtime is bumped.
+    /// <see cref="Accelerators.Sha256F"/> of Nethermind.Zkvm.Abstractions 1.0.0-preview.8 still passes the pre-1.4
+    /// parameter block, which the ZisK transpiler rejects; do not switch to it until that package follows.
     /// </remarks>
     [DllImport("__Internal", EntryPoint = "syscall_sha256_f", ExactSpelling = true), SuppressGCTransition]
     private static extern unsafe void Sha256F(ulong* state, ulong* input);
