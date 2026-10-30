@@ -44,6 +44,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             || handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>);
     }
 
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SSTORE on the guest handler.</summary>
+    internal static bool StoresStorageThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SSTORE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSStore);
+
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs CALL, STATICCALL and DELEGATECALL on the guest handler.</summary>
     /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
     internal static bool CallsThroughGuestHandlerForTests(IReleaseSpec spec)
