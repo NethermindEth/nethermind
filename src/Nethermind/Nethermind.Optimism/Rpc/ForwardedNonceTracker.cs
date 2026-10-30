@@ -13,7 +13,7 @@ namespace Nethermind.Optimism.Rpc;
 /// The next nonce of an account that <c>eth_sendTransaction</c> signs on a node that forwards to the sequencer.
 /// </summary>
 /// <remarks>
-/// Such a node has no transaction pool (<see cref="TxPool.NullTxPool"/>), so it cannot read a pending nonce. It uses the
+/// Such a node has no transaction pool (<c>NullTxPool</c>), so it cannot read a pending nonce. It uses the
 /// account's nonce at the head instead, raised past the transactions it has forwarded that the head does not include yet.
 /// Only forwards that the sequencer accepted, and that continue the account's nonces without a gap, are counted.
 /// </remarks>
