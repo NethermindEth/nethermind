@@ -11,6 +11,26 @@ namespace Nethermind.Network.Test.P2P
 {
     public static class SerializerTester
     {
+        public static void Test<T>(IMessageSerializer<T> serializer, T message, string? expectedData = null) where T : P2PMessage
+        {
+            try
+            {
+                string serialized = serializer.SerializeToArray(message).ToHexString();
+                using T deserialized = serializer.Deserialize(Bytes.FromHexString(serialized));
+
+                Assert.That(serializer.SerializeToArray(deserialized).ToHexString(), Is.EqualTo(serialized), "round trip");
+
+                if (expectedData is not null)
+                {
+                    Assert.That(serialized, Is.EqualTo(expectedData));
+                }
+            }
+            finally
+            {
+                message.TryDispose();
+            }
+        }
+
         public static void TestZero<T>(IZeroMessageSerializer<T> serializer, T message, string? expectedData = null) where T : P2PMessage
         {
             using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();

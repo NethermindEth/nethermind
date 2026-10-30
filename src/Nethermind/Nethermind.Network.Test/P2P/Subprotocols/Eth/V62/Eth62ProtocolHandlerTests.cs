@@ -443,7 +443,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             if (trailingByte)
                 packet.WriteByte(0);
 
-            Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode }), trailingByte ? Throws.InstanceOf<RlpException>().Or.TypeOf<IncompleteDeserializationException>() : Throws.Nothing);
+            Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode }), trailingByte ? Throws.InstanceOf<RlpException>() : Throws.Nothing);
 
             DisposableByteBuffer Serialize<T>(T message) where T : P2PMessage
             {
