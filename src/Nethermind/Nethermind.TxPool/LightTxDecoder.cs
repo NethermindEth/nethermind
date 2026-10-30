@@ -116,7 +116,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         return bytes;
     }
 
-    /// <summary>Reads a <c>nonce_keys</c> list, mapping the empty one to <c>null</c> as the record means it.</summary>
+    /// <summary>Reads a <c>nonce_keys</c> list, mapping the empty one to <c>null</c>; the caller restores an empty set when the record's key-set flag is set.</summary>
     private static UInt256[]? DecodeKeysOrNull(ref RlpReader ctx)
     {
         UInt256[] keys = FrameTxNonceCalldata.DecodeKeys(ref ctx);
