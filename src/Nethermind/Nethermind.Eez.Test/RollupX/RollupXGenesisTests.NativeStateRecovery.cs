@@ -68,6 +68,8 @@ public partial class RollupXGenesisTests
             _source = CreateHistorySource();
             _container = Container(_tree);
             _recovery = (NativeFollowerStateRecovery)_container.Resolve<IFollowerStateRecovery>();
+            _queue.ClearReceivedCalls();
+            _preparation.ClearReceivedCalls();
         }
 
         [TearDown]
@@ -105,12 +107,16 @@ public partial class RollupXGenesisTests
                 Assert.That(_available, Does.Contain(Header(5).Hash));
                 foreach (ulong number in _restored)
                 {
-                    Block block = _tree.FindBlock(number)!;
-                    _validator.Received(1).ValidateSuggestedBlock(block, Header(number - 1), out _, true);
-                    await _preparation.Received(1).Prepare(Header(number - 1), block, CancellationToken.None);
-                    await _queue.Received(1).Enqueue(block, ProcessingOptions.ForceProcessing | ProcessingOptions.EthereumMerge |
+                    Hash256 hash = Header(number).Hash!;
+                    Hash256 parent = Header(number - 1).Hash!;
+                    _validator.Received(1).ValidateSuggestedBlock(Arg.Is<Block>(b => b.Hash == hash),
+                        Arg.Is<BlockHeader>(h => h.Hash == parent), out _, true);
+                    await _preparation.Received(1).Prepare(Arg.Is<BlockHeader>(h => h.Hash == parent),
+                        Arg.Is<Block>(b => b.Hash == hash), CancellationToken.None);
+                    await _queue.Received(1).Enqueue(Arg.Is<Block>(b => b.Hash == hash),
+                        ProcessingOptions.ForceProcessing | ProcessingOptions.EthereumMerge |
                         (storeReceipts ? ProcessingOptions.StoreReceipts : ProcessingOptions.None));
-                    await _queue.Received(1).WaitUntilRemovedAsync(block.Hash!);
+                    await _queue.Received(1).WaitUntilRemovedAsync(hash);
                 }
             }
         }
