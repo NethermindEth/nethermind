@@ -57,6 +57,7 @@ public class ReceiptsResponseBudgetTests
     [TestCase(new byte[] { 0xfb, 0x7f, 0xff, 0xff, 0xff }, null, TestName = "Block list declaring the largest length")]
     [TestCase(new byte[] { 0xc6, 0x01, 0xfb, 0x7f, 0xff, 0xff, 0xff }, 1, TestName = "Block list in an envelope declaring the largest length")]
     [TestCase(new byte[] { 0xc7, 0x01, 0x80, 0xfb, 0x7f, 0xff, 0xff, 0xff }, 2, TestName = "Block list in an eth70 envelope declaring the largest length")]
+    [TestCase(new byte[] { 0xfb, 0x80, 0x00, 0x00, 0x00 }, null, TestName = "Block list declaring a length too large for an int")]
     public void Truncated_response_is_rejected_as_malformed(byte[] payload, int? fieldsBeforeReceipts)
     {
         using DisposableByteBuffer content = Unpooled.WrappedBuffer(payload).AsDisposable();
