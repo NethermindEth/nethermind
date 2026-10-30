@@ -13,6 +13,88 @@ namespace Nethermind.Optimism.Test;
 
 public class ReceiptDecoderTests
 {
+    public enum NonDepositReceipt { Regular, Frame }
+
+    /// <summary>Only deposit receipts differ in storage, so every other receipt must round-trip as core's decoder does it.</summary>
+    [Test]
+    public void Compact_receipt_storage_matches_core_for_non_deposit_receipts([Values] NonDepositReceipt kind, [Values] bool eip7668)
+    {
+        TxReceipt receipt = kind == NonDepositReceipt.Frame ? FrameReceipt() : Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject;
+        RlpBehaviors encodeBehaviors = RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts;
+        RlpBehaviors decodeBehaviors = RlpBehaviors.Storage | (eip7668 ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None);
+        OptimismCompactReceiptStorageDecoder decoder = new();
+        CompactReceiptStorageDecoder core = CompactReceiptStorageDecoder.Instance;
+
+        byte[] encoded = decoder.EncodeAsBytes(receipt, encodeBehaviors);
+        TxReceipt? decoded = decoder.Decode(encoded, decodeBehaviors);
+        TxReceipt? expected = core.Decode(encoded, decodeBehaviors);
+        RlpReader reader = new(encoded);
+        decoder.DecodeStructRef(ref reader, decodeBehaviors, out TxReceiptStructRef item);
+        RlpReader coreReader = new(encoded);
+        core.DecodeStructRef(ref coreReader, decodeBehaviors, out TxReceiptStructRef expectedItem);
+        (TxType Type, ulong Gas, byte[] Logs) itemFields = (item.TxType, item.GasUsedTotal, item.LogsRlp.ToArray());
+        (TxType Type, ulong Gas, byte[] Logs) expectedItemFields = (expectedItem.TxType, expectedItem.GasUsedTotal, expectedItem.LogsRlp.ToArray());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded, Is.EqualTo(core.EncodeAsBytes(receipt, encodeBehaviors)));
+            Assert.That(decoder.GetLength(receipt, encodeBehaviors), Is.EqualTo(encoded.Length));
+            Assert.That(decoded, Is.TypeOf<OptimismTxReceipt>());
+            decoded.AssertEquivalentTo(new OptimismTxReceipt(expected!));
+            Assert.That(decoded!.Bloom.IsZeroLength, Is.EqualTo(eip7668));
+            Assert.That(itemFields, Is.EqualTo(expectedItemFields));
+            Assert.That(reader.Position, Is.EqualTo(coreReader.Position));
+        }
+    }
+
+    /// <summary>A deposit receipt's trailing nonce and version must not be read as an EIP-8141 frame extension.</summary>
+    [Test]
+    public void Compact_receipt_storage_keeps_deposit_fields_apart_from_the_frame_extension([Values(null, 1ul)] ulong? version)
+    {
+        OptimismTxReceipt receipt = new(Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject)
+        {
+            TxType = TxType.DepositTx,
+            DepositNonce = 0,
+            DepositReceiptVersion = version
+        };
+        OptimismCompactReceiptStorageDecoder decoder = new();
+        byte[] encoded = decoder.EncodeAsBytes(receipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+
+        OptimismTxReceipt? decoded = decoder.Decode(encoded, RlpBehaviors.Storage) as OptimismTxReceipt;
+        RlpReader reader = new(encoded);
+        decoder.DecodeStructRef(ref reader, RlpBehaviors.Storage, out TxReceiptStructRef item);
+        TxType itemType = item.TxType;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded?.DepositNonce, Is.EqualTo(0));
+            Assert.That(decoded?.DepositReceiptVersion, Is.EqualTo(version));
+            Assert.That(decoded?.TxType, Is.Not.EqualTo(TxType.FrameTx));
+            Assert.That(itemType, Is.Not.EqualTo(TxType.FrameTx));
+            Assert.That(reader.Position, Is.EqualTo(encoded.Length));
+        }
+    }
+
+    private static TxReceipt FrameReceipt()
+    {
+        LogEntry log = new(TestItem.AddressB, [0x01], [TestItem.KeccakA]);
+        return new TxReceipt
+        {
+            TxType = TxType.FrameTx,
+            StatusCode = TxFrameReceipt.StatusSuccess,
+            Sender = TestItem.AddressC,
+            GasUsedTotal = 51_000,
+            Payer = TestItem.AddressA,
+            Logs = [log],
+            Bloom = new Bloom([log]),
+            FrameReceipts =
+            [
+                new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 5_000, [log]),
+                new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, 0, [])
+            ]
+        };
+    }
+
     [Test]
     public void Null_receipt_roundtrips()
     {
