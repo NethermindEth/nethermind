@@ -23,9 +23,9 @@ namespace Nethermind.Db.Rocks;
 
 /// <summary>Rewrites a database under the current RocksDB configuration.</summary>
 /// <remarks>
-/// Some RocksDB options only apply to newly written files, so changing them otherwise needs a resync. This copies
-/// every column family of the database into a new one opened with the current configuration, then swaps the new
-/// database into place and deletes the old one.
+/// Some RocksDB options only apply to newly written files, so changing them otherwise needs a resync.
+/// <see cref="Rewrite"/> copies every column family into a new database and swaps it into place;
+/// <see cref="Compact"/> rewrites the files in place by forcing a compaction of every column family.
 /// </remarks>
 public class RocksDbRewriter(
     IInitConfig initConfig,
@@ -50,12 +50,9 @@ public class RocksDbRewriter(
     /// </exception>
     public async Task Rewrite(string dbPath, CancellationToken cancellationToken)
     {
-        string fullPath = DbOnTheRocks.GetFullDbPath(dbPath, initConfig.BaseDbPath);
+        string fullPath = GetExistingFullPath(dbPath);
         string rewriteFullPath = fullPath + RewriteSuffix;
         string oldFullPath = fullPath + OldSuffix;
-
-        if (!File.Exists(Path.Join(fullPath, "CURRENT")))
-            throw new InvalidConfigurationException($"There is no RocksDB database at {fullPath}.", ExitCodes.ForbiddenOptionValue);
 
         if (Directory.Exists(oldFullPath))
             throw new InvalidConfigurationException(
@@ -65,20 +62,11 @@ public class RocksDbRewriter(
         // The old database was never moved aside, so a leftover rewrite is only a partial copy.
         if (Directory.Exists(rewriteFullPath)) Directory.Delete(rewriteFullPath, true);
 
-        string[] families;
-        using (DbOptions options = new()) families = [.. RocksDb.ListColumnFamilies(options, fullPath)];
-
-        // A database opened without column families keeps everything in the default family under the table config.
-        List<string>? columns = families.Length == 1 ? null : [.. families.Where(static f => f != ColumnFamilies.DefaultName)];
-
+        (DbOnTheRocks source, string[] families, List<string>? columns) = OpenExisting(dbPath, fullPath);
         if (_logger.IsInfo) _logger.Info($"Rewriting {fullPath} with column families {string.Join(", ", families)}");
 
-        using (DbOnTheRocks source = Open(dbPath, dbPath, columns))
+        using (source)
         {
-            // A columns DB configures its default family only when its column enum has `Default`, and only those
-            // write to it, so an empty default family is the one opened without a column config.
-            if (columns is not null && !IsEmpty(source, ColumnFamilies.DefaultName)) columns.Add("Default");
-
             using DbOnTheRocks target = Open(dbPath, dbPath + RewriteSuffix, columns);
             foreach (string family in families)
             {
@@ -91,6 +79,71 @@ public class RocksDbRewriter(
         Directory.Delete(oldFullPath, true);
 
         if (_logger.IsInfo) _logger.Info($"Rewrote {fullPath}");
+    }
+
+    /// <summary>Forces a compaction of the whole key range of every column family in <paramref name="dbPath"/>.</summary>
+    /// <param name="dbPath">The database directory under the base DB path, e.g. <c>receipts</c>.</param>
+    /// <param name="cancellationToken">Interrupts the running compaction.</param>
+    /// <exception cref="InvalidConfigurationException">There is no RocksDB database at <paramref name="dbPath"/>.</exception>
+    /// <remarks>
+    /// The bottommost level is forced too, so every file is rewritten under the current configuration rather than
+    /// only the ones the default compaction would pick.
+    /// </remarks>
+    public void Compact(string dbPath, CancellationToken cancellationToken)
+    {
+        string fullPath = GetExistingFullPath(dbPath);
+        (DbOnTheRocks db, string[] families, List<string>? columns) = OpenExisting(dbPath, fullPath);
+        if (_logger.IsInfo) _logger.Info($"Compacting {fullPath} with column families {string.Join(", ", families)}");
+
+        using (db)
+        using (cancellationToken.Register(db.InterruptCompactions))
+        {
+            foreach (string family in families)
+            {
+                long start = Stopwatch.GetTimestamp();
+                try
+                {
+                    db.CompactOpenRange(GetFamily(db, columns is null ? null : family), forceBottommost: true);
+                }
+                catch (RocksDbException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException(cancellationToken);
+                }
+
+                if (_logger.IsInfo) _logger.Info($"Compacted {db.Name} {family} in {Stopwatch.GetElapsedTime(start)}");
+            }
+        }
+    }
+
+    private string GetExistingFullPath(string dbPath)
+    {
+        string fullPath = DbOnTheRocks.GetFullDbPath(dbPath, initConfig.BaseDbPath);
+        return File.Exists(Path.Join(fullPath, "CURRENT"))
+            ? fullPath
+            : throw new InvalidConfigurationException($"There is no RocksDB database at {fullPath}.", ExitCodes.ForbiddenOptionValue);
+    }
+
+    /// <summary>Opens an existing database under the current config, with every column family it holds.</summary>
+    /// <returns>
+    /// The database, its column family names, and the columns it was opened with, or <c>null</c> when it has no
+    /// column families besides the default one.
+    /// </returns>
+    private (DbOnTheRocks Db, string[] Families, List<string>? Columns) OpenExisting(string dbPath, string fullPath)
+    {
+        string[] families;
+        using (DbOptions options = new()) families = [.. RocksDb.ListColumnFamilies(options, fullPath)];
+
+        // A database opened without column families keeps everything in the default family under the table config.
+        List<string>? columns = families.Length == 1 ? null : [.. families.Where(static f => f != ColumnFamilies.DefaultName)];
+
+        DbOnTheRocks db = Open(dbPath, dbPath, columns);
+        if (columns is null || IsEmpty(db, ColumnFamilies.DefaultName)) return (db, families, columns);
+
+        // A columns DB configures its default family only when its column enum has `Default`, and only those
+        // write to it, so a default family holding data is reopened under its column config.
+        db.Dispose();
+        columns.Add("Default");
+        return (Open(dbPath, dbPath, columns), families, columns);
     }
 
     /// <param name="dbName">The database the config is read for, whatever directory it is opened from.</param>

@@ -69,6 +69,41 @@ public class RewriteDbTests
         }
     }
 
+    [TestCase(DbNames.Blocks)]
+    [TestCase(DbNames.Receipts)]
+    [TestCase(DbNames.BlobTransactions)]
+    public async Task Compacts_every_column_out_of_level_zero(string dbName)
+    {
+        using TempPath basePath = TempPath.GetTempDirectory();
+        using HyperClockCacheWrapper sharedCache = new();
+        DbConfig dbConfig = new();
+        RocksDbFactory factory = CreateFactory(dbConfig, sharedCache, basePath.Path);
+
+        (IDisposable db, IDb[] columns) = Open(factory, dbName);
+        using (db)
+        {
+            foreach (IDb column in columns)
+            {
+                Fill(column).Flush();
+                Assert.That(FilesAtLevelZero(column), Is.Positive, column.Name);
+            }
+        }
+
+        await new CompactDb([new StepCommandSelection("compact-db", [dbName])], new InitConfig { BaseDbPath = basePath.Path },
+            CreateRewriter(dbConfig, sharedCache, basePath.Path)).Execute(CancellationToken.None);
+
+        (db, columns) = Open(factory, dbName);
+        using (db)
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (IDb column in columns)
+            {
+                Assert.That(column.GetAll(ordered: true).ToArray(), Is.EqualTo(Fill(new MemDb()).GetAll(ordered: true).ToArray()), column.Name);
+                Assert.That(FilesAtLevelZero(column), Is.Zero, column.Name);
+            }
+        }
+    }
+
     [TestCase(new string[0], false)]
     [TestCase(new[] { DbNames.Blocks, DbNames.Receipts }, false)]
     [TestCase(new[] { DbNames.Headers }, false)]
@@ -97,9 +132,12 @@ public class RewriteDbTests
     private static RocksDbFactory CreateFactory(DbConfig dbConfig, HyperClockCacheWrapper sharedCache, string basePath) =>
         new(CreateConfigFactory(dbConfig), dbConfig, sharedCache, LimboLogs.Instance, basePath);
 
+    private static RocksDbRewriter CreateRewriter(DbConfig dbConfig, HyperClockCacheWrapper sharedCache, string basePath) =>
+        new(new InitConfig { BaseDbPath = basePath }, dbConfig, CreateConfigFactory(dbConfig), sharedCache, LimboLogs.Instance);
+
     private static RewriteDb CreateStep(DbConfig dbConfig, HyperClockCacheWrapper sharedCache, string basePath, string[] arguments) =>
         new([new StepCommandSelection("rewrite-db", arguments)], new InitConfig { BaseDbPath = basePath },
-            new RocksDbRewriter(new InitConfig { BaseDbPath = basePath }, dbConfig, CreateConfigFactory(dbConfig), sharedCache, LimboLogs.Instance));
+            CreateRewriter(dbConfig, sharedCache, basePath));
 
     private static (IDisposable Db, IDb[] Columns) Open(IDbFactory factory, string dbName) => dbName switch
     {
@@ -112,6 +150,15 @@ public class RewriteDbTests
 
     private static (IDisposable, IDb[]) Columns<T>(IColumnsDb<T> db) where T : struct, Enum =>
         (db, [.. db.ColumnKeys.Select(db.GetColumnDb)]);
+
+    private static int FilesAtLevelZero(IDb column)
+    {
+        const string property = "rocksdb.num-files-at-level0";
+        string? files = column is ColumnDb columnDb
+            ? columnDb._mainDb._db.GetProperty(property, columnDb._columnFamily)
+            : ((DbOnTheRocks)column)._db.GetProperty(property);
+        return int.Parse(files!);
+    }
 
     /// <remarks>Large enough values that each column spans several write chunks.</remarks>
     private static IDb Fill(IDb db)

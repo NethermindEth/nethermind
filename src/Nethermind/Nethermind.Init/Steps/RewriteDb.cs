@@ -24,15 +24,19 @@ public class RewriteDb(
     /// <exception cref="InvalidConfigurationException">
     /// The arguments do not name exactly one existing RocksDB database, or the rewrite cannot proceed safely.
     /// </exception>
-    public Task Execute(CancellationToken cancellationToken)
+    public Task Execute(CancellationToken cancellationToken) =>
+        rewriter.Rewrite(GetDbName(commandSelections, initConfig, "rewrite-db"), cancellationToken);
+
+    /// <summary>Reads the single database name a DB maintenance command takes.</summary>
+    /// <exception cref="InvalidConfigurationException">The command line does not give exactly one argument.</exception>
+    internal static string GetDbName(IEnumerable<StepCommandSelection> commandSelections, IInitConfig initConfig, string command)
     {
         // Resolvable without a command line, so the container can build it even when nothing selected it by name.
         IReadOnlyList<string> arguments = commandSelections.SingleOrDefault()?.Arguments ?? [];
-        if (arguments.Count != 1)
-            throw new InvalidConfigurationException(
-                $"rewrite-db takes exactly one database name, the directory under {initConfig.BaseDbPath}, e.g. `rewrite-db receipts`.",
+        return arguments.Count == 1
+            ? arguments[0]
+            : throw new InvalidConfigurationException(
+                $"{command} takes exactly one database name, the directory under {initConfig.BaseDbPath}, e.g. `{command} receipts`.",
                 ExitCodes.ForbiddenOptionValue);
-
-        return rewriter.Rewrite(arguments[0], cancellationToken);
     }
 }

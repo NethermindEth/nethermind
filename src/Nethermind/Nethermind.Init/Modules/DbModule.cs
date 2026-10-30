@@ -74,9 +74,11 @@ public class DbModule(
 
             .AddSingleton<HyperClockCacheWrapper>((ctx) => new HyperClockCacheWrapper(ctx.Resolve<IDbConfig>().SharedBlockCacheSize))
 
-            // [StepCommand] keeps it out of a normal node start; it runs only as `nethermind rewrite-db <db>`.
+            // [StepCommand] keeps them out of a normal node start; they run only as `nethermind rewrite-db <db>`
+            // or `nethermind compact-db <db>`.
             .AddSingleton<RocksDbRewriter>()
             .AddStep(typeof(RewriteDb))
+            .AddStep(typeof(CompactDb))
             ;
 
         switch (initConfig.DiagnosticMode)
