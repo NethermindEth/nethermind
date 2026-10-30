@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Stateless.Execution.IO;
 using NUnit.Framework;
@@ -31,6 +32,20 @@ public class WitnessCodeTests
             AssertPlacedAt(codes[1], input, 40, expected[1]);
             AssertPlacedAt(codes[2], input, 80, expected[2]);
         }
+    }
+
+    [Test]
+    public void Keeps_the_hash_it_computed_while_moving_each_code()
+    {
+        byte[] input = GC.AllocateArray<byte>(256, pinned: true);
+        SszWitnessCodes[] codes = InInput(input, (100, 5), (140, 3), (150, 10));
+        ValueHash256[] expected = codes.Select(static c => ValueKeccak.Compute(c.Bytes.Code.Span)).ToArray();
+
+        WitnessCode.MoveToFront(codes, input);
+        // A hash computed from the placed bytes now would be of zeros.
+        input.AsSpan().Clear();
+
+        Assert.That(codes.Select(static c => c.Bytes.Hash).ToArray(), Is.EqualTo(expected));
     }
 
     [Test]
@@ -104,6 +119,7 @@ public class WitnessCodeTests
             Assert.That(ExecutableCodeMemory.IsPlaced(placed), Is.True);
             Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(placed.Span), ref input[offset]), Is.True);
             Assert.That(placed.ToArray(), Is.EqualTo(expected));
+            Assert.That(code.Bytes.Hash, Is.EqualTo(ValueKeccak.Compute(expected)));
             Assert.That(input.AsSpan(offset + expected.Length, Padding).ToArray(), Is.All.EqualTo(0));
         }
     }

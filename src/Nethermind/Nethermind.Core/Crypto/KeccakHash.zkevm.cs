@@ -138,6 +138,104 @@ public sealed partial class KeccakHash
         return Unsafe.As<ulong, ValueHash256>(ref lane);
     }
 
+    /// <inheritdoc cref="KeccakHash.CopyAndComputeHash256" />
+    /// <remarks>Where <see cref="FirstTouchMemoryFlag"/> is on, an unaligned source of at least one rate block, moved down
+    /// to an aligned destination, is copied and absorbed in one pass, as the witness codes the guest moves within its
+    /// input are: a copy hashed afterwards loads each word twice, and the copy itself merges each from two.</remarks>
+    internal static partial ValueHash256 CopyAndComputeHash256(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        destination = destination[..source.Length];
+        unsafe
+        {
+            fixed (byte* from = source)
+            fixed (byte* to = destination)
+            {
+                if (!FirstTouchMemoryFlag.IsActive || source.Length < HASH_DATA_AREA || ((nuint)from & 7) == 0
+                    || ((nuint)to & 7) != 0 || to > AlignedDown(from))
+                {
+                    source.CopyTo(destination);
+                    return ComputeHash256(destination);
+                }
+
+                return CopyAndSponge(AlignedDown((ulong*)from), (ulong*)to, (int)(((nuint)from & 7) << 3), (nuint)(uint)source.Length);
+            }
+        }
+    }
+
+    /// <summary>Copies the <paramref name="length"/> bytes that start <paramref name="shift"/> bits into the word at
+    /// <paramref name="source"/> to <paramref name="destination"/>, and computes their Keccak-256 digest.</summary>
+    /// <param name="shift">8 to 56.</param>
+    /// <param name="length">At least one rate block.</param>
+    /// <remarks><paramref name="destination"/> must not lie above <paramref name="source"/>: each word is stored only after
+    /// the source word past it is loaded. The tail past the last whole block is copied first and absorbed from the copy.
+    /// </remarks>
+    [SkipLocalsInit]
+    private static unsafe ValueHash256 CopyAndSponge(ulong* source, ulong* destination, int shift, nuint length)
+    {
+        // Both are aligned already. The JIT proves no access through a parameter aligned, but does through a local rounded.
+        ulong* from = AlignedDown(source);
+        ulong* to = AlignedDown(destination);
+        Unsafe.SkipInit(out KeccakState stateBuffer);
+        ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
+        nuint whole = length / HASH_DATA_AREA * HASH_DATA_AREA;
+        ulong* lastBlock = to + (whole - HASH_DATA_AREA) / sizeof(ulong);
+
+        ZeroCapacity(ref lane);
+        ulong low = CopyAndAbsorbBlock(ref lane, from, to, *from, shift, intoZeroState: true);
+        Accelerators.KeccakF(ref lane);
+        while (to < lastBlock)
+        {
+            from += RateLanes;
+            to += RateLanes;
+            low = CopyAndAbsorbBlock(ref lane, from, to, low, shift, intoZeroState: false);
+            Accelerators.KeccakF(ref lane);
+        }
+
+        from += RateLanes;
+        to += RateLanes;
+        nuint tail = length - whole;
+        Buffer.MemoryCopy((byte*)from + (shift >> 3), to, tail, tail);
+        AbsorbPaddedTail(ref lane, (byte*)to, tail);
+        Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) = Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) ^ (0x80UL << 56);
+        Accelerators.KeccakF(ref lane);
+        return Unsafe.As<ulong, ValueHash256>(ref lane);
+    }
+
+    /// <summary>Copies a whole rate block, as <see cref="CopyAndSponge"/> does, and absorbs it.</summary>
+    /// <param name="low">The source word at <paramref name="from"/>.</param>
+    /// <returns>The source word past the block.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static unsafe ulong CopyAndAbsorbBlock(ref ulong lane, ulong* from, ulong* to, ulong low, int shift, bool intoZeroState)
+    {
+        low = CopyAndAbsorbLane(ref lane, from, to, 0, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 1, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 2, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 3, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 4, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 5, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 6, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 7, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 8, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 9, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 10, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 11, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 12, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 13, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 14, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 15, low, shift, intoZeroState);
+        return CopyAndAbsorbLane(ref lane, from, to, 16, low, shift, intoZeroState);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe ulong CopyAndAbsorbLane(ref ulong lane, ulong* from, ulong* to, nuint index, ulong low, int shift, bool intoZeroState)
+    {
+        ulong high = from[index + 1];
+        ulong word = (low >> shift) | (high << (64 - shift));
+        to[index] = word;
+        Unsafe.Add(ref lane, index) = intoZeroState ? word : Unsafe.Add(ref lane, index) ^ word;
+        return high;
+    }
+
     /// <summary>Absorbs and pads the <paramref name="length"/> bytes at <paramref name="data"/> into a state of
     /// uninitialized lanes, leaving their digest in its first four lanes.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
