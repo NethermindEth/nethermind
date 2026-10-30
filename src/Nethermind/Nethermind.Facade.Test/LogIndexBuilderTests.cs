@@ -279,12 +279,12 @@ public class LogIndexBuilderTests
         }
     }
 
-    [TestCase(10, 2, 1, TestName = "Should_WarnOnce_WhenTheStoredIndexEndsBelowTheBarrierAndReceiptsThereAreUnavailable")]
-    [TestCase(10, 50, 0, TestName = "Should_NotWarn_WhenReceiptsAboveTheBarrierAreNotReadableYet")]
-    [TestCase(10, MaxSyncBlock, 0, TestName = "Should_NotWarn_WhenIdleAtHead")]
-    [TestCase(MaxSyncBlock + 3, MaxSyncBlock, 0, TestName = "Should_NotWarn_WhenIdleAtAHeadBelowTheBarrier")]
+    [TestCase(10, 2, 1, "0/90", TestName = "Should_WarnOnce_WhenTheStoredIndexEndsBelowTheBarrierAndReceiptsThereAreUnavailable")]
+    [TestCase(10, 50, 0, "1/43", TestName = "Should_NotWarn_WhenReceiptsAboveTheBarrierAreNotReadableYet")]
+    [TestCase(10, MaxSyncBlock, 0, "1/1", TestName = "Should_NotWarn_WhenIdleAtHead")]
+    [TestCase(MaxSyncBlock + 3, MaxSyncBlock, 0, "1/1", TestName = "Should_NotWarn_WhenIdleAtAHeadBelowTheBarrier")]
     [CancelAfter(60_000)]
-    public async Task Should_WarnOnce_OnlyWhenTheForwardIndexIsStuckBelowTheBarrier(int barrier, int storedMax, int expectedWarnings, CancellationToken cancellation)
+    public async Task Should_WarnOnce_OnlyWhenTheForwardIndexIsStuckBelowTheBarrier(int barrier, int storedMax, int expectedWarnings, string expectedForwardProgress, CancellationToken cancellation)
     {
         _syncConfig.AncientReceiptsBarrier = (ulong)barrier;
         TestLogger logger = new();
@@ -324,6 +324,8 @@ public class LogIndexBuilderTests
                 "only a forward index stuck below the barrier must tell the operator, and only once instead of polling silently forever");
             Assert.That(builder.LastError, Is.Null);
             Assert.That(storage.MaxBlockNumber, Is.EqualTo(storedMax));
+            Assert.That(logger.LogList.Exists(line => line.Replace(" ", "").Contains($"(Forward){expectedForwardProgress}(")), Is.True,
+                "forward progress must count from the first block the forward walk indexes, not from the pivot");
         }
 
         await builder.StopAsync();
