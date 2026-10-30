@@ -178,7 +178,8 @@ public class BlockProductionTransactionPickerTests
 
         Transaction first = Tx();
         BlockProcessor.AddingTxEventArgs added = picker.CanAddTransaction(block, first, new HashSet<Transaction>(), sender.State, 0, 0);
-        BlockProcessor.AddingTxEventArgs skipped = picker.CanAddTransaction(block, Tx(), new HashSet<Transaction>(), sender.State, BlockGasLimit - 50_000, 0);
+        Transaction second = Tx();
+        BlockProcessor.AddingTxEventArgs skipped = picker.CanAddTransaction(block, second, new HashSet<Transaction>(), sender.State, BlockGasLimit - 50_000, 0);
         BlockProcessor.AddingTxEventArgs addedAgain = picker.CanAddTransaction(block, Tx(), new HashSet<Transaction>(), sender.State, 0, 0);
 
         using (Assert.EnterMultipleScope())
@@ -190,6 +191,9 @@ public class BlockProductionTransactionPickerTests
             Assert.That(skipped, Is.Not.SameAs(added).And.Not.SameAs(addedAgain));
             Assert.That((added.Action, added.Reason, added.Transaction), Is.EqualTo((BlockProcessor.TxAction.Add, string.Empty, first)),
                 "a later skip must not rewrite args a subscriber kept");
+            Assert.That((skipped.Action, skipped.Reason, skipped.Transaction),
+                Is.EqualTo((BlockProcessor.TxAction.Skip, "Not enough execution gas in block, gas limit 100000 > 50000", second)),
+                "a later added candidate must not touch the reused rejection args");
         }
     }
 
