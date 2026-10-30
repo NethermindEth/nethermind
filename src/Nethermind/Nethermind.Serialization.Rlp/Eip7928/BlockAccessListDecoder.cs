@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
@@ -23,14 +24,17 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
     public int GetLength(GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    protected override ReadOnlyBlockAccessList DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors)
+    protected override ReadOnlyBlockAccessList DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors)
+        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader) : Decode<OnFlag>(ref reader);
+
+    private static ReadOnlyBlockAccessList Decode<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag
     {
         // Capture the BAL's RLP slice so the wire hash can be cached on the returned instance;
         // BlockValidator would otherwise recompute the same keccak per block.
-        int startPosition = ctx.Position;
+        RlpReader start = reader;
+        ReadOnlySpan<byte> wireRlp = start.ReadEncodedItem<TCanonicalChecks>();
 
-        ReadOnlyAccountChanges[] accountChanges = ctx.DecodeNonNullArray(AccountChangesDecoder.Instance, limit: _accountsLimit);
-        ReadOnlySpan<byte> wireRlp = ctx.Data[startPosition..ctx.Position];
+        ReadOnlyAccountChanges[] accountChanges = DecodeAccountChanges<TCanonicalChecks>(ref reader);
 
         Address? lastAddress = null;
         int itemCount = 0;
@@ -50,6 +54,23 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         return new ReadOnlyBlockAccessList(accountChanges, itemCount, wireHash);
     }
 
+    private static ReadOnlyAccountChanges[] DecodeAccountChanges<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag
+    {
+        RlpBehaviors itemBehaviors = TCanonicalChecks.IsActive ? RlpBehaviors.None : RlpBehaviors.TrustedInput;
+        RlpReader items = reader.EnterSequence<TCanonicalChecks>(out int itemsLength);
+        int count = items.CountItems<TCanonicalChecks>(_accountsLimit);
+        ReadOnlyAccountChanges[] result = count == 0 ? [] : new ReadOnlyAccountChanges[count];
+        // A span store has no covariance check, unlike an array store of a reference type.
+        Span<ReadOnlyAccountChanges> span = result;
+        for (int i = 0; i < span.Length; i++)
+        {
+            span[i] = AccountChangesDecoder.Decode<TCanonicalChecks>(ref items, itemBehaviors);
+        }
+
+        reader.ExitSequence(in items, itemsLength);
+        return result;
+    }
+
     /// <summary>
     /// One-pass RLP encode of a generated BAL into a freshly allocated byte buffer.
     /// </summary>
@@ -59,8 +80,9 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(sortedAccounts.Count, sortedAccounts.Count);
         PrepareGeneratedLengths(sortedAccounts.AsSpan(), accountLengths.AsSpan(), rlpBehaviors, out int contentLength);
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         EncodeGeneratedPrepared(ref writer, sortedAccounts.AsSpan(), accountLengths.AsSpan(), contentLength, rlpBehaviors);
+        Rlp.CheckLength(in writer, bytes.Length);
         return bytes;
     }
 
@@ -77,8 +99,9 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         ArrayPoolSpan<byte> bytes = new(Rlp.LengthOfSequence(contentLength));
         try
         {
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             EncodeGeneratedPrepared(ref writer, sortedAccounts.AsSpan(), accountLengths.AsSpan(), contentLength, rlpBehaviors);
+            Rlp.CheckLength(in writer, bytes.Length);
             return bytes;
         }
         catch
@@ -95,12 +118,13 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(accounts.Length, accounts.Length);
         PrepareReadOnlyLengths(accounts, accountLengths.AsSpan(), rlpBehaviors, out int contentLength);
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         EncodeReadOnlyPrepared(ref writer, accounts, accountLengths.AsSpan(), contentLength, rlpBehaviors);
+        Rlp.CheckLength(in writer, bytes.Length);
         return bytes;
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(ref RlpWriter writer, ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ArgumentNullException.ThrowIfNull(item);
         ReadOnlySpan<ReadOnlyAccountChanges> accounts = item.AccountChanges.AsSpan();
@@ -109,8 +133,7 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         EncodeReadOnlyPrepared(ref writer, accounts, accountLengths.AsSpan(), contentLength, rlpBehaviors);
     }
 
-    public void Encode<TWriter>(ref TWriter writer, GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    public void Encode(ref RlpWriter writer, GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         using ArrayPoolListRef<GeneratedAccountChanges> sortedAccounts = item.GetSortedAccountChanges();
         using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(sortedAccounts.Count, sortedAccounts.Count);
@@ -174,44 +197,46 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         }
     }
 
-    private static void EncodeReadOnlyPrepared<TWriter>(
-        ref TWriter writer,
+    private static void EncodeReadOnlyPrepared(
+        ref RlpWriter writer,
         scoped ReadOnlySpan<ReadOnlyAccountChanges> accounts,
         scoped ReadOnlySpan<AccountChangesDecoder.EncodingLengths> accountLengths,
         int contentLength,
         RlpBehaviors rlpBehaviors)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         Debug.Assert(accountLengths.Length >= accounts.Length);
 
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         AccountChangesDecoder accountChangesDecoder = AccountChangesDecoder.Instance;
         for (int i = 0; i < accounts.Length; i++)
         {
             accountChangesDecoder.EncodePrepared(ref writer, accounts[i], in accountLengths[i], rlpBehaviors);
         }
+
+        writer.EndSequence(sequence);
     }
 
-    private static void EncodeGeneratedPrepared<TWriter>(
-        ref TWriter writer,
+    private static void EncodeGeneratedPrepared(
+        ref RlpWriter writer,
         scoped ReadOnlySpan<GeneratedAccountChanges> sortedAccounts,
         scoped ReadOnlySpan<AccountChangesDecoder.EncodingLengths> accountLengths,
         int contentLength,
         RlpBehaviors rlpBehaviors)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         Debug.Assert(accountLengths.Length >= sortedAccounts.Length);
 
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         AccountChangesDecoder accountChangesDecoder = AccountChangesDecoder.Instance;
         for (int i = 0; i < sortedAccounts.Length; i++)
         {
             accountChangesDecoder.EncodePrepared(ref writer, sortedAccounts[i], in accountLengths[i], rlpBehaviors);
         }
+
+        writer.EndSequence(sequence);
     }
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowAccountChangesOutOfOrder() =>
-        throw new RlpException("Account changes were in incorrect order.");
+        throw new RlpReaderException("Account changes were in incorrect order.");
 
 }

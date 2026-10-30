@@ -8,6 +8,7 @@ using Nethermind.Serialization.FluentRlp;
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -39,16 +40,20 @@ namespace Nethermind.Serialization.Rlp
         public static LogEntry[] DecodeLogs(ref RlpReader logs, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? DecodeLogs<OffFlag>(ref logs) : DecodeLogs<OnFlag>(ref logs);
 
-        private static LogEntry[] DecodeLogs<TCanonicalChecks>(ref RlpReader logs) where TCanonicalChecks : struct, IFlag
+        // Not inlined into the receipt decode, so that its loop does not make the frame of the receipt decode larger.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static LogEntry[] DecodeLogs<TCanonicalChecks>(ref RlpReader logs) where TCanonicalChecks : struct, IFlag
         {
             RlpLimit logsRlpLimit = RlpLimit.ReceiptLogs;
             int maxLogs = Math.Min(logsRlpLimit.Limit, logs.Remaining / MinNonNullEncodedLength);
             int logCount = logs.CountItems<TCanonicalChecks>(maxLogs, logsRlpLimit);
 
             LogEntry[] result = logCount == 0 ? [] : new LogEntry[logCount];
-            for (int i = 0; i < logCount; i++)
+            // A span store has no covariance check, unlike an array store of a reference type.
+            Span<LogEntry> span = result;
+            for (int i = 0; i < span.Length; i++)
             {
-                result[i] = Decode<TCanonicalChecks>(ref logs) ?? ThrowNullLog();
+                span[i] = Decode<TCanonicalChecks>(ref logs) ?? ThrowNullLog();
             }
 
             return result;
@@ -61,7 +66,7 @@ namespace Nethermind.Serialization.Rlp
         protected override LogEntry? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader) : Decode<OnFlag>(ref reader);
 
-        private static LogEntry? Decode<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag
+        internal static LogEntry? Decode<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag
         {
             if (reader.TryReadEmptySequence()) return null;
 

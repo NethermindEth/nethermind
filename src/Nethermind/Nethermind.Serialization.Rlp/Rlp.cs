@@ -28,7 +28,7 @@ namespace Nethermind.Serialization.Rlp
     /// </summary>
     public partial class Rlp
     {
-        private const int SmallPrefixBarrier = 56;
+        internal const int SmallPrefixBarrier = 56;
 
         public const int LengthOfKeccakRlp = 33;
 
@@ -74,9 +74,6 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders = false);
-
-        // TEMP-SWAP: registers the decoders that are not ported yet; implemented in Rlp.Pending.cs.
-        static partial void RegisterPendingDecoders();
 
         [return: MaybeNull]
         public static T Decode<T>(Rlp oldRlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

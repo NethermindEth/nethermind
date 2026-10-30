@@ -205,6 +205,15 @@ public ref struct RlpWriter
         _length += encoded.Length;
     }
 
+    /// <summary>Moves past the next <paramref name="count"/> bytes and returns them, for a caller that writes encoded items into them.</summary>
+    /// <remarks>The caller must fill all the bytes with complete, canonical items, as for <see cref="WriteEncoded"/>.</remarks>
+    internal Span<byte> ReserveEncoded(int count)
+    {
+        Span<byte> destination = Reserve(count);
+        _length += count;
+        return destination;
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void WriteLongString(scoped ReadOnlySpan<byte> value)
     {

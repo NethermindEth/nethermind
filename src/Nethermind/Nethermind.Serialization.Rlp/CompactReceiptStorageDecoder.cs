@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -19,16 +19,18 @@ namespace Nethermind.Serialization.Rlp
     {
         public static readonly CompactReceiptStorageDecoder Instance = new();
 
-        protected override TxReceipt? DecodeInternal(ref RlpReader decoderContext,
+        protected override TxReceipt? DecodeInternal(ref RlpReader reader,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
+
+        internal static TxReceipt? Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
         {
-            if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
+            if (reader.TryReadEmptySequence()) return null;
 
             TxReceipt txReceipt = new();
-            rlp.ReadSequenceLength(ref position, out int receiptLength);
-            int receiptEnd = position + receiptLength;
+            RlpReader fields = reader.EnterSequence<TCanonicalChecks>(out int receiptLength);
 
-            rlp.DecodeByteArray(ref position, out byte[] firstItem);
+            ReadOnlySpan<byte> firstItem = fields.ReadBytes<TCanonicalChecks>();
             if (firstItem.Length == 1)
             {
                 txReceipt.StatusCode = firstItem[0];
@@ -43,50 +45,25 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
-            txReceipt.Sender = rlp.DecodeAddressOrNull(ref position);
-            txReceipt.GasUsedTotal = rlp.DecodeULong(ref position);
+            txReceipt.Sender = fields.DecodeAddressOrNull();
+            txReceipt.GasUsedTotal = fields.DecodeULong<TCanonicalChecks>();
 
-            rlp.ReadSequenceLength(ref position, out int sequenceLength);
-            int lastCheck = position + sequenceLength;
-            decoderContext.Position = position;
-
-            // Don't know the size exactly, I'll just assume its just an address and add some margin
-            using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
-            while (decoderContext.Position < lastCheck)
-            {
-                LogEntry? logEntry = CompactLogEntryDecoder.Instance.Decode(
-                    ref decoderContext,
-                    RlpBehaviors.AllowExtraBytes);
-                if (logEntry is not null)
-                {
-                    logEntries.Add(logEntry);
-                }
-            }
-
-            txReceipt.Logs = logEntries.ToArray();
-
-            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
-            if (!allowExtraBytes)
-            {
-                RlpHelpers.Check(decoderContext.Position, lastCheck);
-            }
+            RlpReader logs = fields.EnterSequence<TCanonicalChecks>(out int logsLength);
+            txReceipt.Logs = DecodeLogs<TCanonicalChecks>(ref logs);
+            fields.ExitSequence(in logs, logsLength);
 
             // EIP-8141: only frame receipts carry data past the logs sequence — a trailing extension holding the
             // payer and per-frame receipts. Pre-fork receipts end at the logs, so the branch never fires for them.
-            if (decoderContext.Position < receiptEnd)
+            if (fields.HasNext)
             {
                 txReceipt.TxType = TxType.FrameTx;
                 // Null-tolerant like the sender above: an earlier build wrote a payer-less receipt, and
                 // refusing to parse it would take the whole block's receipt array with it.
-                txReceipt.Payer = decoderContext.DecodeAddressOrNull();
-                txReceipt.FrameReceipts = FrameReceiptRlp.DecodeStoredFrames(ref decoderContext, CompactLogEntryDecoder.Instance);
+                txReceipt.Payer = fields.DecodeAddressOrNull();
+                txReceipt.FrameReceipts = FrameReceiptRlp.DecodeStoredFrames<TCanonicalChecks>(ref fields, CompactLogEntryDecoder.Instance, rlpBehaviors);
             }
 
-            // Handle any remaining extra bytes
-            if (decoderContext.Position < receiptEnd && allowExtraBytes)
-            {
-                decoderContext.Position = receiptEnd;
-            }
+            reader.ExitSequence(in fields, receiptLength, rlpBehaviors);
 
             // EIP-7668: the bloom would be discarded. Otherwise TxReceipt computes it from the logs on first read.
             if ((rlpBehaviors & RlpBehaviors.Eip7668Receipts) != 0)
@@ -95,29 +72,63 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return txReceipt;
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowUnexpectedPostStateLength(int length)
-                => throw new RlpException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
         }
+
+        /// <summary>Decodes the logs of a stored receipt, and leaves out the null ones.</summary>
+        private static LogEntry[] DecodeLogs<TCanonicalChecks>(ref RlpReader logs) where TCanonicalChecks : struct, IFlag
+        {
+            // Each log takes at least one byte, so the count cannot reach the bound.
+            int count = logs.CountItems<TCanonicalChecks>(logs.Remaining + 1);
+            if (count == 0) return [];
+
+            LogEntry[] logEntries = new LogEntry[count];
+            // A span store has no covariance check, unlike an array store of a reference type.
+            Span<LogEntry> span = logEntries;
+            int decoded = 0;
+            for (int i = 0; i < span.Length; i++)
+            {
+                LogEntry? logEntry = CompactLogEntryDecoder.Decode<TCanonicalChecks>(ref logs);
+                if (logEntry is not null)
+                {
+                    span[decoded++] = logEntry;
+                }
+            }
+
+            if (decoded != count) Array.Resize(ref logEntries, decoded);
+            return logEntries;
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowUnexpectedPostStateLength(int length)
+            => throw new RlpReaderException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
 
         public void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors,
             out TxReceiptStructRef item)
         {
+            if ((rlpBehaviors & RlpBehaviors.TrustedInput) != 0)
+            {
+                DecodeStructRef<OffFlag>(ref decoderContext, out item);
+            }
+            else
+            {
+                DecodeStructRef<OnFlag>(ref decoderContext, out item);
+            }
+        }
+
+        private static void DecodeStructRef<TCanonicalChecks>(scoped ref RlpReader decoderContext, out TxReceiptStructRef item)
+            where TCanonicalChecks : struct, IFlag
+        {
             // Note: This method runs at 2.5 million times/sec on my machine
             item = new TxReceiptStructRef();
 
-            if (decoderContext.IsNextItemEmptyList())
+            if (decoderContext.TryReadEmptySequence())
             {
-                decoderContext.ReadByte();
                 return;
             }
 
-            (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
-            int receiptEnd = decoderContext.Position + prefixLength + contentLength;
-            decoderContext.SkipLength();
+            RlpReader fields = decoderContext.EnterSequence<TCanonicalChecks>(out int receiptLength);
 
-            ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan(RlpLimit.L32);
+            ReadOnlySpan<byte> firstItem = fields.DecodeByteArraySpan<TCanonicalChecks>(RlpLimit.L32);
             if (firstItem.Length == 1)
             {
                 item.StatusCode = firstItem[0];
@@ -128,36 +139,35 @@ namespace Nethermind.Serialization.Rlp
                     firstItem.Length == 0 ? new Hash256StructRef() : new Hash256StructRef(firstItem);
             }
 
-            decoderContext.DecodeAddressStructRef(out item.Sender);
-            item.GasUsedTotal = decoderContext.DecodeULong();
-
-            (int PrefixLength, int ContentLength) =
-                decoderContext.PeekPrefixAndContentLength();
-            int logsBytes = ContentLength + PrefixLength;
-            item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
-            decoderContext.SkipItem();
+            fields.DecodeAddressStructRef(out item.Sender);
+            item.GasUsedTotal = fields.DecodeULong<TCanonicalChecks>();
+            item.LogsRlp = fields.ReadEncodedItem<TCanonicalChecks>();
 
             // EIP-8141: skip a frame-tx receipt's trailing extension so the next receipt in the array stays aligned.
-            if (decoderContext.Position < receiptEnd)
+            if (fields.HasNext)
             {
                 item.TxType = TxType.FrameTx;
-                decoderContext.Position = receiptEnd;
+                decoderContext.ExitSequenceIgnoringRest(in fields, receiptLength);
+            }
+            else
+            {
+                decoderContext.ExitSequence(in fields, receiptLength);
             }
         }
 
         public void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors none,
             out LogEntryStructRef current) => CompactLogEntryDecoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
 
-        public Hash256[] DecodeTopics(RlpReader reader) => CompactLogEntryDecoder.DecodeTopics(reader);
+        public Hash256[] DecodeTopics(RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => CompactLogEntryDecoder.DecodeTopics(reader, rlpBehaviors);
 
         // Refstruct decode does not generate bloom
         public bool CanDecodeBloom => false;
 
-        public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(ref RlpWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                writer.WriteByte(Rlp.EmptyListByte);
+                writer.EncodeNullObject();
                 return;
             }
 
@@ -166,7 +176,7 @@ namespace Nethermind.Serialization.Rlp
             bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
             // Note: Any byte saved here is about 3GB on mainnet.
-            writer.StartSequence(totalContentLength);
+            RlpSequence sequence = writer.StartSequence(totalContentLength);
             if (isEip658receipts)
             {
                 writer.Encode(item.StatusCode);
@@ -179,7 +189,7 @@ namespace Nethermind.Serialization.Rlp
             writer.Encode(item.Sender);
             writer.Encode(item.GasUsedTotal);
 
-            writer.StartSequence(logsLength);
+            RlpSequence logsSequence = writer.StartSequence(logsLength);
 
             LogEntry[] logs = GetLogs(item);
             for (int i = 0; i < logs.Length; i++)
@@ -187,12 +197,16 @@ namespace Nethermind.Serialization.Rlp
                 CompactLogEntryDecoder.Instance.Encode(ref writer, logs[i]);
             }
 
+            writer.EndSequence(logsSequence);
+
             if (item.TxType == TxType.FrameTx)
             {
                 // Repeats the logs the top-level union already holds, at the cost noted above: DecodeStructRef
                 // hands eth_getLogs one contiguous LogsRlp span, which N per-frame sequences cannot supply.
                 FrameReceiptRlp.EncodeStoredExtension(ref writer, item, CompactLogEntryDecoder.Instance);
             }
+
+            writer.EndSequence(sequence);
         }
 
         private static (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
@@ -240,7 +254,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         private static LogEntry[] GetLogs(TxReceipt item)
-            => item.Logs ?? throw new RlpException("Receipt logs are null.");
+            => item.Logs ?? throw new RlpReaderException("Receipt logs are null.");
 
         public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
         {

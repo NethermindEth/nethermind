@@ -17,20 +17,6 @@
     <ProjectReference Include="..\Nethermind.Serialization.FluentRlp\Nethermind.Serialization.FluentRlp.csproj" />
   </ItemGroup>
 
-  <!-- TEMP-SWAP: files that later steps port to FluentRlp. Each step removes the entries it ports; the last step removes the list. -->
-  <ItemGroup>
-    <Compile Remove="CompactLogEntryDecoder.cs" />
-    <Compile Remove="CompactReceiptStorageDecoder.cs" />
-    <Compile Remove="Eip7928/**/*.cs" />
-    <Compile Remove="FrameReceiptRlp.cs" />
-    <Compile Remove="IReceiptRefDecoder.cs" />
-    <Compile Remove="ReceiptArrayStorageDecoder.cs" />
-    <Compile Remove="ReceiptMessageDecoder.cs" />
-    <Compile Remove="ReceiptMessageDecoder.zkevm.cs" />
-    <Compile Remove="ReceiptStorageDecoder.cs" />
-    <Compile Remove="Rlp.Pending.cs" />
-  </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="Ckzg.Bindings" />
     <PackageReference Include="Nethermind.DotNetty.Buffers" />

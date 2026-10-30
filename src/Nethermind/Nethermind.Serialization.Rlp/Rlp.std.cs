@@ -66,7 +66,6 @@ public partial class Rlp
     {
         RegisterDecoders(typeof(Rlp).Assembly);
         RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
-        RegisterPendingDecoders();
         return true;
     }
 
