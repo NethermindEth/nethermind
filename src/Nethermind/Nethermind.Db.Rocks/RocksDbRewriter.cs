@@ -117,14 +117,19 @@ public class RocksDbRewriter(
 
     /// <remarks>
     /// Logs every <see cref="CompactionLogInterval"/> from RocksDB's compaction byte counters. They are database-wide,
-    /// so a background compaction running alongside is counted too. Progress is bytes read against the family's
-    /// size on disk when it started, which a forced compaction reads at least once.
+    /// so a background compaction running alongside is counted too. Progress is bytes read against
+    /// <see cref="EstimateCompactionRead"/>.
     /// </remarks>
     private async Task CompactFamily(DbOnTheRocks db, string? family, string familyName)
     {
         IColumnFamilyHandle? familyHandle = GetFamily(db, family);
         string prefix = $"Compacting {db.Name} {familyName}";
-        ulong sizeOnDisk = GetIntProperty(db, familyHandle, "rocksdb.total-sst-files-size");
+        List<(int Level, long Size)> levels = ReadLevelSizes(db, familyHandle);
+        long estimatedRead = EstimateCompactionRead(levels);
+        if (_logger.IsInfo)
+            _logger.Info($"{prefix}: {levels.Count} levels ({string.Join(", ", levels.Select(static l => $"L{l.Level} {Mib(l.Size):N0} MiB"))}), " +
+                $"~{Mib(estimatedRead):N0} MiB to read");
+
         (long startRead, long startWritten) = ReadCompactionBytes(db);
         (long lastRead, long lastWritten) = (startRead, startWritten);
         long start = Stopwatch.GetTimestamp();
@@ -137,9 +142,9 @@ public class RocksDbRewriter(
             (long read, long written) = ReadCompactionBytes(db);
             double seconds = Stopwatch.GetElapsedTime(lastLog).TotalSeconds;
             lastLog = Stopwatch.GetTimestamp();
-            float percentage = Math.Clamp((read - startRead) / (float)Math.Max(sizeOnDisk, 1UL), 0, 1);
+            float percentage = Math.Clamp((read - startRead) / (float)Math.Max(estimatedRead, 1L), 0, 1);
             if (_logger.IsInfo)
-                _logger.Info($"{prefix} {Mib(read - startRead):N0} / ~{Mib((long)sizeOnDisk):N0} MiB read " +
+                _logger.Info($"{prefix} {Mib(read - startRead):N0} / ~{Mib(estimatedRead):N0} MiB read " +
                     $"({percentage.ToString("P2", CultureInfo.InvariantCulture),8}) {Progress.GetMeter(percentage, 1)}| " +
                     $"{Mib(read - lastRead) / seconds:N1} MiB/s read | {Mib(written - lastWritten) / seconds:N1} MiB/s written");
             (lastRead, lastWritten) = (read, written);
@@ -154,10 +159,50 @@ public class RocksDbRewriter(
 
     private static double Mib(long bytes) => bytes / 1024.0 / 1024.0;
 
-    private static ulong GetIntProperty(DbOnTheRocks db, IColumnFamilyHandle? family, string property) =>
-        (family is null ? db._db.TryGetIntProperty(property, out ulong value) : db._db.TryGetIntProperty(property, family, out value))
-            ? value
-            : 0;
+    /// <summary>The non-empty levels of a column family and their size, top level first.</summary>
+    /// <remarks>
+    /// <c>rocksdb.levelstats</c> is two header lines, then one <c>level files size</c> row per level with the size in
+    /// whole MiB, so a level under half a MiB reads as empty.
+    /// </remarks>
+    private static List<(int Level, long Size)> ReadLevelSizes(DbOnTheRocks db, IColumnFamilyHandle? family)
+    {
+        const string levelStats = "rocksdb.levelstats";
+        string stats = (family is null ? db._db.GetProperty(levelStats) : db._db.GetProperty(levelStats, family)) ?? "";
+
+        List<(int Level, long Size)> levels = [];
+        foreach (string row in stats.Split('\n').Skip(2))
+        {
+            string[] columns = row.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (columns.Length != 3) continue;
+
+            long size = (long)(double.Parse(columns[2], CultureInfo.InvariantCulture) * 1.MiB);
+            if (size > 0) levels.Add((int.Parse(columns[0], CultureInfo.InvariantCulture), size));
+        }
+
+        return levels;
+    }
+
+    /// <summary>Estimates how much a forced manual compaction of the given levels reads.</summary>
+    /// <remarks>
+    /// The compaction merges the levels top down, so each merge reads everything above plus the level it lands on;
+    /// <c>kForce</c> then rewrites the bottom level, by then all of the data, once more. Overwritten and deleted
+    /// entries dropping out on the way make the real figure smaller.
+    /// </remarks>
+    private static long EstimateCompactionRead(List<(int Level, long Size)> levels)
+    {
+        long above = 0;
+        long read = 0;
+        foreach ((_, long size) in levels)
+        {
+            if (above > 0) read += above + size;
+            above += size;
+        }
+
+        // Data only in L0 is still compacted out of it before the bottom pass.
+        if (levels is [(0, _)]) read += above;
+
+        return read + above;
+    }
 
     private static (long Read, long Written) ReadCompactionBytes(DbOnTheRocks db)
     {
