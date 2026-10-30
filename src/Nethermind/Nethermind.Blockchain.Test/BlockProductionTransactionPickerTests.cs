@@ -38,6 +38,13 @@ public class BlockProductionTransactionPickerTests
         .WithMaxPriorityFeePerGas(0)
         .TestObject;
 
+    private static Transaction TxWithoutSender()
+    {
+        Transaction tx = Tx();
+        tx.SenderAddress = null;
+        return tx;
+    }
+
     private static Block BlockWithoutBaseFee() => Build.A.Block.WithGasLimit(BlockGasLimit).WithBaseFeePerGas(0).TestObject;
 
     private sealed class FundedSender : IDisposable
@@ -74,6 +81,8 @@ public class BlockProductionTransactionPickerTests
         yield return new TestCaseData(Osaka.Instance, Tx(), BlockGasLimit - 20_000, 0UL, BlockProcessor.TxAction.Stop,
                 "Block full")
             .SetName("Block full stop reason");
+        yield return new TestCaseData(Osaka.Instance, TxWithoutSender(), 0UL, 0UL, BlockProcessor.TxAction.Skip, "Null sender")
+            .SetName("Null sender skip reason");
         yield return new TestCaseData(Osaka.Instance, Tx(), 0UL, 0UL, BlockProcessor.TxAction.Add, string.Empty)
             .SetName("An added candidate has no reason");
     }
@@ -100,19 +109,14 @@ public class BlockProductionTransactionPickerTests
     }
 
     [Test]
-    public void Constant_rejection_reasons_keep_their_text()
+    public void A_transaction_already_in_block_keeps_its_reason_and_index()
     {
         using FundedSender sender = new(1.Ether);
         Block block = BlockWithoutBaseFee();
         BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker(Osaka.Instance);
 
-        Transaction noSender = Tx();
-        noSender.SenderAddress = null;
         Transaction considered = Tx();
         HashSet<Transaction> transactionsInBlock = [considered];
-
-        BlockProcessor.AddingTxEventArgs nullSender = picker.CanAddTransaction(block, noSender, new HashSet<Transaction>(), sender.State, 0, 0);
-        Assert.That((nullSender.Action, nullSender.Reason), Is.EqualTo((BlockProcessor.TxAction.Skip, "Null sender")));
 
         BlockProcessor.AddingTxEventArgs alreadyIn = picker.CanAddTransaction(block, considered, transactionsInBlock, sender.State, 0, 0);
         Assert.That((alreadyIn.Action, alreadyIn.Reason, alreadyIn.Index), Is.EqualTo((BlockProcessor.TxAction.Skip, "Transaction already in block", 1)));
@@ -128,8 +132,7 @@ public class BlockProductionTransactionPickerTests
         BlockProcessor.AddingTxEventArgs gasSkip = picker.CanAddTransaction(block, Tx(), new HashSet<Transaction>(), sender.State, BlockGasLimit - 50_000, 0);
         Assert.That(gasSkip.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
 
-        Transaction noSender = Tx();
-        noSender.SenderAddress = null;
+        Transaction noSender = TxWithoutSender();
         BlockProcessor.AddingTxEventArgs nullSender = picker.CanAddTransaction(block, noSender, new HashSet<Transaction>(), sender.State, 0, 0);
 
         Assert.That((nullSender.Action, nullSender.Reason, nullSender.Transaction), Is.EqualTo((BlockProcessor.TxAction.Skip, "Null sender", noSender)));
