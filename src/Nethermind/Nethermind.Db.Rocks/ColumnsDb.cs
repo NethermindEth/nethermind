@@ -6,108 +6,110 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using FastEnumUtility;
+using Nethermind.Core.Extensions;
 using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
-using Nethermind.Logging;
 using Nethermind.RocksDbBindings;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
+/// <summary>A database with one column family per value of <typeparamref name="T"/>.</summary>
+/// <param name="instance">The open database.</param>
+/// <param name="tableConfig">The configuration the database was opened with, which snapshot reads follow.</param>
+/// <param name="columnDbs">A store for every column family of <paramref name="instance"/>, disposed with this one.</param>
+public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, IDictionary<T, ColumnDb> columnDbs)
+    : IColumnsDb<T>, ITunableDb where T : struct, Enum
 {
-    private readonly IDictionary<T, ColumnDb> _columnDbs = new Dictionary<T, ColumnDb>();
+    private readonly IDictionary<T, ColumnDb> _columnDbs = columnDbs;
+    // Write batches and the write-ahead log belong to the whole database, so any column can serve them.
+    private readonly ColumnDb _anyColumn = columnDbs.Values.First();
 
     // Cached for ColumnDbSnapshot to avoid per-snapshot recomputation.
     // Initialized once on first CreateSnapshot call; both fields are idempotent (same result from any thread).
     private volatile T[]? _cachedColumnKeys;
     private volatile int _cachedMaxOrdinal = -1;
 
-    public ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, IReadOnlyList<T> keys, nint? sharedCache = null)
-        : this(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, ResolveKeys(keys), sharedCache)
-    {
-    }
+    internal bool VerifyChecksum { get; } = tableConfig.VerifyChecksum ?? true;
+    internal ulong ReadAheadSize { get; } = tableConfig.ReadAheadSize ?? 256UL.KiB;
 
-    private ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, (IReadOnlyList<T> Keys, IList<string> ColumnNames) keyInfo, nint? sharedCache)
-        : base(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, keyInfo.ColumnNames, sharedCache: sharedCache)
+    internal int PrefetchesInFlight => _columnDbs.Values.Sum(static column => column.PrefetchesInFlight);
+
+    public bool WasRepairedOnOpen => instance.WasRepairedOnOpen;
+
+    public void AcknowledgeRepair() => instance.AcknowledgeRepair();
+
+    public IDbMeta.DbMetric GatherMetric()
     {
-        foreach (T key in keyInfo.Keys)
+        long size = 0, cacheSize = 0, indexSize = 0, memtableSize = 0, totalReads = 0, totalWrites = 0;
+        foreach (ColumnDb column in _columnDbs.Values)
         {
-            _columnDbs[key] = new ColumnDb(_db, this, key.ToString()!);
-        }
-    }
-
-    protected override void ReleaseUnmanagedResources()
-    {
-        foreach (KeyValuePair<T, ColumnDb> column in _columnDbs)
-        {
-            column.Value.Dispose();
-        }
-
-        base.ReleaseUnmanagedResources();
-    }
-
-    protected override long FetchTotalPropertyValue(string propertyName)
-    {
-        long total = 0;
-        foreach (KeyValuePair<T, ColumnDb> kv in _columnDbs)
-        {
-            total += _db.TryGetIntProperty(propertyName, kv.Value._columnFamily, out ulong value) ? (long)value : 0;
+            IDbMeta.DbMetric metric = column.GatherMetric();
+            size += metric.Size;
+            cacheSize += metric.CacheSize;
+            indexSize += metric.IndexSize;
+            memtableSize += metric.MemtableSize;
+            totalReads += metric.TotalReads;
+            totalWrites += metric.TotalWrites;
         }
 
-        return total;
+        return new IDbMeta.DbMetric
+        {
+            Size = size,
+            CacheSize = cacheSize,
+            IndexSize = indexSize,
+            MemtableSize = memtableSize,
+            TotalReads = totalReads,
+            TotalWrites = totalWrites,
+        };
     }
 
-    public override void Compact()
+    public long EstimatedCount => _columnDbs.Values.Sum(static column => column.EstimatedCount);
+
+    public void Compact()
     {
-        foreach (T key in ColumnKeys)
+        foreach (ColumnDb column in _columnDbs.Values)
         {
-            _columnDbs[key].Compact();
+            column.Compact();
         }
     }
 
     /// <inheritdoc/>
     /// <remarks>
-    /// The base implementation flushes only the WAL and the default column family. On a full flush this
-    /// additionally materializes every named column family's memtable into SST, which is required for
+    /// A full flush materializes every column family's memtable into SST, which is required for
     /// <see cref="WriteFlags.DisableWAL"/> writes: they have no WAL entry, so unless their memtable is
     /// flushed they are lost on restart.
     /// </remarks>
-    public override void Flush(bool onlyWal = false)
+    public void Flush(bool onlyWal = false)
     {
-        base.Flush(onlyWal);
-        if (!onlyWal)
+        foreach (ColumnDb column in _columnDbs.Values)
         {
-            foreach (T key in ColumnKeys)
-            {
-                _columnDbs[key].Flush(onlyWal);
-            }
+            column.Flush(onlyWal);
         }
     }
 
-    private static IReadOnlyList<T> GetEnumKeys(IReadOnlyList<T> keys)
+    public void SyncWal() => _anyColumn.SyncWal();
+
+    public void Tune(ITunableDb.TuneType type)
     {
-        if (typeof(T).IsEnum && keys.Count == 0)
+        foreach (ColumnDb column in _columnDbs.Values)
         {
-            keys = FastEnum.GetValues<T>().ToArray();
+            column.Tune(type);
         }
-
-        return keys;
     }
 
-    private static (IReadOnlyList<T> Keys, IList<string> ColumnNames) ResolveKeys(IReadOnlyList<T> keys)
+    public void Clear()
     {
-        IReadOnlyList<T> resolvedKeys = GetEnumKeys(keys);
-        IList<string> columnNames = resolvedKeys.Select(static key => key.ToString()).ToList();
-
-        return (resolvedKeys, columnNames);
+        Dispose();
+        instance.Delete();
     }
 
-    protected override void BuildOptions<TOptions>(IRocksDbConfig dbConfig, Options<TOptions> options, nint? sharedCache, IMergeOperator? mergeOperator)
+    public void Dispose()
     {
-        base.BuildOptions(dbConfig, options, sharedCache, mergeOperator);
-        options.SetCreateMissingColumnFamilies();
+        foreach (ColumnDb column in _columnDbs.Values)
+        {
+            column.Dispose();
+        }
     }
 
     public IDb GetColumnDb(T key) => _columnDbs[key];
@@ -116,20 +118,11 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
     public IReadOnlyColumnDb<T> CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyColumnsDb<T>(this, createInMemWriteStore);
 
-    public new IColumnsWriteBatch<T> StartWriteBatch() => new RocksColumnsWriteBatch(this);
-
-    protected override void ApplyOptions(IDictionary<string, string> options)
-    {
-        foreach (KeyValuePair<T, ColumnDb> cols in _columnDbs)
-        {
-            _db.SetOptions(cols.Value._columnFamily, options);
-        }
-        base.ApplyOptions(options);
-    }
+    public IColumnsWriteBatch<T> StartWriteBatch() => new RocksColumnsWriteBatch(this);
 
     private class RocksColumnsWriteBatch(ColumnsDb<T> columnsDb) : IColumnsWriteBatch<T>
     {
-        internal readonly RocksDbWriteBatch WriteBatch = new(columnsDb);
+        internal readonly DbOnTheRocks.RocksDbWriteBatch WriteBatch = new(columnsDb._anyColumn);
         private readonly ColumnsDb<T> _columnsDb = columnsDb;
 
         public IWriteBatch GetColumnBatch(T key) => new RocksColumnWriteBatch(_columnsDb._columnDbs[key], this);
@@ -158,7 +151,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
     IColumnDbSnapshot<T> IColumnsDb<T>.CreateSnapshot(bool sequentialReadAhead) => CreateSnapshotCore(sequentialReadAhead);
 
-    private ColumnDbSnapshot CreateSnapshotCore(bool sequentialReadAhead) => new(this, _db.CreateSnapshot(), sequentialReadAhead);
+    private ColumnDbSnapshot CreateSnapshotCore(bool sequentialReadAhead) => new(this, instance.Db.CreateSnapshot(), sequentialReadAhead);
 
     private class ColumnDbSnapshot : IColumnDbSnapshot<T>
     {
@@ -238,13 +231,14 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
                 {
                     T k = keys[i];
                     int ordinal = EnumToInt(k);
-                    IColumnFamilyHandle columnFamily = columnsDb._columnDbs[k]._columnFamily;
+                    ColumnDb column = columnsDb._columnDbs[k];
+                    IColumnFamilyHandle columnFamily = column._columnFamily!;
                     // Internally lazy — until a HintReadAhead read arrives this is just an object allocation.
-                    DisposableLazy<IteratorManager>? iteratorManager = readAheadOptionsFactory is null
+                    DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager = readAheadOptionsFactory is null
                         ? null
-                        : new(() => new IteratorManager(columnsDb._db, columnFamily, readAheadOptionsFactory()) { SequentialKeys = true });
+                        : new(() => new DbOnTheRocks.IteratorManager(column._db, columnFamily, readAheadOptionsFactory()) { SequentialKeys = true });
                     readers[ordinal] = new RocksDbReader(
-                        columnsDb,
+                        column,
                         _sharedReadOptions,
                         _sharedCacheMissReadOptions,
                         readOptionsFactory,

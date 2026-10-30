@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.Store.Test.Repositories;
 
@@ -375,8 +376,9 @@ public class ChainLevelInfoRepositoryTests
     {
         if (!native) return new MemDb();
         using IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
-        return new DbOnTheRocks(directory.Path, new DbSettings(DbNames.BlockInfos, "levels"),
-            configs.Resolve<IDbConfig>(), configs.Resolve<IRocksDbConfigFactory>(), LimboLogs.Instance);
+        return new RocksDbFactory(configs.Resolve<IRocksDbConfigFactory>(), configs.Resolve<IDbConfig>(), new HyperClockCacheWrapper(),
+                new RealFileSystem(), LimboLogs.Instance, directory.Path)
+            .CreateDb(new DbSettings(DbNames.BlockInfos, "levels"));
     }
 
     private static IEnumerable<ulong> KeyLengthBoundaries()
