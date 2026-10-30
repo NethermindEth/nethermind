@@ -204,6 +204,41 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         _snapTrieFactory.DidNotReceive().SaveCheckpoint(Arg.Is<SnapCheckpoint?>(static c => c != null));
     }
 
+    // Trie-node healing skips a node already present by hash, so a crash during it must not resume ranges whose nodes
+    // may be on disk without their flat entries.
+    [Test]
+    public async Task Deletes_the_checkpoint_before_trie_node_healing([Values] bool snapResume)
+    {
+        using IContainer container = BuildRunnerContainer();
+        StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
+        ISyncConfig syncConfig = container.Resolve<ISyncConfig>();
+        syncConfig.SnapSync = true;
+        syncConfig.BalHealing = false;
+        syncConfig.SnapResume = snapResume;
+        BlockHeader pivot = container.Resolve<IBlockTree>().FindHeader(10)!;
+
+        _pivot.GetPivotHeader().Returns(pivot);
+        _snapTrieFactory.LoadCheckpoint().Returns(null, CreateCheckpoint(pivot));
+
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+        await runner.Run(timeout.Token);
+
+        Assert.That(timeout.IsCancellationRequested, Is.False, "state sync finished");
+        if (snapResume)
+        {
+            Received.InOrder(() =>
+            {
+                _snapSyncRunner.Run(Arg.Any<CancellationToken>());
+                _snapTrieFactory.SaveCheckpoint(null);
+                _pivot.UpdateHeaderForcefully();
+            });
+        }
+        else
+        {
+            _snapTrieFactory.DidNotReceiveWithAnyArgs().SaveCheckpoint(default);
+        }
+    }
+
     // The snap sync runner can return normally on a shutdown during the state ranges, having saved the checkpoint of
     // the partial ranges, which must then stay as it is.
     [Test]
@@ -293,11 +328,14 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         }
     }
 
+    public enum HealingFailure { Fresh, Resumed, ResumedAndRestarted }
+
     // A resumed sync heals state kept across a restart, so a failure to heal it falls back to syncing again from
-    // scratch, which a fresh sync failing the same way cannot do.
+    // scratch, once, which a fresh sync failing the same way cannot do.
     [Test]
-    public async Task Starts_over_when_healing_a_resumed_sync_fails([Values] bool resumed, [Values] bool rangeLost)
+    public async Task Starts_over_when_healing_a_resumed_sync_fails([Values] HealingFailure failure, [Values] bool rangeLost)
     {
+        bool resumed = failure != HealingFailure.Fresh;
         using IContainer container = BuildRunnerContainer();
         StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
         IBlockTree blockTree = container.Resolve<IBlockTree>();
@@ -311,15 +349,18 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         else _snapTrieFactory.LoadCheckpoint().Returns(null, checkpoint);
 
         _pivot.GetPivotHeader().Returns(lastPivot);
-        // The sync started over is at the last pivot already, so its reassembled root is final.
-        _healing.Reassemble(Arg.Any<IReadOnlyCollection<Hash256>>(), Arg.Any<CancellationToken>()).Returns(TestItem.KeccakA, lastPivot.StateRoot);
+        // The sync started over is at the last pivot already, so its reassembled root is final, unless it is wrong again.
+        Hash256 restartedRoot = failure == HealingFailure.ResumedAndRestarted ? TestItem.KeccakA : lastPivot.StateRoot!;
+        _healing.Reassemble(Arg.Any<IReadOnlyCollection<Hash256>>(), Arg.Any<CancellationToken>()).Returns(TestItem.KeccakA, restartedRoot);
         _healing.ApplyRange(TestItem.KeccakA, firstPivot, lastPivot, Arg.Any<CancellationToken>()).Returns((false, rangeLost ? null : TestItem.KeccakF));
 
-        if (resumed) await runner.RunSnapSyncWithBalHealing(firstPivot, default);
-        else await Assert.ThrowsAsync<InvalidOperationException>(() => runner.RunSnapSyncWithBalHealing(firstPivot, default));
+        // Only a regression that keeps starting over runs into the timeout.
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        if (failure == HealingFailure.Resumed) await runner.RunSnapSyncWithBalHealing(firstPivot, timeout.Token);
+        else await Assert.ThrowsAsync<InvalidOperationException>(() => runner.RunSnapSyncWithBalHealing(firstPivot, timeout.Token));
 
         await _snapSyncRunner.Received(resumed ? 2 : 1).Run(Arg.Any<CancellationToken>());
-        _healing.Received(resumed ? 1 : 0).FinalizeSync(lastPivot);
+        _healing.Received(failure == HealingFailure.Resumed ? 1 : 0).FinalizeSync(lastPivot);
         _snapTrieFactory.DidNotReceive().SaveCheckpoint(Arg.Is<SnapCheckpoint?>(static c => c != null));
     }
 

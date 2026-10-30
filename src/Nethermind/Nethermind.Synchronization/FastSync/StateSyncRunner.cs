@@ -71,9 +71,14 @@ public class StateSyncRunner(
                     healingStrategy.SetPivot(firstPivot);
 
                     if (healingStrategy.CanBalHeal)
+                    {
                         await RunSnapSyncWithBalHealing(firstPivot, token);
+                    }
                     else
+                    {
                         await RunSnapSync(token);
+                        DeleteCheckpointBeforeHealing(token);
+                    }
                 }
 
                 if (!healingStrategy.CanBalHeal)
@@ -158,10 +163,7 @@ public class StateSyncRunner(
         while (true)
         {
             await RunSnapSync(token);
-
-            token.ThrowIfCancellationRequested();
-            SnapCheckpoint? checkpoint = syncConfig.SnapResume ? snapTrieFactory.LoadCheckpoint() : null;
-            if (checkpoint is not null) snapTrieFactory.SaveCheckpoint(null);
+            SnapCheckpoint? checkpoint = DeleteCheckpointBeforeHealing(token);
 
             try
             {
@@ -190,6 +192,21 @@ public class StateSyncRunner(
                 pivot = await WaitForStateSyncPivot(token);
             }
         }
+    }
+
+    /// <summary>Deletes the checkpoint of the finished state ranges, so that a crash during healing starts the sync over.</summary>
+    /// <returns>The deleted checkpoint, or <c>null</c> when there was none.</returns>
+    /// <remarks>
+    /// Healing writes are not crash-durable, and trie-node healing skips a node already present by hash, so a node
+    /// left without its flat entries would never be written again. A shutdown during the ranges returns from the snap
+    /// sync with the checkpoint of the partial ranges saved, so that one is left as it is.
+    /// </remarks>
+    private SnapCheckpoint? DeleteCheckpointBeforeHealing(CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        SnapCheckpoint? checkpoint = syncConfig.SnapResume ? snapTrieFactory.LoadCheckpoint() : null;
+        if (checkpoint is not null) snapTrieFactory.SaveCheckpoint(null);
+        return checkpoint;
     }
 
     /// <remarks>
