@@ -13,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -456,6 +457,46 @@ public class FrameTxValidationPrefixSimulationTests
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
 
         Assert.That(tracer.Violated, Is.True);
+    }
+
+    [Test]
+    public void InstructionMask_LeavesOutOnlyOpcodesTheTracerIgnores()
+    {
+        UseSpec(new OverridableReleaseSpec(Bogota.Instance)
+        {
+            IsEip8141Enabled = true,
+            IsEip5920Enabled = true,
+            IsEip8298Enabled = true,
+            IsEip8360Enabled = true,
+        });
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(
+            new CodeInfo(new byte[] { (byte)Instruction.STOP }),
+            executingAccount: Sender,
+            caller: Sender,
+            codeSource: Sender,
+            callDepth: 0,
+            value: UInt256.Zero,
+            inputData: ReadOnlyMemory<byte>.Empty);
+        byte[] words = new byte[5 * 32];
+        words.AsSpan().Fill(0xff);
+        UInt256 mask = new FrameTxValidationTracer(Sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec).InstructionMask;
+
+        List<Instruction> reacted = [];
+        for (int op = 0; op <= byte.MaxValue; op++)
+        {
+            if (!(mask & (UInt256.One << op)).IsZero) continue;
+
+            FrameTxValidationTracer tracer = new(Sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec);
+            tracer.StartOperation(0, (Instruction)op, 0, env);
+            tracer.SetOperationStack(new TraceStack(words));
+            if (tracer.Violated) reacted.Add((Instruction)op);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reacted, Is.Empty);
+            Assert.That((mask & (UInt256.One << (int)Instruction.SLOAD)).IsZero, Is.False);
+        }
     }
 
     [Test]
@@ -935,11 +976,18 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
-    [Test]
-    public void Simulate_DeployFrameWithExhaustedFactoryNonce_RecordsViolation()
+    private static IEnumerable<TestCaseData> UninspectedEpilogues()
+    {
+        yield return new TestCaseData((object)new[] { (byte)Instruction.POP }).SetName("Simulate_DeployFrameWithExhaustedFactoryNonce_RecordsViolation");
+        yield return new TestCaseData((object)Prepare.EvmCode.PushData(1).Op(Instruction.ADD).Op(Instruction.POP).Op(Instruction.JUMPDEST).Op(Instruction.STOP).Done)
+            .SetName("Simulate_DeployFrameWithExhaustedFactoryNonceThenUninspectedOpcodes_RecordsViolation");
+    }
+
+    [TestCaseSource(nameof(UninspectedEpilogues))]
+    public void Simulate_DeployFrameWithExhaustedFactoryNonce_RecordsViolation(byte[] epilogue)
     {
         byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
-        Address deployed = InstallFactory(initCode, epilogue: [(byte)Instruction.POP]);
+        Address deployed = InstallFactory(initCode, epilogue: epilogue);
         FundAccount(deployed, 1.Ether);
         _stateProvider.IncrementNonce(Factory, ulong.MaxValue - _stateProvider.GetNonce(Factory));
         _stateProvider.Commit(Spec);
