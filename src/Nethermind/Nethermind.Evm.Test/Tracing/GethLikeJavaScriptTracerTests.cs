@@ -1224,6 +1224,35 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(results, Is.EqualTo(new[] { "\"error\"", "\"none\"" }));
     }
 
+    [TestCase("5b600056", null, "out of gas")]
+    [TestCase("600056", null, "invalid jump destination")]
+    [TestCase(null, 2, "out of gas")]
+    public void Failed_transaction_reports_geth_error_text_in_ctx_error(string? code, int? precompile, string expected)
+    {
+        const ulong gasLimit = 21050UL;
+        const string errorTracer = @"{
+                    step: function(log, db) { },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return ctx.error; }
+                }";
+        Transaction? precompileCall = precompile is null ? null : Build.A.Transaction
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(1)
+            .To(Address.FromNumber((uint)precompile.Value))
+            .SignedAndResolved(SenderKey)
+            .TestObject;
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation, gasLimit,
+            code is null ? null : Bytes.FromHexString(code), transaction: precompileCall);
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(errorTracer);
+
+        tracer.StartNewBlockTrace(block);
+        ExecuteTraced(tracer, block, transaction);
+        tracer.EndBlockTrace();
+
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, expected);
+    }
+
     [Test]
     [NonParallelizable]
     public void Heap_limit_violation_still_trips_after_an_earlier_transaction_re_armed_it()
