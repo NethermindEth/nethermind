@@ -11,7 +11,7 @@ public partial class Bloom
     /// <summary>The first eight bytes of <paramref name="keccak"/>, big-endian; the bloom indexes are its top 48 bits.</summary>
     /// <remarks>See <c>Bloom.zkevm.cs</c> for the guest form.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ReadIndexBits(ref byte keccak) => BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref keccak));
+    internal static ulong ReadIndexBits(ref byte keccak) => BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref keccak));
 
     /// <summary>The zero-length (0 bytes long) logs bloom that EIP-7668 requires in headers and receipts.</summary>
     /// <remarks>

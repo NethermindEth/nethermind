@@ -14,7 +14,7 @@ public partial class Bloom
     /// See <c>Bloom.std.cs</c> for the host form.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ReadIndexBits(ref byte keccak) => ZkEvmBitOperations.ReadUInt64BigEndian(ref keccak);
+    internal static ulong ReadIndexBits(ref byte keccak) => ZkEvmBitOperations.ReadUInt64BigEndian(ref keccak);
 
     public static Bloom ZeroLength => field ??= CreateZeroLength();
 }
