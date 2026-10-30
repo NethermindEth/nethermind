@@ -237,7 +237,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
             configurer: builder => builder.UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton(unavailable)));
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(rpc, chain.BlockTree.HeadHash, 2);
+        ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(chain, chain.BlockTree.HeadHash, 2);
         chain.BlockTree.FindBlock(payload.BlockHash, BlockTreeLookupOptions.None)!.BlockAccessList = reason == UnavailableBal.CarriedMismatch
             ? new ReadOnlyBlockAccessList([], 0, Keccak.Zero) : null;
         byte[][] list = omittedEntry ? [Rlp.Encode(BuildInclusionListTransfer()).Bytes] : [];
@@ -283,7 +283,7 @@ public partial class EngineModuleTests
     public async Task Inclusion_list_recheck_requires_executed_block([Values] bool executed)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
-        ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(chain.EngineRpcModule, chain.BlockTree.HeadHash, 2);
+        ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(chain, chain.BlockTree.HeadHash, 2);
         chain.BlockTree.GetInfo(payload.BlockNumber, payload.BlockHash).Info!.WasProcessed = executed;
 
         bool? answer = chain.Container.Resolve<IInclusionListComplianceEvaluator>().TryEvaluate(payload.BlockHash,
@@ -1062,8 +1062,8 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned, releaseSpec: Bogota.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        ExecutionPayloadV4 first = await BuildAndInsertEmptyBlock(rpc, chain.BlockTree.HeadHash, slot: 2);
-        ExecutionPayloadV4 second = await BuildAndInsertEmptyBlock(rpc, first.BlockHash, slot: 3);
+        ExecutionPayloadV4 first = await BuildAndInsertEmptyBlock(chain, chain.BlockTree.HeadHash, slot: 2);
+        ExecutionPayloadV4 second = await BuildAndInsertEmptyBlock(chain, first.BlockHash, slot: 3);
         ulong bestKnown = chain.BlockTree.BestKnownNumber;
         // What the pre-pivot header backfill leaves behind: on the main chain, never run by this node.
         if (!runHere) chain.BlockTree.GetInfo(first.BlockNumber, first.BlockHash).Info!.WasProcessed = false;
@@ -1239,7 +1239,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         // An empty list is trivially satisfied, so this leaves inclusionListSatisfied=true cached for the head.
-        ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(rpc, chain.BlockTree.HeadHash, slot: 2);
+        ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(chain, chain.BlockTree.HeadHash, slot: 2);
 
         await RetainInclusionListByPrunedResend(rpc, headState, payload, [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
         if (!stateHealed) headState.PrunedBlock = payload.BlockHash;
@@ -1270,12 +1270,12 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 parentHash = chain.BlockTree.HeadHash;
 
-        ExecutionPayloadV4 first = await BuildAndInsertEmptyBlock(rpc, parentHash, slot: 2, finalize: false);
+        ExecutionPayloadV4 first = await BuildAndInsertEmptyBlock(chain, parentHash, slot: 2, finalize: false);
         await RetainInclusionListByPrunedResend(rpc, headState, first, [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
 
         for (ulong slot = 3; slot < 21; slot++)
         {
-            await BuildAndInsertEmptyBlock(rpc, parentHash, slot, finalize: false);
+            await BuildAndInsertEmptyBlock(chain, parentHash, slot, finalize: false);
         }
 
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
@@ -1302,8 +1302,8 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 genesis = chain.BlockTree.HeadHash;
 
-        ExecutionPayloadV4 parent = await BuildAndInsertEmptyBlock(rpc, genesis, slot: 2, finalize: false, finalizedHash: genesis);
-        ExecutionPayloadV4 child = await BuildAndInsertEmptyBlock(rpc, parent.BlockHash, slot: 3, finalize: false, finalizedHash: genesis);
+        ExecutionPayloadV4 parent = await BuildAndInsertEmptyBlock(chain, genesis, slot: 2, finalize: false, finalizedHash: genesis);
+        ExecutionPayloadV4 child = await BuildAndInsertEmptyBlock(chain, parent.BlockHash, slot: 3, finalize: false, finalizedHash: genesis);
         byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
 
         if (parentAnswered)
@@ -1352,10 +1352,10 @@ public partial class EngineModuleTests
         EngineRpcModule rpc = (EngineRpcModule)chain.EngineRpcModule;
         Hash256 genesis = chain.BlockTree.HeadHash;
 
-        ExecutionPayloadV4 first = await BuildAndInsertEmptyBlock(rpc, genesis, slot: 2, finalize: false, finalizedHash: genesis);
-        ExecutionPayloadV4 second = await BuildAndInsertEmptyBlock(rpc, first.BlockHash, slot: 3, finalize: false, finalizedHash: genesis);
-        ExecutionPayloadV4 third = await BuildAndInsertEmptyBlock(rpc, second.BlockHash, slot: 4, finalize: false, finalizedHash: genesis);
-        ExecutionPayloadV4 sibling = await BuildAndInsertEmptyBlock(rpc, second.BlockHash, slot: 5, finalize: false, finalizedHash: genesis);
+        ExecutionPayloadV4 first = await BuildAndInsertEmptyBlock(chain, genesis, slot: 2, finalize: false, finalizedHash: genesis);
+        ExecutionPayloadV4 second = await BuildAndInsertEmptyBlock(chain, first.BlockHash, slot: 3, finalize: false, finalizedHash: genesis);
+        ExecutionPayloadV4 third = await BuildAndInsertEmptyBlock(chain, second.BlockHash, slot: 4, finalize: false, finalizedHash: genesis);
+        ExecutionPayloadV4 sibling = await BuildAndInsertEmptyBlock(chain, second.BlockHash, slot: 5, finalize: false, finalizedHash: genesis);
 
         byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
         await RetainInclusionListByPrunedResend(rpc, headState, first, inclusionList);
@@ -1471,7 +1471,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchainWithInterleavingEvaluator(headState, evaluator);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(rpc, chain.BlockTree.HeadHash, slot: 2);
+        ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(chain, chain.BlockTree.HeadHash, slot: 2);
         await RetainInclusionListByPrunedResend(rpc, headState, payload, [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
 
         // A nonce the sender is past cannot be appended, so this list is satisfied where the censoring one is not.
@@ -1507,7 +1507,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchainWithInterleavingEvaluator(headState, evaluator);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(rpc, chain.BlockTree.HeadHash, slot: 2);
+        ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(chain, chain.BlockTree.HeadHash, slot: 2);
         await RetainInclusionListByPrunedResend(rpc, headState, payload, [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
 
         int evaluations = 0;
@@ -1850,7 +1850,7 @@ public partial class EngineModuleTests
 
         await rpc.engine_newPayloadV6(first, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, firstList);
         await chain.WaitForCommitted(first.BlockHash);
-        await BuildAndInsertEmptyBlock(rpc, first.BlockHash, slot: 3, finalize: !resendHead);
+        await BuildAndInsertEmptyBlock(chain, first.BlockHash, slot: 3, finalize: !resendHead);
 
         Block executed = chain.BlockTree.FindBlock(first.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!;
         Assert.That(executed.Header.GasUsedPerDimension, Is.Not.Null, "the dimensions must reach the block a re-check is handed");
@@ -1994,9 +1994,16 @@ public partial class EngineModuleTests
             where TCtx : struct, INodeContext<TCtx> => inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
     }
 
-    private async Task<ExecutionPayloadV4> BuildAndInsertEmptyBlock(IEngineRpcModule rpc, Hash256 parent, ulong slot,
+    /// <summary>Builds an empty block on <paramref name="parent"/>, inserts it and makes it the head.</summary>
+    /// <remarks>
+    /// A forkchoice update waits only a bounded time for its head's commit and then answers SYNCING without moving
+    /// the head, so the parent and the new block are both awaited to their commit first.
+    /// </remarks>
+    private async Task<ExecutionPayloadV4> BuildAndInsertEmptyBlock(MergeTestBlockchain chain, Hash256 parent, ulong slot,
         bool finalize = true, Hash256? finalizedHash = null)
     {
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        await chain.WaitForCommitted(parent);
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(parent, Keccak.Zero, finalizedHash ?? parent),
             BuildBogotaPayloadAttributes(inclusionList: [], timestamp: Timestamper.UnixTime.Seconds + slot, slotNumber: slot));
@@ -2004,9 +2011,11 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
 
         await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, []);
+        await chain.WaitForCommitted(payload.BlockHash);
         Hash256 checkpoint = finalize ? payload.BlockHash : finalizedHash ?? parent;
-        await rpc.engine_forkchoiceUpdatedV5(
+        ResultWrapper<ForkchoiceUpdatedV2Result> head = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(payload.BlockHash, checkpoint, checkpoint), payloadAttributes: null);
+        Assert.That(head.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid), $"block {payload.BlockHash} must become the head");
         return payload;
     }
 
