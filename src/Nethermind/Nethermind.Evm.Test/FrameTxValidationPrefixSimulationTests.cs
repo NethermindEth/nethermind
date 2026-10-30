@@ -935,11 +935,18 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
-    [Test]
-    public void Simulate_DeployFrameWithExhaustedFactoryNonce_RecordsViolation()
+    private static IEnumerable<TestCaseData> UninspectedEpilogues()
+    {
+        yield return new TestCaseData((object)new[] { (byte)Instruction.POP }).SetName("Simulate_DeployFrameWithExhaustedFactoryNonce_RecordsViolation");
+        yield return new TestCaseData((object)Prepare.EvmCode.PushData(1).Op(Instruction.ADD).Op(Instruction.POP).Op(Instruction.JUMPDEST).Op(Instruction.STOP).Done)
+            .SetName("Simulate_DeployFrameWithExhaustedFactoryNonceThenUninspectedOpcodes_RecordsViolation");
+    }
+
+    [TestCaseSource(nameof(UninspectedEpilogues))]
+    public void Simulate_DeployFrameWithExhaustedFactoryNonce_RecordsViolation(byte[] epilogue)
     {
         byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
-        Address deployed = InstallFactory(initCode, epilogue: [(byte)Instruction.POP]);
+        Address deployed = InstallFactory(initCode, epilogue: epilogue);
         FundAccount(deployed, 1.Ether);
         _stateProvider.IncrementNonce(Factory, ulong.MaxValue - _stateProvider.GetNonce(Factory));
         _stateProvider.Commit(Spec);
