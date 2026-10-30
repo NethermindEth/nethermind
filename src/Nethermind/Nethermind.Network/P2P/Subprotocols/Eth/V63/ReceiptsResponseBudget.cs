@@ -84,13 +84,14 @@ internal static class ReceiptsResponseBudget
 
     // The RLP readers do not check declared lengths against the enclosing item, so every length, and the
     // prefix that holds it, is checked here before anything inside it is read, which reports truncation
-    // as an RlpException.
+    // as an RlpException. A length is compared with the space left rather than added to the position,
+    // which could overflow.
     private static int ReadSequenceEnd(ref RlpReader ctx, int limit)
     {
         ThrowIfTruncated(ctx.Position < limit && ctx.PeekPrefixLength() <= limit - ctx.Position);
-        int end = ctx.ReadSequenceLength() + ctx.Position;
-        ThrowIfTruncated(end <= limit);
-        return end;
+        int length = ctx.ReadSequenceLength();
+        ThrowIfTruncated(length <= limit - ctx.Position);
+        return ctx.Position + length;
     }
 
     private static void SkipItem(ref RlpReader ctx, int limit)

@@ -52,6 +52,11 @@ public class ReceiptsResponseBudgetTests
     [TestCase(new byte[] { 0xca, 0x88, 0x1d, 0xda, 0xe5, 0x99, 0xb2, 0x69, 0x3d, 0xec, 0xfb }, 1, TestName = "Block list after a request id missing its length bytes")]
     [TestCase(new byte[] { 0xc3, 0x01, 0x80, 0xf9 }, 2, TestName = "Block list in an eth70 envelope missing its length bytes")]
     [TestCase(new byte[] { 0xc2, 0xf9, 0x01 }, null, TestName = "Block missing one of its length bytes")]
+    [TestCase(new byte[] { 0xf8 }, null, TestName = "Block list missing its only length byte")]
+    [TestCase(new byte[] { 0xc2, 0x01, 0xfb, 0x7f, 0xff, 0xff, 0xff }, 1, TestName = "Block list length bytes past the envelope end")]
+    [TestCase(new byte[] { 0xfb, 0x7f, 0xff, 0xff, 0xff }, null, TestName = "Block list declaring the largest length")]
+    [TestCase(new byte[] { 0xc6, 0x01, 0xfb, 0x7f, 0xff, 0xff, 0xff }, 1, TestName = "Block list in an envelope declaring the largest length")]
+    [TestCase(new byte[] { 0xc7, 0x01, 0x80, 0xfb, 0x7f, 0xff, 0xff, 0xff }, 2, TestName = "Block list in an eth70 envelope declaring the largest length")]
     public void Truncated_response_is_rejected_as_malformed(byte[] payload, int? fieldsBeforeReceipts)
     {
         using DisposableByteBuffer content = Unpooled.WrappedBuffer(payload).AsDisposable();
