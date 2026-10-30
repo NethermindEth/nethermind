@@ -37,7 +37,7 @@ public sealed class FrameTxValidationTracer(
     /// <see cref="Instruction.SLOAD"/> is included only so <c>_inRecentRootCode</c> is current before <c>LoadOperationStorage</c> reads it.</remarks>
     public UInt256 InstructionMask => InspectedInstructions;
 
-    internal static readonly UInt256 InspectedInstructions = CreateInspectedInstructions();
+    private static readonly UInt256 InspectedInstructions = CreateInspectedInstructions();
 
     private static UInt256 CreateInspectedInstructions()
     {
