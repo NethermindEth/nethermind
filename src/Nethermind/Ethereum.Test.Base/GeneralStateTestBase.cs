@@ -60,6 +60,13 @@ namespace Ethereum.Test.Base
 
         protected Task<EthereumTestResult> RunTest(GeneralStateTest test) => RunTest(test, NullTxTracer.Instance);
 
+        /// <summary>Runs <paramref name="test"/> and fails with the runner's error, which names the mismatch.</summary>
+        protected async Task RunTestAndAssertPass(GeneralStateTest test)
+        {
+            EthereumTestResult result = await RunTest(test);
+            Assert.That(result.Pass, Is.True, result.Error);
+        }
+
         protected async Task<EthereumTestResult> RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
             _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");

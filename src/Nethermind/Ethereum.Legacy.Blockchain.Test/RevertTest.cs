@@ -14,11 +14,7 @@ namespace Ethereum.Legacy.Blockchain.Test;
 public class RevertTest : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(GeneralStateTest test)
-    {
-        EthereumTestResult result = await RunTest(test);
-        Assert.That(result.Pass, Is.True, result.Error);
-    }
+    public Task Test(GeneralStateTest test) => RunTestAndAssertPass(test);
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
