@@ -221,7 +221,8 @@ public class NodeRecordSignerTests
         => Assert.That(() => NodeRecord.FromBytes(createRecordBytes()), Throws.TypeOf<RlpException>());
 
     [TestCaseSource(nameof(TruncatedValueCases))]
-    public void TryDeserialize_rejects_value_running_past_the_record(Func<byte[]> createRecord)
+    [TestCaseSource(nameof(MalformedValueCases))]
+    public void TryDeserialize_returns_false_when_record_is_malformed(Func<byte[]> createRecord)
     {
         NodeRecordSigner signer = new(new Ecdsa());
         bool deserialized = true;
@@ -345,9 +346,17 @@ public class NodeRecordSignerTests
 
     private static IEnumerable<TestCaseData> TruncatedValueCases()
     {
+        // The signature declares 64 bytes and the record ends after 2.
+        yield return new TestCaseData((Func<byte[]>)(static () => [0xc4, 0xb8, 0x40, 0x01, 0x02]))
+            .SetName("{m}(signature)");
+
         // The sequence declares 4 bytes and the record ends after 2.
         yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith(0x84, 0x75, 0x69)))
             .SetName("{m}(sequence)");
+
+        // The key declares 3 bytes and the record ends after 2.
+        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith([0x01, .. Rlp.Encode("udp"u8).Bytes[..^1]])))
+            .SetName("{m}(key)");
 
         // The udp port declares 3 bytes and the record ends after 2.
         yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith([0x01, .. Rlp.Encode("udp"u8).Bytes, 0x83, 0x23, 0x28])))
@@ -356,6 +365,10 @@ public class NodeRecordSignerTests
         // The tcp port declares 2 bytes and the record ends after 1.
         yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith([0x01, .. Rlp.Encode("tcp"u8).Bytes, 0x82, 0x76])))
             .SetName("{m}(tcp port)");
+
+        // The fork id is empty and ends the record, so the fork hash is missing.
+        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith([0x01, .. Rlp.Encode("eth"u8).Bytes, 0xc1, 0xc0])))
+            .SetName("{m}(eth empty fork id)");
 
         // The fork id ends after its fork hash, at the end of the record, so the next fork is missing.
         yield return new TestCaseData((Func<byte[]>)(static () => CreateRecordEndingWith([0x01, .. Rlp.Encode("eth"u8).Bytes, 0xc6, 0xc5, .. Rlp.Encode(new byte[] { 1, 2, 3, 4 }).Bytes])))
@@ -379,6 +392,11 @@ public class NodeRecordSignerTests
                 (EnrContentKey.Id, EncodeString("v4")),
                 (EnrContentKey.SecP256k1, Rlp.Encode(new byte[32])))))
             .SetName("{m}(public key of 32 bytes)");
+
+        yield return new TestCaseData((Func<byte[]>)(static () => CreateRecord(
+                (EnrContentKey.Id, EncodeString("v4")),
+                (EnrContentKey.Udp, Rlp.Encode(new byte[] { 0x00, 0x50 })))))
+            .SetName("{m}(udp port with a leading zero)");
     }
 
     /// <summary>Creates a record holding a 64-byte signature followed by <paramref name="tail"/>.</summary>
