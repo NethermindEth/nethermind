@@ -387,6 +387,7 @@ public class FrameTxValidationPrefixSimulationTests
     [TestCase(Instruction.EXTCODESIZE, 0, false, true, false, TestName = "EXTCODESIZE of a precompile is allowed")]
     [TestCase(Instruction.EXTCODECOPY, 3, false, TestName = "EXTCODECOPY of a helper contract is allowed")]
     [TestCase(Instruction.EXTCODECOPY, 3, true, TestName = "EXTCODECOPY of a codeless target is refused")]
+    [TestCase(Instruction.EXTCODECOPY, 3, false, true, false, TestName = "EXTCODECOPY of a precompile is allowed")]
     public void Simulate_PrefixReadsForeignCode_IsClassifiedByTheTarget(Instruction opcode, int extraOperands, bool violates, bool precompile = false, bool funded = false)
     {
         Address target = precompile ? IdentityPrecompile : TestItem.AddressC;
