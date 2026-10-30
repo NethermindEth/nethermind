@@ -3,7 +3,8 @@
 #
 # MUL on SP1's uint256_mul precompile, entered by a tail dispatch from the guest's MUL
 # handler with the handler's arguments: a0 stack, a1 gas, a2 state, a3 ip, a4 head,
-# a5 handlers, a6 code, a7 sp, the slot above the top word. The stack is checked and
+# a5 handlers, the table's address in words (RawCalliHelper.DispatchTable), a6 code,
+# a7 sp, the slot above the top word. The stack is checked and
 # the gas charged. The product of the top two words (32 and 64 bytes below sp)
 # replaces the second, sp and head step down a word, and the next opcode dispatches
 # through the handler table by the two bytes at ip + 1, as the managed handlers do
@@ -38,8 +39,8 @@ nethermind_mul_dispatch:
     lbu     t1, 1(a3)
     slli    t1, t1, 8
     or      t0, t0, t1
-    slli    t0, t0, 3
     add     t0, a5, t0
+    slli    t0, t0, 3
     ld      t0, 0(t0)
     jr      t0
     .size nethermind_mul_dispatch, .-nethermind_mul_dispatch
