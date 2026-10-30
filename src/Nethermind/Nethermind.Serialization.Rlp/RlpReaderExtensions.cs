@@ -75,13 +75,19 @@ public static class RlpReaderExtensions
     {
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0)
         {
-            reader.ExitSequenceIgnoringRest(in items, itemLength);
+            ExitSequenceIgnoringRest(ref reader, items, itemLength);
         }
         else
         {
             reader.ExitSequence(in items, itemLength);
         }
     }
+
+    // Takes a copy of the items: a reference to them, passed to a call that is not inlined, would keep the reader
+    // of the caller in memory instead of in registers for the whole decode.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ExitSequenceIgnoringRest(ref RlpReader reader, RlpReader items, int itemLength)
+        => reader.ExitSequenceIgnoringRest(in items, itemLength);
 
     /// <summary>Moves past the next <paramref name="count"/> items without decoding them.</summary>
     /// <exception cref="RlpReaderException">An item prefix is malformed or truncated.</exception>
@@ -205,7 +211,14 @@ public static class RlpReaderExtensions
     public static byte[][] DecodeByteArrays<TCanonicalChecks>(this scoped ref RlpReader reader, RlpLimit? limit = null, int innerSize = -1) where TCanonicalChecks : struct, IFlag
     {
         RlpReader items = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
-        byte[][] result = items.HasNext ? new byte[items.CountItems<TCanonicalChecks>(limit)][] : [];
+        if (!items.HasNext)
+        {
+            reader.ExitSequence(in items, itemLength);
+            return [];
+        }
+
+        // A plain new array keeps its exact type, so the stores below need no covariance check.
+        byte[][] result = new byte[items.CountItems<TCanonicalChecks>(limit)][];
         for (int i = 0; i < result.Length; i++)
         {
             // A fixed size above one byte needs neither the length limit nor the shared single-byte arrays.

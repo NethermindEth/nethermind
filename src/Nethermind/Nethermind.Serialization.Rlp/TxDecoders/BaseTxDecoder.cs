@@ -145,7 +145,14 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
         int count = items.Remaining / itemLength;
         if (count > limit.Limit) ThrowOverLimit(count, items.Remaining, limit);
 
-        byte[][] hashes = count == 0 ? [] : new byte[count][];
+        if (count == 0)
+        {
+            reader.ExitSequence(in items, sequenceLength);
+            return [];
+        }
+
+        // A plain new array keeps its exact type, so the stores below need no covariance check.
+        byte[][] hashes = new byte[count][];
         for (int i = 0; i < hashes.Length; i++)
         {
             hashes[i] = items.ReadBytes<TCanonicalChecks>(Hash256.Size).ToArray();

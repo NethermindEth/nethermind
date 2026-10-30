@@ -54,6 +54,8 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
         return new TxFrame((FrameMode)mode, (FrameFlags)flags, target, executionGasLimit, stateGasLimit, value, data);
     }
 
+    // A root of its own, so that the writes of each frame keep their inline budget.
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public override void Encode(ref RlpWriter writer, TxFrame item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         RlpSequence sequence = writer.StartSequence(GetContentLength(item));

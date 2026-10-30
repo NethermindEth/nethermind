@@ -60,6 +60,8 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
     public override void Encode(ref RlpWriter writer, TxFrameSignature item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         Encode(ref writer, item, elideCanonicalSignatureBytes: false);
 
+    // A root of its own, so that the writes of each signature keep their inline budget.
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public void Encode(ref RlpWriter writer, TxFrameSignature item, bool elideCanonicalSignatureBytes)
     {
         bool elide = elideCanonicalSignatureBytes && item.SignsCanonicalHash;
@@ -69,7 +71,7 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
         writer.Encode(item.Msg);
         if (elide)
         {
-            writer.Encode(Bytes.Empty);
+            writer.EncodeEmptyByteArray();
         }
         else
         {

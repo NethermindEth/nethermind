@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Serialization.FluentRlp;
 
@@ -39,6 +40,10 @@ public ref struct RlpWriter
     // Buffers of the last buffered write on this thread. A nested write takes new ones while they are in use.
     [ThreadStatic]
     private static Buffers? CachedBuffers;
+
+    // Where a length writer puts the bytes that it measures.
+    [ThreadStatic]
+    private static byte[]? ScratchBytes;
 
     private Span<byte> _destination;
     private readonly bool _isContent;
@@ -145,22 +150,25 @@ public ref struct RlpWriter
         Write(leadingZeros < 0 ? [] : bigEndian[leadingZeros..]);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void WriteUInt64(ulong value)
     {
         if (value < RlpPrefix.ShortString)
         {
-            if (_isContent) Reserve(1)[0] = value == 0 ? RlpPrefix.ShortString : (byte)value;
+            Reserve(1)[0] = value == 0 ? RlpPrefix.ShortString : (byte)value;
             _length++;
             return;
         }
 
+        WriteMultiByteUInt64(value);
+    }
+
+    private void WriteMultiByteUInt64(ulong value)
+    {
         int byteCount = sizeof(ulong) - BitOperations.LeadingZeroCount(value) / 8;
-        if (_isContent)
-        {
-            Span<byte> destination = Reserve(1 + byteCount);
-            destination[0] = (byte)(RlpPrefix.ShortString + byteCount);
-            WriteBigEndian(destination[1..], value);
-        }
+        Span<byte> destination = Reserve(1 + byteCount);
+        destination[0] = (byte)(RlpPrefix.ShortString + byteCount);
+        WriteBigEndian(destination[1..], value);
 
         _length += 1 + byteCount;
     }
@@ -171,7 +179,7 @@ public ref struct RlpWriter
     {
         if (value.Length == 1 && value[0] < RlpPrefix.ShortString)
         {
-            if (_isContent) Reserve(1)[0] = value[0];
+            Reserve(1)[0] = value[0];
             _length++;
             return;
         }
@@ -182,12 +190,9 @@ public ref struct RlpWriter
             return;
         }
 
-        if (_isContent)
-        {
-            Span<byte> destination = Reserve(1 + value.Length);
-            destination[0] = (byte)(RlpPrefix.ShortString + value.Length);
-            value.CopyTo(destination[1..]);
-        }
+        Span<byte> destination = Reserve(1 + value.Length);
+        destination[0] = (byte)(RlpPrefix.ShortString + value.Length);
+        value.CopyTo(destination[1..]);
 
         _length += 1 + value.Length;
     }
@@ -196,20 +201,29 @@ public ref struct RlpWriter
     /// <remarks>The bytes are not checked, so they must be one or more complete, canonical items.</remarks>
     public void WriteEncoded(scoped ReadOnlySpan<byte> encoded)
     {
-        if (_isContent) encoded.CopyTo(Reserve(encoded.Length));
+        encoded.CopyTo(Reserve(encoded.Length));
         _length += encoded.Length;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void WriteLongString(scoped ReadOnlySpan<byte> value)
     {
-        int prefixLength = 1 + LengthOfLength(value.Length);
-        if (_isContent)
+        if (value.Length <= byte.MaxValue)
         {
-            Span<byte> destination = Reserve(prefixLength + value.Length);
-            WriteLongPrefix(destination, RlpPrefix.ShortString, value.Length);
-            value.CopyTo(destination[prefixLength..]);
+            // A one-byte length, as for most call data, needs no length loop.
+            Span<byte> shortPrefixed = Reserve(2 + value.Length);
+            shortPrefixed[0] = RlpPrefix.LongString + 1;
+            shortPrefixed[1] = (byte)value.Length;
+            value.CopyTo(shortPrefixed[2..]);
+
+            _length += 2 + value.Length;
+            return;
         }
+
+        int prefixLength = 1 + LengthOfLength(value.Length);
+        Span<byte> destination = Reserve(prefixLength + value.Length);
+        WriteLongPrefix(destination, RlpPrefix.ShortString, value.Length);
+        value.CopyTo(destination[prefixLength..]);
 
         _length += prefixLength + value.Length;
     }
@@ -281,33 +295,37 @@ public ref struct RlpWriter
     public RlpSequence StartSequence(int payloadLength)
     {
         int depth = ++_openSequences;
-        if (depth % StackCheckInterval == 0 || payloadLength < 0) CheckSequenceStart(payloadLength);
+        if (depth % StackCheckInterval == 0) RuntimeHelpers.EnsureSufficientExecutionStack();
 
-        if (payloadLength > RlpPrefix.MaxShortLength)
+        // A negative length takes the out-of-line path, which rejects it.
+        if ((uint)payloadLength <= RlpPrefix.MaxShortLength)
         {
-            WriteLongSequencePrefix(payloadLength);
+            Reserve(1)[0] = (byte)(RlpPrefix.ShortList + payloadLength);
+            _length++;
+        }
+        else if ((uint)payloadLength <= byte.MaxValue)
+        {
+            // Most transactions and their larger parts have a one-byte length, so it stays inline.
+            Span<byte> prefix = Reserve(2);
+            prefix[0] = RlpPrefix.LongList + 1;
+            prefix[1] = (byte)payloadLength;
+
+            _length += 2;
         }
         else
         {
-            if (_isContent) Reserve(1)[0] = (byte)(RlpPrefix.ShortList + payloadLength);
-            _length++;
+            WriteLongSequencePrefix(payloadLength);
         }
 
         return new RlpSequence(Length + payloadLength, depth);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void CheckSequenceStart(int payloadLength)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(payloadLength);
-        RuntimeHelpers.EnsureSufficientExecutionStack();
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
     private void WriteLongSequencePrefix(int payloadLength)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(payloadLength);
         int prefixLength = 1 + LengthOfLength(payloadLength);
-        if (_isContent) WriteLongPrefix(Reserve(prefixLength), RlpPrefix.ShortList, payloadLength);
+        WriteLongPrefix(Reserve(prefixLength), RlpPrefix.ShortList, payloadLength);
         _length += prefixLength;
     }
 
@@ -349,11 +367,39 @@ public ref struct RlpWriter
     }
 
     /// <summary>Returns the destination span for the next <paramref name="count"/> bytes, and grows the buffer if needed.</summary>
+    /// <remarks>
+    /// The span is built from a reference and <paramref name="count"/>, so that the JIT knows its length and removes the
+    /// bounds checks of the writes into it. The check before it keeps the span in the destination.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private Span<byte> Reserve(int count)
     {
-        if ((uint)(_length + count) > (uint)_destination.Length) Grow(count);
-        return _destination.Slice(_length, count);
+        ref byte start = ref (uint)(_length + count) > (uint)_destination.Length
+            ? ref ReserveSlow(count)
+            : ref Unsafe.Add(ref MemoryMarshal.GetReference(_destination), (uint)_length);
+        return MemoryMarshal.CreateSpan(ref start, count);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private ref byte ReserveSlow(int count)
+    {
+        // A length writer has no destination. Its bytes go to scratch space, so that the writes need no mode check.
+        if (!_isContent) return ref LengthScratch(count);
+
+        Grow(count);
+        return ref MemoryMarshal.GetReference(_destination.Slice(_length, count));
+    }
+
+    private static ref byte LengthScratch(int count)
+    {
+        byte[]? scratch = ScratchBytes;
+        if (scratch is null || scratch.Length < count)
+        {
+            scratch = GC.AllocateUninitializedArray<byte>(Math.Max(count, MinBufferLength));
+            if (scratch.Length <= MaxCachedBufferLength) ScratchBytes = scratch;
+        }
+
+        return ref MemoryMarshal.GetArrayDataReference(scratch);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

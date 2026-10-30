@@ -5,6 +5,8 @@ using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
+using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp.Eip2930
@@ -13,6 +15,8 @@ namespace Nethermind.Serialization.Rlp.Eip2930
     public sealed class AccessListDecoder() : RlpDecoder<AccessList?>
     {
         private const int IndexLength = 32;
+        private const int IndexRlpLength = 1 + IndexLength;
+        private const byte IndexPrefix = Rlp.EmptyByteArrayByte + IndexLength;
 
         public static readonly AccessListDecoder Instance = new();
 
@@ -43,10 +47,14 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 }
 
                 RlpReader storages = item.EnterSequence<TCanonicalChecks>(out int storagesLength);
-                while (storages.HasNext)
+                // Every key is a 32-byte string, which has one form only, so the keys are 33-byte slices of the
+                // payload and need no reader.
+                ReadOnlySpan<byte> keys = storages.ReadRaw(storages.Remaining);
+                if (keys.Length % IndexRlpLength != 0) ThrowInvalidStorageKey();
+                for (int i = 0; i < keys.Length; i += IndexRlpLength)
                 {
-                    UInt256 index = storages.DecodeUInt256<TCanonicalChecks>(IndexLength);
-                    accessListBuilder.AddStorage(index);
+                    if (keys[i] != IndexPrefix) ThrowInvalidStorageKey();
+                    accessListBuilder.AddStorage(RlpReaderExtensions.ToUInt256(keys.Slice(i + 1, IndexLength)));
                 }
 
                 item.ExitSequence(in storages, storagesLength, rlpBehaviors);
@@ -56,6 +64,9 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             reader.ExitSequence(in items, length, rlpBehaviors);
             return accessListBuilder.Build();
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowInvalidStorageKey() => throw new RlpReaderException("Invalid tx access list format - storage key must be a 32-byte string");
 
         public override void Encode(ref RlpWriter writer, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
