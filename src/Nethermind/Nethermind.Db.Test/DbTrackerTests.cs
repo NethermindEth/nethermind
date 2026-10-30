@@ -94,17 +94,21 @@ public class DbTrackerTests
 
     [Parallelizable(ParallelScope.None)]
     [Test]
-    public void PublishesMetricsWhenDbIsCreated()
+    public void PublishesMetricsOnlyWhenMetricsEnabled([Values] bool metricsEnabled)
     {
         IDbFactory fakeDbFactory = Substitute.For<IDbFactory>();
         fakeDbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(new FakeDb(new IDbMeta.DbMetric { TotalReads = 42 }));
 
-        (IContainer container, _) = BuildTrackerContainer(fakeDbFactory, new MetricsConfig { Enabled = true });
+        (IContainer container, Action updateAction) = BuildTrackerContainer(fakeDbFactory, new MetricsConfig { Enabled = metricsEnabled });
         using IContainer _disposable = container;
 
         container.Resolve<IDbFactory>().CreateDb(new DbSettings("TestDb", "TestDb"));
 
-        Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(42));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.DbReads.GetValueOrDefault("TestDb"), Is.EqualTo(metricsEnabled ? 42 : 0));
+            Assert.That(updateAction, metricsEnabled ? Is.Not.Null : Is.Null);
+        }
     }
 
     private (IContainer, Action, DbMonitoringModule.DbTracker) ConfigurePausedMetricUpdater()
@@ -175,7 +179,7 @@ public class DbTrackerTests
         // DbMetricIntervalSeconds = 0 disables the interval guard so we can update twice in a row.
         (IContainer container, Action updateAction) = BuildTrackerContainer(
             innerFactory,
-            new MetricsConfig { DbMetricIntervalSeconds = 0 },
+            new MetricsConfig { Enabled = true, DbMetricIntervalSeconds = 0 },
             withInterceptor: false);
         using IContainer _ = container;
 
@@ -266,7 +270,7 @@ public class DbTrackerTests
             .AddSingleton<DbMonitoringModule.DbTracker>()
             .AddSingleton<IDbConfig>(new DbConfig())
             .AddSingleton<HyperClockCacheWrapper>()
-            .AddSingleton<IMetricsConfig>(metricsConfig ?? new MetricsConfig())
+            .AddSingleton<IMetricsConfig>(metricsConfig ?? new MetricsConfig { Enabled = true })
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IMonitoringService>(monitoringService);
 
@@ -299,7 +303,7 @@ public class DbTrackerTests
             .AddModule(new DbModule(new InitConfig(), new ReceiptConfig(), new SyncConfig()))
             .AddModule(new DbMonitoringModule())
             .AddSingleton<IDbConfig>(new DbConfig())
-            .AddSingleton<IMetricsConfig>(new MetricsConfig())
+            .AddSingleton<IMetricsConfig>(new MetricsConfig { Enabled = true })
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IMonitoringService>(monitoringService)
             .AddDecorator<IDbFactory, DbMonitoringModule.DbTracker.DbFactoryInterceptor>()
