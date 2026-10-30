@@ -37,7 +37,7 @@ namespace Nethermind.EthStats.Test
 
         [Test]
         [CancelAfter(30_000)]
-        public async Task Init_keeps_retrying_when_server_is_unavailable_at_startup([Values("ws://127.0.0.1:{0}/api", "ws://127.0.0.1:{0}", "http://127.0.0.1:{0}")] string configUrl, CancellationToken cancellationToken)
+        public async Task Init_keeps_retrying_when_server_is_unavailable_at_startup([Values("ws://127.0.0.1:{0}/api", "ws://127.0.0.1:{0}/api/", "ws://127.0.0.1:{0}", "http://127.0.0.1:{0}")] string configUrl, CancellationToken cancellationToken)
         {
             TcpListener listener = new(IPAddress.Loopback, 0);
             listener.Start();
@@ -46,7 +46,7 @@ namespace Nethermind.EthStats.Test
 
             using EthStatsClient ethClient = new(string.Format(configUrl, port), 100, Substitute.For<IMessageSender>(), LimboLogs.Instance);
             IWebsocketClient client = await ethClient.InitAsync();
-            Assert.That(client.Url.AbsoluteUri, Is.EqualTo($"ws://127.0.0.1:{port}/api"));
+            Assert.That(client.Url.AbsoluteUri.TrimEnd('/'), Is.EqualTo($"ws://127.0.0.1:{port}/api"));
 
             listener = new(IPAddress.Loopback, port);
             listener.Start();

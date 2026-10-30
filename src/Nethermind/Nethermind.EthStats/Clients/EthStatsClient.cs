@@ -100,7 +100,7 @@ namespace Nethermind.EthStats.Clients
                 // so any further Start call would be ignored until the client is stopped.
                 await _client.Stop(WebSocketCloseStatus.Empty, string.Empty);
 
-                if (!_client.Url.AbsoluteUri.EndsWith("/api"))
+                if (!_client.Url.AbsoluteUri.TrimEnd('/').EndsWith("/api"))
                 {
                     if (_logger.IsInfo) _logger.Info($"Failed to connect to ethstats at {websocketUrl}. Adding '/api' at the end and trying again.");
                     _client.Url = new Uri(websocketUrl.TrimEnd('/') + "/api");
