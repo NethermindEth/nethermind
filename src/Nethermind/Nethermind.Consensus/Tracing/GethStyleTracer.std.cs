@@ -57,7 +57,7 @@ public class GethStyleTracer(
         Block block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
         if ((uint)txIndex >= (uint)block.Transactions.Length) throw new InvalidOperationException($"Block {blockHash} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
 
-        return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options, writer: writer, pipeWriter: pipeWriter);
+        return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options, writer: writer, pipeWriter: pipeWriter, txIndex: txIndex);
     }
 
     public GethLikeTxTrace? Trace(Rlp blockRlp, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
@@ -114,7 +114,7 @@ public class GethStyleTracer(
             // Prefix execution uses canonical state and block context. Overrides belong only to the synthetic call.
             CallAtIndexBlockTracer callTracer = new(tracer.WithCancellation(cancellationToken), callHeader, call,
                 tracedBlock => PrepareIndexedCall(tracedBlock, call, options, state, callSpec));
-            IBlockTracer boundary = TransactionTraceBoundary.Wrap(callTracer, call.Hash);
+            IBlockTracer boundary = TransactionTraceBoundary.WrapAt(callTracer, call.Hash, (int)index);
             scope.Component.BlockchainProcessor.Process(replay, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
             if (!callTracer.IsPrepared) throw new InvalidOperationException($"The synthetic call at index {index} in block {block.Hash} was not prepared for tracing.");
             return (tracePreceding ? KeepTrace(tracer.BuildResult(), call.Hash) : tracer.BuildResult()).SingleOrDefault();
@@ -251,7 +251,7 @@ public class GethStyleTracer(
         Block block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical) ?? throw new InvalidOperationException($"No historical block found for {blockNumber}");
         if ((uint)txIndex >= (uint)block.Transactions.Length) throw new InvalidOperationException($"Block {blockNumber} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
 
-        return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options, writer: writer, pipeWriter: pipeWriter);
+        return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options, writer: writer, pipeWriter: pipeWriter, txIndex: txIndex);
     }
 
     public GethLikeTxTrace? Trace(ulong blockNumber, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
@@ -360,7 +360,7 @@ public class GethStyleTracer(
 
     private GethLikeTxTrace? TraceImpl(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options,
         bool useBlockAsBase = false, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null, bool allowIndexed = true,
-        ProcessingOptions processingOptions = TraceProcessingOptions.ReadOnlyReplay)
+        ProcessingOptions processingOptions = TraceProcessingOptions.ReadOnlyReplay, int txIndex = -1)
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
@@ -394,7 +394,7 @@ public class GethStyleTracer(
         {
             // Stored receipts describe only the unaltered canonical body; anything else numbers its logs from the
             // transactions it runs, which then have to be traced too.
-            int txIndex = Array.FindIndex(block.Transactions, t => t.Hash == txHash);
+            if (txIndex < 0) txIndex = TransactionTraceBoundary.IndexOf(block.Transactions, txHash);
             using ArrayPoolList<int>? firstLogIndexes = unaltered && txIndex >= 0 ? FirstLogIndexes(block) : null;
             tracePreceding = firstLogIndexes is null;
             logIndex = new BlockLogIndex(tracePreceding ? 0 : firstLogIndexes![txIndex]);
@@ -420,8 +420,8 @@ public class GethStyleTracer(
             }
 
             // A seed skips the prefix, whose logs a traced prefix is there to count.
-            IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(
-                traced, txHash, !useBlockAsBase && unaltered && !tracePreceding ? prefixSeeds : null);
+            IBlockTracer executionTracer = TransactionTraceBoundary.WrapAt(
+                traced, txHash, txIndex, !useBlockAsBase && unaltered && !tracePreceding ? prefixSeeds : null);
             scope.Component.BlockchainProcessor.Process(block, processingOptions, executionTracer, cancellationToken);
             if (overridesTracer is { IsPrepared: false }) throw new InvalidOperationException($"The state overrides of the call in block {block.Number} were not applied.");
             return (tracePreceding ? KeepTrace(tracer.BuildResult(), txHash) : tracer.BuildResult()).SingleOrDefault();
