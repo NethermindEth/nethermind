@@ -22,7 +22,7 @@ public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader
     public const int DefaultMaxAccounts = 1024;
 
     // The nonce after the last accepted forward of each account; guarded by SendLock.
-    private readonly Dictionary<AddressAsKey, ulong> _nextNonces = new();
+    private readonly Dictionary<AddressAsKey, ulong> _nextNonces = [];
 
     /// <summary>
     /// Held from filling a nonce until the transaction is sent, so that concurrent sends get consecutive nonces.
