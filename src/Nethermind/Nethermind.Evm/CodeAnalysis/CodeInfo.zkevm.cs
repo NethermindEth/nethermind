@@ -35,6 +35,29 @@ public sealed partial class CodeInfo
 
     internal partial ReadOnlySpan<byte> ExecutionCodeSpan => _code.Span;
 
+    private nint[]? _handlerCache;
+    private nint[]? _handlerCacheTable;
+
+    /// <summary>The handlers guest dispatch has resolved for this code under the paired table <paramref name="table"/>, by position.</summary>
+    /// <remarks>Another table, as a traced run uses, starts a new cache.</remarks>
+    internal nint[] GetHandlerCache(nint[] table)
+    {
+        if (!ReferenceEquals(_handlerCacheTable, table))
+        {
+            _handlerCache = CreateHandlerCache(CodeLength);
+            _handlerCacheTable = table;
+        }
+
+        return _handlerCache!;
+    }
+
+    /// <summary>An empty handler cache for <paramref name="codeLength"/> code bytes.</summary>
+    /// <remarks>
+    /// One slot for each position dispatch reaches: past a PUSH32 in the last byte, the next opcode is read at the
+    /// next-to-last padding byte (see <see cref="ExecutionPadding"/>).
+    /// </remarks>
+    internal static nint[] CreateHandlerCache(int codeLength) => GC.AllocateArray<nint>(codeLength + ExecutionPadding - 1, pinned: true);
+
     // Guest execution is single-threaded; bitmap writes and the resume cursor are not synchronized.
     private long[]? _incrementalJumpBitmap;
     private nint _analyzedUntil;

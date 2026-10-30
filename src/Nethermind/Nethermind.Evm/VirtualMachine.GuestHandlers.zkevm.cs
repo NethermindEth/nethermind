@@ -54,15 +54,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             AirbenderArithmetic.Initialize();
 
         lookup[(int)Instruction.PUSH1] = AsTableEntry(&RawCalliHelper.ExecutePush1);
-        lookup[(int)Instruction.DUP1] = AsTableEntry(&RawCalliHelper.ExecuteDup1);
-        lookup[(int)Instruction.POP] = AsTableEntry(&RawCalliHelper.ExecutePop);
-        lookup[(int)Instruction.ISZERO] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.IsZeroCondition>);
-        lookup[(int)Instruction.EQ] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.EqualCondition>);
-        lookup[(int)Instruction.LT] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.LessThanCondition>);
-        lookup[(int)Instruction.GT] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.GreaterThanCondition>);
-        lookup[(int)Instruction.SLT] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.SignedLessThanCondition>);
-        lookup[(int)Instruction.SGT] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.SignedGreaterThanCondition>);
-        lookup[(int)Instruction.PUSH2] = AsTableEntry(&RawCalliHelper.ExecutePush2);
+        lookup[(int)Instruction.DUP1] = AsTableEntry(&RawCalliHelper.ExecuteDup1<RawCalliHelper.TestedShape>);
+        lookup[(int)Instruction.POP] = AsTableEntry(&RawCalliHelper.ExecutePop<RawCalliHelper.TestedShape>);
+        lookup[(int)Instruction.ISZERO] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.IsZeroCondition, RawCalliHelper.TestedShape>);
+        lookup[(int)Instruction.EQ] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.EqualCondition, RawCalliHelper.TestedShape>);
+        lookup[(int)Instruction.LT] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.LessThanCondition, RawCalliHelper.TestedShape>);
+        lookup[(int)Instruction.GT] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.GreaterThanCondition, RawCalliHelper.TestedShape>);
+        lookup[(int)Instruction.SLT] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.SignedLessThanCondition, RawCalliHelper.TestedShape>);
+        lookup[(int)Instruction.SGT] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.SignedGreaterThanCondition, RawCalliHelper.TestedShape>);
+        lookup[(int)Instruction.PUSH2] = AsTableEntry(&RawCalliHelper.ExecutePush2<RawCalliHelper.TestedShape>);
         lookup[(int)Instruction.PUSH3] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op3>);
         lookup[(int)Instruction.PUSH4] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op4>);
         lookup[(int)Instruction.PUSH5] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op5>);
@@ -318,6 +318,65 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? *((nint*)(((nuint)handlers + (nuint)opcode) << TableWordShift) - FollowerHandlersLength)
             : Unsafe.Add(ref handlers[opcode], -FollowerHandlersLength);
 
+        /// <summary>Whether the chain carries the handler cache of the running code in place of the table.</summary>
+        /// <remarks>
+        /// The cache holds, for each position of the code, the handler the table gives for the bytes there, so a
+        /// dispatch is one load where the table takes two byte reads to form its index. The chain carries the cache's
+        /// address less four times the code's (see <see cref="HandlerCacheBias"/>), so a slot is the instruction's
+        /// address scaled and added to it. The cache also goes past the handlers that only pick the next one from the
+        /// bytes after a PUSH1 (see <see cref="ResolveHandler"/>). Only where references never move: Airbender's
+        /// collector does not run.
+        /// </remarks>
+        internal static bool CachesHandlers => AirbenderFlag.IsActive;
+
+        /// <summary>The handler for the opcode at <paramref name="ip"/>, out of <paramref name="handlers"/> as the chain carries it.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nint NextHandler(nint* handlers, ref byte ip) =>
+            CachesHandlers ? CachedHandlerAt(handlers, ref ip) : HandlerAt(handlers, PairAt(ref ip));
+
+        /// <summary>
+        /// <see cref="NextHandler(nint*, ref byte)"/> for a handler that has read the bytes at <paramref name="ip"/>
+        /// already: without the cache, <paramref name="index"/> indexes the table.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nint NextHandler(nint* handlers, ref byte ip, nint index) =>
+            CachesHandlers ? CachedHandlerAt(handlers, ref ip) : HandlerAt(handlers, index);
+
+        /// <summary>The handler cached for <paramref name="ip"/>, or 0 where none is yet.</summary>
+        /// <remarks>
+        /// The cache starts zeroed: the bump allocator hands out memory that was never written. A dispatch to 0 reaches
+        /// <see cref="ExecuteUncached"/> through Airbender's start code (see <see cref="AirbenderZeroJump"/>), so a cached
+        /// handler takes no test.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nint CachedHandlerAt(nint* bias, ref byte ip) => *HandlerSlot(bias, ref ip);
+
+        /// <summary>The handler the chain starts with at <paramref name="ip"/>, where it carries the handler cache.</summary>
+        internal static nint FirstHandler(nint* bias, ref byte ip)
+        {
+            nint handler = CachedHandlerAt(bias, ref ip);
+            return handler != 0 ? handler : Entry(&ExecuteUncached);
+        }
+
+        /// <summary>Points Airbender's jump to address 0 at <see cref="ExecuteUncached"/>, before the chain first dispatches through the cache.</summary>
+        internal static void ResolveEmptySlots() => AirbenderZeroJump.airbender_set_zero_jump_target(Entry(&ExecuteUncached));
+
+        /// <summary>The cache slot for the instruction at <paramref name="ip"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nint* HandlerSlot(nint* bias, ref byte ip) =>
+            (nint*)((nint)bias + Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref ip) * sizeof(nint));
+
+        /// <summary>What the chain carries for <paramref name="cache"/>, the handler cache of the code at <paramref name="code"/>.</summary>
+        /// <remarks>The cache is pinned and the code never moves, so the bias holds as long as the chain runs.</remarks>
+        internal static nint* HandlerCacheBias(nint[] cache, ref byte code) =>
+            (nint*)((nint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(cache)) -
+                Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref code) * sizeof(nint));
+
+        /// <summary>The table to read follower handlers from: <paramref name="handlers"/>, unless the chain carries the cache.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nint* FollowerTable(nint* handlers, ref DispatchState state) =>
+            CachesHandlers ? state.PairedHandlers : handlers;
+
         /// <summary><paramref name="stack"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
         /// <remarks>
         /// As in <see cref="AlignedSlot"/>, one <c>andi</c> lets the JIT prove the loads of the stack's fields aligned and drop their tests.
@@ -413,7 +472,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static EvmExceptionType ExecuteCondition<TCondition>(
+        internal static EvmExceptionType ExecuteCondition<TCondition, TShape>(
             ref EvmStack stack,
             nuint gas,
             ref DispatchState state,
@@ -423,6 +482,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
             where TCondition : struct, IStackCondition
+            where TShape : struct, ICodeShape
         {
             nuint analyzed;
             nint skipped;
@@ -437,7 +497,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // The branch's PUSH2 overflows a stack the comparison leaves full, which only ISZERO can.
                 if (TCondition.Inputs > 1 || head < EvmStack.MaxStackSize - 1)
                 {
-                    if (CodeByte(ref opcode, branch, 1, 1) == (byte)Instruction.PUSH2 && CodeByte(ref opcode, branch, 1, 4) == (byte)Instruction.JUMPI)
+                    if (TShape.Kind == TestedShape.Kind
+                        ? CodeByte(ref opcode, branch, 1, 1) == (byte)Instruction.PUSH2 && CodeByte(ref opcode, branch, 1, 4) == (byte)Instruction.JUMPI
+                        : TShape.Kind == Push2JumpIShape.Kind)
                     {
                         // The fused step charges the comparison with every opcode after it in one test.
                         if (condition == 0)
@@ -473,10 +535,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         }
                     }
                     // An ISZERO between the comparison and the branch only inverts what the branch tests.
-                    else if (CodeByte(ref opcode, branch, 1, 1) == (byte)Instruction.ISZERO)
+                    else if (TShape.Kind == TestedShape.Kind
+                        ? CodeByte(ref opcode, branch, 1, 1) == (byte)Instruction.ISZERO
+                        : TShape.Kind == IsZeroPush2JumpIShape.Kind)
                     {
                         uint inverted = CodeWord(ref opcode, 2);
-                        if (CodeByte(ref opcode, inverted, 2, 2) == (byte)Instruction.PUSH2 && CodeByte(ref opcode, inverted, 2, 5) == (byte)Instruction.JUMPI)
+                        if (TShape.Kind != TestedShape.Kind ||
+                            (CodeByte(ref opcode, inverted, 2, 2) == (byte)Instruction.PUSH2 && CodeByte(ref opcode, inverted, 2, 5) == (byte)Instruction.JUMPI))
                         {
                             if (condition != 0)
                             {
@@ -512,7 +577,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         }
                     }
                     // Code shorter than 256 bytes pushes its destinations with PUSH1.
-                    else if (CodeByte(ref opcode, branch, 1, 1) == (byte)Instruction.PUSH1 && CodeByte(ref opcode, branch, 1, 3) == (byte)Instruction.JUMPI)
+                    else if (TShape.Kind == TestedShape.Kind
+                        ? CodeByte(ref opcode, branch, 1, 1) == (byte)Instruction.PUSH1 && CodeByte(ref opcode, branch, 1, 3) == (byte)Instruction.JUMPI
+                        : TShape.Kind == Push1JumpIShape.Kind)
                     {
                         if (condition == 0)
                         {
@@ -559,7 +626,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head -= TCondition.Inputs - 1;
                     sp = ref Moved(ref sp, -(TCondition.Inputs - 1));
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint unfused = HandlerAt(handlers, StrictAlignmentFlag.IsActive || AirbenderFlag.IsActive ? PairAt(ref ip) : (ushort)branch);
+                    nint unfused = NextHandler(handlers, ref ip, StrictAlignmentFlag.IsActive || AirbenderFlag.IsActive ? PairAt(ref ip) : (ushort)branch);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
                 }
             }
@@ -568,7 +635,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
 
         Dispatch:
-            nint next = HandlerAt(handlers, PairAt(ref ip));
+            nint next = NextHandler(handlers, ref ip);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
 
         AnalyzeBranch:
@@ -584,7 +651,58 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, analyze);
         }
 
-        /// <summary>A comparison of the words on top of the stack, as <see cref="ExecuteCondition{TCondition}"/> runs it.</summary>
+        /// <summary>The variant of <see cref="ExecuteCondition{TCondition, TShape}"/> for the branch that follows the comparison at <paramref name="opcode"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nint ConditionHandler<TCondition>(ref byte opcode) where TCondition : struct, IStackCondition
+        {
+            byte following = Unsafe.Add(ref opcode, 1);
+            if (following == (byte)Instruction.PUSH2 && Unsafe.Add(ref opcode, 4) == (byte)Instruction.JUMPI)
+                return Entry(&ExecuteCondition<TCondition, Push2JumpIShape>);
+            if (following == (byte)Instruction.ISZERO && Unsafe.Add(ref opcode, 2) == (byte)Instruction.PUSH2 && Unsafe.Add(ref opcode, 5) == (byte)Instruction.JUMPI)
+                return Entry(&ExecuteCondition<TCondition, IsZeroPush2JumpIShape>);
+            if (following == (byte)Instruction.PUSH1 && Unsafe.Add(ref opcode, 3) == (byte)Instruction.JUMPI)
+                return Entry(&ExecuteCondition<TCondition, Push1JumpIShape>);
+            return Entry(&ExecuteCondition<TCondition, NoFusionShape>);
+        }
+
+        /// <summary>What a handler knows of the code bytes after its opcode, which decide what it fuses.</summary>
+        /// <remarks>
+        /// <see cref="TestedShape"/> tests the bytes each time it runs; any other shape is the outcome of those tests.
+        /// Where the chain carries the handler cache, <see cref="ResolveHandler"/> tests them once for each position of
+        /// the code and caches the variant for the shape it finds. A variant for another shape is entered only from the cache.
+        /// </remarks>
+        internal interface ICodeShape
+        {
+            static abstract int Kind { get; }
+        }
+
+        internal readonly struct TestedShape : ICodeShape { public static int Kind => 0; }
+
+        /// <summary>None of the sequences the handler fuses follows.</summary>
+        internal readonly struct NoFusionShape : ICodeShape { public static int Kind => 1; }
+
+        /// <summary>PUSH2 and JUMPI follow.</summary>
+        internal readonly struct Push2JumpIShape : ICodeShape { public static int Kind => 2; }
+
+        /// <summary>ISZERO, PUSH2 and JUMPI follow.</summary>
+        internal readonly struct IsZeroPush2JumpIShape : ICodeShape { public static int Kind => 3; }
+
+        /// <summary>PUSH1 and JUMPI follow.</summary>
+        internal readonly struct Push1JumpIShape : ICodeShape { public static int Kind => 4; }
+
+        /// <summary>JUMP follows the opcode and its immediates.</summary>
+        internal readonly struct JumpShape : ICodeShape { public static int Kind => 5; }
+
+        /// <summary>JUMPI follows the opcode and its immediates.</summary>
+        internal readonly struct JumpIShape : ICodeShape { public static int Kind => 6; }
+
+        /// <summary>POP follows.</summary>
+        internal readonly struct PopShape : ICodeShape { public static int Kind => 7; }
+
+        /// <summary>AND follows the sequence.</summary>
+        internal readonly struct AndShape : ICodeShape { public static int Kind => 8; }
+
+        /// <summary>A comparison of the words on top of the stack, as <see cref="ExecuteCondition{TCondition, TShape}"/> runs it.</summary>
         internal interface IStackCondition
         {
             /// <summary>How many words the comparison consumes.</summary>
@@ -706,7 +824,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1000,7 +1118,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 NotStep.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1039,7 +1157,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint following = HandlerAt(handlers, PairAt(ref ip));
+                        nint following = NextHandler(handlers, ref ip);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, following);
                     }
 
@@ -1089,7 +1207,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
 
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1198,7 +1316,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static EvmExceptionType ExecuteDup1(
+        internal static EvmExceptionType ExecuteDup1<TShape>(
             ref EvmStack stack,
             nuint gas,
             ref DispatchState state,
@@ -1207,11 +1325,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint* handlers,
             ref byte code,
             ref byte sp)
+            where TShape : struct, ICodeShape
         {
-            // The selector comparison lives in its own handler, which needs a frame: a plain DUP1 keeps none.
-            if (Unsafe.Add(ref ip, 1) == (byte)Instruction.PUSH4 && Unsafe.Add(ref ip, 6) == (byte)Instruction.EQ)
+            // The selector comparison lives in its own handler, which needs a frame: a plain DUP1 keeps none. Only the
+            // tested variant goes there: the cache holds the comparison's own handler where it follows.
+            if (TShape.Kind == TestedShape.Kind &&
+                Unsafe.Add(ref ip, 1) == (byte)Instruction.PUSH4 && Unsafe.Add(ref ip, 6) == (byte)Instruction.EQ)
             {
-                nint selector = Entry(&ExecuteDup1Selector);
+                nint selector = Entry(&ExecuteDup1Selector<TestedShape>);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, selector);
             }
 
@@ -1221,7 +1342,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head++;
                 sp = ref Moved(ref sp, 1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint unfused = HandlerAt(handlers, ip);
+                nint unfused = NextHandler(handlers, ref ip, ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
             }
 
@@ -1229,10 +1350,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
-        /// <summary><see cref="ExecuteDup1"/> followed by PUSH4 and EQ: the selector comparison, fused when PUSH2 and JUMPI follow.</summary>
+        /// <summary><see cref="ExecuteDup1{TShape}"/> followed by PUSH4 and EQ: the selector comparison, fused when PUSH2 and JUMPI follow.</summary>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static EvmExceptionType ExecuteDup1Selector(
+        private static EvmExceptionType ExecuteDup1Selector<TShape>(
             ref EvmStack stack,
             nuint gas,
             ref DispatchState state,
@@ -1241,19 +1362,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint* handlers,
             ref byte code,
             ref byte sp)
+            where TShape : struct, ICodeShape
         {
+            Debug.Assert(TShape.Kind == TestedShape.Kind || TShape.Kind == Push2JumpIShape.Kind);
             // One unsigned test bounds the depth on both sides: on an empty stack the difference wraps past the limit.
             if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 2))
             {
                 ref ulong top = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 // PUSH4, its four immediates, EQ, PUSH2, its two immediates and JUMPI.
                 ref byte opcode = ref ip;
-                byte following = Unsafe.Add(ref opcode, 1);
-                if (following == (byte)Instruction.PUSH4 &&
-                    Unsafe.Add(ref opcode, 6) == (byte)Instruction.EQ && head < EvmStack.MaxStackSize - 2)
+                // The variant for the full sequence knows its bytes, and the cache ignores the byte as a table index.
+                byte following = TShape.Kind == TestedShape.Kind ? Unsafe.Add(ref opcode, 1) : (byte)Instruction.PUSH4;
+                if ((TShape.Kind != TestedShape.Kind ||
+                        (following == (byte)Instruction.PUSH4 && Unsafe.Add(ref opcode, 6) == (byte)Instruction.EQ)) &&
+                    head < EvmStack.MaxStackSize - 2)
                 {
                     uint branch = CodeWord(ref opcode, 7);
-                    if (CodeByte(ref opcode, branch, 7, 7) == (byte)Instruction.PUSH2 && CodeByte(ref opcode, branch, 7, 10) == (byte)Instruction.JUMPI)
+                    if (TShape.Kind != TestedShape.Kind ||
+                        (CodeByte(ref opcode, branch, 7, 7) == (byte)Instruction.PUSH2 && CodeByte(ref opcode, branch, 7, 10) == (byte)Instruction.JUMPI))
                     {
                         // The selector's word, reversed, holds it zero-extended above bit 32, where a 32-bit read needs extending.
                         // Without Zbb a reversal is a long software sequence, so the four bytes are gathered instead.
@@ -1308,7 +1434,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head++;
                     sp = ref Moved(ref sp, 1);
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint unfused = HandlerAt(handlers, following);
+                    nint unfused = NextHandler(handlers, ref ip, following);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
                 }
             }
@@ -1317,7 +1443,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
 
         Dispatch:
-            nint next = HandlerAt(handlers, PairAt(ref ip));
+            nint next = NextHandler(handlers, ref ip);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -1343,7 +1469,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head++;
                 sp = ref Moved(ref sp, 1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1358,7 +1484,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static EvmExceptionType ExecutePop(
+        internal static EvmExceptionType ExecutePop<TShape>(
             ref EvmStack stack,
             nuint gas,
             ref DispatchState state,
@@ -1367,24 +1493,28 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint* handlers,
             ref byte code,
             ref byte sp)
+            where TShape : struct, ICodeShape
         {
             if (head > 0 && ChargeUntested(ref gas, BaseGasCost.GasCost))
             {
                 head--;
                 sp = ref Moved(ref sp, -1);
-                byte following = Unsafe.Add(ref ip, 1);
+                // Only the tested variant reads the byte; the others know it, and the cache ignores it as a table index.
+                byte following = TShape.Kind == TestedShape.Kind ? Unsafe.Add(ref ip, 1)
+                    : TShape.Kind == PopShape.Kind ? (byte)Instruction.POP
+                    : (byte)Instruction.STOP;
                 if (following == (byte)Instruction.POP && head > 0)
                 {
                     head--;
                     sp = ref Moved(ref sp, -1);
                     gas -= (nuint)(BaseGasCost.GasCost);
                     ip = ref Unsafe.Add(ref ip, 2);
-                    nint fused = HandlerAt(handlers, PairAt(ref ip));
+                    nint fused = NextHandler(handlers, ref ip);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, fused);
                 }
 
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = HandlerAt(handlers, following);
+                nint next = NextHandler(handlers, ref ip, following);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1415,7 +1545,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 SwapStep<TOpCount>.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1453,7 +1583,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 // Both read off the opcode's address, so the immediate's needs no add of its own.
                 ref byte opcode = ref ip;
-                nint next = HandlerAt(handlers, PairAt(ref Unsafe.Add(ref opcode, 2)));
+                nint next = NextHandler(handlers, ref Unsafe.Add(ref opcode, 2));
                 SetWord(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), Unsafe.Add(ref opcode, 1));
                 ip = ref Unsafe.Add(ref ip, 2);
                 head++;
@@ -1482,7 +1612,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (TryCharge(ref gas, JumpDestGasCost.GasCost))
             {
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1511,7 +1641,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head++;
                 sp = ref Moved(ref sp, 1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1616,7 +1746,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head++;
                 sp = ref Moved(ref sp, 1);
                 ip = ref Unsafe.Add(ref ip, 1 + TOpCount.Count);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1638,7 +1768,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static EvmExceptionType ExecutePush2(
+        internal static EvmExceptionType ExecutePush2<TShape>(
             ref EvmStack stack,
             nuint gas,
             ref DispatchState state,
@@ -1647,6 +1777,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint* handlers,
             ref byte code,
             ref byte sp)
+            where TShape : struct, ICodeShape
         {
             ulong pushGas = VeryLowGasCost.GasCost;
             if (head >= EvmStack.MaxStackSize - 1)
@@ -1655,7 +1786,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             // A fused step charges the push with the rest in one test, and short of all of it runs the shared handler.
             ref byte opcode = ref ip;
             nuint value = ReadBigEndianUInt16(ref Unsafe.Add(ref opcode, 1));
-            byte following = Unsafe.Add(ref opcode, 3);
+            // Only the tested variant reads the byte; the others know it, and the cache ignores it as a table index.
+            byte following = TShape.Kind == TestedShape.Kind ? Unsafe.Add(ref opcode, 3)
+                : TShape.Kind == JumpShape.Kind ? (byte)Instruction.JUMP
+                : TShape.Kind == JumpIShape.Kind ? (byte)Instruction.JUMPI
+                : (byte)Instruction.STOP;
             nint analyze;
             if (following == (byte)Instruction.JUMP)
             {
@@ -1723,11 +1858,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ip = ref Unsafe.Add(ref ip, 3);
             head++;
             sp = ref Moved(ref sp, 1);
-            nint next = HandlerAt(handlers, following);
+            nint next = NextHandler(handlers, ref ip, following);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
 
         Dispatch:
-            nint target = HandlerAt(handlers, PairAt(ref ip));
+            nint target = NextHandler(handlers, ref ip);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, target);
 
         Analyze:
@@ -1772,7 +1907,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = HandlerAt(handlers, PairAt(ref ip));
+                        nint next = NextHandler(handlers, ref ip);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
@@ -1815,7 +1950,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = HandlerAt(handlers, PairAt(ref ip));
+                        nint next = NextHandler(handlers, ref ip);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
@@ -1866,7 +2001,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 code = ref stack.Code;
                 sp = ref SlotAt(ref stack.Bottom, head);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1965,7 +2100,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 code = ref stack.Code;
                 sp = ref SlotAt(ref stack.Bottom, head);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
 
             OutOfGas:
@@ -2004,7 +2139,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 code = ref stack.Code;
                 sp = ref SlotAt(ref stack.Bottom, head);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -2042,7 +2177,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head -= 2;
                 sp = ref SlotAt(ref stack.Bottom, head);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -2138,7 +2273,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head -= 3;
             sp = ref Moved(ref sp, -3);
             ip = ref Unsafe.Add(ref ip, 1);
-            nint next = HandlerAt(handlers, PairAt(ref ip));
+            nint next = NextHandler(handlers, ref ip);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -2219,7 +2354,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = HandlerAt(handlers, PairAt(ref ip));
+                        nint next = NextHandler(handlers, ref ip);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
@@ -2260,7 +2395,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         // Memory holds the word big-endian; the slot takes it in limb layout, over the offset it held.
                         LoadMemoryWord(ref slot, ref source);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = HandlerAt(handlers, PairAt(ref ip));
+                        nint next = NextHandler(handlers, ref ip);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
@@ -2302,7 +2437,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     ref byte source = ref Unsafe.Add(ref Unsafe.AsRef(in AlignedStack(ref stack).InputData), (nint)offset);
                     LoadMemoryWord(ref slot, ref source);
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint next = HandlerAt(handlers, PairAt(ref ip));
+                    nint next = NextHandler(handlers, ref ip);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
@@ -2355,7 +2490,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         {
                             sp = ref Moved(ref sp, -1);
                             ip = ref Unsafe.Add(ref ip, 1);
-                            nint memoized = HandlerAt(handlers, PairAt(ref ip));
+                            nint memoized = NextHandler(handlers, ref ip);
                             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, memoized);
                         }
 
@@ -2384,7 +2519,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         if (!EvmPooledMemory.IsSwizzled || (offset & (sizeof(uint) - 1)) == 0)
                             WriteWordKeccakMemo(ref state.Memory.GetActiveInitializedRange(offset, length), length, ref hash);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = HandlerAt(handlers, PairAt(ref ip));
+                        nint next = NextHandler(handlers, ref ip);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
@@ -2480,7 +2615,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -2509,7 +2644,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -2552,7 +2687,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head--;
                     sp = ref Moved(ref sp, -1);
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint following = HandlerAt(handlers, PairAt(ref ip));
+                    nint following = NextHandler(handlers, ref ip);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, following);
                 }
 
@@ -2572,7 +2707,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -2635,7 +2770,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head--;
             sp = ref Moved(ref sp, -1);
             ip = ref Unsafe.Add(ref ip, 1);
-            nint next = HandlerAt(handlers, PairAt(ref ip));
+            nint next = NextHandler(handlers, ref ip);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -2694,7 +2829,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head--;
             sp = ref Moved(ref sp, -1);
             ip = ref Unsafe.Add(ref ip, 1);
-            nint next = HandlerAt(handlers, PairAt(ref ip));
+            nint next = NextHandler(handlers, ref ip);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -2786,7 +2921,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -2837,7 +2972,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head--;
             sp = ref Moved(ref sp, -1);
             ip = ref Unsafe.Add(ref ip, 1);
-            nint next = HandlerAt(handlers, PairAt(ref ip));
+            nint next = NextHandler(handlers, ref ip);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -2878,7 +3013,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head--;
                     sp = ref Moved(ref sp, -1);
                     ip = ref Unsafe.Add(ref code, (nint)target + 1);
-                    nint next = HandlerAt(handlers, PairAt(ref ip));
+                    nint next = NextHandler(handlers, ref ip);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
@@ -2918,7 +3053,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     sp = ref Moved(ref sp, -2);
                     gas -= (nuint)(JumpIGasCost.GasCost);
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint notTaken = HandlerAt(handlers, PairAt(ref ip));
+                    nint notTaken = NextHandler(handlers, ref ip);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, notTaken);
                 }
 
@@ -2937,7 +3072,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     sp = ref Moved(ref sp, -2);
                     gas -= (nuint)(jumpIAndJumpDestGas);
                     ip = ref Unsafe.Add(ref code, (nint)target + 1);
-                    nint taken = HandlerAt(handlers, PairAt(ref ip));
+                    nint taken = NextHandler(handlers, ref ip);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, taken);
                 }
             }
@@ -2977,7 +3112,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 sp = ref Moved(ref sp, -(TConditional.IsActive ? 2 : 1));
                 gas -= (nuint)(JumpAndJumpDestGas<TConditional>());
                 ip = ref Unsafe.Add(ref code, target + 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -3013,7 +3148,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 sp = ref SlotAt(ref stack.Bottom, head);
                 gas -= (nuint)(JumpAndJumpDestGas<TConditional>());
                 ip = ref Unsafe.Add(ref code, target + 1);
-                nint next = HandlerAt(handlers, PairAt(ref ip));
+                nint next = NextHandler(handlers, ref ip);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 

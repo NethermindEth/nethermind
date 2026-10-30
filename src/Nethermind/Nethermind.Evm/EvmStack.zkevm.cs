@@ -120,6 +120,11 @@ public ref partial struct EvmStack
         return (long)((bits >> (int)destination) << 63) < 0;
     }
 
+    /// <summary>The handler cache of <see cref="Code"/> for the paired table <paramref name="table"/>.</summary>
+    /// <remarks>Code without its code info gets a cache of its own on every call.</remarks>
+    internal readonly nint[] GetHandlerCache(nint[] table) =>
+        _codeInfo?.GetHandlerCache(table) ?? CodeInfo.CreateHandlerCache((int)CodeLength);
+
     /// <summary>The bottom slot of the stack.</summary>
     /// <remarks>
     /// Guest dispatch carries it, and the head, outside the stack (see <c>VirtualMachine.Dispatch.zkevm.cs</c>), so its
