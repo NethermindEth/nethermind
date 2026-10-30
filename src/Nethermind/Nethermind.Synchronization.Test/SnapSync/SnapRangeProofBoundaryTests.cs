@@ -318,6 +318,30 @@ public class SnapRangeProofBoundaryTests
         Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
     }
 
+    // Only the missing-node exceptions show that the entries do not fit the proof. Any other failure of the bulk set,
+    // such as a local store error, is not the peer's doing and is thrown as it is.
+    [TestCaseSource(nameof(OtherBulkSetFailures))]
+    public void VerifyAccountRange_BulkSetFailingForAnotherReason_ThrowsThatFailure(Func<Exception> createFailure)
+    {
+        Exception failure = createFailure();
+        ISnapTree<PathWithAccount> tree = Substitute.For<ISnapTree<PathWithAccount>>();
+        tree.When(static t => t.BulkSetAndUpdateRootHash(Arg.Any<IReadOnlyList<PathWithAccount>>())).Do(_ => throw failure);
+        ISnapTrieFactory factory = Substitute.For<ISnapTrieFactory>();
+        factory.CreateStateTree().Returns(tree);
+
+        Assert.That(() => SnapProviderHelper.VerifyAccountRange(
+                factory, TestItem.KeccakA, ValueKeccak.Zero, ValueKeccak.MaxValue, [MadeUpAccountBeforeD()], null),
+            Throws.Exception.SameAs(failure));
+    }
+
+    private static IEnumerable<TestCaseData> OtherBulkSetFailures()
+    {
+        yield return new TestCaseData((Func<Exception>)(static () => new TrieException("A local failure.")))
+            .SetName("{m}(TrieException)");
+        yield return new TestCaseData((Func<Exception>)(static () => new InvalidOperationException("A local failure.")))
+            .SetName("{m}(InvalidOperationException)");
+    }
+
     // A proof of absence for [0x40.., 0xb1ff..]: the limit runs through the extension, whose keys B and C lie in the
     // range, and the start does not reach it.
     [Test]
@@ -357,6 +381,7 @@ public class SnapRangeProofBoundaryTests
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
         Synchronization.SnapSync.SnapSyncFeed feed = (Synchronization.SnapSync.SnapSyncFeed)container.Resolve<ISimpleSyncFeed<SnapSyncBatch>>();
         PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        // A success from another peer, so the feed does not take the failures below for a stale pivot of its only peer.
         feed.AnalyzeResponsePerPeer(AddRangeResult.OK, new PeerInfo(Substitute.For<ISyncPeer>()));
 
         List<SyncResponseHandlingResult> results = [];
