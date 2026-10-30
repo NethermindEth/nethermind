@@ -20,6 +20,7 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 using System.Text.Json;
 using Nethermind.State;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Serialization.Rlp;
 
 
 namespace Nethermind.JsonRpc.Modules.Admin;
@@ -216,7 +217,7 @@ public class AdminRpcModule : IAdminRpcModule
             node = new NetworkNode(enode);
             return null;
         }
-        catch (Exception ex) when (ex is ArgumentException or FormatException or SocketException)
+        catch (Exception ex) when (ex is ArgumentException or FormatException or SocketException or RlpException)
         {
             node = null;
             return ResultWrapper<bool>.Fail($"invalid enode: {ex.Message}", ErrorCodes.InvalidParams);
