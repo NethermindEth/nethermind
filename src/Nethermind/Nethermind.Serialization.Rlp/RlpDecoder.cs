@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Serialization.FluentRlp;
@@ -72,15 +73,27 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     }
 
     public virtual T?[] DecodeArray(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
-        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? DecodeArray<OffFlag>(ref reader, rlpBehaviors, limit) : DecodeArray<OnFlag>(ref reader, rlpBehaviors, limit);
+    {
+        try
+        {
+            return (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? DecodeArray<OffFlag>(ref reader, rlpBehaviors, limit) : DecodeArray<OnFlag>(ref reader, rlpBehaviors, limit);
+        }
+        catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+        {
+            ThrowRlpException(e);
+            return default;
+        }
+    }
 
     private T?[] DecodeArray<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors, RlpLimit? limit) where TCanonicalChecks : struct, IFlag
     {
         RlpReader items = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
         T?[] result = new T?[items.CountItems<TCanonicalChecks>(limit)];
-        for (int i = 0; i < result.Length; i++)
+        // A span store has no covariance check, unlike an array store of a reference type.
+        Span<T?> span = result;
+        for (int i = 0; i < span.Length; i++)
         {
-            result[i] = Decode(ref items, rlpBehaviors);
+            span[i] = DecodeItem(ref items, rlpBehaviors);
         }
 
         reader.ExitSequence(in items, itemLength, rlpBehaviors);
@@ -88,25 +101,54 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     }
 
     /// <inheritdoc/>
+    /// <remarks>The array has one exception wrapper, and its items are read with <see cref="DecodeInternal"/> without one.</remarks>
     public virtual T[] DecodeNonNullArray(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
-        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? DecodeNonNullArray<OffFlag>(ref reader, rlpBehaviors, limit) : DecodeNonNullArray<OnFlag>(ref reader, rlpBehaviors, limit);
+    {
+        try
+        {
+            return (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? DecodeNonNullArray<OffFlag>(ref reader, rlpBehaviors, limit) : DecodeNonNullArray<OnFlag>(ref reader, rlpBehaviors, limit);
+        }
+        catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+        {
+            ThrowRlpException(e);
+            return default;
+        }
+    }
 
     private T[] DecodeNonNullArray<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors, RlpLimit? limit) where TCanonicalChecks : struct, IFlag
     {
         RlpReader items = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
         T[] result = new T[items.CountItems<TCanonicalChecks>(limit)];
-        for (int i = 0; i < result.Length; i++)
+        Span<T> span = result;
+        for (int i = 0; i < span.Length; i++)
         {
             if (items.IsNextItemEmptyList())
             {
                 ThrowNullArrayElement(i);
             }
 
-            result[i] = DecodeGuardNotNull(ref items, rlpBehaviors);
+            span[i] = DecodeItemNotNull(ref items, rlpBehaviors);
         }
 
         reader.ExitSequence(in items, itemLength, rlpBehaviors);
         return result;
+    }
+
+    // Not inlined: a profile-guided inline of the item decode into the array loop keeps the reader fields on the stack.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private T? DecodeItem(ref RlpReader reader, RlpBehaviors rlpBehaviors) => DecodeInternal(ref reader, rlpBehaviors);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [return: NotNull]
+    private T DecodeItemNotNull(ref RlpReader reader, RlpBehaviors rlpBehaviors)
+    {
+        T? value = DecodeItem(ref reader, rlpBehaviors);
+        if (value is null)
+        {
+            ThrowNullDecodedValue();
+        }
+
+        return value;
     }
 
     [return: MaybeNull]
