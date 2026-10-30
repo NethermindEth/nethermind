@@ -1,0 +1,4 @@
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --chmod=0555 eez-composer eez-follower eez-proof-signer eez-genesis-state-root eez-genesis-block-hash e2e-causal-verify verify_blob_evidence /usr/local/bin/
+ENTRYPOINT ["eez-composer"]

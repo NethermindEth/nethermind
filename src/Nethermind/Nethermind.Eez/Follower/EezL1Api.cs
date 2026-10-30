@@ -1,0 +1,40 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.JsonRpc.Client;
+
+namespace Nethermind.Eez.Follower;
+
+/// <summary>Reads L1 over JSON-RPC.</summary>
+/// <remarks>Does not own <paramref name="rpcClient"/>; the plugin manages its lifetime.</remarks>
+public sealed class EezL1Api(IJsonRpcClient rpcClient) : IEezL1Api
+{
+    public Task<ulong?> GetChainId(CancellationToken token) => rpcClient.Post<ulong?>("eth_chainId").WaitAsync(token);
+
+    public Task<EezL1Block?> GetBlockByNumber(ulong number, CancellationToken token) =>
+        rpcClient.Post<EezL1Block?>("eth_getBlockByNumber", number.ToHexString(true), false).WaitAsync(token);
+
+    public Task<EezL1Block?> GetLatestBlock(CancellationToken token) => rpcClient.Post<EezL1Block?>("eth_getBlockByNumber", "latest", false).WaitAsync(token);
+
+    public Task<EezL1Block?> GetFinalizedBlock(CancellationToken token) => rpcClient.Post<EezL1Block?>("eth_getBlockByNumber", "finalized", false).WaitAsync(token);
+
+    public Task<EezL1Log[]?> GetLogs(Address address, Hash256 topic0, Hash256? topic1, ulong fromBlock, ulong toBlock, CancellationToken token) =>
+        rpcClient.Post<EezL1Log[]?>("eth_getLogs", new
+        {
+            address,
+            topics = topic1 is null ? new[] { topic0 } : [topic0, topic1],
+            fromBlock = fromBlock.ToHexString(true),
+            toBlock = toBlock.ToHexString(true),
+        }).WaitAsync(token);
+
+    public Task<EezL1Transaction?> GetTransactionByBlockHashAndIndex(Hash256 blockHash, ulong index, CancellationToken token) =>
+        rpcClient.Post<EezL1Transaction?>("eth_getTransactionByBlockHashAndIndex", blockHash, index.ToHexString(true)).WaitAsync(token);
+
+    public Task<byte[]?> Call(Address to, byte[] data, CancellationToken token) =>
+        rpcClient.Post<byte[]?>("eth_call", new { to, data }, "latest").WaitAsync(token);
+}

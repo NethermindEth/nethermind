@@ -1,0 +1,47 @@
+{
+  "attester": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+  "cases": [
+    {
+      "accept": false,
+      "public_inputs_hash": "0xd172f4955807eaccb9a882888b405cadcddac65d15f7c637e46ca5d91b5c245e",
+      "request": "static-before-history.v2.protobuf",
+      "request_hash": "0x4895c6958bea9730608ec3390ed557451c57bbc765d8bf087862bc65493b9e7b"
+    },
+    {
+      "accept": false,
+      "public_inputs_hash": "0x16e73470edd1b690d959d897769ca5aa8309fca6e8345079e9ee154789a5dbe0",
+      "request": "static-before-ordinary.v2.protobuf",
+      "request_hash": "0xadd6f2983f1d1e2a003f3f9b988a3eb93ffa38f89b0221b33f3be6b199ee0879"
+    },
+    {
+      "accept": true,
+      "public_inputs_hash": "0x192f670ee77f78f9425ca828f913834e272551edffd12a3c37af22c063d53ff3",
+      "request": "static-correct.v2.protobuf",
+      "request_hash": "0x26770fb499aa893fa821f9ea9611134508470ef9aaf1e168800a1cb4f99f2220"
+    },
+    {
+      "accept": false,
+      "public_inputs_hash": "0x3feb389716d96b87980a4dd156058d31a4354072fe3b12ffd45c5b897e0ab703",
+      "request": "lookup-before-history.v2.protobuf",
+      "request_hash": "0xea77543a9758002f953c29067e2db59afd8b314a112918f6a530288356a1caa5"
+    },
+    {
+      "accept": false,
+      "public_inputs_hash": "0xaf9f9f47f1e141d239992d3522181468e31711096015b24af743a7b646886c0e",
+      "request": "lookup-before-ordinary.v2.protobuf",
+      "request_hash": "0x4f15c27ed066a1da52dadddca213e84a5973fe30b0c45a513dcedcb7d934118d"
+    },
+    {
+      "accept": true,
+      "public_inputs_hash": "0x5b3be6330f2fe0e6404f18072e4cc52e865a926582d71166e30171f3f65d3bd9",
+      "request": "lookup-correct.v2.protobuf",
+      "request_hash": "0x5b4e95004dc8c2fc108dfdcb3c310deb06bde88b307cd62db5ebb65dfe0d2521"
+    }
+  ],
+  "manager": "0x4444444444444444444444444444444444444444",
+  "proof_system": "0x00000000000000000000000000000000000000aa",
+  "registry": "0x3333333333333333333333333333333333333333",
+  "rollup_id": 1,
+  "validation_identity": "0x5ec45468a5b0275850c46c11face4b9054b42889ae9aab36a7485e0961989368",
+  "vkey": "0xf00e07bc501597cf26edf014bf557ed3e1b0cd89f15e1c8e39fd1e90de22138d"
+}

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Eez.Test" />
+    <InternalsVisibleTo Include="Nethermind.Eez" />
+    <InternalsVisibleTo Include="nethermind-eez-attester" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
+  </ItemGroup>
+
+</Project>

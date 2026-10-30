@@ -1,0 +1,6 @@
+config-version: 9
+should-send-metrics: false
+kurtosis-clusters:
+  docker:
+    type: docker
+    backend-log-collector: vector

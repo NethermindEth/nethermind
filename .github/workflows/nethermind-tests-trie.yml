@@ -48,6 +48,7 @@ jobs:
       matrix:
         # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.cs).
         project:
+          - Nethermind.Eez.Test
           - Nethermind.JsonRpc.Test
           - Nethermind.Mcp.Plugin.Test
           - Nethermind.TxPool.Test

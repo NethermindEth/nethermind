@@ -1,0 +1,7 @@
+{
+  "source": "https://github.com/eez-association/eez-rollupX/blob/c1dafa6113425fce74bdba8c32ae8b0d7a7ba5ae/genesis.json",
+  "commit": "c1dafa6113425fce74bdba8c32ae8b0d7a7ba5ae",
+  "sha256": "89ce9464197f532a9d0ab19751dcffe9890c6ffed23d921adde6c8a29144d577",
+  "modifications": "None. Copied byte-for-byte.",
+  "scope": "Complete native execution genesis loading. The fixture does not authenticate its L1 reference or certify a deployed network."
+}

@@ -157,6 +157,13 @@ public class ExecutionProcessorTests
             Eip7251Constants.ConsolidationRequestPredeployAddress
         })
         { TestName = "GetAccessList_AtPrague_CoversTheWithdrawalAndConsolidationQueues" };
+        IReleaseSpec customSpec = ReleaseSpecSubstitute.Create();
+        customSpec.WithdrawalRequestsEnabled.Returns(true);
+        customSpec.ConsolidationRequestsEnabled.Returns(true);
+        customSpec.Eip7002ContractAddress.Returns(TestItem.AddressA);
+        customSpec.Eip7251ContractAddress.Returns(TestItem.AddressB);
+        yield return new TestCaseData(customSpec, 1UL, new[] { TestItem.AddressA, TestItem.AddressB })
+        { TestName = "GetAccessList_CoversConfiguredWithdrawalAndConsolidationQueues" };
         yield return new TestCaseData(Amsterdam.Instance, 1UL, new[]
         {
             Eip7002Constants.WithdrawalRequestPredeployAddress,
@@ -226,7 +233,7 @@ public class ExecutionProcessorTests
     }
 
     [Test]
-    public void ShouldCallTheRequestContractsConfiguredBySpec()
+    public void ShouldCallTheRequestContractsConfiguredBySpec([Values] bool produceNoRequests)
     {
         Address customWithdrawals = TestItem.AddressA;
         Address customConsolidations = TestItem.AddressB;
@@ -239,12 +246,18 @@ public class ExecutionProcessorTests
         _spec.Eip7251ContractAddress.Returns(customConsolidations);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
-        ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);
+        ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor,
+            new ExecutionRequestsOptions
+            {
+                CodelessRequestContracts = produceNoRequests
+                    ? CodelessRequestContractBehavior.ProduceNoRequests
+                    : CodelessRequestContractBehavior.RejectBlock
+            });
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, [], _spec);
 
-        _transactionProcessor.Received(1).Execute(Arg.Is<Transaction>(t => t.To == customWithdrawals), Arg.Any<CallOutputTracer>());
-        _transactionProcessor.Received(1).Execute(Arg.Is<Transaction>(t => t.To == customConsolidations), Arg.Any<CallOutputTracer>());
+        _transactionProcessor.Received(1).Execute(Arg.Is<Transaction>(t => IsDequeueCall(t, customWithdrawals)), Arg.Any<CallOutputTracer>());
+        _transactionProcessor.Received(1).Execute(Arg.Is<Transaction>(t => IsDequeueCall(t, customConsolidations)), Arg.Any<CallOutputTracer>());
         _transactionProcessor.DidNotReceive().Execute(Arg.Is<Transaction>(t => t.To == eip7002Account || t.To == eip7251Account), Arg.Any<CallOutputTracer>());
     }
 
@@ -446,6 +459,74 @@ public class ExecutionProcessorTests
         OffsetHighBitsSet,
         ExtraTrailingWord,
         TruncatedData
+    }
+
+    [Test]
+    public void ProcessExecutionRequests_WithCodelessRequestContractsByDefault_RejectsBlock([Values] bool customContracts)
+    {
+        IWorldState codelessState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = codelessState.BeginScope(IWorldState.PreGenesis);
+        ConfigureCodelessRequestContracts(codelessState, customContracts);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        ExecutionRequestsProcessor processor = new(_transactionProcessor);
+
+        Assert.That(() => processor.ProcessExecutionRequests(block, codelessState, [], _spec),
+            Throws.TypeOf<InvalidBlockException>().With.Message.Contains(BlockErrorMessages.WithdrawalsContractEmpty),
+            "EIP-7002 makes a block invalid when the withdrawal request predeploy has no code");
+    }
+
+    [Test]
+    public void ProcessExecutionRequests_WithCodelessRequestContractsProducingNoRequests_RecordsEmptyRequestsWithoutCallingThem([Values] bool customContracts)
+    {
+        IWorldState codelessState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = codelessState.BeginScope(IWorldState.PreGenesis);
+        ConfigureCodelessRequestContracts(codelessState, customContracts);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        ExecutionRequestsProcessor processor = new(_transactionProcessor,
+            new ExecutionRequestsOptions { CodelessRequestContracts = CodelessRequestContractBehavior.ProduceNoRequests });
+
+        processor.ProcessExecutionRequests(block, codelessState, [], _spec);
+
+        Assert.That(block.Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.EmptyRequestsHash),
+            "codeless predeploys contribute no requests");
+        _transactionProcessor.DidNotReceiveWithAnyArgs().Execute(default!, default!);
+    }
+
+    [Test]
+    public void ProcessExecutionRequests_WithCodelessRequestContractsUnderBlockAccessLists_RejectsBlock([Values] bool customContracts)
+    {
+        IWorldState codelessState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = codelessState.BeginScope(IWorldState.PreGenesis);
+        ConfigureCodelessRequestContracts(codelessState, customContracts);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        _spec.IsEip7928Enabled.Returns(true);
+        ExecutionRequestsProcessor processor = new(_transactionProcessor,
+            new ExecutionRequestsOptions { CodelessRequestContracts = CodelessRequestContractBehavior.ProduceNoRequests });
+
+        Assert.That(() => processor.ProcessExecutionRequests(block, codelessState, [], _spec),
+            Throws.TypeOf<InvalidBlockException>().With.Message.Contains("block access lists"),
+            "a skipped call would be missing from the block access list, so the block is refused rather than mis-recorded");
+    }
+
+    private static bool IsDequeueCall(Transaction transaction, Address contract) =>
+        transaction is SystemCall
+        && transaction.To == contract
+        && transaction.SenderAddress == Address.SystemUser
+        && transaction.GasLimit == Eip8037Constants.SystemCallGasLimit
+        && transaction.Value.IsZero
+        && transaction.GasPrice.IsZero
+        && transaction.Data is { Length: 0 };
+
+    private void ConfigureCodelessRequestContracts(IWorldState state, bool customContracts)
+    {
+        if (!customContracts) return;
+
+        _spec.Eip7002ContractAddress.Returns(TestItem.AddressA);
+        _spec.Eip7251ContractAddress.Returns(TestItem.AddressB);
+        state.CreateAccount(eip7002Account, AccountBalance);
+        state.CreateAccount(eip7251Account, AccountBalance);
+        state.InsertCode(eip7002Account, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, Prague.Instance);
+        state.InsertCode(eip7251Account, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, Prague.Instance);
     }
 
     [Test]
