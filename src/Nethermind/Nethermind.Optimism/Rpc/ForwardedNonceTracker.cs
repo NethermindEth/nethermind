@@ -19,11 +19,11 @@ namespace Nethermind.Optimism.Rpc;
 /// Such a node has no transaction pool (<c>NullTxPool</c>), so it cannot read a pending nonce. It uses the
 /// account's nonce at the head instead, raised past the transactions it has forwarded that the head does not include yet.
 /// Only forwards that the sequencer accepted, and that continue the account's nonces without a gap, are counted.
+/// A forward is recorded only after the node signed it with a key of its own wallet, so the tracked accounts are at most
+/// the wallet's accounts; an entry goes once the head includes the account's forwarded transactions.
 /// </remarks>
-public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader stateReader, int maxAccounts = ForwardedNonceTracker.DefaultMaxAccounts)
+public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader stateReader)
 {
-    public const int DefaultMaxAccounts = 1024;
-
     // Guards both dictionaries; held only for the dictionary work, never across an await.
     private readonly Lock _gate = new();
 
@@ -114,37 +114,7 @@ public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader
             return;
 
         lock (_gate)
-        {
-            if (!_nextNonces.ContainsKey(sender) && _nextNonces.Count >= maxAccounts)
-                MakeRoom();
-
             _nextNonces[sender] = nonce + 1;
-        }
-    }
-
-    // Runs under _gate; reached only when maxAccounts accounts wait for a forwarded transaction.
-    private void MakeRoom()
-    {
-        List<AddressAsKey>? included = null;
-        foreach ((AddressAsKey account, ulong forwardedNonce) in _nextNonces)
-        {
-            if (forwardedNonce <= GetHeadNonce(account))
-                (included ??= []).Add(account);
-        }
-
-        if (included is not null)
-        {
-            foreach (AddressAsKey account in included)
-                _nextNonces.Remove(account);
-        }
-
-        // Every tracked account still waits for a forwarded transaction: forget one of them.
-        if (_nextNonces.Count >= maxAccounts)
-        {
-            using Dictionary<AddressAsKey, ulong>.Enumerator enumerator = _nextNonces.GetEnumerator();
-            enumerator.MoveNext();
-            _nextNonces.Remove(enumerator.Current.Key);
-        }
     }
 
     private ulong GetHeadNonce(Address account) =>

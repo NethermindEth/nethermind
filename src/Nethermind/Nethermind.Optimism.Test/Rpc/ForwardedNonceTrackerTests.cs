@@ -28,7 +28,7 @@ public class ForwardedNonceTrackerTests
             set => _nonces[account] = value;
         }
 
-        public ForwardedNonceTracker CreateTracker(int maxAccounts = ForwardedNonceTracker.DefaultMaxAccounts)
+        public ForwardedNonceTracker CreateTracker()
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.Head.Returns(Build.A.Block.TestObject);
@@ -39,7 +39,7 @@ public class ForwardedNonceTrackerTests
                 call[2] = exists ? new AccountStruct(nonce, 0) : default;
                 return exists;
             });
-            return new ForwardedNonceTracker(blockFinder, stateReader, maxAccounts);
+            return new ForwardedNonceTracker(blockFinder, stateReader);
         }
     }
 
@@ -94,32 +94,6 @@ public class ForwardedNonceTrackerTests
     }
 
     [Test]
-    public void Tracks_at_most_the_given_number_of_accounts()
-    {
-        HeadNonces head = new();
-        ForwardedNonceTracker tracker = head.CreateTracker(maxAccounts: 2);
-        tracker.OnForwarded(TestItem.AddressA, 0);
-        tracker.OnForwarded(TestItem.AddressB, 0);
-
-        // The head includes A's transaction, so A makes room for C.
-        head[TestItem.AddressA] = 1;
-        tracker.OnForwarded(TestItem.AddressC, 0);
-        ulong nextOfB = tracker.GetNextNonce(TestItem.AddressB);
-        int countAfterC = tracker.Count;
-
-        // Every tracked account waits for a transaction: one of them is forgotten for D.
-        tracker.OnForwarded(TestItem.AddressD, 0);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(nextOfB, Is.EqualTo(1UL), "an account still waiting for its transaction is kept while another can go");
-            Assert.That(countAfterC, Is.EqualTo(2));
-            Assert.That(tracker.Count, Is.EqualTo(2));
-            Assert.That(tracker.GetNextNonce(TestItem.AddressD), Is.EqualTo(1UL), "the newest forward is tracked");
-        }
-    }
-
-    [Test]
     public async Task Sender_lock_holds_only_its_account_and_goes_once_unused()
     {
         ForwardedNonceTracker tracker = new HeadNonces().CreateTracker();
@@ -149,7 +123,7 @@ public class ForwardedNonceTrackerTests
     {
         const int accounts = 4096;
         // No head: every account starts at nonce 0, without a state read.
-        ForwardedNonceTracker tracker = new(Substitute.For<IBlockFinder>(), Substitute.For<IStateReader>(), accounts);
+        ForwardedNonceTracker tracker = new(Substitute.For<IBlockFinder>(), Substitute.For<IStateReader>());
         Address[] senders = Enumerable.Range(1, accounts).Select(static i => Address.FromNumber((UInt256)i)).ToArray();
 
         Parallel.ForEach(senders, new ParallelOptions { MaxDegreeOfParallelism = 8 }, sender =>
