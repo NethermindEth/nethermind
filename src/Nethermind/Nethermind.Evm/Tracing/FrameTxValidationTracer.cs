@@ -313,6 +313,14 @@ public sealed class FrameTxValidationTracer(
         if (!Violated && to != sender) Violate("CREATE outside tx.sender");
     }
 
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => SettleCreate();
+
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => SettleCreate();
+
+    public override void ReportActionError(EvmExceptionType evmExceptionType) => SettleCreate();
+
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => SettleCreate();
+
     void IFrameTxReceiptTracer.ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
     {
         // The prefix ends here, so anything still owed a creation frame has to be settled before the payer
