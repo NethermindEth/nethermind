@@ -35,8 +35,16 @@ public class CoveredBlockTests
         _eight = Build.A.Block.WithNumber(8).WithDifficulty(0).WithBeneficiary(TestItem.AddressD).WithParentHash(_seven.Hash!).WithTransactions(Tx(3), Tx(4)).TestObject;
 
         Capture(_seven,
-            t => t.ReportBalanceChange(TestItem.AddressA, 100, 10),
-            t => t.ReportNonceChange(TestItem.AddressB, 5, 6),
+            t =>
+            {
+                t.ReportBalanceChange(TestItem.AddressA, 100, 10);
+                t.ReportStorageChange(new StorageCell(TestItem.AddressA, 1), [0x01], [0x02]);
+            },
+            t =>
+            {
+                t.ReportNonceChange(TestItem.AddressB, 5, 6);
+                t.ReportStorageChange(new StorageCell(TestItem.AddressB, 1), [0x05], [0x06]);
+            },
             t => t.ReportBalanceChange(TestItem.AddressA, 10, 30));
         Capture(_eight,
             t => t.ReportStorageChange(new StorageCell(TestItem.AddressC, 1), [0x01], [0x09]),
@@ -131,23 +139,21 @@ public class CoveredBlockTests
         using ICoveredBlock block = eight!;
         StateReadOverlaySlot slot = new();
         Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 1, slot), Is.True);
-        IStateReadOverlay view = slot.Current!;
+        IStateReadOverlay prefix = slot.Current!;
+        IStorageReadOverlay earlier = slot.ParentState!;
 
-        bool aKnown = view.TryGetAccount(TestItem.AddressA, Parent, out Account? a);
-        bool bKnown = view.TryGetAccount(TestItem.AddressB, Parent, out Account? b);
-        bool slotKnown = view.TryGetStorage(TestItem.AddressC, 1, out UInt256 slotOne);
+        bool aKnown = earlier.TryGetStorage(TestItem.AddressA, 1, out UInt256 a);
+        bool bKnown = earlier.TryGetStorage(TestItem.AddressB, 1, out UInt256 b);
+        bool slotKnown = prefix.TryGetStorage(TestItem.AddressC, 1, out UInt256 slotOne);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(aKnown && a!.Balance == 30, Is.True, "block 7's last write, which block 8's prefix has not changed yet");
-            Assert.That(bKnown && b!.Nonce == 6, Is.True, "a key only the earlier block wrote is still answered from memory");
+            Assert.That(aKnown && a == 2, Is.True, "block 7's write, which block 8's prefix has not changed");
+            Assert.That(bKnown && b == 6, Is.True, "a slot only the earlier block wrote is still answered from memory");
+            Assert.That(earlier.HasStorage(TestItem.AddressB), Is.True);
             Assert.That(slotKnown && slotOne == 9, Is.True, "the block's own prefix");
-            Assert.That(view.HasStorage(TestItem.AddressC), Is.True);
+            Assert.That(prefix.HasStorage(TestItem.AddressC), Is.True);
         }
-
-        Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 2, slot), Is.True);
-        slot.Current!.TryGetAccount(TestItem.AddressA, Parent, out Account? aAfter);
-        Assert.That(aAfter!.Balance, Is.EqualTo((UInt256)40), "the block's own write wins over the earlier block's");
     }
 
     [Test]
@@ -167,8 +173,8 @@ public class CoveredBlockTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(slot.Current!.TryGetAccount(TestItem.AddressA, Parent, out _), Is.False, "a withdrawal recipient: the withdrawal credited it after the transactions, so the parent state must answer");
-            Assert.That(slot.Current.TryGetAccount(TestItem.AddressB, Parent, out _), Is.False, "the beneficiary: the reward reached it after the transactions");
+            Assert.That(slot.ParentState!.TryGetStorage(TestItem.AddressA, 1, out _), Is.False, "a withdrawal recipient: the withdrawal credited it after the transactions, so the parent state must answer");
+            Assert.That(slot.ParentState.TryGetStorage(TestItem.AddressB, 1, out _), Is.False, "the beneficiary: the reward reached it after the transactions");
         }
     }
 
@@ -184,15 +190,19 @@ public class CoveredBlockTests
         Assert.That(_index.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);
         using ICoveredBlock block = eight!;
         StateReadOverlaySlot slot = new();
+#pragma warning disable NUnit2045 // Successful seeding is a prerequisite for inspecting the seeded slot.
         Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 1, slot), Is.True);
+#pragma warning restore NUnit2045
 
-        Assert.That(slot.Current!.TryGetAccount(TestItem.AddressB, Parent, out _), Is.False, "an uncle or a real reward could have reached anyone, so nothing of that block is chained");
+        Assert.That(slot.ParentState, Is.Null, "an uncle or a real reward could have reached anyone, so nothing of that block is chained");
     }
 
     [Test]
     public void ABlockReadBackFromTheStore_StillChains()
     {
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(_seven.Header.IsPostMerge, Is.False, "precondition: the flag a decoded header does not carry");
+#pragma warning restore NUnit2045
 
         Assert.That(_index.TryOpenBlock(_seven, out ICoveredBlock? covered), Is.True);
         covered!.Complete();
@@ -201,10 +211,12 @@ public class CoveredBlockTests
         Assert.That(_index.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);
         using ICoveredBlock block = eight!;
         StateReadOverlaySlot slot = new();
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 1, slot), Is.True);
+#pragma warning restore NUnit2045
 
-        Assert.That(slot.Current!.TryGetAccount(TestItem.AddressB, Parent, out Account? b), Is.True, "zero difficulty is what says proof of stake for a block read back from the store");
-        Assert.That(b!.Nonce, Is.EqualTo(6UL));
+        Assert.That(slot.ParentState!.TryGetStorage(TestItem.AddressB, 1, out UInt256 b), Is.True, "zero difficulty is what says proof of stake for a block read back from the store");
+        Assert.That(b, Is.EqualTo((UInt256)6));
     }
 
     [Test]
@@ -223,9 +235,11 @@ public class CoveredBlockTests
         Assert.That(aura.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);
         using ICoveredBlock block = eight!;
         StateReadOverlaySlot slot = new();
+#pragma warning disable NUnit2045 // Successful seeding is a prerequisite for inspecting the seeded slot.
         Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 0, slot), Is.True);
+#pragma warning restore NUnit2045
 
-        Assert.That(slot.Current, Is.TypeOf<MidBlockReadOverlay>(), "the withdrawals of such a chain are a contract call whose writes no spec property names, so nothing of its blocks is chained");
+        Assert.That(slot.ParentState, Is.Null, "the withdrawals of such a chain are a contract call whose writes no spec property names, so nothing of its blocks is chained");
     }
 
     [Test]
@@ -253,9 +267,11 @@ public class CoveredBlockTests
         Assert.That(_index.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);
         using ICoveredBlock block = eight!;
         StateReadOverlaySlot slot = new();
+#pragma warning disable NUnit2045 // Successful seeding is a prerequisite for inspecting the seeded slot.
         Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 1, slot), Is.True);
+#pragma warning restore NUnit2045
 
-        Assert.That(slot.Current!.TryGetAccount(TestItem.AddressB, Parent, out _), Is.False, "nothing earlier was published, so the read goes to the parent state");
+        Assert.That(slot.ParentState, Is.Null, "nothing earlier was published, so the read goes to the parent state");
     }
 
     private void Truncate(Block block, ushort transactionIndex)

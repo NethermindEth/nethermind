@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats.Model;
@@ -80,8 +80,11 @@ namespace Nethermind.Synchronization.Test
 
             peer.TryToWakeUp(DateTime.MinValue.AddSeconds(2), TimeSpan.FromSeconds(3));
 
-            Assert.That(peer.IsAsleep(contexts), Is.True);
-            Assert.That(peer.CanBeAllocated(contexts), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.IsAsleep(contexts), Is.True);
+                Assert.That(peer.CanBeAllocated(contexts), Is.False);
+            }
         }
 
         [Test]
@@ -98,8 +101,11 @@ namespace Nethermind.Synchronization.Test
             peer.TryToWakeUp(t0, TimeSpan.FromSeconds(5));
             peer.TryToWakeUp(t0 + TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5));
 
-            Assert.That(peer.IsAsleep(AllocationContexts.Bodies), Is.False);
-            Assert.That(peer.IsAsleep(AllocationContexts.Receipts), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.IsAsleep(AllocationContexts.Bodies), Is.False);
+                Assert.That(peer.IsAsleep(AllocationContexts.Receipts), Is.False);
+            }
         }
 
         [Test]
@@ -114,10 +120,13 @@ namespace Nethermind.Synchronization.Test
             peer.PutToSleep(AllocationContexts.Blocks, t0);
 
             peer.TryToWakeUp(t0 + TimeSpan.FromHours(1), TimeSpan.Zero);
-            Assert.That(peer.IsAsleep(AllocationContexts.Blocks), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.IsAsleep(AllocationContexts.Blocks), Is.False);
 
-            // With the nibble reset, a single fresh weak report must not immediately re-sleep.
-            Assert.That(peer.IncreaseWeakness(AllocationContexts.Blocks), Is.EqualTo(AllocationContexts.None));
+                // With the nibble reset, a single fresh weak report must not immediately re-sleep.
+                Assert.That(peer.IncreaseWeakness(AllocationContexts.Blocks), Is.EqualTo(AllocationContexts.None));
+            }
         }
 
         [Test]
@@ -138,8 +147,11 @@ namespace Nethermind.Synchronization.Test
             Assert.That(expected, Has.Length.EqualTo(WeaknessTracking.TrackedContextCount));
             foreach ((AllocationContexts context, int index) in expected)
             {
-                Assert.That(WeaknessTracking.IndexOf(context), Is.EqualTo(index));
-                Assert.That(WeaknessTracking.ContextAt(index), Is.EqualTo(context));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(WeaknessTracking.IndexOf(context), Is.EqualTo(index));
+                    Assert.That(WeaknessTracking.ContextAt(index), Is.EqualTo(context));
+                }
             }
         }
 
@@ -150,14 +162,19 @@ namespace Nethermind.Synchronization.Test
             // one free clears.
             PeerInfo peer = NewPeer(AllocationAllowances.Single);
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
             Assert.That(peer.IsAllocated(contexts), Is.False);
+#pragma warning restore NUnit2045
             Assert.That(peer.TryAllocate(contexts), Is.True);
             Assert.That(peer.IsAllocated(contexts), Is.True);
             Assert.That(peer.CanBeAllocated(contexts), Is.False);
 
             peer.Free(contexts);
-            Assert.That(peer.IsAllocated(contexts), Is.False);
-            Assert.That(peer.CanBeAllocated(contexts), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.IsAllocated(contexts), Is.False);
+                Assert.That(peer.CanBeAllocated(contexts), Is.True);
+            }
         }
 
         [TestCaseSource(nameof(SingleBitContextCases))]
@@ -170,14 +187,21 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 0; i < slots; i++)
             {
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
                 Assert.That(peer.IsAllocationFull(ctx), Is.False);
+#pragma warning restore NUnit2045
                 Assert.That(peer.TryAllocate(ctx), Is.True);
             }
-            Assert.That(peer.IsAllocationFull(ctx), Is.True);
-            Assert.That(peer.CanBeAllocated(ctx), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.IsAllocationFull(ctx), Is.True);
+                Assert.That(peer.CanBeAllocated(ctx), Is.False);
+            }
 
             peer.Free(ctx);
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
             Assert.That(peer.IsAllocationFull(ctx), Is.False);
+#pragma warning restore NUnit2045
             Assert.That(peer.TryAllocate(ctx), Is.True);
             Assert.That(peer.IsAllocationFull(ctx), Is.True);
         }
@@ -188,7 +212,9 @@ namespace Nethermind.Synchronization.Test
             // Blocks = Bodies | Receipts (Headers excluded), so allocating Blocks must leave Headers free
             // while marking Bodies and Receipts as taken; freeing one member re-opens only that slot.
             PeerInfo peer = NewPeer();
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
             Assert.That(peer.TryAllocate(AllocationContexts.Blocks), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(peer.IsAllocated(AllocationContexts.Bodies), Is.True);
             Assert.That(peer.IsAllocated(AllocationContexts.Receipts), Is.True);
@@ -196,8 +222,11 @@ namespace Nethermind.Synchronization.Test
             Assert.That(peer.CanBeAllocated(AllocationContexts.Headers), Is.True);
 
             peer.Free(AllocationContexts.Receipts);
-            Assert.That(peer.IsAllocated(AllocationContexts.Receipts), Is.False);
-            Assert.That(peer.IsAllocated(AllocationContexts.Bodies), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.IsAllocated(AllocationContexts.Receipts), Is.False);
+                Assert.That(peer.IsAllocated(AllocationContexts.Bodies), Is.True);
+            }
         }
 
         [Test]
@@ -216,7 +245,9 @@ namespace Nethermind.Synchronization.Test
             PeerInfo peer = NewPeer(allowances);
 
             peer.Free(AllocationContexts.Headers);
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
             Assert.That(peer.AvailableAllocationSlots.Headers, Is.EqualTo(2), "free with no prior allocate must not exceed the cap");
+#pragma warning restore NUnit2045
 
             Assert.That(peer.TryAllocate(AllocationContexts.Headers), Is.True);
             Assert.That(peer.AvailableAllocationSlots.Headers, Is.EqualTo(1));
@@ -234,8 +265,11 @@ namespace Nethermind.Synchronization.Test
 
             peer.Free(AllocationContexts.Bodies);
 
-            Assert.That(peer.IsAllocated(AllocationContexts.Headers), Is.True);
-            Assert.That(peer.IsAllocated(AllocationContexts.Bodies), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.IsAllocated(AllocationContexts.Headers), Is.True);
+                Assert.That(peer.IsAllocated(AllocationContexts.Bodies), Is.False);
+            }
         }
 
         [Test]
@@ -244,7 +278,9 @@ namespace Nethermind.Synchronization.Test
             // Take Bodies first; then Blocks (= Bodies | Receipts) must fail without leaking the Receipts slot.
             // Single-slot allowances make the rollback observable: Bodies sits at 0, Receipts must end at 1.
             PeerInfo peer = NewPeer(AllocationAllowances.Single);
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
             Assert.That(peer.TryAllocate(AllocationContexts.Bodies), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(peer.TryAllocate(AllocationContexts.Blocks), Is.False);
 
@@ -322,22 +358,38 @@ namespace Nethermind.Synchronization.Test
             PeerInfo peer = NewPeer(allowances);
             int succeeded = 0;
             using Barrier barrier = new(threads);
+            ConcurrentQueue<Exception> failures = new();
 
-            Task[] tasks = new Task[threads];
+            // Dedicated threads: thread-pool threads parked on the barrier would starve the rest of the process until
+            // the pool has injected enough of them.
+            Thread[] racers = new Thread[threads];
             for (int t = 0; t < threads; t++)
             {
-                tasks[t] = Task.Run(() =>
+                racers[t] = new Thread(() =>
                 {
                     barrier.SignalAndWait();
-                    if (peer.TryAllocate(AllocationContexts.Headers))
-                        Interlocked.Increment(ref succeeded);
+                    // An exception on a raw thread would end the test host, so collect it for the assert below.
+                    try
+                    {
+                        if (peer.TryAllocate(AllocationContexts.Headers))
+                            Interlocked.Increment(ref succeeded);
+                    }
+                    catch (Exception e)
+                    {
+                        failures.Enqueue(e);
+                    }
                 });
+                racers[t].Start();
             }
-            Task.WaitAll(tasks);
+            foreach (Thread racer in racers) racer.Join();
 
-            Assert.That(succeeded, Is.EqualTo(slots));
-            Assert.That(peer.AvailableAllocationSlots.Headers, Is.EqualTo(0));
-            Assert.That(peer.IsAllocationFull(AllocationContexts.Headers), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(failures, Is.Empty, () => string.Join(Environment.NewLine, failures));
+                Assert.That(succeeded, Is.EqualTo(slots));
+                Assert.That(peer.AvailableAllocationSlots.Headers, Is.EqualTo(0));
+                Assert.That(peer.IsAllocationFull(AllocationContexts.Headers), Is.True);
+            }
         }
 
         /// <summary>

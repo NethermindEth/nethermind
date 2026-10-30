@@ -87,8 +87,11 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         ReadOnlySequence<byte> seq = MakeSequence(json.AsMemory(0, 2), json.AsMemory(2)); // split at index 2 between 'A'|'B'
 
         (byte[]? res, Exception? err) = InvokeOnBareString(seq);
-        Assert.That(err, Is.Null);
-        Assert.That(res, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(err, Is.Null);
+            Assert.That(res, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(res!.Length, Is.EqualTo(1));
@@ -379,8 +382,11 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         }
         else
         {
-            Assert.That(firstErr, Is.Not.Null);
-            Assert.That(err, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstErr, Is.Not.Null);
+                Assert.That(err, Is.Not.Null);
+            }
             Assert.That(err!.GetType(), Is.EqualTo(firstErr!.GetType()));
         }
     }
@@ -391,7 +397,9 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     private static (byte[]? Result, Exception? Error) InvokeOnBareString(ReadOnlySequence<byte> json)
     {
         Utf8JsonReader reader = new(json);
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(reader.Read(), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.String));
 
         try { return (ByteArrayConverter.Convert(ref reader), null); }
@@ -401,7 +409,9 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     private static (byte[]? Result, Exception? Error) InvokeOnPropertyName(ReadOnlySequence<byte> json)
     {
         Utf8JsonReader reader = new(json);
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(reader.Read(), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.StartObject));
         Assert.That(reader.Read(), Is.True);
         Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.PropertyName));

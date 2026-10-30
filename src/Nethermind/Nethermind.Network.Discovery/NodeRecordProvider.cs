@@ -23,7 +23,8 @@ public sealed class NodeRecordProvider(
     IForkInfo forkInfo,
     ITimestamper timestamper,
     ILogManager logManager,
-    NetworkListenerState listenerState
+    NetworkListenerState listenerState,
+    SnapEnrAdvertisement snapAdvertisement
 ) : INodeRecordProvider
 {
     private readonly Lock _lock = new();
@@ -45,6 +46,7 @@ public sealed class NodeRecordProvider(
                     blockTree.NewHeadBlock += OnNewHeadBlock;
                     listenerState.Changed += OnListenerChanged;
                     ipResolver.Changed += OnExternalIpChanged;
+                    snapAdvertisement.Changed += OnSnapAdvertisementChanged;
                     _subscribed = true;
                 }
 
@@ -96,6 +98,8 @@ public sealed class NodeRecordProvider(
 
     private void OnExternalIpChanged(object? sender, EventArgs e)
         => RefreshRecord(effectiveHeader: null);
+
+    private void OnSnapAdvertisementChanged() => RefreshRecord(effectiveHeader: null);
 
     private void RefreshRecord(BlockHeader? effectiveHeader)
     {
@@ -168,7 +172,9 @@ public sealed class NodeRecordProvider(
             rlpxAddress is not null ? networkConfig.P2PPort : null,
             discoveryAddress is not null ? networkConfig.DiscoveryPort : null,
             advertiseV6 ? ip.ExternalIpV6 : null,
-            currentForkId);
+            currentForkId,
+            snapAdvertisement.ServesSnap,
+            snapAdvertisement.ServesSnap2);
     }
 
     private static bool SupportsEveryBoundListener(IPAddress? rlpxAddress, IPAddress? discoveryAddress, AddressFamily family)
@@ -220,6 +226,7 @@ public sealed class NodeRecordProvider(
             if (state.UdpPort is { } udpPort) selfNodeRecord.SetEntry(new Udp6Entry(udpPort));
         }
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));
+        if (state.ServesSnap) selfNodeRecord.SetEntry(state.ServesSnap2 ? new SnapEntry(1, 2) : new SnapEntry());
         selfNodeRecord.EnrSequence = sequence;
         _enrSigner.Sign(selfNodeRecord);
         if (!_enrSigner.Verify(selfNodeRecord))
@@ -243,5 +250,7 @@ public sealed class NodeRecordProvider(
         int? TcpPort,
         int? UdpPort,
         IPAddress? ExternalIpV6,
-        NetworkForkId ForkId);
+        NetworkForkId ForkId,
+        bool ServesSnap,
+        bool ServesSnap2);
 }

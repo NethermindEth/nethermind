@@ -79,6 +79,12 @@ namespace Nethermind.TxPool
         /// Allows a rejected sparse blob transaction to be retried with a different sidecar proof tuple.
         /// </summary>
         void ForgetRejectedBlobTransaction(Hash256 hash);
+        /// <summary>
+        /// Forgets <paramref name="hash"/> only if a copy of it was rejected in the current block with
+        /// <see cref="AcceptTxResult.InvalidBlobProofs"/>, so a copy carrying another sidecar can be judged.
+        /// </summary>
+        /// <returns><c>true</c> if the hash was forgotten.</returns>
+        bool ForgetInvalidBlobProofs(Hash256 hash);
         bool RemoveTransaction(Hash256? hash);
 
         /// <summary>
@@ -194,6 +200,34 @@ namespace Nethermind.TxPool
             out BlobCellMask availableMask,
             [NotNullWhen(true)] out byte[][]? cells,
             [NotNullWhen(true)] out byte[][]? proofs);
+
+        /// <summary>
+        /// Gets locally available cells and V1 proofs for each of <paramref name="requestedBlobVersionedHashes"/>.
+        /// </summary>
+        /// <remarks>
+        /// The output arrays are indexed as <paramref name="requestedBlobVersionedHashes"/>, and the entry of an unknown blob hash
+        /// is set to <see langword="null"/> in <paramref name="cells"/> and <paramref name="proofs"/>. Implementations can share
+        /// work between blobs of the same transaction; this default looks each hash up on its own.
+        /// </remarks>
+        /// <returns>The number of known blob hashes, including those for which none of the requested cells are available.</returns>
+        int TryGetBlobCellsAndProofsV1(
+            byte[][] requestedBlobVersionedHashes,
+            BlobCellMask requestedMask,
+            BlobCellMask[] availableMasks,
+            byte[][]?[] cells,
+            byte[][]?[] proofs)
+        {
+            int found = 0;
+            for (int i = 0; i < requestedBlobVersionedHashes.Length; i++)
+            {
+                if (TryGetBlobCellsAndProofsV1(requestedBlobVersionedHashes[i], requestedMask, out availableMasks[i], out cells[i], out proofs[i]))
+                {
+                    found++;
+                }
+            }
+
+            return found;
+        }
 
         /// <summary>
         /// Verifies and merges newly received cells into a pending sparse blob transaction.

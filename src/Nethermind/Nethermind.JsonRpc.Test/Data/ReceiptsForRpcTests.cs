@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
@@ -77,6 +78,75 @@ namespace Nethermind.JsonRpc.Test.Data
             Assert.That(allocated, Is.LessThan(logCount * 8), "receipt logs must be written from the stored entries, not materialized per log");
         }
 
+        [Test]
+        public void Serializing_built_receipt_does_not_allocate([Values(0, 1, 3)] int logCount)
+        {
+            ReceiptForRpc receipt = BuildReceiptForRpc(TestItem.KeccakA, logCount);
+            ArrayBufferWriter<byte> buffer = new(1 << 16);
+            using Utf8JsonWriter writer = new(buffer);
+            Write(receipt, buffer, writer);
+
+            long allocated = long.MaxValue;
+            for (int i = 0; i < 5; i++)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                Write(receipt, buffer, writer);
+                allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+
+            Assert.That(allocated, Is.Zero, "writing a built receipt must not allocate a log entry");
+        }
+
+        // Receipts written one after another share the thread's log entry, so nothing of one may leak into the next.
+        [Test]
+        public void Serializes_logs_as_materialized_entries([Values(0, 1, 3)] int logCount)
+        {
+            ReceiptForRpc[] receipts = [BuildReceiptForRpc(TestItem.KeccakA, logCount), BuildReceiptForRpc(TestItem.KeccakB, 2), BuildReceiptForRpc(TestItem.KeccakA, logCount)];
+            EthereumJsonSerializer serializer = new();
+
+            foreach (ReceiptForRpc receipt in receipts)
+            {
+                string json = serializer.Serialize(receipt);
+                receipt.Logs = receipt.Logs!.ToArray();
+                Assert.That(json, Is.EqualTo(serializer.Serialize(receipt)));
+            }
+        }
+
+        [Test]
+        public void Serializing_receipt_does_not_retain_its_logs()
+        {
+            new EthereumJsonSerializer().Serialize(BuildReceiptForRpc(TestItem.KeccakA, 2));
+
+            LogEntryForRpc entry = (LogEntryForRpc)typeof(ReceiptLogsForRpc).GetField("_writeEntry", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entry.TransactionHash, Is.Null);
+                Assert.That(entry.BlockHash, Is.Null);
+                Assert.That(entry.Address, Is.Null);
+                Assert.That(entry.Data, Is.Null);
+                Assert.That(entry.Topics, Is.Null);
+            }
+        }
+
+        private static ReceiptForRpc BuildReceiptForRpc(Hash256 blockHash, int logCount)
+        {
+            TxReceipt receipt = Build.A.Receipt
+                .WithLogs(Enumerable.Range(0, logCount).Select(i => Build.A.LogEntry.WithAddress(TestItem.Addresses[i]).WithTopics(TestItem.Keccaks[i]).WithData([(byte)i]).TestObject).ToArray())
+                .TestObject;
+            receipt.TxHash = blockHash;
+            receipt.BlockHash = blockHash;
+            receipt.BlockNumber = (ulong)logCount + 1;
+            receipt.Index = logCount;
+            return new ReceiptForRpc(blockHash, receipt, (ulong)logCount, new(UInt256.One), logIndexStart: logCount);
+        }
+
+        private static void Write(ReceiptForRpc receipt, ArrayBufferWriter<byte> buffer, Utf8JsonWriter writer)
+        {
+            buffer.ResetWrittenCount();
+            writer.Reset(buffer);
+            JsonSerializer.Serialize(writer, receipt, EthereumJsonSerializer.JsonOptions);
+        }
+
         private static void WriteReceipt(TxReceipt receipt, ArrayBufferWriter<byte> buffer, JsonSerializerOptions options, bool throughTxReceiptConverter)
         {
             buffer.ResetWrittenCount();
@@ -100,10 +170,13 @@ namespace Nethermind.JsonRpc.Test.Data
             using JsonDocument document = JsonDocument.Parse(serialized);
             JsonElement root = document.RootElement;
 
-            Assert.That(root.GetProperty("effectiveGasPrice").GetString(), Is.EqualTo("0x7"));
-            Assert.That(root.GetProperty("blockGasUsed").GetString(), Is.EqualTo("0xa"));
-            Assert.That(root.GetProperty("executionGasUsed").GetString(), Is.EqualTo("0xb"));
-            Assert.That(root.GetProperty("storageGasUsed").GetString(), Is.EqualTo("0xc"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.GetProperty("effectiveGasPrice").GetString(), Is.EqualTo("0x7"));
+                Assert.That(root.GetProperty("blockGasUsed").GetString(), Is.EqualTo("0xa"));
+                Assert.That(root.GetProperty("executionGasUsed").GetString(), Is.EqualTo("0xb"));
+                Assert.That(root.GetProperty("storageGasUsed").GetString(), Is.EqualTo("0xc"));
+            }
         }
 
         [TestCase("StateGasSpill", "stateGasSpill")]
@@ -184,6 +257,17 @@ namespace Nethermind.JsonRpc.Test.Data
         }
 
         [Test]
+        public void Serializes_transaction_index_as_hex_quantity([Values(0, 1, 255, int.MaxValue)] int index)
+        {
+            TxReceipt receipt = CreateDiagnosticReceipt();
+            receipt.Index = index;
+
+            using JsonDocument document = JsonDocument.Parse(SerializeReceipt(receipt));
+
+            Assert.That(document.RootElement.GetProperty("transactionIndex").GetString(), Is.EqualTo($"0x{index:x}"));
+        }
+
+        [Test]
         public void Error_field_is_not_serialized()
         {
             Hash256 txHash = Keccak.OfAnEmptyString;
@@ -259,8 +343,11 @@ namespace Nethermind.JsonRpc.Test.Data
             using JsonDocument document = JsonDocument.Parse(SerializeReceipt(receipt));
             JsonElement root = document.RootElement;
 
-            Assert.That(root.TryGetProperty("root", out _), Is.False);
-            Assert.That(root.GetProperty("status").GetString(), Is.EqualTo("0x1"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.TryGetProperty("root", out _), Is.False);
+                Assert.That(root.GetProperty("status").GetString(), Is.EqualTo("0x1"));
+            }
         }
 
         [Test]
@@ -284,8 +371,11 @@ namespace Nethermind.JsonRpc.Test.Data
             using JsonDocument document = JsonDocument.Parse(SerializeReceipt(receipt));
             JsonElement root = document.RootElement;
 
-            Assert.That(root.TryGetProperty("status", out _), Is.False);
-            Assert.That(root.GetProperty("root").GetString(), Is.EqualTo(TestItem.KeccakB.ToString()));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.TryGetProperty("status", out _), Is.False);
+                Assert.That(root.GetProperty("root").GetString(), Is.EqualTo(TestItem.KeccakB.ToString()));
+            }
         }
 
         private static TxReceipt CreateDiagnosticReceipt()

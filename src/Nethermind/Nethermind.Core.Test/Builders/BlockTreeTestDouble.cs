@@ -57,10 +57,20 @@ public class BlockTreeTestDouble : IBlockTree
         }
     }
 
+    private event EventHandler<BlockHeaderEventArgs>? _blockRemovedFromMain;
+
     public event EventHandler<BlockHeaderEventArgs>? BlockRemovedFromMain
     {
-        add { if (Inner is not null) Inner.BlockRemovedFromMain += value; }
-        remove { if (Inner is not null) Inner.BlockRemovedFromMain -= value; }
+        add
+        {
+            if (Inner is not null) Inner.BlockRemovedFromMain += value;
+            else _blockRemovedFromMain += value;
+        }
+        remove
+        {
+            if (Inner is not null) Inner.BlockRemovedFromMain -= value;
+            else _blockRemovedFromMain -= value;
+        }
     }
 
     public event EventHandler<BlockEventArgs>? NewBestSuggestedBlock
@@ -95,6 +105,8 @@ public class BlockTreeTestDouble : IBlockTree
     }
 
     public void RaiseBlockAddedToMain(BlockReplacementEventArgs args) => _blockAddedToMain?.Invoke(this, args);
+
+    public void RaiseBlockRemovedFromMain(BlockHeaderEventArgs args) => _blockRemovedFromMain?.Invoke(this, args);
 
     public virtual Hash256 HeadHash => Inner?.HeadHash ?? Head?.Hash ?? Keccak.Zero;
     public virtual Hash256 GenesisHash => Inner?.GenesisHash ?? Keccak.Zero;

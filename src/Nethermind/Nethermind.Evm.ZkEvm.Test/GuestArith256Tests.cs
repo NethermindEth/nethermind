@@ -13,7 +13,7 @@ namespace Nethermind.Evm.ZkEvm.Test;
 
 /// <summary>
 /// ADDMOD, MULMOD, DIV and MOD in the zkEVM build, against a <see cref="BigInteger"/> oracle. On the host
-/// <see cref="ZiskArith256Flag"/> is off, so these pin the software path every guest but ZisK runs; the
+/// <see cref="ZiskFlag"/> is off, so these pin the software path every guest but ZisK runs; the
 /// ZisK routines themselves run only in the guest, whose stateless-tests blocks check them.
 /// </summary>
 public class GuestArith256Tests
@@ -70,6 +70,19 @@ public class GuestArith256Tests
         Assert.That(result, Is.EqualTo(UInt256.Zero));
     }
 
+    /// <remarks>The ZisK guest multiplies MUL's factors below 2^128 this way, which only the guest can run.</remarks>
+    [TestCase(1ul, 1ul)]
+    [TestCase(ulong.MaxValue, ulong.MaxValue)]
+    [TestCase(0x0123_4567_89ab_cdefUL, 0xfedc_ba98_7654_3210UL)]
+    public void A_product_of_factors_below_2_to_128_survives_reduction_modulo_the_largest_word(ulong high, ulong low)
+    {
+        UInt256 left = new(low, high, 0, 0);
+        UInt256 right = new(high, low, 0, 0);
+        UInt256.MultiplyMod(in left, in right, in Max, out UInt256 reduced);
+
+        Assert.That(reduced, Is.EqualTo((UInt256)((BigInteger)left * (BigInteger)right)));
+    }
+
     /// <summary>Runs ADDMOD or MULMOD on <c>a</c> (top), <c>b</c> and <c>m</c>, the way the interpreter pops them.</summary>
     private static UInt256 Run3(Instruction op, UInt256 a, UInt256 b, UInt256 m)
     {
@@ -84,7 +97,9 @@ public class GuestArith256Tests
             ? EvmInstructions.InstructionMath3Param<EthereumGasPolicy, EvmInstructions.OpAddMod, OffFlag>(ref stack, ref gas, null!)
             : EvmInstructions.InstructionMath3Param<EthereumGasPolicy, EvmInstructions.OpMulMod, OffFlag>(ref stack, ref gas, null!);
 
+#pragma warning disable NUnit2045 // The operation must succeed before reading its stack result.
         Assert.That(status, Is.EqualTo(EvmExceptionType.None));
+#pragma warning restore NUnit2045
         Assert.That(stack.PopUInt256(out UInt256 result), Is.True);
         return result;
     }
@@ -102,7 +117,9 @@ public class GuestArith256Tests
             ? EvmInstructions.InstructionMath2Param<EthereumGasPolicy, EvmInstructions.OpDiv, OffFlag>(ref stack, ref gas)
             : EvmInstructions.InstructionMath2Param<EthereumGasPolicy, EvmInstructions.OpMod, OffFlag>(ref stack, ref gas);
 
+#pragma warning disable NUnit2045 // The operation must succeed before reading its stack result.
         Assert.That(status, Is.EqualTo(EvmExceptionType.None));
+#pragma warning restore NUnit2045
         Assert.That(stack.PopUInt256(out UInt256 result), Is.True);
         return result;
     }

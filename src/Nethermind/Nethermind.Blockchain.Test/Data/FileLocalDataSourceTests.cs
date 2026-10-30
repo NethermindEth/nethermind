@@ -117,28 +117,33 @@ public class FileLocalDataSourceTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    [Ignore("Causing repeated pains on GitHub actions.")]
     public async Task retries_loading_file()
     {
-        using TempPath tempFile = TempPath.GetTempFile();
-        await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A", "B", "C"));
-        int interval = 30;
-        using FileLocalDataSource<string[]> fileLocalDataSource = new(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance, interval);
-        using (FileStream file = File.Open(tempFile.Path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+        DateTime utcT0 = new(2026, 6, 1, 12, 0, 0, DateTimeKind.Utc);
+        MockFileState state = new(new MockFile(Exists: true, GenerateStringJson("A", "B", "C"), utcT0, utcT0));
+        SemaphoreSlim readFailed = new(0);
+        int locked = 0;
+        int failedReads = 0;
+        IFileSystem fileSystem = CreateFileSystem(state, onOpenRead: () =>
         {
-            using (StreamWriter writer = new(file, leaveOpen: true))
-            {
-                await writer.WriteAsync(GenerateStringJson("A", "B", "C", "D"));
-            }
+            if (Volatile.Read(ref locked) == 0) return;
+            Interlocked.Increment(ref failedReads);
+            readFailed.Release();
+            throw new IOException("The file is locked by another process.");
+        });
+        using FileLocalDataSource<string[]> fileLocalDataSource = new("file", new EthereumJsonSerializer(), fileSystem, LimboLogs.Instance, 10);
+        SemaphoreSlim handle = new(0);
+        fileLocalDataSource.Changed += (sender, args) => handle.Release();
 
-            await Task.Delay(10 * interval);
+        Volatile.Write(ref locked, 1);
+        state.File = state.File with { Json = GenerateStringJson("A", "B", "C", "D"), UtcWriteTime = utcT0.AddSeconds(1) };
+#pragma warning disable NUnit2045 // Completion is required before checking the resulting state.
+        Assert.That(await WaitForCondition(readFailed, () => Volatile.Read(ref failedReads) >= 2), Is.True, "the locked file was not retried");
+#pragma warning restore NUnit2045
+        Assert.That(fileLocalDataSource.Data, Is.EqualTo(new[] { "A", "B", "C" }), "a failed read must keep the previous data");
 
-            Assert.That(fileLocalDataSource.Data, Is.EqualTo(new[] { "A", "B", "C" }));
-        }
-
-        await Task.Delay(10 * interval);
-
-        Assert.That(fileLocalDataSource.Data, Is.EqualTo(new[] { "A", "B", "C", "D" }));
+        Volatile.Write(ref locked, 0);
+        await WaitForData(fileLocalDataSource, ["A", "B", "C", "D"], handle);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -173,7 +178,9 @@ public class FileLocalDataSourceTests
         Assert.That(fileLocalDataSource.Data, Is.EqualTo(initialValueIsDefault ? null : new[] { "A" }));
 
         state.File = state.File with { Exists = false };
+#pragma warning disable NUnit2045 // Completion is required before checking the resulting state.
         Assert.That(await handle.WaitAsync(ReloadWaitTime), Is.True, "the deletion was not observed");
+#pragma warning restore NUnit2045
         Assert.That(fileLocalDataSource.Data, Is.Null, "the deleted file must reset the data");
 
         state.File = state.File with { Json = GenerateStringJson("B"), Exists = true };
@@ -301,14 +308,18 @@ public class FileLocalDataSourceTests
         };
         int initialExistsChecks = Volatile.Read(ref existsChecks);
 
+#pragma warning disable NUnit2045 // Completion is required before checking the resulting state.
         Assert.That(await WaitForCondition(existsChecked, () => Volatile.Read(ref existsChecks) >= initialExistsChecks + 2), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(fileLocalDataSource.Data, Is.SameAs(initialData), "an absent file must not replace the data");
 
         // Corroborating only: the guard is released before Changed is raised, so a stale event
         // could still be in flight. The identity assert above is what catches the regression.
         // The count cannot drift, because an absent file never reports a change here.
         state.File = state.File with { Exists = true };
+#pragma warning disable NUnit2045 // Completion is required before checking the resulting state.
         Assert.That(await WaitForCondition(handle, () => Volatile.Read(ref changedRaised) > 0), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(Volatile.Read(ref changedRaised), Is.EqualTo(1), "only the load may report a change");
     }
 
@@ -359,7 +370,10 @@ public class FileLocalDataSourceTests
         int afterFirst = Volatile.Read(ref changedRaised);
         File.Delete(tempFile.Path);
         await WaitForCondition(handle, () => fileLocalDataSource.Data is null && Volatile.Read(ref changedRaised) > afterFirst);
-        Assert.That(fileLocalDataSource.Data, Is.Null);
-        Assert.That(Volatile.Read(ref changedRaised), Is.GreaterThan(afterFirst));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fileLocalDataSource.Data, Is.Null);
+            Assert.That(Volatile.Read(ref changedRaised), Is.GreaterThan(afterFirst));
+        }
     }
 }

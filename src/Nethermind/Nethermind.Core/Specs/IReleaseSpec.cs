@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Frozen;
+using System.Collections.Generic;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -342,6 +343,17 @@ namespace Nethermind.Core.Specs
         bool IsEip7906Enabled { get; }
 
         /// <summary>
+        /// EIP-8151: ecRecover returns the recovered address only when its raw code is empty or an EIP-7702 delegation.
+        /// </summary>
+        bool IsEip8151Enabled { get; }
+
+        /// <summary>
+        /// EIP-7979: call and return opcodes (<c>CALLSUB</c>, <c>CALLDEST</c>, <c>RETURNSUB</c>) with a per-frame return stack.
+        /// </summary>
+        /// <remarks>Assumes EIP-8024 is active: a <c>CALLDEST</c> byte in a valid EIP-8024 immediate is never a destination.</remarks>
+        bool IsEip7979Enabled { get; }
+
+        /// <summary>
         /// EIP-8038: State-access gas cost update
         /// </summary>
         bool IsEip8038Enabled { get; }
@@ -407,6 +419,25 @@ namespace Nethermind.Core.Specs
         /// Access List Token Floor Pricing
         /// </summary>
         bool IsEip7981Enabled { get; }
+
+        /// <summary>
+        /// EIP-8131: Unified Transaction Content Floor.
+        /// </summary>
+        /// <remarks>
+        /// Replaces the EIP-7976 calldata floor and the EIP-7981 access-list surcharge with a flat 64 gas per content
+        /// byte (calldata, access-list entries, authorizations and blob versioned hashes) at the floor.
+        /// </remarks>
+        bool IsEip8131Enabled { get; }
+
+        /// <summary>
+        /// EIP-8279: Block Access List Byte Floor.
+        /// </summary>
+        /// <remarks>
+        /// Meters the bytes execution adds to the EIP-7928 block access list at 64 gas per byte into the transaction
+        /// floor, checked against the gas limit before each insertion, and adds each authorization's worst-case block
+        /// access list bytes to the static floor. Requires EIP-8131.
+        /// </remarks>
+        bool IsEip8279Enabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.
@@ -481,6 +512,18 @@ namespace Nethermind.Core.Specs
         public bool IsEip8246Enabled { get; }
 
         /// <summary>
+        /// EIP-8253: Bump nonce of zero-nonce storage accounts.
+        /// </summary>
+        /// <remarks>
+        /// Irregular state transition at the fork block: each listed account gets nonce 1 before any
+        /// pre-execution system call, so a later CREATE/CREATE2 to it fails the EIP-684 nonce check.
+        /// </remarks>
+        public bool IsEip8253Enabled { get; }
+
+        /// <summary>The accounts the EIP-8253 transition sets to nonce 1, from the chain configuration; empty while EIP-8253 is disabled and when none are listed.</summary>
+        IReadOnlyList<Address> Eip8253Accounts { get; }
+
+        /// <summary>
         /// EIP-2780: Reduce intrinsic transaction gas (TX_BASE_COST) and reprice value-transfer
         /// and cold-account costs against actual state work.
         /// </summary>
@@ -488,9 +531,45 @@ namespace Nethermind.Core.Specs
         public bool IsEip2780Enabled { get; }
 
         /// <summary>
+        /// EIP-5920: PAY opcode (<c>0xfc</c>), transferring ether to an address without executing its code.
+        /// </summary>
+        /// <remarks>Requires EIP-2929 and EIP-7523; the opcode's access and new-account rules assume both.</remarks>
+        public bool IsEip5920Enabled { get; }
+
+        /// <summary>
+        /// EIP-8360: TCREATE opcode, creating contracts whose code, nonce and storage exist only for one transaction.
+        /// </summary>
+        bool IsEip8360Enabled { get; }
+
+        /// <summary>
+        /// EIP-3298: Remove the SSTORE storage-clear refund and the EIP-3529 transaction refund cap.
+        /// </summary>
+        /// <remarks>
+        /// Requires EIP-7778: removing the cap is only safe while block gas excludes refunds, otherwise uncapped
+        /// refunds would let a block exceed its gas limit in work. Specified as a delta on EIP-8037 and EIP-8038;
+        /// enabled without them, it still strikes whichever storage-clear refund and refund cap the spec would
+        /// otherwise apply, and the pre-EIP-3529 SELFDESTRUCT refund, which no same-transaction charge bounds.
+        /// </remarks>
+        public bool IsEip3298Enabled { get; }
+
+        /// <summary>
         /// EIP-7805: Inclusion lists
         /// </summary>
         bool IsEip7805Enabled { get; }
+
+        /// <summary>
+        /// EIP-8298: SETCODEFROM code reuse instruction
+        /// </summary>
+        public bool IsEip8298Enabled { get; }
+
+        /// <summary>
+        /// EIP-4758: Deactivate SELFDESTRUCT (SENDALL).
+        /// </summary>
+        /// <remarks>
+        /// SELFDESTRUCT only moves the executing account's whole balance to the beneficiary and halts. It never
+        /// destroys the account, removing the same-transaction deletion EIP-6780 kept and the EIP-8246 tombstone.
+        /// </remarks>
+        public bool IsEip4758Enabled => false;
 
         /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.

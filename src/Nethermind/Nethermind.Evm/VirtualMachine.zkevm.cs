@@ -18,16 +18,63 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
     // Cache the dispatch tables in plain per-TGasPolicy statics: the guest executes a single fork, and
     // ConditionalWeakTable (used by the std build) relies on GC dependent-handles the zkEVM guest can't map.
-    private static readonly OpcodeTable _opcodeTable = new();
+    private static OpcodeTable? _opcodeTable;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static OpcodeTable GetOpcodeTable() => _opcodeTable;
+    private static OpcodeTable GetOpcodeTable() => _opcodeTable ??= new();
 
     /// <inheritdoc/>
     /// <remarks>The guest is compiled ahead of time, so a rebuilt table has no promoted code to capture.</remarks>
     private partial bool ShouldRefreshOpcodes() => false;
 
+    /// <summary>Resolves the untraced dispatch table and the current fork's own frame handlers, for tests that enter a frame directly.</summary>
+    /// <remarks>The shared table keeps the frame handlers of the first fork it prepares, so they are rebuilt for the current spec.</remarks>
+    internal void PrepareFrameHandlersForTests()
+    {
+        PrepareOpcodes<OffFlag>();
+        _executionHandlers = new ExecutionHandlers(Spec);
+    }
+
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SLOAD on the guest handler.</summary>
+    /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
+    internal static bool LoadsStorageThroughGuestHandlerForTests(IReleaseSpec spec)
+    {
+        nint handler = (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SLOAD];
+        return handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OffFlag>)
+            || handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>);
+    }
+
     public object? ReturnData;
+
+    /// <summary>The largest nested RETURN/REVERT output staged in the reused scratch buffer.</summary>
+    /// <remarks>
+    /// The guest has no GC, so a copy per output would grow the heap with the gas spent on outputs rather than with the
+    /// largest one. Memory gas keeps every output far below this; it only keeps the power-of-two growth in range.
+    /// </remarks>
+    private const int MaxRetainedReturnDataLength = 1 << 30;
+
+    /// <inheritdoc/>
+    /// <remarks>A reverted output, or code above the EIP-170 limit, is never deposited, so it can share the nested-output scratch.</remarks>
+    private partial bool IsUndeployableCreateOutput(int length, bool isRevert) => isRevert || (Spec.LimitCodeSize && length > Spec.MaxCodeSize);
+
+    /// <summary>
+    /// <see cref="InitializeFrameCore{Eip158, Eip8360}"/> under EIP-158, minus the zero credit to the executing account of a frame that runs code.
+    /// </summary>
+    /// <remarks>
+    /// That account is never empty: under CALL, STATICCALL and a transaction it holds the code, or an EIP-7702 designator
+    /// to it; under DELEGATECALL and CALLCODE it is the caller, itself running code or a creation whose nonce is already 1.
+    /// Crediting it zero neither creates nor touches it, yet costs two account lookups on every value-less call.
+    /// Not selected under EIP-7928, whose access-list tracking observes the credit.
+    /// </remarks>
+    private static bool InitializeFrameSkippingNoOpCredit(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
+    {
+        ExecutionEnvironment env = state.Env;
+        ExecutionType executionType = state.ExecutionType;
+        if (!executionType.IsAnyCreate() && env.CodeInfo.CodeLength != 0 && executionType.GetBalanceCredit(in env.Value).IsZero)
+            return true;
+
+        return InitializeFrameCore<OnFlag, OffFlag>(vm, state);
+    }
 
     /// <summary>
     /// Inline handling of a CALL whose target is a precompile. Precompiles run
@@ -36,6 +83,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// Mirrors the loop's frame-finished handling for the (non-create) case.
     /// </summary>
     /// <remarks>Omits the action-end/revert tracing the mainline return does; the guest never action-traces.</remarks>
+    [SkipLocalsInit]
     internal EvmExceptionType InlinePrecompileCall<TTracingInst>(
         ExecutionEnvironment callEnv,
         TGasPolicy childGas,
@@ -129,4 +177,9 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         child.Dispose();
         return push;
     }
+
+    private static partial delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrame(IReleaseSpec spec) =>
+        // EIP-8360 frame entry also sets the TCREATE context, so it cannot be skipped.
+        SpecFlags.Eip158(spec) && !spec.IsEip7928Enabled && !SpecFlags.Eip8360(spec) ? &InitializeFrameSkippingNoOpCredit :
+        SelectInitializeFrameCore(spec);
 }

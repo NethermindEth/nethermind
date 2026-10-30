@@ -6,9 +6,11 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
@@ -64,12 +66,12 @@ internal class XdcBlockhashStoreTests
         XdcBlockhashStore store = new(new BlockhashStore(worldState), worldState);
         store.ApplyBlockhashStateChanges(header, spec);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(worldState.IsContract(Eip2935Account), Is.True);
             Assert.That(worldState.GetCode(Eip2935Account), Is.SequenceEqualTo(Eip2935Constants.Code));
             Assert.That(worldState.GetNonce(Eip2935Account), Is.EqualTo(1UL));
-        });
+        }
     }
 
     [Test]
@@ -83,7 +85,7 @@ internal class XdcBlockhashStoreTests
         XdcBlockhashStore store = new(new BlockhashStore(worldState), worldState);
         store.ApplyBlockhashStateChanges(header, spec);
 
-        Hash256? stored = store.GetBlockHashFromState(header, header.Number - 1, spec);
+        Hash256? stored = ReadRingBuffer(worldState, (ulong)header.Number - 1, spec);
         Assert.That(stored, Is.EqualTo(header.ParentHash));
     }
 
@@ -103,12 +105,12 @@ internal class XdcBlockhashStoreTests
         XdcBlockhashStore store = new(new BlockhashStore(worldState), worldState);
         store.ApplyBlockhashStateChanges(header, spec);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             // Nonce is left untouched — the contract is not redeployed.
             Assert.That(worldState.GetNonce(Eip2935Account), Is.EqualTo(existingNonce));
-            Assert.That(store.GetBlockHashFromState(header, header.Number - 1, spec), Is.EqualTo(header.ParentHash));
-        });
+            Assert.That(ReadRingBuffer(worldState, (ulong)header.Number - 1, spec), Is.EqualTo(header.ParentHash));
+        }
     }
 
     [Test]
@@ -170,5 +172,14 @@ internal class XdcBlockhashStoreTests
         store.ApplyBlockhashStateChanges(header, spec);
 
         Assert.That(worldState.AccountExists(Eip2935Account), Is.False);
+    }
+
+    /// <summary>Reads a hash straight out of the EIP-2935 ring buffer.</summary>
+    private static Hash256? ReadRingBuffer(IWorldState worldState, ulong blockNumber, IReleaseSpec spec)
+    {
+        StorageCell cell = new(spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
+            new UInt256(blockNumber % spec.Eip2935RingBufferSize));
+        worldState.Get(cell, out UInt256 value);
+        return value.IsZero ? null : new Hash256(value.ToBigEndian());
     }
 }

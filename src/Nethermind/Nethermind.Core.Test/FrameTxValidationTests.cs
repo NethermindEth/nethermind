@@ -20,23 +20,29 @@ public class FrameTxValidationTests
     {
         Transaction tx = CreateValidFrameTx(mutate);
 
-        bool wellFormed = FrameTxValidation.IsWellFormed(tx, postTxEnabled: true, out string? error);
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, assertEnabled: true, out string? error);
 
-        Assert.That(wellFormed, Is.EqualTo(expectedError is null));
-        Assert.That(error, Is.EqualTo(expectedError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wellFormed, Is.EqualTo(expectedError is null));
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
     }
 
     [TestCase(true, null)]
-    [TestCase(false, FrameTxValidation.PostTxNotEnabled)]
-    public void IsWellFormed_PostTxFrameGatedByItsFork_ReturnsExpectedError(bool postTxEnabled, string? expectedError)
+    [TestCase(false, FrameTxValidation.AssertFrameNotEnabled)]
+    public void IsWellFormed_AssertFrameGatedByItsFork_ReturnsExpectedError(bool assertEnabled, string? expectedError)
     {
         Transaction tx = CreateValidFrameTx(static tx =>
-            tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.PostTx)]);
+            tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.Assert)]);
 
-        bool wellFormed = FrameTxValidation.IsWellFormed(tx, postTxEnabled, out string? error);
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, assertEnabled, out string? error);
 
-        Assert.That(wellFormed, Is.EqualTo(expectedError is null));
-        Assert.That(error, Is.EqualTo(expectedError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wellFormed, Is.EqualTo(expectedError is null));
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
     }
 
     private static IEnumerable<TestCaseData> ConstraintCases()
@@ -63,15 +69,15 @@ public class FrameTxValidationTests
         yield return Case("FrameModeFour_InvalidMode",
             static tx => tx.Frames = [Frame(mode: (FrameMode)4)], FrameTxValidation.InvalidMode);
 
-        // POST_TX frames form a trailing suffix; the approval scope they may carry is enforced at the
+        // ASSERT frames form a trailing suffix; the approval scope they may carry is enforced at the
         // opcode, so an unexercised permission bit is not an envelope defect.
-        yield return Case("PostTxSuffix_Valid",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.PostTx), Frame(mode: FrameMode.PostTx)], null);
-        yield return Case("PostTxFollowedByDefault_PostTxNotTrailing",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.PostTx), DefaultModeFrame()],
-            FrameTxValidation.PostTxNotTrailing);
-        yield return Case("PostTxAllowedToApprove_Valid",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.PostTx, flags: FrameFlags.ApprovePayment)],
+        yield return Case("AssertFrameSuffix_Valid",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.Assert), Frame(mode: FrameMode.Assert)], null);
+        yield return Case("AssertFrameFollowedByDefault_AssertFrameNotTrailing",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.Assert), DefaultModeFrame()],
+            FrameTxValidation.AssertFrameNotTrailing);
+        yield return Case("AssertFrameAllowedToApprove_Valid",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.Assert, flags: FrameFlags.ApprovePayment)],
             null);
 
         // assert frame.flags < 8
@@ -119,15 +125,15 @@ public class FrameTxValidationTests
         yield return Case("AtomicBatchFlagOnVerifyFrame_AtomicBatchOnVerifyFrame",
             static tx => tx.Frames = [Frame(mode: FrameMode.Verify, flags: FrameFlags.AtomicBatch), DefaultModeFrame()],
             FrameTxValidation.AtomicBatchOnVerifyFrame);
-        yield return Case("AtomicBatchFlagOnPostTxFrame_AtomicBatchOnPostTxFrame",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.PostTx, flags: FrameFlags.AtomicBatch), Frame(mode: FrameMode.PostTx)],
-            FrameTxValidation.AtomicBatchOnPostTxFrame);
+        yield return Case("AtomicBatchFlagOnAssertFrame_AtomicBatchOnAssertFrame",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.Assert, flags: FrameFlags.AtomicBatch), Frame(mode: FrameMode.Assert)],
+            FrameTxValidation.AtomicBatchOnAssertFrame);
         yield return Case("AtomicBatchFollowedByVerifyFrame_AtomicBatchFollowedByVerifyFrame",
             static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: FrameFlags.AtomicBatch), Frame(mode: FrameMode.Verify)],
             FrameTxValidation.AtomicBatchFollowedByVerifyFrame);
-        yield return Case("AtomicBatchFollowedByPostTxFrame_AtomicBatchFollowedByPostTxFrame",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: FrameFlags.AtomicBatch), Frame(mode: FrameMode.PostTx)],
-            FrameTxValidation.AtomicBatchFollowedByPostTxFrame);
+        yield return Case("AtomicBatchFollowedByAssertFrame_AtomicBatchFollowedByAssertFrame",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: FrameFlags.AtomicBatch), Frame(mode: FrameMode.Assert)],
+            FrameTxValidation.AtomicBatchFollowedByAssertFrame);
 
         // EIP-8141: a frame belonging to an atomic batch (flagged, or the terminating frame following
         // a flagged one) must not carry approval scope.
@@ -196,17 +202,8 @@ public class FrameTxValidationTests
             static tx => tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, NonZeroDigest(), new byte[65])],
             null);
 
-        // Spec-backed by the max_fee_per_blob_gas field description ("must be 0 when blob_versioned_hashes is
-        // empty"), though the rule is not in the Constraints block.
-        yield return Case("BlobFeeWithoutBlobHashes_BlobFeeWithoutBlobs",
-            static tx => tx.MaxFeePerBlobGas = UInt256.One, FrameTxValidation.BlobFeeWithoutBlobs);
-
-        yield return Case("BlobHashesWithBlobFee_Valid",
-            static tx => { tx.BlobVersionedHashes = [new byte[32]]; tx.MaxFeePerBlobGas = UInt256.One; }, null);
-
-        yield return Case("TooManyRecentRootReferences_TooManyRecentRootReferences",
-            static tx => tx.RecentRootReferences = new RecentRootReference[Eip8272Constants.MaxRecentRootReferences + 1],
-            FrameTxValidation.TooManyRecentRootReferences);
+        yield return Case("BlobHashes_Valid",
+            static tx => tx.BlobVersionedHashes = [new byte[32]], null);
 
         // Expiry verifier frame: flags == 0, value == 0, len(data) == EXPIRY_DATA_LENGTH, at most one.
         yield return Case("ExpiryFrameWellFormed_Valid",
@@ -308,7 +305,7 @@ public class FrameTxValidationTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(FrameTxValidation.IsWellFormed(tx, postTxEnabled: true, out string? error), Is.True, error);
+            Assert.That(FrameTxValidation.IsWellFormed(tx, assertEnabled: true, out string? error), Is.True, error);
             Assert.That(FrameTxValidation.HasVerifyFrameAfterPrefix(probed), Is.EqualTo(boundaryFound));
             Assert.That(FrameTxValidation.GetPrefixPaymaster(tx), Is.EqualTo(paymaster));
             Assert.That(FrameTxValidation.ValidationWorkGas(tx), Is.EqualTo(workGas));
@@ -427,6 +424,70 @@ public class FrameTxValidationTests
 
         yield return Work("NoApprovingFrameAtAll_ChargesTheWholeList",
             [Frame(gasLimit: 10_000), Frame(gasLimit: 20_000)], [], 30_000);
+
+        yield return Work("RecentRootThenSelfVerify_CountsBoth",
+            [RecentRootFrame(), SelfVerifyFrame()], [], 120_000);
+
+        yield return Work("ExpiryThenRecentRootThenOnlyVerifyThenPay_CountsAllFour",
+            [ExpiryFrame(), RecentRootFrame(), OnlyVerifyFrame(), PayFrame(), Frame(FrameMode.Sender, gasLimit: 900_000)], [], 120_000);
+
+        yield return Work("RecentRootThenDeployThenSelfVerify_CountsAllThree",
+            [RecentRootFrame(), DefaultModeFrame(), SelfVerifyFrame()], [], 170_000);
+
+        yield return Work("RecentRootAheadOfTheExpiryFrame_ChargesTheWholeList",
+            [RecentRootFrame(), ExpiryFrame(), SelfVerifyFrame(), Frame(gasLimit: 900_000)], [], 1_050_000);
+    }
+
+    private static TxFrame RecentRootFrame(int tuples = 1, UInt256 value = default, ulong stateGasLimit = 0, FrameFlags flags = FrameFlags.None) =>
+        new(FrameMode.Verify, flags, Eip8272Constants.RecentRootAddress, executionGasLimit: 20_000, stateGasLimit, value,
+            new byte[tuples * Eip8272Constants.RecentRootTupleLength]);
+
+    private static IEnumerable<TestCaseData> RecentRootPlacementCases()
+    {
+        static TestCaseData Placement(string name, bool misplaced, params TxFrame[] frames) =>
+            new TestCaseData(frames, misplaced).SetName($"HasMisplacedRecentRootVerifyFrame_{name}");
+
+        yield return Placement("NoRecentRootFrame_IsFalse", false, SelfVerifyFrame());
+        yield return Placement("Leading_IsFalse", false, RecentRootFrame(), SelfVerifyFrame());
+        yield return Placement("BehindTheExpiryFrame_IsFalse", false, ExpiryFrame(), RecentRootFrame(), SelfVerifyFrame());
+        yield return Placement("MaxTuples_IsFalse", false, RecentRootFrame(Eip8272Constants.MaxRecentRootReferences), SelfVerifyFrame());
+        yield return Placement("BehindTheSelfVerifyFrame_IsTrue", true, SelfVerifyFrame(), RecentRootFrame());
+        yield return Placement("AheadOfTheExpiryFrame_IsLeftToTheExpiryPlacementRule", false, RecentRootFrame(), ExpiryFrame(), SelfVerifyFrame());
+        yield return Placement("Repeated_IsTrue", true, RecentRootFrame(), RecentRootFrame(), SelfVerifyFrame());
+        yield return Placement("NoTuples_IsTrue", true, RecentRootFrame(tuples: 0), SelfVerifyFrame());
+        yield return Placement("TooManyTuples_IsTrue", true, RecentRootFrame(Eip8272Constants.MaxRecentRootReferences + 1), SelfVerifyFrame());
+        yield return Placement("PartialTuple_IsTrue", true,
+            new TxFrame(FrameMode.Verify, FrameFlags.None, Eip8272Constants.RecentRootAddress, gasLimit: 20_000, UInt256.Zero, new byte[Eip8272Constants.RecentRootTupleLength + 1]),
+            SelfVerifyFrame());
+        yield return Placement("CarryingValue_IsTrue", true, RecentRootFrame(value: 1), SelfVerifyFrame());
+        yield return Placement("BudgetingStateGas_IsTrue", true, RecentRootFrame(stateGasLimit: 1), SelfVerifyFrame());
+        yield return Placement("CarryingFlags_IsTrue", true, RecentRootFrame(flags: FrameFlags.ApprovePayment), SelfVerifyFrame());
+    }
+
+    [TestCaseSource(nameof(RecentRootPlacementCases))]
+    public void HasMisplacedRecentRootVerifyFrame_AdmitsOneWellFormedFrameBehindTheOptionalExpiryFrame(TxFrame[] frames, bool expected)
+    {
+        Transaction tx = CreateValidFrameTx(t => t.Frames = frames);
+
+        Assert.That(FrameTxValidation.HasMisplacedRecentRootVerifyFrame(tx), Is.EqualTo(expected));
+    }
+
+    [TestCase(false, true, TestName = "TryGetRecentRootTuples_BehindTheExpiryFrame_ReadsTheTuples")]
+    [TestCase(true, false, TestName = "TryGetRecentRootTuples_BehindTheSelfVerifyFrame_FindsNone")]
+    public void TryGetRecentRootTuples_ReadsOnlyTheAdmittedPosition(bool behindSelfVerify, bool expected)
+    {
+        TxFrame recentRoot = RecentRootFrame(tuples: 2);
+        Transaction tx = CreateValidFrameTx(t => t.Frames = behindSelfVerify
+            ? [ExpiryFrame(), SelfVerifyFrame(), recentRoot]
+            : [ExpiryFrame(), recentRoot, SelfVerifyFrame()]);
+
+        bool found = FrameTxValidation.TryGetRecentRootTuples(tx, out ReadOnlyMemory<byte> tuples);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.EqualTo(expected));
+            Assert.That(tuples.Length, Is.EqualTo(expected ? recentRoot.Data.Length : 0));
+        }
     }
 
     [TestCaseSource(nameof(ValidationWorkCases))]
@@ -439,6 +500,34 @@ public class FrameTxValidationTests
         });
 
         Assert.That(FrameTxValidation.ValidationWorkGas(tx), Is.EqualTo(expected));
+    }
+
+    private static IEnumerable<TestCaseData> AdmissionGasCases()
+    {
+        const ulong prefixAndIntrinsic = 100_000 + (ulong)Eip8141Constants.IntrinsicGasCost + (ulong)Eip8141Constants.PerFrameGasCost;
+        static TestCaseData Admission(string name, Action<Transaction> mutate, ulong expected) =>
+            new TestCaseData(mutate, expected).SetName($"AdmissionGas_{name}");
+
+        yield return Admission("PrefixLimitsOnTopOfIntrinsicGas", static _ => { }, prefixAndIntrinsic);
+        yield return Admission("FrameDataAtTheCalldataRate",
+            static t => t.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, new byte[] { 0, 1 })],
+            prefixAndIntrinsic + GasCostOf.TxDataZero + GasCostOf.TxDataNonZeroEip2028);
+        yield return Admission("OneAccessCostPerNonceKey", static t => t.NonceKeys = [UInt256.One, (UInt256)2], prefixAndIntrinsic + 2 * Eip8250Constants.KeyedNonceAccessCost);
+        yield return Admission("AccountNonceAccessesNoNonceKey", static t => t.NonceKeys = [], prefixAndIntrinsic);
+        yield return Admission("RecentRootFrameAtItsDeclaredLimit",
+            static t => t.Frames = [RecentRootFrame(), SelfVerifyFrame()],
+            prefixAndIntrinsic + (ulong)Eip8141Constants.PerFrameGasCost + 20_000 + Eip8272Constants.RecentRootTupleLength * GasCostOf.TxDataZero);
+    }
+
+    [TestCaseSource(nameof(AdmissionGasCases))]
+    public void AdmissionGas_ChargesDataNonceKeysAndRecentRootsOnTopOfTheValidationPrefix(Action<Transaction> mutate, ulong expected)
+    {
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip2028Enabled.Returns(true);
+        spec.IsEip8250Enabled.Returns(true);
+        spec.IsEip8272Enabled.Returns(true);
+
+        Assert.That(FrameTxValidation.AdmissionGas(CreateValidFrameTx(mutate), spec), Is.EqualTo(expected));
     }
 
     [Test]
@@ -454,8 +543,11 @@ public class FrameTxValidationTests
 
         bool found = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline);
 
-        Assert.That(found, Is.True);
-        Assert.That(deadline, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(deadline, Is.EqualTo(expected));
+        }
     }
 
     // The deadline is read from the leading frame alone, so a frame the placement rule bars carries none.
@@ -471,8 +563,11 @@ public class FrameTxValidationTests
 
         bool found = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline);
 
-        Assert.That(found, Is.False);
-        Assert.That(deadline, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(deadline, Is.EqualTo(0UL));
+        }
     }
 
     [TestCase(0, false, TestName = "a leading expiry frame is correctly placed")]
@@ -499,8 +594,11 @@ public class FrameTxValidationTests
 
         bool found = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline);
 
-        Assert.That(found, Is.False);
-        Assert.That(deadline, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(deadline, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -510,8 +608,11 @@ public class FrameTxValidationTests
 
         bool found = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline);
 
-        Assert.That(found, Is.False);
-        Assert.That(deadline, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(deadline, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -526,10 +627,37 @@ public class FrameTxValidationTests
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong unmeasuredIntrinsic, out _, out _), Is.True);
 
         tx.FrameCalldataStats = (ZeroBytes: 8, NonZeroBytes: 24);
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong measuredIntrinsic, out _, out _), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong measuredIntrinsic, out _, out _), Is.True);
 
-        Assert.That(measuredIntrinsic, Is.GreaterThan(unmeasuredIntrinsic),
-            "the measured calldata must be priced, not served from the memo taken before it was set");
+            Assert.That(measuredIntrinsic, Is.GreaterThan(unmeasuredIntrinsic),
+                "the measured calldata must be priced, not served from the memo taken before it was set");
+        }
+    }
+
+    [TestCase(new ulong[] { }, 0ul)]
+    [TestCase(new ulong[] { 0 }, 12_100ul)]
+    [TestCase(new ulong[] { 1 }, 12_100ul)]
+    [TestCase(new ulong[] { 1, 2 }, 24_200ul)]
+    public void TryCalculateGasBudget_ChargesKeyedNonceAccessInIntrinsicGasAndTheCalldataFloor(ulong[] nonceKeys, ulong accessCost)
+    {
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip7623Enabled.Returns(true);
+        spec.IsEip8250Enabled.Returns(true);
+        Transaction keyless = CreateValidFrameTx(static _ => { });
+        Transaction keyed = CreateValidFrameTx(t => t.NonceKeys = Array.ConvertAll(nonceKeys, static key => (UInt256)key));
+
+#pragma warning disable NUnit2045 // Later checks and actions require these output variables in the enclosing scope.
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(keyless, spec, out ulong keylessIntrinsic, out ulong keylessFloor, out _), Is.True);
+#pragma warning restore NUnit2045
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(keyed, spec, out ulong intrinsic, out ulong floor, out _), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(intrinsic, Is.EqualTo(keylessIntrinsic + accessCost));
+            Assert.That(floor, Is.EqualTo(keylessFloor + accessCost));
+        }
     }
 
     [TestCase(TxFrameSignature.SchemeSecp256k1, 65)]
@@ -538,7 +666,9 @@ public class FrameTxValidationTests
     {
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         Transaction tx = CreateValidFrameTx(t => t.FrameSignatures = [new TxFrameSignature(scheme, null, default, default)]);
+#pragma warning disable NUnit2045 // Later checks and actions require these output variables in the enclosing scope.
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong original, out _, out _), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong estimated, out ulong estimatedFloor, out ulong estimatedMax, estimateSignatureBytes: true), Is.True);
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong unchanged, out _, out _), Is.True);
         byte[] bytes = new byte[length];
@@ -552,6 +682,33 @@ public class FrameTxValidationTests
             Assert.That(estimatedFloor, Is.EqualTo(actualFloor));
             Assert.That(estimatedMax, Is.EqualTo(actualMax));
             Assert.That(estimated, Is.GreaterThan(original));
+        }
+    }
+
+    [TestCase(0, true)]
+    [TestCase(32, false)]
+    public void TryCalculateGasBudget_CanonicalHashSignatureBytesPricedByLengthOnly(int msgLength, bool samePrice)
+    {
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip7623Enabled.Returns(true);
+        spec.IsEip7976Enabled.Returns(true);
+        byte[] msg = new byte[msgLength];
+        byte[] ones = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        Array.Fill(ones, (byte)0xff);
+        Transaction zeros = CreateValidFrameTx(t => t.FrameSignatures =
+            [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, msg, new byte[TxFrameSignature.Secp256k1SignatureLength])]);
+        Transaction nonZeros = CreateValidFrameTx(t => t.FrameSignatures =
+            [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, msg, ones)]);
+
+        bool zerosBudgeted = FrameTxValidation.TryCalculateGasBudget(zeros, spec, out ulong zerosIntrinsic, out ulong zerosFloor, out _);
+        bool nonZerosBudgeted = FrameTxValidation.TryCalculateGasBudget(nonZeros, spec, out ulong nonZerosIntrinsic, out ulong nonZerosFloor, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(zerosBudgeted, Is.True);
+            Assert.That(nonZerosBudgeted, Is.True);
+            Assert.That(zerosIntrinsic == nonZerosIntrinsic, Is.EqualTo(samePrice));
+            Assert.That(zerosFloor, Is.EqualTo(nonZerosFloor));
         }
     }
 }

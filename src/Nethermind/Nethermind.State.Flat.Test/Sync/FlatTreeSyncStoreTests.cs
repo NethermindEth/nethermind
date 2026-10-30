@@ -11,6 +11,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync;
 using NSubstitute;
 using NUnit.Framework;
@@ -30,7 +31,7 @@ public class FlatTreeSyncStoreTests
         // WriteStorageDirectToDb seeds the Storage column with raw (un-wrapped) bytes after the persistence
         // is built, so slot-presence detection can't kick in — pin the raw encoding up front.
         BasePersistence.SetSlotEncoding(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
-        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance);
+        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance, NullTrieNodeLog.Instance);
     }
 
     [TearDown]
@@ -95,8 +96,11 @@ public class FlatTreeSyncStoreTests
 
         int firstFlush = log.IndexOf("flush");
         int firstAdvance = log.IndexOf("advance-pointer");
-        Assert.That(firstFlush, Is.GreaterThanOrEqualTo(0), "data must be flushed during finalize");
-        Assert.That(firstAdvance, Is.GreaterThan(firstFlush), "state pointer must advance only after the data flush");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstFlush, Is.GreaterThanOrEqualTo(0), "data must be flushed during finalize");
+            Assert.That(firstAdvance, Is.GreaterThan(firstFlush), "state pointer must advance only after the data flush");
+        }
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         Assert.That(reader.CurrentState.BlockNumber, Is.EqualTo(123), "state pointer should end at the pivot block");

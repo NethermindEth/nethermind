@@ -16,10 +16,13 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// </remarks>
 internal sealed class BulkFillScratchState
 {
+    /// <summary>Pages committed between WAL syncs; a crash re-imports at most this many pages.</summary>
+    internal const int PagesPerWalSync = 64;
     private const byte FormatVersion = 3;
     private static ReadOnlySpan<byte> IdentityKey => "bulk-fill-identity"u8;
     private readonly IColumnsDb<Columns> _db;
     private readonly ulong _anchor;
+    private int _unsyncedPages;
     private bool _isFaulted;
 
     internal enum Columns
@@ -60,8 +63,13 @@ internal sealed class BulkFillScratchState
         db.SyncWal();
     }
 
-    /// <summary>Atomically writes a bounded scan page and its resume cursor, then syncs their shared WAL.</summary>
-    /// <remarks>A failure requires reopening the store before another attempt. Callback writes are discarded if scanning fails.</remarks>
+    /// <summary>Atomically writes a bounded scan page and its resume cursor. Their shared WAL is synced every
+    /// <see cref="PagesPerWalSync"/> pages and when the column completes.</summary>
+    /// <remarks>
+    /// Each page is an overwrite of rows the scan selects deterministically from its cursor, so a crash that loses
+    /// unsynced pages resumes from the last cursor that reached disk and stages the same rows again.
+    /// A failure requires reopening the store before another attempt. Callback writes are discarded if scanning fails.
+    /// </remarks>
     public HistoricalStateScan.Page ImportPage(ISortedKeyValueStore source, HistoryRowFormat format,
         FlatHistoryColumns column, int maxRows, CancellationToken token)
     {
@@ -112,7 +120,11 @@ internal sealed class BulkFillScratchState
         try
         {
             batch.Dispose();
-            _db.SyncWal();
+            if (page.Complete || ++_unsyncedPages == PagesPerWalSync)
+            {
+                _db.SyncWal();
+                _unsyncedPages = 0;
+            }
         }
         catch
         {

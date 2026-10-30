@@ -11,10 +11,10 @@ using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
-using MathNet.Numerics.Random;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -98,6 +98,11 @@ namespace Nethermind.Db.Test.LogIndex
             await compressor.WaitUntilEmptyAsync(Timeout.InfiniteTimeSpan, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
             Assert.That(storage.HasBackgroundError, Is.False);
         }
+
+        [Test]
+        public void Rejects_compression_parallelism_below_one([Values(0, -1)] int parallelism) =>
+            Assert.That(() => CreateLogIndexStorage(compressionParallelism: parallelism),
+                Throws.TypeOf<InvalidConfigurationException>().With.Message.Contain($"LogIndex.{nameof(ILogIndexConfig.MaxCompressionParallelism)}"));
 
         private ILogIndexStorage CreateLogIndexStorage(
             int compactionDistance = 262_144, int compressionParallelism = 16, ulong maxReorgDepth = 64, IDbFactory? dbFactory = null,
@@ -274,8 +279,11 @@ namespace Nethermind.Db.Test.LogIndex
                         BlockReceipts[] batch = batches[i];
                         await AddReceiptsAsync(setStorage, [batch], isBackwardsSync: false);
 
-                        Assert.That(setStorage.MinBlockNumber, Is.LessThanOrEqualTo(batch[0].BlockNumber));
-                        Assert.That(setStorage.MaxBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(setStorage.MinBlockNumber, Is.LessThanOrEqualTo(batch[0].BlockNumber));
+                            Assert.That(setStorage.MaxBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
+                        }
                     }
                 });
 
@@ -286,8 +294,11 @@ namespace Nethermind.Db.Test.LogIndex
                         BlockReceipts[] batch = batches[i];
                         await AddReceiptsAsync(setStorage, [batch], isBackwardsSync: true);
 
-                        Assert.That(setStorage.MinBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
-                        Assert.That(setStorage.MaxBlockNumber, Is.GreaterThanOrEqualTo(batch[0].BlockNumber));
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(setStorage.MinBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
+                            Assert.That(setStorage.MaxBlockNumber, Is.GreaterThanOrEqualTo(batch[0].BlockNumber));
+                        }
                     }
                 });
 
@@ -620,7 +631,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             await using ILogIndexStorage failLogIndexStorage = CreateLogIndexStorage(failOnBlock: midBlock, failOnCallN: failOnCallN);
 
-            Exception exception = Assert.ThrowsAsync<Exception>(() => AddReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
+            Exception exception = await Assert.ThrowsAsync<Exception>(() => AddReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
             Assert.That(exception, Has.Message.EqualTo(SaveFailingLogIndexStorage.FailMessage));
 
             VerifyReceipts(
@@ -640,7 +651,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             await using (ILogIndexStorage failLogIndexStorage = CreateLogIndexStorage(failOnBlock: midBlock, failOnCallN: failOnCallN))
             {
-                Exception exception = Assert.ThrowsAsync<Exception>(() => AddReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
+                Exception exception = await Assert.ThrowsAsync<Exception>(() => AddReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
                 Assert.That(exception, Has.Message.EqualTo(SaveFailingLogIndexStorage.FailMessage));
             }
 
@@ -691,8 +702,8 @@ namespace Nethermind.Db.Test.LogIndex
                 Throws.InstanceOf<LogIndexStateException>().And.Message.Contain("merge")
             );
 
-            Assert.DoesNotThrowAsync(() => storage.StopAsync());
-            Assert.DoesNotThrowAsync(() => storage.StopAsync());
+            await Assert.DoesNotThrowAsync(() => storage.StopAsync());
+            await Assert.DoesNotThrowAsync(() => storage.StopAsync());
         }
 
         [Combinatorial]

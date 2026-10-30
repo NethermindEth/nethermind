@@ -205,6 +205,21 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
         }
     }
 
+    /// <summary>
+    /// Executes the oldest queued operation only, as <see cref="Pump"/> executes them all. Valid only when the writer was
+    /// constructed with <c>startConsumer: false</c>. For tests of the order writes reach the databases in.
+    /// </summary>
+    /// <returns>Whether an operation was queued.</returns>
+    /// <exception cref="InvalidOperationException">The background consumer is running.</exception>
+    internal bool PumpOne()
+    {
+        if (!_manualPump) throw new InvalidOperationException("PumpOne is only usable when the consumer task is not running.");
+        WriterGeneration? generation = _generation;
+        if (generation is null || !generation.Channel.Reader.TryRead(out IDeferredWriteOperation? work)) return false;
+        if (!Run(generation, work)) RetainBufferedWrites(_faultState!);
+        return true;
+    }
+
     public void Drain()
     {
         if (!Enabled) return; // disabled: work ran inline, nothing is queued

@@ -68,10 +68,10 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
-        // SUB takes the scalar limb path below even with Vector256: UInt256.Subtract reaches the
-        // out-of-line SubtractImpl, and that call makes the JIT save and restore the callee-saved
-        // registers on every SUB. UInt256.Add inlines fully, so ADD keeps the vector path.
-        if (System.Runtime.Intrinsics.Vector256.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpAdd))
+        // UInt256.Add and UInt256.Subtract inline with no call left, so with Vector256 both work on the
+        // slots in place; the scalar limb paths below serve the targets without it.
+        if (System.Runtime.Intrinsics.Vector256.IsHardwareAccelerated &&
+            (typeof(TOpMath) == typeof(OpAdd) || typeof(TOpMath) == typeof(OpSub)))
         {
             if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
             ref byte arithmeticTopRef = ref stack.Pop1Peek32BytesUnchecked();
@@ -227,7 +227,6 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpSub : IOpMath2Param
     {
-        /// <remarks>Not called: Math2ParamCore takes its scalar limb path for SUB on every target. Kept for the interface.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Subtract(in a, in b, out result);
@@ -413,7 +412,11 @@ public static partial class EvmInstructions
         where Eip160 : struct, IFlag
     {
         // Charge the fixed gas cost for exponentiation.
-        if (!TGasPolicy.UpdateGas<ExpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        if (!TGasPolicy.UpdateGas<ExpGasCost>(ref gas))
+        {
+            if (TTracingInst.IsActive) TraceExpBaseOutOfGas<TGasPolicy, Eip160>(in stack, vm);
+            return EvmExceptionType.OutOfGas;
+        }
 
         if (!stack.EnsureDepth(2)) goto StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
@@ -425,20 +428,24 @@ public static partial class EvmInstructions
         if (leadingZeros == 32)
         {
             // Exponent is zero, so the result is 1.
-            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 1UL, vm);
+            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 1UL, in stack, vm);
         }
 
         ulong expSize = (ulong)(32 - leadingZeros);
         // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-        if (!TGasPolicy.TryConsumeExpBytes<Eip160>(ref gas, vm.Spec, expSize)) return EvmExceptionType.OutOfGas;
+        if (!TGasPolicy.TryConsumeExpBytes<Eip160>(ref gas, vm.Spec, expSize))
+        {
+            if (TTracingInst.IsActive) vm.TraceOperationGasCost(ExpCost<Eip160>(expSize));
+            return EvmExceptionType.OutOfGas;
+        }
 
         if (a.IsZero)
         {
-            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 0UL, vm);
+            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 0UL, in stack, vm);
         }
         if (a.IsOne)
         {
-            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 1UL, vm);
+            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 1UL, in stack, vm);
         }
 
         // The result goes to a local first: the exponent it overwrites is still an input.
@@ -451,13 +458,37 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     }
 
+    private static ulong ExpCost<Eip160>(ulong expSize) where Eip160 : struct, IFlag =>
+        ExpGasCost.GasCost + (Eip160.IsActive ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * expSize;
+
+    /// <summary>
+    /// Reports the full cost of an EXP that cannot pay its base cost, including the exponent-byte cost.
+    /// </summary>
+    /// <remarks>
+    /// Geth charges both parts as one dynamic cost, so its struct log never shows the base cost alone.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceExpBaseOutOfGas<TGasPolicy, Eip160>(in EvmStack stack, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where Eip160 : struct, IFlag
+    {
+        ulong expSize = 0;
+        if (stack.EnsureDepth(2))
+        {
+            ref UInt256 exponent = ref As<byte, UInt256>(ref Subtract(ref stack.PeekBytesByRefUnchecked(), EvmStack.WordSize));
+            expSize = (ulong)(32 - (exponent.CountLeadingZeros() >> 3));
+        }
+
+        vm.TraceOperationGasCost(ExpCost<Eip160>(expSize));
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType WriteSmallExpResult<TGasPolicy, TTracingInst>(ref byte slot, ulong value, VirtualMachine<TGasPolicy> vm)
+    private static EvmExceptionType WriteSmallExpResult<TGasPolicy, TTracingInst>(ref byte slot, ulong value, in EvmStack stack, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         WriteSmallWordToSlot(ref slot, value);
-        if (TTracingInst.IsActive) vm.TxTracer.ReportStackPush(value == 0 ? Bytes.ZeroByteSpan : Bytes.OneByteSpan);
+        if (TTracingInst.IsActive && stack.TracesPushes) vm.TxTracer.ReportStackPush(value == 0 ? Bytes.ZeroByteSpan : Bytes.OneByteSpan);
         return EvmExceptionType.None;
     }
 }

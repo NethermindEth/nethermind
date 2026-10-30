@@ -92,6 +92,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
 
     private Entry[] _entries = [];
     private int[] _buckets = [];
+    private readonly SplitBlockFilter _filter = new();
     private int _count;
     /// <summary>High-water mark of entries written since <see cref="_entries"/> was last all-default.</summary>
     private int _entriesDirty;
@@ -105,12 +106,25 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
 
     public int Count => _count;
 
+    /// <summary>
+    /// The built entries in key order, each carrying <c>(uint)Key.GetHashCode()</c> in <see cref="Entry.HashCode"/>.
+    /// Valid until the next build, clear or dispose.
+    /// </summary>
+    internal ReadOnlySpan<Entry> Entries => _entries.AsSpan(0, _count);
+
     public bool TryGetValue(TKey key, out TValue value)
     {
         int count = _count;
         if (count != 0)
         {
             uint hashCode = (uint)key.GetHashCode();
+            // Most probes of a compacted layer miss; the filter answers those from one cache line.
+            if (!_filter.MightContain(hashCode))
+            {
+                value = default!;
+                return false;
+            }
+
             int i = _buckets[hashCode & _bucketMask] + _bucketBias;
             if ((uint)i < (uint)count)
             {
@@ -444,9 +458,12 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         // A slot stores (i + 1 + salt); slots from earlier builds decode negative and read as empty.
         Span<int> bucketSpan = buckets.AsSpan(0, size);
         Span<Entry> entries = _entries.AsSpan(0, count);
+        SplitBlockFilter filter = _filter;
+        filter.Reset(count);
         for (int i = 0; i < entries.Length; i++)
         {
             ref Entry entry = ref entries[i];
+            filter.Add(entry.HashCode);
             ref int bucket = ref bucketSpan[(int)entry.HashCode & (bucketSpan.Length - 1)];
             entry.Next = bucket + bias;
             bucket = i - bias;

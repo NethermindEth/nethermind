@@ -8,8 +8,10 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.BalRecorder.Test;
@@ -42,15 +44,83 @@ public class BalRecordingBranchProcessorTests
 
         Block[] result = sut.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance);
 
-        Assert.That(switchDuringProcess, Is.EqualTo(expectedSwitchDuringProcess), "the prewarmer reads the spec switch inside inner.Process");
-        Assert.That(balSwitch.Enabled, Is.False, "the switch must be reset once the branch is processed");
-        Assert.That(observedBlock, Is.SameAs(block));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(switchDuringProcess, Is.EqualTo(expectedSwitchDuringProcess), "the prewarmer reads the spec switch inside inner.Process");
+            Assert.That(balSwitch.Enabled, Is.False, "the switch must be reset once the branch is processed");
+            Assert.That(observedBlock, Is.SameAs(block));
+        }
         if (seedBal)
             Assert.That(block.BlockAccessList, Is.SameAs(seeded), "the replayed BAL must be attached before the prewarmer runs");
         else
             Assert.That(block.BlockAccessList, Is.Null);
         Assert.That(result, Has.Length.EqualTo(1));
         Assert.That(result[0], Is.SameAs(block));
+    }
+
+    [Test]
+    public void Replayed_bal_failure_reprocesses_the_branch_without_the_replayed_bal([Values] bool wrappedInParallelFailure, [Values] bool branchHasOwnBal)
+    {
+        FakeRecordedBalStore store = new() { ReplayEnabled = true };
+        store.Seed(1, new ReadOnlyBlockAccessList());
+        BalRecorderSpecSwitch balSwitch = new();
+        StubBranchProcessor inner = new();
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        ReadOnlyBlockAccessList ownBal = new();
+        Block blockWithOwnBal = Build.A.Block.WithNumber(2).TestObject;
+        blockWithOwnBal.BlockAccessList = ownBal;
+        Block[] branch = branchHasOwnBal ? [block, blockWithOwnBal] : [block];
+        List<(bool HasBal, bool SwitchEnabled)> attempts = [];
+        inner.OnProcess = blocks =>
+        {
+            attempts.Add((blocks[0].BlockAccessList is not null, balSwitch.Enabled));
+            if (branchHasOwnBal) Assert.That(blocks[1].BlockAccessList, Is.SameAs(ownBal), "only the replayed lists may be dropped");
+            if (attempts.Count == 1)
+            {
+                BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException failure = new(blocks[0].Header, "stale recording");
+                throw wrappedInParallelFailure ? new BlockAccessListManager.ParallelExecutionException(failure) : failure;
+            }
+        };
+
+        Block[] result = new BalRecordingBranchProcessor(inner, store, balSwitch)
+            .Process(null, branch, ProcessingOptions.None, NullBlockTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attempts, Is.EqualTo(new[] { (true, true), (false, branchHasOwnBal) }), "the retry must run without the replayed BAL");
+            Assert.That(result, Is.EqualTo(branch));
+            Assert.That(block.BlockAccessList, Is.Null);
+            Assert.That(balSwitch.Enabled, Is.False);
+        }
+    }
+
+    [TestCase(true, false, TestName = "A non-BAL failure with a replayed BAL propagates")]
+    [TestCase(false, true, TestName = "A BAL failure without a replayed BAL propagates")]
+    public void Failure_propagates_without_reprocessing(bool seedBal, bool balFailure)
+    {
+        FakeRecordedBalStore store = new() { ReplayEnabled = true };
+        if (seedBal) store.Seed(1, new ReadOnlyBlockAccessList());
+        StubBranchProcessor inner = new();
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        InvalidBlockException failure = balFailure
+            ? new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(block.Header, "invalid BAL")
+            : new InvalidBlockException(block.Header, "invalid block");
+        int attempts = 0;
+        inner.OnProcess = _ =>
+        {
+            attempts++;
+            throw failure;
+        };
+
+        InvalidBlockException? thrown = Assert.Catch<InvalidBlockException>(() =>
+            new BalRecordingBranchProcessor(inner, store, new BalRecorderSpecSwitch())
+                .Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown, Is.SameAs(failure));
+            Assert.That(attempts, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -74,12 +144,15 @@ public class BalRecordingBranchProcessorTests
         inner.RaiseBranchProcessingCompleted([block]);
         inner.RaiseBlockProcessing(block);
 
-        Assert.That(processed, Is.SameAs(block));
-        Assert.That(processing, Is.SameAs(block));
-        Assert.That(batch, Is.EqualTo(new[] { block }));
-        Assert.That(completed?.SuggestedBlocks, Is.EqualTo(new[] { block }));
-        Assert.That(completed?.ProcessedBlocksCount, Is.EqualTo(1));
-        Assert.That(completed?.Succeeded, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed, Is.SameAs(block));
+            Assert.That(processing, Is.SameAs(block));
+            Assert.That(batch, Is.EqualTo(new[] { block }));
+            Assert.That(completed?.SuggestedBlocks, Is.EqualTo(new[] { block }));
+            Assert.That(completed?.ProcessedBlocksCount, Is.EqualTo(1));
+            Assert.That(completed?.Succeeded, Is.True);
+        }
     }
 
     private sealed class StubBranchProcessor : IBranchProcessor

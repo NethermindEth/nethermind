@@ -93,6 +93,7 @@ public class TracedAccessWorldStateTests(bool parallel)
     }
 
     [TestCase("SetNonce")]
+    [TestCase("SubtractFromBalanceAndSetNonce")]
     [TestCase("CreateAccount")]
     [TestCase("CreateAccountIfNotExists")]
     [TestCase("DeleteAccount")]
@@ -104,6 +105,11 @@ public class TracedAccessWorldStateTests(bool parallel)
             (Action mutate, Func<bool> applied) = member switch
             {
                 "SetNonce" => ((Action)(() => tws.SetNonce(TestItem.AddressA, 1)), (Func<bool>)(() => inner.GetNonce(TestItem.AddressA) == 1)),
+                "SubtractFromBalanceAndSetNonce" => (() =>
+                {
+                    inner.AddToBalance(TestItem.AddressA, 5, Spec);
+                    tws.SubtractFromBalanceAndSetNonce(TestItem.AddressA, 2, 1, Spec);
+                }, () => inner.GetBalance(TestItem.AddressA) == 3 && inner.GetNonce(TestItem.AddressA) == 1),
                 "CreateAccount" => (() => tws.CreateAccount(TestItem.AddressB, 5), () => inner.GetBalance(TestItem.AddressB) == 5),
                 "CreateAccountIfNotExists" => (() => tws.CreateAccountIfNotExists(TestItem.AddressB, 5), () => inner.GetBalance(TestItem.AddressB) == 5),
                 _ => (() => tws.DeleteAccount(TestItem.AddressA), () => !inner.AccountExists(TestItem.AddressA))
@@ -202,6 +208,27 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
     }
 
+    [Test]
+    public void SubtractFromBalanceAndSetNonce_RecordsBalanceAndNonceChanges()
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+            ws.CreateAccount(TestItem.AddressA, 100));
+        using (scope)
+        {
+            tws.SubtractFromBalanceAndSetNonce(TestItem.AddressA, 30, 1, Spec);
+
+            AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ac, Is.Not.Null);
+                Assert.That(ac!.BalanceChange!.Value.Value, Is.EqualTo((UInt256)70));
+                Assert.That(ac.NonceChange!.Value.Value, Is.EqualTo(1UL));
+                Assert.That(tws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)70));
+                Assert.That(tws.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+            }
+        }
+    }
+
     [TestCase(1ul, 1ul, false, TestName = "SetNonce_UnchangedValue_RecordsNoNonceChange")]
     [TestCase(1ul, 2ul, true, TestName = "SetNonce_ChangedValue_RecordsNonceChange")]
     public void SetNonce_RecordsNonceChange_OnlyWhenValueChanges(
@@ -217,7 +244,9 @@ public class TracedAccessWorldStateTests(bool parallel)
             if (expectRecorded)
             {
                 Assert.That(ac, Is.Not.Null);
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
                 Assert.That(ac!.NonceChange, Is.Not.Null);
+#pragma warning restore NUnit2045
                 Assert.That(ac.NonceChange!.Value.Value, Is.EqualTo(newNonce));
             }
             else
@@ -361,8 +390,11 @@ public class TracedAccessWorldStateTests(bool parallel)
             tws.Get(in cell, out actual);
             Assert.That(actual, Is.EqualTo(UInt256.One));
             tws.Get(in cell, out actual);
-            Assert.That(actual, Is.EqualTo(UInt256.One));
-            Assert.That(tws.GetGeneratingBlockAccessList()!.GetAccountChanges(cell.Address)!.StorageChangeCount, Is.Zero);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual, Is.EqualTo(UInt256.One));
+                Assert.That(tws.GetGeneratingBlockAccessList()!.GetAccountChanges(cell.Address)!.StorageChangeCount, Is.Zero);
+            }
         }
     }
 
@@ -383,8 +415,84 @@ public class TracedAccessWorldStateTests(bool parallel)
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             Assert.That(ac, Is.Not.Null);
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(ac!.StorageReads, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(ac.StorageReads.First(), Is.EqualTo((UInt256)2));
+        }
+    }
+
+    private static void ReadSlot(TracedAccessWorldState tws, int slot) => tws.Get(new StorageCell(TestItem.AddressA, (UInt256)slot), out _);
+
+    private static void WriteSlot(TracedAccessWorldState tws, int slot, ulong value) => tws.Set(new StorageCell(TestItem.AddressA, (UInt256)slot), value);
+
+    private static IEnumerable<TestCaseData> StorageAccessOrderCases()
+    {
+        yield return new TestCaseData((Action<TracedAccessWorldState>)(ws => { ReadSlot(ws, 1); WriteSlot(ws, 1, 5); }), new[] { 1 }, Array.Empty<int>())
+            .SetName("ReadThenWrite_RecordsOnlyChange");
+        yield return new TestCaseData((Action<TracedAccessWorldState>)(ws => { WriteSlot(ws, 1, 5); ReadSlot(ws, 2); ReadSlot(ws, 1); ReadSlot(ws, 2); }), new[] { 1 }, new[] { 2 })
+            .SetName("WriteThenRead_RecordsOnlyChange");
+        yield return new TestCaseData((Action<TracedAccessWorldState>)(ws => { WriteSlot(ws, 1, 5); ReadSlot(ws, 1); WriteSlot(ws, 1, 0); ReadSlot(ws, 2); }), Array.Empty<int>(), new[] { 1, 2 })
+            .SetName("WriteBackToOriginal_RecordsRead");
+        yield return new TestCaseData((Action<TracedAccessWorldState>)(ws =>
+            {
+                WriteSlot(ws, 3, 7);
+                Snapshot snapshot = ws.TakeSnapshot();
+                WriteSlot(ws, 1, 5);
+                ReadSlot(ws, 1);
+                ReadSlot(ws, 2);
+                ws.Restore(snapshot);
+                ReadSlot(ws, 3);
+            }), new[] { 3 }, new[] { 1, 2 })
+            .SetName("RevertedWrite_KeepsReads");
+    }
+
+    [TestCaseSource(nameof(StorageAccessOrderCases))]
+    public void Storage_access_order_records_each_slot_once(Action<TracedAccessWorldState> access, int[] changedSlots, int[] readSlots)
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws => ws.CreateAccount(TestItem.AddressA, 0));
+        using (scope)
+        {
+            access(tws);
+
+            AccountChangesAtIndex ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ac.StorageChanges.Keys, Is.EquivalentTo(changedSlots.Select(static s => (UInt256)s)));
+                Assert.That(ac.StorageReads, Is.EquivalentTo(readSlots.Select(static s => (UInt256)s)));
+            }
+        }
+    }
+
+    [Test]
+    public void Storage_reads_and_writes_merge_across_transactions()
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws => ws.CreateAccount(TestItem.AddressA, 0));
+        using (scope)
+        {
+            GeneratedBlockAccessList block = new();
+
+            WriteSlot(tws, 1, 5);
+            ReadSlot(tws, 2);
+            ReadSlot(tws, 1);
+            block.Merge(tws.GetGeneratingBlockAccessList()!);
+            tws.Commit(Spec);
+            tws.Clear();
+            tws.IncrementIndex();
+
+            ReadSlot(tws, 1);
+            ReadSlot(tws, 3);
+            WriteSlot(tws, 3, 7);
+            ReadSlot(tws, 4);
+            block.Merge(tws.GetGeneratingBlockAccessList()!);
+
+            GeneratedAccountChanges account = block.GetAccountChanges(TestItem.AddressA)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(account.StorageChanges.Select(static s => (s.Key, s.Changes.Single())),
+                    Is.EquivalentTo(new[] { ((UInt256)1, new StorageChange(0, 5)), ((UInt256)3, new StorageChange(1, 7)) }));
+                Assert.That(account.StorageReads, Is.EquivalentTo(new UInt256[] { 2, 4 }));
+            }
         }
     }
 
@@ -457,7 +565,9 @@ public class TracedAccessWorldStateTests(bool parallel)
             (Action<TracedAccessWorldState>)(tws =>
             {
                 bool found = tws.TryGetAccount(TestItem.AddressA, out AccountStruct account);
+#pragma warning disable NUnit2045 // The lookup must succeed before dereferencing the returned value.
                 Assert.That(found, Is.True);
+#pragma warning restore NUnit2045
                 Assert.That(account.Balance, Is.EqualTo((UInt256)77));
             }))
             .SetName("TryGetAccount_RecordsAccountRead");

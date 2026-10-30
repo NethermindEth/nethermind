@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -9,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
@@ -49,26 +51,22 @@ internal static class PersistedSnapshotUtils
         dump["selfDestructed"] = selfDestructed;
 
         Dictionary<string, string> stateNodes = [];
-        foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes)
+        foreach ((TreePath path, _, NodeRecord record) in snapshot.StateNodes)
         {
-            if (kv.Value.IsHashOnlyPlaceholder()) continue;
-            TreePath path = kv.Key;
             string key = $"{path.Span.ToHexString(false)}:{path.Length}";
-            stateNodes[key] = kv.Value.FullRlp.AsSpan().ToHexString(false);
+            stateNodes[key] = record.Rlp.ToHexString(false);
         }
         dump["stateNodes"] = stateNodes;
 
         Dictionary<string, string> storageNodes = [];
-        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
+        foreach ((Hash256 hash, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)
         {
-            if (kv.Value.IsHashOnlyPlaceholder()) continue;
-            (Hash256 hash, TreePath path) = kv.Key.Key;
             string key = $"{hash.Bytes.ToHexString(false)}:{path.Span.ToHexString(false)}:{path.Length}";
-            storageNodes[key] = kv.Value.FullRlp.AsSpan().ToHexString(false);
+            storageNodes[key] = record.Rlp.ToHexString(false);
         }
         dump["storageNodes"] = storageNodes;
 
-        File.WriteAllText(filename, JsonSerializer.Serialize(dump));
+        File.WriteAllText(filename, JsonSerializer.Serialize(dump, SnapshotDumpJsonContext.Default.DictionaryStringObject));
     }
 
     internal static void ValidatePersistedSnapshot(Snapshot snapshot, PersistedSnapshot persisted, bool dumpWhenFailed = true)
@@ -116,24 +114,20 @@ internal static class PersistedSnapshotUtils
                     throw new InvalidOperationException($"SelfDestruct {address} mismatch: expected {kv.Value}, got {flag.Value}");
             }
 
-            foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes)
+            foreach ((TreePath path, _, NodeRecord record) in snapshot.StateNodes)
             {
-                if (kv.Value.IsHashOnlyPlaceholder()) continue;
-                TreePath path = kv.Key;
                 if (!persisted.TryLoadStateNodeRlp(in path, out byte[]? nodeRlp))
                     throw new InvalidOperationException($"StateNode at path length {path.Length} not found in persisted snapshot");
-                if (!nodeRlp!.AsSpan().SequenceEqual(kv.Value.FullRlp.AsSpan()))
+                if (!nodeRlp!.AsSpan().SequenceEqual(record.Rlp))
                     throw new InvalidOperationException($"StateNode at path length {path.Length} RLP mismatch");
             }
 
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
+            foreach ((Hash256 hash, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)
             {
-                if (kv.Value.IsHashOnlyPlaceholder()) continue;
-                (Hash256 hash, TreePath path) = kv.Key.Key;
                 ValueHash256 hashStruct = hash.ValueHash256;
                 if (!persisted.TryLoadStorageNodeRlp(in hashStruct, path, out byte[]? nodeRlp))
                     throw new InvalidOperationException($"StorageNode {hash} at path length {path.Length} not found in persisted snapshot");
-                if (!nodeRlp!.AsSpan().SequenceEqual(kv.Value.FullRlp.AsSpan()))
+                if (!nodeRlp!.AsSpan().SequenceEqual(record.Rlp))
                     throw new InvalidOperationException($"StorageNode {hash} at path length {path.Length} RLP mismatch");
             }
         }
@@ -144,3 +138,8 @@ internal static class PersistedSnapshotUtils
         }
     }
 }
+
+[JsonSerializable(typeof(Dictionary<string, object>))]
+[JsonSerializable(typeof(Dictionary<string, string>))]
+[JsonSerializable(typeof(Dictionary<string, bool>))]
+internal partial class SnapshotDumpJsonContext : JsonSerializerContext;

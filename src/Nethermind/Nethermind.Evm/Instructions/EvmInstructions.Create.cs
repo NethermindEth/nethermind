@@ -30,6 +30,15 @@ public static partial class EvmInstructions
         /// Gets the execution type corresponding to the create operation.
         /// </summary>
         abstract static ExecutionType ExecutionType { get; }
+
+        /// <summary>
+        /// Whether the address derives from a salt and the init-code hash, so the opcode pops a salt and pays
+        /// <see cref="GasCostOf.Sha3Word"/> per init-code word.
+        /// </summary>
+        abstract static bool IsSalted { get; }
+
+        /// <summary>Whether the creation is an EIP-8360 <c>TCREATE</c>, whose account lasts for one transaction.</summary>
+        abstract static bool IsTransient { get; }
     }
 
     /// <summary>
@@ -41,6 +50,8 @@ public static partial class EvmInstructions
         /// Gets the execution type for the CREATE opcode.
         /// </summary>
         public static ExecutionType ExecutionType => ExecutionType.CREATE;
+        public static bool IsSalted => false;
+        public static bool IsTransient => false;
     }
 
     /// <summary>
@@ -52,15 +63,30 @@ public static partial class EvmInstructions
         /// Gets the execution type for the CREATE2 opcode.
         /// </summary>
         public static ExecutionType ExecutionType => ExecutionType.CREATE2;
+        public static bool IsSalted => true;
+        public static bool IsTransient => false;
     }
 
     /// <summary>
-    /// Implements the CREATE/CREATE2 opcode, handling new contract deployment.
+    /// Implements the EIP-8360 TCREATE opcode, which creates a contract whose code, nonce and storage last for one transaction.
+    /// </summary>
+    public struct OpTCreate : IOpCreate
+    {
+        /// <summary>
+        /// Gets the execution type for the TCREATE opcode.
+        /// </summary>
+        public static ExecutionType ExecutionType => ExecutionType.TCREATE;
+        public static bool IsSalted => true;
+        public static bool IsTransient => true;
+    }
+
+    /// <summary>
+    /// Implements the CREATE/CREATE2/TCREATE opcode, handling new contract deployment.
     /// This method performs validation, gas and memory cost calculations, state updates,
     /// and delegates execution to a new call frame for the contract's initialization code.
     /// </summary>
     /// <typeparam name="TGasPolicy">The gas policy implementation.</typeparam>
-    /// <typeparam name="TOpCreate">The type of create operation (either <see cref="OpCreate"/> or <see cref="OpCreate2"/>).</typeparam>
+    /// <typeparam name="TOpCreate">The type of create operation (<see cref="OpCreate"/>, <see cref="OpCreate2"/> or <see cref="OpTCreate"/>).</typeparam>
     /// <typeparam name="TTracingInst">Tracing instructions type used for instrumentation if active.</typeparam>
     /// <typeparam name="TSpec">The fork rules the opcode table specialized this handler on.</typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
@@ -77,6 +103,14 @@ public static partial class EvmInstructions
         where TSpec : struct, ICreateSpec
     {
         vm.MetricsCounters.IncrementCreates();
+
+        bool isTransientCreate = TOpCreate.IsTransient;
+
+        // EIP-8360: CREATE2 halts in the context of a TCREATE account, before any check that could push zero.
+        if (TSpec.IsEip8360Enabled && typeof(TOpCreate) == typeof(OpCreate2) && vm.VmState.IsTransientCreateContext)
+        {
+            goto BadInstruction;
+        }
 
         // Obtain the current EVM specification and check if the call is static (static calls cannot create contracts).
         IReleaseSpec spec = vm.Spec;
@@ -95,8 +129,8 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         Span<byte> salt = default;
-        // For CREATE2, an extra salt value is required. Use type check to differentiate.
-        if (typeof(TOpCreate) == typeof(OpCreate2))
+        // For CREATE2 and TCREATE, an extra salt value is required. Use type check to differentiate.
+        if (TOpCreate.IsSalted)
         {
             if (!stack.PopWord256(out salt))
                 goto StackUnderflow;
@@ -115,6 +149,9 @@ public static partial class EvmInstructions
         ulong initCodeWords = EvmCalculations.Div32Ceiling(in initCodeLength, out bool outOfGas);
         if (outOfGas)
             goto OutOfGas;
+
+        if (TTracingInst.IsActive)
+            TraceCreateGasCost<TGasPolicy, TOpCreate>(vm, in gas, TEip8037.IsActive, in memoryPositionOfInitCode, in initCodeLength, initCodeWords);
 
         if (!TSpec.TryConsumeCreateGas<TGasPolicy, TEip8037, TOpCreate>(ref gas, spec, initCodeWords))
             goto OutOfGas;
@@ -140,6 +177,7 @@ public static partial class EvmInstructions
 
         // Check that the executing account has sufficient balance to transfer the specified value.
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
+        if (value <= balance) state.NoteMinimumBalance(env.ExecutingAccount, in value);
         if (value > balance)
         {
             if (!TEip8037.IsActive && vm.IsTracingActions)
@@ -160,19 +198,33 @@ public static partial class EvmInstructions
         // Compute the contract address:
         // - For CREATE: based on the executing account and its current nonce.
         // - For CREATE2: based on the executing account, the provided salt, and the init code.
-        Address contractAddress = typeof(TOpCreate) == typeof(OpCreate)
+        // - For TCREATE: as CREATE2 with the EIP-8360 0xfe prefix.
+        Address contractAddress = !TOpCreate.IsSalted
             ? ContractAddress.From(env.ExecutingAccount, accountNonce)
-            : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
+            : isTransientCreate
+                ? ContractAddress.FromTransientCreate(env.ExecutingAccount, salt, initCode.Span)
+                : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
-        // For EIP-2929 support, pre-warm the contract address in the access tracker to account for hot/cold storage costs.
-        if (TSpec.UseHotAndColdStorage)
+        if (isTransientCreate)
         {
+            // EIP-8360: no account-creation charge; the target access is priced as an EIP-8038 account access.
+            if (!TSpec.TryConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, contractAddress))
+                goto OutOfGas;
+            if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(contractAddress))
+                goto OutOfGas;
+        }
+        // For EIP-2929 support, pre-warm the contract address in the access tracker to account for hot/cold storage costs.
+        else if (TSpec.UseHotAndColdStorage)
+        {
+            // EIP-8279: the new address enters the block access list on the transaction's first touch.
+            if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(contractAddress))
+                goto OutOfGas;
             vm.VmState.AccessTracker.WarmUp(contractAddress);
         }
 
         bool isNonZeroAccount = state.IsNonZeroAccount(contractAddress, out bool accountExists);
         bool isAliveAccount = !state.IsDeadAccount(contractAddress);
-        bool chargeCreateStateGas = TEip8037.IsActive && !isAliveAccount;
+        bool chargeCreateStateGas = TEip8037.IsActive && !isAliveAccount && !isTransientCreate;
 
         if (chargeCreateStateGas && !TGasPolicy.TryConsumeCreateStateGas(ref gas))
             goto OutOfGas;
@@ -184,8 +236,15 @@ public static partial class EvmInstructions
         if (!TSpec.TryReserveChildGas<TGasPolicy>(ref gas, spec, out ulong callGas))
             goto OutOfGas;
 
-        // Increment the nonce of the executing account to reflect the contract creation.
-        state.IncrementNonce(env.ExecutingAccount);
+        // Increment the nonce of the executing account to reflect the contract creation; EIP-8360 TCREATE does not.
+        if (!isTransientCreate)
+        {
+            // EIP-8279: the creating account's nonce advances whether or not the creation goes ahead.
+            if (TSpec.IsEip8279Enabled && !vm.TryMeterBalData(Eip8279Constants.NonceBytes))
+                goto OutOfGas;
+
+            state.IncrementNonce(env.ExecutingAccount);
+        }
 
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();
@@ -212,6 +271,13 @@ public static partial class EvmInstructions
 
             return pushResult;
         }
+
+        // EIP-8279: the new contract's nonce, and both balances when endowed, join the block access list.
+        // A TCREATE account's nonce is reset at the end of the transaction, so only its balance remains.
+        if (TSpec.IsEip8279Enabled
+            && ((!isTransientCreate && !vm.TryMeterBalData(Eip8279Constants.NonceBytes))
+                || (!value.IsZero && !vm.TryMeterBalData(2 * Eip8279Constants.BalanceBytes))))
+            goto OutOfGas;
 
         state.ClearStorage(contractAddress);
 
@@ -253,7 +319,37 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
+    }
 
+    /// <summary>Reports the gas the creation is about to charge, before init-code memory is expanded.</summary>
+    /// <remarks>As in Geth, a creation that cannot pay the base charge reports that charge alone.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceCreateGasCost<TGasPolicy, TOpCreate>(
+        VirtualMachine<TGasPolicy> vm,
+        in TGasPolicy gas,
+        bool eip8037,
+        in UInt256 initCodePosition,
+        in UInt256 initCodeLength,
+        ulong initCodeWords)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCreate : struct, IOpCreate
+    {
+        IReleaseSpec spec = vm.Spec;
+        ulong baseCost = CreateGasCost.Base<TOpCreate>(spec.IsEip8038Enabled, eip8037);
+        if (TGasPolicy.GetRemainingGas(in gas) < baseCost)
+        {
+            vm.TraceOperationGasCost(baseCost);
+            return;
+        }
+
+        if (initCodeWords > (ulong.MaxValue - baseCost) / (GasCostOf.InitCodeWord + GasCostOf.Sha3Word))
+            return;
+
+        ulong initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
+        vm.TraceMemoryOperationGasCost(in initCodePosition, in initCodeLength,
+            baseCost + initCodeWordCost + CreateGasCost.InitCodeHashing<TOpCreate>(initCodeWords));
     }
 
     /// <summary>

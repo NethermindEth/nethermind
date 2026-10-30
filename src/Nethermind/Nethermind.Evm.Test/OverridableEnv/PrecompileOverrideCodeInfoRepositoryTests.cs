@@ -4,7 +4,9 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
@@ -26,8 +28,11 @@ public class PrecompileOverrideCodeInfoRepositoryTests
     public void ResetPrecompileOverrides_drops_code_override_at_address_the_next_spec_makes_a_precompile()
     {
         Address bls12G1Add = Address.FromNumber(0x0b);
-        Assert.That(Cancun.Instance.IsPrecompile(bls12G1Add), Is.False);
-        Assert.That(Prague.Instance.IsPrecompile(bls12G1Add), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Cancun.Instance.IsPrecompile(bls12G1Add), Is.False);
+            Assert.That(Prague.Instance.IsPrecompile(bls12G1Add), Is.True);
+        }
 
         IWorldState worldState = TestWorldStateFactory.CreateForTest();
         using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
@@ -56,6 +61,35 @@ public class PrecompileOverrideCodeInfoRepositoryTests
             Assert.That(codeInfo.IsPrecompile, Is.True);
             worldState.Received().AddAccountRead(movedTo);
             worldState.Received().RecordAccountAccess(movedTo);
+        }
+    }
+
+    /// <summary>Before Prague a code override holding an EIP-7702 designator is ordinary code, as in geth.</summary>
+    [Test]
+    public void GetCachedCodeInfo_follows_overridden_delegation_only_when_eip7702_is_enabled([Values] bool movedPrecompileRepository, [Values] bool eip7702Enabled)
+    {
+        IReleaseSpec spec = eip7702Enabled ? Prague.Instance : Cancun.Instance;
+        Address overridden = Address.FromNumber(1);
+        Address target = TestItem.AddressB;
+        byte[] designator = [.. Eip7702Constants.DelegationHeader, .. target.Bytes];
+        byte[] targetCode = [(byte)Instruction.STOP];
+
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        worldState.CreateAccount(target, 0);
+        worldState.InsertCode(target, targetCode, spec);
+        EthereumCodeInfoRepository inner = new(worldState);
+        CodeOverrideStore overrides = new();
+        OverridableCodeInfoRepository overridable = new(inner, worldState, overrides);
+        overridable.SetCodeOverride(spec, overridden, new CodeInfo(designator));
+        ICodeInfoRepository repository = movedPrecompileRepository ? new MovedPrecompileCodeInfoRepository(inner, worldState, overrides) : overridable;
+
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(overridden, followDelegation: true, spec, out Address? delegation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeInfo.CodeSpan, Is.SequenceEqualTo(eip7702Enabled ? targetCode : designator));
+            Assert.That(delegation, Is.EqualTo(eip7702Enabled ? target : null));
         }
     }
 }

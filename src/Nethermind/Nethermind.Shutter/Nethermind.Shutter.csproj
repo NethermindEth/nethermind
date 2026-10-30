@@ -4,25 +4,11 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>Nethermind.Shutter</RootNamespace>
     <Nullable>enable</Nullable>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.Shutter.Test" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Remove="Contracts\ValidatorRegistryContract.json" />
-    <None Remove="Contracts\KeyBroadcastContract.json" />
-    <None Remove="Contracts\KeyperSetManagerContract.json" />
-    <None Remove="Contracts\SequencerContract.json" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="Contracts\ValidatorRegistryContract.json" />
-    <EmbeddedResource Include="Contracts\KeyBroadcastContract.json" />
-    <EmbeddedResource Include="Contracts\KeyperSetManagerContract.json" />
-    <EmbeddedResource Include="Contracts\KeyperSetContract.json" />
-    <EmbeddedResource Include="Contracts\SequencerContract.json" />
   </ItemGroup>
 
   <ItemGroup>

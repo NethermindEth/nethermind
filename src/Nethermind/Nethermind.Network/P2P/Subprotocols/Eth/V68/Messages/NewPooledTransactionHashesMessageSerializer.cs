@@ -58,7 +58,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             }
         }
 
-        private sealed class PooledMessage : NewPooledTransactionHashesMessage68
+        internal sealed class PooledMessage : NewPooledTransactionHashesMessage68
         {
             private MessageLists? _lists;
             internal ArrayPoolList<byte> TypeList => _lists!.TypeList;

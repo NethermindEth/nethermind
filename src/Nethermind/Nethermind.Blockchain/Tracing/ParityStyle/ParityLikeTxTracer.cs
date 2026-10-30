@@ -86,7 +86,7 @@ public partial class ParityLikeTxTracer : TxTracer
 
     private static string GetCallType(ExecutionType executionType) => executionType switch
     {
-        ExecutionType.CREATE or ExecutionType.CREATE2 => "create",
+        ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.TCREATE => "create",
         ExecutionType.CALL or ExecutionType.TRANSACTION => "call",
         ExecutionType.DELEGATECALL => "delegatecall",
         ExecutionType.STATICCALL => "staticcall",
@@ -96,7 +96,7 @@ public partial class ParityLikeTxTracer : TxTracer
 
     private static string GetActionType(ExecutionType executionType) => executionType switch
     {
-        ExecutionType.CREATE or ExecutionType.CREATE2 => "create",
+        ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.TCREATE => "create",
         _ => "call"
     };
 
@@ -119,6 +119,8 @@ public partial class ParityLikeTxTracer : TxTracer
         EvmExceptionType.NotEnoughBalance => "Insufficient balance for transfer",
         EvmExceptionType.InvalidCode => "Invalid code",
         EvmExceptionType.CallDepthExceeded => "Max call depth exceeded",
+        EvmExceptionType.ReturnStackOverflow => "Return stack overflow",
+        EvmExceptionType.ReturnStackUnderflow => "Return stack underflow",
         EvmExceptionType.Revert => "Reverted",
         _ => "Error",
     };
@@ -170,6 +172,13 @@ public partial class ParityLikeTxTracer : TxTracer
     }
 
     protected virtual void ReturnInputBytes(in CappedArray<byte> input) { }
+
+    /// <summary>Takes back an action that left its frame without joining the trace, which nothing references any more.</summary>
+    protected virtual void ReturnExcludedAction(ParityTraceAction action) { }
+
+    // Only the action tree reads the input, and BuildResult drops it unless Trace was requested.
+    private CappedArray<byte> CopyActionInput(ReadOnlyMemory<byte> input) =>
+        (_parityTraceTypes & ParityTraceTypes.Trace) != 0 ? CopyInput(input) : CappedArray<byte>.Empty;
 
     protected void ResetTracerState(Block block, Transaction? tx)
     {
@@ -254,6 +263,11 @@ public partial class ParityLikeTxTracer : TxTracer
 
         _actionStack.Pop();
         _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
+
+        if (!popped.IncludeInTrace && popped != _trace.Action)
+        {
+            ReturnExcludedAction(popped);
+        }
     }
 
     protected virtual void OnLeaveVmFrame(ParityTraceAction action)
@@ -331,7 +345,7 @@ public partial class ParityLikeTxTracer : TxTracer
         action.From = _tx!.SenderAddress;
         action.To = _tx.To;
         action.Value = _tx.Value;
-        action.Input = CopyInput(_tx.Data);
+        action.Input = CopyActionInput(_tx.Data);
         action.Gas = _tx.GasLimit;
         action.CallType = _tx.IsMessageCall ? "call" : "init";
         return action;
@@ -533,7 +547,7 @@ public partial class ParityLikeTxTracer : TxTracer
         action.From = from;
         action.To = to;
         action.Value = value;
-        action.Input = CopyInput(input);
+        action.Input = CopyActionInput(input);
         action.Gas = gas;
         action.CallType = GetCallType(callType);
         action.Type = GetActionType(callType);
@@ -545,6 +559,7 @@ public partial class ParityLikeTxTracer : TxTracer
     {
         ExecutionType.CREATE => "create",
         ExecutionType.CREATE2 => "create2",
+        ExecutionType.TCREATE => "tcreate",
         _ => null
     };
 
@@ -568,7 +583,7 @@ public partial class ParityLikeTxTracer : TxTracer
                 $"{nameof(ReportActionEnd)} called when result is not yet prepared.");
         }
 
-        _currentAction.Result.Output = output.ToArray();
+        _currentAction.Result.Output = output.AsArray();
         _currentAction.Result.GasUsed = _currentAction.Gas - gas;
         PopAction();
     }
@@ -582,7 +597,7 @@ public partial class ParityLikeTxTracer : TxTracer
     public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
     {
         ParityTraceResult result = _currentAction!.Result!;
-        result.Output = output.ToArray();
+        result.Output = output.AsArray();
         result.GasUsed = _currentAction.Gas - gas;
         _currentAction.Error = GetErrorDescription(EvmExceptionType.Revert);
         PopAction();
@@ -604,7 +619,7 @@ public partial class ParityLikeTxTracer : TxTracer
         }
 
         _currentAction.Result.Address = deploymentAddress;
-        _currentAction.Result.Code = deployedCode.ToArray();
+        _currentAction.Result.Code = deployedCode.AsArray();
         _currentAction.Result.GasUsed = _currentAction.Gas - gas;
         PopAction();
     }

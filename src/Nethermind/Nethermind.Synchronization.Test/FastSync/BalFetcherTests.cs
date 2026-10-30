@@ -15,6 +15,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
@@ -31,6 +33,7 @@ public class BalFetcherTests
         Success,
         Failure,
         Cancellation,
+        InvalidBal,
     }
 
     private const int BlockCount = 300;
@@ -77,9 +80,12 @@ public class BalFetcherTests
 
         bool result = await _fetcher.EnsureRange(from, to, default);
 
-        Assert.That(result, Is.True);
-        Assert.That(_balStore.Exists(11, b11.Hash!), Is.True);
-        Assert.That(_balStore.Exists(12, to.Hash!), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(_balStore.Exists(11, b11.Hash!), Is.True);
+            Assert.That(_balStore.Exists(12, to.Hash!), Is.True);
+        }
     }
 
     [Test]
@@ -91,8 +97,11 @@ public class BalFetcherTests
 
         bool result = await _fetcher.EnsureRange(from, b11, default);
 
-        Assert.That(result, Is.True);
-        Assert.That(_balStore.Exists(11, b11.Hash!), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(_balStore.Exists(11, b11.Hash!), Is.True);
+        }
     }
 
     [Test]
@@ -105,8 +114,11 @@ public class BalFetcherTests
 
         bool result = await _fetcher.EnsureRange(from, b11, default);
 
-        Assert.That(result, Is.False);
-        Assert.That(_balStore.Exists(11, b11.Hash!), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(_balStore.Exists(11, b11.Hash!), Is.False);
+        }
 
         await _pool.Received().Allocate(Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.State, AllocateTimeoutMs, Arg.Any<CancellationToken>());
     }
@@ -121,7 +133,7 @@ public class BalFetcherTests
 
         if (outcome == FetchOutcome.Cancellation)
         {
-            Assert.ThrowsAsync<OperationCanceledException>(async () => await _fetcher.EnsureRange(from, b11, default));
+            await Assert.ThrowsAsync<OperationCanceledException>(async () => await _fetcher.EnsureRange(from, b11, default));
         }
         else
         {
@@ -138,19 +150,32 @@ public class BalFetcherTests
     }
 
     [Test]
-    public async Task Rejects_bal_that_does_not_match_header_hash()
+    public async Task Reports_peer_by_fault([Values(FetchOutcome.InvalidBal, FetchOutcome.Failure)] FetchOutcome outcome)
     {
         BlockHeader from = Block(10, bal: null);
         BlockHeader b11 = Block(11, [0x01, 0x02]);
-        // Peer serves garbage that won't hash to the header's BlockAccessListHash.
-        _balByHash[b11.Hash!.ValueHash256] = [0xDE, 0xAD];
-        AllocatePeer(Snap2Peer());
+        PeerInfo peer = Snap2Peer(outcome);
+        AllocatePeer(peer);
 
         bool result = await _fetcher.EnsureRange(from, b11, default);
 
-        Assert.That(result, Is.False);
-        Assert.That(_balStore.Exists(11, b11.Hash!), Is.False);
-        _pool.Received().ReportWeakPeer(Arg.Any<PeerInfo>(), AllocationContexts.State);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(_balStore.Exists(11, b11.Hash!), Is.False);
+        }
+
+        // A BAL not matching the header it was requested by is provable misbehaviour; a failed request is not.
+        if (outcome == FetchOutcome.InvalidBal)
+        {
+            _pool.Received().ReportBreachOfProtocol(peer, DisconnectReason.InvalidTxOrUncle, Arg.Any<string>());
+            _pool.DidNotReceive().ReportWeakPeer(Arg.Any<PeerInfo>(), Arg.Any<AllocationContexts>());
+        }
+        else
+        {
+            _pool.Received().ReportWeakPeer(peer, AllocationContexts.State);
+            _pool.DidNotReceive().ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
     }
 
     [Test]
@@ -171,6 +196,85 @@ public class BalFetcherTests
         }
 
         _pool.DidNotReceive().ReportWeakPeer(Arg.Any<PeerInfo>(), Arg.Any<AllocationContexts>());
+        _pool.DidNotReceive().ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Moves_past_peers_that_answer_empty()
+    {
+        BlockHeader from = Block(10, bal: null);
+        BlockHeader b11 = Block(11, [0x01, 0x02]);
+        Dictionary<PeerInfo, int> asked = [];
+        PeerInfo[] empty = [CountingPeer(asked, serves: false), CountingPeer(asked, serves: false), CountingPeer(asked, serves: false)];
+        PeerInfo serving = CountingPeer(asked, serves: true);
+        AllocateFrom([.. empty, serving]);
+
+        bool result = await _fetcher.EnsureRange(from, b11, default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(_balStore.Exists(11, b11.Hash!), Is.True);
+            foreach (PeerInfo peer in empty) Assert.That(asked.GetValueOrDefault(peer), Is.LessThanOrEqualTo(1));
+        }
+
+        _pool.DidNotReceive().ReportWeakPeer(Arg.Any<PeerInfo>(), Arg.Any<AllocationContexts>());
+    }
+
+    [Test]
+    public async Task Asks_peers_that_answered_empty_again_once_all_have()
+    {
+        BlockHeader from = Block(10, bal: null);
+        BlockHeader b11 = Block(11, [0x01, 0x02]);
+        Dictionary<PeerInfo, int> asked = [];
+        PeerInfo[] empty = [CountingPeer(asked, serves: false), CountingPeer(asked, serves: false)];
+        AllocateFrom(empty);
+
+        bool result = await _fetcher.EnsureRange(from, b11, default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            foreach (PeerInfo peer in empty) Assert.That(asked.GetValueOrDefault(peer), Is.GreaterThan(1));
+        }
+    }
+
+    [Test]
+    public async Task Retried_range_still_skips_peers_that_answered_empty_at_a_later_window()
+    {
+        // Window 1 (blocks 11..1034) is already stored; window 2 (block 1035) stalls.
+        BlockHeader from = Block(10, bal: null);
+        for (ulong number = 11; number <= 1034; number++)
+        {
+            byte[] bal = [(byte)number, (byte)(number >> 8)];
+            BlockHeader header = Block(number, bal);
+            _balStore.Insert(number, header.Hash!, bal);
+        }
+        BlockHeader to = Block(1035, [0x01, 0x02]);
+
+        Dictionary<PeerInfo, int> asked = [];
+        using CancellationTokenSource cts = new();
+        PeerInfo[] empty = [CountingPeer(asked, serves: false, onAsked: Cancel), CountingPeer(asked, serves: false, onAsked: Cancel)];
+        AllocateFrom(empty);
+        await Assert.ThatAsync(() => _fetcher.EnsureRange(from, to, cts.Token), Throws.InstanceOf<OperationCanceledException>());
+
+        PeerInfo serving = CountingPeer(asked, serves: true);
+        AllocateFrom([.. empty, serving]);
+        bool result = await _fetcher.EnsureRange(from, to, default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(_balStore.Exists(to.Number, to.Hash!), Is.True);
+            Assert.That(asked.GetValueOrDefault(serving), Is.EqualTo(1));
+            foreach (PeerInfo peer in empty) Assert.That(asked.GetValueOrDefault(peer), Is.EqualTo(1));
+        }
+
+        // Stop the first call once every peer has answered empty, before the set resets.
+        void Cancel()
+        {
+            if (asked.Count == 2) cts.Cancel();
+        }
     }
 
     [Test]
@@ -272,6 +376,42 @@ public class BalFetcherTests
                 return allocation;
             });
 
+    // Lets the strategy choose among `peers`, as the pool would.
+    private void AllocateFrom(PeerInfo[] peers) =>
+        _pool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                SyncPeerAllocation allocation = new(ci.Arg<AllocationContexts>(), null, () => _disposedAllocations++);
+                PeerInfo? chosen = ci.Arg<IPeerAllocationStrategy>().Allocate(null, peers, Substitute.For<INodeStatsManager>(), _blockTree);
+                if (chosen is not null) allocation.AllocatePeer(chosen);
+                return allocation;
+            });
+
+    // A snap/2 peer that serves every known BAL, or answers empty for all of them, counting the requests it gets.
+    private PeerInfo CountingPeer(Dictionary<PeerInfo, int> asked, bool serves, Action? onAsked = null)
+    {
+        PeerInfo peer = null!;
+        ISnapSyncPeer snap = Substitute.For<ISnapSyncPeer>();
+        snap.SnapProtocolVersion.Returns(SnapVersions.Snap2);
+        snap.GetBlockAccessLists(Arg.Any<IReadOnlyList<ValueHash256>>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                asked[peer] = asked.GetValueOrDefault(peer) + 1;
+                IReadOnlyList<ValueHash256> requested = ci.Arg<IReadOnlyList<ValueHash256>>();
+                ArrayPoolList<byte[]> response = new(requested.Count);
+                foreach (ValueHash256 hash in requested) response.Add(serves ? _balByHash.GetValueOrDefault(hash, []) : []);
+                onAsked?.Invoke();
+                return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(response));
+            });
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out Arg.Any<ISnapSyncPeer>())
+            .Returns(ci => { ci[1] = snap; return true; });
+        syncPeer.IsInitialized.Returns(true);
+        peer = new PeerInfo(syncPeer);
+        return peer;
+    }
+
     private PeerInfo Snap2Peer(FetchOutcome outcome = FetchOutcome.Success)
     {
         ISnapSyncPeer snap = Substitute.For<ISnapSyncPeer>();
@@ -286,7 +426,8 @@ public class BalFetcherTests
                 _largestRequest = Math.Max(_largestRequest, requested.Count);
                 int served = Math.Min(requested.Count, _responseLimit);
                 ArrayPoolList<byte[]> response = new(served);
-                for (int i = 0; i < served; i++) response.Add(_balByHash.GetValueOrDefault(requested[i], []));
+                // An invalid BAL is garbage that won't hash to the header's BlockAccessListHash.
+                for (int i = 0; i < served; i++) response.Add(outcome == FetchOutcome.InvalidBal ? [0xDE, 0xAD] : _balByHash.GetValueOrDefault(requested[i], []));
                 return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(response));
             });
 

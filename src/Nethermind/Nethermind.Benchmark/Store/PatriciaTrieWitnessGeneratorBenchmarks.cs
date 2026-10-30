@@ -45,7 +45,7 @@ namespace Nethermind.Benchmarks.Store
 
             MemDb db = new();
             RawScopedTrieStore store = new(db);
-            PatriciaTree tree = new(store, LimboLogs.Instance);
+            PatriciaTree tree = new(store, NullLogManager.Instance);
 
             Hash256[] keys = new Hash256[TrieSize];
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulk = new(TrieSize);
@@ -86,7 +86,7 @@ namespace Nethermind.Benchmarks.Store
         public int Old_CaptureDuringMutation()
         {
             CapturingScopedTrieStore store = new(new RawScopedTrieStore(_db));
-            PatriciaTree tree = new(store, LimboLogs.Instance) { RootHash = _root };
+            PatriciaTree tree = new(store, NullLogManager.Instance) { RootHash = _root };
             foreach (Hash256 key in _reads) tree.Get(key.Bytes);
             foreach (Hash256 key in _deletes) tree.Set(key.Bytes, (byte[])null);
             tree.UpdateRootHash();

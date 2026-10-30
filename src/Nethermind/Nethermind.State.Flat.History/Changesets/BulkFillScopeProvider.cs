@@ -17,7 +17,6 @@ namespace Nethermind.State.Flat.History.Changesets;
 
 public sealed class BulkFillScopeProvider(
     BulkFillSession session,
-    ITrieNodeCache trieCache,
     IResourcePool resources,
     IFlatDbConfig config,
     ILogManager logs) : IWorldStateScopeProvider, IStateReader
@@ -46,8 +45,8 @@ public sealed class BulkFillScopeProvider(
             return false;
         }
 
-        ReadOnlySnapshotBundle readOnly = new(new SnapshotPooledList(0), session.CreateReader(), false, PersistedSnapshotStack.Empty(), isHistorical: true);
-        SnapshotBundle bundle = new(readOnly, trieCache, resources, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        ReadOnlySnapshotBundle readOnly = new(new SnapshotPooledList(0), session.CreateReader(), false, PersistedSnapshotStack.Empty(), bufferPin: null, isHistorical: true);
+        SnapshotBundle bundle = new(readOnly, null, resources, ResourcePool.Usage.ReadOnlyProcessingEnv);
         try
         {
             scope = new Scope(new FlatWorldStateScope(session.CurrentState, bundle, session,
@@ -102,7 +101,7 @@ public sealed class BulkFillScopeProvider(
         public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) => session.StageFinalState(takeSnapshot);
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => Task.CompletedTask;
         // Bulk fill stages final state only from the world state's block-change snapshot, which a BAL apply bypasses.
-        public void ApplyBal(ReadOnlyBlockAccessList bal) => throw new NotSupportedException();
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken) => throw new NotSupportedException();
         public void Dispose() => inner.Dispose();
     }
 

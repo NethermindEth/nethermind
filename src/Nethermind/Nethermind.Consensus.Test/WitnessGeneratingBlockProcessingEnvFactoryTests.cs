@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.Test;
 
 public class WitnessGeneratingBlockProcessingEnvFactoryTests
 {
-    // proof_call runs its call through this env, so a POST_TX frame must find a diff recorder here
+    // proof_call runs its call through this env, so an ASSERT frame must find a diff recorder here
     // exactly as it does under eth_call, or the EIP-7906 assertion opcodes halt with BadInstruction.
     [TestCase(false, TestName = "CreateScope_ForkNeverScheduled_NoDiffRecorder")]
     [TestCase(true, TestName = "CreateScope_ForkScheduled_CarriesADiffRecorder")]

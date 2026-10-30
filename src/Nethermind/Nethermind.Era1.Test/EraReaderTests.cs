@@ -136,6 +136,14 @@ internal class EraReaderTests
     }
 
     [Test]
+    public async Task CalculateAccumulator_MainnetFile_MatchesStoredAccumulator(
+        [Values("mainnet-00000-5ec1ffb8.era1", "mainnet-00001-a5364e9a.era1", "mainnet-00002-98cbd8a9.era1")] string fileName)
+    {
+        using EraReader sut = new(Path.Combine("testdata/mainnet", fileName));
+        Assert.That(await sut.CalculateAccumulator(), Is.EqualTo(sut.ReadAccumulator()));
+    }
+
+    [Test]
     public void DecodeReceipts_EmptyListReceipt_Throws()
     {
         byte[] receiptsWithEmptyListItem = [0xc1, 0xc0];

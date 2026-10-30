@@ -6,6 +6,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
@@ -35,5 +36,36 @@ public class RawTrieStoreTests
         Assert.That(patriciaTree.Get(TestItem.KeccakA.Bytes), Is.SequenceEqualTo(TestItem.KeccakA.BytesToArray()));
         Assert.That(patriciaTree.Get(TestItem.KeccakB.Bytes), Is.SequenceEqualTo(TestItem.KeccakB.BytesToArray()));
         Assert.That(patriciaTree.Get(TestItem.KeccakC.Bytes), Is.SequenceEqualTo(TestItem.KeccakC.BytesToArray()));
+    }
+
+    // The zkEVM guest's TrieNode.Unseal marks a written node dirty in place, which is sound only while no
+    // two lookups share a node.
+    [Test]
+    public void Every_lookup_gets_its_own_node()
+    {
+        RawTrieStore store = new(new MemDb());
+        IScopedTrieStore scoped = store.GetTrieStore(null);
+        TrieNode first = store.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA);
+        TrieNode firstScoped = scoped.FindCachedOrUnknown(TreePath.Empty, TestItem.KeccakA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA), Is.Not.SameAs(first));
+            Assert.That(scoped.FindCachedOrUnknown(TreePath.Empty, TestItem.KeccakA), Is.Not.SameAs(firstScoped));
+        }
+    }
+
+    [Test]
+    public void Keys_longer_than_32_bytes_can_be_set_and_read([Values(33, 40, 64, 65)] int keyLength)
+    {
+        PatriciaTree patriciaTree = new(new RawTrieStore(new MemDb()).GetTrieStore(null), LimboLogs.Instance);
+        byte[] key = new byte[keyLength];
+        key[^1] = 1;
+        byte[] value = TestItem.KeccakA.BytesToArray();
+
+        patriciaTree.Set(key, value);
+        patriciaTree.Commit();
+
+        Assert.That(patriciaTree.Get(key).ToArray(), Is.EqualTo(value));
     }
 }

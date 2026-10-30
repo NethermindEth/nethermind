@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Autofac;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -48,6 +49,20 @@ public class BlockAccessListRecoveryStepTests
             _ => null
         };
         if (payload is not null) new BlockAccessListStore(db).Insert(BlockNumber, block.Hash!, payload);
+
+        CreateStep(db).RecoverDataForQueuedProcessing(block);
+
+        Assert.That(block.BlockAccessList?.WireHash, expectAttached ? Is.EqualTo(StoredHash) : Is.Null);
+    }
+
+    [TestCase(0, true, TestName = "List at the item limit is attached")]
+    [TestCase(1, false, TestName = "List over the item limit is left off")]
+    public void Stored_list_is_attached_only_within_the_item_limit(int itemsOverLimit, bool expectAttached)
+    {
+        TestMemDb db = new();
+        ulong gasLimit = (ulong)(StoredBal.ItemCount - itemsOverLimit) * Eip7928Constants.ItemCost;
+        Block block = Build.A.Block.WithNumber(BlockNumber).WithGasLimit(gasLimit).WithBlockAccessListHash(StoredHash).TestObject;
+        new BlockAccessListStore(db).Insert(BlockNumber, block.Hash!, StoredRlp);
 
         CreateStep(db).RecoverDataForQueuedProcessing(block);
 
@@ -103,6 +118,19 @@ public class BlockAccessListRecoveryStepTests
             .Build();
 
         Assert.That(container.Resolve<IReadOnlyList<IBlockPreprocessorStep>>(), Has.Some.InstanceOf<BlockAccessListRecoveryStep>());
+    }
+
+    [Test]
+    public void Reconstruction_alone_reattaches_the_stored_list()
+    {
+        TestMemDb db = new();
+        Block block = BlockCommittingTo(StoredHash);
+        new BlockAccessListStore(db).Insert(BlockNumber, block.Hash!, StoredRlp);
+        BlockAccessListRecoveryStep step = new(new BlockAccessListStore(db),
+            new BlocksConfig { ParallelExecution = false, ParallelExecutionBatchRead = false }, LimboLogs.Instance,
+            new SyncConfig { ReconstructFinalizedStateFromBlockAccessLists = true });
+        step.RecoverDataForQueuedProcessing(block);
+        Assert.That(block.BlockAccessList?.WireHash, Is.EqualTo(StoredHash));
     }
 
     private static Block BlockCommittingTo(Hash256 balHash) =>

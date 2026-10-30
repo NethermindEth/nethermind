@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Test;
 using NUnit.Framework;
+using NUnit.Framework.Internal;
 
 namespace Ethereum.Basic.Test;
 
@@ -38,8 +39,11 @@ public class TestChunkFilterTests
             result.Add(value);
         }
 
-        Assert.That(result, Is.EqualTo(new[] { 1, 4, 7 }));
-        Assert.That(enumeratedCount, Is.EqualTo(9));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(new[] { 1, 4, 7 }));
+            Assert.That(enumeratedCount, Is.EqualTo(9));
+        }
     }
 
     [TestCase("1of3", new[] { 0, 3, 6 })]
@@ -63,9 +67,12 @@ public class TestChunkFilterTests
     {
         Environment.SetEnvironmentVariable("TEST_CHUNK", null);
 
-        Assert.That(TestChunkFilter.ShouldRunInChunk(""), Is.True);
-        Assert.That(TestChunkFilter.ShouldRunInChunk("Some.Test.FullName"), Is.True);
-        Assert.That(TestChunkFilter.ShouldRunInChunk("Another.Test"), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestChunkFilter.ShouldRunInChunk(""), Is.True);
+            Assert.That(TestChunkFilter.ShouldRunInChunk("Some.Test.FullName"), Is.True);
+            Assert.That(TestChunkFilter.ShouldRunInChunk("Another.Test"), Is.True);
+        }
     }
 
     [Test]
@@ -126,8 +133,11 @@ public class TestChunkFilterTests
         (int Index, int Total)? config = TestChunkFilter.TryGetChunkConfig();
 
         Assert.That(config, Is.Not.Null);
-        Assert.That(config!.Value.Index, Is.EqualTo(expectedIndex));
-        Assert.That(config.Value.Total, Is.EqualTo(expectedTotal));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(config!.Value.Index, Is.EqualTo(expectedIndex));
+            Assert.That(config.Value.Total, Is.EqualTo(expectedTotal));
+        }
     }
 
     [Test]
@@ -136,6 +146,38 @@ public class TestChunkFilterTests
         Environment.SetEnvironmentVariable("TEST_CHUNK", null);
 
         Assert.That(TestChunkFilter.TryGetChunkConfig(), Is.Null);
+    }
+
+    [Test]
+    public void ChunkFilterAttribute_RemovesTestsOutsideChunkAndSuitesItEmpties()
+    {
+        Environment.SetEnvironmentVariable("TEST_CHUNK", "2of3");
+        string[] names = [.. Enumerable.Range(0, 30).Select(static i => $"Nethermind.Tests.Fixture.Method({i})")];
+        string outsideChunk = names.First(static name => !TestChunkFilter.ShouldRunInChunk(name));
+
+        TestSuite root = new("Root");
+        TestSuite fixture = new("Fixture");
+        TestSuite emptiedFixture = new("EmptiedFixture");
+        TestSuite fixtureWithoutTests = new("FixtureWithoutTests");
+        foreach (string name in names)
+        {
+            fixture.Add(CreateTest(name));
+        }
+        emptiedFixture.Add(CreateTest(outsideChunk));
+        root.Add(fixture);
+        root.Add(emptiedFixture);
+        root.Add(fixtureWithoutTests);
+
+        new ChunkFilterAttribute().ApplyToTest(root);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.Tests, Is.EqualTo(new[] { fixture, fixtureWithoutTests }));
+            Assert.That(fixture.Tests.Select(static test => test.FullName), Is.EqualTo(names.Where(TestChunkFilter.ShouldRunInChunk)));
+        }
+
+        static TestMethod CreateTest(string fullName) =>
+            new(new MethodWrapper(typeof(TestChunkFilterTests), nameof(TryGetChunkConfig_WhenUnset_ReturnsNull))) { FullName = fullName };
     }
 
     private static IEnumerable<int> CountedRange(int count, Action onEnumerated)

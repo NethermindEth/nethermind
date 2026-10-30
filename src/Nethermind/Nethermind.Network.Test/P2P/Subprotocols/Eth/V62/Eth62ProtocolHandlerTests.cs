@@ -104,14 +104,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Metadata_correct()
         {
-            Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
-            Assert.That(_handler.Name, Is.EqualTo("eth62"));
-            Assert.That(_handler.ProtocolVersion, Is.EqualTo(62));
-            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(8));
-            Assert.That(_handler.IncludeInTxPool, Is.True);
-            Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
-            Assert.That(_handler.HeadHash, Is.Null);
-            Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+                Assert.That(_handler.Name, Is.EqualTo("eth62"));
+                Assert.That(_handler.ProtocolVersion, Is.EqualTo(62));
+                Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(8));
+                Assert.That(_handler.IncludeInTxPool, Is.True);
+                Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+                Assert.That(_handler.HeadHash, Is.Null);
+                Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+            }
         }
 
         [Test]
@@ -183,6 +186,74 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 () => _handler.NotifyOfNewBlock(block, SendBlockMode.FullBlock));
             _handler.NotifyOfNewBlock(block, SendBlockMode.HashOnly);
             _handler.NotifyOfNewBlock(block, (SendBlockMode)99);
+        }
+
+        [TestCase(513UL, 0UL, SendBlockMode.FullBlock, false)]
+        [TestCase(513UL, 0UL, SendBlockMode.HashOnly, false)]
+        [TestCase(1000UL, 488UL, SendBlockMode.FullBlock, true)]
+        [TestCase(1000UL, 488UL, SendBlockMode.HashOnly, true)]
+        [TestCase(1000UL, 1000UL, SendBlockMode.FullBlock, true)]
+        [TestCase(1000UL, 1000UL, SendBlockMode.HashOnly, true)]
+        [TestCase(0UL, 500UL, SendBlockMode.FullBlock, true)]
+        [TestCase(0UL, 500UL, SendBlockMode.HashOnly, true)]
+        [TestCase(ulong.MaxValue, ulong.MaxValue, SendBlockMode.FullBlock, true)]
+        [TestCase(ulong.MaxValue, ulong.MaxValue, SendBlockMode.HashOnly, true)]
+        public void Notify_of_new_block_filters_only_blocks_older_than_peer_reorg_window(
+            ulong peerHeadNumber,
+            ulong blockNumber,
+            SendBlockMode mode,
+            bool shouldDeliver)
+        {
+            _handler.HeadNumber = peerHeadNumber;
+            _session.ClearReceivedCalls();
+            Block block = Build.A.Block.WithNumber(blockNumber).WithTotalDifficulty(1UL).TestObject;
+
+            _handler.NotifyOfNewBlock(block, mode);
+
+            if (shouldDeliver)
+            {
+                Type expectedMessageType = mode == SendBlockMode.FullBlock
+                    ? typeof(NewBlockMessage)
+                    : typeof(NewBlockHashesMessage);
+                _session.Received(1).DeliverMessage(Arg.Is<P2PMessage>(message => message.GetType() == expectedMessageType));
+            }
+            else
+            {
+                _session.DidNotReceive().DeliverMessage(Arg.Any<P2PMessage>());
+            }
+        }
+
+        [Test]
+        public void Notify_of_new_block_uses_the_latest_peer_head_number(
+            [Values(SendBlockMode.FullBlock, SendBlockMode.HashOnly)] SendBlockMode mode)
+        {
+            Block block = Build.A.Block.WithNumber(100UL).WithTotalDifficulty(1UL).TestObject;
+            _handler.HeadNumber = 1000UL;
+            _session.ClearReceivedCalls();
+
+            _handler.NotifyOfNewBlock(block, mode);
+            _session.DidNotReceive().DeliverMessage(Arg.Any<P2PMessage>());
+
+            _handler.HeadNumber = 100UL;
+            _session.ClearReceivedCalls();
+            _handler.NotifyOfNewBlock(block, mode);
+
+            Type expectedMessageType = mode == SendBlockMode.FullBlock
+                ? typeof(NewBlockMessage)
+                : typeof(NewBlockHashesMessage);
+            _session.Received(1).DeliverMessage(Arg.Is<P2PMessage>(message => message.GetType() == expectedMessageType));
+
+            _handler.HeadNumber = 1000UL;
+            Block newlyObservedHistoricalBlock = Build.A.Block
+                .WithNumber(100UL)
+                .WithNonce(1UL)
+                .WithTotalDifficulty(1UL)
+                .TestObject;
+            Assert.That(newlyObservedHistoricalBlock.Hash, Is.Not.EqualTo(block.Hash));
+            _session.ClearReceivedCalls();
+            _handler.NotifyOfNewBlock(newlyObservedHistoricalBlock, mode);
+
+            _session.DidNotReceive().DeliverMessage(Arg.Any<P2PMessage>());
         }
 
         [Test]
@@ -401,8 +472,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             BlockBody?[] bodies = RequestBlockBodies(TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC);
 
             Assert.That(bodies, Has.Length.EqualTo(2));
-            Assert.That(bodies[0], Is.SameAs(firstBlock.Body));
-            Assert.That(bodies[1], Is.SameAs(thirdBlock.Body));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bodies[0], Is.SameAs(firstBlock.Body));
+                Assert.That(bodies[1], Is.SameAs(thirdBlock.Body));
+            }
         }
 
         [Test]
@@ -536,7 +610,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(taskScheduler.RequestTypes, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(ContainsValueTuple(taskScheduler.RequestTypes[0]), Is.False);
         }
 
@@ -786,6 +862,28 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             }
         }
 
+        [Test]
+        public void Blob_transaction_forgets_an_invalid_blob_proofs_verdict_before_its_only_submission()
+        {
+            Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+            Hash256 hash = tx.Hash!;
+            _transactionPool.ForgetInvalidBlobProofs(hash).Returns(true);
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
+            using TestEth62ProtocolHandler handler = new(
+                _session, _svc, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager, RunImmediatelyScheduler.Instance, _transactionPool, _gossipPolicy,
+                LimboLogs.Instance, _txGossipPolicy);
+
+            handler.HandleSlowPublic(new ArrayPoolList<Transaction>(1) { tx }, CancellationToken.None);
+
+            Received.InOrder(() =>
+            {
+                _transactionPool.ForgetInvalidBlobProofs(hash);
+                _transactionPool.SubmitTx(tx, TxHandlingOptions.None);
+            });
+            _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+        }
+
         private sealed class TestEth62ProtocolHandler(
             ISession session,
             IMessageSerializationService serializer,
@@ -903,7 +1001,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Queued_headers_request_is_cancelled_on_dispose()
+        public async Task Queued_headers_request_is_cancelled_on_dispose()
         {
             HandleIncomingStatusMessage();
 
@@ -913,8 +1011,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             _handler.Dispose();
 
-            Assert.ThrowsAsync<TaskCanceledException>(async () => await request1);
-            Assert.ThrowsAsync<TaskCanceledException>(async () => await request2);
+            await Assert.ThrowsAsync<TaskCanceledException>(async () => await request1);
+            await Assert.ThrowsAsync<TaskCanceledException>(async () => await request2);
         }
 
         [Test]
@@ -1057,7 +1155,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
 
             Assert.That(response, Is.Not.Null);
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
             Assert.That(response!.Bodies, Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That(response.Bodies!.Bodies, Is.Not.Null);
             return response.Bodies.Bodies!;
         }

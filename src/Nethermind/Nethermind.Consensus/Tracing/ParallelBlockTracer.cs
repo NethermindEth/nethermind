@@ -9,6 +9,8 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -34,7 +36,7 @@ namespace Nethermind.Consensus.Tracing;
 /// blocked work too slowly for a block to ever see the whole degree. There are twice as many threads as the degree
 /// and the degree is enforced per transaction by a semaphore, so two blocks traced at once interleave transaction by
 /// transaction instead of the second waiting for the whole of the first. The calling thread is one of the workers.
-/// Each block draws on the budget of the seed it stands on, so the setting for that kind of seed bounds its workers.</remarks>
+/// Every block draws on the one node-wide budget, whichever seed it stands on, so the setting bounds all its workers.</remarks>
 public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 {
     private readonly ShareableOverridableEnvSource<Components> _environments;
@@ -46,6 +48,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     private readonly object _runs = new();
     private bool _disposed;
     private int _inFlight;
+    private IRewardCalculator? _rewardCalculator;
 
     internal bool IsDisposing
     {
@@ -55,7 +58,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     /// <summary>Owns the supplied environments, but borrows the budgets. Dispose the tracer before the budgets.</summary>
     public ParallelBlockTracer(Func<IOverridableEnv<Components>> buildEnvironment, IPrefixStateSeedSource seeds, ParallelTraceBudgets budgets, ILogManager logManager)
     {
-        _degree = budgets.TotalDegree;
+        _degree = budgets.Degree;
         _environments = new ShareableOverridableEnvSource<Components>(buildEnvironment, _degree);
         _budgets = budgets;
         _workers = new Workers(2 * _degree);
@@ -143,7 +146,9 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                     Await(tasks.AsSpan(0, queued), failure);
                 }
 
-                if (afterTransactions is not null)
+                // Only rewards are traced after the transactions, so a block that is never rewarded needs no replay,
+                // and no permit or environment either.
+                if (afterTransactions is not null && Volatile.Read(ref _rewardCalculator)?.MayReward(block.Header) != false)
                 {
                     results[transactions.Length] = TraceAfterTransactions(block, parent, slots, covered.CreateWorkerSeeds(), afterTransactions, token);
                     emitter.Publish();
@@ -201,7 +206,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
     internal Task QueueWorker(Action action, CancellationToken token) => _workers.Run(action, token);
 
-    /// <summary>One environment per permit of every budget, so no permit holder finds the pool exhausted.</summary>
+    /// <summary>One environment per permit of the budget, so no permit holder finds the pool exhausted.</summary>
     internal Scope<Components> RentEnvironment(BlockHeader parent) => _environments.BuildAndOverride(parent);
 
     private bool Enter()
@@ -251,11 +256,17 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         try
         {
             using Scope<Components> scope = RentEnvironment(parent);
+            // Every environment resolves the same calculator, and the first transaction always rents one before the
+            // reward pass is considered.
+            Volatile.Write(ref _rewardCalculator, scope.Component.RewardCalculator);
             if (scope.Component.Executor?.CanSeed != true) return false;
             IBlockTracer<TTrace> tracer = forTransaction(scope.Component.WorldState, hash);
             try
             {
-                IBlockTracer bounded = TransactionTraceBoundary.Wrap(tracer.WithCancellation(token), hash, seeds);
+                IBlockTracer cancelable = tracer is GethLikeBlockDeadlineTracer deadline
+                    ? GethLikeBlockDeadlineTracer.WithCancellation(deadline, token)
+                    : tracer.WithCancellation(token);
+                IBlockTracer bounded = TransactionTraceBoundary.Wrap(cancelable, hash, seeds);
                 if (bounded is not TransactionTraceBoundary boundary)
                 {
                     tracer.TryDispose();
@@ -269,10 +280,15 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                     throw new InvalidOperationException("The indexed trace bypassed transaction prefix execution.");
                 results[index] = tracer.BuildResult();
             }
-            catch
+            catch (Exception exception)
             {
-                tracer.TryDispose();
+                if (tracer is GethLikeBlockDeadlineTracer deadline) deadline.HandleFailure(exception);
+                else tracer.TryDispose();
                 throw;
+            }
+            finally
+            {
+                if (tracer is GethLikeBlockDeadlineTracer deadline) deadline.Dispose();
             }
         }
         finally
@@ -497,7 +513,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     }
 
     /// <summary>Processing services owned by one leased environment; never share its world state between active workers.</summary>
-    public record Components(IWorldState WorldState, BlockchainProcessorFacade Processor, ISpecProvider SpecProvider, TransactionTraceExecutor? Executor = null);
+    public record Components(IWorldState WorldState, BlockchainProcessorFacade Processor, ISpecProvider SpecProvider, TransactionTraceExecutor? Executor = null, IRewardCalculator? RewardCalculator = null);
 
     /// <summary>An environment together with the lifetime scope it was resolved from, so the pool that retires it
     /// retires the scope too.</summary>

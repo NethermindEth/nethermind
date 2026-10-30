@@ -10,12 +10,14 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using NSubstitute;
@@ -51,10 +53,12 @@ public class DebugModuleTests
         _debugBridge,
         _jsonRpcConfig,
         _specProvider,
+        Substitute.For<IForkInfo>(),
         _blockchainBridge,
         new BlocksConfig(),
         _blockFinder,
-        new BlockForRpcFactory());
+        new BlockForRpcFactory(),
+        Substitute.For<ICodeInfoRepository>());
 
     private Task<JsonRpcResponse> Request(string method, params object?[]? parameters) =>
         RpcTest.TestRequest<IDebugRpcModule>(CreateModule(), method, parameters);
@@ -63,8 +67,7 @@ public class DebugModuleTests
     public async Task DebugGetRawHeader_WhenXdcHeader_ReturnsXdcShapedRlp()
     {
         XdcBlockHeader header = Build.A.XdcBlockHeader().WithNumber(0).TestObject;
-        Block block = Build.A.Block.WithHeader(header).TestObject;
-        _debugBridge.GetBlock(new BlockParameter(0UL)).Returns(block);
+        _blockFinder.FindHeader(new BlockParameter(0UL)).Returns(header);
 
         using JsonRpcResponse response = await Request("debug_getRawHeader", "0x0");
 

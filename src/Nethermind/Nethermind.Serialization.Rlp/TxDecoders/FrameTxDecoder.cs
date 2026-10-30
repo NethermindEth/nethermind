@@ -13,12 +13,12 @@ using Nethermind.Int256;
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
 /// <summary>Decodes the EIP-8141 frame transaction payload <c>[chain_id, nonce, sender, frames, signatures, fees,
-/// blob_versioned_hashes]</c>, where <c>fees = [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas]</c>,
-/// with EIP-8250's <c>nonce_keys, nonce_seq</c> in place of <c>nonce</c> and an optional trailing EIP-8272 list.</summary>
+/// blob_versioned_hashes]</c>, where <c>fees = [max_fee, max_priority_fee_per_gas]</c>,
+/// with EIP-8250's <c>nonce_keys, nonce_seq</c> in place of <c>nonce</c>.</summary>
 /// <remarks>The sender is explicit, so there is no envelope signature or recovery. The wrapper and plain forms are
 /// disjoint: a wrapper opens with a list, a plain payload with the <c>chain_id</c> scalar.</remarks>
-public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
-    : BaseTxDecoder<T>(TxType.FrameTx, transactionFactory) where T : Transaction, new()
+public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
+    : BaseTxDecoder(TxType.FrameTx, transactionFactory)
 {
     private static readonly RlpLimit FramesCountLimit = RlpLimit.For<Transaction>(Eip8141Constants.MaxFrames, nameof(Transaction.Frames));
 
@@ -36,8 +36,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     // enforced by the transaction validator.
     private static readonly RlpLimit BlobVersionedHashesCountLimit = RlpLimit.For<Transaction>(ShardBlobNetworkWrapperRlp.BlobCountLimit, nameof(Transaction.BlobVersionedHashes));
 
-    private static readonly RlpLimit ReferencesCountLimit = RlpLimit.For<Transaction>(Eip8272Constants.MaxRecentRootReferences, nameof(Transaction.RecentRootReferences));
-
     public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
         ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -49,14 +47,18 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
                 return;
             }
 
-            base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+            DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
             // EIP-7594: as for type-3, a blob-carrying transaction's mempool form is the sidecar wrapper.
             if (transaction is { CarriesBlobs: true }) ThrowMissingSidecar();
             return;
         }
 
-        base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+        DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowShortFeeList() =>
+        throw new RlpException($"{nameof(TxType.FrameTx)} fees must hold two items");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowMissingSidecar() =>
@@ -81,7 +83,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         int txSequenceStart = decoderContext.Position;
         ReadOnlySpan<byte> transactionSequence = decoderContext.Peek(rlpLength);
 
-        base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext,
+        DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext,
             (rlpBehaviors | RlpBehaviors.ExcludeHashes) & ~RlpBehaviors.InMempoolForm);
 
         if (transaction is not null)
@@ -100,31 +102,21 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         }
     }
 
-    /// <inheritdoc/>
-    /// <remarks>A frame transaction carries no envelope signature, so its trailing element is EIP-8272's
-    /// recent-root-reference list. An overlong declared payload length leaves the end-of-payload checkpoint
-    /// past the last real field, so the list is read off the end of the buffer; that is reported as a
-    /// truncation naming the list rather than as a bare index-out-of-range.</remarks>
-    protected override void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
+    /// <inheritdoc cref="ITxPayloadDecoder.DecodeTrailing"/>
+    /// <remarks>A frame transaction carries no envelope signature and no element after its blob versioned hashes.
+    /// An overlong declared payload length leaves the end-of-payload checkpoint past the end of the buffer; that is
+    /// reported as a truncation rather than as a trailing element.</remarks>
+    private static void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
     {
-        try
+        if (decoderContext.Position >= decoderContext.Length)
         {
-            if (!decoderContext.IsSequenceNext())
-            {
-                ThrowTrailingSignature();
-            }
-
-            transaction.RecentRootReferences = decoderContext.DecodeNonNullArray(RecentRootReferenceDecoder.Instance, limit: ReferencesCountLimit);
-        }
-        catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
-        {
-            ThrowTruncatedReferences(e);
+            ThrowTruncatedPayload();
         }
 
-        transaction.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(transaction.RecentRootReferences);
+        ThrowTrailingElement();
     }
 
-    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd,
+    private static void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd,
         RlpBehaviors rlpBehaviors)
     {
         // EIP8141-DEVIATION: the spec allows chain_id < 2^256; decoded as u64, the codebase-wide ChainId width.
@@ -137,12 +129,13 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
             limit: SignaturesCountLimit(Math.Max(0, payloadEnd - decoderContext.Position)));
         int feesLength = decoderContext.ReadSequenceLength();
         int feesCheck = feesLength + decoderContext.Position;
+        transaction.MaxFee = decoderContext.DecodeUInt256();
+        if (decoderContext.Position >= feesCheck) ThrowShortFeeList();
         transaction.GasPrice = decoderContext.DecodeUInt256(); // max_priority_fee_per_gas
-        transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
-        transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
+        transaction.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(transaction.MaxFee, FrameTxValidation.TotalGasLimit(transaction.Frames));
+        transaction.MaxFeePerBlobGas = null;
         decoderContext.Check(feesCheck);
         transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
-        transaction.RecentRootReferences = null;
 
         // A frame transaction has no gas_limit field; GasLimit carries the sum of frame gas limits so pre-execution
         // consumers reading it do not see ~0 gas. The processor derives the real tx_gas_limit.
@@ -155,9 +148,16 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     }
 
     public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
-        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
+        EncodeTransaction(transaction, ref writer, rlpBehaviors, forSigning);
+
+    public override int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
+        GetTransactionLength(transaction, rlpBehaviors, forSigning);
+
+    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors, bool forSigning)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        int payloadContentLength = GetContentLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        int payloadContentLength = GetContentLength(transaction, forSigning);
         int payloadSequenceLength = Rlp.LengthOfSequence(payloadContentLength);
 
         // A sidecar-less blob carrier still serialises to the plain form that Decode refuses; see GetLength.
@@ -168,12 +168,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         int wrapperContentLength = wrapper is null ? 0 : payloadSequenceLength + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper, rlpBehaviors);
         int bodyLength = wrapper is null ? payloadSequenceLength : Rlp.LengthOfSequence(wrapperContentLength);
 
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
-        {
-            writer.StartByteArray(bodyLength + 1, false);
-        }
-
-        writer.WriteByte((byte)Type);
+        StartTypedTransaction(ref writer, TxType.FrameTx, bodyLength, rlpBehaviors);
 
         if (wrapper is null)
         {
@@ -190,10 +185,9 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         }
     }
 
-    public override int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false,
-        bool isEip155Enabled = false, ulong chainId = 0)
+    internal static int GetTransactionLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning)
     {
-        int payloadSequenceLength = base.GetLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        int payloadSequenceLength = Rlp.LengthOfSequence(GetContentLength(transaction, forSigning));
 
         // GetLength is the pool's sizing call, so it must stay total and Encode must agree with it.
         ShardBlobNetworkWrapper? wrapper = rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm)
@@ -204,13 +198,8 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
             ? payloadSequenceLength
             : Rlp.LengthOfSequence(payloadSequenceLength + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper, rlpBehaviors));
 
-        return rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping)
-            ? 1 + bodyLength
-            : Rlp.LengthOfSequence(1 + bodyLength);
+        return GetTypedTransactionLength(bodyLength, rlpBehaviors);
     }
-
-    protected override void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        EncodePayload(transaction, ref writer, elideCanonicalSignatureBytes: false);
 
     private static void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, bool elideCanonicalSignatureBytes)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
@@ -221,14 +210,9 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         TxFrameDecoder.Instance.EncodeArray(ref writer, transaction.Frames);
         TxFrameSignatureDecoder.Instance.EncodeArray(ref writer, transaction.FrameSignatures, elideCanonicalSignatureBytes);
         writer.StartSequence(GetFeesContentLength(transaction));
+        writer.Encode(transaction.MaxFee);
         writer.Encode(transaction.GasPrice);
-        writer.Encode(transaction.DecodedMaxFeePerGas);
-        writer.Encode(transaction.MaxFeePerBlobGas.GetValueOrDefault());
         EncodeVersionedHashes(ref writer, transaction.BlobVersionedHashes);
-        if (transaction.RecentRootReferences is { } references)
-        {
-            RecentRootReferenceDecoder.Instance.EncodeArray(ref writer, references);
-        }
     }
 
     private static void EncodeVersionedHashes<TWriter>(ref TWriter writer, byte[]?[]? blobVersionedHashes)
@@ -270,34 +254,32 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     }
 
     private static int GetFeesContentLength(Transaction transaction) =>
-        Rlp.LengthOf(transaction.GasPrice)
-        + Rlp.LengthOf(transaction.DecodedMaxFeePerGas)
-        + Rlp.LengthOf(transaction.MaxFeePerBlobGas.GetValueOrDefault());
+        Rlp.LengthOf(transaction.MaxFee) + Rlp.LengthOf(transaction.GasPrice);
 
-    protected override int GetContentLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning,
-        bool isEip155Enabled = false, ulong chainId = 0) =>
+    private static int GetContentLength(Transaction transaction, bool forSigning) =>
         Rlp.LengthOf(transaction.ChainId ?? 0)
         + FrameTxNonceCalldata.Length(transaction)
         + Rlp.LengthOf(transaction.SenderAddress)
         + TxFrameDecoder.Instance.GetArrayLength(transaction.Frames)
         + TxFrameSignatureDecoder.Instance.GetArrayLength(transaction.FrameSignatures, elideCanonicalSignatureBytes: forSigning)
         + Rlp.LengthOfSequence(GetFeesContentLength(transaction))
-        + GetVersionedHashesLength(transaction.BlobVersionedHashes)
-        + (transaction.RecentRootReferences is { } references ? RecentRootReferenceDecoder.Instance.GetArrayLength(references) : 0);
+        + GetVersionedHashesLength(transaction.BlobVersionedHashes);
 
-    protected override int GetSignatureLength(Signature? signature, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) => 0;
-
-    protected override void EncodeSignature<TWriter>(Signature? signature, ref TWriter writer, bool forSigning,
-        bool isEip155Enabled = false, ulong chainId = 0)
+    private readonly struct Payload : ITxPayloadDecoder
     {
+        static void ITxPayloadDecoder.DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd, RlpBehaviors rlpBehaviors) =>
+            FrameTxDecoder.DecodePayload(transaction, ref decoderContext, payloadEnd, rlpBehaviors);
+
+        static void ITxPayloadDecoder.DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
+            FrameTxDecoder.DecodeTrailing(transaction, ref decoderContext, rlpBehaviors);
     }
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowTrailingSignature() => throw new RlpException("frame transaction must not carry a trailing signature");
+    private static void ThrowTrailingElement() => throw new RlpException("frame transaction must not carry a trailing element");
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowTruncatedReferences(Exception inner) =>
-        throw new RlpException("RLP data is truncated: frame transaction recent root reference list is incomplete.", inner);
+    private static void ThrowTruncatedPayload() =>
+        throw new RlpException("RLP data is truncated: frame transaction payload is incomplete.");
 }
 
 /// <summary>
@@ -346,7 +328,7 @@ public static class FrameTxNonceCalldata
         {
             if (count == buffer.Length)
             {
-                throw new RlpLimitException($"Exceeded {KeysCountLimit.CollectionExpression}");
+                decoderContext.GuardLimit(count + 1, KeysCountLimit);
             }
 
             buffer[count++] = decoderContext.DecodeUInt256();
@@ -378,18 +360,29 @@ public static class FrameTxNonceCalldata
         return contentLength;
     }
 
-    /// <summary>Zero and non-zero byte counts of what <see cref="Encode{TWriter}"/> writes, measured off the encoded
-    /// bytes so the EIP-8141 calldata charge cannot drift from the wire form.</summary>
+    /// <summary>Zero and non-zero byte counts of the priced part of what <see cref="Encode{TWriter}"/> writes,
+    /// measured off the encoded bytes so the EIP-8141 calldata charge cannot drift from the wire form.</summary>
+    /// <remarks>A non-empty key set with <see cref="Eip8250Constants.MaxNonceSeq"/> prices only the keys: the
+    /// single-use sequence is encoded and signed but exempt from data pricing.</remarks>
     public static (int ZeroBytes, int NonZeroBytes) Measure(Transaction transaction)
     {
-        int length = Length(transaction);
+        bool isSequencePriced = transaction.NonceKeys is not { Length: > 0 } || transaction.Nonce != Eip8250Constants.MaxNonceSeq;
+        int length = isSequencePriced ? Length(transaction) : KeysLength(transaction.NonceKeys!);
         // A dynamic stackalloc turns an out-of-range length into an uncatchable stack overflow, and this is
         // public: the keys can reach it from an RPC-built transaction the decoder never bounded.
         ArgumentOutOfRangeException.ThrowIfNegative(length);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxCalldataLength);
         Span<byte> calldata = stackalloc byte[length];
         RlpWriter writer = new(calldata);
-        Encode(transaction, ref writer);
+        if (isSequencePriced)
+        {
+            Encode(transaction, ref writer);
+        }
+        else
+        {
+            EncodeKeys(transaction.NonceKeys!, ref writer);
+        }
+
         int zeros = calldata.CountZeros();
         return (zeros, length - zeros);
     }

@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -12,11 +14,13 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
@@ -26,6 +30,8 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State.Proofs;
+using Nethermind.State.Repositories;
 using NUnit.Framework;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
@@ -33,6 +39,99 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
 public class EthSimulateTestsBlocksAndTransactions
 {
+    private const string Calls = "\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\"}]";
+
+    [TestCase("{\"blockOverrides\":{\"bogusField\":\"0x1\"}," + Calls + "}", TestName = "Simulate rejects an unknown block override key")]
+    [TestCase("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"balance\":\"0x1\",\"bogusField\":\"0x1\"}}," + Calls + "}", TestName = "Simulate rejects an unknown account override key")]
+    [TestCase("{\"blockOverrides\":{\"difficulty\":\"0x1\"}," + Calls + "}", TestName = "Simulate rejects a difficulty override")]
+    [TestCase("{\"blockOverrides\":{\"number\":\"0x80\",\"Number\":\"0x81\"}," + Calls + "}", TestName = "Simulate rejects two block override keys for one field")]
+    [TestCase("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x00\",\"Code\":\"0x01\"}}," + Calls + "}", TestName = "Simulate rejects two account override keys for one field")]
+    public async Task Simulate_rejects_override_keys_it_does_not_support(string blockStateCall)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson(blockStateCall), "latest");
+
+        Assert.That(ErrorCode(response), Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
+    [TestCase("{\"blockOverrides\":{\"Number\":\"0x80\"}," + Calls + "}", TestName = "Simulate takes a block override key in another case")]
+    [TestCase("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"Code\":\"0x00\"}}," + Calls + "}", TestName = "Simulate takes an account override key in another case")]
+    [TestCase("{\"blockOverrides\":{\"number\":\"0x80\",\"time\":\"0xffffffff\",\"gasLimit\":\"0x1c9c380\",\"feeRecipient\":\"0xc200000000000000000000000000000000000000\",\"prevRandao\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"baseFeePerGas\":\"0x0\",\"blobBaseFee\":\"0x1\",\"withdrawals\":[]},\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"nonce\":\"0x1\",\"balance\":\"0x1\",\"code\":\"0x00\",\"stateDiff\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}},\"0xc200000000000000000000000000000000000000\":{\"state\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}},\"0x0000000000000000000000000000000000000001\":{\"movePrecompileToAddress\":\"0xc400000000000000000000000000000000000000\"}}," + Calls + "}", TestName = "Simulate takes every supported override key")]
+    public async Task Simulate_takes_override_keys_it_supports(string blockStateCall)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson(blockStateCall), "latest");
+
+        Assert.That(ErrorCode(response), Is.Null, response);
+    }
+
+    [Test]
+    public async Task Simulate_processes_withdrawal_overrides()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+        // PUSH20 0xc3.. BALANCE PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+        const string balanceOfRecipient = "0x73c30000000000000000000000000000000000000031600052602060" + "00f3";
+        const string withdrawal = "{\"index\":\"0x0\",\"validatorIndex\":\"0x1\",\"address\":\"0xc300000000000000000000000000000000000000\",\"amount\":\"0x2\"}";
+        JsonElement payload = SimulatePayloadJson(
+            "{\"blockOverrides\":{\"withdrawals\":[" + withdrawal + "]},\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"" + balanceOfRecipient + "\"}}}," +
+            "{" + Calls + "}");
+
+        string response = await chain.TestEthRpc("eth_simulateV1", payload, "latest");
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement blocks = document.RootElement.GetProperty("result");
+        Hash256 expectedRoot = new WithdrawalTrie([new Withdrawal { Index = 0, ValidatorIndex = 1, Address = new Address("0xc300000000000000000000000000000000000000"), AmountInGwei = 2 }]).RootHash;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks[0].GetProperty("withdrawals").GetArrayLength(), Is.EqualTo(1), response);
+            Assert.That(blocks[0].GetProperty("withdrawalsRoot").GetString(), Is.EqualTo(expectedRoot.ToString()), response);
+            Assert.That(blocks[1].GetProperty("withdrawalsRoot").GetString(), Is.EqualTo(Keccak.EmptyTreeHash.ToString()), response);
+            Assert.That(blocks[1].GetProperty("calls")[0].GetProperty("returnData").GetString(), Is.EqualTo("0x" + 2_000_000_000UL.ToString("x64")), response);
+        }
+    }
+
+    [TestCase("debug_simulateV1")]
+    [TestCase("trace_simulateV1")]
+    public async Task Debug_and_trace_simulate_reject_an_unknown_override_key(string method)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        JsonElement payload = SimulatePayloadJson("{\"blockOverrides\":{\"bogusField\":\"0x1\"}," + Calls + "}");
+
+        string response = method == "debug_simulateV1"
+            ? await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, payload, "latest")
+            : await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, payload, "latest");
+
+        Assert.That(ErrorCode(response), Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
+    [Test]
+    public async Task Eth_call_still_ignores_an_unknown_account_override_key()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        JsonElement call = ParseJson("{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\"}");
+        JsonElement stateOverride = ParseJson("{\"0xc100000000000000000000000000000000000000\":{\"balance\":\"0x1\",\"bogusField\":\"0x1\"}}");
+
+        string response = await chain.TestEthRpc("eth_call", call, "latest", stateOverride);
+
+        Assert.That(ErrorCode(response), Is.Null, response);
+    }
+
+    private static JsonElement SimulatePayloadJson(string blockStateCall) => ParseJson($"{{\"blockStateCalls\":[{blockStateCall}]}}");
+
+    private static JsonElement ParseJson(string json)
+    {
+        using JsonDocument document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
+    }
+
+    private static int? ErrorCode(string response)
+    {
+        using JsonDocument document = JsonDocument.Parse(response);
+        return document.RootElement.TryGetProperty("error", out JsonElement error) ? error.GetProperty("code").GetInt32() : null;
+    }
+
     private const ulong StateGasBlockLimit = 200_000;
     private const ulong RemainingStateGasAfterSstore = StateGasBlockLimit - (ulong)GasCostOf.SSetState;
     private const ulong TwoSstoreRequestGasCap = 200_000;
@@ -195,12 +294,18 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
-        Assert.That((bool)result.Result, Is.EqualTo(true), result.Result.ToString());
-        Assert.That(data, Has.Count.EqualTo(7));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)result.Result, Is.EqualTo(true), result.Result.ToString());
+            Assert.That(data, Has.Count.EqualTo(7));
+        }
 
         SimulateBlockResult<SimulateCallResult> blockResult = data.Last();
-        Assert.That(blockResult.Calls.Select(static c => c.Status), Is.EqualTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success }));
-        Assert.That(blockResult.Calls.All(static c => c.MaxUsedGas.HasValue && c.GasUsed.HasValue && c.MaxUsedGas.Value >= c.GasUsed.Value), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockResult.Calls.Select(static c => c.Status), Is.EqualTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success }));
+            Assert.That(blockResult.Calls.All(static c => c.MaxUsedGas.HasValue && c.GasUsed.HasValue && c.MaxUsedGas.Value >= c.GasUsed.Value), Is.True);
+        }
 
     }
 
@@ -214,9 +319,12 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That((bool)result.Result, Is.False);
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
-        Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.EmptyBlockStateCalls));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)result.Result, Is.False);
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.EmptyBlockStateCalls));
+        }
     }
 
     [Test]
@@ -236,8 +344,11 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That((bool)result.Result, Is.False);
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ClientLimitExceededError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)result.Result, Is.False);
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ClientLimitExceededError));
+        }
     }
 
     [Test]
@@ -280,6 +391,187 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success), callResult.Error?.Message);
     }
 
+    private static IEnumerable<TestCaseData> SerializedBeaconRootCases()
+    {
+        foreach (IReleaseSpec spec in new IReleaseSpec[] { Paris.Instance, Shanghai.Instance, Cancun.Instance, Amsterdam.Instance })
+        {
+            foreach ((string name, string json, Hash256 root) in new[]
+            {
+                ("nonnull", $"{{\"beaconRoot\":\"{TestItem.KeccakA}\"}}", TestItem.KeccakA),
+                ("null", "{\"beaconRoot\":null}", Hash256.Zero),
+                ("case_null", "{\"BEACONROOT\":null}", Hash256.Zero),
+                ("escaped_null", "{\"bea\\u0063onRoot\":null}", Hash256.Zero),
+                ("case_nonnull", $"{{\"BEACONROOT\":\"{TestItem.KeccakA}\"}}", TestItem.KeccakA),
+                ("escaped_nonnull", $"{{\"bea\\u0063onRoot\":\"{TestItem.KeccakA}\"}}", TestItem.KeccakA),
+                ("omitted", "{}", Hash256.Zero),
+                ("zero", $"{{\"beaconRoot\":\"{Hash256.Zero}\"}}", Hash256.Zero)
+            })
+                yield return new TestCaseData(spec, json, spec.IsBeaconBlockRootAvailable ? root : null)
+                    .SetName($"Simulate_serialized_beacon_root_{spec.Name}_{name}");
+        }
+    }
+
+    [TestCaseSource(nameof(SerializedBeaconRootCases))]
+    public async Task Simulate_serialized_beacon_root(IReleaseSpec spec, string overrideJson, Hash256? expectedRoot)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new GenesisOnlyRpcBlockchain()).Build(new TestSpecProvider(spec));
+        ulong timestamp = chain.BlockFinder.Head!.Timestamp + 12;
+        string call = $"\"calls\":[{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{Eip4788Constants.BeaconRootsAddress}\",\"gas\":\"0x186a0\",\"gasPrice\":\"0x0\",\"input\":\"{new UInt256(timestamp).ToBigEndian().ToHexString(true)}\"}}]";
+        string state = $"\"stateOverrides\":{{\"{Eip4788Constants.BeaconRootsAddress}\":{{\"code\":\"{Eip4788TestConstants.Code.ToHexString(true)}\"}}}}";
+        JsonElement block = await Simulate(overrideJson);
+        JsonElement baseline = await Simulate("{}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.TryGetProperty("parentBeaconBlockRoot", out JsonElement root), Is.EqualTo(spec.IsBeaconBlockRootAvailable));
+            if (spec.IsBeaconBlockRootAvailable)
+            {
+                Assert.That(root.GetString(), Is.EqualTo(expectedRoot!.ToString()));
+                JsonElement result = block.GetProperty("calls")[0];
+                Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("0x1"), "system call precedes transaction");
+                Assert.That(result.GetProperty("returnData").GetString(), Is.EqualTo(expectedRoot.ToString()), "EIP-4788 storage");
+            }
+            Assert.That(block.GetProperty("hash").GetString() == baseline.GetProperty("hash").GetString(),
+                Is.EqualTo(expectedRoot is null || expectedRoot == Hash256.Zero), "only an effective nonzero beacon root changes the block hash");
+        }
+
+        async Task<JsonElement> Simulate(string json)
+        {
+            string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson($"{{\"blockOverrides\":{json},{state},{call}}}"), "latest");
+            using JsonDocument document = JsonDocument.Parse(response);
+            Assert.That(ErrorCode(response), Is.Null, response);
+            return document.RootElement.GetProperty("result")[0].Clone();
+        }
+    }
+
+    [Test]
+    public async Task Simulate_rejects_invalid_beacon_root_overrides(
+        [Values("{\"beaconRoot\":\"0x01\"}", "{\"beaconRoot\":true}", "{\"beaconRoot\":null,\"BEACONROOT\":null}")] string overrideJson)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson($"{{\"blockOverrides\":{overrideJson},{Calls}}}"), "latest");
+        Assert.That(ErrorCode(response), Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
+    private static IEnumerable<TestCaseData> SimulationOverrideCases()
+    {
+        foreach ((IReleaseSpec spec, IReleaseSpec? previousSpec) in new (IReleaseSpec, IReleaseSpec?)[]
+        {
+            (Paris.Instance, null), (Shanghai.Instance, Paris.Instance),
+            (Cancun.Instance, Shanghai.Instance), (Amsterdam.Instance, Osaka.Instance)
+        })
+        {
+            foreach ((string name, string json, Hash256 root, bool hasWithdrawal) in new[]
+            {
+                ("nonempty", $"{{\"beaconRoot\":\"{TestItem.KeccakA}\",\"withdrawals\":[{{\"index\":\"0x0\",\"validatorIndex\":\"0x0\",\"address\":\"{TestItem.AddressD}\",\"amount\":\"0x7\"}}]}}", TestItem.KeccakA, spec.WithdrawalsEnabled),
+                ("omitted", "{}", Hash256.Zero, false),
+                ("null", "{\"beaconRoot\":null,\"withdrawals\":null}", Hash256.Zero, false),
+                ("empty", $"{{\"beaconRoot\":\"{Hash256.Zero}\",\"withdrawals\":[]}}", Hash256.Zero, false)
+            })
+            {
+                yield return new TestCaseData(spec, null, json, root, hasWithdrawal)
+                    .SetName($"Simulation_consumes_beacon_root_and_withdrawals_{spec.Name}_{name}");
+                if (previousSpec is not null)
+                    yield return new TestCaseData(spec, previousSpec, json, root, hasWithdrawal)
+                        .SetName($"Simulation_consumes_beacon_root_and_withdrawals_crossing_{spec.Name}_{name}");
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(SimulationOverrideCases))]
+    public async Task Simulation_consumes_beacon_root_and_withdrawals(
+        IReleaseSpec spec, IReleaseSpec? previousSpec, string overrideJson, Hash256 expectedRoot, bool hasWithdrawal)
+    {
+        const ulong forkTimestamp = 2_000_000_000;
+        ISpecProvider provider = new TestSpecProvider(spec);
+        if (previousSpec is not null)
+        {
+            CustomSpecProvider crossingProvider = new(
+                ((ForkActivation)0, previousSpec),
+                (ForkActivation.TimestampOnly(forkTimestamp), spec));
+            crossingProvider.UpdateMergeTransitionInfo(0, 0);
+            provider = crossingProvider;
+        }
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new GenesisOnlyRpcBlockchain()).Build(provider);
+        Block canonicalHead = chain.BlockFinder.Head!;
+        ulong timestamp = previousSpec is not null ? forkTimestamp : canonicalHead.Timestamp + 12;
+        Address recipient = TestItem.AddressD;
+        Address reader = TestItem.AddressC;
+        Withdrawal withdrawal = new() { Index = 0, ValidatorIndex = 0, Address = recipient, AmountInGwei = 7 };
+        BlockOverride overrides = new EthereumJsonSerializer().Deserialize<BlockOverride>(overrideJson)!;
+        overrides.Time = timestamp;
+        TransactionForRpc[] calls =
+        [
+            new LegacyTransactionForRpc { From = TestItem.AddressA, To = reader, Gas = 100_000, GasPrice = 0 },
+            new LegacyTransactionForRpc { From = TestItem.AddressA, To = Eip4788Constants.BeaconRootsAddress, Gas = 100_000, GasPrice = 0, Input = new UInt256(timestamp).ToBigEndian() },
+            new LegacyTransactionForRpc { From = TestItem.AddressA, To = Eip4788Constants.BeaconRootsAddress, Gas = 100_000, GasPrice = 0, Input = new UInt256(timestamp + 12).ToBigEndian() }
+        ];
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = overrides,
+                    StateOverrides = new()
+                    {
+                        [recipient] = new() { Balance = 0 },
+                        [reader] = new() { Code = Bytes.FromHexString($"73{recipient.ToString()[2..]}3160005260206000f3") },
+                        [Eip4788Constants.BeaconRootsAddress] = new() { Code = Eip4788TestConstants.Code }
+                    },
+                    Calls = calls
+                },
+                new() { BlockOverrides = new() { Time = timestamp + 12, BeaconRoot = TestItem.KeccakB }, Calls = calls }
+            ]
+        };
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.ToString());
+        SimulateBlockResult<SimulateCallResult> first = result.Data[0];
+        SimulateCallResult[] firstCalls = first.Calls.ToArray();
+        SimulateCallResult[] nextCalls = result.Data[1].Calls.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.ParentBeaconBlockRoot, Is.EqualTo(spec.IsBeaconBlockRootAvailable ? expectedRoot : null), "header root");
+            Assert.That(first.Withdrawals?.Length, Is.EqualTo(spec.WithdrawalsEnabled ? (hasWithdrawal ? 1 : 0) : (int?)null), "block withdrawals");
+            Assert.That(firstCalls[0].ReturnData, Is.EqualTo(UInt256.Zero.ToBigEndian()), "withdrawals follow transactions");
+            Assert.That(nextCalls[0].ReturnData, Is.EqualTo(new UInt256(hasWithdrawal ? 7_000_000_000UL : 0UL).ToBigEndian()), "withdrawals fund next block");
+            if (hasWithdrawal)
+            {
+                Withdrawal actual = first.Withdrawals![0];
+                Assert.That((actual.Index, actual.ValidatorIndex, actual.Address, actual.AmountInGwei),
+                    Is.EqualTo((withdrawal.Index, withdrawal.ValidatorIndex, withdrawal.Address, withdrawal.AmountInGwei)));
+                Assert.That(first.WithdrawalsRoot, Is.EqualTo(WithdrawalTrie.CalculateRoot([withdrawal])));
+            }
+            if (spec.IsBeaconBlockRootAvailable)
+            {
+                Assert.That(firstCalls[1].Status, Is.EqualTo(1), "beacon root system call precedes transactions");
+                Assert.That(firstCalls[1].ReturnData, Is.EqualTo(expectedRoot.BytesToArray()), "beacon root storage");
+                Assert.That(nextCalls[1].ReturnData, Is.EqualTo(expectedRoot.BytesToArray()), "beacon root persists");
+                Assert.That(nextCalls[2].Status, Is.EqualTo(1));
+                Assert.That(nextCalls[2].ReturnData, Is.EqualTo(TestItem.KeccakB.BytesToArray()), "next block system update");
+            }
+            Assert.That(chain.BlockFinder.Head!.Hash, Is.EqualTo(canonicalHead.Hash));
+            Assert.That(chain.ReadOnlyState.GetBalance(recipient), Is.EqualTo(UInt256.Zero));
+        }
+
+        AssertSimulationRequestIsolation(chain, payload, spec, recipient);
+    }
+
+    private static void AssertSimulationRequestIsolation(
+        TestRpcBlockchain chain, SimulatePayload<TransactionForRpc> payload, IReleaseSpec spec, Address recipient)
+    {
+        payload.BlockStateCalls![0].StateOverrides!.Remove(recipient);
+        payload.BlockStateCalls[0].BlockOverrides!.Withdrawals = null;
+        payload.BlockStateCalls[0].BlockOverrides!.BeaconRoot = null;
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> isolated = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        Assert.That(isolated.Result.ResultType, Is.EqualTo(Core.ResultType.Success), isolated.Result.ToString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isolated.Data[1].Calls.First().ReturnData, Is.EqualTo(UInt256.Zero.ToBigEndian()), "withdrawals do not leak across requests");
+            if (spec.IsBeaconBlockRootAvailable)
+                Assert.That(isolated.Data[0].Calls.ElementAt(1).ReturnData, Is.EqualTo(Hash256.Zero.BytesToArray()), "beacon roots do not leak across requests");
+        }
+    }
+
     private sealed class GenesisOnlyRpcBlockchain : TestRpcBlockchain
     {
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
@@ -307,8 +599,11 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulateBlockResult<SimulateCallResult> simulated =
             chain.EthRpcModule.eth_simulateV1(payload, new BlockParameter(parent.Number)).Data[0];
 
-        Assert.That(simulated.ParentHash, Is.EqualTo(parent.Hash));
-        Assert.That(simulated.Number, Is.EqualTo(parent.Number + 1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(simulated.ParentHash, Is.EqualTo(parent.Hash));
+            Assert.That(simulated.Number, Is.EqualTo(parent.Number + 1));
+        }
     }
 
     [Test]
@@ -323,16 +618,116 @@ public class EthSimulateTestsBlocksAndTransactions
 
         Block previousHead = chain.BlockTree.Head!;
         Block realHead = await chain.AddBlock();
-        Assert.That(realHead.Number, Is.EqualTo(previousHead.Number + 1));
-        Assert.That(first.Data![0].Number, Is.EqualTo(realHead.Number));
-        Assert.That(first.Data![0].Hash, Is.Not.EqualTo(realHead.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(realHead.Number, Is.EqualTo(previousHead.Number + 1));
+            Assert.That(first.Data![0].Number, Is.EqualTo(realHead.Number));
+            Assert.That(first.Data![0].Hash, Is.Not.EqualTo(realHead.Hash));
+        }
 
         SimulatePayload<TransactionForRpc> secondPayload = new() { BlockStateCalls = [new()] };
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> second =
             chain.EthRpcModule.eth_simulateV1(secondPayload, BlockParameter.Latest);
-        Assert.That(second.Result.ResultType, Is.EqualTo(Core.ResultType.Success), second.Result.Error);
-        Assert.That(second.Data![0].ParentHash, Is.EqualTo(realHead.Hash));
-        Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(realHead.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second.Result.ResultType, Is.EqualTo(Core.ResultType.Success), second.Result.Error);
+            Assert.That(second.Data![0].ParentHash, Is.EqualTo(realHead.Hash));
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(realHead.Hash));
+        }
+    }
+
+    /// <summary>
+    /// A node whose head is far below its best known level (e.g. snap sync once headers reach genesis) holds
+    /// contiguous canonical levels above the head. Starting a simulation must not rewrite every one of them into
+    /// the env's in-memory block info store, and the levels must not change the simulation result.
+    /// </summary>
+    [Test]
+    public async Task Test_eth_simulateV1_does_not_rewrite_canonical_levels_above_head()
+    {
+        const int levelsAboveHead = 2_048;
+        BlockInfosDbWithWriteCountingOverlays blockInfosDb = new();
+        using TestRpcBlockchain chain = await TestRpcBlockchain
+            .ForTest(new TestRpcBlockchain())
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(London.Instance))
+                .AddKeyedSingleton<IDb>(DbNames.BlockInfos, blockInfosDb));
+
+        ulong headNumber = chain.BlockTree.Head!.Number;
+        ChainLevelInfoRepository levels = new(blockInfosDb);
+        for (ulong number = headNumber + 1; number <= headNumber + levelsAboveHead; number++)
+        {
+            levels.PersistLevel(number, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, UInt256.One)));
+        }
+
+        long writesBefore = blockInfosDb.OverlayWrites;
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> withLevelsAboveHead =
+            chain.EthRpcModule.eth_simulateV1(CreateTransfersAcrossGapPayload(chain), BlockParameter.Latest);
+        long overlayWrites = blockInfosDb.OverlayWrites - writesBefore;
+
+        for (ulong number = headNumber + 1; number <= headNumber + levelsAboveHead; number++)
+        {
+            levels.Delete(number);
+        }
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> withoutLevelsAboveHead =
+            chain.EthRpcModule.eth_simulateV1(CreateTransfersAcrossGapPayload(chain), BlockParameter.Latest);
+
+        EthereumJsonSerializer serializer = new();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(withLevelsAboveHead.Result.ResultType, Is.EqualTo(Core.ResultType.Success), withLevelsAboveHead.Result.Error);
+            Assert.That(withLevelsAboveHead.Data, Has.Count.EqualTo(10));
+            // Simulated levels and the overlay head are written; the levels above them are not.
+            Assert.That(overlayWrites, Is.LessThan(64), "simulation rewrote the canonical levels above the head");
+            Assert.That(serializer.Serialize(withLevelsAboveHead.Data), Is.EqualTo(serializer.Serialize(withoutLevelsAboveHead.Data)));
+        }
+    }
+
+    private static SimulatePayload<TransactionForRpc> CreateTransfersAcrossGapPayload(TestRpcBlockchain chain)
+    {
+        ulong nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        Transaction first = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+        Transaction second = GetTransferTxData(nonceA + 1, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+
+        return new()
+        {
+            BlockStateCalls =
+            [
+                new() { Calls = [ToRpcForInput(first)] },
+                new()
+                {
+                    BlockOverrides = new BlockOverride { Number = chain.BlockTree.Head!.Number + 10 },
+                    Calls = [ToRpcForInput(second)]
+                }
+            ]
+        };
+    }
+
+    /// <summary>Counts writes into the in-memory stores of every read-only view created over this db.</summary>
+    private sealed class BlockInfosDbWithWriteCountingOverlays : TestMemDb, IDb
+    {
+        private long _overlayWrites;
+
+        public long OverlayWrites => Interlocked.Read(ref _overlayWrites);
+
+        IReadOnlyDb IDb.CreateReadOnly(bool createInMemWriteStore) =>
+            new WriteCountingReadOnlyDb(this, createInMemWriteStore, () => Interlocked.Increment(ref _overlayWrites));
+    }
+
+    private sealed class WriteCountingReadOnlyDb(IDb wrappedDb, bool createInMemWriteStore, Action onWrite)
+        : ReadOnlyDb(wrappedDb, createInMemWriteStore), IWriteOnlyKeyValueStore
+    {
+        void IWriteOnlyKeyValueStore.Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags)
+        {
+            onWrite();
+            Set(key, value, flags);
+        }
+
+        void IWriteOnlyKeyValueStore.PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags)
+        {
+            onWrite();
+            PutSpan(key, value, flags);
+        }
     }
 
     private sealed class PausedDeferredBlockDataWriter : IDeferredBlockDataWriter
@@ -438,8 +833,11 @@ public class EthSimulateTestsBlocksAndTransactions
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
+        }
     }
 
 
@@ -492,13 +890,19 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
 
         SimulateCallResult callResult = result.Data.First().Calls.First();
-        Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
-        Assert.That(callResult.ReturnData, Is.Not.Null, "gas probe call should return the remaining-gas result");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
+            Assert.That(callResult.ReturnData, Is.Not.Null, "gas probe call should return the remaining-gas result");
+        }
 
         if (expectCapped)
         {
-            Assert.That(callResult.MaxUsedGas, Is.Not.Null);
-            Assert.That(callResult.GasUsed, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(callResult.MaxUsedGas, Is.Not.Null);
+                Assert.That(callResult.GasUsed, Is.Not.Null);
+            }
             ulong maxUsedGas = callResult.MaxUsedGas ?? 0;
             ulong gasUsed = callResult.GasUsed ?? 0;
             Assert.That(maxUsedGas, Is.GreaterThanOrEqualTo(gasUsed));
@@ -539,9 +943,9 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     [Test]
-    public async Task Test_eth_simulate_log_index_increments_across_transactions()
+    public async Task Test_eth_simulate_log_index_increments_across_transactions([Values] bool eip8116Enabled)
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = eip8116Enabled });
 
         Address contractWith2Logs = new("0xc200000000000000000000000000000000000000");
         Address contractWith1Log = new("0xc300000000000000000000000000000000000000");
@@ -591,12 +995,16 @@ public class EthSimulateTestsBlocksAndTransactions
 
         Log[] tx0Logs = calls[0].Logs.ToArray();
         Assert.That(tx0Logs, Has.Length.EqualTo(2));
-        Assert.That(tx0Logs[0].LogIndex, Is.EqualTo(0ul));
-        Assert.That(tx0Logs[1].LogIndex, Is.EqualTo(1ul));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx0Logs[0].LogIndex, Is.EqualTo(0ul));
+            Assert.That(tx0Logs[1].LogIndex, Is.EqualTo(1ul));
+        }
 
         Log[] tx1Logs = calls[1].Logs.ToArray();
         Assert.That(tx1Logs, Has.Length.EqualTo(1));
-        Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(2ul));
+        // EIP-8116 counts logIndex within the receipt.
+        Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(eip8116Enabled ? 0ul : 2ul));
     }
 
     [Test]
@@ -631,7 +1039,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     },
                     Calls =
                     [
-                        // As in geth, logs a revert drops still consume their log indices.
+                        // A reverted transaction emits no logs, so it must not consume log indices either.
                         new LegacyTransactionForRpc { From = TestItem.AddressA, To = reverter, Gas = 200_000, GasPrice = 0 },
                         new LegacyTransactionForRpc { From = TestItem.AddressA, To = caller, Gas = 200_000, GasPrice = 0 }
                     ]
@@ -646,16 +1054,63 @@ public class EthSimulateTestsBlocksAndTransactions
 
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
         SimulateCallResult[] calls = result.Data[0].Calls.ToArray();
-        Assert.That(calls[0].Status, Is.EqualTo(StatusCode.Failure));
-        Assert.That(calls[0].Logs, Is.Empty);
-        Assert.That(calls[1].Status, Is.EqualTo(StatusCode.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls[0].Status, Is.EqualTo(StatusCode.Failure));
+            Assert.That(calls[0].Logs, Is.Empty);
+            Assert.That(calls[1].Status, Is.EqualTo(StatusCode.Success));
+        }
 
         Log[] logs = calls[1].Logs.ToArray();
         Address transferSender = eip7708 ? TransferLog.Sender : TransferLog.Erc20Sender;
-        Assert.That(logs.Select(static l => l.Address), Is.EqualTo(new[] { transferSender, logger, caller }));
-        Assert.That(logs[0].Topics, Is.EqualTo(new[] { TransferLog.TransferSignature, caller.ToHash().ToHash256(), logger.ToHash().ToHash256() }));
-        Assert.That(new UInt256(logs[0].Data, isBigEndian: true), Is.EqualTo((UInt256)2));
-        Assert.That(logs.Select(static l => l.LogIndex), Is.EqualTo(new ulong[] { 5, 6, 7 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs.Select(static l => l.Address), Is.EqualTo(new[] { transferSender, logger, caller }));
+            Assert.That(logs[0].Topics, Is.EqualTo(new[] { TransferLog.TransferSignature, caller.ToHash().ToHash256(), logger.ToHash().ToHash256() }));
+            Assert.That(new UInt256(logs[0].Data, isBigEndian: true), Is.EqualTo((UInt256)2));
+            Assert.That(logs.Select(static l => l.LogIndex), Is.EqualTo(new ulong[] { 0, 1, 2 }));
+        }
+    }
+
+    [Test]
+    public async Task Test_eth_simulateV1_failed_create_uses_no_log_index()
+    {
+        Address logger = new("0xc600000000000000000000000000000000000000");
+        const string Log0 = "60006000a0";
+        // LOG0, then return the code 0xEF, which EIP-3541 rejects.
+        string initCode = Log0 + "60ef60005360016000f3";
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 100.Ether } },
+                        { logger, new AccountOverride { Code = Bytes.FromHexString(Log0 + "00") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, Input = Bytes.FromHexString(initCode), Gas = 200_000, GasPrice = 0 },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = logger, Gas = 200_000, GasPrice = 0 }
+                    ]
+                }
+            ]
+        };
+
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(new OverridableReleaseSpec(London.Instance));
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+        SimulateCallResult[] calls = result.Data[0].Calls.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls[0].Status, Is.EqualTo(StatusCode.Failure));
+            Assert.That(calls[0].Logs, Is.Empty);
+            Assert.That(calls[1].Logs.Select(static l => l.LogIndex), Is.EqualTo(new ulong[] { 0 }));
+        }
     }
 
     [TestCase(
@@ -672,8 +1127,123 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode));
-        Assert.That(result.Result.Error, Is.EqualTo(expectedMessage));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode));
+            Assert.That(result.Result.Error, Is.EqualTo(expectedMessage));
+        }
+    }
+
+    [Test]
+    public async Task eth_simulateV1_accepts_null_account_override([Values("null", "{}")] string accountOverride)
+    {
+        string payloadJson = $$"""{"blockStateCalls":[{"stateOverrides":{"0x0000000000000000000000000000000000000010":{{accountOverride}}},"calls":[{"from":"{{TestItem.AddressA}}","to":"0x0000000000000000000000000000000000000010"}]}]}""";
+        SimulatePayload<TransactionForRpc> payload = new EthereumJsonSerializer().Deserialize<SimulatePayload<TransactionForRpc>>(payloadJson)!;
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+#pragma warning disable NUnit2045 // The operation must succeed before inspecting its result.
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+#pragma warning restore NUnit2045
+        Assert.That(result.Data, Has.Count.EqualTo(1));
+    }
+
+    // PUSH1 0, PUSH1 0, PUSH1 0, CREATE, PUSH1 0, MSTORE, PUSH1 32, PUSH1 0, RETURN: returns the created address, or zero on a collision.
+    private static readonly byte[] CreateAndReturnAddress = [0x60, 0x00, 0x60, 0x00, 0x60, 0x00, 0xf0, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3];
+
+    /// <remarks>On Mainnet 0x8398…8462 was created by 0x9ca2…9f79 at nonce 0, so a factory placed there collides with it
+    /// exactly when EIP-8253 has bumped its nonce: in the simulated fork block, and not in the block after.</remarks>
+    [Test]
+    public async Task eth_simulateV1_applies_the_eip8253_bump_only_in_the_simulated_fork_block()
+    {
+        Address target = Eip8253TestData.MainnetAccounts[5];
+        Address creator = new("0x9ca228250f9d8f86c23690074c2b96d5f5479f79");
+        TestSpecProvider specProvider = new(Bogota.Instance)
+        {
+            NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true, Eip8253Accounts = [target] },
+            ForkOnBlockNumber = ulong.MaxValue,
+            ChainId = BlockchainIds.Mainnet,
+            AllowTestChainOverride = false,
+        };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+        specProvider.ForkOnBlockNumber = chain.BlockTree.Head!.Number + 1;
+
+        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = [CreateAtTarget(), CreateAtTarget()] };
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        byte[] expected = new byte[32];
+        target.Bytes.CopyTo(expected.AsSpan(12));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data[0].Number, Is.EqualTo(specProvider.ForkOnBlockNumber), "precondition: the first simulated block is the fork block");
+            Assert.That(result.Data[0].Calls.Single().ReturnData, Is.EqualTo(new byte[32]), "the fork block bumps the target, so CREATE collides");
+            Assert.That(result.Data[1].Calls.Single().ReturnData, Is.EqualTo(expected), "the next block does not bump again");
+        }
+
+        BlockStateCall<TransactionForRpc> CreateAtTarget() => new()
+        {
+            StateOverrides = new Dictionary<Address, AccountOverride>
+            {
+                { creator, new AccountOverride { Code = CreateAndReturnAddress, Nonce = 0 } },
+                { target, new AccountOverride { Nonce = 0, Balance = 1.Ether } },
+                { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
+            },
+            Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = creator, Gas = 1_000_000 }],
+        };
+    }
+
+    /// <remarks>
+    /// EIP-7709 serves <c>BLOCKHASH</c> from the simulated EIP-2935 storage, so a state override of the history
+    /// contract changes the result; without it the hash comes from the block tree.
+    /// </remarks>
+    [Test]
+    public async Task eth_simulateV1_blockhash_follows_history_contract_overrides_only_under_eip7709([Values] bool eip7709)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(new OverridableReleaseSpec(Prague.Instance) { IsEip7709Enabled = eip7709 });
+        // Not the head, whose slot the simulated block's own EIP-2935 system call overwrites.
+        ulong requestedBlock = chain.BlockFinder.Head!.Number - 1;
+        Hash256 canonicalHash = chain.BlockTree.FindHeader(requestedBlock)!.Hash!;
+        Address contract = TestItem.AddressC;
+        byte[] code = Prepare.EvmCode
+            .PushData(requestedBlock)
+            .Op(Instruction.BLOCKHASH)
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData(32)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        {
+                            Eip2935Constants.BlockHashHistoryAddress,
+                            new AccountOverride { StateDiff = new() { [requestedBlock % Eip2935Constants.RingBufferSize] = TestItem.KeccakA } }
+                        },
+                        { contract, new AccountOverride { Code = code } },
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
+                    },
+                    Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = contract, Gas = 100_000 }],
+                },
+            ],
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+            Assert.That(new Hash256(result.Data[0].Calls.Single().ReturnData!), Is.EqualTo(eip7709 ? TestItem.KeccakA : canonicalHash));
+        }
     }
 
     // Minimal bytecode: PREVRANDAO PUSH1 0x00 MSTORE PUSH1 0x20 PUSH1 0x00 RETURN
@@ -732,10 +1302,65 @@ public class EthSimulateTestsBlocksAndTransactions
 
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
         SimulateCallResult callResult = result.Data.First().Calls.First();
-        Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
-        Assert.That(callResult.ReturnData, Is.Not.Null);
-        Assert.That(callResult.ReturnData!.Length, Is.EqualTo(32));
-        Assert.That(new Hash256(callResult.ReturnData), Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
+            Assert.That(callResult.ReturnData, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callResult.ReturnData!.Length, Is.EqualTo(32));
+            Assert.That(new Hash256(callResult.ReturnData), Is.EqualTo(expected));
+        }
+    }
+
+    /// <summary>
+    /// On a chain that merges by terminal total difficulty without pinning the terminal block (Mainnet, Sepolia), the
+    /// merge block number stays unknown. A block simulated on top of the terminal PoW block is post-merge (EIP-3675), so
+    /// PREVRANDAO reads <c>blockOverrides.prevRandao</c> rather than the difficulty the block inherits from its parent.
+    /// </summary>
+    [TestCase("0xc300000000000000000000000000000000000000000000000000000000000001", TestName = "prevrandao_on_terminal_block_returns_overridden_value")]
+    [TestCase(null, TestName = "prevrandao_on_terminal_block_without_override_returns_zero")]
+    public async Task eth_simulateV1_prevrandao_on_terminal_block_of_chain_merged_by_ttd(string? overrideHex)
+    {
+        TestSpecProvider specProvider = new(Cancun.Instance);
+        TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+        BlockHeader head = chain.BlockFinder.Head!.Header;
+        specProvider.TerminalTotalDifficulty = head.TotalDifficulty;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specProvider.MergeBlockNumber, Is.Null);
+            Assert.That(head.Difficulty, Is.Not.EqualTo(UInt256.Zero));
+        }
+
+        Hash256? overrideHash = overrideHex is not null ? new Hash256(overrideHex) : null;
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = overrideHash is not null ? new BlockOverride { PrevRandao = overrideHash } : null,
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressC, new AccountOverride { Code = PrevRandaoBytecode } },
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressC, Gas = 100_000 }]
+                }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        SimulateCallResult callResult = result.Data.Single().Calls.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
+            Assert.That(new Hash256(callResult.ReturnData!), Is.EqualTo(overrideHash ?? Hash256.Zero));
+        }
     }
 
     // Regression test for https://github.com/NethermindEth/nethermind/issues/8480
@@ -962,15 +1587,14 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
-    /// An explicit <c>gas</c> above EIP-8037's TX_MAX_TOTAL_GAS_LIMIT must be reported as invalid input
-    /// rather than falling through to <c>-32603 Internal error</c>.
+    /// eth_simulateV1 does not apply EIP-8037's TX_MAX_TOTAL_GAS_LIMIT to an explicit <c>gas</c>, with or without validation.
     /// </summary>
     /// <remarks>
     /// Only reachable when the RPC gas cap does not already clamp the request, i.e. when
     /// <c>JsonRpc.GasCap</c> is the "no cap" sentinel <c>0</c> or is itself above the consensus cap.
     /// </remarks>
     [Test]
-    public async Task eth_simulateV1_gas_above_eip8037_total_cap_returns_invalid_input()
+    public async Task eth_simulateV1_runs_gas_above_eip8037_total_cap([Values] bool validation)
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Amsterdam.Instance);
         chain.RpcConfig.GasCap = 0;
@@ -982,7 +1606,7 @@ public class EthSimulateTestsBlocksAndTransactions
                 new()
                 {
                     // Above the cap so the block-level EIP-8037 inclusion check cannot reject first.
-                    BlockOverrides = new BlockOverride { GasLimit = Eip8037Constants.TxMaxTotalGasLimit + 1_000_000 },
+                    BlockOverrides = new BlockOverride { GasLimit = Eip8037Constants.TxMaxTotalGasLimit + 1_000_000, BaseFeePerGas = 0 },
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
                         { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
@@ -1000,18 +1624,16 @@ public class EthSimulateTestsBlocksAndTransactions
                     ]
                 }
             ],
-            Validation = true
+            Validation = validation
         };
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
-            Assert.That(result.Result!.Error, Does.Contain(
-                TxErrorMessages.TxGasLimitCapExceeded(Eip8037Constants.TxMaxTotalGasLimit + 1, Eip8037Constants.TxMaxTotalGasLimit)));
-        }
+#pragma warning disable NUnit2045 // The operation must succeed before accessing its result.
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+#pragma warning restore NUnit2045
+        Assert.That(result.Data![0].Calls.First().Error, Is.Null);
     }
 
     /// <summary>
@@ -1063,8 +1685,11 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
         Assert.That(result.Data![0].Calls.First().Error, Is.Null);
     }
 
@@ -1111,8 +1736,11 @@ public class EthSimulateTestsBlocksAndTransactions
 
         if (expectedErrorCode is null)
         {
-            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
-            Assert.That(result.Data![0].Calls.First().Error, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+                Assert.That(result.Data![0].Calls.First().Error, Is.Null);
+            }
         }
         else
         {
@@ -1126,9 +1754,12 @@ public class EthSimulateTestsBlocksAndTransactions
         OverridableReleaseSpec spec = new(Amsterdam.Instance);
         TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
         // Pin the EIP-7928 premise so a spec change can't silently turn these into non-BAL tests.
-        Assert.That(spec.BlockLevelAccessListsEnabled, Is.True);
-        // Pin the EIP-8037 premise so a spec change can't silently defang the two-dimensional gas tests.
-        Assert.That(spec.IsEip8037Enabled, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.BlockLevelAccessListsEnabled, Is.True);
+            // Pin the EIP-8037 premise so a spec change can't silently defang the two-dimensional gas tests.
+            Assert.That(spec.IsEip8037Enabled, Is.True);
+        }
         return await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
     }
 
@@ -1173,10 +1804,13 @@ public class EthSimulateTestsBlocksAndTransactions
 
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
         SimulateCallResult[] calls = result.Data![0].Calls.ToArray();
-        Assert.That(calls[0].Error, Is.Null);
-        Assert.That(calls[1].Error, Is.Not.Null);
-        // 321_000 of execution against 183_600 of state; a sum would give 504_600, "state when non-zero" 183_600.
-        Assert.That(result.Data![0].GasUsed, Is.EqualTo(newAccountTransferExecutionGas + callGas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls[0].Error, Is.Null);
+            Assert.That(calls[1].Error, Is.Not.Null);
+            // 321_000 of execution against 183_600 of state; a sum would give 504_600, "state when non-zero" 183_600.
+            Assert.That(result.Data![0].GasUsed, Is.EqualTo(newAccountTransferExecutionGas + callGas));
+        }
     }
 
     /// <summary>
@@ -1217,9 +1851,12 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
-        Assert.That(result.Data![0].Calls.Select(static c => c.Error), Is.All.Null);
-        Assert.That(result.Data![0].GasUsed, Is.EqualTo(GasCostOf.Transaction));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+            Assert.That(result.Data![0].Calls.Select(static c => c.Error), Is.All.Null);
+            Assert.That(result.Data![0].GasUsed, Is.EqualTo(GasCostOf.Transaction));
+        }
     }
 
     /// <summary>
@@ -1260,13 +1897,87 @@ public class EthSimulateTestsBlocksAndTransactions
 
         if (expectedErrorCode is null)
         {
-            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
-            Assert.That(result.Data![0].Calls.First().Error, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+                Assert.That(result.Data![0].Calls.First().Error, Is.Null);
+            }
         }
         else
         {
             Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode.Value));
         }
+    }
+
+    /// <summary>
+    /// EIP-2681: a sender at the maximum nonce fails the request with or without validation, on the EIP-7928 path
+    /// (Amsterdam) and on the sequential one (Osaka), instead of wrapping the nonce to 0.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_rejects_sender_at_max_nonce([Values] bool validation, [Values] bool balPath)
+    {
+        using TestRpcBlockchain chain = balPath ? await BuildAmsterdamBalChain() : await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether, Nonce = ulong.MaxValue } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, Gas = 100_000, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, Gas = 100_000, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = validation
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+    }
+
+    /// <summary>
+    /// A call whose explicit gas is above the gas the block can still include fails the request with
+    /// <c>-38015</c>, with or without validation, instead of running past the block gas limit.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_rejects_explicit_gas_above_remaining_block_gas([Values] bool validation, [Values] bool balPath)
+    {
+        using TestRpcBlockchain chain = balPath ? await BuildAmsterdamBalChain() : await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { GasLimit = 50_000, BaseFeePerGas = 0 },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
+                        { TestItem.AddressB, new AccountOverride { Code = Bytes.FromHexString("0x5b600056") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Gas = 100_000, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = validation
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.BlockGasLimitReached));
     }
 
     /// <summary>
@@ -1310,20 +2021,23 @@ public class EthSimulateTestsBlocksAndTransactions
 
         // With the budget enforced, the first call spends most of it and the second call's clamped
         // gas falls below intrinsic. Without the adapter both calls run unclamped and the request succeeds.
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.IntrinsicGas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.IntrinsicGas));
+        }
     }
 
     private static IEnumerable<TestCaseData> MissingGasBudgetCases()
     {
-        // A GasCap of 0 is "uncapped" (GasCapExtensions.EffectiveGasCap), so the block budget or the
-        // EIP-8037 cap is what binds; 100M sits below the EIP-8037 cap and binds ahead of it.
+        // A GasCap of 0 is "uncapped" (GasCapExtensions.EffectiveGasCap), so the block budget is what binds;
+        // 100M sits below the block budget and binds ahead of it.
         (ulong BlockGasLimit, ulong GasCap, string Dimension)[] budgets =
         [
             (5_000_000UL, 0UL, "a small block's gas budget (execution dimension)"),
             (30_000_000UL, 0UL, "a realistic block's gas budget (state dimension)"),
-            (0x200000000UL, 0UL, "the EIP-8037 cap when the block budget exceeds it"),
-            (0x200000000UL, 100_000_000UL, "the RPC gas cap when it is below the EIP-8037 cap")
+            (0x200000000UL, 0UL, "a block budget above the EIP-8037 total cap"),
+            (0x200000000UL, 100_000_000UL, "the RPC gas cap when it is below the block budget")
         ];
 
         foreach ((ulong blockGasLimit, ulong gasCap, string dimension) in budgets)
@@ -1338,7 +2052,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
     /// <summary>
     /// #12692 (item 1): a no-gas call defaults to the budget still available rather than to the raw
-    /// RPC <c>GasCap</c>, and never resolves above EIP-8037's <c>TX_MAX_TOTAL_GAS_LIMIT</c>.
+    /// RPC <c>GasCap</c>, even above EIP-8037's <c>TX_MAX_TOTAL_GAS_LIMIT</c>, which eth_simulateV1 does not apply.
     /// </summary>
     /// <remarks>
     /// The cases pin the distinct limits the clamp can resolve to. The <c>GasCap</c> values dropped here sat
@@ -1373,8 +2087,11 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
-        Assert.That(result.Data![0].Calls.First().Error, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+            Assert.That(result.Data![0].Calls.First().Error, Is.Null);
+        }
     }
 
     /// <summary>
@@ -1400,6 +2117,31 @@ public class EthSimulateTestsBlocksAndTransactions
         UInt256 gasAvailable = new(result.Data.First().Calls.First().ReturnData!, isBigEndian: true);
         Assert.That(gasAvailable, Is.GreaterThan((UInt256)Eip7825Constants.DefaultTxGasLimitCap),
             $"gas available ({gasAvailable}) should reflect the block budget, not the EIP-7825 execution-gas cap");
+    }
+
+    /// <summary>
+    /// After EIP-8037, <c>validation: false</c> lifts the TX_MAX_GAS_LIMIT cap on execution gas, so the whole gas limit is
+    /// execution gas. With validation the protocol cap applies and the rest goes into the state gas reservoir.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_lifts_the_execution_gas_cap_only_without_validation([Values] bool validation, [Values] bool balPath)
+    {
+        using TestRpcBlockchain chain = balPath ? await BuildAmsterdamBalChain() : await EthRpcSimulateTestsBase.CreateChain(Amsterdam.Instance);
+        chain.RpcConfig.GasCap = Eip7825Constants.DefaultTxGasLimitCap * 4;
+
+        SimulatePayload<TransactionForRpc> payload = EthRpcSimulateTestsBase.CreateGasProbePayload();
+        payload.BlockStateCalls![0].BlockOverrides =
+            new BlockOverride { GasLimit = Eip7825Constants.DefaultTxGasLimitCap * 2, BaseFeePerGas = 0 };
+        payload.Validation = validation;
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+
+        UInt256 gasAvailable = new(result.Data.First().Calls.First().ReturnData!, isBigEndian: true);
+        Assert.That(gasAvailable, validation
+            ? Is.LessThan((UInt256)Eip7825Constants.DefaultTxGasLimitCap)
+            : Is.GreaterThan((UInt256)Eip7825Constants.DefaultTxGasLimitCap));
     }
 
     /// <summary>
@@ -1433,7 +2175,9 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
+#pragma warning disable NUnit2045 // The operation must succeed before accessing its result.
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+#pragma warning restore NUnit2045
         Assert.That(result.Data![0].Calls.All(static c => c.Error is null), Is.True);
     }
 
@@ -1449,13 +2193,19 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
         SimulateBlockResult<SimulateCallResult> block = result.Data![0];
         SimulateCallResult[] calls = block.Calls.ToArray();
         Assert.That(calls, Has.Length.EqualTo(2));
-        Assert.That(calls[0].Error, Is.Null);
-        Assert.That(calls.Select(static call => call.GasUsed), Is.All.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls[0].Error, Is.Null);
+            Assert.That(calls.Select(static call => call.GasUsed), Is.All.Not.Null);
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -1469,31 +2219,33 @@ public class EthSimulateTestsBlocksAndTransactions
         }
     }
 
+    /// <summary>
+    /// A call that omits <c>gas</c> defaults to the gas the block can still include, even when that is below its intrinsic gas.
+    /// </summary>
     [Test]
-    public async Task eth_simulateV1_rejects_state_free_call_clamped_below_intrinsic_gas()
+    public async Task eth_simulateV1_rejects_default_gas_clamped_below_intrinsic_gas([Values] bool validation)
     {
-        const ulong blockGasLimit = (ulong)GasCostOf.SSetState + GasCostOf.TransactionEip2780 - 1;
-        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Amsterdam.Instance);
+        const ulong blockGasLimit = 2 * GasCostOf.Transaction - 1;
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
         SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls =
             [
                 new()
                 {
-                    BlockOverrides = new BlockOverride { GasLimit = blockGasLimit },
+                    BlockOverrides = new BlockOverride { GasLimit = blockGasLimit, BaseFeePerGas = 0 },
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
-                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
-                        { TestItem.AddressC, new AccountOverride { Code = Bytes.FromHexString("0x600160003555") } }
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
                     },
                     Calls =
                     [
-                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressC, Gas = StateGasBlockLimit, GasPrice = UInt256.Zero, Input = new byte[32] },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, Gas = GasCostOf.Transaction, GasPrice = UInt256.Zero },
                         new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, GasPrice = UInt256.Zero }
                     ]
                 }
             ],
-            Validation = false
+            Validation = validation
         };
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
@@ -1501,23 +2253,61 @@ public class EthSimulateTestsBlocksAndTransactions
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.IntrinsicGas));
             Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.IntrinsicGas));
         }
+    }
+
+    /// <summary>
+    /// The block budget checks an explicit <c>gas</c> as requested, before the RPC gas cap clamps it.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_checks_explicit_gas_against_the_block_before_the_gas_cap([Values] bool validation)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+        chain.RpcConfig.GasCap = 30_000;
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { GasLimit = 50_000, BaseFeePerGas = 0 },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, Gas = 100_000, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = validation
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.BlockGasLimitReached));
     }
 
     [Test]
     public async Task eth_simulateV1_reports_two_state_writes_in_block_gas_used()
     {
         using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Amsterdam.Instance);
-        SimulatePayload<TransactionForRpc> payload = CreateTwoSstorePayload(secondGas: 200_000, validation: false);
+        const ulong blockGasLimit = 250_000;
+        SimulatePayload<TransactionForRpc> payload = CreateTwoSstorePayload(secondGas: blockGasLimit - (ulong)GasCostOf.SSetState, validation: false);
+        payload.BlockStateCalls![0].BlockOverrides!.GasLimit = blockGasLimit;
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
         SimulateBlockResult<SimulateCallResult> block = result.Data![0];
         SimulateCallResult[] calls = block.Calls.ToArray();
 
@@ -1525,7 +2315,7 @@ public class EthSimulateTestsBlocksAndTransactions
         {
             Assert.That(calls.Select(static call => call.Error), Is.All.Null);
             Assert.That(calls.Select(static call => call.GasUsed), Is.All.Not.Null);
-            Assert.That(block.GasLimit, Is.EqualTo(StateGasBlockLimit));
+            Assert.That(block.GasLimit, Is.EqualTo(blockGasLimit));
             Assert.That(block.GasUsed, Is.EqualTo(2 * (ulong)GasCostOf.SSetState));
         }
     }
@@ -1553,7 +2343,7 @@ public class EthSimulateTestsBlocksAndTransactions
         }
         else
         {
-            Assert.That(result.Result.Error, Does.Contain("StateDimensionExceeded"));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.BlockGasLimitReached));
         }
     }
 
@@ -1565,7 +2355,9 @@ public class EthSimulateTestsBlocksAndTransactions
     public async Task eth_simulateV1_request_gas_cap_counts_state_gas()
     {
         using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
-        SimulatePayload<TransactionForRpc> payload = CreateTwoSstorePayload(secondGas: StateGasBlockLimit, validation: false);
+        SimulatePayload<TransactionForRpc> payload = CreateTwoSstorePayload(secondGas: null, validation: false);
+        // A block budget above the request cap, so only the cap can leave the second write short.
+        payload.BlockStateCalls![0].BlockOverrides!.GasLimit = 2 * StateGasBlockLimit;
 
         // Each write costs ~125k: SSetState 97_920 of state gas plus ~27k of execution. The cap admits the
         // first and leaves the second short only while both dimensions deplete it; counting execution alone
@@ -1644,12 +2436,18 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
         SimulateBlockResult<SimulateCallResult> block = result.Data![0];
         SimulateCallResult[] calls = block.Calls.ToArray();
-        Assert.That(calls.Select(static call => call.Error), Is.All.Null);
-        Assert.That(calls.Select(static call => call.GasUsed), Is.All.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls.Select(static call => call.Error), Is.All.Null);
+            Assert.That(calls.Select(static call => call.GasUsed), Is.All.Not.Null);
+        }
 
         // Calldata: tx 1 passes 32 zero bytes, tx 2 passes 31 zero bytes and one non-zero byte.
         const ulong cumulativeIntrinsicGas = 2 * (GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess)
@@ -1783,8 +2581,11 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
-        Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
+            Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
+        }
     }
 
     private static readonly Address Return42Contract = new("0xc300000000000000000000000000000000000000");
@@ -2161,8 +2962,198 @@ public class EthSimulateTestsBlocksAndTransactions
         };
 
         SimulateCallResult[] calls = SimulateSingleBlock(chain, payload);
-        Assert.That(calls.Select(static c => c.Error), Is.All.Null);
-        Assert.That(new UInt256(calls[1].ReturnData, isBigEndian: true), Is.EqualTo((UInt256)42));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls.Select(static c => c.Error), Is.All.Null);
+            Assert.That(new UInt256(calls[1].ReturnData, isBigEndian: true), Is.EqualTo((UInt256)42));
+        }
+    }
+
+    private static readonly Address FreshAccountSender = TestItem.AddressD;
+    private static readonly PrivateKey FreshAuthorityKey = TestItem.PrivateKeys[200];
+    private static readonly Address FreshAccount = new("0xd100000000000000000000000000000000000000");
+    private static readonly Address StopContract = new("0xc400000000000000000000000000000000000000");
+
+    /// <summary>
+    /// eth_simulateV1 charges the accounts a call creates as eth_call does: a fresh EIP-7702 authority that is also the
+    /// call target, and a value transfer to a fresh account, pay NEW_ACCOUNT (EIP-8037 state gas on Amsterdam), and an
+    /// authority that does not exist earns no EIP-7702 refund (Osaka). A fresh sender that authorizes itself exists by
+    /// then, its nonce bumped first, so it pays neither. With one gas short the call fails, or is rejected, in both.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_charges_a_fresh_account_like_eth_call(
+        [Values("Osaka", "Amsterdam")] string fork,
+        [Values("authority is target", "authority is sender", "value transfer")] string scenario,
+        [Values] bool tightGas,
+        [Values] bool validation)
+    {
+        using TestRpcBlockchain chain = await BuildFreshAccountChain(fork);
+        TransactionForRpc CreateCall(ulong gas) => scenario switch
+        {
+            "authority is target" => CreateAuthorizationCall(chain, FreshAuthorityKey.Address, gas),
+            "authority is sender" => CreateAuthorizationCall(chain, TestItem.AddressB, gas, from: FreshAuthorityKey.Address, authorizationNonce: 1),
+            _ => new LegacyTransactionForRpc { From = FreshAccountSender, To = FreshAccount, Value = 1, Gas = gas, GasPrice = UInt256.Zero }
+        };
+
+        ulong gas = 400_000;
+        if (tightGas)
+        {
+            CallOutput ample = CallLikeEthCall(chain, CreateCall(gas));
+            Assert.That(ample.Error, Is.Null);
+            gas = ample.GasSpent - 1;
+        }
+
+        CallOutput expected = CallLikeEthCall(chain, CreateCall(gas));
+        if (expected.InputError)
+        {
+            // One gas short of a charge that is intrinsic gas is rejected before execution.
+#pragma warning disable NUnit2045 // The tight-gas prerequisite must hold before running the failure simulation.
+            Assert.That(tightGas, Is.True, expected.Error);
+#pragma warning restore NUnit2045
+            Assert.That(RunFreshAccountSimulation(chain, validation, [CreateCall(gas)]).Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
+            return;
+        }
+
+        SimulateCallResult actual = SimulateFreshAccountBlocks(chain, validation, [CreateCall(gas)])[0].Calls.Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.GasUsed, Is.EqualTo(expected.GasSpent));
+            Assert.That(actual.Status, Is.EqualTo(expected.Error is null ? 1UL : 0UL), expected.Error);
+            if (fork == "Amsterdam" && !tightGas)
+            {
+                Assert.That(actual.GasUsed, scenario == "authority is sender"
+                    ? Is.LessThan((ulong)GasCostOf.NewAccountState)
+                    : Is.GreaterThan((ulong)GasCostOf.NewAccountState));
+            }
+        }
+    }
+
+    /// <summary>
+    /// A fresh EIP-7702 authority stays fresh for the call that authorizes it when a later call in the block targets it
+    /// or is sent by it.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_charges_a_fresh_authority_that_a_later_call_uses(
+        [Values("Osaka", "Amsterdam")] string fork,
+        [Values] bool laterCallSentByAuthority,
+        [Values] bool validation)
+    {
+        using TestRpcBlockchain chain = await BuildFreshAccountChain(fork);
+        CallOutput expected = CallLikeEthCall(chain, CreateAuthorizationCall(chain, TestItem.AddressB, 400_000));
+
+        SimulateCallResult[] calls = SimulateFreshAccountBlocks(chain, validation,
+        [
+            CreateAuthorizationCall(chain, TestItem.AddressB, 400_000),
+            laterCallSentByAuthority
+                // The authorization bumped the authority's nonce to 1.
+                ? new LegacyTransactionForRpc { From = FreshAuthorityKey.Address, To = TestItem.AddressB, Gas = 100_000, GasPrice = UInt256.Zero, Nonce = 1 }
+                : new LegacyTransactionForRpc { From = FreshAccountSender, To = FreshAuthorityKey.Address, Gas = 100_000, GasPrice = UInt256.Zero }
+        ])[0].Calls.ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected.Error, Is.Null);
+            Assert.That(calls.Select(static c => c.Error), Is.All.Null);
+            Assert.That(calls[0].GasUsed, Is.EqualTo(expected.GasSpent));
+        }
+    }
+
+    /// <summary>
+    /// A call to a fresh account leaves no account behind: the block's state root is the one a zero-value call to an
+    /// existing account gives, and a later block still charges that address as a fresh EIP-7702 authority. A zero-value
+    /// call touches the account, so EIP-158 would delete an empty one; a value transfer one gas short of EIP-8037
+    /// NEW_ACCOUNT runs out of gas without touching it, so an empty account created before the block would stay.
+    /// </summary>
+    [TestCase("Osaka", false, false)]
+    [TestCase("Osaka", false, true)]
+    [TestCase("Amsterdam", false, false)]
+    [TestCase("Amsterdam", false, true)]
+    [TestCase("Amsterdam", true, false)]
+    [TestCase("Amsterdam", true, true)]
+    public async Task eth_simulateV1_call_to_a_fresh_account_leaves_no_account(string fork, bool transferRunsOutOfGas, bool validation)
+    {
+        using TestRpcBlockchain chain = await BuildFreshAccountChain(fork);
+        Address authority = FreshAuthorityKey.Address;
+        CallOutput expected = CallLikeEthCall(chain, CreateAuthorizationCall(chain, TestItem.AddressB, 400_000));
+
+        LegacyTransactionForRpc CreateTransfer(ulong gas) =>
+            new() { From = FreshAccountSender, To = authority, Value = transferRunsOutOfGas ? UInt256.One : UInt256.Zero, Gas = gas, GasPrice = UInt256.Zero };
+        ulong gas = transferRunsOutOfGas ? CallLikeEthCall(chain, CreateTransfer(100_000)).GasSpent - 1 : 100_000;
+
+        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> toFresh = SimulateFreshAccountBlocks(chain, validation,
+            [CreateTransfer(gas)],
+            [CreateAuthorizationCall(chain, TestItem.AddressB, 400_000)]);
+        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> toExisting = SimulateFreshAccountBlocks(chain, validation,
+            [new LegacyTransactionForRpc { From = FreshAccountSender, To = TestItem.AddressB, Gas = 100_000, GasPrice = UInt256.Zero }]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected.Error, Is.Null);
+            Assert.That(toFresh[0].Calls.Single().Status, Is.EqualTo(transferRunsOutOfGas ? 0UL : 1UL));
+            Assert.That(toFresh[1].Calls.Single().Error, Is.Null);
+            Assert.That(toFresh[0].StateRoot, Is.EqualTo(toExisting[0].StateRoot));
+            Assert.That(toFresh[1].Calls.Single().GasUsed, Is.EqualTo(expected.GasSpent));
+        }
+    }
+
+    private static Task<TestRpcBlockchain> BuildFreshAccountChain(string fork) =>
+        fork == "Amsterdam" ? BuildAmsterdamBalChain() : EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+
+    private static Dictionary<Address, AccountOverride> FreshAccountStateOverrides() => new()
+    {
+        { FreshAccountSender, new AccountOverride { Balance = 1.Ether } },
+        { StopContract, new AccountOverride { Code = [0x00] } }
+    };
+
+    /// <summary>
+    /// A call from <paramref name="from"/> (<see cref="FreshAccountSender"/> by default) to <paramref name="to"/> that
+    /// delegates <see cref="FreshAuthorityKey"/> to <see cref="StopContract"/>.
+    /// </summary>
+    private static SetCodeTransactionForRpc CreateAuthorizationCall(
+        TestRpcBlockchain chain, Address to, ulong gas, Address? from = null, ulong authorizationNonce = 0)
+    {
+        AuthorizationTuple authorization = new EthereumEcdsa(chain.SpecProvider.ChainId)
+            .Sign(FreshAuthorityKey, chain.SpecProvider.ChainId, StopContract, authorizationNonce);
+        return new SetCodeTransactionForRpc
+        {
+            From = from ?? FreshAccountSender,
+            To = to,
+            Gas = gas,
+            AuthorizationList = AuthorizationListForRpc.FromAuthorizationList([authorization]),
+            MaxFeePerGas = 0,
+            MaxPriorityFeePerGas = 0,
+            GasPrice = null
+        };
+    }
+
+    /// <summary>Runs <paramref name="call"/> through the eth_call path, on the head state with the same overrides as the simulation.</summary>
+    private static CallOutput CallLikeEthCall(TestRpcBlockchain chain, TransactionForRpc call) =>
+        chain.Bridge.Call(chain.BlockTree.Head!.Header, call.ToTransaction().Data!, FreshAccountStateOverrides());
+
+    private static IReadOnlyList<SimulateBlockResult<SimulateCallResult>> SimulateFreshAccountBlocks(
+        TestRpcBlockchain chain, bool validation, params TransactionForRpc[][] blocks)
+    {
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = RunFreshAccountSimulation(chain, validation, blocks);
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        return result.Data!;
+    }
+
+    private static ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> RunFreshAccountSimulation(
+        TestRpcBlockchain chain, bool validation, params TransactionForRpc[][] blocks)
+    {
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls = blocks.Select((calls, i) => new BlockStateCall<TransactionForRpc>
+            {
+                BlockOverrides = new BlockOverride { BaseFeePerGas = 0 },
+                StateOverrides = i == 0 ? FreshAccountStateOverrides() : null,
+                Calls = calls
+            }).ToList(),
+            Validation = validation
+        };
+
+        return chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
     }
 
     /// <summary>
@@ -2213,14 +3204,20 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.ToString());
-        Assert.That(result.Data, Has.Count.EqualTo(blockCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.ToString());
+            Assert.That(result.Data, Has.Count.EqualTo(blockCount));
+        }
 
         for (int i = 0; i < blockCount; i++)
         {
             SimulateCallResult call = result.Data[i].Calls.First();
-            Assert.That(call.Status, Is.EqualTo((ulong)ResultType.Success), call.Error?.Message);
-            Assert.That(call.ReturnData, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(call.Status, Is.EqualTo((ulong)ResultType.Success), call.Error?.Message);
+                Assert.That(call.ReturnData, Is.Not.Null);
+            }
             UInt256 returnedSlot = new(call.ReturnData!, isBigEndian: true);
             Assert.That((ulong)returnedSlot, Is.EqualTo(firstSlot + (ulong)i), $"SLOTNUM in simulated block {i}");
         }

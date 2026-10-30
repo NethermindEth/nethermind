@@ -62,8 +62,11 @@ public partial class EngineModuleTests
         Assert.That(responseFirst.Result.ResultType, Is.EqualTo(ResultType.Success));
         ResultWrapper<ExecutionPayload?> responseSecond = await rpc.engine_getPayloadV1(payloadId);
         Assert.That(responseSecond, Is.Not.Null);
-        Assert.That(responseSecond.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(responseSecond.Data!.BlockHash!, Is.EqualTo(responseFirst.Data!.BlockHash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responseSecond.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(responseSecond.Data!.BlockHash!, Is.EqualTo(responseFirst.Data!.BlockHash!));
+        }
     }
 
     [Test]
@@ -96,6 +99,9 @@ public partial class EngineModuleTests
                 new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data
             .PayloadId!;
 
+        // The payload is stored, and starts aging towards cleanup, only once the background empty block build completes.
+        ObservablePayloadPreparationService payloadPreparation = (ObservablePayloadPreparationService)chain.Container.Resolve<IPayloadPreparationService>();
+        await payloadPreparation.WaitForStoredBlockAsync(payloadId, static _ => true, chain.CancellationToken);
         await Task.Delay(PayloadPreparationService.SlotsPerOldPayloadCleanup * 2 * timePerSlot + timePerSlot);
         cancellationTimer.Elapsed += Raise.Event();
 
@@ -150,11 +156,9 @@ public partial class EngineModuleTests
     {
         get
         {
-            yield return new TestCaseData(50, TimeSpan.Zero, 50) { TestName = "Production manages to finish" };
-            // The non-zero improve delay makes production yield before it pulls transactions,
-            // so forkchoiceUpdated returns and getPayload is what cancels the blocked pull.
-            yield return new TestCaseData(5, TimeSpan.FromMilliseconds(10), 5) { TestName = "Production makes partial block" };
-            yield return new TestCaseData(0, PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay * 2, 0) { TestName = "Production takes too long" };
+            yield return new TestCaseData(50, 50) { TestName = "Production manages to finish" };
+            yield return new TestCaseData(5, 0) { TestName = "Production has unfinished transactions" };
+            yield return new TestCaseData(0, 0) { TestName = "Production has not processed transactions" };
         }
     }
 
@@ -167,7 +171,19 @@ public partial class EngineModuleTests
         // A boxed struct gives the cross-thread visibility a plain CancellationToken field lacks.
         private volatile object? _token;
         public CancellationToken Token => _token is CancellationToken token ? token : CancellationToken.None;
+        public IBlockImprovementContext Context { get; set; } = null!;
         public void Set(CancellationToken token) => _token = token;
+    }
+
+    private sealed class TokenCapturingBlockImprovementContextFactory(IBlockImprovementContextFactory inner, ProductionTokenHolder tokenHolder)
+        : IBlockImprovementContextFactory
+    {
+        public IBlockImprovementContext StartBlockImprovementContext(Block? currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes,
+            DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+        {
+            tokenHolder.Set(cts.Token);
+            return tokenHolder.Context = inner.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
+        }
     }
 
     private class TxDelayedSource(
@@ -177,7 +193,9 @@ public partial class EngineModuleTests
         ITimestamper timestamper,
         TaskCompletionSource getTransactionsCalled,
         SemaphoreSlim gate,
-        ProductionTokenHolder tokenHolder) : ITxSource
+        ProductionTokenHolder tokenHolder,
+        ManualResetEventSlim finishBuild,
+        CancellationToken testCancellation) : ITxSource
     {
         private long _pulls;
 
@@ -211,6 +229,7 @@ public partial class EngineModuleTests
 
                 if (cancelled)
                 {
+                    finishBuild.Wait(testCancellation);
                     break;
                 }
 
@@ -220,14 +239,16 @@ public partial class EngineModuleTests
     }
 
     [TestCaseSource(nameof(WaitTestCases))]
-    public async Task getPayloadV1_waits_for_block_production(int permits, TimeSpan improveDelay, int expectedTxCount)
+    [CancelAfter(30000)]
+    public async Task getPayloadV1_returns_the_available_payload_without_waiting_for_production(int permits, int expectedTxCount)
     {
         TaskCompletionSource yieldedTransaction = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using SemaphoreSlim gate = new(permits);
+        using ManualResetEventSlim finishBuild = new();
         ProductionTokenHolder tokenHolder = new();
         TxDelayedSource txSource = null!;
         using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
-            .AddSingleton<IBlockImprovementContextFactory, IBlockProducer>((producer) => new DelayBlockImprovementContextFactory(producer, TimeSpan.FromSeconds(10), improveDelay, tokenHolder.Set))
+            .AddDecorator<IBlockImprovementContextFactory>((_, inner) => new TokenCapturingBlockImprovementContextFactory(inner, tokenHolder))
             .AddSingleton(ConfigurePayloadPreparationService(TimeSpan.FromSeconds(10), null))
             .AddSingleton<IBlockProducerTxSourceFactory>(ctx =>
             {
@@ -239,7 +260,9 @@ public partial class EngineModuleTests
                     ctx.Resolve<ITimestamper>(),
                     yieldedTransaction,
                     gate,
-                    tokenHolder);
+                    tokenHolder,
+                    finishBuild,
+                    TestContext.CurrentContext.CancellationToken);
                 factory.Create().Returns(txSource);
                 return factory;
             }));
@@ -247,35 +270,46 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash!;
 
-        Task improvedBlock = chain.WaitForImprovedBlock();
         string payloadId = (await rpc.engine_forkchoiceUpdatedV1(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })).Data.PayloadId!;
+        await ((PayloadPreparationService)chain.PayloadPreparationService).WaitForPreparation(payloadId).WaitAsync(chain.CancellationToken);
+        IBlockImprovementContext improvement = tokenHolder.Context;
 
-        if (permits > 0 && permits < 50)
+        if (permits < 50)
         {
-            // Partial production: the source consumed every permit and blocks on the next
-            // pull. getPayload cancels that wait and returns the block built so far.
-            // The guard turns a production fault before the first pull into a timeout, not a hang.
             await yieldedTransaction.Task.WaitAsync(chain.CancellationToken);
             Assert.That(() => txSource.Pulls, Is.GreaterThanOrEqualTo(permits + 1).After(10000, 10));
-            // Exact count is safe: improvements are sequential per payload, and neither the
-            // getPayload cancel below nor the production timeout schedules a second one.
             Assert.That(txSource.Pulls, Is.EqualTo(permits + 1), "only one improvement may pull transactions before cancellation");
         }
 
         if (permits == 50)
         {
             // Full production: the improvement completes with every transaction included.
-            await improvedBlock;
+            await improvement.ImprovementTask.WaitAsync(chain.CancellationToken);
         }
 
-        // The first call cancels a blocked pull, but production can finish outside the call's
-        // 50ms non-empty wait under load. The stored context keeps the settled block, so the
-        // poll below reads it without a wall-clock cliff.
-        await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
-        Assert.That(() => rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId)).Result.Data!.TryGetTransactions().Data!,
-            Has.Length.EqualTo(expectedTxCount).After(5000, 10));
+        ExecutionPayload first;
+        try
+        {
+            Task<ResultWrapper<ExecutionPayload?>> retrieval = rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
+            Assert.That(retrieval.IsCompleted, Is.True, "getPayload must not wait for the gated build");
+            first = (await retrieval).Data!;
+            Assert.That(first.TryGetTransactions().Data!, Has.Length.EqualTo(expectedTxCount));
+        }
+        finally
+        {
+            finishBuild.Set();
+        }
+
+        await improvement.ImprovementTask.WaitAsync(chain.CancellationToken);
+
+        ExecutionPayload again = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(again.BlockHash, Is.EqualTo(first.BlockHash));
+            Assert.That(again.TryGetTransactions().Data!, Has.Length.EqualTo(expectedTxCount));
+        }
     }
 
     [Test]
@@ -297,10 +331,13 @@ public partial class EngineModuleTests
 
         BlockHeader? currentHeader = chain.BlockTree.BestSuggestedHeader!;
 
-        Assert.That(currentHeader.UnclesHash!.ToString(), Is.EqualTo("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"));
-        Assert.That(currentHeader.Difficulty, Is.EqualTo((UInt256)0));
-        Assert.That(currentHeader.Nonce, Is.EqualTo(0));
-        Assert.That(currentHeader.MixHash, Is.EqualTo(random));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(currentHeader.UnclesHash!.ToString(), Is.EqualTo("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"));
+            Assert.That(currentHeader.Difficulty, Is.EqualTo((UInt256)0));
+            Assert.That(currentHeader.Nonce, Is.EqualTo(0));
+            Assert.That(currentHeader.MixHash, Is.EqualTo(random));
+        }
     }
 
     [Test]
@@ -563,9 +600,10 @@ public partial class EngineModuleTests
             .Result.Data.PayloadId!;
         await improvedBlockWait;
 
-        improvedBlockWait = chain.WaitForImprovedBlock();
+        ObservablePayloadPreparationService payloadPreparation = (ObservablePayloadPreparationService)chain.Container.Resolve<IPayloadPreparationService>();
+        Task storedImprovementTask = payloadPreparation.WaitForStoredBlockAsync(payloadId, static block => block.Transactions.Length == 2, chain.CancellationToken);
         chain.AddTransactions(tx2);
-        await improvedBlockWait;
+        await storedImprovementTask;
 
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.Container.Resolve<IBlockImprovementContextFactory>();
         List<int?> transactionsLength = improvementContextFactory.SnapshotCreatedContexts()
@@ -620,7 +658,9 @@ public partial class EngineModuleTests
     public async Task Cannot_build_invalid_block_with_the_branch()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        TimeSpan timePerSlot = 4 * delay;
+        // The slot cutoff (timePerSlot * 1.3) must sit beyond the improvement the test waits for: with a 40 ms slot
+        // the loop stopped improving before the transactions that trigger it were submitted.
+        TimeSpan timePerSlot = TimeSpan.FromSeconds(60);
 
         using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
             .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(London.Instance))
@@ -988,7 +1028,7 @@ public partial class EngineModuleTests
             return waiter.Completion.Task;
         }
 
-        protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+        protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block? currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts);
 

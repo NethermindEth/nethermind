@@ -18,28 +18,16 @@ public sealed class GenericComparer<T> : Comparer<T>, GenericComparer.IGenericCo
     public override int GetHashCode() => GetType().GetHashCode();
 }
 
-public static class GenericComparer
+public static partial class GenericComparer
 {
     internal interface IGenericComparer;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    public static IComparer<T>? GetOptimized<T>(IComparer<T>? comparer) =>
-        comparer switch
-        {
-#if !ZK_EVM
-            IGenericComparer => null,
-#endif
-            _ => comparer
-        };
+    public static partial IComparer<T>? GetOptimized<T>(IComparer<T>? comparer);
 
     // Returns null on JIT/CoreCLR so collection constructors fall back to Comparer<T>.Default
     // (which the JIT recognizes via [Intrinsic] and devirtualizes at its own call sites).
     // On bflat/AOT, returns our reflection-free fallback since Comparer<T>.Default is unavailable.
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    public static IComparer<T>? GetOptimized<T>() where T : IComparable<T>? =>
-#if ZK_EVM
-        GenericComparer<T>.Default;
-#else
-        null;
-#endif
+    public static partial IComparer<T>? GetOptimized<T>() where T : IComparable<T>?;
 }

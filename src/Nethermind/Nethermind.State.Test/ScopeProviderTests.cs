@@ -161,10 +161,14 @@ public class ScopeProviderTests(bool useFlat)
         BlockHeader firstTarget = Build.A.BlockHeader.WithTimestamp(9876).TestObject;
         BlockHeader secondTarget = Build.A.BlockHeader.WithTimestamp(5432).TestObject;
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(decorated.HasStateForTargetBlock(firstTarget), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(decorated.TryBeginScopeAtTarget(firstTarget, new LocalMetrics(), out IWorldStateScopeProvider.IScope firstScope), Is.True);
         firstScope!.Dispose();
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(decorated.HasStateForTargetBlock(secondTarget), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(decorated.TryBeginScopeAtTarget(secondTarget, new LocalMetrics(), out IWorldStateScopeProvider.IScope secondScope), Is.True);
         secondScope!.Dispose();
 
@@ -184,12 +188,17 @@ public class ScopeProviderTests(bool useFlat)
         PrewarmerScopeProvider decorated = new(inner, new PrewarmerState(NewCaches(), isPrewarmer: true), LimboLogs.Instance);
         BlockHeader target = Build.A.BlockHeader.WithTimestamp(6543).TestObject;
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(decorated.HasStateForTargetBlock(target), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(decorated.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.True);
         scope!.Dispose();
 
-        Assert.That(inner.LastTarget, Is.SameAs(target));
-        Assert.That(inner.LastMetrics, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inner.LastTarget, Is.SameAs(target));
+            Assert.That(inner.LastMetrics, Is.Not.Null);
+        }
     }
 
     [Test]
@@ -201,7 +210,9 @@ public class ScopeProviderTests(bool useFlat)
             : new WorldState(provider, LimboLogs.Instance);
         BlockHeader target = Build.A.BlockHeader.WithTimestamp(1).TestObject;
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(state.HasStateForTargetBlock(target), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(state.TryBeginScopeAtTarget(target, out IDisposable failedScope), Is.False);
         Assert.That(provider.LastTarget, Is.SameAs(target), "the refused open still forwarded its own header");
         Assert.That(failedScope, Is.Null);
@@ -209,7 +220,9 @@ public class ScopeProviderTests(bool useFlat)
 
         provider.TryResult = true;
         BlockHeader reopened = Build.A.BlockHeader.WithTimestamp(2).TestObject;
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(state.HasStateForTargetBlock(reopened), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(state.TryBeginScopeAtTarget(reopened, out IDisposable scope), Is.True);
         Assert.That(provider.LastTarget, Is.SameAs(reopened), "the accepted open forwarded its own header");
         Assert.That(state.IsInScope, Is.True);
@@ -840,6 +853,44 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Test_ApplyBal_RevivedAccount_IsNotServedItsWipedStorageFromTheCaches()
+    {
+        StorageCell slotE2 = new(TestItem.AddressE, 2);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
+        // EIP-161 removes E, storage and all, when a transaction leaves it empty; it then comes back without slot 1.
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressE)
+                .WithBalanceChanges(new BalanceChange(1, 5), new BalanceChange(2, 0), new BalanceChange(3, 9))
+                .WithStorageChanges(slotE2.Index, new StorageChange(3, 4))
+                .TestObject)
+            .TestObject;
+
+        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
+        {
+            ws.ApplyBal(bal);
+            ws.RecalculateStateRoot();
+        });
+
+        bool carried = caches.PrepareFor(newRoot);
+
+        using (consumer.BeginScope(HeaderAt(newRoot, 2)))
+        {
+            consumer.Get(in SlotE1, out UInt256 wiped);
+            consumer.Get(in slotE2, out UInt256 written);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(carried, Is.True, "the caches describe the committed state");
+                Assert.That(consumer.GetBalance(TestItem.AddressE), Is.EqualTo((UInt256)9));
+                Assert.That(wiped, Is.EqualTo(UInt256.Zero), "the slot from before the removal is gone");
+                Assert.That(written, Is.EqualTo((UInt256)4));
+            }
+        }
+    }
+
+    [Test]
     public void Test_StorageOnlyChange_CachesTheAccountWithItsNewStorageRoot()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
@@ -1251,8 +1302,11 @@ public class ScopeProviderTests(bool useFlat)
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot, config, new OneLoggerLogManager(new ILogger(testLogger)));
 
         Hash256 firstRoot = CommitThroughConsumer(consumer, baseRoot, DestroyA);
-        Assert.That(caches.PrepareFor(firstRoot), Is.True);
-        Assert.That(caches.StorageBypassCount, Is.EqualTo(1), "precondition: one wipe fits under the cap");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.PrepareFor(firstRoot), Is.True);
+            Assert.That(caches.StorageBypassCount, Is.EqualTo(1), "precondition: one wipe fits under the cap");
+        }
 
         // A second wipe would pass the cap, so the whole storage cache goes instead, and with it the bypass.
         Hash256 secondRoot;
@@ -1290,11 +1344,14 @@ public class ScopeProviderTests(bool useFlat)
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
         Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, DestroyA);
-        Assert.That(caches.PrepareFor(newRoot), Is.True);
-        Assert.That(caches.BypassesStorageCache(TestItem.AddressA), Is.True, "precondition");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.PrepareFor(newRoot), Is.True);
+            Assert.That(caches.BypassesStorageCache(TestItem.AddressA), Is.True, "precondition");
 
-        // A sibling on the parent: the caches are cleared, and a contract with nothing left in them need not bypass.
-        Assert.That(caches.PrepareFor(baseRoot), Is.False);
+            // A sibling on the parent: the caches are cleared, and a contract with nothing left in them need not bypass.
+            Assert.That(caches.PrepareFor(baseRoot), Is.False);
+        }
         using (consumer.BeginScope(HeaderAt(baseRoot, 1)))
         using (Assert.EnterMultipleScope())
         {
@@ -2159,8 +2216,11 @@ public class ScopeProviderTests(bool useFlat)
             scope.CreateStorageTree(TestItem.AddressA).Get(1, out _);
         }
 
-        Assert.That(populatorMetrics.PreBlockAccountHits + populatorMetrics.PreBlockAccountMisses, Is.Zero);
-        Assert.That(populatorMetrics.PreBlockStorageHits + populatorMetrics.PreBlockStorageMisses, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(populatorMetrics.PreBlockAccountHits + populatorMetrics.PreBlockAccountMisses, Is.Zero);
+            Assert.That(populatorMetrics.PreBlockStorageHits + populatorMetrics.PreBlockStorageMisses, Is.Zero);
+        }
 
         // Consumer probes count: AddressA / slot 1 were just populated (hits); AddressB / slot 2 are cold (misses).
         LocalMetrics consumerMetrics = new();
@@ -2174,10 +2234,13 @@ public class ScopeProviderTests(bool useFlat)
             storage.Get(2, out _);
         }
 
-        Assert.That(consumerMetrics.PreBlockAccountHits, Is.EqualTo(1));
-        Assert.That(consumerMetrics.PreBlockAccountMisses, Is.EqualTo(1));
-        Assert.That(consumerMetrics.PreBlockStorageHits, Is.EqualTo(1));
-        Assert.That(consumerMetrics.PreBlockStorageMisses, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(consumerMetrics.PreBlockAccountHits, Is.EqualTo(1));
+            Assert.That(consumerMetrics.PreBlockAccountMisses, Is.EqualTo(1));
+            Assert.That(consumerMetrics.PreBlockStorageHits, Is.EqualTo(1));
+            Assert.That(consumerMetrics.PreBlockStorageMisses, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -2246,17 +2309,23 @@ public class ScopeProviderTests(bool useFlat)
             using IWorldStateScopeProvider.IScope readScope = populator.BeginScope(baseBlock);
             IWorldStateScopeProvider.IStorageTree capturedStorageTree = readScope.CreateStorageTree(TestItem.AddressA);
             capturedStorageTree.Get(1, out UInt256 slotRead1510);
-            Assert.That(slotRead1510.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 1 }));
-            Assert.That(capture.Cells, Does.Contain(cell));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(slotRead1510.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 1 }));
+                Assert.That(capture.Cells, Does.Contain(cell));
+            }
         }
 
         Assert.That(caches.StorageCache.TryGetValue(in cell, out _), Is.False);
         using IWorldStateScopeProvider.IScope uncapturedReadScope = populator.BeginScope(baseBlock);
         IWorldStateScopeProvider.IStorageTree uncapturedStorageTree = uncapturedReadScope.CreateStorageTree(TestItem.AddressA);
         uncapturedStorageTree.Get(1, out UInt256 slotRead1517);
-        Assert.That(slotRead1517.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 10, 20 }));
-        Assert.That(caches.StorageCache.TryGetValue(in cell, out UInt256 cached), Is.True);
-        Assert.That(cached, Is.EqualTo(new UInt256([10, 20], isBigEndian: true)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slotRead1517.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 10, 20 }));
+            Assert.That(caches.StorageCache.TryGetValue(in cell, out UInt256 cached), Is.True);
+            Assert.That(cached, Is.EqualTo(new UInt256([10, 20], isBigEndian: true)));
+        }
     }
 
     [Test]

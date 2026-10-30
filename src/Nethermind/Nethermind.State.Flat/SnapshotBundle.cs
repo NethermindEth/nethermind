@@ -1,13 +1,18 @@
 // SPDX-FileCopyrightText: 2025-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.State.Flat.NodeBuffer;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat;
 
@@ -24,56 +29,83 @@ public sealed class SnapshotBundle : IDisposable
     /// </summary>
     public bool IsHistorical => _readOnlySnapshotBundle.IsHistorical;
 
+    /// <summary>Starts reading persisted accounts and slots ahead of use; see <see cref="ReadOnlySnapshotBundle.Prefetch"/>.</summary>
+    public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) =>
+        _readOnlySnapshotBundle.Prefetch(columns, accounts, slots, cancellationToken);
+
+    /// <summary>Passthrough of <see cref="ReadOnlySnapshotBundle.PlanPrefetch"/>.</summary>
+    public IPersistence.PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples) =>
+        _readOnlySnapshotBundle.PlanPrefetch(accountSamples, slotSamples);
+
+    /// <summary>Passthrough of <see cref="ReadOnlySnapshotBundle.SupportsPrefetch"/>.</summary>
+    public bool SupportsPrefetch => _readOnlySnapshotBundle.SupportsPrefetch;
+
 
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
     private ConcurrentDictionary<HashedKey<Address>, Account?> _changedAccounts = null!;
+    private ConcurrentDictionary<HashedKey<Address>, Account?> _readAccounts = null!;
     private ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> _changedSlots = null!;
-    private Dictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
-    private AddressStorageNodeDictionary _changedStorageNodes = null!;
+    private ConcurrentDictionary<Hash256, ulong> _changedStorageRoots = null!;
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
     private ConcurrentDictionary<HashedKey<Address>, byte>? _addressesWithChangedSlots;
-
-    private bool _trieChanged = false;
 
     // The cached resource holds some items that are pooled.
     // Notably, it holds loaded caches from trie warmer.
     private TransientResource _transientResource = null!;
+    private WarmedNodeRecordBuffer? _cacheableNodeRecordBuffer;
 
     internal SnapshotPooledList _snapshots;
-    private readonly ITrieNodeCache _trieNodeCache;
+    private readonly INodeRecordBuffer? _nodeRecordBuffer;
     private bool _isDisposed;
     private readonly IResourcePool _resourcePool;
 
     internal ResourcePool.Usage _usage;
 
+    // Slot reads that reach the wrapped bundle go through its negative filter. Only read-only execution opts in;
+    // block processing keeps the plain loop, so its reads do not depend on the filter.
+    private readonly bool _filterInMemorySlotReads;
+
+    /// <param name="filterInMemorySlotReads">Serve slot reads with
+    /// <see cref="ReadOnlySnapshotBundle.GetSlotFiltered"/>; for read-only execution only.</param>
     public SnapshotBundle(
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
-        ITrieNodeCache trieNodeCache,
+        INodeRecordBuffer? nodeRecordBuffer,
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
-        SnapshotPooledList? snapshots = null)
+        SnapshotPooledList? snapshots = null,
+        bool filterInMemorySlotReads = false)
     {
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
         _snapshots = snapshots ?? new SnapshotPooledList(1);
-        _trieNodeCache = trieNodeCache;
+        _nodeRecordBuffer = nodeRecordBuffer;
         _resourcePool = resourcePool;
         _usage = usage;
+        // A bundle that can never have a filter would only pay GetSlotFiltered's extra checks on every read.
+        _filterInMemorySlotReads = filterInMemorySlotReads && readOnlySnapshotBundle.MayFilterSlots;
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);
+        _cacheableNodeRecordBuffer = CreateCacheableNodeRecordBuffer(_transientResource);
 
         ExpandCurrentPooledContent();
 
         Metrics.ActiveSnapshotBundle++;
     }
 
+    /// <summary>The buffer the trie nodes written through this bundle are recorded in, also resolving the nodes warmed for the current block; <c>null</c> for a trie-less bundle.</summary>
+    /// <remarks>Replaced when <see cref="CollectAndApplySnapshot"/> retires the block's transient resource, so read it for each operation.</remarks>
+    internal INodeRecordBuffer? NodeRecordBuffer => _cacheableNodeRecordBuffer;
+
+    private WarmedNodeRecordBuffer? CreateCacheableNodeRecordBuffer(TransientResource transientResource) =>
+        _nodeRecordBuffer is null ? null : new WarmedNodeRecordBuffer(_nodeRecordBuffer, transientResource.WarmedNodeBuffer);
+
     private void ExpandCurrentPooledContent()
     {
         _changedAccounts = _currentPooledContent.Accounts;
+        _readAccounts = _currentPooledContent.ReadAccounts;
         _changedSlots = _currentPooledContent.Storages;
-        _changedStorageNodes = _currentPooledContent.StorageNodes;
-        _changedStateNodes = _currentPooledContent.StateNodes;
+        _changedStorageRoots = _currentPooledContent.StorageRoots;
         _selfDestructedAccountAddresses = _currentPooledContent.SelfDestructedStorageAddresses;
     }
 
@@ -88,7 +120,7 @@ public sealed class SnapshotBundle : IDisposable
 
         HashedKey<Address> key = new(address);
 
-        if (!excludeChanged && _changedAccounts.TryGetValue(key, out Account? acc))
+        if (!excludeChanged && (_changedAccounts.TryGetValue(key, out Account? acc) || _readAccounts.TryGetValue(key, out acc)))
         {
             isInCurrentSnapshot = true;
             return acc;
@@ -157,20 +189,21 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key, out value);
+        if (_filterInMemorySlotReads)
+        {
+            _readOnlySnapshotBundle.GetSlotFiltered(selfDestructStateIdx, key, out value);
+        }
+        else
+        {
+            _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key, out value);
+        }
     }
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
         GuardDispose();
 
-        HashedKey<TreePath> key = new(path);
-
-        if (_trieChanged && _changedStateNodes.TryGetValue(key, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else if (_transientResource.TryGetStateNode(path, hash, out node) && node.NodeType != NodeType.Unknown)
+        if (_nodeRecordBuffer!.TryGetNode(_currentPooledContent.StateRootPointer, path, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -182,47 +215,6 @@ public sealed class SnapshotBundle : IDisposable
             node = new TrieNode(NodeType.Unknown, hash);
         }
 
-        return node;
-    }
-
-    public TrieNode FindStateNodeOrUnknownForTrieWarmer(in TreePath path, Hash256 hash)
-    {
-        // The warmer never reads the recyclable _snapshots; it warms nodes from persistence into the
-        // _transientResource. Pin the transient per read (lease + ABA re-check) while the bundle is live,
-        // else fall back to a persistence-only read (the bundle is being torn down).
-        TransientResource? transientResource = TryLeaseTransientResource();
-        if (transientResource is null)
-        {
-            return TryFindStateNodeInPersistence(path, hash, out TrieNode? node) ? node : CreateWarmerUnknownNode(hash);
-        }
-
-        try
-        {
-            return WarmUpStateNode(transientResource, path, hash);
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
-        }
-    }
-
-    private TrieNode WarmUpStateNode(TransientResource transientResource, in TreePath path, Hash256 hash)
-    {
-        if (transientResource.TryGetStateNode(path, hash, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return node;
-        }
-
-        return TryFindStateNodeInPersistence(path, hash, out node)
-            ? transientResource.GetOrAddStateNode(path, node)
-            : transientResource.GetOrAddStateNode(path, CreateWarmerUnknownNode(hash));
-    }
-
-    private static TrieNode CreateWarmerUnknownNode(Hash256 hash)
-    {
-        TrieNode node = new(NodeType.Unknown, hash);
-        node.MarkWarmerOwned();
         return node;
     }
 
@@ -257,26 +249,8 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    private bool TryFindStateNodeInPersistence(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
-    {
-        if (_trieNodeCache.TryGet(null, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
-
-        HashedKey<TreePath> key = new(path);
-        return _readOnlySnapshotBundle.TryFindStateNodes(key, out node);
-    }
-
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
-        if (_trieNodeCache.TryGet(null, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
-
         HashedKey<TreePath> key = new(path);
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
@@ -294,14 +268,8 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        HashedKey<(Hash256, TreePath)> key = new((address, path));
-
-        if (_trieChanged && _changedStorageNodes.TryGetValue(key, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node)
-                 && node.NodeType != NodeType.Unknown)
+        if (_changedStorageRoots.TryGetValue(address, out ulong root) && root != 0
+            && _nodeRecordBuffer!.TryGetNode(root, path, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -317,65 +285,11 @@ public sealed class SnapshotBundle : IDisposable
     }
 
 
-    public TrieNode FindStorageNodeOrUnknownTrieWarmer(Hash256 address, in TreePath path, Hash256 hash)
-    {
-        // Persistence-only external find, same reasoning as FindStateNodeOrUnknownForTrieWarmer.
-        // Pin the transient per read (lease + ABA re-check) while the bundle is live, else fall back
-        // to a persistence-only read (the bundle is being torn down).
-        TransientResource? transientResource = TryLeaseTransientResource();
-        if (transientResource is null)
-        {
-            return TryFindStorageNodeInPersistence(address, path, hash, out TrieNode? node)
-                ? node
-                : CreateWarmerUnknownNode(hash);
-        }
-
-        try
-        {
-            return WarmUpStorageNode(transientResource, address, path, hash);
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
-        }
-    }
-
-    private TrieNode WarmUpStorageNode(TransientResource transientResource, Hash256 address, in TreePath path, Hash256 hash)
-    {
-        if (transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return node;
-        }
-
-        return TryFindStorageNodeInPersistence(address, path, hash, out node)
-            ? transientResource.GetOrAddStorageNode((Hash256AsKey)address, path, node)
-            : transientResource.GetOrAddStorageNode((Hash256AsKey)address, path, CreateWarmerUnknownNode(hash));
-    }
-
-    private bool TryFindStorageNodeInPersistence(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
-    {
-        if (_trieNodeCache.TryGet(address, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
-
-        HashedKey<(Hash256, TreePath)> key = new((address, path));
-        return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node);
-    }
-
     // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
     // so if storage was self-destructed, the new root is different and orphaned nodes won't be traversed. So we skip the
     // check for slightly improved latency.
     private bool DoTryFindStorageNodeExternal(Hash256 address, in TreePath path, Hash256 hash, out TrieNode? node)
     {
-        if (_trieNodeCache.TryGet(address, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
-
         HashedKey<(Hash256, TreePath)> key = new((address, path));
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
@@ -403,71 +317,129 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
 
-    // This is called only during trie commit
-    public void SetStateNode(in TreePath path, TrieNode newNode)
+    /// <summary>Makes the final state trie readable from this bundle.</summary>
+    internal void PublishBufferedStateRoot(in (ValueHash256 Hash, ulong Pointer) root)
     {
         GuardDispose();
-        if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
-
-        // Note: Hot path
-        _trieChanged = true;
-        _changedStateNodes[path] = newNode;
-        _transientResource.UpdateStateNode(path, newNode);
+        Debug.Assert(root.Pointer != 0 || root.Hash == ValueKeccak.EmptyTreeHash);
+        _currentPooledContent.StateRootPointer = root.Pointer;
     }
 
-    internal void PublishStateNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers)
+    /// <summary>Makes a changed storage trie readable from this bundle, including a change to empty.</summary>
+    internal void PublishBufferedStorageRoot(Hash256 address, in (ValueHash256 Hash, ulong Pointer) root)
     {
-        _changedStateNodes.EnsureCapacity(_changedStateNodes.Count + CountBufferedNodes(buffers));
+        GuardDispose();
+        Debug.Assert(root.Pointer != 0 || root.Hash == ValueKeccak.EmptyTreeHash);
+        _changedStorageRoots[address] = root.Pointer;
+    }
 
-        foreach (List<(TreePath Path, TrieNode Node)> buffer in buffers)
+    /// <summary>Finds a record by pointer in the trie node buffer or among the nodes warmed for the current block.</summary>
+    internal bool TryLocate(ulong pointer, out NodeRecord record) => _cacheableNodeRecordBuffer!.TryLocate(pointer, out record);
+
+    /// <summary>Loads a trie node the trie node buffer does not hold, for a bulk set or point read, as <see cref="INodeRecordStore.TryLoad"/> does.</summary>
+    /// <remarks>
+    /// Hands over the record warmed for this block at the position, otherwise the RLP in persistence, whose node is trusted to be the
+    /// one asked for. The nodes of this bundle's changes and of every in-memory snapshot are in the buffer, which their pins keep
+    /// readable, and <see cref="NodeRecordBuffer"/> resolves warmed nodes by pointer, so this source only fetches nodes the buffers
+    /// reach by no pointer.
+    /// </remarks>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    internal bool TryLoadTrieNodeRecord<TArg>(Hash256? address, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
+        GuardDispose();
+
+        if (!_transientResource.WarmedNodeBuffer.TryGet(address, path, out NodeRecord record, out _))
+            return _readOnlySnapshotBundle.TryLoadPersistedRlp(address, path, ReadFlags.None, action, arg);
+
+        action(record.Span, arg);
+        return true;
+    }
+
+    /// <summary>Warms the nodes on the path to <paramref name="key"/> that the trie node buffer does not hold, for this block's bulk sets.</summary>
+    /// <remarks>
+    /// Reads only the warmed nodes and persistence, never this bundle's changes or snapshots, which the owner
+    /// recycles while a warm-up runs. The transient resource holding the warmed nodes is leased for the walk, so it cannot be recycled
+    /// until the walk ends. Does nothing once the bundle is being torn down.
+    /// </remarks>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <param name="root">The trie's root before the block, as <see cref="NodeRecordBufferExtensions.ResolveRoot"/> returns it.</param>
+    /// <param name="forDelete">Also warms the sibling needed when deleting the leaf collapses its branch.</param>
+    internal void WarmUp(Hash256? address, (ValueHash256 Hash, ulong Pointer) root, in ValueHash256 key, bool forDelete)
+    {
+        TransientResource? transientResource = TryLeaseTransientResource();
+        if (transientResource is null) return;
+
+        try
         {
-            foreach ((TreePath path, TrieNode node) in buffer) SetStateNode(path, node);
+            BufferWarmUp.WarmUp(CreateCacheableNodeRecordBuffer(transientResource)!, transientResource.WarmedNodeBuffer, _readOnlySnapshotBundle, address, root, key, forDelete);
+        }
+        finally
+        {
+            transientResource.ReleaseLease();
         }
     }
 
-    internal AddressStorageNodeDictionary.AddressNodes GetStorageNodeDestination(Hash256 address) =>
-        _changedStorageNodes.GetOrAddAddress(address);
-
-    // This is called only during trie commit
-    public void SetStorageNode(Hash256 addr, in TreePath path, TrieNode newNode)
+    /// <summary>Captures a source for private trie updates that may outlive this bundle.</summary>
+    internal BackgroundTrieSource CreateBackgroundTrieSource(Hash256 address)
     {
         GuardDispose();
-        SetStorageNode(GetStorageNodeDestination(addr), addr, path, newNode);
+        return new BackgroundTrieSource(_readOnlySnapshotBundle, _nodeRecordBuffer!, _snapshots, address);
     }
 
-    internal void SetStorageNode(
-        AddressStorageNodeDictionary.AddressNodes nodes,
-        Hash256 addr,
-        in TreePath path,
-        TrieNode newNode)
+    /// <summary>A leased immutable source, independent of transient-resource retirement.</summary>
+    /// <remarks>
+    /// Used by <see cref="ScopeProvider.FlatStorageTree"/> to apply storage writes early on the idle thread; the commit then
+    /// adopts the resulting root instead of bulk-setting those writes again. That apply runs off the owner thread and may
+    /// still run after the block's transient resource is retired or this bundle is recycled, so unlike the bundle's own
+    /// tries it cannot read the bundle or its per-block warmed nodes. It reads only the buffer, which its pins keep
+    /// readable, and persistence through its own lease of the read-only bundle.
+    /// </remarks>
+    internal sealed class BackgroundTrieSource : INodeRecordStore, IDisposable
     {
-        GuardDispose();
-        if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
+        private readonly ReadOnlySnapshotBundle _readOnly;
+        private readonly INodeRecordBuffer _buffer;
+        private readonly Hash256 _address;
+        private readonly INodeRecordBufferPin _pin;
+        private readonly INodeRecordBufferPin? _snapshotPin;
 
-        // Note: Hot path
-        _trieChanged = true;
-        nodes.Set(path, newNode);
-        _transientResource.UpdateStorageNode(addr, path, newNode);
-    }
-
-    internal void PublishStorageNodes(
-        AddressStorageNodeDictionary.AddressNodes nodes,
-        Hash256 address,
-        IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers)
-    {
-        nodes.EnsureAdditionalCapacity(CountBufferedNodes(buffers));
-
-        foreach (List<(TreePath Path, TrieNode Node)> buffer in buffers)
+        internal BackgroundTrieSource(ReadOnlySnapshotBundle readOnly, INodeRecordBuffer buffer, SnapshotPooledList snapshots, Hash256 address)
         {
-            foreach ((TreePath path, TrieNode node) in buffer) SetStorageNode(nodes, address, path, node);
+            _readOnly = readOnly;
+            _buffer = buffer;
+            _address = address;
+            readOnly.AcquireLease();
+            try
+            {
+                _pin = buffer.PinHead();
+                // The read-only lease protects its snapshots; the oldest local pin protects later local roots too.
+                foreach (Snapshot snapshot in snapshots)
+                {
+                    if (snapshot.BufferPin is not { } pin) continue;
+                    _snapshotPin = pin.Copy();
+                    break;
+                }
+            }
+            catch
+            {
+                readOnly.Dispose();
+                _pin?.Dispose();
+                throw;
+            }
         }
-    }
 
-    private static int CountBufferedNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers)
-    {
-        int count = 0;
-        foreach (List<(TreePath Path, TrieNode Node)> buffer in buffers) count += buffer.Count;
-        return count;
+        public bool TryLocate(ulong pointer, out NodeRecord record) => _buffer.TryLocate(pointer, out record);
+
+        public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => _buffer.StartWriteBatch(alignedTotalLength);
+
+        public bool TryLoad<TArg>(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            _readOnly.TryLoadPersistedRlp(_address, path, ReadFlags.None, action, arg);
+
+        public void Dispose()
+        {
+            _snapshotPin?.Dispose();
+            _pin.Dispose();
+            _readOnly.Dispose();
+        }
     }
 
     public void SetAccount(Address address, Account? account) =>
@@ -477,13 +449,23 @@ public sealed class SnapshotBundle : IDisposable
     {
         // ContainsKey is lock-free; TryAdd alone would take the bucket lock on every hot re-promote.
         HashedKey<Address> key = new(address);
-        if (!_changedAccounts.ContainsKey(key))
+        if (!_changedAccounts.ContainsKey(key) && !_readAccounts.ContainsKey(key))
         {
-            _changedAccounts.TryAdd(key, account);
+            _readAccounts.TryAdd(key, account);
         }
     }
 
     public void SetChangedSlot(Address address, in UInt256 index, in UInt256 value)
+    {
+        SetChangedSlotValue(address, index, value);
+        RegisterAddressWithChangedSlots(address);
+    }
+
+    /// <summary>Like <see cref="SetChangedSlot"/>, but leaves registering the address to the caller.</summary>
+    /// <remarks>The caller must also call <see cref="RegisterAddressWithChangedSlots"/> for <paramref name="address"/>,
+    /// once after each <see cref="ClearStorage"/> of it or <see cref="CollectAndApplySnapshot"/>, or a later clear leaves
+    /// the slot behind.</remarks>
+    internal void SetChangedSlotValue(Address address, in UInt256 index, in UInt256 value)
     {
         // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
         // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
@@ -497,7 +479,10 @@ public sealed class SnapshotBundle : IDisposable
         {
             _changedSlots[key] = value;
         }
+    }
 
+    internal void RegisterAddressWithChangedSlots(Address address)
+    {
         ConcurrentDictionary<HashedKey<Address>, byte> addressesWithChangedSlots =
             Volatile.Read(ref _addressesWithChangedSlots) ?? CreateAddressesWithChangedSlots();
         if (!addressesWithChangedSlots.ContainsKey(address))
@@ -521,7 +506,7 @@ public sealed class SnapshotBundle : IDisposable
 
         _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
 
-        _changedStorageNodes.RemoveAddress(addressHash);
+        _changedStorageRoots[addressHash] = 0;
 
         // No dictionary yet means no slot of any address was written.
         if (Volatile.Read(ref _addressesWithChangedSlots)?.TryRemove(address, out _) != true)
@@ -581,7 +566,9 @@ public sealed class SnapshotBundle : IDisposable
     /// <summary>Releases a lease taken with <see cref="TryLeaseReadOnlyBundle"/>.</summary>
     internal void ReleaseReadOnlyBundleLease() => _readOnlySnapshotBundle.Dispose();
 
-    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
+    /// <summary>Turns the changes written since the previous snapshot into a new snapshot and starts collecting the next one.</summary>
+    /// <param name="bufferPin">The pin covering the trie nodes written since the previous snapshot; the snapshot takes ownership.</param>
+    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, INodeRecordBufferPin? bufferPin, bool returnSnapshot = true)
     {
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
         // This is because copying the values have a measurable impact on overall performance.
@@ -590,7 +577,8 @@ public sealed class SnapshotBundle : IDisposable
             to: to,
             content: _currentPooledContent,
             resourcePool: _resourcePool,
-            usage: _usage);
+            usage: _usage,
+            bufferPin: bufferPin);
 
         snapshot.AcquireLease(); // For this SnapshotBundle.
         _snapshots.Add(snapshot); // Now later reads are correct
@@ -608,12 +596,13 @@ public sealed class SnapshotBundle : IDisposable
             }
 
             SwapTransientResource();
-            _trieChanged = false;
 
             // Make and apply new snapshot content.
+            SnapshotContent committedContent = _currentPooledContent;
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
             _addressesWithChangedSlots?.NoLockClear();
+            DropReadAccounts(committedContent);
 
             return (snapshot, transientResource);
         }
@@ -628,14 +617,25 @@ public sealed class SnapshotBundle : IDisposable
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
             _addressesWithChangedSlots?.NoLockClear();
-            _trieChanged = false;
 
             return (null, null);
         }
     }
 
-    private void SwapTransientResource() =>
-        Volatile.Write(ref _transientResource, _resourcePool.GetCachedResource(_usage));
+    /// <summary>Empties the read cache of content that was just handed to a snapshot.</summary>
+    /// <remarks>
+    /// A snapshot never reads these entries, so keeping them would only hold memory that its estimate does not count.
+    /// The clear takes the stripe locks because a warmer can still be promoting into this content, and it keeps the
+    /// grown table for the next block that reuses the pooled content.
+    /// </remarks>
+    private static void DropReadAccounts(SnapshotContent content) => content.ReadAccounts.NoResizeClear();
+
+    private void SwapTransientResource()
+    {
+        TransientResource transientResource = _resourcePool.GetCachedResource(_usage);
+        _cacheableNodeRecordBuffer = CreateCacheableNodeRecordBuffer(transientResource);
+        Volatile.Write(ref _transientResource, transientResource);
+    }
 
     private void GuardDispose() => ObjectDisposedException.ThrowIf(_isDisposed, this);
 
@@ -649,7 +649,8 @@ public sealed class SnapshotBundle : IDisposable
         _snapshots = null!;
         _changedSlots = null!;
         _changedAccounts = null!;
-        _changedStorageNodes = null!;
+        _readAccounts = null!;
+        _changedStorageRoots = null!;
         _selfDestructedAccountAddresses = null!;
 
         _resourcePool.ReturnSnapshotContent(_usage, _currentPooledContent);

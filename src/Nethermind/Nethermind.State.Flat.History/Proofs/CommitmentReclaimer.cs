@@ -197,6 +197,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
         byte[] carried = ArrayPool<byte>.Shared.Rent(ParentRowCodec.MaxBranchRowLength);
         ChildVector vector = ChildVector.Rent();
         IColumnsWriteBatch<FlatHistoryColumns>? batch = null;
+        IWriteBatch? rows = null;
         int writesInBatch = 0;
         int nodesInChunk = 0;
         long carriedNodes = 0;
@@ -245,13 +246,14 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
                     }
                     else
                     {
-                        batch ??= history.StartWriteBatch();
-                        store.Write(epoch + 1, node, target, carried.AsSpan(0, carriedLength), batch.GetColumnBatch(column));
+                        rows ??= (batch ??= history.StartWriteBatch()).GetColumnBatch(column);
+                        store.Write(epoch + 1, node, target, carried.AsSpan(0, carriedLength), rows);
                         carriedNodes++;
                         if (++writesInBatch >= WritesPerBatch)
                         {
-                            batch.Dispose();
+                            batch!.Dispose();
                             batch = null;
+                            rows = null;
                             writesInBatch = 0;
                         }
                     }
@@ -263,6 +265,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
                 nodesInChunk = 0;
                 batch?.Dispose();
                 batch = null;
+                rows = null;
                 writesInBatch = 0;
                 if (delay is not null)
                 {

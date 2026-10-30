@@ -55,8 +55,11 @@ public class TestingRpcModuleTests
 
         ResultWrapper<object> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, [], []);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(result.Data, Is.AssignableTo<GetPayloadV5Result>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data, Is.AssignableTo<GetPayloadV5Result>());
+        }
         GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
         using (Assert.EnterMultipleScope())
         {
@@ -120,7 +123,9 @@ public class TestingRpcModuleTests
 
         if (expectsBlockAccessList)
         {
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(executionPayload.TryGetProperty("blockAccessList", out JsonElement blockAccessList), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(blockAccessList.GetString(), Is.Not.Null.And.Not.Empty);
         }
         else
@@ -130,7 +135,9 @@ public class TestingRpcModuleTests
 
         if (expectsSlotNumber)
         {
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
             Assert.That(executionPayload.TryGetProperty("slotNumber", out JsonElement slotNumberJson), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(slotNumberJson.GetString(), Is.EqualTo(slotNumber!.Value.ToHexString(skipLeadingZeros: true)));
         }
         else
@@ -145,6 +152,33 @@ public class TestingRpcModuleTests
             .SetName("Returns_fork_specific_payload_for_fusaka");
         yield return new TestCaseData(Amsterdam.Instance, true, true)
             .SetName("Returns_fork_specific_payload_for_amsterdam");
+    }
+
+    [Test]
+    public async Task Returns_invalid_params_for_blob_transaction_without_cell_proofs([Values] bool amsterdam)
+    {
+        IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Osaka.Instance;
+        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateBuildTestingModule(
+            spec: spec, slotNumber: amsterdam ? 1UL : null);
+        Transaction transaction = Core.Test.Builders.Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(blobCount: 1, isMempoolTx: false).SignedAndResolved().TestObject;
+        byte[][] txRlps = EncodeTransactions([transaction], out _);
+
+        string json = await RpcTest.TestSerializedRequest<ITestingRpcModule>(
+            module,
+            nameof(ITestingRpcModule.testing_buildBlockV1),
+            parentHash,
+            CreateDefaultPayloadAttributes(parentHeader, slotNumber: amsterdam ? 2UL : null),
+            txRlps);
+
+        using JsonDocument doc = JsonDocument.Parse(json);
+        JsonElement error = doc.RootElement.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(error.GetProperty("message").GetString(), Does.Contain("network wrapper data"));
+            Assert.That(doc.RootElement.TryGetProperty("result", out _), Is.False);
+        }
     }
 
     [TestCase(true, 1, Description = "null txRlps uses mempool")]
@@ -162,8 +196,11 @@ public class TestingRpcModuleTests
         ResultWrapper<object> result = await module.testing_buildBlockV1(
             parentHash, CreateDefaultPayloadAttributes(parentHeader), txRlps, []);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(((GetPayloadV5Result)result.Data!).ExecutionPayload.Transactions.Length, Is.EqualTo(expectedTxCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(((GetPayloadV5Result)result.Data!).ExecutionPayload.Transactions.Length, Is.EqualTo(expectedTxCount));
+        }
 
         if (useNull)
             txSource.Received(1).GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), true);
@@ -245,11 +282,14 @@ public class TestingRpcModuleTests
         ResultWrapper<Hash256> result = await module.testing_commitBlockV1(
             CreateDefaultPayloadAttributes(chainHeadHeader), [], []);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
 
-        Assert.That(blockTree.SuggestOptions, Is.EqualTo(BlockTreeSuggestOptions.ForceDontSetAsMain),
-            "ShouldProcess would force the main BlockchainProcessor to re-execute every tx; " +
-            "ForceDontSetAsMain leaves the main-chain write to TryUpdateMainChain (single writer).");
+            Assert.That(blockTree.SuggestOptions, Is.EqualTo(BlockTreeSuggestOptions.ForceDontSetAsMain),
+                "ShouldProcess would force the main BlockchainProcessor to re-execute every tx; " +
+                "ForceDontSetAsMain leaves the main-chain write to TryUpdateMainChain (single writer).");
+        }
 
         using (Assert.EnterMultipleScope())
         {

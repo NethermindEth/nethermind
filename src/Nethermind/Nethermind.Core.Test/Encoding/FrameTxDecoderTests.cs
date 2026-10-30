@@ -46,8 +46,6 @@ public class FrameTxDecoderTests
             Assert.That(decoded.Nonce, Is.EqualTo(tx.Nonce));
         }
 
-        AssertReferencesEqual(decoded.RecentRootReferences, tx.RecentRootReferences);
-
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.NonceKeys, Is.EqualTo(tx.NonceKeys));
@@ -55,7 +53,8 @@ public class FrameTxDecoderTests
             Assert.That(decoded.SenderAddress, Is.EqualTo(tx.SenderAddress));
             Assert.That(decoded.GasPrice, Is.EqualTo(tx.GasPrice));
             Assert.That(decoded.DecodedMaxFeePerGas, Is.EqualTo(tx.DecodedMaxFeePerGas));
-            Assert.That(decoded.MaxFeePerBlobGas, Is.EqualTo(tx.MaxFeePerBlobGas ?? UInt256.Zero));
+            Assert.That(decoded.MaxFee, Is.EqualTo(tx.MaxFee));
+            Assert.That(decoded.MaxFeePerBlobGas, Is.Null);
             Assert.That(decoded.BlobVersionedHashes ?? [], Is.EqualTo(tx.BlobVersionedHashes ?? []));
         }
 
@@ -167,7 +166,7 @@ public class FrameTxDecoderTests
             _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
         }
 
-        Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("trailing signature"));
+        Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("trailing element"));
     }
 
     [Test]
@@ -208,7 +207,7 @@ public class FrameTxDecoderTests
         {
             Assert.That((byte)decoded.Frames![0].Mode, Is.EqualTo(mode), "the decoder silently normalized the mode");
             Assert.That((byte)decoded.Frames[0].Flags, Is.EqualTo(flags), "the decoder silently normalized the flags");
-            Assert.That(FrameTxValidation.IsWellFormed(decoded, postTxEnabled: true, out string? error), Is.False);
+            Assert.That(FrameTxValidation.IsWellFormed(decoded, assertEnabled: true, out string? error), Is.False);
             Assert.That(error, Is.EqualTo(expectedError));
         }
     }
@@ -226,14 +225,37 @@ public class FrameTxDecoderTests
     [Test]
     public void ComputeSigHash_CanonicalHashSignatureBytesChange_HashUnchanged()
     {
-        // Empty msg means the entry signs compute_sig_hash itself, so its raw bytes are elided
-        // from the preimage — otherwise the hash would depend on the signature over it.
         Transaction first = CreateFrameTx(signatures:
             [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, FilledBytes(65, 0x11))]);
         Transaction second = CreateFrameTx(signatures:
             [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, FilledBytes(65, 0x22))]);
 
         Assert.That(FrameTxSigHash.ComputeValue(second), Is.EqualTo(FrameTxSigHash.ComputeValue(first)));
+    }
+
+    [Test]
+    public void ComputeSigHash_CanonicalHashSignatureLengthChange_HashChanges()
+    {
+        Transaction first = CreateFrameTx(signatures:
+            [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(65, 0x11))]);
+        Transaction second = CreateFrameTx(signatures:
+            [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(66, 0x11))]);
+
+        Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
+    }
+
+    [TestCase(0, "c4018080" + "80")]
+    [TestCase(65, "c4018080" + "41")]
+    [TestCase(128, "c5018080" + "8180")]
+    public void ElidedCanonicalSignature_EncodesLengthAsRlpInteger(int signatureLength, string expectedHex)
+    {
+        TxFrameSignature entry = new(TxFrameSignature.SchemeSecp256k1, null, default, new byte[signatureLength]);
+        byte[] buffer = new byte[16];
+        RlpWriter writer = new(buffer);
+
+        TxFrameSignatureDecoder.Instance.Encode(ref writer, entry, elideCanonicalSignatureBytes: true);
+
+        Assert.That(buffer.AsSpan(0, writer.Position).ToArray(), Is.EqualTo(Bytes.FromHexString(expectedHex)));
     }
 
     [Test]
@@ -258,74 +280,25 @@ public class FrameTxDecoderTests
         Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
     }
 
-    // An absent list is a different envelope from an empty one, so neither may reuse the other's hash.
-    [Test]
-    public void ComputeSigHash_RecentRootReferencesChange_HashChanges()
+    [TestCaseSource(nameof(TrailingListCases))]
+    public void Decode_PayloadWithTrailingList_Throws(Rlp trailing)
     {
-        Transaction none = CreateFrameTx();
-        Transaction empty = CreateFrameTx();
-        empty.RecentRootReferences = [];
-        Transaction referencing = CreateFrameTx();
-        referencing.RecentRootReferences = [Reference(slot: 7)];
-        Transaction otherSlot = CreateFrameTx();
-        otherSlot.RecentRootReferences = [Reference(slot: 8)];
-
-        using (Assert.EnterMultipleScope())
+        void Decode()
         {
-            Assert.That(FrameTxSigHash.ComputeValue(empty), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(none)));
-            Assert.That(FrameTxSigHash.ComputeValue(referencing), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(empty)));
-            Assert.That(FrameTxSigHash.ComputeValue(otherSlot), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(referencing)));
+            RlpReader reader = new(TypedPayload(FrameTxBody(trailing: trailing)));
+            _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
         }
+
+        Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("trailing element"));
     }
 
-    [TestCaseSource(nameof(MalformedReferenceListCases))]
-    public void Decode_MalformedRecentRootReferenceList_Throws(Rlp references) =>
-        Assert.That(() => DecodeReferenceEnvelope(references), Throws.InstanceOf<RlpException>());
-
-    // Control for the malformed cases above: without it any exception from the surrounding payload would satisfy them.
-    [Test]
-    public void Decode_WellFormedRecentRootReferenceList_Decodes()
+    private static IEnumerable<TestCaseData> TrailingListCases()
     {
-        Transaction tx = DecodeReferenceEnvelope(Rlp.Encode(new[]
-        {
-            EncodeReference(TestItem.KeccakA.BytesToArray(), 7, TestItem.KeccakB.BytesToArray())
-        }));
-
-        Assert.That(tx.RecentRootReferences, Has.Length.EqualTo(1));
-    }
-
-    private static IEnumerable<TestCaseData> MalformedReferenceListCases()
-    {
-        Rlp wellFormed = EncodeReference(TestItem.KeccakA.BytesToArray(), 7, TestItem.KeccakB.BytesToArray());
-
+        yield return new TestCaseData(Rlp.OfEmptyList).SetName("Decode_PayloadWithTrailingEmptyList_Throws");
         yield return new TestCaseData(Rlp.Encode(new[]
         {
-            EncodeReference(new byte[31], 7, TestItem.KeccakB.BytesToArray())
-        })).SetName("Decode_ReferenceWithUndersizedSourceId_Throws");
-        yield return new TestCaseData(Rlp.Encode(new[]
-        {
-            Rlp.Encode(new[] { Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L) })
-        })).SetName("Decode_ReferenceMissingRoot_Throws");
-        Rlp[] overTheCap = new Rlp[Eip8272Constants.MaxRecentRootReferences + 1];
-        Array.Fill(overTheCap, wellFormed);
-        yield return new TestCaseData(Rlp.Encode(overTheCap))
-            .SetName("Decode_MoreReferencesThanTheCap_Throws");
-        yield return new TestCaseData(Rlp.Encode(new[] { Rlp.OfEmptyList }))
-            .SetName("Decode_EmptyListAsAReference_Throws");
-        yield return new TestCaseData(Rlp.Encode(new[]
-        {
-            Rlp.Encode(new[]
-            {
-                Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L),
-                Rlp.Encode(TestItem.KeccakB.BytesToArray()), Rlp.Encode(0L)
-            })
-        })).SetName("Decode_ReferenceWithAFourthElement_Throws");
-    }
-
-    private Transaction DecodeReferenceEnvelope(Rlp references)
-    {
-        RlpReader reader = new(TypedPayload(FrameTxBody(trailing: references)));
-        return _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+            Rlp.Encode(new[] { Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L), Rlp.Encode(TestItem.KeccakB.BytesToArray()) })
+        })).SetName("Decode_PayloadWithTrailingRecentRootReferenceList_Throws");
     }
 
     /// <summary>
@@ -334,15 +307,16 @@ public class FrameTxDecoderTests
     /// <param name="chainId">Replaces the chain_id field; defaults to <see cref="TestBlockchainIds.ChainId"/>.</param>
     /// <param name="sender">Replaces the sender field; defaults to <see cref="TestItem.AddressA"/>.</param>
     /// <param name="signatures">Replaces the signatures field; defaults to the empty list.</param>
+    /// <param name="fees">Replaces the fees field; defaults to three zero per-gas fees.</param>
     /// <param name="trailing">Extra elements appended after <c>blob_versioned_hashes</c>.</param>
-    private static Rlp FrameTxBody(Rlp? chainId = null, Rlp? sender = null, Rlp? signatures = null, Rlp? frames = null, params Rlp[] trailing) =>
+    private static Rlp FrameTxBody(Rlp? chainId = null, Rlp? sender = null, Rlp? signatures = null, Rlp? frames = null, Rlp? fees = null, params Rlp[] trailing) =>
         Rlp.Encode([
             chainId ?? Rlp.Encode(TestBlockchainIds.ChainId),
             Rlp.Encode(0L),                                 // nonce
             sender ?? Rlp.Encode(TestItem.AddressA.Bytes),  // sender
             frames ?? Rlp.Encode(Array.Empty<Rlp>()),       // frames
             signatures ?? Rlp.Encode(Array.Empty<Rlp>()),   // signatures
-            Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L), Rlp.Encode(0L)), // fees
+            fees ?? Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L)),
             Rlp.Encode(Array.Empty<Rlp>()),                 // blob_versioned_hashes
             .. trailing]);
 
@@ -355,44 +329,6 @@ public class FrameTxDecoderTests
         return payload;
     }
 
-    private static Rlp EncodeReference(byte[] sourceId, ulong slot, byte[] root) =>
-        Rlp.Encode(new[] { Rlp.Encode(sourceId), Rlp.Encode(slot), Rlp.Encode(root) });
-
-    private static RecentRootReference Reference(ulong slot) =>
-        new(TestItem.KeccakA.ValueHash256, slot, TestItem.KeccakB.ValueHash256);
-
-    private static void AssertReferencesEqual(RecentRootReference[]? actual, RecentRootReference[]? expected)
-    {
-        if (expected is null)
-        {
-            Assert.That(actual, Is.Null);
-            return;
-        }
-
-        Assert.That(actual, Is.Not.Null);
-        Assert.That(actual!.Length, Is.EqualTo(expected.Length));
-        using (Assert.EnterMultipleScope())
-        {
-            for (int i = 0; i < expected.Length; i++)
-            {
-                Assert.That(actual[i].SourceId, Is.EqualTo(expected[i].SourceId));
-                Assert.That(actual[i].Slot, Is.EqualTo(expected[i].Slot));
-                Assert.That(actual[i].Root, Is.EqualTo(expected[i].Root));
-            }
-        }
-    }
-
-    [Test]
-    public void ComputeSigHash_MaxFeePerBlobGasChanges_HashChanges()
-    {
-        // The blob fields are part of the signing preimage, so the signature must commit to them.
-        Transaction first = CreateFrameTx();
-        first.MaxFeePerBlobGas = 7;
-        Transaction second = CreateFrameTx();
-        second.MaxFeePerBlobGas = 8;
-
-        Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
-    }
 
     [Test]
     public void ComputeSigHash_BlobVersionedHashesChange_HashChanges()
@@ -450,14 +386,6 @@ public class FrameTxDecoderTests
             new TxFrameSignature(TxFrameSignature.SchemeP256, TestItem.AddressD, default, FilledBytes(TxFrameSignature.P256SignatureLength, 0x33)),
         ])).SetName("Roundtrip_AllSignatureSchemes");
 
-        Transaction emptyReferences = CreateFrameTx();
-        emptyReferences.RecentRootReferences = [];
-        yield return new TestCaseData(emptyReferences).SetName("Roundtrip_EmptyRecentRootReferenceList");
-
-        Transaction referencing = CreateFrameTx();
-        referencing.RecentRootReferences = [Reference(slot: 0), Reference(slot: ulong.MaxValue)];
-        yield return new TestCaseData(referencing).SetName("Roundtrip_RecentRootReferences");
-
         Transaction keyed = CreateFrameTx();
         keyed.NonceKeys = [UInt256.Zero];
         yield return new TestCaseData(keyed).SetName("Roundtrip_KeyedNonceEnvelope_LegacyKeyOnly");
@@ -467,9 +395,67 @@ public class FrameTxDecoderTests
         yield return new TestCaseData(multiKeyed).SetName("Roundtrip_KeyedNonceEnvelope_MultipleKeys");
 
         Transaction blobCarrying = CreateFrameTx();
-        blobCarrying.MaxFeePerBlobGas = 7;
         blobCarrying.BlobVersionedHashes = [FilledBytes(32, 0x01), FilledBytes(32, 0x02)];
         yield return new TestCaseData(blobCarrying).SetName("Roundtrip_WithBlobFields");
+
+        yield return new TestCaseData(WithMaxFee(CreateFrameTx(), UInt256.MaxValue)).SetName("Roundtrip_MaxFeeAtTheUInt256Maximum");
+    }
+
+    private static Transaction WithMaxFee(Transaction tx, UInt256 maxFee)
+    {
+        tx.MaxFee = maxFee;
+        tx.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(maxFee, FrameTxValidation.TotalGasLimit(tx.Frames));
+        return tx;
+    }
+
+    // EIP-8141 fees are [max_fee, max_priority_fee_per_gas].
+    [Test]
+    public void Decode_FeeList_ReadsMaxFeeThenPriorityFee()
+    {
+        RlpReader reader = new(TypedPayload(FrameTxBody(fees: Rlp.Encode(Rlp.Encode(11L), Rlp.Encode(22L)))));
+
+        Transaction tx = _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.MaxFee, Is.EqualTo((UInt256)11));
+            Assert.That(tx.GasPrice, Is.EqualTo((UInt256)22), "max_priority_fee_per_gas");
+            Assert.That(tx.MaxFeePerBlobGas, Is.Null);
+        }
+    }
+
+    // A three-item list is the earlier [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas] shape.
+    [TestCase(1, TestName = "Decode_OneItemFeeList_Throws")]
+    [TestCase(3, TestName = "Decode_ThreeItemFeeList_Throws")]
+    [TestCase(4, TestName = "Decode_FourItemFeeList_Throws")]
+    public void Decode_FeeListOfAnotherLength_Throws(int feeCount)
+    {
+        Rlp[] fees = [Rlp.Encode(11L), Rlp.Encode(22L), Rlp.Encode(33L), Rlp.Encode(44L)];
+        byte[] payload = TypedPayload(FrameTxBody(fees: Rlp.Encode(fees[..feeCount])));
+
+        Assert.That(() => { RlpReader reader = new(payload); _txDecoder.Decode(ref reader, RlpBehaviors.SkipTypedWrapping); },
+            Throws.InstanceOf<RlpException>());
+    }
+
+    [Test]
+    public void Encode_FeeList_WritesMaxFeeThenPriorityFee()
+    {
+        Transaction tx = WithMaxFee(CreateFrameTx(frames: []), 11);
+        tx.Nonce = 0;
+        tx.GasPrice = 22;
+
+        byte[] expected = TypedPayload(FrameTxBody(fees: Rlp.Encode(Rlp.Encode(11L), Rlp.Encode(22L))));
+
+        Assert.That(EncodeConsensusPayload(tx), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void ComputeSigHash_MaxFeeChanges_HashChanges()
+    {
+        Transaction first = WithMaxFee(CreateFrameTx(), 7);
+        Transaction second = WithMaxFee(CreateFrameTx(), 8);
+
+        Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
     }
 
     // Decoding `c1 c0` as the set [0] would move the sequence into the sender's account nonce.
@@ -503,9 +489,12 @@ public class FrameTxDecoderTests
         // `c3 82 01 2c` is the whole nonce_keys list; `c1` under-declares it without moving any other byte.
         ReadOnlySpan<byte> canonical = [0xc3, 0x82, 0x01, 0x2c];
         int headerIndex = bytes.AsSpan().IndexOf(canonical);
-        Assert.That(headerIndex, Is.GreaterThanOrEqualTo(0), "canonical nonce_keys encoding not found");
-        // A second occurrence would let the patch corrupt an unrelated list and still throw, i.e. pass for the wrong reason.
-        Assert.That(bytes.AsSpan(headerIndex + 1).IndexOf(canonical), Is.LessThan(0), "the nonce_keys encoding is not unique");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headerIndex, Is.GreaterThanOrEqualTo(0), "canonical nonce_keys encoding not found");
+            // A second occurrence would let the patch corrupt an unrelated list and still throw, i.e. pass for the wrong reason.
+            Assert.That(bytes.AsSpan(headerIndex + 1).IndexOf(canonical), Is.LessThan(0), "the nonce_keys encoding is not unique");
+        }
 
         if (underDeclare)
         {
@@ -561,6 +550,18 @@ public class FrameTxDecoderTests
         Assert.That(() => FrameTxNonceCalldata.Measure(keyed), Throws.InstanceOf<ArgumentOutOfRangeException>());
     }
 
+    [TestCase(true, 1UL, 3, TestName = "MeasureNonceCalldata_SequentialKeyedNonce_PricesTheSequence")]
+    [TestCase(true, Eip8250Constants.MaxNonceSeq, 2, TestName = "MeasureNonceCalldata_SingleUseKeyedNonce_ExemptsTheSequence")]
+    [TestCase(false, Eip8250Constants.MaxNonceSeq, 9, TestName = "MeasureNonceCalldata_PlainNonceAtMax_PricesTheSequence")]
+    public void MeasureNonceCalldata_PricesTheSequenceUnlessSingleUse(bool keyed, ulong nonceSeq, int nonZeroBytes)
+    {
+        Transaction tx = CreateFrameTx();
+        tx.Nonce = nonceSeq;
+        tx.NonceKeys = keyed ? [(UInt256)7] : null;
+
+        Assert.That(FrameTxNonceCalldata.Measure(tx), Is.EqualTo((0, nonZeroBytes)));
+    }
+
     [TestCase(Eip8141Constants.MaxFrames, false)]
     [TestCase(Eip8141Constants.MaxFrames + 1, true)]
     public void Decode_BoundsTheFrameCount(int frameCount, bool rejected)
@@ -589,7 +590,6 @@ public class FrameTxDecoderTests
     public void Decode_BoundsTheBlobVersionedHashCount(int hashCount, bool rejected)
     {
         Transaction tx = CreateFrameTx();
-        tx.MaxFeePerBlobGas = 1;
         byte[][] hashes = new byte[hashCount][];
         for (int i = 0; i < hashes.Length; i++)
         {
@@ -744,21 +744,15 @@ public class FrameTxDecoderTests
     }
 
     [Test]
-    public void Decode_DeclaredLengthOverrunsTheBuffer_ReportsTruncatedReferences([Range(1, 4)] int overrun)
+    public void Decode_DeclaredLengthOverrunsTheBuffer_ThrowsRlpException([Range(1, 4)] int overrun)
     {
-        // Inflating the declared payload length without adding bytes leaves the end-of-payload checkpoint
-        // past the last real field, so the decoder enters the trailing recent-root-reference list and reads
-        // off the end of the buffer. That must surface as an RLP error naming the list, not as a bare
-        // IndexOutOfRangeException and not as a truncated signature — a frame transaction has no envelope
-        // signature to truncate.
         byte[] payload = EncodeConsensusPayload(CreateFrameTx());
         // Byte 0 is the transaction type, byte 1 the payload sequence prefix.
         Assert.That(payload[1] + overrun, Is.LessThanOrEqualTo(ShortSequencePrefixMax),
             "the overrun must keep the short-form prefix, or it declares a length of length instead");
         payload[1] += (byte)overrun;
 
-        Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpException>()
-            .With.Message.Contains("RLP data is truncated").And.Message.Contains("recent root reference"));
+        Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpException>().With.Message.Contains("payload is incomplete"));
     }
 
     /// <summary>An RLP list of <paramref name="count"/> single-byte items, without materialising the items.</summary>
@@ -816,7 +810,6 @@ public class FrameTxDecoderTests
         proofsManager.ComputeProofsAndCommitments(wrapper);
 
         Transaction tx = CreateFrameTx();
-        tx.MaxFeePerBlobGas = 1;
         tx.BlobVersionedHashes = proofsManager.ComputeHashes(wrapper);
         tx.NetworkWrapper = wrapper;
         return tx;
@@ -856,7 +849,7 @@ public class FrameTxDecoderTests
     }
 
     private static Transaction CreateFrameTx(TxFrame[]? frames = null, TxFrameSignature[]? signatures = null) =>
-        new()
+        WithMaxFee(new Transaction
         {
             Type = TxType.FrameTx,
             ChainId = TestBlockchainIds.ChainId,
@@ -865,8 +858,7 @@ public class FrameTxDecoderTests
             Frames = frames ?? [Frame()],
             FrameSignatures = signatures ?? [],
             GasPrice = 1.GWei, // max_priority_fee_per_gas
-            DecodedMaxFeePerGas = 30.GWei,
-        };
+        }, 3.GWei);
 
     private static TxFrame Frame(FrameMode mode = FrameMode.Default, FrameFlags flags = FrameFlags.None, Address? target = null, ulong gasLimit = 100_000, ulong stateGasLimit = 0, UInt256 value = default, byte[]? data = null) =>
         new(mode, flags, target, gasLimit, stateGasLimit, value, data ?? Array.Empty<byte>());

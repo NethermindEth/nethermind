@@ -4,6 +4,8 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Evm;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.ParityStyle;
@@ -83,7 +85,7 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
             else if (reader.ValueTextEquals("push"u8))
             {
                 reader.Read();
-                value.Push = JsonSerializer.Deserialize<byte[][]>(ref reader, options);
+                value.Push = TypeInfoJsonSerializer.Deserialize<byte[][]>(ref reader, options);
             }
             else if (reader.ValueTextEquals("store"u8))
             {
@@ -119,13 +121,13 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
             if (reader.ValueTextEquals("data"u8))
             {
                 reader.Read();
-                memory.Data = JsonSerializer.Deserialize<byte[]>(ref reader, options);
+                memory.Data = TypeInfoJsonSerializer.Deserialize<byte[]>(ref reader, options);
             }
             else if (reader.ValueTextEquals("off"u8))
             {
                 reader.Read();
                 // Older stores hold it as a hex string.
-                memory.Offset = JsonSerializer.Deserialize<long>(ref reader, options);
+                memory.Offset = TypeInfoJsonSerializer.Deserialize<long>(ref reader, options);
             }
             else
             {
@@ -153,12 +155,12 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
             if (reader.ValueTextEquals("key"u8))
             {
                 reader.Read();
-                store.Key = JsonSerializer.Deserialize<byte[]>(ref reader, options);
+                store.Key = TypeInfoJsonSerializer.Deserialize<byte[]>(ref reader, options);
             }
             else if (reader.ValueTextEquals("val"u8))
             {
                 reader.Read();
-                store.Value = JsonSerializer.Deserialize<byte[]>(ref reader, options);
+                store.Value = TypeInfoJsonSerializer.Deserialize<byte[]>(ref reader, options);
             }
             else
             {
@@ -174,7 +176,12 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
     public override void Write(
         Utf8JsonWriter writer,
         ParityVmOperationTrace value,
-        JsonSerializerOptions options)
+        JsonSerializerOptions options) => WriteOperation(writer, value, [], options);
+
+    /// <summary>Writes an operation of the frame running <paramref name="code"/>, named by the opcode at its <c>pc</c>.</summary>
+    /// <remarks>An operation whose <c>pc</c> lies outside the code, such as one heading an EIP-8141 frame in the frame
+    /// transaction's code-less root, has no opcode and is written without <c>op</c>.</remarks>
+    internal static void WriteOperation(Utf8JsonWriter writer, ParityVmOperationTrace value, ReadOnlySpan<byte> code, JsonSerializerOptions options)
     {
         writer.WriteStartObject();
 
@@ -189,9 +196,14 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
             WriteExecuted(writer, value, options);
         }
 
+        if ((uint)value.Pc < (uint)code.Length)
+        {
+            writer.WriteString("op"u8, OpcodeJsonNames.Get((Instruction)code[value.Pc]));
+        }
+
         writer.WriteNumber("pc"u8, value.Pc);
         writer.WritePropertyName("sub"u8);
-        JsonSerializer.Serialize(writer, value.Sub, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.Sub, options);
 
         writer.WriteEndObject();
     }
@@ -204,7 +216,7 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
         {
             writer.WriteStartObject();
             writer.WritePropertyName("data"u8);
-            JsonSerializer.Serialize(writer, value.Memory.Data, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Memory.Data, options);
             // A plain number, as the streaming tracer writes it; a long would otherwise serialize as a hex string.
             writer.WriteNumber("off"u8, value.Memory.Offset);
             writer.WriteEndObject();

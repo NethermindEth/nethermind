@@ -71,7 +71,7 @@ internal static class StartupPipelineWarmer
     /// </remarks>
     internal static async Task WarmupAsync(ChainSpec source, IConfigProvider liveConfig, bool flatState, CancellationToken cancellationToken,
         IRpcAuthentication? authentication = null, ILogger logger = default, Action<ContainerBuilder>? configureContainer = null,
-        IBlockTree? liveBlockTree = null)
+        IBlockTree? liveBlockTree = null, ITimestamper? timestamper = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         DirectoryInfo directory = Directory.CreateDirectory(Path.Combine(liveConfig.GetConfig<IInitConfig>().BaseDbPath, "startup-warmup", Guid.NewGuid().ToString("N")));
@@ -83,10 +83,9 @@ internal static class StartupPipelineWarmer
         try
         {
             IRpcAuthentication warmAuthentication = authentication is JwtAuthentication
-                ? JwtAuthentication.FromSecret(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)), Timestamper.Default, logger)
+                ? JwtAuthentication.FromSecret(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)), timestamper ?? Timestamper.Default, logger)
                 : NoAuthentication.Instance;
-            string? token = (warmAuthentication as JwtAuthentication)?.CreateWarmupToken();
-            await RunAsync(source, liveConfig, flatState, directory.FullName, token, warmAuthentication, keys, configureContainer, warmMetrics, cancellationToken);
+            await RunAsync(source, liveConfig, flatState, directory.FullName, warmAuthentication, keys, configureContainer, warmMetrics, cancellationToken);
         }
         finally
         {
@@ -105,12 +104,12 @@ internal static class StartupPipelineWarmer
         }
     }
 
-    private static async Task RunAsync(ChainSpec source, IConfigProvider liveConfig, bool flatState, string directory, string? token, IRpcAuthentication authentication,
+    private static async Task RunAsync(ChainSpec source, IConfigProvider liveConfig, bool flatState, string directory, IRpcAuthentication authentication,
         PrivateKey[] keys, Action<ContainerBuilder>? configureContainer, WarmMetrics warmMetrics, CancellationToken cancellationToken)
     {
         ulong timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         ChainSpec chainSpec = CreateChainSpec(source, liveConfig.GetConfig<IBlocksConfig>().MinGasPrice, keys);
-        ConfigProvider config = CreateConfig(liveConfig, flatState, directory, token is not null, keys[0]);
+        ConfigProvider config = CreateConfig(liveConfig, flatState, directory, authentication is JwtAuthentication, keys[0]);
         // A separate root prevents a fallback registration from reaching the live database or world state.
         ProcessExitSource exitSource = new(cancellationToken);
         ContainerBuilder builder = new ContainerBuilder()
@@ -130,7 +129,7 @@ internal static class StartupPipelineWarmer
             try
             {
                 await InitializeNodeAsync(container, config, cancellationToken);
-                await ExercisePipelineAsync(container, chainSpec.Genesis!.Header, timestamp, config.GetConfig<IJsonRpcConfig>().Port, token, keys, cancellationToken);
+                await ExercisePipelineAsync(container, chainSpec.Genesis!.Header, timestamp, config.GetConfig<IJsonRpcConfig>().Port, authentication as JwtAuthentication, keys, cancellationToken);
             }
             finally
             {
@@ -235,7 +234,6 @@ internal static class StartupPipelineWarmer
                 Enabled = flatState,
                 Layout = liveConfig.GetConfig<IFlatDbConfig>().Layout,
                 BlockCacheSizeBudget = 16 * 1024 * 1024,
-                TrieCacheMemoryBudget = 16 * 1024 * 1024,
                 PersistedSnapshotArenaPageCacheBytes = 16 * 1024 * 1024,
                 ArenaFileSizeBytes = 16 * 1024 * 1024
             },
@@ -246,6 +244,8 @@ internal static class StartupPipelineWarmer
                 TerminalTotalDifficulty = "0",
                 PrioritizeBlockLatency = mergeConfig.PrioritizeBlockLatency,
                 CollectionsPerDecommit = mergeConfig.CollectionsPerDecommit,
+                DecommitMemoryLoadPercent = mergeConfig.DecommitMemoryLoadPercent,
+                CollectionsPerUnconditionalDecommit = mergeConfig.CollectionsPerUnconditionalDecommit,
                 SweepMemory = mergeConfig.SweepMemory,
                 CompactMemory = mergeConfig.CompactMemory,
                 PostBlockGcDelayMs = mergeConfig.PostBlockGcDelayMs ?? (int)(mergeConfig.SecondsPerSlot * 1000 / 8)
@@ -263,14 +263,13 @@ internal static class StartupPipelineWarmer
             throw new InvalidOperationException("Startup warmup did not reach the production no-GC-region strategy.");
     }
 
-    private static async Task ExercisePipelineAsync(IContainer container, BlockHeader genesisHeader, ulong timestamp, int port, string? token,
+    private static async Task ExercisePipelineAsync(IContainer container, BlockHeader genesisHeader, ulong timestamp, int port, JwtAuthentication? authentication,
         PrivateKey[] keys, CancellationToken cancellationToken)
     {
         IMainProcessingContext main = container.Resolve<IMainProcessingContext>();
         EthereumJsonSerializer serializer = container.Resolve<EthereumJsonSerializer>();
         string address = $"http://127.0.0.1:{port}";
-        using HttpClient client = new(new SocketsHttpHandler { UseProxy = false });
-        if (token is not null) client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using HttpClient client = new(new BearerTokenHandler(authentication));
         // Consensus clients check the chain id on connect, which creates the Eth module and its block subscribers.
         await PostAsync(client, serializer, address, "eth_chainId", [], cancellationToken);
         // The pool validates against the head's fork, so move the head off the source genesis before submitting typed transactions.
@@ -293,7 +292,7 @@ internal static class StartupPipelineWarmer
         if (unexpectedReceipts != 0)
             throw new InvalidOperationException("Startup warmup did not exercise the expected transfer, storage, and revert paths.");
 
-        object call = new { from = keys[0].Address, to = StorageContract, gas = "0xf4240", input = new byte[32] };
+        object call = new WarmupCall(keys[0].Address, StorageContract, "0xf4240", new byte[32]);
         JsonElement callResult = await PostAsync(client, serializer, address, "eth_call", [call, "latest"], cancellationToken);
         if (callResult.GetString() != "0x")
             throw new InvalidOperationException("Startup warmup contract call returned unexpected data.");
@@ -522,14 +521,14 @@ internal static class StartupPipelineWarmer
             : spec.IsEip7843Enabled ? "engine_forkchoiceUpdatedV4"
             : spec.IsEip4844Enabled ? "engine_forkchoiceUpdatedV3"
             : spec.WithdrawalsEnabled ? "engine_forkchoiceUpdatedV2" : "engine_forkchoiceUpdatedV1";
-        object forkchoiceState = new { headBlockHash = block.Hash, safeBlockHash = block.Hash, finalizedBlockHash = block.Hash };
+        object forkchoiceState = new ForkchoiceStateV1(block.Hash!, block.Hash!, block.Hash!);
         EnsureValid((await PostAsync(client, serializer, address, forkchoiceUpdated, [forkchoiceState, null], cancellationToken)).GetProperty("payloadStatus"), forkchoiceUpdated);
     }
 
     private static async Task<JsonElement> PostAsync(HttpClient client, EthereumJsonSerializer serializer, string address, string method, object?[] parameters,
         CancellationToken cancellationToken)
     {
-        using StringContent content = new(serializer.Serialize(new { jsonrpc = "2.0", id = 1, method, @params = parameters }), Encoding.UTF8, "application/json");
+        using StringContent content = new(serializer.Serialize(new WarmupRequest(method, parameters)), Encoding.UTF8, "application/json");
         using HttpResponseMessage response = await client.PostAsync(address, content, cancellationToken);
         response.EnsureSuccessStatusCode();
         string json = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -542,5 +541,24 @@ internal static class StartupPipelineWarmer
     {
         if (payloadStatus.GetProperty("status").GetString() != "VALID")
             throw new InvalidOperationException($"Startup warmup {method} returned {payloadStatus}");
+    }
+
+    internal sealed record WarmupRequest(string Method, object?[] Params)
+    {
+        public string Jsonrpc => "2.0";
+        public int Id => 1;
+    }
+
+    internal sealed record WarmupCall(Address From, Address To, string Gas, byte[] Input);
+
+    /// <summary>Signs each request with a fresh token, as a consensus client does.</summary>
+    /// <remarks>A token is accepted for 60 seconds after issue, and a slow node start can outlast that.</remarks>
+    private sealed class BearerTokenHandler(JwtAuthentication? authentication) : DelegatingHandler(new SocketsHttpHandler { UseProxy = false })
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (authentication is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authentication.CreateWarmupToken());
+            return base.SendAsync(request, cancellationToken);
+        }
     }
 }

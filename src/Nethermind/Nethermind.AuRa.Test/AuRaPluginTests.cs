@@ -6,7 +6,6 @@ using Nethermind.Api;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
-using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -16,7 +15,6 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -41,8 +39,11 @@ namespace Nethermind.AuRa.Test
             IBlockProducer blockProducer = container.Resolve<IBlockProducerFactory>().InitBlockProducer();
             IBlockProducerRunner runner = container.Resolve<IBlockProducerRunnerFactory>().InitBlockProducerRunner(blockProducer);
 
-            Assert.That(blockProducer, Is.InstanceOf<AuRaBlockProducer>());
-            Assert.That(runner, Is.InstanceOf<StandardBlockProducerRunner>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blockProducer, Is.InstanceOf<AuRaBlockProducer>());
+                Assert.That(runner, Is.InstanceOf<StandardBlockProducerRunner>());
+            }
         }
 
         [Test]
@@ -54,11 +55,6 @@ namespace Nethermind.AuRa.Test
                 .AddModule(new TestNethermindModule(chainSpec))
                 .AddModule(new AuRaModule(chainSpec))
                 .AddSingleton<NethermindApi.Dependencies>()
-                .AddDecorator<AuRaNethermindApi>((ctx, api) =>
-                {
-                    api.TxPool = ctx.Resolve<ITxPool>();
-                    return api;
-                })
                 .AddSingleton<IMainProcessingModule>(new BlockProcessorDecoratingModule())
                 .AddSingleton<IBlockProcessingQueue>(Substitute.For<IBlockProcessingQueue>())
                 .AddSingleton<IAuRaBlockFinalizationManager>(Substitute.For<IAuRaBlockFinalizationManager>())

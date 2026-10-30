@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 #
 # Settings shared by every zkVM guest (zisk, sp1, openvm); each guest's Makefile
-# adds only what differs: the libc, the bindings manifest, the harness and the
+# adds only what differs: the libc, the runtime package, the harness and the
 # exit protocol. Shared rather than copied because they have to agree - cycle
 # counts are comparable across targets only if the same closure is built by the
 # same toolchain, and BFLAT_REFS drifting in one guest would break that silently.
@@ -11,9 +11,18 @@
 # directory, so derive it rather than repeat it.
 GUEST_PROJECT := $(notdir $(MAKEFILE_DIR))
 
-# The bindings manifest is named after the libc everywhere except zisk, whose is
-# libziskos; that guest sets GUEST_EXTLIB itself.
-GUEST_EXTLIB ?= lib$(GUEST_LIBC)
+# The runtime package of the guest's zkVM. bflat gets the .nupkg that restore
+# put in the NuGet cache, not the files that the build copied out of it: bflat
+# checks the signature of a package, and does not check a local manifest. The
+# package has the platform (entry, linker script, manifest) and the bindings.
+# dotnet gives the folder that restore uses: $(HOME) can be unset (a test agent
+# runs make with no HOME) while dotnet still finds the home of the user.
+NUGET_PACKAGES ?= $(patsubst %/,%,$(shell dotnet nuget locals global-packages --list | sed -n 's/^global-packages: //p'))
+GUEST_PACKAGE_ID := $(shell echo '$(GUEST_PACKAGE)' | tr '[:upper:]' '[:lower:]')
+GUEST_PACKAGE_VERSION := $(shell sed -n 's/.*Include="$(GUEST_PACKAGE)" Version="\[\([^]]*\)\]".*/\1/p' $(MAKEFILE_DIR)/../../../Directory.Packages.props)
+GUEST_NUPKG := $(GUEST_PACKAGE_ID).$(GUEST_PACKAGE_VERSION).nupkg
+GUEST_NUPKG_PATH := $(NUGET_PACKAGES)/$(GUEST_PACKAGE_ID)/$(GUEST_PACKAGE_VERSION)/$(GUEST_NUPKG)
+PACKAGE_DIR := /nethermind/package
 
 # The bflat RISC-V64 compiler and .NET runtime, pinned by digest because :latest
 # moves with every CI run there; the tag records the bflat-riscv64 commit.
@@ -25,11 +34,13 @@ GUEST_EXTLIB ?= lib$(GUEST_LIBC)
 # .NET 11, not 10: both pass the soft-float suite, but 11 is the line it is
 # maintained on. It costs ~2.6% more SP1 cycles and ~2.5% more ZisK steps over
 # the nine stateless-tests blocks, and gives ~6.5% smaller binaries.
-BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:0eefff0d1a6d9ddefe4e63758d41436be6c4617a@sha256:9405ea361e7854dba5502ba6b20fa75d6e4659eb0a869e7d06ae81804cffdb11
+BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:dd05dd8af0a14065a9974492007dd5e568acfecc@sha256:34235a4a8050b171dd03562a875752c08db5b6fdb33bb505be1eeeb7c4ea19be
 
 # Every target decodes rv64im only and reads the whole .text up front, so even
 # unreachable F/D/C/A instructions reject the guest - fail at build time instead.
-ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --error-on-atomic
+# Floating point in the IL is not an error: the guest is soft-float (lp64), and
+# --error-on-float-binary checks that no F/D instruction is in the image.
+ISA_GATES ?= --error-on-float-binary --error-on-compressed --error-on-atomic
 
 # The guest has no instruction cache, so favouring speed over size is near free.
 # Requires the TrieNode seqlock collapse: -Ot over the seqlock built a guest whose
@@ -42,6 +53,10 @@ OPT_FLAGS ?= -Ot
 # The guest reads neither the stack-trace name table nor the symbol tables.
 # Worth roughly 45% of the image on the sp1 and openvm guests.
 TRIM_FLAGS ?= --no-stacktrace-data --ldflags=--strip-all
+
+# Objects a guest links besides the managed closure and its bindings library, each
+# assembled from the .S of the same name in the guest's directory.
+GUEST_OBJECTS ?=
 
 # Main, the ZkvmThrow export and the failure protocol are one file shared by all
 # three guests; each guest's Program.cs supplies only WriteOutput. bflat compiles
@@ -58,6 +73,11 @@ GUEST_SOURCES := $(SHARED_SRC_DIR)/Program.cs $(SRC_DIR)/Program.cs
 # Pinned rather than derived: with more than one source bflat names the output
 # after the first, which is the shared one.
 GUEST_OUT := -o $(SRC_DIR)/Program
+
+# Every guest applies the shared substitutions; one that has its own substitutions.xml
+# applies that on top.
+GUEST_SUBSTITUTIONS := --substitution $(SHARED_SRC_DIR)/substitutions.xml \
+  $(if $(wildcard $(GUEST_DIR)/substitutions.xml),--substitution $(SRC_DIR)/substitutions.xml)
 
 # The managed closure. BIN_DIR is the guest's own artifacts directory, bound in
 # by its build target.
@@ -96,7 +116,7 @@ BFLAT_REFS := \
 # --- Targets shared by every guest ---------------------------------------
 #
 # Parameterised by GUEST_LIBC, which each guest sets before the include, and
-# by GUEST_PROJECT/GUEST_EXTLIB derived above. Note MAKEFILE_DIR here is the
+# by GUEST_PROJECT/GUEST_NUPKG derived above. Note MAKEFILE_DIR here is the
 # GUEST's directory, set by its Makefile; only SHARED_DIR points at this file.
 
 .DEFAULT_GOAL := build
@@ -106,13 +126,16 @@ dotnet-build:
 
 # ILC embeds every manifest resource of every input assembly and the guest reads
 # none, so they are dead weight (6.9 MB of chainspecs once rode along).
-build: dotnet-build
+build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
+	@[ -n "$(GUEST_PACKAGE_VERSION)" ] || { echo "error: no version of $(GUEST_PACKAGE) in Directory.Packages.props; the pin must be exact: Version=\"[x]\"" >&2; exit 1; }
+	@[ -f "$(GUEST_NUPKG_PATH)" ] || { echo "error: $(GUEST_NUPKG_PATH) is not there; restore puts it in NUGET_PACKAGES" >&2; exit 1; }
 	docker run --platform linux/amd64 --rm \
 		-e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
 		-e DOTNET_TYPELOADER_TRACE_INTERFACE_RESOLUTION=0 \
 		-w $(SRC_DIR) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/$(GUEST_PROJECT)/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
+		--mount type=bind,source="$(GUEST_NUPKG_PATH)",target=$(PACKAGE_DIR)/$(GUEST_NUPKG),readonly \
 		$(SHARED_MOUNT) \
 		$(BFLAT_IMAGE) \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc $(GUEST_LIBC) \
@@ -122,9 +145,10 @@ build: dotnet-build
 		--no-pthread \
 		--no-globalization \
 		--nostdlibrefs \
-		--substitution $(SRC_DIR)/substitutions.xml \
+		$(GUEST_SUBSTITUTIONS) \
 		$(BFLAT_REFS) \
-		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/$(GUEST_EXTLIB).bflat.manifest \
+		--extlib $(PACKAGE_DIR)/$(GUEST_NUPKG) \
+		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \
 		$(GUEST_OUT) \
@@ -136,6 +160,15 @@ build: dotnet-build
 	echo "Resource verification: OK - no manifest resources in the guest image"
 	mkdir -p $(GUEST_DIR)/bin && \
 		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/nethermind
+
+# Assembled by the bflat image's own clang, for the ISA the gates above allow.
+$(GUEST_DIR)/%.o: $(GUEST_DIR)/%.S
+	docker run --platform linux/amd64 --rm \
+		-w $(SRC_DIR) \
+		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
+		--entrypoint clang \
+		$(BFLAT_IMAGE) \
+		--target=riscv64-unknown-elf -march=rv64im -mabi=lp64 -mno-relax -c $*.S -o $*.o
 
 # SP1 and OpenVM take the SSZ payload as-is; the shared fixtures are framed for
 # ZisK (8-byte little-endian length, payload, padding to 8), so the frame is
@@ -158,7 +191,8 @@ clean:
 		$(GUEST_DIR)/bin/** \
 		$(GUEST_DIR)/Program \
 		$(GUEST_DIR)/Program.o \
-		$(GUEST_DIR)/Program.map.xml
+		$(GUEST_DIR)/Program.map.xml \
+		$(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 	dotnet clean -c release $(MAKEFILE_DIR)/../Stateless.slnx
 
 .PHONY: \

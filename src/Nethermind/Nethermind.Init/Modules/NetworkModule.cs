@@ -73,7 +73,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
                     .MaxCandidatePeerCount)) // The INetworkConfig is not referable in NodeStatsManager.
 
             .AddSingleton<IMessageSerializationService, MessageSerializationService>()
-            .AddSingleton<IMessagePad, Handshake.Eip8MessagePad>()
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
             .AddSingleton<Subprotocols.Eth.V72.ISparseBlobPoolPeerRegistry, Subprotocols.Eth.V72.SparseBlobPoolPeerRegistry>()
             .AddSingleton<IProtocolsManager, ProtocolsManager>()
@@ -110,8 +109,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             // Base block RLP decoders so the Eth message serializers resolve them via DI instead of
             // ctor-default fallbacks. Consensus plugins (AuRa, Xdc) override these with their own decoders.
             .AddSingleton<IHeaderDecoder, HeaderDecoder>()
-            .AddSingleton(new BlockDecoder())
-            .AddSingleton(BlockBodyDecoder.Instance)
+            .AddSingleton<BlockDecoder, IHeaderDecoder>(static headerDecoder => new BlockDecoder(headerDecoder))
+            .AddSingleton<BlockBodyDecoder, IHeaderDecoder>(static headerDecoder => new BlockBodyDecoder(headerDecoder))
 
             // V62
             .AddMessageSerializer<V62.BlockBodiesMessage, V62.BlockBodiesMessageSerializer>()

@@ -71,18 +71,18 @@ public class SnapshotHttpStreamTests
     }
 
     [Test]
-    public void Read_SourceChangesMidDownload_ThrowsSnapshotSourceChanged()
+    public async Task Read_SourceChangesMidDownload_ThrowsSnapshotSourceChanged()
     {
         _server.Content = BuildContent(100_000);
         _server.SwitchSourceAfterRequests(2, BuildContent(500), "\"v2\"");
 
-        Assert.ThrowsAsync<SnapshotSourceChangedException>(
+        await Assert.ThrowsAsync<SnapshotSourceChangedException>(
             () => DownloadAsync(connections: 1),
             "a snapshot replaced on the server mid-download must abort the stream instead of mixing two objects");
     }
 
     [Test]
-    public void Read_SourceLengthChangesOnRangelessServerWithoutETag_ThrowsSnapshotSourceChanged()
+    public async Task Read_SourceLengthChangesOnRangelessServerWithoutETag_ThrowsSnapshotSourceChanged()
     {
         _server.Content = BuildContent(100_000);
         _server.SupportsRanges = false;
@@ -90,31 +90,31 @@ public class SnapshotHttpStreamTests
         _server.DropFirstAttemptPerRangeAfterBytes = 30_000;
         _server.SwitchSourceAfterRequests(2, BuildContent(50_000), null);
 
-        Assert.ThrowsAsync<SnapshotSourceChangedException>(
+        await Assert.ThrowsAsync<SnapshotSourceChangedException>(
             () => DownloadAsync(connections: 1),
             "a rotated source without an ETag must be detected by its length instead of splicing two objects together");
     }
 
     [Test]
-    public void Read_ETagDisappearsMidDownloadWithoutChecksum_Throws()
+    public async Task Read_ETagDisappearsMidDownloadWithoutChecksum_Throws()
     {
         _server.Content = BuildContent(100_000);
         _server.DropETagAfterRequests = 1;
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
 
-        Assert.ThrowsAsync<InvalidDataException>(
+        await Assert.ThrowsAsync<InvalidDataException>(
             () => DownloadAsync(connections: 1, computeChecksum: false, cancellationToken: timeout.Token),
             "a source that stops identifying itself must abort the stream, because nothing else would notice a same-size replacement");
     }
 
     [Test]
-    public void Read_ServerNeverDeliversBytes_GivesUpInsteadOfRetryingForever()
+    public async Task Read_ServerNeverDeliversBytes_GivesUpInsteadOfRetryingForever()
     {
         _server.Content = BuildContent(100_000);
         _server.DropEveryAttemptAfterBytes = 0;
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
 
-        Assert.ThrowsAsync<IOException>(
+        await Assert.ThrowsAsync<IOException>(
             () => DownloadAsync(connections: 1, maxNoProgressRetries: 3, cancellationToken: timeout.Token),
             "a connection that accepts the range and then delivers nothing must be bounded, otherwise node startup hangs forever");
     }
@@ -132,13 +132,13 @@ public class SnapshotHttpStreamTests
             Is.Not.Empty, "a redirect that keeps or raises the transport must be followed");
 
     [Test]
-    public void Read_ServerReturnsNotFoundMidDownload_ThrowsWithoutRetrying()
+    public async Task Read_ServerReturnsNotFoundMidDownload_ThrowsWithoutRetrying()
     {
         _server.Content = BuildContent(100_000);
         _server.FailWithNotFoundAfterRequests = 1;
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
 
-        Assert.ThrowsAsync<HttpRequestException>(
+        await Assert.ThrowsAsync<HttpRequestException>(
             () => DownloadAsync(connections: 2, cancellationToken: timeout.Token),
             "a permanent HTTP error must abort the stream instead of retrying forever");
     }
@@ -153,6 +153,22 @@ public class SnapshotHttpStreamTests
         (byte[] delivered, byte[] hash) = await DownloadAsync(connections: 2);
 
         AssertDeliveredExactly(delivered, hash, content, "a single 200 answer to a range request must be retried instead of corrupting the stream", "the retried chunk must be hashed exactly once");
+    }
+
+    [Test]
+    public async Task Probe_ServerAnswersSingleByteRangeWithFullBody_ReportsRangeSupport()
+    {
+        _server.Content = BuildContent(100_000);
+        _server.IgnoreFirstByteRange = true;
+        using SnapshotHttpClient client = new();
+
+        SnapshotRemoteInfo remoteInfo = await client.ProbeAsync(_server.Url, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(remoteInfo.SupportsRanges, Is.True, "a CDN that answers only bytes=0-0 with 200 must not disable parallel resumable downloads");
+            Assert.That(remoteInfo.Length, Is.EqualTo(100_000));
+        }
     }
 
     [Test]
@@ -185,6 +201,37 @@ public class SnapshotHttpStreamTests
         AssertDeliveredExactly(delivered, hash, content, "a connection that stops delivering bytes must be detected as stalled and the chunk re-fetched", "bytes received before the stall must be hashed exactly once");
     }
 
+    [Test]
+    public async Task ServerDispose_HandlerFailsAfterShutdownBegan_DoesNotReportFailure()
+    {
+        TaskCompletionSource handlerStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource handlerFailing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        FlakySnapshotServer server = CreateServerWithFailingHandler(async shutdown =>
+        {
+            handlerStarted.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, shutdown).ContinueWith(static _ => { }, TaskScheduler.Default);
+            handlerFailing.SetResult();
+        });
+        using HttpClient client = new();
+        _ = client.GetAsync(server.Url);
+        await handlerStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(server.Dispose, Throws.Nothing,
+            "closing the listener races in-flight handlers, so their failures during shutdown must not fail the test");
+        await handlerFailing.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [Test]
+    public async Task ServerDispose_HandlerFailsWhileRunning_ReportsFailure()
+    {
+        FlakySnapshotServer server = CreateServerWithFailingHandler(static _ => Task.CompletedTask);
+        using HttpClient client = new();
+        await client.GetAsync(server.Url).ContinueWith(static _ => { }, TaskScheduler.Default);
+
+        Assert.That(server.Dispose, Throws.InstanceOf<AggregateException>().With.InnerException.InstanceOf<InvalidOperationException>(),
+            "a handler failure while the server is running must still surface");
+    }
+
     private async Task<(byte[] Delivered, byte[] Hash)> DownloadAsync(
         int connections, TimeSpan? stallTimeout = null, bool computeChecksum = true, int maxNoProgressRetries = 20, CancellationToken cancellationToken = default)
     {
@@ -207,6 +254,16 @@ public class SnapshotHttpStreamTests
             Assert.That(hash, Is.EqualTo(SHA256.HashData(expected)), hashReason);
         }
     }
+
+    private static FlakySnapshotServer CreateServerWithFailingHandler(Func<CancellationToken, Task> beforeFailure) => new()
+    {
+        Content = BuildContent(1000),
+        BeforeResponse = async shutdown =>
+        {
+            await beforeFailure(shutdown);
+            throw new InvalidOperationException("This operation cannot be performed after the response has been submitted.");
+        },
+    };
 
     private static byte[] BuildContent(int length)
     {

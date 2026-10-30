@@ -32,6 +32,13 @@ namespace Ethereum.Test.Base
         private static ulong? ParseULongNullable(string? hex) =>
             hex is null ? null : (ulong?)Bytes.FromHexString(hex).ToULongFromBigEndianByteArrayWithoutLeadingZeros();
 
+        // EIP-7668: "0x" is the zero-length bloom.
+        private static Bloom ParseBloom(string hex)
+        {
+            byte[] bytes = Bytes.FromHexString(hex);
+            return bytes.Length == 0 ? Bloom.ZeroLength : new Bloom(bytes);
+        }
+
         private static ForkActivation TransitionForkActivation(string transitionInfo)
         {
             const string timestampPrefix = "Time";
@@ -74,7 +81,7 @@ namespace Ethereum.Test.Base
                 headerJson.SlotNumber is null ? null : ParseULong(headerJson.SlotNumber)
             )
             {
-                Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom)),
+                Bloom = ParseBloom(headerJson.Bloom),
                 GasUsed = ParseULong(headerJson.GasUsed),
                 Hash = new Hash256(headerJson.Hash),
                 MixHash = new Hash256(headerJson.MixHash),
@@ -143,25 +150,32 @@ namespace Ethereum.Test.Base
 
             // Invalid-tx state tests carry the actual signed tx in txbytes; the template below is
             // re-signed pre-EIP-155, which cannot reproduce signature-level invalidity (e.g. INVALID_CHAINID).
-            if (postStateJson.ExpectException is not null && postStateJson.Txbytes is not null)
+            // EIP-8141 frame transactions are always taken from txbytes: the template has no frames, and
+            // the sender is part of the payload rather than recovered from a signature.
+            bool isFrameTx = postStateJson.Txbytes is [(byte)TxType.FrameTx, ..];
+            bool undecodableFrameTx = false;
+            if ((postStateJson.ExpectException is not null || isFrameTx) && postStateJson.Txbytes is not null)
             {
                 try
                 {
                     Transaction decoded = Rlp.Decode<Transaction>(postStateJson.Txbytes, RlpBehaviors.SkipTypedWrapping);
-                    decoded.SenderAddress = privateKey?.Address ?? new EthereumEcdsa(chainId).RecoverAddress(decoded);
+                    decoded.SenderAddress ??= privateKey?.Address ?? new EthereumEcdsa(chainId).RecoverAddress(decoded);
                     return decoded;
                 }
                 catch (RlpException)
                 {
                     // Undecodable txbytes: fall back to the template; non-signature invalidity
                     // (e.g. intrinsic gas) is still caught by tx validation at execution time.
+                    // A frame transaction that does not decode (e.g. a fee past 2^256) is rejected as such.
+                    undecodableFrameTx = isFrameTx;
                 }
             }
 
             // Without a secret key the template cannot be signed back into the transaction the fixture
             // describes, and the only fixtures that omit one are the ones asserting a bad signature, so
-            // mark it intentionally invalid rather than hand the named sender a valid transfer.
-            Address senderAddress = privateKey?.Address ?? Address.Zero;
+            // mark it intentionally invalid rather than hand the named sender a valid transfer. The same
+            // goes for a frame transaction, which the template cannot describe at all.
+            Address senderAddress = undecodableFrameTx ? Address.Zero : privateKey?.Address ?? Address.Zero;
             Transaction transaction = new()
             {
                 Type = transactionJson.Type,
@@ -485,11 +499,11 @@ namespace Ethereum.Test.Base
                 string[] transitionInfo = testSpec.Network.Split("At");
                 string[] networks = transitionInfo[0].Split("To");
 
-                testSpec.EthereumNetwork = LoadSpec(networks[0], testSpec.Config?.BlobSchedule);
+                testSpec.EthereumNetwork = WithZeroNonceStorageAccounts(LoadSpec(networks[0], testSpec.Config?.BlobSchedule), testSpec.Config);
                 if (transitionInfo.Length > 1)
                 {
                     testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
-                    testSpec.EthereumNetworkAfterTransition = LoadSpec(networks[1], testSpec.Config?.BlobSchedule);
+                    testSpec.EthereumNetworkAfterTransition = WithZeroNonceStorageAccounts(LoadSpec(TransitionTarget(networks[0], networks[1]), testSpec.Config?.BlobSchedule), testSpec.Config);
                 }
 
                 (string name, string category) = GetNameAndCategory(testName);
@@ -499,12 +513,34 @@ namespace Ethereum.Test.Base
             return testsByName;
         }
 
+        private static IReleaseSpec WithZeroNonceStorageAccounts(IReleaseSpec spec, ConfigJson? config) =>
+            config?.ZeroNonceStorageAccounts is { Length: > 0 } accounts ? new OverridableReleaseSpec(spec) { Eip8253Accounts = accounts } : spec;
+
         private static ulong LoadChainId(ConfigJson? config) =>
             config?.Chainid is null ? MainnetSpecProvider.Instance.ChainId : System.Convert.ToUInt64(config.Chainid, 16);
 
+        /// <summary>The full name of the fork a transition network named <c>{from}To{to}</c> moves to.</summary>
+        /// <remarks>A transition into a BPO scenario of <paramref name="from"/> drops that fork's prefix, as in
+        /// <c>AmsterdamToBPOIncreaseAtTime15k</c>, while its blob schedule stays keyed by the full name.</remarks>
+        private static string TransitionTarget(string from, string to) =>
+            to is BpoIncreaseScenario or BpoDecreaseScenario ? from + to : to;
+
+        /// <remarks>
+        /// EEST derives a <c>{Fork}BPOIncrease</c> and a <c>{Fork}BPODecrease</c> from every fork from Amsterdam on.
+        /// Each keeps the rules of its fork and only changes the blob schedule, which the fixture carries.
+        /// </remarks>
+        private static IReleaseSpec ParseSpec(string name) =>
+            SpecNameParser.Parse(ForkAliases.Resolve(
+                name.EndsWith(BpoIncreaseScenario, StringComparison.Ordinal) ? name[..^BpoIncreaseScenario.Length]
+                : name.EndsWith(BpoDecreaseScenario, StringComparison.Ordinal) ? name[..^BpoDecreaseScenario.Length]
+                : name));
+
+        private const string BpoIncreaseScenario = "BPOIncrease";
+        private const string BpoDecreaseScenario = "BPODecrease";
+
         private static IReleaseSpec LoadSpec(string name, Dictionary<string, BlobScheduleEntryJson>? blobSchedule)
         {
-            IReleaseSpec spec = SpecNameParser.Parse(ForkAliases.Resolve(name));
+            IReleaseSpec spec = ParseSpec(name);
             // The blob schedule stays keyed by the name the fixture declares, not by the alias target.
             if (blobSchedule is null || !blobSchedule.TryGetValue(name, out BlobScheduleEntryJson? blobCount))
             {
@@ -514,7 +550,7 @@ namespace Ethereum.Test.Base
             SpecOverrideCacheKey key = new(name, blobCount.Max, blobCount.Target, blobCount.BaseFeeUpdateFraction);
             return _overriddenSpecs.GetOrAdd(key, static key =>
             {
-                IReleaseSpec spec = SpecNameParser.Parse(ForkAliases.Resolve(key.Name));
+                IReleaseSpec spec = ParseSpec(key.Name);
                 return new OverridableReleaseSpec(spec)
                 {
                     MaxBlobCount = System.Convert.ToUInt64(key.MaxBlobCount, 16),

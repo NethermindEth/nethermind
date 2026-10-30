@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Shutter.Contracts;
 using Nethermind.Logging;
-using Nethermind.Abi;
 using Nethermind.Blockchain.Receipts;
 using System.Threading.Tasks;
 using System.Threading;
@@ -28,7 +27,6 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private readonly ShutterTxLoader _txLoader;
     private readonly ShutterValidatorsInfo _validatorsInfo;
     private readonly ILogManager _logManager;
-    private readonly IAbiEncoder _abiEncoder;
     private readonly IBlockTree _blockTree;
     private readonly ReadOnlyBlockTree _readOnlyBlockTree;
     private readonly ulong _chainId;
@@ -47,7 +45,6 @@ public class ShutterBlockHandler : IShutterBlockHandler
         IShutterConfig cfg,
         IShareableTxProcessorSource txProcessorSource,
         IBlockTree blockTree,
-        IAbiEncoder abiEncoder,
         IReceiptFinder receiptFinder,
         ShutterValidatorsInfo validatorsInfo,
         IShutterEon eon,
@@ -67,7 +64,6 @@ public class ShutterBlockHandler : IShutterBlockHandler
         _txLoader = txLoader;
         _blockTree = blockTree;
         _readOnlyBlockTree = blockTree.AsReadOnly();
-        _abiEncoder = abiEncoder;
         _logManager = logManager;
         _txProcessorSource = txProcessorSource;
         _slotLength = slotLength;
@@ -124,38 +120,47 @@ public class ShutterBlockHandler : IShutterBlockHandler
     public void Dispose()
     {
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
+        List<BlockWaitTask> waitTasks = [];
         lock (_syncObject)
         {
-            _blockWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask =>
+            foreach (Dictionary<ulong, BlockWaitTask> slotWaitTasks in _blockWaitTasks.Values)
             {
-                waitTask.Value.Dispose();
-            }));
+                waitTasks.AddRange(slotWaitTasks.Values);
+            }
+
+            _blockWaitTasks.Clear();
+        }
+
+        foreach (BlockWaitTask waitTask in waitTasks)
+        {
+            waitTask.Dispose();
         }
     }
 
+    // Registrations are disposed outside _syncObject: CancellationTokenRegistration.Dispose blocks until an
+    // in-flight callback returns, and that callback (CancelWaitForBlock) needs the same lock.
     private void CancelWaitForBlock(ulong slot, ulong taskId, bool timeout)
     {
+        BlockWaitTask waitTask;
         lock (_syncObject)
         {
-            if (_blockWaitTasks.TryGetValue(slot, out Dictionary<ulong, BlockWaitTask>? slotWaitTasks))
+            if (!_blockWaitTasks.TryGetValue(slot, out Dictionary<ulong, BlockWaitTask>? slotWaitTasks)
+                || !slotWaitTasks.Remove(taskId, out waitTask))
             {
-                if (slotWaitTasks.TryGetValue(taskId, out BlockWaitTask waitTask))
-                {
-                    if (timeout)
-                    {
-                        waitTask.Tcs.TrySetResult(null);
-                    }
-                    else
-                    {
-                        waitTask.Tcs.SetException(new OperationCanceledException());
-                    }
-
-                    waitTask.Dispose();
-                }
-
-                slotWaitTasks.Remove(taskId);
+                return;
             }
         }
+
+        if (timeout)
+        {
+            waitTask.Tcs.TrySetResult(null);
+        }
+        else
+        {
+            waitTask.Tcs.TrySetException(new OperationCanceledException());
+        }
+
+        waitTask.Dispose();
     }
 
     private void OnNewHeadBlock(object? _, BlockEventArgs e)
@@ -173,20 +178,19 @@ public class ShutterBlockHandler : IShutterBlockHandler
             _eon.Update(head.Header);
             _txLoader.LoadFromReceipts(head, _receiptFinder.Get(head), _eon.GetCurrentEonInfo()!.Value.Eon);
 
+            Dictionary<ulong, BlockWaitTask>? waitTasks;
             lock (_syncObject)
             {
                 ulong slot = _time.GetSlot(head.Timestamp * 1000);
                 _slotToBlockHash.Set(slot, head.Hash);
-
-                if (_blockWaitTasks.Remove(slot, out Dictionary<ulong, BlockWaitTask>? waitTasks))
-                {
-                    waitTasks.ForEach(waitTask =>
-                    {
-                        waitTask.Value.Tcs.TrySetResult(head);
-                        waitTask.Value.Dispose();
-                    });
-                }
+                _blockWaitTasks.Remove(slot, out waitTasks);
             }
+
+            waitTasks?.ForEach(waitTask =>
+            {
+                waitTask.Value.Tcs.TrySetResult(head);
+                waitTask.Value.Dispose();
+            });
         }
         else if (_logger.IsDebug)
         {
@@ -211,7 +215,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         using IReadOnlyTxProcessingScope _ = scope;
         ITransactionProcessor processor = scope.TransactionProcessor;
 
-        ValidatorRegistryContract validatorRegistryContract = new(processor, _abiEncoder, new(_cfg.ValidatorRegistryContractAddress!), _logManager, _chainId, _cfg.ValidatorRegistryMessageVersion!);
+        ValidatorRegistryContract validatorRegistryContract = new(processor, new(_cfg.ValidatorRegistryContractAddress!), _logManager, _chainId, _cfg.ValidatorRegistryMessageVersion!);
         if (validatorRegistryContract.IsRegistered(parent, validatorsInfo, out HashSet<ulong> unregistered))
         {
             if (_logger.IsInfo) _logger.Info($"All Shutter validator keys are registered.");

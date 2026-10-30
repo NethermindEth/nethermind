@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -22,7 +23,9 @@ using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Crypto;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -39,6 +42,68 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class EthereumStepsManagerTests
     {
+        [Test]
+        public async Task Invalid_kzg_setup_exits_without_logging_exception_traces()
+        {
+            using TempPath setupPath = TempPath.GetTempFile();
+
+            // Isolate the process-wide setup state from other tests that already loaded it.
+            AssemblyLoadContext context = new(nameof(Invalid_kzg_setup_exits_without_logging_exception_traces), isCollectible: true);
+            ProcessExitSource exitSource = new(CancellationToken.None);
+            try
+            {
+                context.LoadFromAssemblyPath(typeof(KzgPolynomialCommitments).Assembly.Location);
+                Type stepType = context.LoadFromAssemblyPath(typeof(InitializePrecompiles).Assembly.Location)
+                    .GetType(typeof(InitializePrecompiles).FullName!, throwOnError: true)!;
+                InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+                logger.IsError.Returns(true);
+                IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
+                consensusPlugin.ApiType.Returns(typeof(NethermindApi));
+                using IContainer container = CreateCommonBuilder(new StepInfo(typeof(StepObservingCancellation)), new StepInfo(stepType))
+                    .AddSingleton(consensusPlugin)
+                    .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+                    .AddSingleton<IInitConfig>(new InitConfig { KzgSetupPath = setupPath.Path })
+                    .AddSingleton<IProcessExitSource>(exitSource)
+                    .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
+                    .Build();
+
+                await Assert.ThatAsync(() => container.Resolve<EthereumStepsManager>().InitializeAll(exitSource.Token),
+                    Throws.InstanceOf<OperationCanceledException>());
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(exitSource.ExitCode, Is.EqualTo(ExitCodes.MissingPrecompile));
+                    Assert.That(exitSource.Token.IsCancellationRequested, Is.True);
+                    Assert.That(container.Resolve<StepObservingCancellation>().WasExecuted, Is.True);
+                    logger.Received(1).Error(Arg.Is<string>(message => message.Contains(setupPath.Path) && message.Contains("Init.KzgSetupPath") && message.Contains("restart")), null);
+                    logger.DidNotReceive().Error(Arg.Any<string>(), Arg.Is<Exception?>(exception => exception != null));
+                }
+            }
+            finally
+            {
+                exitSource.Exit(ExitCodes.Ok);
+                context.Unload();
+            }
+        }
+
+        [Test]
+        public async Task Failed_optional_step_does_not_log_errors_for_its_dependents()
+        {
+            TestErrorLogManager logs = new();
+            using IContainer container = CreateNethermindEnvironment(typeof(FailingOptionalStep), typeof(RequiredDependentStep));
+            using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
+                .AddSingleton<ILogManager>(logs)
+                .AddSingleton<EthereumStepsManager>());
+
+            await scope.Resolve<EthereumStepsManager>().InitializeAll(CancellationToken.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(container.Resolve<RequiredDependentStep>().WasExecuted, Is.False);
+                Assert.That(logs.Errors, Is.Empty);
+            }
+        }
+
         [TestCase(true, true, true, true)]
         [TestCase(true, true, false, true)]
         [TestCase(true, false, false, false)]
@@ -141,7 +206,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             await using IContainer container = CreateNethermindEnvironment();
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
 
-            using CancellationTokenSource source = new(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(30));
             await stepsManager.InitializeAll(source.Token);
         }
 
@@ -189,7 +254,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             );
 
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
-            using CancellationTokenSource source = new(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(30));
 
             Func<Task> act = () => stepsManager.InitializeAll(source.Token);
             Assert.That(async () => await act(), Throws.TypeOf<InvalidConfigurationException>());
@@ -203,7 +268,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             );
 
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
-            using CancellationTokenSource source = new(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(30));
             await stepsManager.InitializeAll(source.Token);
 
             Assert.That(container.Resolve<StepWithLogManagerInConstructor>().WasExecuted, Is.True);
@@ -218,13 +283,15 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             );
 
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
-            using CancellationTokenSource source = new(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(30));
             Func<Task> act = async () => await stepsManager.InitializeAll(source.Token);
             Assert.That(async () => await act(), Throws.TypeOf<StepDependencyException>());
         }
 
+        // InitializeAll throws on a cancelled token after its steps finish, so the budget must cover the whole run on a
+        // slow runner, not only the steps.
         [Test]
-        [CancelAfter(1000)]
+        [CancelAfter(30_000)]
         public async Task With_dependent_step(CancellationToken cancellationToken)
         {
             await using IContainer container = CreateNethermindEnvironment(
@@ -236,9 +303,12 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
             Task initTask = stepsManager.InitializeAll(cancellationToken);
             await Task.Delay(100, cancellationToken);
-            Assert.That(initTask.IsCompleted, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(initTask.IsCompleted, Is.False);
 
-            Assert.That(container.Resolve<StepB>().WasExecuted, Is.False);
+                Assert.That(container.Resolve<StepB>().WasExecuted, Is.False);
+            }
             container.Resolve<StepE>().Waiter.SetResult();
             await initTask;
 
@@ -303,6 +373,17 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken),
                 Throws.TypeOf<StepDependencyException>());
+        }
+
+        [Test]
+        [CancelAfter(5000)]
+        public async Task Failing_optional_step_fails_the_run_only_when_selected([Values] bool selected, CancellationToken cancellationToken)
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                selected ? typeof(FailingOptionalStep) : null, command: null, [typeof(FailingOptionalStep)]);
+
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken),
+                selected ? Throws.TypeOf<TestException>() : Throws.Nothing);
         }
 
         [Test]
@@ -400,8 +481,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 alreadyInitialized ? [typeof(StepE)] : []);
             if (!alreadyInitialized)
             {
-                Assert.That(initialization.IsCompleted, Is.False);
-                Assert.That(container.Resolve<StepB>().WasExecuted, Is.False);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(initialization.IsCompleted, Is.False);
+                    Assert.That(container.Resolve<StepB>().WasExecuted, Is.False);
+                }
                 container.Resolve<StepE>().Waiter.SetResult();
             }
             await initialization.WaitAsync(cancellationToken);
@@ -468,6 +552,39 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             }
 
             return builder;
+        }
+    }
+
+    public class FailingOptionalStep : IStep
+    {
+        public bool MustInitialize => false;
+
+        public Task Execute(CancellationToken cancellationToken) => throw new TestException();
+    }
+
+    [RunnerStepDependencies(typeof(FailingOptionalStep))]
+    public class RequiredDependentStep : IStep, IRecordingStep
+    {
+        public bool WasExecuted { get; private set; }
+
+        public Task Execute(CancellationToken cancellationToken)
+        {
+            WasExecuted = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    public class StepObservingCancellation : IStep, IRecordingStep
+    {
+        public bool WasExecuted { get; private set; }
+
+        public async Task Execute(CancellationToken cancellationToken)
+        {
+            WasExecuted = true;
+            TaskCompletionSource cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using CancellationTokenRegistration registration = cancellationToken.Register(() => cancelled.TrySetResult());
+            await cancelled.Task;
+            cancellationToken.ThrowIfCancellationRequested();
         }
     }
 

@@ -50,6 +50,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         new TestCaseData("6000600657005b00", 21016UL, 4).SetName("JumpI_not_taken"),
         new TestCaseData("6003565b00", 21012UL, 4).SetName("Jump_to_next_instruction"),
         new TestCaseData("600456fe5b5b00", 21013UL, 5).SetName("Jump_to_consecutive_markers"),
+        new TestCaseData("6003565b600856005b00", 21024UL, 7).SetName("Jump_repeated_landed_destinations"),
         new TestCaseData("6003565b", 21012UL, 3).SetName("Jump_to_final_byte"),
         new TestCaseData("610004565b", 21012UL, 3).SetName("Push2_jump_to_final_byte"),
         new TestCaseData("60016005575b", 21017UL, 4).SetName("JumpI_taken_to_final_byte"),
@@ -86,14 +87,16 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
     private static readonly TestCaseData[] JumpFailureCases =
     [
-        new TestCaseData("56", 100000UL, 1).SetName("Jump_stack_underflow"),
-        new TestCaseData("600056", 100000UL, 2).SetName("Jump_invalid_destination"),
-        new TestCaseData("6003565b", 21010UL, 2).SetName("Jump_charge_out_of_gas"),
-        new TestCaseData("6003565b", 21011UL, 3).SetName("JumpDest_charge_out_of_gas_after_Jump"),
-        new TestCaseData("60016005575b", 21015UL, 3).SetName("JumpI_charge_out_of_gas"),
-        new TestCaseData("60016005575b", 21016UL, 4).SetName("JumpDest_charge_out_of_gas_after_JumpI"),
-        new TestCaseData("600161000057", 100000UL, 3).SetName("Push2_JumpI_taken_to_invalid_destination"),
-        new TestCaseData("61000556605b00", 100000UL, 2).SetName("Push2_Jump_into_push_data"),
+        new TestCaseData("56", 100000UL, 1, nameof(EvmExceptionType.StackUnderflow)).SetName("Jump_stack_underflow"),
+        new TestCaseData("600056", 100000UL, 2, nameof(EvmExceptionType.InvalidJumpDestination)).SetName("Jump_invalid_destination"),
+        new TestCaseData("6003565b", 21010UL, 2, nameof(EvmExceptionType.OutOfGas)).SetName("Jump_charge_out_of_gas"),
+        new TestCaseData("6003565b", 21011UL, 3, nameof(EvmExceptionType.OutOfGas)).SetName("JumpDest_charge_out_of_gas_after_Jump"),
+        new TestCaseData("60016005575b", 21015UL, 3, nameof(EvmExceptionType.OutOfGas)).SetName("JumpI_charge_out_of_gas"),
+        new TestCaseData("60016005575b", 21016UL, 4, nameof(EvmExceptionType.OutOfGas)).SetName("JumpDest_charge_out_of_gas_after_JumpI"),
+        new TestCaseData("600161000057", 100000UL, 3, nameof(EvmExceptionType.InvalidJumpDestination)).SetName("Push2_JumpI_taken_to_invalid_destination"),
+        new TestCaseData("61000556605b00", 100000UL, 2, nameof(EvmExceptionType.InvalidJumpDestination)).SetName("Push2_Jump_into_push_data"),
+        // The low byte is a real JUMPDEST, but the nonzero high byte must still invalidate the destination.
+        new TestCaseData("7f01" + new string('0', 60) + "22565b", 100000UL, 2, nameof(EvmExceptionType.InvalidJumpDestination)).SetName("Push32_high_byte_jump_destination"),
     ];
 
     private sealed class NoInstructionTracer : TestAllTracerWithOutput
@@ -439,6 +442,30 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.OutOfGas)), "precondition: the loop only ends by running out of gas");
             Assert.That(tracer.PollCount, Is.GreaterThan(1), "a loop past the interval is polled at a taken jump");
             Assert.That(tracer.PollCount, Is.LessThanOrEqualTo(Machine.OpCodeCount / 1024 + 1), "taken jumps poll only once the interval has elapsed");
+        }
+    }
+
+    [Test]
+    public void Cancellation_FusedJumpReachesInterval_PollsBeforeSuccessor([Values(2, 3)] int pushSize)
+    {
+        const int prefixLength = 1021;
+        int destination = prefixLength + pushSize + 2;
+        byte[] code = new byte[destination + 2];
+        code.AsSpan(0, prefixLength).Fill((byte)Instruction.JUMPDEST);
+        code[prefixLength] = (byte)((int)Instruction.PUSH1 + pushSize - 1);
+        code[destination - 3] = (byte)(destination >> 8);
+        code[destination - 2] = (byte)destination;
+        code[destination - 1] = (byte)Instruction.JUMP;
+        code[destination] = (byte)Instruction.JUMPDEST;
+        CountingCancellationTracer tracer = new();
+
+        Execute(tracer, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null, "the jump lands on a valid destination");
+            Assert.That(tracer.PollCount, Is.EqualTo(2), "the fused destination completes the 1024-opcode interval");
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(1025), "the counter includes the jump, its destination and STOP");
         }
     }
 
@@ -824,13 +851,14 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [TestCaseSource(nameof(JumpFailureCases))]
-    public void Untraced_jump_completion_preserves_failure_ordering(string bytecode, ulong gasLimit, int expectedOpCodeCount)
+    public void Untraced_jump_completion_preserves_failure_ordering(string bytecode, ulong gasLimit, int expectedOpCodeCount, string expectedError)
     {
         TestAllTracerWithOutput receipt = ExecuteUntraced(gasLimit, Bytes.FromHexString(bytecode));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure), "status");
+            Assert.That(receipt.Error, Is.EqualTo(expectedError), "error");
             Assert.That(receipt.GasSpent, Is.EqualTo(gasLimit), "gas");
             Assert.That(Machine.OpCodeCount, Is.EqualTo(expectedOpCodeCount), "opcode count");
         }
@@ -904,30 +932,20 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Trace_invalid_jump_exception()
+    public void Trace_invalid_jump_exception([Values(Instruction.JUMP, Instruction.JUMPI)] Instruction instruction)
     {
-        byte[] code = Prepare.EvmCode
-            .PushData(255)
-            .Op(Instruction.JUMP)
-            .Done;
+        byte[] code = instruction == Instruction.JUMPI
+            ? Prepare.EvmCode.PushData(1).PushData(255).Op(instruction).Done
+            : Prepare.EvmCode.PushData(255).Op(instruction).Done;
 
-        GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
+        using GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
 
-        Assert.That(trace.Entries.Any(static e => e.Error is not null), Is.True);
-    }
-
-    [Test]
-    public void Trace_invalid_jumpi_exception()
-    {
-        byte[] code = Prepare.EvmCode
-            .PushData(1)
-            .PushData(255)
-            .Op(Instruction.JUMPI)
-            .Done;
-
-        GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
-
-        Assert.That(trace.Entries.Any(static e => e.Error is not null), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.True);
+            Assert.That(trace.Gas, Is.EqualTo(40000));
+            Assert.That(trace.Entries.Any(static e => e.Error is not null), Is.False);
+        }
     }
 
     [Test(Description = "Test a case where the trace is created for one transaction and subsequent untraced transactions keep adding entries to the first trace created.")]
@@ -979,7 +997,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         JsonElement sstoreEntry = doc.RootElement.GetProperty("structLogs")[4];
         JsonElement storage = sstoreEntry.GetProperty("storage");
         const string zero32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
+#pragma warning disable NUnit2045 // Check the storage shape before reading its slot.
         Assert.That(storage.EnumerateObject().Count(), Is.EqualTo(1), "SSTORE storage has one slot");
+#pragma warning restore NUnit2045
         Assert.That(storage.GetProperty(zero32).GetString(), Is.EqualTo(zero32), "SSTORE storage[0x0]=0x0");
     }
 
@@ -2533,7 +2553,9 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         tracker.WarmUp(Probe);
         VmState<EthereumGasPolicy> broken = RentChild(frames, envs, in tracker);
         UInt256 location = 0x40;
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(broken.Memory.TrySaveWord(in location, DirtyWord), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(broken.Memory.Size, Is.EqualTo(0x60));
 
         // Clearing the journals the frame snapshotted makes its restore throw inside Dispose.
@@ -3658,5 +3680,63 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             Error = error;
             StatusCode = Evm.StatusCode.Failure;
         }
+    }
+}
+
+/// <summary>
+/// A run whose block context differs from the one it is replayed in holds only where it read none of the differing
+/// fields, so every opcode that reads one must report it, traced or not.
+/// </summary>
+[Parallelizable(ParallelScope.Self)]
+internal class BlockContextReadsTests : VirtualMachineTestsBase
+{
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
+
+    [TestCase(Instruction.COINBASE, BlockContextReads.Coinbase)]
+    [TestCase(Instruction.TIMESTAMP, BlockContextReads.Timestamp)]
+    [TestCase(Instruction.GASLIMIT, BlockContextReads.GasLimit)]
+    [TestCase(Instruction.PREVRANDAO, BlockContextReads.PrevRandao)]
+    [TestCase(Instruction.NUMBER, BlockContextReads.None)]
+    [TestCase(Instruction.BASEFEE, BlockContextReads.None)]
+    [TestCase(Instruction.BLOBBASEFEE, BlockContextReads.None)]
+    [TestCase(Instruction.CHAINID, BlockContextReads.None)]
+    public void Reads_of_the_block_context_are_reported(Instruction opcode, BlockContextReads expected)
+    {
+        byte[] code = [(byte)opcode, (byte)Instruction.POP, (byte)Instruction.STOP];
+
+        Machine.BlockContextReads = BlockContextReads.None;
+        Execute(code);
+        BlockContextReads traced = Machine.BlockContextReads;
+
+        Machine.BlockContextReads = BlockContextReads.None;
+        Execute(NullTxTracer.Instance, code);
+        BlockContextReads untraced = Machine.BlockContextReads;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traced, Is.EqualTo(expected), "traced");
+            Assert.That(untraced, Is.EqualTo(expected), "untraced");
+        }
+    }
+
+    [TestCase(new byte[] { 0x5B, 0x5F, 0x56 }, BlockContextReads.OutOfGas, TestName = "A loop runs out of gas")]
+    [TestCase(new byte[] { 0x5F, 0x5F, 0xFD }, BlockContextReads.None, TestName = "A revert does not")]
+    public void Running_out_of_gas_is_reported(byte[] code, BlockContextReads expected)
+    {
+        Machine.BlockContextReads = BlockContextReads.None;
+        Execute(NullTxTracer.Instance, code);
+
+        Assert.That(Machine.BlockContextReads, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Reads_of_several_fields_are_all_reported()
+    {
+        Machine.BlockContextReads = BlockContextReads.None;
+        Execute(NullTxTracer.Instance,
+            [(byte)Instruction.TIMESTAMP, (byte)Instruction.GASLIMIT, (byte)Instruction.POP, (byte)Instruction.POP, (byte)Instruction.STOP]);
+
+        Assert.That(Machine.BlockContextReads, Is.EqualTo(BlockContextReads.Timestamp | BlockContextReads.GasLimit));
     }
 }

@@ -308,7 +308,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Rejects_transaction_nonce_too_wide_during_decoding([Values(9, 33)] int nonceLength)
         {
-            byte[] txBytes = BuildLegacyTxWithNonce([0x01, .. new byte[nonceLength - 1]]);
+            byte[] txBytes = BuildLegacyTx([0x01, .. new byte[nonceLength - 1]]);
 
             void Decode()
             {
@@ -321,10 +321,41 @@ namespace Nethermind.Core.Test.Encoding
                 Throws.TypeOf<RlpException>().With.Message.Contains("NonceTooWide"));
         }
 
+        [TestCase("0x020000000000000021", "InvalidTxChainId", TestName = "Chain id 2^64 - 1")]
+        [TestCase("0x020000000000000022", "InvalidTxChainId", TestName = "Chain id 2^64 - 1, odd parity")]
+        [TestCase("0x020000000000000023", "InvalidTxSignature", TestName = "Chain id 2^64")]
+        [TestCase("0x0100000000000000000000000000000000000000000000000000000000000000", "InvalidTxSignature", TestName = "32-byte v")]
+        public void Rejects_legacy_v_wider_than_uint64_by_its_chain_id(string v, string error)
+        {
+            byte[] txBytes = BuildLegacyTx([], Bytes.FromHexString(v));
+
+            void Decode()
+            {
+                RlpReader decoderContext = new(txBytes);
+                _txDecoder.DecodeGuardNotNull(ref decoderContext, RlpBehaviors.AllowUnsigned);
+            }
+
+            Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains(error));
+        }
+
+        [Test]
+        public void Keeps_decoding_error_of_wide_v_without_r_and_s_that_end_the_transaction([Values(0, 1, 3)] int itemsAfterV)
+        {
+            byte[] txBytes = BuildLegacyTx([], Bytes.FromHexString("0x020000000000000021"), itemsAfterV);
+
+            void Decode()
+            {
+                RlpReader decoderContext = new(txBytes);
+                _txDecoder.DecodeGuardNotNull(ref decoderContext, RlpBehaviors.AllowUnsigned);
+            }
+
+            Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Not.Contains("Chain id"));
+        }
+
         [TestCaseSource(nameof(NonCanonicalNonceTestCases))]
         public void Rejects_non_canonical_transaction_nonce(byte[] nonceBytes)
         {
-            byte[] txBytes = BuildLegacyTxWithNonce(nonceBytes);
+            byte[] txBytes = BuildLegacyTx(nonceBytes);
 
             void Decode()
             {
@@ -396,6 +427,78 @@ namespace Nethermind.Core.Test.Encoding
             }
 
             Assert.That(Decode, Throws.InstanceOf<RlpException>());
+        }
+
+        [Test]
+        public void Decoder_registered_over_built_in_type_is_used_to_encode_and_decode(
+            [Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob, TxType.SetCode, TxType.FrameTx)] TxType txType,
+            [Values] bool existingTransaction)
+        {
+            // A plugin replacing a standard type's decoder must own its wire form, not the built-in codec.
+            IsolatedTxDecoder decoder = new();
+            MarkerTxDecoder marker = new(txType);
+            decoder.RegisterDecoder(marker);
+            // An empty list decodes as no transaction, so a legacy sequence needs an item.
+            byte[] encoded = txType == TxType.Legacy ? [0xc1, 0x80] : [(byte)txType, Rlp.EmptyListByte];
+
+            Assert.That(decoder.Encode(new Transaction { Type = txType }).Bytes, Is.EqualTo(MarkerTxDecoder.Encoding));
+            RlpReader reader = new(encoded);
+            Transaction? transaction = existingTransaction ? new Transaction() : null;
+            decoder.Decode(ref reader, ref transaction, RlpBehaviors.SkipTypedWrapping);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(transaction, Is.SameAs(marker.DecodedTransaction));
+                Assert.That(reader.Position, Is.EqualTo(encoded.Length));
+            }
+        }
+
+        [Test]
+        public void Legacy_empty_signature_decodes_as_unsigned_only_when_allowed([Values] bool allowEmptySignature)
+        {
+            // A missing signature encodes as v = 0 with empty r and s.
+            byte[] encoded = _txDecoder.Encode(new Transaction { Type = TxType.Legacy, GasLimit = 21_000, To = Address.Zero }).Bytes;
+            IsolatedTxDecoder decoder = new();
+            decoder.RegisterDecoder(new Serialization.Rlp.TxDecoders.LegacyTxDecoder(allowEmptySignature: allowEmptySignature));
+
+            if (allowEmptySignature)
+            {
+                Assert.That(Decode().Signature, Is.Null);
+            }
+            else
+            {
+                Assert.That(() => Decode(), Throws.InstanceOf<RlpException>());
+            }
+
+            Transaction Decode()
+            {
+                RlpReader reader = new(encoded);
+                return decoder.Decode(ref reader)!;
+            }
+        }
+
+        private sealed class IsolatedTxDecoder : TxDecoder<Transaction>;
+
+        private sealed class MarkerTxDecoder(TxType txType) : Serialization.Rlp.TxDecoders.ITxDecoder
+        {
+            public static readonly byte[] Encoding = [0xc1, 0x2a];
+            public Transaction DecodedTransaction { get; } = new();
+
+            public TxType Type => txType;
+
+            public void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
+                ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            {
+                transaction = DecodedTransaction;
+                decoderContext.Position = txSequenceStart + transactionSequence.Length;
+            }
+
+            public void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+                bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+                where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(Encoding);
+
+            public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false,
+                bool isEip155Enabled = false, ulong chainId = 0) => Encoding.Length;
         }
 
         public static IEnumerable<(string, Hash256)> SkipTypedWrappingTestCases()
@@ -583,15 +686,18 @@ namespace Nethermind.Core.Test.Encoding
             .SignedAndResolved(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA)
             .TestObject;
 
-        private static byte[] BuildLegacyTxWithNonce(ReadOnlySpan<byte> nonceBytes)
+        private static byte[] BuildLegacyTx(ReadOnlySpan<byte> nonceBytes, ReadOnlySpan<byte> vBytes = default, int emptyItemsAfterV = 2)
         {
-            int nonceRlpLength = GetByteStringRlpLength(nonceBytes);
-            int payloadLength = nonceRlpLength + 8;
+            const int emptyItemsBetweenNonceAndV = 5;
+            int payloadLength = GetByteStringRlpLength(nonceBytes) + emptyItemsBetweenNonceAndV + GetByteStringRlpLength(vBytes) + emptyItemsAfterV;
             byte[] txBytes = new byte[1 + payloadLength];
             txBytes[0] = (byte)(Rlp.EmptyListByte + payloadLength);
 
             int position = 1;
             EncodeByteString(txBytes, ref position, nonceBytes);
+            txBytes.AsSpan(position, emptyItemsBetweenNonceAndV).Fill(Rlp.EmptyByteArrayByte);
+            position += emptyItemsBetweenNonceAndV;
+            EncodeByteString(txBytes, ref position, vBytes);
             txBytes.AsSpan(position).Fill(Rlp.EmptyByteArrayByte);
             return txBytes;
         }

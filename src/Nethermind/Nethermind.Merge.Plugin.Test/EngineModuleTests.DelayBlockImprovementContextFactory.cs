@@ -16,14 +16,6 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    private class DelayBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout, TimeSpan delay, Action<CancellationToken>? onBuildStarted = null)
-        : IBlockImprovementContextFactory
-    {
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime,
-        UInt256 currentBlockFees, SharedCancellationTokenSource cts) =>
-            new DelayBlockImprovementContext(currentBestBlock, blockProducer, timeout, parentHeader, payloadAttributes, delay, startDateTime, cts, onBuildStarted);
-    }
-
     /// <summary>
     /// Only the first improvement context builds a block (with zero delay).
     /// Subsequent contexts block indefinitely until cancelled, making tests
@@ -34,7 +26,7 @@ public partial class EngineModuleTests
         private int _callCount;
 
         public IBlockImprovementContext StartBlockImprovementContext(
-            Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes,
+            Block? currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes,
             DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             TimeSpan delay = Interlocked.Increment(ref _callCount) == 1
@@ -54,24 +46,20 @@ public partial class EngineModuleTests
         private CancellationTokenSource? _timeOutCancellation;
         private CancellationTokenSource? _linkedCancellation;
 
-        public DelayBlockImprovementContext(Block currentBestBlock,
+        public DelayBlockImprovementContext(Block? currentBestBlock,
             IBlockProducer blockProducer,
             TimeSpan timeout,
             BlockHeader parentHeader,
             PayloadAttributes payloadAttributes,
             TimeSpan delay,
             DateTimeOffset startDateTime,
-            SharedCancellationTokenSource cts,
-            Action<CancellationToken>? onBuildStarted = null)
+            SharedCancellationTokenSource cts)
         {
             _best = new(currentBestBlock, UInt256.Zero);
             StartDateTime = startDateTime;
             _improvementCancellation = cts;
             _timeOutCancellation = new CancellationTokenSource(timeout);
             _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
-            // Publishes the production token, so a test-side tx source can abort a blocking
-            // wait when this improvement is cancelled.
-            onBuildStarted?.Invoke(_linkedCancellation.Token);
             ImprovementTask = BuildBlock(blockProducer, parentHeader, payloadAttributes, delay, _linkedCancellation.Token);
         }
 

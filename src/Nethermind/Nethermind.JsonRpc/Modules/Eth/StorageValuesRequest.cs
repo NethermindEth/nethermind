@@ -41,7 +41,7 @@ public sealed class StorageValuesRequest : IJsonRpcParam
             int index = 0;
             foreach (JsonElement slotElement in property.Value.EnumerateArray())
             {
-                slots[index++] = slotElement.Deserialize<StorageIndex>(options).Value;
+                slots[index++] = TypeInfoJsonSerializer.Deserialize<StorageIndex>(slotElement, options).Value;
             }
 
             TotalSlots += arrayLength;

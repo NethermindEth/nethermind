@@ -12,6 +12,7 @@ using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -35,8 +36,8 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
     private static readonly Address X = TestItem.AddressF;
     private static readonly Address Dead = new("0x00000000000000000000000000000000dead0001");
 
-    // Fresh authority (not in pre-state) so SetCode scenarios carry NEW_ACCOUNT + per-auth
-    // intrinsic state gas that survives a top-level halt.
+    // Authority is fresh (not in pre-state) unless Scenario.AuthorityExists, so SetCode scenarios
+    // carry NEW_ACCOUNT + per-auth intrinsic state gas that survives a top-level halt.
     private static readonly PrivateKey AuthorityKey =
         new("0x0000000000000000000000000000000000000000000000000000000000000042");
 
@@ -53,7 +54,8 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
         long ExpectedBlockStateGas,
         bool IsCreate = false,
         byte[]? TxData = null,
-        bool WithAuthorization = false)
+        bool WithAuthorization = false,
+        bool AuthorityExists = false)
     {
         public override string ToString() => Name;
     }
@@ -80,12 +82,16 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
     public void Top_level_halt_settlement_burns_restored_spill(
         [Values(0L, 50_000L)] long reservoir,
         [Values] bool executionGasAlreadyCleared,
-        [Values(0UL, 1_000UL)] ulong executionRefund)
+        [Values(0UL, 1_000UL)] ulong executionRefund,
+        [Values] bool eip7778Enabled)
     {
+        IReleaseSpec spec = new OverridableReleaseSpec(Spec) { IsEip7778Enabled = eip7778Enabled };
         ulong gasLimit = reservoir == 0 ? 1_000_000 : Eip7825Constants.DefaultTxGasLimitCap + (ulong)reservoir;
         Transaction tx = Build.A.Transaction.WithTo(null).WithGasLimit(gasLimit).TestObject;
-        EthereumGasPolicy intrinsic = EthereumGasPolicy.CalculateIntrinsicGas(tx, Spec).Standard;
-        Assert.That(EthereumGasPolicy.TryCreateAvailableFromIntrinsic(gasLimit, in intrinsic, Spec, out EthereumGasPolicy gas), Is.True);
+        EthereumGasPolicy intrinsic = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec).Standard;
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
+        Assert.That(EthereumGasPolicy.TryCreateAvailableFromIntrinsic(gasLimit, in intrinsic, spec, out EthereumGasPolicy gas), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref gas, GasCostOf.CreateState), Is.True);
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref gas, GasCostOf.SSetState), Is.True);
         EthereumGasPolicy.RefundStateGas(ref gas, GasCostOf.SSetState, stateGasFloor: 0);
@@ -97,7 +103,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
         // Receipt accounting excludes gas_left on halt, so observe the settled policy as well.
         UInt256 gasPrice = UInt256.Zero;
         GasConsumed consumed = ((TransactionProcessorBase<EthereumGasPolicy>)_processor).CompleteEip8037Halt(
-            tx, Spec, ExecutionOptions.None, ref gas, in gasPrice, in intrinsic, 0, reservoir, executionRefund).Gas;
+            tx, spec, ExecutionOptions.None, ref gas, in gasPrice, in intrinsic, 0, reservoir, executionRefund).Gas;
 
         using (Assert.EnterMultipleScope())
         {
@@ -107,7 +113,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
             Assert.That(gas.StateGasSpill, Is.Zero);
             Assert.That(gas.StateGasSpillRefunded, Is.EqualTo(GasCostOf.CreateState + GasCostOf.SSetState - reservoir));
             Assert.That(consumed.SpentGas, Is.EqualTo(gasLimit - (ulong)reservoir - executionRefund));
-            Assert.That(consumed.BlockGas, Is.EqualTo(gasLimit - (ulong)reservoir));
+            Assert.That(consumed.BlockGas, Is.EqualTo(gasLimit - (ulong)reservoir - (eip7778Enabled ? 0 : executionRefund)));
             Assert.That(consumed.BlockStateGas, Is.Zero);
             Assert.That(consumed.GasRefund, Is.EqualTo(executionRefund));
         }
@@ -398,6 +404,49 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                 WithAuthorization: true);
         }
 
+        // Authorization state gas is charged before execution, so a top-level REVERT keeps it
+        // (NEW_ACCOUNT + AUTH_BASE for a fresh authority, AUTH_BASE alone for an existing one)
+        // while refilling the frame's SSTORE state gas. A reservoir (tx.gas > 2^24) does not
+        // change the split. Execution: TX_BASE 12000 + cold recipient 3000 + TX_VALUE 6000
+        // + PER_AUTH_BASE 7816 + ACCOUNT_WRITE 9000, plus the code (6 for REVERT, 12112 with the
+        // cold SSTORE).
+        foreach (ulong gasLimit in new ulong[] { 3_000_000, 20_000_000 })
+        {
+            yield return new Scenario(
+                $"auth_then_top_revert_{gasLimit}",
+                gasLimit,
+                Prepare.EvmCode.Revert(0, 0).Done,
+                [],
+                ExpectedSuccess: false, ExpectedSpentGas: 256_612, ExpectedBlockExecutionGas: 37_822, ExpectedBlockStateGas: 218_790,
+                WithAuthorization: true);
+
+            yield return new Scenario(
+                $"auth_then_sstore_top_revert_{gasLimit}",
+                gasLimit,
+                SstoreSetThenRevert(),
+                [],
+                ExpectedSuccess: false, ExpectedSpentGas: 268_718, ExpectedBlockExecutionGas: 49_928, ExpectedBlockStateGas: 218_790,
+                WithAuthorization: true);
+
+            yield return new Scenario(
+                $"existing_authority_auth_then_top_revert_{gasLimit}",
+                gasLimit,
+                Prepare.EvmCode.Revert(0, 0).Done,
+                [],
+                ExpectedSuccess: false, ExpectedSpentGas: 73_012, ExpectedBlockExecutionGas: 37_822, ExpectedBlockStateGas: 35_190,
+                WithAuthorization: true,
+                AuthorityExists: true);
+
+            yield return new Scenario(
+                $"existing_authority_auth_then_sstore_top_revert_{gasLimit}",
+                gasLimit,
+                SstoreSetThenRevert(),
+                [],
+                ExpectedSuccess: false, ExpectedSpentGas: 85_118, ExpectedBlockExecutionGas: 49_928, ExpectedBlockStateGas: 35_190,
+                WithAuthorization: true,
+                AuthorityExists: true);
+        }
+
         // Advance revoked by the receiving frame's REVERT; the parent continues and succeeds.
         {
             byte[] aMain = Prepare.EvmCode
@@ -473,6 +522,8 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
         if (scenario.WithAuthorization)
         {
             EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+            if (scenario.AuthorityExists)
+                TestState.CreateAccount(AuthorityKey.Address, 1);
             TestState.CreateAccount(Recipient, 0);
             TestState.InsertCode(Recipient, scenario.RecipientCode, SpecProvider.GenesisSpec);
             transaction = Build.A.Transaction

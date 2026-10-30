@@ -319,8 +319,11 @@ public class KademliaAdapterTests
             localIp: IPAddress.Parse(localIp),
             node: out Node? node);
 
-        Assert.That(result, Is.True);
-        Assert.That(node, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(node!.Host, Is.EqualTo(expectedIp));
@@ -348,8 +351,11 @@ public class KademliaAdapterTests
             preferredEndpoint: new IPEndPoint(ip6, 40404),
             node: out Node? node);
 
-        Assert.That(result, Is.True);
-        Assert.That(node, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(node!.Host, Is.EqualTo(ip6.ToString()));
@@ -381,8 +387,11 @@ public class KademliaAdapterTests
             localIp: IPAddress.Parse(localIp),
             node: out Node? node);
 
-        Assert.That(result, Is.True);
-        Assert.That(node, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
+        }
         Assert.That(node!.Host, Is.EqualTo(expectedIp));
     }
 
@@ -402,8 +411,11 @@ public class KademliaAdapterTests
             localIp: IPAddress.Parse(localIp),
             node: out Node? node);
 
-        Assert.That(result, Is.False);
-        Assert.That(node, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(node, Is.Null);
+        }
     }
 
     [Test]
@@ -493,7 +505,7 @@ public class KademliaAdapterTests
         return new(
             new Lazy<IKademlia<PublicKey, Node>>(_kademlia),
             _routingTable,
-            new NettyDiscoveryV5Handler(LimboLogs.Instance),
+            new DiscoveryV5Transport(LimboLogs.Instance),
             _packetCodec,
             nodeRecordProvider,
             new DiscoveryConfig(),

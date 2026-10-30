@@ -67,7 +67,11 @@ namespace Nethermind.Init.Steps
                 } while (allRequiredSteps.Any(s => !s.IsCompleted));
             }
 
-            if (!HasTarget) return;
+            if (!HasTarget)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return;
+            }
 
             // A command's exit code is the target's outcome, so anything short of it completing has to surface
             // as an exception for Program to map. Review every task first, not just the ones the loop happened
@@ -159,14 +163,14 @@ namespace Nethermind.Init.Steps
             foreach ((Type stepBaseType, StepWrapper stepWrapper) in stepInfoMap)
             {
                 Task stepTask = Array.IndexOf(skippedSteps, stepBaseType) >= 0
-                    ? Task.CompletedTask : ExecuteStep(stepWrapper, stepInfoMap, cancellationToken);
+                    ? Task.CompletedTask : ExecuteStep(stepWrapper, stepInfoMap, stepBaseType == target, cancellationToken);
                 allRequiredSteps.Add(stepTask);
                 if (stepBaseType == target) targetTask = stepTask;
             }
             return (allRequiredSteps, targetTask);
         }
 
-        private async Task ExecuteStep(StepWrapper stepWrapper, Dictionary<Type, StepWrapper> stepBaseTypeMap, CancellationToken cancellationToken)
+        private async Task ExecuteStep(StepWrapper stepWrapper, Dictionary<Type, StepWrapper> stepBaseTypeMap, bool isTarget, CancellationToken cancellationToken)
         {
             long startTime = Stopwatch.GetTimestamp();
             try
@@ -187,9 +191,10 @@ namespace Nethermind.Init.Steps
 
                 if (_logger.IsDebug) _logger.Debug($"Step {stepWrapper.StepInfo.StepType.Name,-24} executed in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             }
-            catch (Exception exception) when (exception is not TaskCanceledException)
+            catch (Exception exception) when (exception is not TaskCanceledException && (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested))
             {
-                if (stepWrapper.Step.MustInitialize)
+                // A selected target is the whole job of the run, so its failure is fatal even for an optional step.
+                if (isTarget || stepWrapper.Step.MustInitialize)
                 {
                     if (_logger.IsError) _logger.Error($"Step {stepWrapper.StepInfo.StepType.Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms", exception);
                     throw;

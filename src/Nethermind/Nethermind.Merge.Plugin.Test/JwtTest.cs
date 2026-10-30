@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -118,17 +119,29 @@ public class JwtTest
     }
 
     [Test]
-    public async Task Cache_eviction_when_iat_expires()
+    public async Task Cached_token_respects_iat_window(
+        [Values] bool useLibraryFallback,
+        [Values(null, 2, 60, 120)] int? expirationAfterIssue,
+        [Values(-61, -60, 2, 60, 61)] int secondsAfterIssue)
     {
         ManualTimestamper ts = new() { UtcNow = DateTimeOffset.FromUnixTimeSeconds(TestIat).UtcDateTime };
         IRpcAuthentication auth = JwtAuthentication.FromSecret(HexSecret, ts, LimboTraceLogger.Instance);
-        string token = CreateJwt("{\"alg\":\"HS256\",\"typ\":\"JWT\"}", $"{{\"iat\":{TestIat}}}");
+        string payload = expirationAfterIssue.HasValue
+            ? $"{{\"iat\":{TestIat},\"exp\":{TestIat + expirationAfterIssue.Value}}}"
+            : $"{{\"iat\":{TestIat}}}";
+        string token = CreateJwt(CreateHeader(useLibraryFallback), payload);
 
         Assert.That(await auth.Authenticate(token), Is.True);
 
-        // Advance time beyond TTL — cache should evict, iat check should fail
-        ts.UtcNow = DateTimeOffset.FromUnixTimeSeconds(TestIat + 61).UtcDateTime;
-        Assert.That(await auth.Authenticate(token), Is.False);
+        ts.UtcNow = DateTimeOffset.FromUnixTimeSeconds(TestIat + secondsAfterIssue).UtcDateTime;
+        IRpcAuthentication uncached = JwtAuthentication.FromSecret(HexSecret, ts, LimboTraceLogger.Instance);
+        bool expected = Math.Abs(secondsAfterIssue) <= 60
+            && (!expirationAfterIssue.HasValue || secondsAfterIssue < expirationAfterIssue.Value);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await uncached.Authenticate(token), Is.EqualTo(expected));
+            Assert.That(await auth.Authenticate(token), Is.EqualTo(expected));
+        }
     }
 
     [Test]
@@ -138,12 +151,41 @@ public class JwtTest
         string token1 = CreateJwt("{\"alg\":\"HS256\",\"typ\":\"JWT\"}", $"{{\"iat\":{TestIat}}}");
         string token2 = CreateJwt("{\"alg\":\"HS256\",\"typ\":\"JWT\"}", $"{{\"iat\":{TestIat + 1}}}");
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await auth.Authenticate(token1), Is.True);
+#pragma warning restore NUnit2045
         // Different token — cache miss, must revalidate
         Assert.That(await auth.Authenticate(token2), Is.True);
     }
 
+    [Test]
+    public async Task Cached_token_skips_library_validation([Values(null, 2, 120)] int? expirationAfterIssue)
+    {
+        ManualTimestamper ts = new() { UtcNow = DateTimeOffset.FromUnixTimeSeconds(TestIat).UtcDateTime };
+        TestLogger logger = new();
+        IRpcAuthentication auth = JwtAuthentication.FromSecret(HexSecret, ts, new ILogger(logger));
+        string payload = expirationAfterIssue.HasValue
+            ? $"{{\"iat\":{TestIat},\"exp\":{TestIat + expirationAfterIssue.Value}}}"
+            : $"{{\"iat\":{TestIat}}}";
+        string token = CreateJwt(CreateHeader(useLibraryFallback: true), payload);
+
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
+        Assert.That(await auth.Authenticate(token), Is.True);
+#pragma warning restore NUnit2045
+        Assert.That(logger.LogList, Has.Count.EqualTo(1));
+
+        ts.UtcNow = DateTimeOffset.FromUnixTimeSeconds(TestIat + 1).UtcDateTime;
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
+        Assert.That(await auth.Authenticate(token), Is.True);
+#pragma warning restore NUnit2045
+        Assert.That(logger.LogList, Has.Count.EqualTo(1), "A cache hit must skip library validation and its trace log");
+    }
+
     // --- Helpers ---
+
+    private static string CreateHeader(bool useLibraryFallback) => useLibraryFallback
+        ? "{\"alg\":\"HS256\",\"typ\":\"JWT\",\"kid\":\"1\"}"
+        : "{\"alg\":\"HS256\",\"typ\":\"JWT\"}";
 
     private static IRpcAuthentication CreateAuth(long nowUnixSeconds = TestIat)
     {
