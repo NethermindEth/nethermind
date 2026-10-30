@@ -155,6 +155,23 @@ public class StandardTxFilterBaseFeeTests
     }
 
     [Test]
+    public void A_null_parent_is_computed_on_every_call()
+    {
+        CountingBaseFeeCalculator calculator = new();
+        ReleaseSpec spec = new() { IsEip1559Enabled = true, BaseFeeCalculator = calculator };
+        Transaction tx = Tx(maxFee: 10.GWei, priorityFee: 1.GWei);
+        ITxFilter[] filters = [new BaseFeeTxFilter(), new MinGasPriceTxFilter(new BlocksConfig { MinGasPrice = 1.GWei })];
+
+        foreach (ITxFilter filter in filters)
+        {
+            filter.IsAllowed(tx, null, spec);
+            filter.IsAllowed(tx, null, spec);
+        }
+
+        Assert.That(calculator.Calls, Is.EqualTo(4), "a null parent is never cached");
+    }
+
+    [Test]
     public void Tx_pool_admission_follows_the_new_head()
     {
         MinGasPriceTxFilter shared = new(new BlocksConfig { MinGasPrice = 1.GWei });
@@ -231,7 +248,8 @@ public class StandardTxFilterBaseFeeTests
         public UInt256 Calculate(BlockHeader parent, IEip1559Spec specFor1559)
         {
             Interlocked.Increment(ref _calls);
-            return _inner.Calculate(parent, specFor1559);
+            // The default calculator needs a parent; a null one stands for a caller without a head.
+            return parent is null ? UInt256.Zero : _inner.Calculate(parent, specFor1559);
         }
     }
 }

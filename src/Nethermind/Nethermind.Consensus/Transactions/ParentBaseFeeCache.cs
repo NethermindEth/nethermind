@@ -16,8 +16,9 @@ namespace Nethermind.Consensus.Transactions;
 /// A filter can be called from several threads at once, such as tx-pool admission threads that see a new head, so the
 /// cached pair is one immutable entry replaced by reference: a reader sees either the previous entry or the new one,
 /// never a mix of the two.
-/// The key is the parent and spec instances. A header is not modified once it is a parent, so a new head, a different
-/// parent or a different spec (a fork boundary) computes the base fee again.
+/// The key is the parent and spec instances. While they stay the same, the inputs the spec's base-fee calculator reads
+/// from them (the parent's fee fields, the spec's fee parameters) must not change; block-tree headers and release specs
+/// do not change them. A new head, a different parent or a different spec (a fork boundary) computes the base fee again.
 /// </remarks>
 internal sealed class ParentBaseFeeCache
 {
