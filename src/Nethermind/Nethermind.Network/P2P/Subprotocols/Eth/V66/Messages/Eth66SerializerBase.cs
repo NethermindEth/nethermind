@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using DotNetty.Buffers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
@@ -17,24 +19,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             int totalLength = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
 
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            // The inner message writes to the buffer itself, so only the prefix and the request id go through this writer.
+            int headerLength = totalLength - contentLength + Rlp.LengthOf(message.RequestId);
+            RlpWriter writer = byteBuffer.StartRlpWrite(headerLength);
+            Span<byte> prefix = stackalloc byte[Rlp.LengthOfSequence(0) + sizeof(int)];
+            writer.WriteEncoded(prefix[..Rlp.StartSequence(prefix, 0, contentLength)]);
             writer.Encode(message.RequestId);
+            byteBuffer.CompleteRlpWrite(in writer, headerLength);
             SerializeInternal(byteBuffer, message);
         }
 
         public virtual TMessage Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
 
-        private TMessage Deserialize(ref RlpReader ctx)
+        private TMessage Deserialize(ref RlpReader reader)
         {
-            int sequenceLength = ctx.ReadSequenceLength();
-            int checkPosition = ctx.Position + sequenceLength;
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
             long requestId = ctx.DecodeLong();
 
             TMessage message = DeserializeInternal(ref ctx, requestId);
             try
             {
-                ctx.Check(checkPosition);
+                reader.ExitSequence(ctx, itemLength);
                 return message;
             }
             catch

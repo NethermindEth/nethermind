@@ -3,6 +3,7 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
@@ -18,22 +19,24 @@ namespace Nethermind.Network.P2P.Messages
         public void Serialize(IByteBuffer byteBuffer, AddCapabilityMessage msg)
         {
             int totalLength = GetLength(msg, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
-
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            RlpWriter writer = byteBuffer.StartRlpWrite(totalLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             writer.Encode(msg.Capability.ProtocolCode.ToLowerInvariant());
             writer.Encode(msg.Capability.Version);
+
+            writer.EndSequence(sequence);
+            byteBuffer.CompleteRlpWrite(in writer, totalLength);
         }
 
         public AddCapabilityMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        private static AddCapabilityMessage Deserialize(ref RlpReader ctx)
+        private static AddCapabilityMessage Deserialize(ref RlpReader reader)
         {
-            ctx.ReadSequenceLength();
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
             string protocolCode = ctx.DecodeString(RlpLimit);
             byte version = ctx.DecodeByte();
+            reader.ExitSequenceIgnoringRest(ctx, itemLength);
 
             return new AddCapabilityMessage(new Capability(protocolCode, version));
         }

@@ -5,6 +5,7 @@ using DotNetty.Buffers;
 using Nethermind.Core.Specs;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
@@ -16,8 +17,11 @@ public class ReceiptsMessageSerializer70(ISpecProvider specProvider)
 
     protected override void SerializeInternal(IByteBuffer byteBuffer, ReceiptsMessage70 message)
     {
-        ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.Encode(message.LastBlockIncomplete ? 1 : 0);
+        int lastBlockIncomplete = message.LastBlockIncomplete ? 1 : 0;
+        int length = Rlp.LengthOf(lastBlockIncomplete);
+        RlpWriter writer = byteBuffer.StartRlpWrite(length);
+        writer.Encode(lastBlockIncomplete);
+        byteBuffer.CompleteRlpWrite(in writer, length);
         ReceiptsInnerMessage69 inner = new(message.TxReceipts);
         _receiptsSerializer.Serialize(byteBuffer, inner);
     }
@@ -28,7 +32,7 @@ public class ReceiptsMessageSerializer70(ISpecProvider specProvider)
 
         if (lastBlockIncomplete is not 0 and not 1)
         {
-            throw new RlpException($"{lastBlockIncomplete} is not correct value for {nameof(lastBlockIncomplete)}");
+            throw new RlpReaderException($"{lastBlockIncomplete} is not correct value for {nameof(lastBlockIncomplete)}");
         }
 
         V63.Messages.ReceiptsMessage inner = _receiptsSerializer.Deserialize(ref ctx);

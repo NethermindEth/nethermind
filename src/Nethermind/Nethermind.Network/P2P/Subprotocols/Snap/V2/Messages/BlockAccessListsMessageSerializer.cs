@@ -4,6 +4,7 @@
 using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
@@ -19,44 +20,43 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
         {
             int entriesContentLength = GetEntriesContentLength(message.BlockAccessLists);
             int contentLength = Rlp.LengthOf(message.RequestId) + Rlp.LengthOfSequence(entriesContentLength);
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            RlpWriter writer = byteBuffer.StartRlpWrite(Rlp.LengthOfSequence(contentLength));
+            RlpSequence sequence = writer.StartSequence(contentLength);
             writer.Encode(message.RequestId);
-            writer.StartSequence(entriesContentLength);
+            RlpSequence sequence2 = writer.StartSequence(entriesContentLength);
 
             IByteArrayList blockAccessLists = message.BlockAccessLists;
             for (int i = 0; i < blockAccessLists.Count; i++)
             {
                 WriteBlockAccessListEntry(ref writer, blockAccessLists[i]);
             }
+
+            writer.EndSequence(sequence2);
+            writer.EndSequence(sequence);
+            byteBuffer.CompleteRlpWrite(in writer, Rlp.LengthOfSequence(contentLength));
         }
 
-        private static void WriteBlockAccessListEntry<TWriter>(ref TWriter writer, ReadOnlySpan<byte> entry)
-            where TWriter : struct, IRlpWriteBackend, allows ref struct
+        private static void WriteBlockAccessListEntry(ref RlpWriter writer, ReadOnlySpan<byte> entry)
         {
             if (entry.IsEmpty)
                 writer.WriteByte(Rlp.EmptyByteArrayByte);
             else
-                writer.Write(entry);
+                writer.WriteEncoded(entry);
         }
 
         public BlockAccessListsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            RlpReader ctx = new(byteBuffer.AsSpan());
-            int startPosition = ctx.Position;
+            RlpReader reader = new(byteBuffer.AsSpan());
             ArrayPoolList<byte[]>? blockAccessLists = null;
 
             try
             {
-                int sequenceLength = ctx.ReadSequenceLength();
-                int checkPosition = ctx.Position + sequenceLength;
+                RlpReader ctx = reader.EnterSequence(out int itemLength);
                 long requestId = ctx.DecodeLong();
 
                 blockAccessLists = DecodeBlockAccessLists(ref ctx);
-                ctx.Check(checkPosition);
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPosition));
+                reader.ExitSequence(ctx, itemLength);
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + reader.BytesRead);
                 return new BlockAccessListsMessage(new ByteArrayListAdapter(blockAccessLists)) { RequestId = requestId };
             }
             catch
@@ -78,26 +78,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
             return contentLength;
         }
 
-        private static ArrayPoolList<byte[]> DecodeBlockAccessLists(ref RlpReader ctx)
+        private static ArrayPoolList<byte[]> DecodeBlockAccessLists(ref RlpReader reader)
         {
-            int contentLength = ctx.ReadSequenceLength();
-            int checkPosition = ctx.Position + contentLength;
-            int entryCount = ctx.PeekNumberOfItemsRemaining(checkPosition, SnapMessageLimits.MaxRequestHashes + 1);
-            Rlp.GuardLimit(entryCount, contentLength, RlpLimit);
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
+            int entryCount = ctx.CountItems(RlpLimit);
             ArrayPoolList<byte[]> blockAccessLists = new(entryCount);
 
             try
             {
-                while (ctx.Position < checkPosition)
+                while (ctx.HasNext)
                 {
-                    int length = ctx.PeekNextRlpLength();
-                    ReadOnlySpan<byte> entry = ctx.Read(length);
-                    blockAccessLists.Add(length == UnavailableEntryLength && entry[0] == Rlp.EmptyByteArrayByte
+                    ReadOnlySpan<byte> entry = ctx.ReadEncodedItem();
+                    blockAccessLists.Add(entry.Length == UnavailableEntryLength && entry[0] == Rlp.EmptyByteArrayByte
                         ? []
                         : entry.ToArray());
                 }
 
-                ctx.Check(checkPosition);
+                reader.ExitSequence(ctx, itemLength);
                 return blockAccessLists;
             }
             catch

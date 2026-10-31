@@ -5,6 +5,7 @@ using DotNetty.Buffers;
 using System;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
@@ -26,7 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
             finally
             {
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.BytesRead);
             }
         }
 
@@ -35,15 +36,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public void Serialize(IByteBuffer byteBuffer, T message)
         {
             int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = byteBuffer.StartRlpWrite(length);
 
-            writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             ReadOnlySpan<Hash256> hashes = message.Hashes.AsSpan();
             for (int i = 0; i < hashes.Length; i++)
             {
                 writer.Encode(hashes[i]);
             }
+
+            writer.EndSequence(sequence);
+            byteBuffer.CompleteRlpWrite(in writer, length);
         }
 
         public abstract T Deserialize(IByteBuffer byteBuffer);

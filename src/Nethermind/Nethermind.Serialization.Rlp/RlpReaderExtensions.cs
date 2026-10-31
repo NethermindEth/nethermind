@@ -8,6 +8,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using Nethermind.Core.Collections;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -607,6 +608,89 @@ public static class RlpReaderExtensions
     public static T?[] DecodeArray<T>(this scoped ref RlpReader reader, IRlpDecoder<T>? decoder = null, bool allowNulls = false, T? defaultElement = default, RlpLimit? limit = null)
         where T : class
         => allowNulls ? reader.DecodeNullableArray(decoder, defaultElement, limit) : reader.DecodeNonNullArray(decoder, limit);
+
+    /// <summary>Reads a sequence of non-null items with <paramref name="decodeItem"/>, and reads <c>0xc0</c> as <paramref name="defaultElement"/>.</summary>
+    /// <param name="decodeItem">Reads one item.</param>
+    /// <param name="defaultElement">The item for <c>0xc0</c>; <see langword="null"/> or a value type makes <c>0xc0</c> throw.</param>
+    /// <param name="limit">The maximum count of items; <see langword="null"/> means <see cref="RlpLimit.DefaultLimit"/>.</param>
+    /// <exception cref="RlpReaderException">An item is <c>0xc0</c> without a default element, or decodes as <see langword="null"/>.</exception>
+    public static T[] DecodeNonNullArray<T>(this scoped ref RlpReader reader, RefRlpReaderFunc<T> decodeItem, T? defaultElement = default, RlpLimit? limit = null)
+    {
+        RlpReader items = reader.EnterSequence(out int itemLength);
+        T[] result = new T[items.CountItems(limit)];
+        bool hasDefaultElement = defaultElement is not null && !typeof(T).IsValueType;
+        for (int i = 0; i < result.Length; i++)
+        {
+            result[i] = DecodeNonNullItem(ref items, decodeItem, hasDefaultElement, defaultElement, decodeEmptyList: false, i);
+        }
+
+        reader.ExitSequence(in items, itemLength);
+        return result;
+    }
+
+    /// <summary>Reads a sequence of items with <paramref name="decodeItem"/>, and reads <c>0xc0</c> as <paramref name="defaultElement"/>.</summary>
+    /// <inheritdoc cref="DecodeNonNullArray{T}(ref RlpReader, RefRlpReaderFunc{T}, T, RlpLimit?)" path="/param"/>
+    public static T?[] DecodeArray<T>(this scoped ref RlpReader reader, RefRlpReaderFunc<T?> decodeItem, T? defaultElement = default, RlpLimit? limit = null)
+    {
+        RlpReader items = reader.EnterSequence(out int itemLength);
+        T?[] result = new T?[items.CountItems(limit)];
+        for (int i = 0; i < result.Length; i++)
+        {
+            result[i] = items.TryReadEmptySequence() ? defaultElement : decodeItem(ref items);
+        }
+
+        reader.ExitSequence(in items, itemLength);
+        return result;
+    }
+
+    /// <inheritdoc cref="DecodeArray{T}(ref RlpReader, RefRlpReaderFunc{T}, T, RlpLimit?)"/>
+    public static T?[] DecodeNullableArray<T>(this scoped ref RlpReader reader, RefRlpReaderFunc<T?> decodeItem, T? defaultElement = default, RlpLimit? limit = null)
+        where T : class
+        => reader.DecodeArray(decodeItem, defaultElement, limit);
+
+    /// <summary>Reads a sequence of non-null items with <paramref name="decodeItem"/> into a pooled list that the caller disposes.</summary>
+    /// <param name="decodeEmptyList">When <see langword="true"/>, <c>0xc0</c> goes to <paramref name="decodeItem"/> instead of being a missing item.</param>
+    /// <inheritdoc cref="DecodeNonNullArray{T}(ref RlpReader, RefRlpReaderFunc{T}, T, RlpLimit?)" path="/param"/>
+    /// <exception cref="RlpReaderException">The sequence or an item is malformed; the items read so far are disposed.</exception>
+    public static ArrayPoolList<T> DecodeNonNullArrayPoolList<T>(this scoped ref RlpReader reader, RefRlpReaderFunc<T> decodeItem, T? defaultElement = default, RlpLimit? limit = null, bool decodeEmptyList = false)
+    {
+        RlpReader items = reader.EnterSequence(out int itemLength);
+        int count = items.CountItems(limit);
+        ArrayPoolList<T> result = new(count, count);
+        bool hasDefaultElement = defaultElement is not null && !typeof(T).IsValueType;
+        int i = 0;
+        try
+        {
+            for (; i < count; i++)
+            {
+                result[i] = DecodeNonNullItem(ref items, decodeItem, hasDefaultElement, defaultElement, decodeEmptyList, i);
+            }
+
+            reader.ExitSequence(in items, itemLength);
+            return result;
+        }
+        catch (RlpReaderException)
+        {
+            Rlp.DisposeDecodedItemsAndList(result, i);
+            throw;
+        }
+        catch (Exception e)
+        {
+            Rlp.DisposeDecodedItemsAndList(result, i);
+            throw new RlpReaderException($"Error decoding array of {typeof(T).Name}.", e);
+        }
+    }
+
+    private static T DecodeNonNullItem<T>(ref RlpReader items, RefRlpReaderFunc<T> decodeItem, bool hasDefaultElement, T? defaultElement, bool decodeEmptyList, int index)
+    {
+        if (!decodeEmptyList && items.TryReadEmptySequence())
+        {
+            if (!hasDefaultElement) ThrowInvalid($"RLP array item {index} is null");
+            return defaultElement!;
+        }
+
+        return decodeItem(ref items) ?? throw new RlpReaderException($"RLP array item {index} is null");
+    }
 
     /// <summary>Builds a <see cref="UInt256"/> from the big-endian bytes of an integer of at most 32 bytes.</summary>
     /// <remarks>

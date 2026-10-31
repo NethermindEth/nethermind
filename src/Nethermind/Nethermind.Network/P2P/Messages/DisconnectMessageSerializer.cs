@@ -3,6 +3,7 @@
 
 using System;
 using DotNetty.Buffers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
@@ -14,10 +15,13 @@ namespace Nethermind.Network.P2P.Messages
         {
             int length = GetLength(msg, out int contentLength);
             byteBuffer.EnsureWritable(length, force: true);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = byteBuffer.StartRlpWrite(length);
 
-            writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             writer.Encode((byte)msg.Reason);
+
+            writer.EndSequence(sequence);
+            byteBuffer.CompleteRlpWrite(in writer, length);
         }
 
         private static int GetLength(DisconnectMessage message, out int contentLength)
@@ -43,13 +47,13 @@ namespace Nethermind.Network.P2P.Messages
 
             Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
             RlpReader reader = new(msg);
-            if (!reader.IsSequenceNext())
+            if (!reader.IsNextSequence)
             {
                 reader = new RlpReader(reader.DecodeByteArraySpan());
             }
 
-            reader.ReadSequenceLength();
-            int reason = reader.DecodeInt();
+            RlpReader fields = reader.EnterSequence(out _);
+            int reason = fields.DecodeInt();
             DisconnectMessage disconnectMessage = new(reason);
             return disconnectMessage;
         }

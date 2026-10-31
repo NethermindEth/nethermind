@@ -8,6 +8,7 @@ using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 using Nethermind.TxPool;
@@ -31,7 +32,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         private readonly long _maxTxSize;
 
         // Cached once per instance to avoid allocating a new delegate on every Deserialize call.
-        private readonly DecodeRlpValue<TransactionsMessage> _deserializeTransactionsMessage;
+        private readonly RefRlpReaderFunc<TransactionsMessage> _deserializeTransactionsMessage;
 
         [ThreadStatic]
         private static IKnownTransactionFilter? t_knownTransactionFilter;
@@ -70,14 +71,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
         {
             int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = byteBuffer.StartRlpWrite(length);
 
-            writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             foreach (Transaction tx in message.Transactions.AsSpan())
             {
                 TxDecoder.Encode(ref writer, tx, RlpBehaviors.InMempoolForm);
             }
+
+            writer.EndSequence(sequence);
+            byteBuffer.CompleteRlpWrite(in writer, length);
         }
 
         public TransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
@@ -102,22 +105,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx) =>
             DeserializeTxs(ref ctx, long.MaxValue, knownFilter: null, out _);
 
-        internal static int ReadTransactionCount(ref RlpReader ctx, out int checkPosition)
-        {
-            checkPosition = ctx.ReadSequenceLength() + ctx.Position;
-            int count = ctx.PeekNumberOfItemsRemaining(checkPosition, RlpLimit.Limit + 1);
-            ctx.GuardLimit(count, RlpLimit);
-            return count;
-        }
+        internal static int ReadTransactionCount(ref RlpReader ctx) => ctx.EnterSequence(out _).CountItems(RlpLimit);
 
         /// <summary>Decodes the wire-form transaction list, skipping any item whose pre-decode size exceeds <paramref name="maxTxSize"/>.</summary>
         /// <remarks>Avoids the RLP-decode cost of an attacker-sized item - see <see cref="IsOverSizeLimit"/> for the measure.</remarks>
         /// <param name="maxTxSize">The size cap, or <see cref="long.MaxValue"/> to decode every item without measuring it.</param>
         /// <param name="knownFilter">Settles already-known items, which are then skipped; <see langword="null"/> decodes every item.</param>
         /// <param name="skippedCount">The number of items skipped for exceeding the cap.</param>
-        private static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx, long maxTxSize, IKnownTransactionFilter? knownFilter, out int skippedCount)
+        private static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader reader, long maxTxSize, IKnownTransactionFilter? knownFilter, out int skippedCount)
         {
-            int length = ReadTransactionCount(ref ctx, out int checkPosition);
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
+            int length = ctx.CountItems(RlpLimit);
 
             bool isSizeGuarded = maxTxSize != long.MaxValue;
             int skipped = 0;
@@ -150,7 +148,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
                     result.Add(TxDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.PoolBlobBuffers));
                 }
-                ctx.Check(checkPosition);
+                reader.ExitSequence(ctx, itemLength);
                 skippedCount = skipped;
                 return result;
             }
@@ -170,7 +168,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         /// <param name="size">The length of the hashed bytes, which is the transaction's network encoding size.</param>
         private static bool TryHashWireItem(ref RlpReader ctx, out ValueHash256 hash, out TxType type, out int size)
         {
-            if (ctx.IsSequenceNext())
+            if (ctx.IsNextSequence)
             {
                 ReadOnlySpan<byte> item = ctx.PeekNextItem();
                 hash = ValueKeccak.Compute(item);
@@ -179,13 +177,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 return true;
             }
 
-            (int prefixLength, int contentLength) = ctx.PeekPrefixAndContentLength();
-            if (contentLength > 0 && ctx.Peek(prefixLength, 1)[0] is (byte)TxType.AccessList or (byte)TxType.EIP1559 or (byte)TxType.SetCode)
+            RlpReader next = ctx;
+            ReadOnlySpan<byte> content = next.ReadBytes();
+            if (content.Length > 0 && content[0] is (byte)TxType.AccessList or (byte)TxType.EIP1559 or (byte)TxType.SetCode)
             {
-                ReadOnlySpan<byte> content = ctx.Peek(prefixLength, contentLength);
                 hash = ValueKeccak.Compute(content);
                 type = (TxType)content[0];
-                size = contentLength;
+                size = content.Length;
                 return true;
             }
 
@@ -202,14 +200,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         /// </remarks>
         private static bool IsOverSizeLimit(ref RlpReader ctx, long maxTxSize)
         {
-            bool isTyped = !ctx.IsSequenceNext();
-            (int prefixLength, int contentLength) = ctx.PeekPrefixAndContentLength();
-            long size = isTyped ? contentLength : prefixLength + (long)contentLength;
+            bool isTyped = !ctx.IsNextSequence;
+            RlpReader next = ctx;
+            ReadOnlySpan<byte> item = isTyped ? next.ReadBytes() : next.ReadEncodedItem();
+            long size = item.Length;
 
             if (size <= maxTxSize) return false;
             if (!isTyped) return true;
 
-            return ctx.Peek(prefixLength, 1)[0] != (byte)TxType.Blob;
+            return item[0] != (byte)TxType.Blob;
         }
     }
 }

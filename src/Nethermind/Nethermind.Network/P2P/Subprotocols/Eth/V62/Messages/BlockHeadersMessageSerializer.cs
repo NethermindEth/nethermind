@@ -4,6 +4,7 @@
 using DotNetty.Buffers;
 using System;
 using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -17,15 +18,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public void Serialize(IByteBuffer byteBuffer, BlockHeadersMessage message)
         {
             int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = byteBuffer.StartRlpWrite(length);
 
-            writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             ReadOnlySpan<BlockHeader> blockHeaders = message.BlockHeaders.AsSpan();
             for (int i = 0; i < blockHeaders.Length; i++)
             {
                 _headerDecoder.Encode(ref writer, blockHeaders[i]);
             }
+
+            writer.EndSequence(sequence);
+            byteBuffer.CompleteRlpWrite(in writer, length);
         }
 
         public BlockHeadersMessage Deserialize(IByteBuffer byteBuffer) =>

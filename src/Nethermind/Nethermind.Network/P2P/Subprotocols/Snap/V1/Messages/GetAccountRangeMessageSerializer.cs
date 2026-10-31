@@ -4,27 +4,29 @@
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
     public class GetAccountRangeMessageSerializer : SnapSerializerBase<GetAccountRangeMessage>
     {
-        protected override GetAccountRangeMessage Deserialize(ref RlpReader ctx)
+        protected override GetAccountRangeMessage Deserialize(ref RlpReader reader)
         {
             GetAccountRangeMessage message = new();
-            ctx.ReadSequenceLength();
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
 
             message.RequestId = ctx.DecodeLong();
             message.AccountRange = new(ctx.DecodeKeccak(), ctx.DecodeValueKeccakNonNull(), ctx.DecodeValueKeccakNonNull());
             message.ResponseBytes = ctx.DecodeLong();
 
+            reader.ExitSequenceIgnoringRest(ctx, itemLength);
             return message;
         }
 
         public override void Serialize(IByteBuffer byteBuffer, GetAccountRangeMessage message)
         {
-            ByteBufferRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, message);
+            RlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, message, out RlpSequence sequence, out int totalLength);
 
             writer.Encode(message.RequestId);
             writer.Encode(message.AccountRange.RootHash);
@@ -32,6 +34,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 
             writer.Encode(message.AccountRange.LimitHash ?? Keccak.MaxValue);
             writer.Encode(message.ResponseBytes == 0 ? 1000_000 : message.ResponseBytes);
+
+            EndSequenceAndCompleteWrite(byteBuffer, ref writer, sequence, totalLength);
         }
 
         public override int GetLength(GetAccountRangeMessage message, out int contentLength)

@@ -5,6 +5,7 @@ using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -17,15 +18,19 @@ public class GetReceiptsMessageSerializer70 : Eth66SerializerBase<GetReceiptsMes
 
     protected override void SerializeInternal(IByteBuffer byteBuffer, GetReceiptsMessage70 message)
     {
-        ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.Encode(message.FirstBlockReceiptIndex);
         int hashesContentLength = GetHashesContentLength(message.Hashes);
-        writer.StartSequence(hashesContentLength);
+        int length = Rlp.LengthOf(message.FirstBlockReceiptIndex) + Rlp.LengthOfSequence(hashesContentLength);
+        RlpWriter writer = byteBuffer.StartRlpWrite(length);
+        writer.Encode(message.FirstBlockReceiptIndex);
+        RlpSequence sequence = writer.StartSequence(hashesContentLength);
 
         foreach (Hash256 hash in message.Hashes.AsSpan())
         {
             writer.Encode(hash);
         }
+
+        writer.EndSequence(sequence);
+        byteBuffer.CompleteRlpWrite(in writer, length);
     }
 
     protected override GetReceiptsMessage70 DeserializeInternal(ref RlpReader ctx, long requestId)
@@ -34,7 +39,7 @@ public class GetReceiptsMessageSerializer70 : Eth66SerializerBase<GetReceiptsMes
 
         if (firstIndex < 0)
         {
-            throw new RlpException("Negative firstBlockReceiptIndex is invalid");
+            throw new RlpReaderException("Negative firstBlockReceiptIndex is invalid");
         }
 
         ArrayPoolList<Hash256> hashes =

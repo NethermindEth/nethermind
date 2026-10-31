@@ -5,6 +5,7 @@ using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
@@ -13,10 +14,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     {
         private static readonly RlpLimit StartBlockRlpLimit = RlpLimit.For<GetBlockHeadersMessage>(Hash256.Size, nameof(GetBlockHeadersMessage.StartBlockHash));
 
-        public static GetBlockHeadersMessage Deserialize(ref RlpReader ctx)
+        public static GetBlockHeadersMessage Deserialize(ref RlpReader reader)
         {
             GetBlockHeadersMessage message = new();
-            ctx.ReadSequenceLength();
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
             ReadOnlySpan<byte> startingBytes = ctx.DecodeByteArraySpan(StartBlockRlpLimit);
             if (startingBytes.Length == Hash256.Size)
             {
@@ -30,16 +31,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             message.MaxHeaders = ctx.DecodeUInt();
             message.Skip = ctx.DecodeUInt();
             message.Reverse = ctx.DecodeByte();
+            reader.ExitSequenceIgnoringRest(ctx, itemLength);
             return message;
         }
 
         public void Serialize(IByteBuffer byteBuffer, GetBlockHeadersMessage message)
         {
             int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = byteBuffer.StartRlpWrite(length);
 
-            writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             if (message.StartBlockHash is null)
             {
                 writer.Encode(message.StartBlockNumber);
@@ -52,6 +53,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             writer.Encode(message.MaxHeaders);
             writer.Encode(message.Skip);
             writer.Encode(message.Reverse);
+
+            writer.EndSequence(sequence);
+            byteBuffer.CompleteRlpWrite(in writer, length);
         }
 
         public GetBlockHeadersMessage Deserialize(IByteBuffer byteBuffer) =>

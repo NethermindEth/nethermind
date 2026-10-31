@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
@@ -26,9 +27,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
 
             int totalLength = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            RlpWriter writer = byteBuffer.StartRlpWrite(totalLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             writer.Encode(message.ProtocolVersion);
             writer.Encode(message.NetworkId);
             writer.Encode(message.TotalDifficulty);
@@ -37,12 +37,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             if (message.ForkId is not null)
             {
                 ForkId forkId = message.ForkId.Value;
-                writer.StartSequence(forkIdContentLength);
+                RlpSequence forkIdSequence = writer.StartSequence(forkIdContentLength);
                 Span<byte> forkHash = stackalloc byte[sizeof(uint)];
                 BinaryPrimitives.WriteUInt32BigEndian(forkHash, forkId.ForkHash);
                 writer.Encode(forkHash);
                 writer.Encode(forkId.Next);
+                writer.EndSequence(forkIdSequence);
             }
+
+            writer.EndSequence(sequence);
+            byteBuffer.CompleteRlpWrite(in writer, totalLength);
         }
 
         public int GetLength(StatusMessage message, out int contentLength)
@@ -71,28 +75,30 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public StatusMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        private static StatusMessage Deserialize(ref RlpReader ctx)
+        private static StatusMessage Deserialize(ref RlpReader reader)
         {
             StatusMessage statusMessage = new();
-            ctx.ReadSequenceLength();
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
             statusMessage.ProtocolVersion = ctx.DecodeByte();
             statusMessage.NetworkId = ctx.DecodeULong();
             statusMessage.TotalDifficulty = ctx.DecodeUInt256();
             statusMessage.BestHash = ctx.DecodeKeccak();
             statusMessage.GenesisHash = ctx.DecodeKeccak();
-            if (ctx.Position < ctx.Length)
+            if (ctx.HasNext)
             {
-                ctx.ReadSequenceLength();
-                uint forkHash = (uint)ctx.DecodeUInt256(ForkHashLength - 1);
-                ulong next = ctx.DecodeULong();
+                RlpReader forkIdReader = ctx.EnterSequence(out int forkIdLength);
+                uint forkHash = (uint)forkIdReader.DecodeUInt256(ForkHashLength - 1);
+                ulong next = forkIdReader.DecodeULong();
+                ctx.ExitSequenceIgnoringRest(forkIdReader, forkIdLength);
                 ForkId forkId = new(forkHash, next);
                 statusMessage.ForkId = forkId;
             }
 
+            reader.ExitSequenceIgnoringRest(ctx, itemLength);
             return statusMessage;
         }
 
         private static Hash256 GetRequiredHash(Hash256? hash, string propertyName) =>
-            hash ?? throw new RlpException($"{propertyName} is required in {nameof(StatusMessage)}.");
+            hash ?? throw new RlpReaderException($"{propertyName} is required in {nameof(StatusMessage)}.");
     }
 }

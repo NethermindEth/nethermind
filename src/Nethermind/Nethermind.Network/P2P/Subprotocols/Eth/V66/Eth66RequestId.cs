@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66;
@@ -18,28 +19,18 @@ internal static class Eth66RequestId
         RlpReader ctx = new(content.AsSpan());
         try
         {
-            if (!NextItemFits(ref ctx, ctx.Length))
+            RlpReader fields = ctx.EnterSequence(out _);
+            if (!fields.HasNext)
             {
                 return false;
             }
 
-            int end = ctx.ReadSequenceLength() + ctx.Position;
-            if (!NextItemFits(ref ctx, end))
-            {
-                return false;
-            }
-
-            requestId = ctx.DecodeLong();
+            requestId = fields.DecodeLong();
             return true;
         }
-        catch (RlpException)
+        catch (RlpReaderException)
         {
             return false;
         }
     }
-
-    // The RLP readers index prefix and content bytes without bounds checks, so a truncated
-    // payload would throw IndexOutOfRangeException instead of being reported as unreadable.
-    private static bool NextItemFits(ref RlpReader ctx, int end) =>
-        ctx.Position < end && ctx.Position + ctx.PeekNextRlpLength() <= end;
 }

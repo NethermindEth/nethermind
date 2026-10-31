@@ -3,6 +3,7 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
@@ -13,28 +14,30 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
         {
             int nodesLength = Rlp.LengthOfByteArrayList(message.Nodes);
             int contentLength = Rlp.LengthOf(message.RequestId) + nodesLength;
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            RlpWriter writer = byteBuffer.StartRlpWrite(Rlp.LengthOfSequence(contentLength));
+            RlpSequence sequence = writer.StartSequence(contentLength);
             writer.Encode(message.RequestId);
             writer.WriteByteArrayList(message.Nodes);
+
+            writer.EndSequence(sequence);
+            byteBuffer.CompleteRlpWrite(in writer, Rlp.LengthOfSequence(contentLength));
         }
 
         public TrieNodesMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            RlpReader ctx = new(memoryOwner.Memory.Span);
-            int startPos = ctx.Position;
+            RlpReader outer = new(memoryOwner.Memory.Span);
             RlpByteArrayList? list = null;
 
             try
             {
-                ctx.ReadSequenceLength();
+                RlpReader ctx = outer.EnterSequence(out int itemLength);
                 long requestId = ctx.DecodeLong();
 
                 list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, SnapMessageLimits.TrieNodesRlpLimit);
                 memoryOwner = null;
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+                outer.ExitSequenceIgnoringRest(ctx, itemLength);
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + outer.BytesRead);
 
                 return new TrieNodesMessage(list) { RequestId = requestId };
             }

@@ -3,6 +3,7 @@
 
 using DotNetty.Buffers;
 using DotNetty.Codecs;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using System;
 using System.Diagnostics;
@@ -40,22 +41,15 @@ namespace Nethermind.Network.Rlpx
         {
             try
             {
-                RlpReader headerBodyItems = new(HeaderBytes.AsSpan(HeaderBodyOffset, HeaderBodyLength));
-                int headerDataLength = headerBodyItems.ReadSequenceLength();
-                int remaining = headerBodyItems.Length - headerBodyItems.Position;
-                if ((uint)headerDataLength > (uint)remaining)
-                {
-                    throw new CorruptedFrameException($"Invalid Rlpx header lengths, header body RLP length {headerDataLength} exceeds the {remaining} bytes left in the header");
-                }
-
-                int headerDataEnd = headerDataLength + headerBodyItems.Position;
-                int numberOfItems = headerBodyItems.PeekNumberOfItemsRemaining(headerDataEnd);
+                RlpReader headerBody = new(HeaderBytes.AsSpan(HeaderBodyOffset, HeaderBodyLength));
+                RlpReader headerBodyItems = headerBody.EnterSequence(out _);
+                int numberOfItems = headerBodyItems.CountItems();
                 headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
                 contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?)null;
                 totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?)null;
-                headerBodyItems.Check(headerDataEnd);
+                headerBodyItems.CheckEnd();
             }
-            catch (Exception exception) when (exception is RlpException or ArgumentOutOfRangeException or IndexOutOfRangeException)
+            catch (Exception exception) when (exception is RlpReaderException or ArgumentOutOfRangeException or IndexOutOfRangeException)
             {
                 throw new CorruptedFrameException(exception);
             }

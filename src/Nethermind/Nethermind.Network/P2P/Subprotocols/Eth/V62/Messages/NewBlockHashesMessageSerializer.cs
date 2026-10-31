@@ -3,6 +3,7 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -15,18 +16,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message)
         {
             int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = byteBuffer.StartRlpWrite(length);
 
-            writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             for (int i = 0; i < message.BlockHashes.Length; i++)
             {
                 int miniContentLength = Rlp.LengthOf(message.BlockHashes[i].Item1);
                 miniContentLength += Rlp.LengthOf(message.BlockHashes[i].Item2);
-                writer.StartSequence(miniContentLength);
+                RlpSequence item = writer.StartSequence(miniContentLength);
                 writer.Encode(message.BlockHashes[i].Item1);
                 writer.Encode(message.BlockHashes[i].Item2);
+                writer.EndSequence(item);
             }
+
+            writer.EndSequence(sequence);
+            byteBuffer.CompleteRlpWrite(in writer, length);
         }
 
         public NewBlockHashesMessage Deserialize(IByteBuffer byteBuffer) =>
@@ -49,14 +53,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             (Hash256, ulong)[] blockHashes = ctx.DecodeNonNullArray(static (ref RlpReader c) =>
             {
-                int length = c.ReadSequenceLength();
-                int checkPosition = c.Position + length;
+                RlpReader fields = c.EnterSequence(out int itemLength);
 
-                (Hash256, ulong) result = (c.DecodeKeccak(), c.DecodeULong());
+                (Hash256, ulong) result = (fields.DecodeKeccak(), fields.DecodeULong());
 
-                c.Check(checkPosition);
+                c.ExitSequence(fields, itemLength);
                 return result;
-            }, false, limit: RlpLimit);
+            }, limit: RlpLimit);
 
             return new NewBlockHashesMessage(blockHashes);
         }

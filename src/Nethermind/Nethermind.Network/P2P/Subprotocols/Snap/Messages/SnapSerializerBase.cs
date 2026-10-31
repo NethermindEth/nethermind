@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
@@ -12,14 +13,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         protected abstract T Deserialize(ref RlpReader ctx);
         public abstract int GetLength(T message, out int contentLength);
 
-        protected ByteBufferRlpWriter GetRlpWriterAndStartSequence(IByteBuffer byteBuffer, T msg)
+        protected RlpWriter GetRlpWriterAndStartSequence(IByteBuffer byteBuffer, T msg, out RlpSequence sequence, out int totalLength)
         {
-            int totalLength = GetLength(msg, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            totalLength = GetLength(msg, out int contentLength);
+            RlpWriter writer = byteBuffer.StartRlpWrite(totalLength);
+            sequence = writer.StartSequence(contentLength);
 
             return writer;
+        }
+
+        protected static void EndSequenceAndCompleteWrite(IByteBuffer byteBuffer, ref RlpWriter writer, RlpSequence sequence, int totalLength)
+        {
+            writer.EndSequence(sequence);
+            byteBuffer.CompleteRlpWrite(in writer, totalLength);
         }
 
         public T Deserialize(IByteBuffer byteBuffer) =>

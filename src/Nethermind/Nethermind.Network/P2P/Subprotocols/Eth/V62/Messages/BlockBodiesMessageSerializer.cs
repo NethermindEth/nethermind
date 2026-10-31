@@ -4,6 +4,7 @@
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -17,9 +18,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
         {
             int totalLength = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            RlpWriter writer = byteBuffer.StartRlpWrite(totalLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             foreach (BlockBody? body in message.Bodies.Bodies)
             {
                 if (body is null)
@@ -31,6 +31,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                     _blockBodyDecoder.Encode(ref writer, body);
                 }
             }
+
+            writer.EndSequence(sequence);
+            byteBuffer.CompleteRlpWrite(in writer, totalLength);
         }
 
         public int GetLength(BlockBodiesMessage message, out int contentLength)
@@ -55,17 +58,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             OwnedBlockBodies? ownedBodies = null;
 
             RlpReader ctx = new(memoryOwner.Memory.Span);
-            int startingPosition = ctx.Position;
             try
             {
-                ctx.ReadSequenceLength();
-                int count = ctx.PeekNumberOfItemsRemaining(ctx.Length, RlpLimit.Limit + 1);
-                ctx.GuardLimit(count, RlpLimit);
+                RlpReader items = ctx.EnterSequence(out int itemLength);
+                int count = items.CountItems(RlpLimit);
                 BlockBody?[] bodies = new BlockBody?[count];
                 ownedBodies = new(bodies, memoryOwner, ownsPooledTransactions: true);
                 memoryOwner = null;
-                for (int i = 0; i < count; i++) bodies[i] = _blockBodyDecoder.Decode(ref ctx);
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
+                for (int i = 0; i < count; i++) bodies[i] = _blockBodyDecoder.Decode(ref items);
+                ctx.ExitSequence(items, itemLength);
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.BytesRead);
 
                 return new() { Bodies = ownedBodies };
             }

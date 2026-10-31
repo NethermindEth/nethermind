@@ -6,6 +6,7 @@ using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -19,10 +20,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
         {
             (int contentLength, int pwasLength) = GetLength(message);
 
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            RlpWriter writer = byteBuffer.StartRlpWrite(Rlp.LengthOfSequence(contentLength));
+            RlpSequence sequence = writer.StartSequence(contentLength);
 
             writer.Encode(message.RequestId);
             if (message.PathsWithAccounts is null || message.PathsWithAccounts.Count == 0)
@@ -32,7 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             else
             {
                 ReadOnlySpan<PathWithAccount> pathsWithAccounts = message.PathsWithAccounts.AsSpan();
-                writer.StartSequence(pwasLength);
+                RlpSequence pwas = writer.StartSequence(pwasLength);
                 for (int i = 0; i < pathsWithAccounts.Length; i++)
                 {
                     PathWithAccount pwa = pathsWithAccounts[i];
@@ -40,47 +39,54 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                     int accountContentLength = _decoder.GetContentLength(pwa.Account);
                     int pwaLength = Rlp.LengthOf(pwa.Path) + Rlp.LengthOfSequence(accountContentLength);
 
-                    writer.StartSequence(pwaLength);
+                    RlpSequence pwaSequence = writer.StartSequence(pwaLength);
                     writer.Encode(pwa.Path);
                     _decoder.Encode(pwa.Account, ref writer, accountContentLength);
+                    writer.EndSequence(pwaSequence);
                 }
+
+                writer.EndSequence(pwas);
             }
 
             writer.WriteByteArrayList(message.Proofs);
+
+            writer.EndSequence(sequence);
+            byteBuffer.CompleteRlpWrite(in writer, Rlp.LengthOfSequence(contentLength));
         }
 
         public AccountRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            RlpReader ctx = new(memoryOwner.Memory.Span);
-            int startPos = ctx.Position;
+            RlpReader outer = new(memoryOwner.Memory.Span);
             AccountRangeMessage message = new();
             ArrayPoolList<PathWithAccount>? pathsWithAccounts = null;
 
             try
             {
-                ctx.ReadSequenceLength();
+                RlpReader ctx = outer.EnterSequence(out int itemLength);
                 message.RequestId = ctx.DecodeLong();
 
-                int pwasCheck = ctx.ReadSequenceLength() + ctx.Position;
-                int count = ctx.PeekNumberOfItemsRemaining(pwasCheck);
-                ctx.GuardLimit(count, SnapMessageLimits.AccountRangeEntriesRlpLimit);
+                RlpReader pwasReader = ctx.EnterSequence(out int pwasLength);
+                int count = pwasReader.CountItems(SnapMessageLimits.AccountRangeEntriesRlpLimit);
                 pathsWithAccounts = new ArrayPoolList<PathWithAccount>(count);
                 for (int i = 0; i < count; i++)
                 {
-                    int length = ctx.ReadSequenceLength();
-                    int checkPosition = ctx.Position + length;
-                    ValueHash256 path = ctx.DecodeValueKeccakNonNull();
-                    pathsWithAccounts.Add(new PathWithAccount(path, _decoder.DecodeGuardNotNull(ref ctx)));
-                    ctx.Check(checkPosition);
+                    RlpReader pwaReader = pwasReader.EnterSequence(out int length);
+                    ValueHash256 path = pwaReader.DecodeValueKeccakNonNull();
+                    pathsWithAccounts.Add(new PathWithAccount(path, _decoder.DecodeGuardNotNull(ref pwaReader)));
+                    pwasReader.ExitSequence(pwaReader, length);
                 }
+
+                ctx.ExitSequence(pwasReader, pwasLength);
 
                 message.PathsWithAccounts = pathsWithAccounts;
                 pathsWithAccounts = null;
                 message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, SnapMessageLimits.AccountRangeProofsRlpLimit);
                 memoryOwner = null;
 
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+                outer.ExitSequenceIgnoringRest(ctx, itemLength);
+
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + outer.BytesRead);
 
                 return message;
             }

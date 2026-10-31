@@ -11,6 +11,7 @@ using DotNetty.Codecs;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx
@@ -177,10 +178,10 @@ namespace Nethermind.Network.Rlpx
             {
                 RlpReader reader = new(input.AsSpan());
                 ulong packetType = reader.DecodeULong();
-                read = reader.Position;
+                read = reader.BytesRead;
                 return packetType;
             }
-            catch (Exception exception) when (exception is RlpException or ArgumentOutOfRangeException or IndexOutOfRangeException)
+            catch (Exception exception) when (exception is RlpReaderException or ArgumentOutOfRangeException or IndexOutOfRangeException)
             {
                 throw new CorruptedFrameException(exception);
             }

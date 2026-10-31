@@ -5,6 +5,7 @@ using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -17,14 +18,18 @@ public class GetBlockAccessListsMessageSerializer : Eth66SerializerBase<GetBlock
 
     protected override void SerializeInternal(IByteBuffer byteBuffer, GetBlockAccessListsMessage message)
     {
-        ByteBufferRlpWriter writer = new(byteBuffer);
         int hashesContentLength = GetHashesContentLength(message.Hashes);
-        writer.StartSequence(hashesContentLength);
+        int length = Rlp.LengthOfSequence(hashesContentLength);
+        RlpWriter writer = byteBuffer.StartRlpWrite(length);
+        RlpSequence sequence = writer.StartSequence(hashesContentLength);
 
         foreach (Hash256 hash in message.Hashes.AsSpan())
         {
             writer.Encode(hash);
         }
+
+        writer.EndSequence(sequence);
+        byteBuffer.CompleteRlpWrite(in writer, length);
     }
 
     protected override GetBlockAccessListsMessage DeserializeInternal(ref RlpReader ctx, long requestId)

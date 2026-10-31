@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -13,9 +14,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message)
         {
-            byteBuffer.EnsureWritable(GetLength(message, out _));
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            int length = GetLength(message, out _);
+            RlpWriter writer = byteBuffer.StartRlpWrite(length);
             writer.WriteByteArrayList(message.Data);
+            byteBuffer.CompleteRlpWrite(in writer, length);
         }
 
         public NodeDataMessage Deserialize(IByteBuffer byteBuffer) =>

@@ -6,6 +6,7 @@ using System.Threading;
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -21,15 +22,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         public NewPooledTransactionHashesMessage68 Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        private static NewPooledTransactionHashesMessage68 Deserialize(ref RlpReader ctx)
+        private static NewPooledTransactionHashesMessage68 Deserialize(ref RlpReader reader)
         {
-            ctx.ReadSequenceLength();
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
             PooledMessage message = PooledMessage.Rent();
             try
             {
                 message.TypeList.AddRange(ctx.DecodeByteArraySpan(TypesRlpLimit));
                 DecodeList(ref ctx, message.SizeList, static (ref RlpReader c) => c.DecodeInt(), SizesRlpLimit);
                 DecodeList(ref ctx, message.HashList, static (ref RlpReader c) => c.DecodeValueKeccakNonNull(), HashesRlpLimit);
+                reader.ExitSequenceIgnoringRest(ctx, itemLength);
                 return message;
             }
             catch
@@ -39,22 +41,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             }
         }
 
-        private static void DecodeList<T>(ref RlpReader reader, ArrayPoolList<T> destination, DecodeRlpValue<T> decode, RlpLimit limit) where T : struct
+        private static void DecodeList<T>(ref RlpReader reader, ArrayPoolList<T> destination, RefRlpReaderFunc<T> decode, RlpLimit limit) where T : struct
         {
-            int end = reader.ReadSequenceLength() + reader.Position;
-            int count = reader.PeekNumberOfItemsRemaining(end, limit.Limit + 1);
-            reader.GuardLimit(count, limit);
+            RlpReader items = reader.EnterSequence(out int itemLength);
+            int count = items.CountItems(limit);
             try
             {
                 for (int i = 0; i < count; i++)
                 {
-                    destination.Add(decode(ref reader));
+                    destination.Add(decode(ref items));
                 }
-                reader.Check(end);
+                reader.ExitSequence(items, itemLength);
             }
-            catch (Exception exception) when (exception is not RlpException)
+            catch (Exception exception) when (exception is not RlpReaderException)
             {
-                throw new RlpException($"Error decoding array of {typeof(T).Name}.", exception);
+                throw new RlpReaderException($"Error decoding array of {typeof(T).Name}.", exception);
             }
         }
 
@@ -120,24 +121,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 
             int totalSize = Rlp.LengthOf(message.Types) + Rlp.LengthOfSequence(sizesLength) + Rlp.LengthOfSequence(hashesLength);
 
-            byteBuffer.EnsureWritable(totalSize);
+            int length = Rlp.LengthOfSequence(totalSize);
 
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = byteBuffer.StartRlpWrite(length);
 
-            writer.StartSequence(totalSize);
+            RlpSequence sequence = writer.StartSequence(totalSize);
             writer.Encode(message.Types.AsSpan());
 
-            writer.StartSequence(sizesLength);
+            RlpSequence sizes = writer.StartSequence(sizesLength);
             foreach (int size in message.Sizes.AsSpan())
             {
                 writer.Encode(size);
             }
 
-            writer.StartSequence(hashesLength);
+            writer.EndSequence(sizes);
+            RlpSequence hashes = writer.StartSequence(hashesLength);
             foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan())
             {
                 writer.Encode(in hash);
             }
+
+            writer.EndSequence(hashes);
+            writer.EndSequence(sequence);
+            byteBuffer.CompleteRlpWrite(in writer, length);
         }
     }
 }

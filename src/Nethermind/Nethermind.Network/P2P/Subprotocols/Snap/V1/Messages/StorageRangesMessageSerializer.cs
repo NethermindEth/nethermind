@@ -6,6 +6,7 @@ using System;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -20,10 +21,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             (int contentLength, int allSlotsLength, ArrayPoolSpan<int> accountSlotsLengths) = CalculateLengths(message);
             using ArrayPoolSpan<int> returnAccountSlotsLengths = accountSlotsLengths;
 
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = byteBuffer.StartRlpWrite(Rlp.LengthOfSequence(contentLength));
 
-            writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
 
             writer.Encode(message.RequestId);
 
@@ -33,12 +33,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             }
             else
             {
-                writer.StartSequence(allSlotsLength);
+                RlpSequence allSlots = writer.StartSequence(allSlotsLength);
                 ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> slotsSpan = message.Slots.AsSpan();
 
                 for (int i = 0; i < slotsSpan.Length; i++)
                 {
-                    writer.StartSequence(accountSlotsLengths[i]);
+                    RlpSequence accountSequence = writer.StartSequence(accountSlotsLengths[i]);
 
                     ReadOnlySpan<PathWithStorageSlot> accountSlots = slotsSpan[i].AsSpan();
 
@@ -48,37 +48,43 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 
                         int itemLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
 
-                        writer.StartSequence(itemLength);
+                        RlpSequence slotSequence = writer.StartSequence(itemLength);
                         writer.Encode(slot.Path);
                         writer.Encode(slot.SlotRlpValue);
+                        writer.EndSequence(slotSequence);
                     }
+
+                    writer.EndSequence(accountSequence);
                 }
+
+                writer.EndSequence(allSlots);
             }
 
             writer.WriteByteArrayList(message.Proofs);
+
+            writer.EndSequence(sequence);
+            byteBuffer.CompleteRlpWrite(in writer, Rlp.LengthOfSequence(contentLength));
         }
 
         public StorageRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            RlpReader ctx = new(memoryOwner.Memory.Span);
-            int startPos = ctx.Position;
+            RlpReader outer = new(memoryOwner.Memory.Span);
 
             StorageRangeMessage message = new();
 
             try
             {
-                ctx.ReadSequenceLength();
+                RlpReader ctx = outer.EnterSequence(out int itemLength);
                 message.RequestId = ctx.DecodeLong();
 
                 message.Slots = ctx.DecodeNonNullArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(static (ref RlpReader outerCtx) =>
                     outerCtx.DecodeNonNullArrayPoolList(static (ref RlpReader innerCtx) =>
                     {
-                        int length = innerCtx.ReadSequenceLength();
-                        int checkPosition = innerCtx.Position + length;
-                        ValueHash256 path = innerCtx.DecodeValueKeccakNonNull();
-                        byte[] value = innerCtx.DecodeByteArray(StorageSlotValueRlpLimit);
-                        innerCtx.Check(checkPosition);
+                        RlpReader slot = innerCtx.EnterSequence(out int length);
+                        ValueHash256 path = slot.DecodeValueKeccakNonNull();
+                        byte[] value = slot.DecodeByteArray(StorageSlotValueRlpLimit);
+                        innerCtx.ExitSequence(slot, length);
                         return new PathWithStorageSlot(in path, value);
                     }, limit: SnapMessageLimits.StorageRangeSlotsPerAccountRlpLimit),
                     limit: SnapMessageLimits.StorageRangeAccountsRlpLimit,
@@ -86,7 +92,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, SnapMessageLimits.StorageRangeProofsRlpLimit);
                 memoryOwner = null;
 
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+                outer.ExitSequenceIgnoringRest(ctx, itemLength);
+
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + outer.BytesRead);
 
                 return message;
             }

@@ -8,6 +8,7 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -100,7 +101,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         {
             EthSyncException => DisconnectReason.EthSyncException,
             RlpLimitException => DisconnectReason.MessageLimitsBreached,
-            RlpException => DisconnectReason.BreachOfProtocol,
+            RlpReaderException => DisconnectReason.BreachOfProtocol,
             _ => DisconnectReason.BackgroundTaskFailure
         };
 
