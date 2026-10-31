@@ -340,18 +340,6 @@ public partial class DebugRpcModuleTests
         await AssertNativeConfigRouteClassification(method, tracer, timeout, invalidValue,
             method == "debug_traceCall" ? ErrorCodes.InvalidParams : ErrorCodes.InvalidInput);
 
-    [TestCase("debug_traceBlockByHash", "callTracer", ErrorCodes.InvalidInput)]
-    [TestCase("debug_traceBlockByHash", "prestateTracer", ErrorCodes.InvalidInput)]
-    [TestCase("debug_traceBlock", "callTracer", ErrorCodes.InvalidInput)]
-    [TestCase("debug_traceBlock", "prestateTracer", ErrorCodes.InvalidInput)]
-    [TestCase("debug_traceTransaction", "callTracer", ErrorCodes.InvalidInput)]
-    [TestCase("debug_traceTransaction", "prestateTracer", ErrorCodes.InvalidInput)]
-    [TestCase("debug_traceCall", "callTracer", ErrorCodes.InvalidParams)]
-    [TestCase("debug_traceCall", "prestateTracer", ErrorCodes.InvalidParams)]
-    public async Task Debug_native_config_errors_preserve_route_classification(
-        string method, string tracer, int expectedCode) =>
-        await AssertNativeConfigRouteClassification(method, tracer, null, "17", expectedCode);
-
     private static async Task AssertNativeConfigRouteClassification(string method, string tracer, string? timeout, string invalidValue, int expectedCode)
     {
         using Context context = await Context.Create();
