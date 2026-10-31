@@ -62,6 +62,55 @@ public class GethStyleTracerTests
     }
 
     [Test]
+    public void Buffered_deadline_replacement_releases_abandoned_deadline(
+        [Values] bool expireFirst, [Values] bool cancelExternal)
+    {
+        DeadlineClock clock = new();
+        using CancellationTokenSource external = new();
+        DisposalCountingTracer firstInner = new();
+        DisposalCountingTracer secondInner = new();
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
+        inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(firstInner, secondInner);
+        inner.BuildResult().Returns(Array.Empty<GethLikeTxTrace>());
+        using (GethLikeBlockDeadlineTracer tracer = new(inner,
+            new() { Timeout = TimeSpan.FromSeconds(1), DeadlineClock = clock }, external.Token, new()))
+        {
+            ITxTracer first = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
+            using (first)
+            {
+                clock.Advance(expireFirst ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(600));
+            }
+            using ITxTracer second = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
+            Assert.That(clock.Timers, Has.Count.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(1));
+                Assert.That(clock.Timers[1].DisposeCount, Is.Zero);
+            }
+            Assert.That(clock.Timers[0].FireQueued, Throws.Nothing);
+            clock.Advance(TimeSpan.FromMilliseconds(400));
+            Assert.That(second.IsCancelled, Is.False);
+            if (cancelExternal) external.Cancel();
+            clock.Advance(TimeSpan.FromMilliseconds(600));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first.IsCancelled, Is.EqualTo(expireFirst));
+                Assert.That(second.IsCancelled, Is.True);
+                Assert.That(tracer.Expired, Is.EqualTo(!cancelExternal));
+            }
+            if (cancelExternal) Assert.Throws<OperationCanceledException>(tracer.EndTxTrace);
+            else Assert.Throws<GethTraceDeadlineException>(tracer.EndTxTrace);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers.TrueForAll(timer => timer.DisposeCount == 1), Is.True);
+            Assert.That(firstInner.DisposeCount, Is.EqualTo(1));
+            Assert.That(secondInner.DisposeCount, Is.EqualTo(1));
+            inner.DidNotReceive().EndTxTrace();
+        }
+    }
+
+    [Test]
     public void Buffered_deadline_excludes_prefix_and_distinguishes_external_cancellation([Values] bool externalCancellation)
     {
         DeadlineClock clock = new();
@@ -294,14 +343,93 @@ public class GethStyleTracerTests
     }
 
     [Test]
-    public void Buffered_deadline_queued_watcher_cannot_cancel_after_disposal([Values(0, -1, 1)] int seconds)
+    public void Execution_deadline_excludes_paused_time(
+        [Values(1, 8_640_000)] int seconds, [Values(1, 2)] int repetitions)
+    {
+        DeadlineClock clock = new();
+        using GethTraceDeadline deadline = new(clock: clock);
+        TimeSpan duration = TimeSpan.FromSeconds(seconds);
+        deadline.Start(duration);
+        clock.Advance(TimeSpan.FromMilliseconds(400));
+        for (int i = 0; i < repetitions; i++) deadline.Pause();
+        Assert.That(clock.Timers, Has.Count.EqualTo(1));
+        Assert.That(clock.Timers[0].Due, Is.EqualTo(Timeout.InfiniteTimeSpan));
+        clock.Advance(TimeSpan.FromDays(100));
+        Assert.That(deadline.Expired, Is.False);
+        for (int i = 0; i < repetitions; i++) deadline.Resume();
+        TimeSpan remaining = duration - TimeSpan.FromMilliseconds(400);
+        Assert.That(clock.Timers[0].Due, Is.EqualTo(remaining > TimeSpan.FromMilliseconds(uint.MaxValue - 1)
+            ? TimeSpan.FromMilliseconds(uint.MaxValue - 1) : remaining));
+        clock.Advance(duration - TimeSpan.FromMilliseconds(600));
+        Assert.That(deadline.Expired, Is.False, "the transport interval must not consume execution time");
+        clock.Advance(TimeSpan.FromMilliseconds(200));
+        Assert.That(deadline.Expired, Is.True, "resuming must not reset the execution budget");
+    }
+
+    [Test]
+    public void Execution_deadline_external_cancellation_while_paused_never_rearms([Values] bool disposeWhilePaused)
+    {
+        DeadlineClock clock = new();
+        using CancellationTokenSource external = new();
+        using GethTraceDeadline deadline = new(external.Token, clock);
+        deadline.Start(TimeSpan.FromSeconds(1));
+        CancellationToken token = deadline.Token;
+        deadline.Pause();
+        int changes = clock.Timers[0].ChangeCount;
+        clock.Advance(TimeSpan.FromDays(100));
+        external.Cancel();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(token.IsCancellationRequested, Is.True);
+            Assert.That(deadline.Expired, Is.False);
+        }
+        if (disposeWhilePaused) deadline.Dispose();
+        deadline.Resume();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers[0].ChangeCount, Is.EqualTo(changes));
+            Assert.That(clock.Timers[0].Due, Is.EqualTo(Timeout.InfiniteTimeSpan));
+            Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(disposeWhilePaused ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public void Execution_deadline_pause_requires_delivered_expiry([Values] bool deliver)
+    {
+        DeadlineClock clock = new();
+        using GethTraceDeadline deadline = new(clock: clock);
+        deadline.Start(TimeSpan.Zero);
+        if (deliver) clock.Advance(TimeSpan.Zero);
+        if (deliver) Assert.Throws<GethTraceDeadlineException>(deadline.Pause);
+        else
+        {
+            Assert.That(deadline.Pause, Throws.Nothing);
+            Assert.That(deadline.Expired, Is.False);
+            deadline.Resume();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deadline.Expired, Is.False);
+                Assert.That(clock.Timers[0].Due, Is.EqualTo(TimeSpan.Zero));
+            }
+            clock.Advance(TimeSpan.Zero);
+        }
+        Assert.That(deadline.Expired, Is.True);
+    }
+
+    [Test]
+    public void Buffered_deadline_queued_watcher_cannot_cancel_after_disposal(
+        [Values(0, -1, 1)] int seconds, [Values] bool paused)
     {
         DeadlineClock clock = new();
         GethTraceDeadline deadline = new(clock: clock);
         deadline.Start(TimeSpan.FromSeconds(seconds));
         CancellationToken token = deadline.Token;
+        if (paused) deadline.Pause();
         deadline.Dispose();
         deadline.Dispose();
+        int changes = clock.Timers[0].ChangeCount;
+        deadline.Resume();
+        Assert.That(clock.Timers[0].ChangeCount, Is.EqualTo(changes));
         Assert.That(clock.Timers[0].FireQueued, Throws.Nothing);
         using (Assert.EnterMultipleScope())
         {
@@ -335,8 +463,10 @@ public class GethStyleTracerTests
         internal TimeSpan Due { get; set; }
         internal int DisposeCount { get; private set; }
         internal bool Disposed => DisposeCount != 0;
+        internal int ChangeCount { get; private set; }
         public bool Change(TimeSpan dueTime, TimeSpan period)
         {
+            ChangeCount++;
             Due = dueTime;
             if (deliverWhenArmed && dueTime == TimeSpan.Zero) Fire();
             return !Disposed;

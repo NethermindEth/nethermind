@@ -658,6 +658,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 GetErrorResponse(methodName, ErrorCodes.Timeout,
                     $"{methodName} request was canceled due to enabled timeout.", null, in request.IdRef, returnAction),
 
+            RpcErrorException error =>
+                GetErrorResponse(methodName, error.Code, error.Message, null, in request.IdRef, returnAction),
+
+            TargetInvocationException { InnerException: RpcErrorException error } =>
+                GetErrorResponse(methodName, error.Code, error.Message, null, in request.IdRef, returnAction),
+
             // suppressWarning doubles as the overload-shedding marker: GetErrorResponse counts
             // suppressed LimitExceeded/ModuleTimeout responses in Metrics.JsonRpcOverloadRejections.
             ModuleRentalTimeoutException or { InnerException: ModuleRentalTimeoutException } =>
