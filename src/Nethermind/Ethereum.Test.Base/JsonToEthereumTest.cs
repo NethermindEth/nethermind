@@ -17,6 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -162,7 +163,7 @@ namespace Ethereum.Test.Base
                     decoded.SenderAddress ??= privateKey?.Address ?? new EthereumEcdsa(chainId).RecoverAddress(decoded);
                     return decoded;
                 }
-                catch (RlpException)
+                catch (RlpReaderException)
                 {
                     // Undecodable txbytes: fall back to the template; non-signature invalidity
                     // (e.g. intrinsic gas) is still caught by tx validation at execution time.

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -60,7 +61,7 @@ public class FrameExceptionFragmentsTests
     private static string DecodeFailureMessage(byte[] payload)
     {
         // Catch, not Throws: the length guard raises the RlpLimitException subclass.
-        RlpException thrown = Assert.Catch<RlpException>(() =>
+        RlpReaderException thrown = Assert.Catch<RlpReaderException>(() =>
         {
             RlpReader reader = new(payload);
             Rlp.GetDecoder<Nethermind.Core.Transaction>()!
@@ -79,7 +80,7 @@ public class FrameExceptionFragmentsTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(message, Does.Contain("Expected a sequence prefix"));
+            Assert.That(message, Does.Contain("RLP does not correspond to a sequence"));
             Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
         }
     }
@@ -100,7 +101,7 @@ public class FrameExceptionFragmentsTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(message, Does.Contain("RLP data is truncated"));
+            Assert.That(message, Does.Contain("RLP is truncated"));
             Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
         }
     }
@@ -110,7 +111,7 @@ public class FrameExceptionFragmentsTests
     {
         string message = DecodeFailureMessage(
             frames: Rlp.Encode(Array.Empty<Rlp>()),
-            maxFee: Rlp.Encode(new byte[33])); // one byte over the 32-byte field
+            maxFee: Rlp.Encode((byte[])[0x01, .. new byte[32]])); // one byte over the 32-byte field
 
         Assert.That(Covers(FrameExceptionFragments.FeeOverflow, message), Is.True, message);
     }
