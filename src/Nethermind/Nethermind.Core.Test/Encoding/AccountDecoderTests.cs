@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -41,7 +42,7 @@ namespace Nethermind.Core.Test.Encoding
             if (hasStorageAndCode) account = account.WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new(slim);
             byte[] expected = new byte[decoder.GetLength(account)];
-            RlpWriter writer = new(expected);
+            RlpWriter writer = RlpWriter.ContentWriter(expected);
             decoder.Encode(account, ref writer);
 
             Assert.That(decoder.EncodeAsBytes(account), Is.EqualTo(expected));
@@ -64,25 +65,19 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
-        public void DecodeStorageRootOnly_returns_correct_value_and_advances_past_it()
+        public void DecodeStorageRootOnly_returns_correct_value_and_advances_past_the_account()
         {
             Account account = new Account(100).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
-            RlpReader ctx = Encode(decoder, account);
+            byte[] bytes = decoder.EncodeAsBytes(account);
+            RlpReader ctx = new(bytes);
 
-            int positionBefore = ctx.Position;
-            ctx.SkipLength();
-            ctx.SkipItem(); // nonce
-            ctx.SkipItem(); // balance
-            int positionBeforeStorageRoot = ctx.Position;
-
-            ctx.Position = positionBefore;
             Hash256 storageRoot = decoder.DecodeStorageRootOnly(ref ctx);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(storageRoot, Is.EqualTo(TestItem.KeccakB));
-                Assert.That(ctx.Position, Is.GreaterThan(positionBeforeStorageRoot));
+                Assert.That(ctx.BytesRead, Is.EqualTo(bytes.Length));
             }
         }
 
@@ -93,7 +88,7 @@ namespace Nethermind.Core.Test.Encoding
             AccountDecoder decoder = new();
             // The trailing empty string becomes an extra item once the list claims one more byte.
             byte[] bytes = [.. decoder.EncodeAsBytes(account), Rlp.EmptyByteArrayByte];
-            (int prefixLength, _) = new RlpReader(bytes).PeekPrefixAndContentLength();
+            (int prefixLength, _) = RlpTestHelper.PrefixAndContentLength(bytes);
             bytes[prefixLength - 1] = (byte)(bytes[prefixLength - 1] + lengthDelta);
 
             Action decode = asStruct
@@ -110,14 +105,14 @@ namespace Nethermind.Core.Test.Encoding
             }
             else
             {
-                Assert.That(decode, Throws.TypeOf<RlpException>());
+                Assert.That(decode, Throws.TypeOf<RlpReaderException>());
             }
         }
 
         private static RlpReader Encode(AccountDecoder decoder, Account account)
         {
             byte[] bytes = new byte[decoder.GetLength(account)];
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             decoder.Encode(ref writer, account);
             return new RlpReader(bytes);
         }

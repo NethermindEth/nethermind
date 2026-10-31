@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Caching;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -111,7 +112,7 @@ public class LogEntryDecoderTests
             Assert.That(Bytes.AreEqual(data, destination[..data.Length]), "the caller's buffer must contain the complete data");
             Assert.That(destination[data.Length..].IndexOfAnyExcept((byte)0xcc), Is.EqualTo(-1), "copying must leave excess destination bytes untouched");
             Assert.That(allocated, Is.Zero, "copying compact data must not allocate an intermediate array");
-            Assert.That(reader.Position, Is.EqualTo(encoded.Length), "the iterator must advance past the complete entry");
+            Assert.That(reader.BytesRead, Is.EqualTo(encoded.Length), "the iterator must advance past the complete entry");
             Assert.That(CompactLogEntryDecoder.DecodeTopics(new RlpReader(decoded.TopicsRlp)), Is.EqualTo(logEntry.Topics));
         }
     }
@@ -132,7 +133,7 @@ public class LogEntryDecoderTests
         {
             Assert.That(decoded.DataLength, Is.Zero);
             Assert.That(destination[0], Is.EqualTo(0xcc), "empty data must not modify the destination");
-            Assert.That(reader.Position, Is.EqualTo(encoded.Length));
+            Assert.That(reader.BytesRead, Is.EqualTo(encoded.Length));
         }
     }
 
@@ -300,7 +301,7 @@ public class LogEntryDecoderTests
             ? Rlp.Encode(Rlp.OfEmptyByteArray, Rlp.OfEmptyList, Rlp.Encode(0), Rlp.OfEmptyByteArray)
             : Rlp.Encode(Rlp.OfEmptyByteArray, Rlp.OfEmptyList, Rlp.OfEmptyByteArray);
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>());
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>());
 
         void Decode()
         {
@@ -324,7 +325,7 @@ public class LogEntryDecoderTests
             Rlp.Encode(Rlp.Encode(TestItem.KeccakA.Bytes), Rlp.OfEmptyByteArray),
             Rlp.OfEmptyByteArray);
 
-        Assert.Throws<RlpException>(() =>
+        Assert.Throws<RlpReaderException>(() =>
         {
             RlpReader ctx = new(malformed.Bytes);
             LogEntryDecoder.Instance.Decode(ref ctx);
@@ -339,7 +340,7 @@ public class LogEntryDecoderTests
     {
         byte[] malformed = Bytes.FromHexString(entry + sibling);
 
-        Assert.Throws<RlpLimitException>(() =>
+        Assert.Throws<RlpReaderException>(() =>
         {
             RlpReader ctx = new(malformed);
             LogEntryDecoder.Instance.Decode(ref ctx, RlpBehaviors.AllowExtraBytes);
@@ -370,7 +371,7 @@ public class LogEntryDecoderTests
     {
         byte[] malformed = CreateCompactLogEntryWithTooLargeDeclaredLength();
 
-        Assert.Throws<RlpLimitException>(() =>
+        Assert.Throws<RlpReaderException>(() =>
         {
             RlpReader ctx = new(malformed);
             CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.None, out _);

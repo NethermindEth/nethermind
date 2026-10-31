@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -89,7 +90,7 @@ public class BlockInfoDecoderTests
         }
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         writer.StartSequence(contentLength);
         writer.Encode(item.BlockHash);
         writer.Encode(item.WasProcessed);

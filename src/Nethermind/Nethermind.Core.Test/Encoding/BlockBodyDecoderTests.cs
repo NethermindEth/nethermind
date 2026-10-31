@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -26,12 +27,12 @@ public class BlockBodyDecoderTests
 
         RlpReader reader = new(bytes);
         RlpBehaviors behaviors = skipPooledTransactions ? RlpBehaviors.SkipPooledTransactions : RlpBehaviors.None;
-        if (format == "unwrapped-body") reader.ReadSequenceLength();
+        if (format == "unwrapped-body") reader = reader.EnterSequence(out _);
         BlockBody decoded = format switch
         {
             "block" => blockDecoder.DecodeGuardNotNull(ref reader, behaviors).Body,
             "body" => BlockBodyDecoder.Instance.DecodeGuardNotNull(ref reader, behaviors),
-            _ => BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, bytes.Length, usePooledTransactions: !skipPooledTransactions)
+            _ => BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, usePooledTransactions: !skipPooledTransactions)
         };
 
         using (Assert.EnterMultipleScope())
@@ -56,7 +57,7 @@ public class BlockBodyDecoderTests
         };
         HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
 
-        Assert.Throws<RlpException>(() => DecodeMalformed(bytes));
+        Assert.Throws<RlpReaderException>(() => DecodeMalformed(bytes));
 
         TransactionPoolTestHelper.AssertAllReturned(pooled);
     }
@@ -64,8 +65,8 @@ public class BlockBodyDecoderTests
     private static void DecodeMalformed(byte[] bytes)
     {
         RlpReader reader = new(bytes);
-        reader.ReadSequenceLength();
-        BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, bytes.Length, usePooledTransactions: true);
+        reader = reader.EnterSequence(out _);
+        BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, usePooledTransactions: true);
     }
 
     [TestCaseSource(nameof(ValidBodies))]
@@ -73,7 +74,7 @@ public class BlockBodyDecoderTests
     {
         int length = BlockBodyDecoder.Instance.GetLength(body, RlpBehaviors.None);
         byte[] bytes = new byte[length];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         BlockBodyDecoder.Instance.Encode(ref writer, body);
         RlpReader ctx = new(bytes);
         BlockBody decodedBody = BlockBodyDecoder.Instance.DecodeGuardNotNull(ref ctx);
@@ -96,7 +97,7 @@ public class BlockBodyDecoderTests
     [TestCase(0, 1, null, TestName = "uncle")]
     [TestCase(0, 0, 6, TestName = "withdrawal")]
     public void Decode_null_element_throws(int txCount, int uncleCount, int? withdrawalCount) =>
-        Assert.Throws<RlpException>(() => DecodeBody(BuildBodyStream(txCount, uncleCount, withdrawalCount)));
+        Assert.Throws<RlpReaderException>(() => DecodeBody(BuildBodyStream(txCount, uncleCount, withdrawalCount)));
 
     private static IEnumerable<TestCaseData> ValidBodies()
     {
@@ -121,7 +122,7 @@ public class BlockBodyDecoderTests
     private static void DecodeBody(byte[] bytes)
     {
         RlpReader ctx = new(bytes);
-        BlockBodyDecoder.Instance.DecodeUnwrapped(ref ctx, bytes.Length, usePooledTransactions: false);
+        BlockBodyDecoder.Instance.DecodeUnwrapped(ref ctx, usePooledTransactions: false);
     }
 
     private static byte[] BuildBodyStream(int txCount, int uncleCount, int? withdrawalCount)
@@ -131,7 +132,7 @@ public class BlockBodyDecoderTests
                         + (withdrawalCount.HasValue ? Rlp.LengthOfSequence(withdrawalCount.Value) : 0);
 
         byte[] bytes = new byte[totalLength];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         WriteEmptyItems(ref writer, txCount);
         WriteEmptyItems(ref writer, uncleCount);
         if (withdrawalCount.HasValue)
@@ -141,9 +142,10 @@ public class BlockBodyDecoderTests
 
         static void WriteEmptyItems(ref RlpWriter writer, int count)
         {
-            writer.StartSequence(count);
+            RlpSequence sequence = writer.StartSequence(count);
             for (int i = 0; i < count; i++)
-                writer.StartSequence(0); // 0xC0 - empty-list placeholder (decodes as null)
+                writer.WriteByte(Rlp.EmptyListByte); // empty-list placeholder (decodes as null)
+            writer.EndSequence(sequence);
         }
     }
 }

@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
 using NUnit.Framework;
@@ -50,17 +51,16 @@ public class RlpDecoderTests
         }
 
         byte[] bytes = new byte[decoder.GetLength(withdrawals)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         decoder.Encode(ref writer, withdrawals);
-        RlpReader context = new(bytes);
-        int sequenceEnd = context.ReadSequenceLength() + context.Position;
+        RlpReader context = new RlpReader(bytes).EnterSequence(out _);
 
 #pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
 #pragma warning restore NUnit2045
-        Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyListByte));
+        Assert.That(context.ReadRaw(1)[0], Is.EqualTo(Rlp.EmptyListByte));
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
-        context.Check(sequenceEnd);
+        context.CheckEnd();
     }
 
     [Test]
@@ -94,7 +94,7 @@ public class RlpDecoderTests
             decoder.DecodeNonNullArray(ref context);
         }
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>());
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -106,19 +106,13 @@ public class RlpDecoderTests
             UInt256Decoder.Instance.DecodeNonNullArray(ref context);
         }
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("null array element"));
     }
 
     [Test]
-    public void Decode_wraps_out_of_range_with_concrete_type_name()
+    public void Decode_of_empty_input_throws_truncated()
     {
-        RlpException? exception = Assert.Throws<RlpException>(DecodeEmptyInput);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(exception!.Message, Does.Contain(nameof(Withdrawal)));
-            Assert.That(exception.Message, Does.Not.Contain(" T"));
-        }
+        Assert.That(DecodeEmptyInput, Throws.TypeOf<RlpReaderException>().With.Message.Contains("truncated"));
 
         static void DecodeEmptyInput()
         {
@@ -169,7 +163,7 @@ public class RlpDecoderTests
             context.DecodeNonNullArray(static (ref RlpReader c) => (c.DecodeKeccak(), c.DecodeULong()));
         }
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("is null"));
     }
 
     [Test]
@@ -181,7 +175,7 @@ public class RlpDecoderTests
             context.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeInt());
         }
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("is null"));
     }
 
     [Test]
@@ -190,18 +184,6 @@ public class RlpDecoderTests
         RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
 
         int[] result = context.DecodeArray(
-            static (ref RlpReader _) => throw new InvalidOperationException(),
-            defaultElement: 42);
-
-        Assert.That(result, Is.EqualTo(new[] { 42 }));
-    }
-
-    [Test]
-    public void Decode_array_pool_list_legacy_api_uses_value_type_default()
-    {
-        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
-
-        using ArrayPoolList<int> result = context.DecodeArrayPoolList(
             static (ref RlpReader _) => throw new InvalidOperationException(),
             defaultElement: 42);
 
@@ -227,7 +209,7 @@ public class RlpDecoderTests
             context.DecodeNonNullArray(KeccakDecoder.Instance);
         }
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("null array element"));
     }
 
     [Test]
@@ -252,50 +234,26 @@ public class RlpDecoderTests
         Assert.That(result, Is.EqualTo(new[] { TestItem.KeccakA }));
     }
 
-    [Test]
-    public void Decode_nullable_array_pool_list_allows_null_reference_element()
-    {
-        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyByteArrayByte });
-
-        using ArrayPoolList<Hash256?> result = context.DecodeNullableArrayPoolList(static (ref RlpReader c) => c.DecodeKeccakOrNull());
-
-        Assert.That(result, Is.EqualTo(new Hash256?[] { null }));
-    }
-
-    [Test]
-    public void Decode_nullable_array_pool_list_uses_default_for_empty_list_element()
-    {
-        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
-
-        using ArrayPoolList<Hash256?> result = context.DecodeNullableArrayPoolList(
-            static (ref RlpReader _) => throw new InvalidOperationException(),
-            defaultElement: TestItem.KeccakA);
-
-        Assert.That(result, Is.EqualTo(new[] { TestItem.KeccakA }));
-    }
-
     private static void AssertEncodedNullItem(WithdrawalDecoder decoder, ReadOnlySpan<byte> bytes)
     {
-        RlpReader context = new(bytes);
-        int sequenceEnd = context.ReadSequenceLength() + context.Position;
+        RlpReader context = new RlpReader(bytes).EnterSequence(out _);
 
 #pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
 #pragma warning restore NUnit2045
-        Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyListByte));
+        Assert.That(context.ReadRaw(1)[0], Is.EqualTo(Rlp.EmptyListByte));
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
-        context.Check(sequenceEnd);
+        context.CheckEnd();
     }
 
     private static void AssertEncodedNullItem(ReadOnlySpan<byte> bytes)
     {
-        RlpReader context = new(bytes);
-        int sequenceEnd = context.ReadSequenceLength() + context.Position;
+        RlpReader context = new RlpReader(bytes).EnterSequence(out _);
 
-        Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyByteArrayByte));
-        Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyListByte));
-        Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyByteArrayByte));
-        context.Check(sequenceEnd);
+        Assert.That(context.ReadRaw(1)[0], Is.EqualTo(Rlp.EmptyByteArrayByte));
+        Assert.That(context.ReadRaw(1)[0], Is.EqualTo(Rlp.EmptyListByte));
+        Assert.That(context.ReadRaw(1)[0], Is.EqualTo(Rlp.EmptyByteArrayByte));
+        context.CheckEnd();
     }
 
     private sealed class NonNullableItem
@@ -310,7 +268,7 @@ public class RlpDecoderTests
             return Rlp.OfEmptyByteArray.Length;
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(ref RlpWriter writer, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ArgumentNullException.ThrowIfNull(item);
             writer.Encode(Rlp.OfEmptyByteArray);
