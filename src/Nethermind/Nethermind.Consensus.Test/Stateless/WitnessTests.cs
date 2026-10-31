@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -90,6 +92,62 @@ public class WitnessTests
             Assert.That(witness.State, Is.EqualTo(nodes));
             Assert.That(witness.State.Count, Is.EqualTo(count));
             for (int i = 0; i < count; i++) Assert.That(witness.State[i], Is.EqualTo(nodes[i]));
+        }
+    }
+
+    [Test]
+    public unsafe void Decoded_ssz_witness_keeps_placed_state_nodes_in_its_input([Values(0, 64, 4096)] int decodedBefore)
+    {
+        // Long nodes among short ones, so that with little input decoded before the witness some are copied.
+        byte[][] nodes = new byte[40][];
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            nodes[i] = new byte[i % 4 == 0 ? 300 : 5 + i];
+            nodes[i].AsSpan().Fill((byte)i);
+        }
+
+        byte[][] codes = [[0x60, 0x01, 0x00]];
+        byte[][] headers = [[0xc0]];
+        using Witness original = new()
+        {
+            Headers = new ArrayPoolList<byte[]>(headers),
+            Codes = new ArrayPoolList<byte[]>(codes),
+            State = new ArrayPoolList<byte[]>(nodes),
+            Keys = IOwnedReadOnlyList<byte[]>.Empty
+        };
+        byte[] encoded = ExecutionWitness.Encode(ExecutionWitness.From(original));
+        int length = decodedBefore + encoded.Length;
+        byte* start = (byte*)NativeMemory.AlignedAlloc((nuint)length, sizeof(ulong));
+
+        try
+        {
+            Span<byte> input = new(start, length);
+            encoded.CopyTo(input[decodedBefore..]);
+            WitnessNode.PlaceInInput(input, decodedBefore + BinaryPrimitives.ReadInt32LittleEndian(encoded));
+            ExecutionWitness.Decode(input[decodedBefore..], out ExecutionWitness decoded);
+            int placedLength = WitnessNode.EndPlacement(input);
+            using Witness witness = decoded.ToWitness();
+
+            int placed = 0;
+            foreach (byte[] node in witness.State)
+            {
+                byte* data = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(node));
+                bool inInput = data >= start && data < start + length;
+                Assert.That(!inInput || data + node.Length <= start + placedLength, Is.True, "placed within the length reported");
+                placed += inInput ? 1 : 0;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(witness.State, Is.EqualTo(nodes));
+                Assert.That(witness.Codes, Is.EqualTo(codes));
+                Assert.That(witness.Headers, Is.EqualTo(headers));
+                Assert.That(placed, Is.Positive);
+            }
+        }
+        finally
+        {
+            NativeMemory.AlignedFree(start);
         }
     }
 
