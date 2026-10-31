@@ -80,6 +80,28 @@ public class BlockGasReservationsFitnessTests
         }
     }
 
+    // The shape of EELS test_frame_gas_sum_bound_in_block: a frame gas sum of 2^64 - 1 is well formed, and the block
+    // rejects it because its state gas exceeds the block's gas limit.
+    [Test]
+    public void Frame_transaction_with_the_maximum_frame_gas_sum_is_rejected_on_the_state_dimension()
+    {
+        Transaction tx = FrameTx(executionGasLimit: 20_000, stateGasLimit: ulong.MaxValue - 20_000);
+        Block block = Build.A.Block.WithGasLimit((long)BlockGasLimit).WithBaseFeePerGas(0).TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, Spec, out _, out ulong state), Is.True,
+                "the transaction must be priced, not left to the scalar fallback");
+            Assert.That(state, Is.EqualTo(ulong.MaxValue - 20_000));
+        }
+
+        InvalidBlockException exception = Assert.Throws<InvalidBlockException>(
+            () => BlockAccessListManager.CheckPerTxInclusion(block, 0, tx, Spec, 0, 0))!;
+        Assert.That(exception.Message, Does.StartWith("Block gas limit exceeded")
+            .And.Contain(nameof(Eip8037BlockGasInclusionCheck.Outcome.StateDimensionExceeded)));
+        AssertPathsAgree(tx, 0, 0);
+    }
+
     private static void AssertPathsAgree(Transaction tx, ulong cumulativeExecution, ulong cumulativeState)
     {
         ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Spec);
