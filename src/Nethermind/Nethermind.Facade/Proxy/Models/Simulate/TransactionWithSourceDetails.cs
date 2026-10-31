@@ -12,5 +12,8 @@ public class TransactionWithSourceDetails
 
     /// <summary>The gas limit the block must still be able to include, or <c>null</c> to skip that check.</summary>
     public ulong? GasLimitToFitBlock;
+
+    /// <summary>Whether the request-wide RPC gas cap lowered the gas the call would otherwise have run with.</summary>
+    public bool GasCapped;
     public Transaction Transaction { get; set; }
 }
