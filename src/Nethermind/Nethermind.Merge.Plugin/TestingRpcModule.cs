@@ -23,6 +23,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using ILogger = Nethermind.Logging.ILogger;
@@ -139,7 +140,7 @@ public class TestingRpcModule(
 
             transactions = txs.ToArray();
         }
-        catch (RlpException e)
+        catch (RlpReaderException e)
         {
             return ResultWrapper<ProducedBlock>.Fail($"invalid transaction RLP: {e.Message}", ErrorCodes.InvalidInput);
         }
@@ -236,7 +237,7 @@ public class TestingRpcModule(
     {
         foreach (byte[] txRlp in txRlps)
             yield return Rlp.Decode<Transaction>(txRlp, RlpBehaviors.SkipTypedWrapping)
-                ?? throw new RlpException("Transaction decoding returned null.");
+                ?? throw new RlpReaderException("Transaction decoding returned null.");
     }
 
     private static object CreateGetPayloadResult(Block processedBlock, UInt256 blockFees, IReleaseSpec spec)

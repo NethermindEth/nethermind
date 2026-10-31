@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
@@ -160,8 +161,7 @@ internal static class PayloadBodiesDirectResponseWriter
         MemoryManager<byte>? blockAccessList = null,
         bool includeBlockAccessList = false)
     {
-        RlpReader ctx = new(blockRlp);
-        int blockEnd = ctx.ReadSequenceLength() + ctx.Position;
+        RlpReader ctx = new RlpReader(blockRlp).EnterSequence(out _);
 
         // Keep this field order aligned with BlockBodyDecoder.DecodeUnwrapped; this path streams without materializing BlockBody.
         ctx.SkipItem(); // header
@@ -170,7 +170,7 @@ internal static class PayloadBodiesDirectResponseWriter
 
         ctx.SkipItem(); // uncles
         writer.Write(",\"withdrawals\":"u8);
-        WriteWithdrawalsFromBlockRlp(writer, ref ctx, blockEnd);
+        WriteWithdrawalsFromBlockRlp(writer, ref ctx);
 
         WriteBlockAccessList(writer, blockAccessList, includeBlockAccessList);
         writer.Write("}"u8);
@@ -242,7 +242,7 @@ internal static class PayloadBodiesDirectResponseWriter
         int length = TxDecoder.Instance.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
 
-        RlpWriter rlpWriter = new(buffer);
+        RlpWriter rlpWriter = RlpWriter.ContentWriter(buffer.AsSpan(0, length));
         TxDecoder.Instance.Encode(ref rlpWriter, transaction, RlpBehaviors.SkipTypedWrapping);
         HexWriter.WriteHexString(writer, buffer.AsSpan(0, length), chunked: length > HexChunkThreshold);
         ArrayPool<byte>.Shared.Return(buffer);
@@ -250,34 +250,35 @@ internal static class PayloadBodiesDirectResponseWriter
 
     public static (byte[][] Transactions, Withdrawal[]? Withdrawals) DecodePayloadBody(byte[] blockRlp)
     {
-        RlpReader ctx = new(blockRlp);
-        int blockEnd = ctx.ReadSequenceLength() + ctx.Position;
+        RlpReader ctx = new RlpReader(blockRlp).EnterSequence(out _);
         ctx.SkipItem(); // header
         byte[][] transactions = GetTransactionsFromBlockRlp(ref ctx);
         ctx.SkipItem(); // uncles
-        Withdrawal[]? withdrawals = ctx.Position != blockEnd ? WithdrawalDecoder.DecodeNonNullArray(ref ctx) : null;
+        Withdrawal[]? withdrawals = ctx.HasNext ? WithdrawalDecoder.DecodeNonNullArray(ref ctx) : null;
         return (transactions, withdrawals);
     }
 
     public static byte[][] GetTransactionsFromBlockRlp(byte[] blockRlp)
     {
-        RlpReader reader = CreateTransactionReader(blockRlp, out int txsEnd);
-        return GetTransactionsFromBlockRlp(ref reader, txsEnd);
+        RlpReader transactions = CreateTransactionReader(blockRlp);
+        return ReadTransactions(ref transactions);
     }
 
     private static byte[][] GetTransactionsFromBlockRlp(ref RlpReader ctx)
     {
-        int txsEnd = ctx.ReadSequenceLength() + ctx.Position;
-        return GetTransactionsFromBlockRlp(ref ctx, txsEnd);
+        RlpReader transactionsReader = ctx.EnterSequence(out int transactionsLength);
+        byte[][] transactions = ReadTransactions(ref transactionsReader);
+        ctx.ExitSequence(in transactionsReader, transactionsLength);
+        return transactions;
     }
 
-    private static byte[][] GetTransactionsFromBlockRlp(ref RlpReader ctx, int txsEnd)
+    private static byte[][] ReadTransactions(ref RlpReader transactionsReader)
     {
-        int count = ctx.PeekNumberOfItemsRemaining(txsEnd);
+        int count = transactionsReader.CountItems();
         byte[][] transactions = new byte[count][];
         for (int i = 0; i < count; i++)
         {
-            transactions[i] = ReadTransactionBytes(ref ctx).ToArray();
+            transactions[i] = ReadTransactionBytes(ref transactionsReader).ToArray();
         }
 
         return transactions;
@@ -285,43 +286,42 @@ internal static class PayloadBodiesDirectResponseWriter
 
     public static void WriteTransactionsFromBlockRlp(IBufferWriter<byte> writer, byte[] blockRlp)
     {
-        RlpReader reader = CreateTransactionReader(blockRlp, out int txsEnd);
-        WriteTransactionsFromBlockRlp(writer, ref reader, txsEnd);
+        RlpReader transactions = CreateTransactionReader(blockRlp);
+        WriteTransactionItems(writer, ref transactions);
     }
 
     private static void WriteTransactionsFromBlockRlp(IBufferWriter<byte> writer, ref RlpReader ctx)
     {
-        int txsEnd = ctx.ReadSequenceLength() + ctx.Position;
-        WriteTransactionsFromBlockRlp(writer, ref ctx, txsEnd);
+        RlpReader transactions = ctx.EnterSequence(out int transactionsLength);
+        WriteTransactionItems(writer, ref transactions);
+        ctx.ExitSequence(in transactions, transactionsLength);
     }
 
-    private static void WriteTransactionsFromBlockRlp(IBufferWriter<byte> writer, ref RlpReader ctx, int txsEnd)
+    private static void WriteTransactionItems(IBufferWriter<byte> writer, ref RlpReader transactions)
     {
         writer.Write("["u8);
 
-        for (int i = 0; ctx.Position < txsEnd; i++)
+        for (int i = 0; transactions.HasNext; i++)
         {
             if (i > 0) writer.Write(","u8);
-            ReadOnlySpan<byte> transaction = ReadTransactionBytes(ref ctx);
+            ReadOnlySpan<byte> transaction = ReadTransactionBytes(ref transactions);
             HexWriter.WriteHexString(writer, transaction, chunked: transaction.Length > HexChunkThreshold);
         }
 
         writer.Write("]"u8);
     }
 
-    private static RlpReader CreateTransactionReader(byte[] blockRlp, out int txsEnd)
+    /// <summary>Returns a reader over the items of the transactions sequence of <paramref name="blockRlp"/>.</summary>
+    private static RlpReader CreateTransactionReader(byte[] blockRlp)
     {
-        RlpReader reader = new(blockRlp);
-        reader.ReadSequenceLength();
-        reader.SkipItem(); // header
-        txsEnd = reader.ReadSequenceLength() + reader.Position;
-        return reader;
+        RlpReader block = new RlpReader(blockRlp).EnterSequence(out _);
+        block.SkipItem(); // header
+        return block.EnterSequence(out _);
     }
 
     private static ReadOnlySpan<byte> ReadTransactionBytes(ref RlpReader ctx)
     {
-        ReadOnlySpan<byte> transaction = ctx.PeekNextItem();
-        ctx.SkipItem(); // current transaction
+        ReadOnlySpan<byte> transaction = ctx.ReadEncodedItem();
         if (transaction[0] >= Rlp.OfEmptyList[0])
         {
             return transaction;
@@ -330,8 +330,7 @@ internal static class PayloadBodiesDirectResponseWriter
         // Typed transactions are stored as an RLP string containing type || payload;
         // Engine payload bodies expect the string content, not the RLP wrapper.
         RlpReader transactionReader = new(transaction);
-        (_, int contentLength) = transactionReader.PeekPrefixAndContentLength();
-        return transaction.Slice(transaction.Length - contentLength, contentLength);
+        return transactionReader.ReadBytes();
     }
 
     public static void WriteWithdrawals(IBufferWriter<byte> writer, Withdrawal[]? withdrawals)
@@ -345,24 +344,24 @@ internal static class PayloadBodiesDirectResponseWriter
         WriteWithdrawalArray(writer, withdrawals);
     }
 
-    private static void WriteWithdrawalsFromBlockRlp(IBufferWriter<byte> writer, ref RlpReader ctx, int blockEnd)
+    private static void WriteWithdrawalsFromBlockRlp(IBufferWriter<byte> writer, ref RlpReader ctx)
     {
-        if (ctx.Position == blockEnd)
+        if (!ctx.HasNext)
         {
             writer.Write("null"u8);
             return;
         }
 
-        int withdrawalsEnd = ctx.ReadSequenceLength() + ctx.Position;
+        RlpReader withdrawals = ctx.EnterSequence(out int withdrawalsLength);
         writer.Write("["u8);
 
-        for (int i = 0; ctx.Position < withdrawalsEnd; i++)
+        for (int i = 0; withdrawals.HasNext; i++)
         {
             if (i > 0) writer.Write(","u8);
-            WriteWithdrawalFromBlockRlp(writer, ref ctx);
+            WriteWithdrawalFromBlockRlp(writer, ref withdrawals);
         }
 
-        ctx.Check(withdrawalsEnd);
+        ctx.ExitSequence(in withdrawals, withdrawalsLength);
         writer.Write("]"u8);
     }
 
@@ -404,39 +403,29 @@ internal static class PayloadBodiesDirectResponseWriter
 
     private static void WriteWithdrawalFromBlockRlp(IBufferWriter<byte> writer, ref RlpReader ctx)
     {
-        int withdrawalEnd = ctx.ReadSequenceLength() + ctx.Position;
+        RlpReader fields = ctx.EnterSequence(out int withdrawalLength);
 
         writer.Write("{\"index\":"u8);
-        HexWriter.WriteUlongHexString(writer, ctx.DecodeULong());
+        HexWriter.WriteUlongHexString(writer, fields.DecodeULong());
         writer.Write(",\"validatorIndex\":"u8);
-        HexWriter.WriteUlongHexString(writer, ctx.DecodeULong());
+        HexWriter.WriteUlongHexString(writer, fields.DecodeULong());
         writer.Write(",\"address\":"u8);
-        WriteAddressFromBlockRlp(writer, ref ctx);
+        WriteAddressFromBlockRlp(writer, ref fields);
         writer.Write(",\"amount\":"u8);
-        HexWriter.WriteUlongHexString(writer, ctx.DecodeULong());
+        HexWriter.WriteUlongHexString(writer, fields.DecodeULong());
         writer.Write("}"u8);
 
-        ctx.Check(withdrawalEnd);
+        ctx.ExitSequence(in fields, withdrawalLength);
     }
 
     private static void WriteAddressFromBlockRlp(IBufferWriter<byte> writer, ref RlpReader ctx)
     {
-        int prefix = ctx.ReadByte();
-        if (prefix == Rlp.EmptyByteArrayByte)
+        if (ctx.TryReadEmptyBytes())
         {
             writer.Write("null"u8);
             return;
         }
 
-        if (prefix != Rlp.EmptyByteArrayByte + Address.Size)
-        {
-            ThrowInvalidWithdrawalAddressPrefix(prefix);
-        }
-
-        HexWriter.WriteHexString(writer, ctx.Read(Address.Size), chunked: false);
+        HexWriter.WriteHexString(writer, ctx.ReadBytes(Address.Size), chunked: false);
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowInvalidWithdrawalAddressPrefix(int prefix) =>
-        throw new RlpException($"Invalid withdrawal address prefix {prefix}");
 }

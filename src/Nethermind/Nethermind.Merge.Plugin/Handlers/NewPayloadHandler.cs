@@ -32,6 +32,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -548,7 +549,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 ReadOnlyBlockAccessList? stored = _blockAccessListStore?.Get(block.Number, block.GetOrCalculateHash());
                 return stored?.WireHash == commitment ? stored : null;
             }
-            catch (RlpException exception)
+            catch (RlpReaderException exception)
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot recheck inclusion list for {block.Hash}: its BAL does not decode. {exception.Message}");
                 return null;

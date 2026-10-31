@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 
@@ -138,7 +139,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
             if (_metadataDb.KeyExists(MetadataDbKeys.BeaconSyncPivotHash))
             {
                 byte[]? pivotHashRlp = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotHash);
-                Hash256? pivotHash = pivotHashRlp is null ? null : new RlpReader(pivotHashRlp).DecodeKeccak();
+                RlpReader reader = new(pivotHashRlp);
+                Hash256? pivotHash = pivotHashRlp is null ? null : reader.DecodeKeccak();
                 if (pivotHash is not null)
                 {
                     _currentBeaconPivot =
