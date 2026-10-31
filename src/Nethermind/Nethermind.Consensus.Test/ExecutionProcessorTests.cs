@@ -42,8 +42,7 @@ public class ExecutionProcessorTests
     private static readonly Address DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
     private static readonly Address eip7002Account = Eip7002Constants.WithdrawalRequestPredeployAddress;
     private static readonly Address eip7251Account = Eip7251Constants.ConsolidationRequestPredeployAddress;
-    private static readonly AbiSignature _depositEventABI = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
-    private static readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
+    private static readonly AbiSignature<(byte[], byte[], byte[], byte[], byte[])> _depositEventData = new AbiSignature().With(AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes);
     private const int AbiWordSize = 32;
     private const int DepositEventFieldCount = 5;
     private const int PubkeyHeadWord = 0;
@@ -209,20 +208,20 @@ public class ExecutionProcessorTests
     }
 
     [Test]
-    public void ShouldProcessExecutionRequests()
+    public void ShouldProcessExecutionRequests([Values(0, 1, 3)] int depositCount)
     {
         TxReceipt[] txReceipts = [
             Build.A.Receipt.WithLogs(
-                CreateLogEntry(TestItem.ExecutionRequestA.RequestDataParts),
-                CreateLogEntry(TestItem.ExecutionRequestB.RequestDataParts),
-                CreateLogEntry(TestItem.ExecutionRequestC.RequestDataParts)
-            ).TestObject
+                Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(ExecutionRequestsProcessor.DepositEventAbi.Hash).TestObject,
+                Build.A.LogEntry.WithAddress(DepositContractAddress).TestObject).TestObject,
+            Build.A.Receipt.WithLogs(_executionDepositRequests.Take(depositCount)
+                .Select(request => CreateLogEntry(request.RequestDataParts)).ToArray()).TestObject
         ];
 
         Hash256 requestsHash = ProcessBlockAndGetRequestsHash(1, txReceipts);
 
         Assert.That(requestsHash, Is.EqualTo(
-           CalculateHash(_executionDepositRequests, _executionWithdrawalRequests, _executionConsolidationRequests)
+           CalculateHash(_executionDepositRequests.Take(depositCount).ToArray(), _executionWithdrawalRequests, _executionConsolidationRequests)
        ));
     }
 
@@ -274,7 +273,7 @@ public class ExecutionProcessorTests
             .WithAddress(DepositContractAddress).TestObject;
 
     private static byte[] EncodeDepositEventData(byte[][] requestDataParts) =>
-        _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts);
+        AbiCodec.Encode(_depositEventData, (requestDataParts[0], requestDataParts[1], requestDataParts[2], requestDataParts[3], requestDataParts[4]));
 
     [TestCase(DepositEventLayoutMutation.SwappedPubkeyAndCredentialsBlocks)]
     [TestCase(DepositEventLayoutMutation.SwappedAmountAndSignatureBlocks)]

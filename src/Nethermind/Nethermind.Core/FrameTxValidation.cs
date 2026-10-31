@@ -17,17 +17,17 @@ public static class FrameTxValidation
 {
     public const string MissingFrames = "frame transaction must contain between 1 and 64 frames";
     public const string MissingSender = "frame transaction sender must be set";
-    public const string InvalidMode = "frame mode must be DEFAULT, VERIFY, SENDER, or POST_TX";
-    public const string PostTxNotTrailing = "POST_TX frames must form a trailing suffix of the frame list";
-    public const string PostTxNotEnabled = "POST_TX frames are not enabled";
+    public const string InvalidMode = "frame mode must be DEFAULT, VERIFY, SENDER, or ASSERT";
+    public const string AssertFrameNotTrailing = "ASSERT frames must form a trailing suffix of the frame list";
+    public const string AssertFrameNotEnabled = "ASSERT frames are not enabled";
     public const string InvalidFlags = "frame flags must not use reserved bits";
     public const string ValueOutsideSenderMode = "frame value is only allowed in SENDER mode";
     public const string ExecutionApprovalWrongTarget = "frames allowed to approve execution must target the sender";
     public const string AtomicBatchOnLastFrame = "the last frame must not have the atomic batch flag set";
     public const string AtomicBatchOnVerifyFrame = "the atomic batch flag must not be set on a VERIFY frame";
-    public const string AtomicBatchOnPostTxFrame = "the atomic batch flag must not be set on a POST_TX frame";
+    public const string AtomicBatchOnAssertFrame = "the atomic batch flag must not be set on an ASSERT frame";
     public const string AtomicBatchFollowedByVerifyFrame = "an atomic batch frame must not be followed by a VERIFY frame";
-    public const string AtomicBatchFollowedByPostTxFrame = "an atomic batch frame must not be followed by a POST_TX frame";
+    public const string AtomicBatchFollowedByAssertFrame = "an atomic batch frame must not be followed by an ASSERT frame";
     public const string ApprovalScopeInAtomicBatch = "frames belonging to an atomic batch must not carry approval scope";
     public const string FrameGasOverflow = "total frame gas must not exceed 2^64 - 1";
     /// <summary>The EIP-7825 gas-cap failure message, which names the offending amounts rather than being a
@@ -44,7 +44,6 @@ public static class FrameTxValidation
     public const string ArbitrarySignatureWithSigner = "ARBITRARY signatures must not name a signer";
     public const string InvalidMsgLength = "signature msg must be empty or a 32-byte digest";
     public const string ZeroDigestMsg = "explicit signature msg must not be the zero digest";
-    public const string BlobFeeWithoutBlobs = "max fee per blob gas must be 0 when there are no blob hashes";
     public const string KeyedNoncesNotEnabled = "keyed nonces are not enabled";
     public const string LegacyNonceNotAllowed = "legacy nonce is not allowed";
     public const string MalformedNonceKeySet = "malformed nonce key set";
@@ -54,7 +53,7 @@ public static class FrameTxValidation
     /// list, its signature entries and the fields the frame envelope adds.
     /// </summary>
     /// <remarks>
-    /// The decision is a pure function of <paramref name="transaction"/> and <paramref name="postTxEnabled"/>: it
+    /// The decision is a pure function of <paramref name="transaction"/> and <paramref name="assertEnabled"/>: it
     /// reads no state and no release spec, so both consensus (<c>BlockValidator</c>) and the pool can reach it, and
     /// the same transaction always yields the same verdict at a given fork. Structural RLP shape is already enforced
     /// at decode time and is not rechecked. Checks needing the release spec — the EIP-7594 blob limits and the
@@ -64,12 +63,12 @@ public static class FrameTxValidation
     /// </remarks>
     /// <param name="transaction">The frame transaction to check. Must carry <see cref="Transaction.Frames"/> and a
     /// resolved <see cref="Transaction.SenderAddress"/>; both are reported as failures rather than thrown on.</param>
-    /// <param name="postTxEnabled">Whether EIP-7906 is active, which decides only whether
-    /// <see cref="FrameMode.PostTx"/> frames are admitted at all.</param>
+    /// <param name="assertEnabled">Whether EIP-7906 is active, which decides only whether
+    /// <see cref="FrameMode.Assert"/> frames are admitted at all.</param>
     /// <param name="error">On failure, the first violated constraint, always one of this type's message constants;
     /// <see langword="null"/> on success.</param>
     /// <returns><see langword="true"/> if every stateless constraint holds.</returns>
-    public static bool IsWellFormed(Transaction transaction, bool postTxEnabled, out string? error)
+    public static bool IsWellFormed(Transaction transaction, bool assertEnabled, out string? error)
     {
         error = null;
 
@@ -92,32 +91,32 @@ public static class FrameTxValidation
         {
             TxFrame frame = frames[i];
 
-            if (frame.Mode > FrameMode.PostTx)
+            if (frame.Mode > FrameMode.Assert)
             {
                 error = InvalidMode;
                 return false;
             }
 
-            if (frame.Mode == FrameMode.PostTx && !postTxEnabled)
+            if (frame.Mode == FrameMode.Assert && !assertEnabled)
             {
-                error = PostTxNotEnabled;
+                error = AssertFrameNotEnabled;
                 return false;
             }
 
             // Assertions observe the finished transaction, so nothing may run after them.
-            if (frame.Mode == FrameMode.PostTx)
+            if (frame.Mode == FrameMode.Assert)
             {
-                if (i + 1 < frames.Length && frames[i + 1].Mode != FrameMode.PostTx)
+                if (i + 1 < frames.Length && frames[i + 1].Mode != FrameMode.Assert)
                 {
-                    error = PostTxNotTrailing;
+                    error = AssertFrameNotTrailing;
                     return false;
                 }
 
-                // A batch opened by a POST_TX frame can never unroll — the assertion path exits the
+                // A batch opened by an ASSERT frame can never unroll — the assertion path exits the
                 // frame loop first — so the flag would be inert here and clients could diverge on it.
                 if ((frame.Flags & FrameFlags.AtomicBatch) != 0)
                 {
-                    error = AtomicBatchOnPostTxFrame;
+                    error = AtomicBatchOnAssertFrame;
                     return false;
                 }
             }
@@ -163,11 +162,11 @@ public static class FrameTxValidation
                     return false;
                 }
 
-                // An unroll moves the terminal frame onto the successor and marks it skipped. On a POST_TX
+                // An unroll moves the terminal frame onto the successor and marks it skipped. On an ASSERT
                 // successor that silently drops the assertion, which is the case it exists to catch.
-                if (i + 1 < frames.Length && frames[i + 1].Mode == FrameMode.PostTx)
+                if (i + 1 < frames.Length && frames[i + 1].Mode == FrameMode.Assert)
                 {
-                    error = AtomicBatchFollowedByPostTxFrame;
+                    error = AtomicBatchFollowedByAssertFrame;
                     return false;
                 }
             }
@@ -240,15 +239,6 @@ public static class FrameTxValidation
             }
         }
 
-        // A value check, not a presence check: the decoder always populates both blob fields. Refusing a
-        // blob-carrying frame tx here would be a block-validity rule, since BlockValidator reaches this.
-        bool hasBlobs = transaction.BlobVersionedHashes is { Length: > 0 };
-        if (!hasBlobs && transaction.MaxFeePerBlobGas is { IsZero: false })
-        {
-            error = BlobFeeWithoutBlobs;
-            return false;
-        }
-
         // The EIP-7594 blob-count limit and versioned-hash version byte need the release spec, so they
         // are enforced by FrameTxFieldsTxValidator rather than in this stateless check.
         return true;
@@ -282,6 +272,13 @@ public static class FrameTxValidation
 
         return total;
     }
+
+    /// <summary>The highest uniform per-gas price <c>max_fee</c> covers over <paramref name="gasLimit"/>.</summary>
+    /// <remarks>Policy only, for the mempool and block-building code that ranks by a per-gas cap: execution checks
+    /// the budget itself. Over <see cref="Transaction.GasLimit"/>, which omits the intrinsic cost, it overstates
+    /// the cap execution enforces, so a transaction it admits can still fail the budget check at inclusion.</remarks>
+    public static UInt256 ImpliedMaxFeePerGas(in UInt256 maxFee, ulong gasLimit) =>
+        gasLimit == 0 ? maxFee : maxFee / gasLimit;
 
     /// <summary>
     /// Upper bound on the public-mempool validation work of a frame transaction: its validation prefix's
@@ -644,33 +641,35 @@ public static class FrameTxValidation
         ulong MaxGas) : IIntrinsicGasMemo;
 
     /// <summary>
-    /// The EIP-8141 <c>TXPARAM(0x06)</c> maximum cost of <paramref name="transaction"/>: its whole gas budget
-    /// priced at <c>max_fee_per_gas</c>, plus the blob gas priced at <c>max_fee_per_blob_gas</c>.
+    /// The most <paramref name="transaction"/> can cost its payer at any base fees: its <c>max_fee</c>, which bounds
+    /// the <c>max_cost</c> execution collects at the including block's base fees.
     /// </summary>
-    /// <remarks>
-    /// The upper-bound form: the gas leg is exactly what execution escrows, while the blob leg is priced at
-    /// <c>max_fee_per_blob_gas</c> where execution escrows at the actual blob base fee. Callers that must not
-    /// under-reserve (the mempool exposure bound, the simulated APPROVE gate) want this form.
-    /// </remarks>
-    /// <returns><c>false</c> when the transaction cannot be priced or the cost overflows; <paramref name="maxCost"/> is then 0.</returns>
+    /// <remarks>Callers that must not under-reserve (the mempool exposure bound, the simulated APPROVE gate) want this form.</remarks>
+    /// <returns><c>false</c> when the transaction cannot be priced; <paramref name="maxCost"/> is then 0.</returns>
     public static bool TryCalculateMaxCost(Transaction transaction, IReleaseSpec spec, out UInt256 maxCost)
     {
-        maxCost = UInt256.Zero;
-        if (!TryCalculateGasBudget(transaction, spec, out _, out _, out ulong maxGas)
-            || UInt256.MultiplyOverflow((UInt256)maxGas, transaction.DecodedMaxFeePerGas, out UInt256 gasCost))
+        bool priced = TryCalculateGasBudget(transaction, spec, out _, out _, out _);
+        maxCost = priced ? transaction.MaxFee : UInt256.Zero;
+        return priced;
+    }
+
+    /// <summary>Whether <c>max_fee</c> covers <c>required_max_fee</c> at the given base fees.</summary>
+    /// <remarks>The inclusion check execution makes, for block building to skip a transaction that would fail it.
+    /// A pooled blob record carries no frames, so there the frame gas sum, a lower bound on <c>max_gas</c>, stands in.</remarks>
+    public static bool CoversRequiredMaxFee(Transaction transaction, IReleaseSpec spec, in UInt256 baseFee, in UInt256 feePerBlobGas)
+    {
+        if (!transaction.SupportsFrames)
         {
-            return false;
+            return true;
         }
 
-        ulong blobGas = transaction.GetBlobGas();
-        if (UInt256.MultiplyOverflow((UInt256)blobGas, transaction.MaxFeePerBlobGas.GetValueOrDefault(), out UInt256 blobCost)
-            || UInt256.AddOverflow(gasCost, blobCost, out maxCost))
-        {
-            maxCost = UInt256.Zero;
-            return false;
-        }
-
-        return true;
+        ulong maxGas = transaction.Frames is not null && TryCalculateGasBudget(transaction, spec, out _, out _, out ulong gasBudget)
+            ? gasBudget
+            : transaction.GasLimit;
+        UInt256 maxFee = transaction.MaxFee;
+        return !UInt256.MultiplyOverflow((UInt256)transaction.GetBlobGas(), feePerBlobGas, out UInt256 blobFee)
+            && FrameTxFeeBudget.TryCalculate(in maxFee, in transaction.MaxPriorityFeePerGas, maxGas, in baseFee, in blobFee, out UInt256 requiredMaxFee, out _)
+            && maxFee >= requiredMaxFee;
     }
 
     private static bool CalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas, bool estimateSignatureBytes = false)
@@ -719,7 +718,9 @@ public static class FrameTxValidation
             {
                 tokens += signature.Signer is null ? 0 : CountCalldataTokens(signature.Signer.Bytes, spec);
                 tokens += CountCalldataTokens(signature.Msg.Span, spec);
-                tokens += CountCalldataTokens(signature.Signature.Span, spec);
+                tokens += signature.SignsCanonicalHash
+                    ? (ulong)signature.Signature.Length * spec.GasCosts.TxDataNonZeroMultiplier
+                    : CountCalldataTokens(signature.Signature.Span, spec);
                 dataLength += (ulong)(signature.Signer is null ? 0 : Address.Size)
                               + (ulong)signature.Msg.Length
                               + (ulong)signature.Signature.Length;
@@ -744,10 +745,7 @@ public static class FrameTxValidation
             (int zeroBytes, int nonZeroBytes) = transaction.FrameCalldataStats;
             tokens += (ulong)zeroBytes + (ulong)nonZeroBytes * spec.GasCosts.TxDataNonZeroMultiplier;
             dataLength += (ulong)(zeroBytes + nonZeroBytes);
-            if (nonceKeys is not [{ IsZero: true }])
-            {
-                keyedNonceAccessCost = (ulong)nonceKeys.Length * Eip8250Constants.KeyedNonceAccessCost;
-            }
+            keyedNonceAccessCost = (ulong)nonceKeys.Length * Eip8250Constants.KeyedNonceAccessCost;
         }
 
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost

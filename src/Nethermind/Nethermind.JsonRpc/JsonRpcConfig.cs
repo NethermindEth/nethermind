@@ -53,6 +53,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public string CallsFilterFilePath { get; set; } = "Data/jsonrpc.filter";
     public long? MaxRequestBodySize { get; set; } = 30000000;
     public int MaxLogsPerResponse { get; set; } = 20_000;
+    public int OverlayMaxBlockRange { get; set; } = 1_000;
     public bool EnableTracingStreamMode { get; set; } = true;
     public bool EnableLogsStreamMode { get; set; } = false;
     public long? MaxLogsResponseBodySize { get; set; } = null;
@@ -85,8 +86,11 @@ public class JsonRpcConfig : IJsonRpcConfig
     public ulong RpcTxFeeCap { get; set; } = (ulong)1.Ether;
     public bool EnableEthSignTransaction { get; set; }
     public string[] CorsOrigins { get; set; } = ["*"];
+    public string[] AllowedHosts { get; set; } = ["*"];
+    public string[] EngineAllowedHosts { get; set; } = ["*"];
     public int WebSocketsProcessingConcurrency { get; set; } = 16;
     public int IpcProcessingConcurrency { get; set; } = 16;
+    public int BatchProcessingConcurrency { get; set; } = 4;
     public bool EnablePerMethodMetrics { get; set; } = true;
     public int FiltersTimeout { get; set; } = 900000;
     public bool PreloadRpcModules { get; set; }

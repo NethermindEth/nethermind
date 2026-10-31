@@ -141,8 +141,11 @@ public class NonceManagerTests
         Assert.That(result.IsCompleted, Is.True);
         using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce);
         nonces.Enqueue(nonce);
-        Assert.That(nonce, Is.EqualTo((ulong)reservationsCount));
-        Assert.That(nonces.OrderBy(n => n), Is.EqualTo(Enumerable.Range(0, reservationsCount + 1).Select(i => (ulong)i)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nonce, Is.EqualTo((ulong)reservationsCount));
+            Assert.That(nonces.OrderBy(n => n), Is.EqualTo(Enumerable.Range(0, reservationsCount + 1).Select(i => (ulong)i)));
+        }
     }
 
     [Test]
@@ -171,13 +174,16 @@ public class NonceManagerTests
 
         Assert.Throws<InvalidOperationException>(() => _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out _));
 
-        Task<ulong> next = Task.Run(() =>
+        // A dedicated thread, so the bounded wait below does not also count how long the thread pool takes to start it.
+        Task<ulong> next = Task.Factory.StartNew(() =>
         {
             using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce);
             return nonce;
-        });
+        }, TaskCreationOptions.LongRunning);
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before reading the result; .Result has no timeout.
         Assert.That(next.Wait(TimeSpan.FromSeconds(5)), Is.True, "a failed reservation must not keep the account locked");
+#pragma warning restore NUnit2045
         Assert.That(next.Result, Is.EqualTo(3UL));
     }
 
@@ -502,8 +508,11 @@ public class NonceManagerTests
 
         using (NonceLocker locker = nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong first))
         {
-            Assert.That(swept, Is.True, "precondition: the sweep ran between adding the entry and locking it");
-            Assert.That(first, Is.EqualTo(0UL), "the account nonce is free");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(swept, Is.True, "precondition: the sweep ran between adding the entry and locking it");
+                Assert.That(first, Is.EqualTo(0UL), "the account nonce is free");
+            }
             Accept(locker, TestItem.AddressA, first);
         }
 
@@ -731,20 +740,25 @@ public class NonceManagerTests
         Task<ulong> concurrent;
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
         {
-            concurrent = Task.Run(() =>
+            concurrent = Task.Factory.StartNew(() =>
             {
                 reserving.Set();
                 using NonceLocker concurrentLocker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong concurrentNonce);
                 Accept(concurrentLocker, TestItem.AddressA, concurrentNonce);
                 return concurrentNonce;
-            });
+            }, TaskCreationOptions.LongRunning);
             Assert.That(reserving.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: the concurrent reservation has started");
-            Assert.That(concurrent.Wait(100), Is.False, "the concurrent reservation must wait for the in-flight one");
-            Assert.That(nonce, Is.EqualTo(0UL));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(concurrent.Wait(100), Is.False, "the concurrent reservation must wait for the in-flight one");
+                Assert.That(nonce, Is.EqualTo(0UL));
+            }
             Accept(locker, TestItem.AddressA, nonce);
         }
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before reading the result; .Result has no timeout.
         Assert.That(concurrent.Wait(TimeSpan.FromSeconds(10)), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(concurrent.Result, Is.EqualTo(1UL));
     }
 
@@ -786,8 +800,11 @@ public class NonceManagerTests
             }
         }
 
-        Assert.That(waiting.Join(TimeSpan.FromSeconds(10)), Is.True);
-        Assert.That(waitingNonce, Is.EqualTo(7UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waiting.Join(TimeSpan.FromSeconds(10)), Is.True);
+            Assert.That(waitingNonce, Is.EqualTo(7UL));
+        }
     }
 
     [Test]

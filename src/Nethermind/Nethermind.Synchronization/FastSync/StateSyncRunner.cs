@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -20,6 +21,7 @@ namespace Nethermind.Synchronization.FastSync;
 
 public class StateSyncRunner(
     ISnapSyncRunner snapSyncRunner,
+    ISnapTrieFactory snapTrieFactory,
     IBalHealing balHealing,
     StateHealingStrategy healingStrategy,
     BalFetcher balFetcher,
@@ -32,11 +34,20 @@ public class StateSyncRunner(
     ISyncProgressResolver syncProgressResolver,
     IBeaconSyncStrategy beaconSyncStrategy,
     ISyncPeerPool syncPeerPool,
+    ITimestamper timestamper,
     [KeyFilter(DbNames.State)] ITunableDb? stateDb,
     [KeyFilter(DbNames.Code)] ITunableDb? codeDb,
     ILogManager logManager,
     IVerifyTrieStarter? verifyTrieStarter = null) : IStateSyncRunner
 {
+    /// <summary>The oldest checkpoint anchor a snap sync resumes from; an older checkpoint is discarded and the sync starts over.</summary>
+    /// <remarks>
+    /// The ranges a resumed sync keeps are as old as its anchor, so the longer a node was offline, the more healing has
+    /// to repair, while resuming saves at most one range phase. A day also stays well inside the minimum BAL retention
+    /// (about 63 days on mainnet), past which peers need not serve the block access lists BAL healing replays from the anchor.
+    /// </remarks>
+    private static readonly TimeSpan MaxResumedAnchorAge = TimeSpan.FromDays(1);
+
     private readonly ILogger _logger = logManager.GetClassLogger<StateSyncRunner>();
 
     public async Task Run(CancellationToken token)
@@ -56,13 +67,18 @@ public class StateSyncRunner(
             {
                 if (syncConfig.SnapSync)
                 {
-                    BlockHeader firstPivot = await WaitForStateSyncPivot(token);
+                    BlockHeader firstPivot = GetResumedAnchor() ?? await WaitForStateSyncPivot(token);
                     healingStrategy.SetPivot(firstPivot);
 
                     if (healingStrategy.CanBalHeal)
+                    {
                         await RunSnapSyncWithBalHealing(firstPivot, token);
+                    }
                     else
+                    {
                         await RunSnapSync(token);
+                        DeleteCheckpointBeforeHealing(token);
+                    }
                 }
 
                 if (!healingStrategy.CanBalHeal)
@@ -95,6 +111,36 @@ public class StateSyncRunner(
         return pivot;
     }
 
+    /// <summary>Returns the pivot the downloaded state of a resumed snap sync starts from, or <c>null</c> when there is none to resume.</summary>
+    /// <remarks>
+    /// Healing with block access lists replays from the first pivot, and a resumed sync keeps ranges downloaded at the
+    /// pivots of the earlier run, so it has to replay from where those started. A checkpoint whose anchor is no longer
+    /// canonical, is not a pivot the sync pivot allows any more, or is older than <see cref="MaxResumedAnchorAge"/>, is
+    /// deleted so that the snap sync starts over.
+    /// </remarks>
+    internal BlockHeader? GetResumedAnchor()
+    {
+        if (!syncConfig.SnapResume || snapTrieFactory.LoadCheckpoint() is not { } checkpoint) return null;
+
+        BlockHeader? anchor = blockTree.FindHeader(checkpoint.AnchorHash, BlockTreeLookupOptions.None, checkpoint.AnchorNumber);
+        ulong syncPivot = blockTree.SyncPivot.BlockNumber;
+        bool allowedBySyncPivot = syncConfig.StaticSnapPivot ? anchor?.Number == syncPivot : anchor?.Number > syncPivot;
+        if (anchor is not null && allowedBySyncPivot && blockTree.IsMainChain(anchor))
+        {
+            TimeSpan age = TimeSpan.FromSeconds(timestamper.UnixTime.Seconds.SaturatingSub(anchor.Timestamp));
+            if (syncConfig.StaticSnapPivot || age <= MaxResumedAnchorAge) return anchor;
+
+            if (_logger.IsWarn) _logger.Warn($"Not resuming the snap sync: its checkpoint starts from block {anchor.Number} ({anchor.Hash}), {age.TotalHours:N0} hours ago, past the {MaxResumedAnchorAge.TotalHours:N0} hours a resumed sync may start from.");
+        }
+        else if (_logger.IsWarn)
+        {
+            _logger.Warn($"Not resuming the snap sync: its checkpoint starts from block {checkpoint.AnchorNumber} ({checkpoint.AnchorHash}), which is no longer a usable pivot.");
+        }
+
+        snapTrieFactory.SaveCheckpoint(null);
+        return null;
+    }
+
     private async Task RunSnapSync(CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info("Starting snap sync.");
@@ -102,29 +148,81 @@ public class StateSyncRunner(
         if (_logger.IsInfo) _logger.Info("Snap sync completed.");
     }
 
-    /// <remarks>A deep reorg orphans the synced state, so it is discarded and synced again from a canonical pivot.</remarks>
+    /// <remarks>
+    /// A deep reorg orphans the synced state, so it is discarded and synced again from a canonical pivot, as is the state
+    /// of a resumed sync that healing fails on.
+    /// <para>
+    /// Healing writes are not durable until they are flushed, so the checkpoint of the finished state ranges is deleted
+    /// before healing starts, and a crash during healing starts the sync over. A graceful shutdown flushes them and saves
+    /// the checkpoint again, so that the restarted sync heals again from its anchor.
+    /// </para>
+    /// </remarks>
     public async Task RunSnapSyncWithBalHealing(BlockHeader pivot, CancellationToken token)
     {
+        bool resumed = syncConfig.SnapResume && snapTrieFactory.LoadCheckpoint() is not null;
         while (true)
         {
             await RunSnapSync(token);
+            SnapCheckpoint? checkpoint = DeleteCheckpointBeforeHealing(token);
 
             try
             {
                 await RunBalHealing(pivot, token);
                 return;
             }
+            catch (OperationCanceledException) when (token.IsCancellationRequested && checkpoint is not null)
+            {
+                SaveCheckpointAtShutdown(checkpoint);
+                throw;
+            }
             catch (PivotReorgedException e)
             {
                 if (_logger.IsWarn) _logger.Warn($"{e.Message} Discarding the synced state and starting over.");
-
-                pivot = await WaitForStateSyncPivot(token);
-                while (!blockTree.IsMainChain(pivot))
-                {
-                    await Task.Delay(1000, token);
-                    pivot = await WaitForStateSyncPivot(token);
-                }
             }
+            catch (Exception e) when (resumed && !token.IsCancellationRequested)
+            {
+                if (_logger.IsWarn) _logger.Warn($"BAL healing of the resumed snap sync failed. Discarding the synced state and starting over: {e}");
+            }
+
+            resumed = false;
+            pivot = await WaitForStateSyncPivot(token);
+            while (!blockTree.IsMainChain(pivot))
+            {
+                await Task.Delay(1000, token);
+                pivot = await WaitForStateSyncPivot(token);
+            }
+        }
+    }
+
+    /// <summary>Deletes the checkpoint of the finished state ranges, so that a crash during healing starts the sync over.</summary>
+    /// <returns>The deleted checkpoint, or <c>null</c> when there was none.</returns>
+    /// <remarks>
+    /// Healing writes are not crash-durable, and trie-node healing skips a node already present by hash, so a node
+    /// left without its flat entries would never be written again. A shutdown during the ranges returns from the snap
+    /// sync with the checkpoint of the partial ranges saved, so that one is left as it is.
+    /// </remarks>
+    private SnapCheckpoint? DeleteCheckpointBeforeHealing(CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        SnapCheckpoint? checkpoint = syncConfig.SnapResume ? snapTrieFactory.LoadCheckpoint() : null;
+        if (checkpoint is not null) snapTrieFactory.SaveCheckpoint(null);
+        return checkpoint;
+    }
+
+    /// <remarks>
+    /// Kept short, as the shutdown waits for state sync only so long. A failure is logged rather than thrown, so that it
+    /// does not read as a failed sync: the restarted sync then starts over.
+    /// </remarks>
+    private void SaveCheckpointAtShutdown(SnapCheckpoint checkpoint)
+    {
+        try
+        {
+            snapTrieFactory.SaveCheckpoint(checkpoint);
+            if (_logger.IsInfo) _logger.Info($"Saved the snap sync checkpoint at shutdown; BAL healing resumes from block {checkpoint.AnchorNumber} on restart.");
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Could not save the snap sync checkpoint at shutdown, so the sync starts over on restart: {e}");
         }
     }
 
@@ -189,6 +287,8 @@ public class StateSyncRunner(
             currentPivot = roundPivot;
         }
 
+        // A shutdown between rounds has to throw as one during a round does, so that the checkpoint is saved again.
+        token.ThrowIfCancellationRequested();
         if (finalPivot is null) return;
 
         while (!await balHealing.TryRecoverMissingCode(token))

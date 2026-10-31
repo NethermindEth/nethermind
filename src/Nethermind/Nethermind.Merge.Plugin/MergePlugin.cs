@@ -95,7 +95,7 @@ public class MergePluginModule : Module
             .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
             .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
 
-            .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
+            .AddDecorator<IRewardCalculator, MergeRewardCalculator>()
             .AddDecorator<ISealValidator, MergeSealValidator>()
             .AddDecorator<ISealer, MergeSealer>()
 
@@ -174,6 +174,7 @@ public class BaseMergePluginModule : Module
             // Engine rpc related
             .AddComposite<IBuilderOverridePolicy, CompositeBuilderOverridePolicy>()
             .RegisterSingletonJsonRpcModule<IEngineRpcModule, EngineRpcModule>()
+                .AddSingleton<PayloadTransactionCountGuard>()
                 .AddSingleton<IPayloadPreparationService, PayloadPreparationService>()
                     .AddSingleton<IBlockImprovementContextFactory>(CreateBlockImprovementContextFactory)
 
@@ -198,6 +199,7 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>, GetBlobsHandlerV4>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
+                .AddSingleton<BlockWitnessGenerator>()
                 .AddSingleton<NewPayloadWithWitnessHandler>()
                 .Bind<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>, NewPayloadWithWitnessHandler>()
                 .Bind<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>, NewPayloadWithWitnessHandler>()

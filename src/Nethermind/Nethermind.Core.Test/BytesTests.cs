@@ -660,6 +660,14 @@ namespace Nethermind.Core.Test
             Assert.That(first, Is.EqualTo(expected));
         }
 
+        // Hosts take a SIMD branch of Or for spans of 16 bytes or more, so the four-word loop runs only here.
+        [TestCaseSource(nameof(OrTests))]
+        public void OrScalar(byte[] first, byte[] second, byte[] expected)
+        {
+            Bytes.OrScalar(first, second);
+            Assert.That(first, Is.EqualTo(expected));
+        }
+
         [TestCaseSource(nameof(XorTests))]
         public void Xor(byte[] first, byte[] second, byte[] expected)
         {
@@ -1284,23 +1292,25 @@ namespace Nethermind.Core.Test
 
         /// <summary>
         /// The scalar loop the vector paths leave only a short tail to on the host: lengths span several of its
-        /// lane-count chunks, and the fills hit the byte values its per-lane carry logic distinguishes.
+        /// lane-count chunks, the fills hit the byte values its per-lane carry logic distinguishes, and the starts
+        /// put the first word boundary at each end of the bytes it counts one by one.
         /// </summary>
         [Test]
         public void CountZerosWordAtATime_matches_naive(
             [Values(0, 7, 8, 31, 32, 39, 223, 224, 225, 231, 247, 248, 249, 255, 256, 257, 496, 1000, 2049)] int length,
-            [Values(-1, 0x00, 0x01, 0x7F, 0x80, 0xFF)] int fill)
+            [Values(-1, 0x00, 0x01, 0x7F, 0x80, 0xFF)] int fill,
+            [Values(0, 1, 7)] int start)
         {
             Random rng = new(length);
-            byte[] data = new byte[length];
+            byte[] data = new byte[start + length];
             int expected = 0;
-            for (int i = 0; i < length; i++)
+            for (int i = start; i < data.Length; i++)
             {
                 data[i] = fill >= 0 ? (byte)fill : rng.Next(3) == 0 ? (byte)0 : (byte)rng.Next(256);
                 if (data[i] == 0) expected++;
             }
 
-            Assert.That(Bytes.CountZerosWordAtATime(data), Is.EqualTo(expected));
+            Assert.That(Bytes.CountZerosWordAtATime(data.AsSpan(start)), Is.EqualTo(expected));
         }
 
         private static IEnumerable<TestCaseData> LeadingZerosCountCases()

@@ -356,6 +356,20 @@ public class SszCodecTests
             requests, executionRequest);
     }
 
+    [Test]
+    public void DecodeNewPayload_v5_keeps_empty_block_access_list_present()
+    {
+        NewPayloadV5RequestWire wire = new()
+        {
+            ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList: [], slotNumber: 0)),
+            ParentBeaconBlockRoot = TestItem.KeccakD,
+        };
+
+        NewPayloadV5RequestWire.Decode(NewPayloadV5RequestWire.Encode(wire), out NewPayloadV5RequestWire decoded);
+
+        Assert.That(decoded.ExecutionPayload.AsExecutionPayload().BlockAccessList, Is.Not.Null.And.Empty);
+    }
+
     private static IEnumerable<TestCaseData> BufferConsistentEncodings()
     {
         yield return new TestCaseData((Action<IBufferWriter<byte>>)(w =>
@@ -387,8 +401,11 @@ public class SszCodecTests
         ReadOnlySpan<byte> buffer = w.WrittenSpan;
 
         uint epOffset = BitConverter.ToUInt32(buffer.Slice(0, 4));
-        Assert.That(epOffset, Is.EqualTo((uint)BuiltPayloadParisFixedSize), "payload variable-length offset @ 0 must point at the 36-byte fixed-section end");
-        Assert.That(new UInt256(buffer.Slice(4, 32), isBigEndian: false), Is.EqualTo(blockValue), "block_value @ offset 4 (32 bytes, little-endian)");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(epOffset, Is.EqualTo((uint)BuiltPayloadParisFixedSize), "payload variable-length offset @ 0 must point at the 36-byte fixed-section end");
+            Assert.That(new UInt256(buffer.Slice(4, 32), isBigEndian: false), Is.EqualTo(blockValue), "block_value @ offset 4 (32 bytes, little-endian)");
+        }
 
         ReadOnlySpan<byte> payload = buffer[BuiltPayloadParisFixedSize..];
         Assert.That(payload.Length, Is.GreaterThan(440 + 32), "encoded inner payload must be large enough to contain baseFeePerGas");
@@ -428,8 +445,11 @@ public class SszCodecTests
         ReadOnlySpan<byte> outer = w.WrittenSpan;
 
         uint epOffset = BitConverter.ToUInt32(outer.Slice(0, 4));
-        Assert.That(epOffset, Is.EqualTo((uint)BuiltPayloadParisFixedSize), "payload offset @ 0 must equal the 36-byte fixed-section size");
-        Assert.That(new UInt256(outer.Slice(4, 32), isBigEndian: false), Is.EqualTo(blockValue), "block_value @ offset 4");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(epOffset, Is.EqualTo((uint)BuiltPayloadParisFixedSize), "payload offset @ 0 must equal the 36-byte fixed-section size");
+            Assert.That(new UInt256(outer.Slice(4, 32), isBigEndian: false), Is.EqualTo(blockValue), "block_value @ offset 4");
+        }
 
         ReadOnlySpan<byte> buf = outer[BuiltPayloadParisFixedSize..];
 
@@ -512,9 +532,12 @@ public class SszCodecTests
 
         uint pidOffset = BitConverter.ToUInt32(buf.Slice(4, 4));
         Assert.That(pidOffset, Is.GreaterThanOrEqualTo(8u), "payload_id offset @ 4 must point past the 8-byte fixed section");
-        Assert.That(pidOffset, Is.LessThan((uint)buf.Length), "payload_id offset must be within the encoded buffer");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pidOffset, Is.LessThan((uint)buf.Length), "payload_id offset must be within the encoded buffer");
 
-        Assert.That(buf[(int)psOffset], Is.EqualTo(0), "first byte of the embedded PayloadStatus sub-container must be 0x00 (VALID)");
+            Assert.That(buf[(int)psOffset], Is.EqualTo(0), "first byte of the embedded PayloadStatus sub-container must be 0x00 (VALID)");
+        }
 
         int pidEnd = (int)pidOffset + 8;
         Assert.That(buf.Length, Is.GreaterThanOrEqualTo(pidEnd), "encoded buffer must be large enough to hold the payload_id bytes");
@@ -533,14 +556,20 @@ public class SszCodecTests
         Assert.That(buf.Length, Is.GreaterThanOrEqualTo(fixedSectionSize), $"encoded {version} response must cover the {fixedSectionSize}-byte fixed section");
 
         uint epOffset = BitConverter.ToUInt32(buf.Slice(0, 4));
-        Assert.That(epOffset, Is.GreaterThanOrEqualTo((uint)fixedSectionSize), $"execution_payload offset @ 0 must point past the {fixedSectionSize}-byte fixed section");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(epOffset, Is.GreaterThanOrEqualTo((uint)fixedSectionSize), $"execution_payload offset @ 0 must point past the {fixedSectionSize}-byte fixed section");
 
-        Assert.That(new UInt256(buf.Slice(4, 32), isBigEndian: false), Is.EqualTo(expectedBlockValue), "block_value must be encoded at byte offset 4");
+            Assert.That(new UInt256(buf.Slice(4, 32), isBigEndian: false), Is.EqualTo(expectedBlockValue), "block_value must be encoded at byte offset 4");
+        }
 
         uint bbOffset = BitConverter.ToUInt32(buf.Slice(36, 4));
-        Assert.That(bbOffset, Is.GreaterThanOrEqualTo((uint)fixedSectionSize), $"blobs_bundle offset @ 36 must point past the {fixedSectionSize}-byte fixed section");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bbOffset, Is.GreaterThanOrEqualTo((uint)fixedSectionSize), $"blobs_bundle offset @ 36 must point past the {fixedSectionSize}-byte fixed section");
 
-        Assert.That(buf[shouldOverrideBuilderOffset], Is.EqualTo(expectedShouldOverrideBuilder), $"should_override_builder must encode as 0x{expectedShouldOverrideBuilder:X2} at offset {shouldOverrideBuilderOffset}");
+            Assert.That(buf[shouldOverrideBuilderOffset], Is.EqualTo(expectedShouldOverrideBuilder), $"should_override_builder must encode as 0x{expectedShouldOverrideBuilder:X2} at offset {shouldOverrideBuilderOffset}");
+        }
     }
 
     [Test]
@@ -589,17 +618,23 @@ public class SszCodecTests
         PayloadAttributes? attrs = decoded.PayloadAttributes is { Length: > 0 } a
             ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
 
-        Assert.That(state.HeadBlockHash, Is.EqualTo(TestItem.KeccakA));
-        Assert.That(state.SafeBlockHash, Is.EqualTo(TestItem.KeccakB));
-        Assert.That(state.FinalizedBlockHash, Is.EqualTo(TestItem.KeccakC));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.HeadBlockHash, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(state.SafeBlockHash, Is.EqualTo(TestItem.KeccakB));
+            Assert.That(state.FinalizedBlockHash, Is.EqualTo(TestItem.KeccakC));
 
-        Assert.That(attrs, Is.Not.Null);
-        Assert.That(attrs!.Timestamp, Is.EqualTo(0x1122334455667788UL));
-        Assert.That(attrs.PrevRandao, Is.EqualTo(TestItem.KeccakD));
-        Assert.That(attrs.SuggestedFeeRecipient, Is.EqualTo(TestItem.AddressA));
-        Assert.That(attrs.Withdrawals, Is.Empty);
+            Assert.That(attrs, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attrs!.Timestamp, Is.EqualTo(0x1122334455667788UL));
+            Assert.That(attrs.PrevRandao, Is.EqualTo(TestItem.KeccakD));
+            Assert.That(attrs.SuggestedFeeRecipient, Is.EqualTo(TestItem.AddressA));
+            Assert.That(attrs.Withdrawals, Is.Empty);
 
-        Assert.That(attrs.ParentBeaconBlockRoot, Is.Not.Null, "parent_beacon_block_root must be decoded from the fixed-position Bytes32, not a list offset");
+            Assert.That(attrs.ParentBeaconBlockRoot, Is.Not.Null, "parent_beacon_block_root must be decoded from the fixed-position Bytes32, not a list offset");
+        }
         Assert.That(attrs.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakE), "parent_beacon_block_root must round-trip exactly");
     }
 
@@ -642,14 +677,22 @@ public class SszCodecTests
         PayloadAttributes? attrs = decoded.PayloadAttributes is { Length: > 0 } a
             ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
 
-        Assert.That(state.HeadBlockHash, Is.EqualTo(TestItem.KeccakA));
-        Assert.That(attrs, Is.Not.Null);
-        Assert.That(attrs!.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakE), "parent_beacon_block_root must round-trip in V4 as a fixed Bytes32");
-        Assert.That(attrs.SlotNumber, Is.EqualTo(expectedSlot), "slot_number must be decoded from the fixed uint64 that follows parent_beacon_block_root");
-        Assert.That(attrs.TargetGasLimit, Is.EqualTo((long)expectedTargetGasLimit), "target_gas_limit must be decoded from the fixed uint64 that follows slot_number");
-        Assert.That(attrs.SuggestedFeeRecipient, Is.EqualTo(TestItem.AddressB));
-        Assert.That(decoded.CustodyColumns, Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.HeadBlockHash, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(attrs, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attrs!.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakE), "parent_beacon_block_root must round-trip in V4 as a fixed Bytes32");
+            Assert.That(attrs.SlotNumber, Is.EqualTo(expectedSlot), "slot_number must be decoded from the fixed uint64 that follows parent_beacon_block_root");
+            Assert.That(attrs.TargetGasLimit, Is.EqualTo((long)expectedTargetGasLimit), "target_gas_limit must be decoded from the fixed uint64 that follows slot_number");
+            Assert.That(attrs.SuggestedFeeRecipient, Is.EqualTo(TestItem.AddressB));
+            Assert.That(decoded.CustodyColumns, Has.Length.EqualTo(1));
+        }
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(decoded.CustodyColumns![0].Bits, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(BitsEqual(decoded.CustodyColumns![0].Bits!, expectedCustodyColumns), Is.True);
     }
 
@@ -698,14 +741,17 @@ public class SszCodecTests
 
         byte[] attrsEncoded = PayloadAttributesWire.Encode(attrsWire);
 
-        Assert.That(attrsEncoded, Has.Length.EqualTo(112),
-            "fixed section: timestamp(8) + prev_randao(32) + fee_recipient(20) + withdrawals offset(4) + parent_beacon_block_root(32) + slot_number(8) + target_gas_limit(8)");
-        Assert.That(BinaryPrimitives.ReadUInt64LittleEndian(attrsEncoded.AsSpan(96, 8)), Is.EqualTo(attrsWire.SlotNumber),
-            "slot_number must occupy bytes 96..104, directly after parent_beacon_block_root");
-        Assert.That(BinaryPrimitives.ReadUInt64LittleEndian(attrsEncoded.AsSpan(104, 8)), Is.EqualTo(attrsWire.TargetGasLimit),
-            "target_gas_limit must occupy bytes 104..112, directly after slot_number");
-        Assert.That(BitConverter.ToUInt32(attrsEncoded, 60), Is.EqualTo(112),
-            "the empty withdrawals list offset must point past the whole fixed section");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attrsEncoded, Has.Length.EqualTo(112),
+                "fixed section: timestamp(8) + prev_randao(32) + fee_recipient(20) + withdrawals offset(4) + parent_beacon_block_root(32) + slot_number(8) + target_gas_limit(8)");
+            Assert.That(BinaryPrimitives.ReadUInt64LittleEndian(attrsEncoded.AsSpan(96, 8)), Is.EqualTo(attrsWire.SlotNumber),
+                "slot_number must occupy bytes 96..104, directly after parent_beacon_block_root");
+            Assert.That(BinaryPrimitives.ReadUInt64LittleEndian(attrsEncoded.AsSpan(104, 8)), Is.EqualTo(attrsWire.TargetGasLimit),
+                "target_gas_limit must occupy bytes 104..112, directly after slot_number");
+            Assert.That(BitConverter.ToUInt32(attrsEncoded, 60), Is.EqualTo(112),
+                "the empty withdrawals list offset must point past the whole fixed section");
+        }
     }
 
     [Test]
@@ -776,6 +822,26 @@ public class SszCodecTests
             new GetPayloadV6Result(block, blockValue, new BlobsBundleV2(block), executionRequests: [], shouldOverrideBuilder: false), w);
 
         AssertPragueBuiltPayloadOffsets(w.WrittenSpan, blockValue, expectedShouldOverrideBuilder: 0, version: "V6");
+    }
+
+    [Test]
+    public void EncodeGetPayloadWithWitnessV6Response_embeds_the_built_payload_encoding()
+    {
+        Block block = (Block)SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 42UL).TryGetBlock();
+        GetPayloadV6Result result = new(block, new UInt256(7), new BlobsBundleV2(block), executionRequests: [], shouldOverrideBuilder: false);
+        using Witness witness = MakeMinimalWitness();
+
+        byte[] builtPayload = Encode(result, static (r, w) => SszCodec.EncodeGetPayloadV6Response(r, w));
+        byte[] encoded = Encode((result, witness), static (t, w) => SszCodec.EncodeGetPayloadWithWitnessV6Response(t.Item1, t.Item2, w));
+
+        // Both fields are variable-size: an 8-byte fixed section of offsets, then built_payload, then witness.
+        int builtPayloadOffset = (int)BinaryPrimitives.ReadUInt32LittleEndian(encoded);
+        int witnessOffset = (int)BinaryPrimitives.ReadUInt32LittleEndian(encoded.AsSpan(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builtPayloadOffset, Is.EqualTo(8));
+            Assert.That(encoded[builtPayloadOffset..witnessOffset], Is.EqualTo(builtPayload));
+        }
     }
 
     // Shared assertion for the Prague+ BuiltPayload fixed section: identical for V4/V5/V6 since
@@ -882,19 +948,28 @@ public class SszCodecTests
 
         PayloadStatusWithWitnessWire.Decode(encoded, out PayloadStatusWithWitnessWire wire);
 
-        Assert.That(wire.PayloadStatus.Status, Is.EqualTo((byte)0x00), "VALID encodes as status byte 0x00");
-        Assert.That(wire.PayloadStatus.LatestValidHash, Is.Not.Null.And.Length.EqualTo(1));
-        Assert.That(wire.PayloadStatus.LatestValidHash![0], Is.EqualTo(TestItem.KeccakB));
-        Assert.That(wire.Witness, Is.Not.Null.And.Length.EqualTo(1), "VALID + witness => present as a length-1 list");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wire.PayloadStatus.Status, Is.EqualTo((byte)0x00), "VALID encodes as status byte 0x00");
+            Assert.That(wire.PayloadStatus.LatestValidHash, Is.Not.Null.And.Length.EqualTo(1));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wire.PayloadStatus.LatestValidHash![0], Is.EqualTo(TestItem.KeccakB));
+            Assert.That(wire.Witness, Is.Not.Null.And.Length.EqualTo(1), "VALID + witness => present as a length-1 list");
+        }
 
         ExecutionWitnessV1Wire w = wire.Witness![0];
-        Assert.That(w.State!.Length, Is.EqualTo(2));
-        Assert.That(w.State[0].Bytes, Is.EqualTo(stateNode1));
-        Assert.That(w.State[1].Bytes, Is.EqualTo(stateNode2));
-        Assert.That(w.Codes!.Length, Is.EqualTo(1));
-        Assert.That(w.Codes[0].Bytes, Is.EqualTo(codeItem));
-        Assert.That(w.Headers!.Length, Is.EqualTo(1));
-        Assert.That(w.Headers[0].Bytes, Is.EqualTo(headerBlob));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(w.State!.Length, Is.EqualTo(2));
+            Assert.That(w.State[0].Bytes, Is.EqualTo(stateNode1));
+            Assert.That(w.State[1].Bytes, Is.EqualTo(stateNode2));
+            Assert.That(w.Codes!.Length, Is.EqualTo(1));
+            Assert.That(w.Codes[0].Bytes, Is.EqualTo(codeItem));
+            Assert.That(w.Headers!.Length, Is.EqualTo(1));
+            Assert.That(w.Headers[0].Bytes, Is.EqualTo(headerBlob));
+        }
     }
 
     [Test]
@@ -910,9 +985,12 @@ public class SszCodecTests
         (byte decodedStatusByte, _, bool witnessPresent) =
             SszCodec.DecodeNewPayloadWithWitnessResponse(encoded);
 
-        Assert.That(decodedStatusByte, Is.EqualTo(0x01), "INVALID encodes as status byte 0x01");
-        Assert.That(witnessPresent, Is.False,
-            "INVALID status must not carry a witness even when one was passed to the encoder");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decodedStatusByte, Is.EqualTo(0x01), "INVALID encodes as status byte 0x01");
+            Assert.That(witnessPresent, Is.False,
+                "INVALID status must not carry a witness even when one was passed to the encoder");
+        }
     }
 
     public enum WitnessField { State, Codes, Headers }

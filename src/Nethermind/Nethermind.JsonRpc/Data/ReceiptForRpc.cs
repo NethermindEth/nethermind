@@ -8,9 +8,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
+    [GenerateJsonWriter]
     public class ReceiptForRpc
     {
         public ReceiptForRpc()
@@ -96,7 +98,7 @@ namespace Nethermind.JsonRpc.Data
         public Address From { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public Address To { get; set; }
+        public Address? To { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address? ContractAddress { get; set; }

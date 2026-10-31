@@ -117,6 +117,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         {
             // JSON-RPC standard codes (-32xxx)
             ErrorCodes.ParseError => "/engine-api/errors/parse-error",
+            ErrorCodes.InvalidParams => "/engine-api/errors/invalid-body",
 
             // Engine-API extension codes (-38xxx)
             MergeErrorCodes.UnknownPayload => "/engine-api/errors/unknown-payload",
@@ -172,6 +173,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         MergeErrorCodes.InvalidPayloadAttributes => StatusCodes.Status422UnprocessableEntity,
         MergeErrorCodes.TooLargeRequest => StatusCodes.Status413PayloadTooLarge,
         MergeErrorCodes.UnsupportedFork => StatusCodes.Status400BadRequest,
+        ErrorCodes.InvalidParams => StatusCodes.Status422UnprocessableEntity,
         ErrorCodes.MethodNotFound => StatusCodes.Status404NotFound,
         ErrorCodes.InternalError => StatusCodes.Status500InternalServerError,
         _ => StatusCodes.Status400BadRequest

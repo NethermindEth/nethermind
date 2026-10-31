@@ -422,29 +422,6 @@ namespace Nethermind.Consensus.Processing
             if (data.BaseBlock is null || !_stateReader.HasStateForBlock(data.BaseBlock) || block.StateRoot is null || !_stateReader.HasStateForBlock(block.Header))
                 return;
 
-            UInt256 rewards = default;
-            try
-            {
-                if (!isMev)
-                {
-                    rewards = CalculateBalanceChange(data.BaseBlock, block.Header, beneficiary);
-                }
-                else
-                {
-                    // Sometimes the beneficiary has done their own balance changing tx
-                    // So prefer the mev reward tx value
-                    rewards = lastTx.Value;
-                    if (rewards.IsZero)
-                    {
-                        rewards = CalculateBalanceChange(data.BaseBlock, block.Header, lastTx.To);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error("Error when calculating block rewards", ex);
-            }
-
             long reportMs = GetReportMs();
             if (reportMs - _lastReportMs > 1000 || _logger.IsDebug)
             {
@@ -491,9 +468,7 @@ namespace Nethermind.Consensus.Processing
             double chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000.0);
             double runMs = (data.RunMicroseconds == 0 ? -1 : data.RunMicroseconds / 1000.0);
             string blockGas = "";
-            // Read the stable gauges (published once per block, never reset) rather than the transient
-            // per-block aggregates: GenerateReport runs on the ThreadPool and can fire after the next
-            // block's ResetBlockStats has already cleared the transient values.
+            // Read the gauges, published once per processed block and never reset.
             if (Evm.Metrics.GasPriceMax != 0f)
             {
                 float minGas = Evm.Metrics.GasPriceMin;
@@ -533,6 +508,8 @@ namespace Nethermind.Consensus.Processing
 
             if (_logger.IsInfo)
             {
+                // Two balance reads that only the single-block line shows, so they wait for the throttle and the level.
+                UInt256 rewards = chunkBlocks > 1 ? default : CalculateRewards();
                 if (chunkBlocks > 1)
                 {
                     _logger.Info($"Processed    {chunkFirstBlockNumber,10}...{block.Number,9}   | {chunkMs,10:N1} ms  | slot    {runMs,11:N0} ms |{blockGas}");
@@ -624,6 +601,29 @@ namespace Nethermind.Consensus.Processing
                 else
                 {
                     _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| exec code{resetColor} cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0} | ops {chunkOpCodes,11:N0}{execMode}");
+                }
+            }
+
+            UInt256 CalculateRewards()
+            {
+                try
+                {
+                    if (!isMev) return CalculateBalanceChange(data.BaseBlock, block.Header, beneficiary);
+
+                    // Sometimes the beneficiary has done their own balance changing tx
+                    // So prefer the mev reward tx value
+                    return lastTx.Value.IsZero ? CalculateBalanceChange(data.BaseBlock, block.Header, lastTx.To) : lastTx.Value;
+                }
+                // The report runs later on the thread pool, so pruning may have removed the state it reads.
+                catch (Nethermind.Trie.MissingTrieNodeException ex)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Block rewards unavailable for report, state pruned: {ex.Message}");
+                    return default;
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsError) _logger.Error("Error when calculating block rewards", ex);
+                    return default;
                 }
             }
 

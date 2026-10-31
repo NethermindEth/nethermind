@@ -122,8 +122,11 @@ public class TrieWarmerTests
                 Assert.That(warmer.PushSlotJobMpmc(storageWarmer, index, sequenceId: i, isDelete: false), Is.True);
             }
 
-            Assert.That(storageWarmer.WaitForParallelism(TimeSpan.FromSeconds(5)), Is.True);
-            Assert.That(storageWarmer.MaxConcurrency, Is.GreaterThan(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storageWarmer.WaitForParallelism(TimeSpan.FromSeconds(5)), Is.True);
+                Assert.That(storageWarmer.MaxConcurrency, Is.GreaterThan(1));
+            }
             Assert.That(storageWarmer.MaxConcurrency, Is.LessThanOrEqualTo(WorkerCount));
 
             storageWarmer.Release();
@@ -147,11 +150,14 @@ public class TrieWarmerTests
 
         try
         {
-            Assert.That(warmer.PushSlotJobMpmc(storageWarmer, firstIndex, sequenceId: 1, isDelete: false), Is.True);
-            Assert.That(storageWarmer.WaitForFirstCall(TimeSpan.FromSeconds(5)), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(warmer.PushSlotJobMpmc(storageWarmer, firstIndex, sequenceId: 1, isDelete: false), Is.True);
+                Assert.That(storageWarmer.WaitForFirstCall(TimeSpan.FromSeconds(5)), Is.True);
 
-            Assert.That(warmer.PushSlotJobMpmc(storageWarmer, secondIndex, sequenceId: 2, isDelete: false), Is.True);
-            Assert.That(storageWarmer.WaitForParallelism(TimeSpan.FromSeconds(5)), Is.True);
+                Assert.That(warmer.PushSlotJobMpmc(storageWarmer, secondIndex, sequenceId: 2, isDelete: false), Is.True);
+                Assert.That(storageWarmer.WaitForParallelism(TimeSpan.FromSeconds(5)), Is.True);
+            }
         }
         finally
         {
@@ -171,9 +177,12 @@ public class TrieWarmerTests
         Address address = new("0x3333333333333333333333333333333333333333");
         UInt256 index = 44;
 
-        Assert.That(warmer.PushAddressJob(addressWarmer, address, sequenceId: 1), Is.False);
-        Assert.That(warmer.PushSlotJob(storageWarmer, index, sequenceId: 2, isDelete: false), Is.False);
-        Assert.That(warmer.PushSlotJobMpmc(storageWarmer, index, sequenceId: 3, isDelete: false), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmer.PushAddressJob(addressWarmer, address, sequenceId: 1), Is.False);
+            Assert.That(warmer.PushSlotJob(storageWarmer, index, sequenceId: 2, isDelete: false), Is.False);
+            Assert.That(warmer.PushSlotJobMpmc(storageWarmer, index, sequenceId: 3, isDelete: false), Is.False);
+        }
 
         addressWarmer.DidNotReceive().WarmUpStateTrie(Arg.Any<Address>(), Arg.Any<int>());
         storageWarmer.DidNotReceive().WarmUpStorageTrie(Arg.Any<UInt256>(), Arg.Any<int>(), Arg.Any<bool>());
@@ -192,8 +201,11 @@ public class TrieWarmerTests
 
         try
         {
-            Assert.That(storageWarmer.WaitForFirstCall(TimeSpan.FromSeconds(5)), Is.True);
-            Assert.That(disposeTask.IsCompleted, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storageWarmer.WaitForFirstCall(TimeSpan.FromSeconds(5)), Is.True);
+                Assert.That(disposeTask.IsCompleted, Is.False);
+            }
             storageWarmer.Release();
             await disposeTask.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.That(storageWarmer.Calls, Is.EqualTo(1));
@@ -278,6 +290,18 @@ public class TrieWarmerTests
         Spmc,
         Mpmc
     }
+
+    [TestCase(1, 1)]
+    [TestCase(2, 3)]
+    [TestCase(4, 6)]
+    [TestCase(8, 12)]
+    [TestCase(12, 12)]
+    [TestCase(16, 12)]
+    [TestCase(20, 15)]
+    [TestCase(30, 22)]
+    [TestCase(64, 48)]
+    public void DefaultWorkerCount_FollowsProcessorCount(int processorCount, int expected) =>
+        Assert.That(TrieWarmer.DefaultWorkerCount(processorCount), Is.EqualTo(expected));
 
     private static async Task WaitForConditionAsync(Func<bool> condition, string message, int timeoutMs = 1000)
     {

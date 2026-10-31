@@ -26,16 +26,35 @@ public class AccountChangesAtIndex(Address address)
     public bool? AccountExists { get; internal set; }
 
     public UInt256? PreTxBalance { get; internal set; }
+    /// <summary>The nonce before the transaction, or <see langword="null"/> until a nonce change records it.</summary>
+    public ulong? PreTxNonce { get; internal set; }
     /// <summary>The code before the transaction, or <see langword="default"/> until a code change records it.</summary>
     public ReadOnlyMemory<byte> PreTxCode { get; internal set; }
     private Dictionary<UInt256, PreTxStorage>? _preTxStorage;
 
     private readonly Dictionary<UInt256, StorageChange> _storageChanges = new(UInt256Comparer.GetOptimized());
     private readonly HashSet<UInt256> _storageReads = new(UInt256Comparer.GetOptimized());
+    private bool _storageReadsMayHoldChangedSlots;
 
     public Dictionary<UInt256, StorageChange> StorageChanges => _storageChanges;
     public int StorageChangeCount => _storageChanges.Count;
-    public HashSet<UInt256> StorageReads => _storageReads;
+
+    /// <summary>Slots read but not changed at this index.</summary>
+    /// <remarks>The first access after <see cref="AddStorageReadUnchecked"/> compacts the set, so it is not safe for concurrent readers.</remarks>
+    public HashSet<UInt256> StorageReads
+    {
+        get
+        {
+            if (_storageReadsMayHoldChangedSlots) RemoveChangedSlotsFromReads();
+            return _storageReads;
+        }
+    }
+
+    private void RemoveChangedSlotsFromReads()
+    {
+        _storageReadsMayHoldChangedSlots = false;
+        foreach (UInt256 key in _storageChanges.Keys) _storageReads.Remove(key);
+    }
 
     public bool HasStorageChange(in UInt256 key) => _storageChanges.ContainsKey(key);
 
@@ -45,6 +64,16 @@ public class AccountChangesAtIndex(Address address)
     public bool RemoveStorageChange(in UInt256 key) => _storageChanges.Remove(key);
 
     public void AddStorageRead(in UInt256 key) => _storageReads.Add(key);
+
+    /// <summary>Records a read of <paramref name="key"/>, which may also have a change at this index.</summary>
+    /// <remarks>
+    /// Saves the change lookup on every read: a changed slot recorded here leaves the reads when
+    /// <see cref="StorageReads"/> is next accessed, so EIP-7928 still lists it only as a change.
+    /// </remarks>
+    public void AddStorageReadUnchecked(in UInt256 key)
+    {
+        if (_storageReads.Add(key) && _storageChanges.Count != 0) _storageReadsMayHoldChangedSlots = true;
+    }
 
     public bool RemoveStorageRead(in UInt256 key) => _storageReads.Remove(key);
 
@@ -94,9 +123,11 @@ public class AccountChangesAtIndex(Address address)
         CodeChange = null;
         AccountExists = null;
         PreTxBalance = null;
+        PreTxNonce = null;
         PreTxCode = default;
         _preTxStorage?.ClearAndTrim();
         _storageChanges.ClearAndTrim();
         _storageReads.ClearAndTrim();
+        _storageReadsMayHoldChangedSlots = false;
     }
 }

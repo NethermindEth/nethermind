@@ -33,9 +33,9 @@ public static unsafe partial class EvmInstructions
 
         TxFrame frame = ctx.CurrentFrame;
 
-        // EIP-7906 forbids the call, not the permission bits: a POST_TX frame may carry an approval
+        // EIP-7906 forbids the call, not the permission bits: an ASSERT frame may carry an approval
         // scope it never exercises, so the ban belongs here rather than in envelope validation.
-        if (frame.Mode == FrameMode.PostTx) return EvmExceptionType.BadInstruction;
+        if (frame.Mode == FrameMode.Assert) return EvmExceptionType.BadInstruction;
 
         Address resolvedTarget = ctx.ResolvedTarget(ctx.CurrentFrameIndex);
 
@@ -105,9 +105,9 @@ public static unsafe partial class EvmInstructions
             0x01 => stack.PushUInt256<TTracingInst>(ctx.Nonce),
             0x02 => stack.PushAddress<TTracingInst>(ctx.Sender),
             0x03 => stack.PushUInt256<TTracingInst>(ctx.MaxPriorityFeePerGas),
-            0x04 => stack.PushUInt256<TTracingInst>(ctx.MaxFeePerGas),
-            0x05 => stack.PushUInt256<TTracingInst>(ctx.MaxFeePerBlobGas),
-            0x06 => stack.PushUInt256<TTracingInst>(ctx.MaxCost),
+            0x04 => stack.PushUInt256<TTracingInst>(ctx.MaxFee),
+            // 0x05 and 0x06 are undefined: the envelope has no per-gas fee caps, and max_cost depends on the
+            // including block's base fees.
             0x07 => stack.PushUInt256<TTracingInst>((UInt256)(blobHashes?.Length ?? 0)),
             0x08 => stack.PushBytes<TTracingInst>(ctx.SigHash.BytesAsSpan),
             0x09 => stack.PushUInt256<TTracingInst>((UInt256)ctx.Frames.Length),
@@ -115,9 +115,9 @@ public static unsafe partial class EvmInstructions
             0x0B => stack.PushUInt256<TTracingInst>((UInt256)ctx.Signatures.Length),
             0x0C => stack.PushUInt256<TTracingInst>((UInt256)(ulong)Math.Max(0, TGasPolicy.GetStateReservoir(in gas))),
             0x0D when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.LegacyNonce),
-            0x0E when TEip8250.IsActive => stack.PushUInt256<TTracingInst>((UInt256)(ctx.NonceKeys?.Length ?? 1)),
+            0x0E when TEip8250.IsActive => stack.PushUInt256<TTracingInst>((UInt256)(ctx.NonceKeys?.Length ?? 0)),
             0x0F when TEip8250.IsActive => stack.PushBytes<TTracingInst>(ctx.NonceKeysHash.BytesAsSpan),
-            0x10 when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.NonceKeys is { } keys ? keys[0] : UInt256.Zero),
+            0x10 when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.NonceKeys is [var firstKey, ..] ? firstKey : UInt256.Zero),
             _ => EvmExceptionType.BadInstruction,
         };
     }

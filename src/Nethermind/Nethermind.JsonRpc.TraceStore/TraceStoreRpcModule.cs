@@ -197,7 +197,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             return TraceRpcModule.PendingNotSupported<IEnumerable<ParityTxTraceFromReplay>>();
         }
 
-        SearchResult<BlockHeader> blockSearch = _blockFinder.SearchForHeader(blockParameter);
+        SearchResult<BlockHeader> blockSearch = _blockFinder.SearchForHeader(blockParameter, unknownBlockErrorCode: ErrorCodes.StandardResourceNotFound);
         if (blockSearch.IsError)
         {
             return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(blockSearch);
@@ -244,7 +244,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             return _traceModule.trace_filter(traceFilterForRpc);
         }
 
-        IEnumerable<SearchResult<BlockHeader>> blocksSearch = _blockFinder.SearchForHeadersOnMainChain(fromBlock, toBlock);
+        IEnumerable<SearchResult<BlockHeader>> blocksSearch = _blockFinder.SearchForHeadersOnMainChain(fromBlock, toBlock, ErrorCodes.StandardResourceNotFound);
 
         IEnumerable<(SearchResult<BlockHeader> BlockSearch, List<ParityLikeTxTrace>? Traces)> blockResults = _parallelization switch
         {
@@ -315,7 +315,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         if (fork is not null)
             return _traceModule.trace_block(blockParameter, fork);
 
-        SearchResult<BlockHeader> blockSearch = _blockFinder.SearchForHeader(blockParameter);
+        SearchResult<BlockHeader> blockSearch = _blockFinder.SearchForHeader(blockParameter, unknownBlockErrorCode: ErrorCodes.StandardResourceNotFound);
         if (blockSearch.IsError)
         {
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);

@@ -18,8 +18,6 @@ public partial class Bls12381G1MsmPrecompile
     [SkipLocalsInit]
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-        Metrics.Bls12381G1MsmPrecompile++;
-
         if (!ValidateInputLength(inputData))
             return Errors.InvalidInputLength;
 
@@ -63,18 +61,23 @@ public partial class Bls12381G1MsmPrecompile
 
         // calculate where in rawPoints buffer decoded points should go
         int npoints = 0;
+        int nZeroScalars = 0;
         for (int i = 0; i < nItems; i++)
         {
             int offset = i * ItemSize;
             ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + Eip2537.LenG1)].Span;
+            ReadOnlySpan<byte> rawScalar = inputData[(offset + Eip2537.LenG1)..(offset + ItemSize)].Span;
 
-            // exclude infinity points
-            int dest = rawPoint.ContainsAnyExcept((byte)0) ? npoints++ : -1;
+            // exclude infinity points; a point with a zero scalar adds nothing but must still be validated,
+            // so it is decoded into a slot at the back of the buffer, past the first npoints the MSM reads
+            int dest = !rawPoint.ContainsAnyExcept((byte)0) ? -1
+                : rawScalar.ContainsAnyExcept((byte)0) ? npoints++
+                : nItems - ++nZeroScalars;
             pointDestinations.Add(dest);
         }
 
         // only infinity points so return infinity
-        if (npoints == 0)
+        if (npoints + nZeroScalars == 0)
         {
             return Eip2537.G1Infinity;
         }
@@ -87,6 +90,17 @@ public partial class Bls12381G1MsmPrecompile
 
         if (!result)
             return result.Error!;
+
+        if (npoints == 0)
+            return Eip2537.G1Infinity;
+
+        if (npoints == 1)
+        {
+            G1 single = new(stackalloc long[G1.Sz]);
+            single.Zero();
+            single.Add(new G1Affine(rawPoints.Slice(0, G1Affine.Sz)));
+            return single.Mult(rawScalars.Slice(0, 32)).EncodeRaw();
+        }
 
         // compute res = rawPoints_0 * rawScalars_0 + rawPoints_1 * rawScalars_1 + ...
         G1 res = new G1(stackalloc long[G1.Sz]).MultiMultAffine(rawPoints, rawScalars, npoints);

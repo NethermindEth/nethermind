@@ -6,6 +6,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Facade.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Test.Builders
 {
@@ -41,6 +42,13 @@ namespace Nethermind.Blockchain.Test.Builders
         public FilterBuilder FromBlock(ulong number)
         {
             _fromBlock = new BlockParameter(number);
+            return this;
+        }
+
+        public FilterBuilder AtBlockHash(Hash256 blockHash)
+        {
+            _fromBlock = _toBlock = new BlockParameter(blockHash);
+
             return this;
         }
 

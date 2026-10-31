@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -10,15 +12,18 @@ using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Healing;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -30,7 +35,7 @@ public class FlatBalHealingTests
     private SnapshotableMemColumnsDb<FlatDbColumns> _columnsDb = null!;
     private RocksDbPersistence _persistence = null!;
     private TrieReassembler _reassembler = null!;
-    private MemDb _codeDb = null!;
+    private TestMemDb _codeDb = null!;
     private MemDb _balDb = null!;
     private BlockAccessListStore _balStore = null!;
     private IBlockTree _blockTree = null!;
@@ -42,9 +47,9 @@ public class FlatBalHealingTests
     public void SetUp()
     {
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance);
+        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance, NullTrieNodeLog.Instance);
         _reassembler = new TrieReassembler(_persistence, LimboLogs.Instance);
-        _codeDb = new MemDb();
+        _codeDb = new TestMemDb();
         _balDb = new MemDb();
         _balStore = new BlockAccessListStore(_balDb);
         _blockTree = Substitute.For<IBlockTree>();
@@ -150,8 +155,11 @@ public class FlatBalHealingTests
 
         bool result = await RunOnce(_healing, firstPivot, lastPivot, [], default);
 
-        Assert.That(result, Is.True);
-        Assert.That(_codeDb.Get(codeHash.Bytes), Is.EqualTo(code));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(_codeDb.Get(codeHash.Bytes), Is.EqualTo(code));
+        }
     }
 
     // EIP-8298: an adoption records only a hash; its bytecode comes from the change that deposited it, even when
@@ -413,9 +421,12 @@ public class FlatBalHealingTests
 
         bool result = await RunOnce(_healing, firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
 
-        Assert.That(result, Is.True);
-        Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "cleared slot must be removed from flat store");
-        Assert.That(FlatSlotExists(TestItem.AddressA, 2), Is.True, "untouched slot must remain");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "cleared slot must be removed from flat store");
+            Assert.That(FlatSlotExists(TestItem.AddressA, 2), Is.True, "untouched slot must remain");
+        }
     }
 
     [Test]
@@ -431,8 +442,11 @@ public class FlatBalHealingTests
 
         bool result = await RunOnce(_healing, firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
 
-        Assert.That(result, Is.True);
-        Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "removed account's storage must be wiped from flat store");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "removed account's storage must be wiped from flat store");
+        }
     }
 
     [Test]
@@ -566,6 +580,211 @@ public class FlatBalHealingTests
         _syncStore.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
     }
 
+    // A chunk's batch commits as it goes, so a cancellation must not land while the chunk is written: healing stops before
+    // the chunk when cancelled while collecting its BALs, and after it when cancelled while writing it.
+    [Test]
+    public void A_cancellation_inside_a_chunk_stops_healing_on_a_chunk_boundary([Values] bool whileWriting)
+    {
+        (BlockHeader firstPivot, BlockHeader lastPivot, Hash256[] updatedStorages) = SetupThreeChunkHistory();
+        using CancellationTokenSource cancellation = new();
+        // The second chunk is the only one that writes code, and it does so for the first account it writes.
+        _codeDb.WriteFunc = (_, _) =>
+        {
+            if (whileWriting) cancellation.Cancel();
+            return true;
+        };
+        FlatBalHealing healing = CreateHealing(_persistence, _codeDb, number =>
+        {
+            if (!whileWriting && number == firstPivot.Number + FlatBalHealing.BalsChunkSize + 1) cancellation.Cancel();
+        });
+
+        Hash256 root = healing.Reassemble(updatedStorages, default)!;
+        Assert.Throws<OperationCanceledException>(() => healing.ApplyRange(root, firstPivot, lastPivot, cancellation.Token));
+
+        int chunksWritten = whileWriting ? 2 : 1;
+        BlockHeader boundary = _blockTree.FindHeader(firstPivot.Number + (ulong)(chunksWritten * FlatBalHealing.BalsChunkSize))!;
+        (SnapshotableMemColumnsDb<FlatDbColumns> stoppedThere, _) = HealUninterrupted(firstPivot, boundary, updatedStorages);
+        using (stoppedThere)
+        {
+            AssertColumnsEqual(stoppedThere, Enum.GetValues<FlatDbColumns>());
+        }
+    }
+
+    // The restarted sync reassembles the trie over the whole chunks a graceful stop left and replays every BAL from the
+    // first pivot over them. BALs hold values rather than deltas, so it ends where a run that never stopped does.
+    [Test]
+    public void Replaying_from_the_first_pivot_after_a_stop_on_a_chunk_boundary_matches_an_uninterrupted_run([Values(1, 2)] int chunksWritten)
+    {
+        (BlockHeader firstPivot, BlockHeader lastPivot, Hash256[] updatedStorages) = SetupThreeChunkHistory();
+        using CancellationTokenSource cancellation = new();
+        FlatBalHealing stopped = CreateHealing(_persistence, _codeDb, number =>
+        {
+            if (number == firstPivot.Number + (ulong)(chunksWritten * FlatBalHealing.BalsChunkSize) + 1) cancellation.Cancel();
+        });
+        Hash256 stoppedRoot = stopped.Reassemble(updatedStorages, default)!;
+        Assert.Throws<OperationCanceledException>(() => stopped.ApplyRange(stoppedRoot, firstPivot, lastPivot, cancellation.Token));
+
+        Hash256? resumedRoot = _healing.ApplyRange(_healing.Reassemble(updatedStorages, default)!, firstPivot, lastPivot, default).Root;
+
+        (SnapshotableMemColumnsDb<FlatDbColumns> uninterrupted, Hash256? uninterruptedRoot) = HealUninterrupted(firstPivot, lastPivot, updatedStorages);
+        using (uninterrupted)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(uninterruptedRoot, Is.EqualTo(lastPivot.StateRoot), "uninterrupted root");
+                Assert.That(resumedRoot, Is.EqualTo(lastPivot.StateRoot), "resumed root");
+                Assert.That(_codeDb.Get(Keccak.Compute(DeployedCode).Bytes), Is.EqualTo(DeployedCode), "deployed code");
+            }
+
+            AssertColumnsEqual(uninterrupted, FlatDbColumns.Account, FlatDbColumns.Storage);
+        }
+    }
+
+    // A stop during reassembly leaves the storage tries it rebuilt written, which the next one has to build on.
+    [Test]
+    public void Reassembling_again_after_a_stopped_reassembly_rebuilds_the_same_root()
+    {
+        AccountSpec[] state =
+        [
+            Acc(TestItem.AddressA, 100, slots: [new Slot(1, [0x05]), new Slot(2, [0x06])]),
+            Acc(TestItem.AddressB, 200),
+            Acc(TestItem.AddressC, 300, slots: [new Slot(1, [0x07]), new Slot(2, [0x08])]),
+        ];
+        SeedInitialState(state);
+        Hash256[] updatedStorages = [StorageOf(TestItem.AddressA), StorageOf(TestItem.AddressC)];
+        // As snap leaves them: the storage roots of the accounts to heal and the state root are not persisted.
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+        {
+            foreach (Hash256 address in updatedStorages) batch.SetStorageTrieNode(address, TreePath.Empty, default);
+            batch.SetStateTrieNode(TreePath.Empty, default);
+        }
+
+        using CancellationTokenSource cancellation = new();
+        Assert.Throws<OperationCanceledException>(() => _healing.Reassemble(new StopAfterStorageTries(updatedStorages, cancellation.Cancel), cancellation.Token));
+        using (IPersistence.IPersistenceReader reader = _persistence.CreateReader(ReaderFlags.Sync))
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Hash256 address in updatedStorages)
+                Assert.That(reader.TryLoadStorageRlp(address, TreePath.Empty, ReadFlags.None), Is.Not.Null, "a storage trie rebuilt before the stop");
+            Assert.That(reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None), Is.Null, "the state trie the stop came before");
+        }
+
+        Assert.That(_healing.Reassemble(updatedStorages, default), Is.EqualTo(BuildRoot(state)));
+    }
+
+    private static readonly byte[] DeployedCode = [0x60, 0x00, 0x60, 0x01];
+
+    private static readonly AccountSpec[] ThreeChunkSeed =
+    [
+        Acc(TestItem.AddressA, 100, slots: [new Slot(1, [0x05]), new Slot(2, [0x06])]),
+        Acc(TestItem.AddressB, 200),
+        Acc(TestItem.AddressC, 300, slots: [new Slot(1, [0x07])]),
+        Acc(TestItem.AddressD, 400),
+    ];
+
+    /// <summary>
+    /// Seeds <see cref="ThreeChunkSeed"/> and sets up three chunks of blocks whose BALs clear and set slots, empty
+    /// accounts and revive them, and deploy code as the first write of the second chunk.
+    /// </summary>
+    /// <returns>The pivots healing goes between, the last at the root the BALs reach, and the accounts to heal.</returns>
+    private (BlockHeader First, BlockHeader Last, Hash256[] UpdatedStorages) SetupThreeChunkHistory()
+    {
+        SeedInitialState(ThreeChunkSeed);
+        Hash256 expected = BuildRoot(
+            Acc(TestItem.AddressA, 150, slots: [new Slot(1, [0x04]), new Slot(2, [0x08])]),
+            Acc(TestItem.AddressB, 250, nonce: 1, code: DeployedCode),
+            Acc(TestItem.AddressC, 50),
+            Acc(TestItem.AddressD, 10));
+
+        const int firstChunkStart = 1;
+        const int secondChunkStart = firstChunkStart + FlatBalHealing.BalsChunkSize;
+        const int thirdChunkStart = secondChunkStart + FlatBalHealing.BalsChunkSize;
+        const int lastBlock = thirdChunkStart + FlatBalHealing.BalsChunkSize - 1;
+
+        BlockHeader firstPivot = Pivot(0, TestItem.KeccakA);
+        BlockHeader lastPivot = firstPivot;
+        for (int number = firstChunkStart; number <= lastBlock; number++)
+        {
+            ReadOnlyBlockAccessList bal = number switch
+            {
+                firstChunkStart + 2 => StorageBal(TestItem.AddressA, 1, 0),
+                firstChunkStart + 9 => BalanceBal(TestItem.AddressC, 0),
+                secondChunkStart => Bal(
+                    Build.An.AccountChanges.WithAddress(TestItem.AddressB)
+                        .WithNonceChanges(new NonceChange(0, 1)).WithCodeChanges(new CodeChange(0, DeployedCode)).TestObject,
+                    Build.An.AccountChanges.WithAddress(TestItem.AddressD).WithBalanceChanges(new BalanceChange(1, 401)).TestObject,
+                    Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(2, 150)).TestObject),
+                secondChunkStart + 3 => BalanceBal(TestItem.AddressC, 50),
+                secondChunkStart + 8 => BalanceBal(TestItem.AddressD, 0),
+                thirdChunkStart => Bal(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                    .WithStorageChanges(1, new StorageChange(0, (UInt256)4))
+                    .WithStorageChanges(2, new StorageChange(0, (UInt256)8)).TestObject),
+                thirdChunkStart + 7 => Bal(
+                    Build.An.AccountChanges.WithAddress(TestItem.AddressD).WithBalanceChanges(new BalanceChange(0, 10)).TestObject,
+                    Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithBalanceChanges(new BalanceChange(1, 250)).TestObject),
+                _ => EmptyBal()
+            };
+            lastPivot = SetupBlock(lastPivot, number == lastBlock ? expected : TestItem.KeccakA, bal);
+        }
+
+        return (firstPivot, lastPivot, [StorageOf(TestItem.AddressA), StorageOf(TestItem.AddressC)]);
+    }
+
+    /// <summary>Heals a second database seeded with <see cref="ThreeChunkSeed"/> without interruption.</summary>
+    /// <returns>The database, to dispose, and the root healing reached, or <c>null</c> where it is not <paramref name="to"/>'s.</returns>
+    private (SnapshotableMemColumnsDb<FlatDbColumns> Db, Hash256? Root) HealUninterrupted(BlockHeader from, BlockHeader to, IReadOnlyCollection<Hash256> updatedStorages)
+    {
+        SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
+        CommitState(persistence, ThreeChunkSeed);
+        FlatBalHealing healing = CreateHealing(persistence, new MemDb());
+        return (db, healing.ApplyRange(healing.Reassemble(updatedStorages, default)!, from, to, default).Root);
+    }
+
+    /// <param name="beforeBal">Called with the number of each block before healing reads its BAL to apply it.</param>
+    private FlatBalHealing CreateHealing(IPersistence persistence, IDb codeDb, Action<ulong>? beforeBal = null)
+    {
+        IBlockAccessListStore balStore = _balStore;
+        if (beforeBal is not null)
+        {
+            balStore = Substitute.For<IBlockAccessListStore>();
+            balStore.Exists(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(call => _balStore.Exists(call.ArgAt<ulong>(0), call.ArgAt<Hash256>(1)));
+            balStore.Get(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(call =>
+            {
+                beforeBal(call.ArgAt<ulong>(0));
+                return _balStore.Get(call.ArgAt<ulong>(0), call.ArgAt<Hash256>(1));
+            });
+        }
+
+        return new(_blockTree, balStore, new TrieReassembler(persistence, LimboLogs.Instance), persistence, _syncStore, codeDb, new Lazy<ICodeRecovery>(_codeRecovery), LimboLogs.Instance);
+    }
+
+    private void AssertColumnsEqual(IColumnsDb<FlatDbColumns> expected, params FlatDbColumns[] columns)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (FlatDbColumns column in columns)
+                Assert.That(ReadColumn(_columnsDb, column), Is.EqualTo(ReadColumn(expected, column)), $"{column} column");
+        }
+
+        static SortedDictionary<string, string> ReadColumn(IColumnsDb<FlatDbColumns> db, FlatDbColumns column) =>
+            new(db.GetColumnDb(column).GetAll().ToDictionary(static kv => Convert.ToHexString(kv.Key), static kv => Convert.ToHexString(kv.Value)));
+    }
+
+    /// <summary>Calls <paramref name="stop"/> once trie reassembly has gone through the accounts to heal, rebuilding their storage tries, and before it rebuilds the state trie.</summary>
+    private sealed class StopAfterStorageTries(IReadOnlyCollection<Hash256> accounts, Action stop) : IReadOnlyCollection<Hash256>
+    {
+        public int Count => accounts.Count;
+
+        public IEnumerator<Hash256> GetEnumerator()
+        {
+            foreach (Hash256 account in accounts) yield return account;
+            stop();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     private readonly record struct Slot(UInt256 Key, byte[] Value);
 
     private sealed record AccountSpec(Address Address, UInt256 Balance, ulong Nonce, byte[]? Code, Slot[] Slots);
@@ -624,7 +843,7 @@ public class FlatBalHealingTests
     private static Hash256 BuildRoot(params AccountSpec[] accounts)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
-        RocksDbPersistence persistence = new(db, LimboLogs.Instance);
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
         return CommitState(persistence, accounts);
     }
 

@@ -44,6 +44,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             || handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>);
     }
 
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SSTORE on the guest handler.</summary>
+    internal static bool StoresStorageThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SSTORE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSStore);
+
     public object? ReturnData;
 
     /// <summary>The largest nested RETURN/REVERT output staged in the reused scratch buffer.</summary>
@@ -83,6 +87,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// Mirrors the loop's frame-finished handling for the (non-create) case.
     /// </summary>
     /// <remarks>Omits the action-end/revert tracing the mainline return does; the guest never action-traces.</remarks>
+    [SkipLocalsInit]
     internal EvmExceptionType InlinePrecompileCall<TTracingInst>(
         ExecutionEnvironment callEnv,
         TGasPolicy childGas,

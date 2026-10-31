@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -18,10 +19,16 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
-public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
+public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperationStart, ITraceOperationGasCost, ITraceRevertFault
 {
-    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan MaxTimeout = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// The Geth-style error texts that <c>exit</c> reports, by the exception name a failed substate reports as its error.
+    /// </summary>
+    private static readonly FrozenDictionary<string, string> ErrorDescriptionsBySubstateError = FastEnum.GetValues<EvmExceptionType>()
+        .Where(static type => type.GetEvmExceptionDescription() is not null)
+        .ToFrozenDictionary(static type => type.FastToString(), static type => type.GetEvmExceptionDescription()!);
 
     private readonly dynamic _tracer;
     private readonly Log _log = new();
@@ -35,6 +42,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     private readonly bool _captureErrors;
     private readonly Dictionary<TracerFunctions, ScriptObject>? _callbacks;
     private string? _traceError;
+    private bool _failedBeforeExecution;
+    private bool _pendingStep;
+    private TraceStack _operationStack;
     private Stack<ulong>? _frameGas;
     private Stack<Log.Contract>? _contracts;
     private int _depth = -1;
@@ -43,16 +53,22 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     private readonly Context _ctx;
     private readonly TracerFunctions _functions;
 
+    /// <summary>Creates a JavaScript tracer using the supplied execution context and engine.</summary>
+    /// <remarks>SELFDESTRUCT refunds are credited at transaction finalization, avoiding a second credit at the opcode boundary.</remarks>
     public GethLikeJavaScriptTxTracer(
         Engine engine,
         Db db,
         Context ctx,
-        GethTraceOptions options) : base(options)
+        GethTraceOptions options) : base(options, destroyRefund: 0)
     {
         IsTracingRefunds = true;
         IsTracingActions = true;
         IsTracingMemory = true;
         IsTracingStack = true;
+        // The script sees storage through db and has no return data on log, so the per-operation hooks would only
+        // build values for empty callbacks.
+        IsTracingOpLevelStorage = false;
+        IsTracingReturnData = false;
 
         _engine = engine;
         _db = db;
@@ -61,11 +77,13 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         if (_captureErrors)
         {
             _callbacks = [];
-            _log.stack = new Log.Stack(default, engine);
+            _log.stack.InputErrorEngine = engine;
             _log.memory.InputErrorEngine = engine;
             engine.PrepareNullThrowCapture();
+
         }
 
+        Engine.CurrentEngine = _engine;
         _tracer = engine.CreateTracer(options.Tracer);
         try
         {
@@ -84,7 +102,15 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
                 Invoke(TracerFunctions.setup, options.TracerConfig?.ToString() ?? "{}");
             }
 
-            TimeSpan timeout = options.Timeout ?? DefaultTimeout;
+            TimeSpan timeout;
+            try
+            {
+                timeout = options.ResolveTimeout() ?? GethTraceDeadline.DefaultTimeout;
+            }
+            catch (TraceDurationFormatException exception) when (_captureErrors)
+            {
+                throw new JavaScriptTraceFailure(exception);
+            }
             if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
                 throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
             _cts = new CancellationTokenSource(timeout);
@@ -123,6 +149,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
             Dispose();
         }
         result.TraceError = _traceError;
+
         return result;
     }
 
@@ -192,17 +219,51 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
+        _log.refund = CurrentRefund;
         _log.pc = pc;
-        _log.op = new Log.Opcode(opcode);
+        _log.op = Log.Opcode.Of(opcode);
         _log.gas = gas;
         _log.depth = env.GetGethTraceDepth();
         _log.error = null;
         _log.gasCost = null;
+        _failedBeforeExecution = false;
+        _pendingStep = opcode is Instruction.RETURNDATACOPY or Instruction.RETURN or Instruction.REVERT
+            or Instruction.MLOAD or Instruction.MSTORE or Instruction.MSTORE8 or Instruction.CALLDATACOPY or Instruction.CODECOPY
+            or Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.SLOAD or Instruction.SSTORE or Instruction.STATICCALL or Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL;
+    }
+
+    /// <inheritdoc/>
+    public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth)
+    {
+        _log.gasCost = gasCost;
+        if (stackHead < stackInputs)
+            _log.error = $"stack underflow ({stackHead} <=> {stackInputs})";
+        else if (stackGrowth > 0 && stackHead >= EvmStack.MaxStackSize - stackGrowth)
+            _log.error = $"stack limit reached {stackHead} ({EvmStack.MaxStackSize - 1 - stackGrowth})";
+        else if (_log.gas < gasCost)
+            _log.error = "out of gas";
+        _failedBeforeExecution = _log.error is not null;
+    }
+
+    /// <inheritdoc/>
+    public void ReportOperationGasCost(ulong gasCost) => _log.gasCost = gasCost;
+
+    /// <inheritdoc/>
+    public void ReportOperationReady(ulong gasCost, string? error)
+    {
+        if (!_pendingStep)
+            return;
+
+        _log.gasCost = gasCost;
+        _log.error = error ?? (_log.gas < gasCost ? "out of gas" : null);
+        _failedBeforeExecution = _log.error is not null;
+        InvokeStep();
     }
 
     public override void ReportOperationRemainingGas(ulong gas)
     {
-        _log.gasCost ??= _log.gas - gas;
+        if (!_pendingStep)
+            _log.gasCost ??= _log.gas - gas;
         if (_functions.HasFlag(TracerFunctions.postStep))
         {
             Invoke(TracerFunctions.postStep);
@@ -212,7 +273,38 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     public override void ReportOperationError(EvmExceptionType error)
     {
         base.ReportOperationError(error);
-        _log.error = error.GetEvmExceptionDescription();
+        if (error == EvmExceptionType.NotEnoughBalance && _log.op?.Value is
+            Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL)
+            return;
+        if (_failedBeforeExecution)
+            return;
+        if (error == EvmExceptionType.BadInstruction)
+        {
+            _log.gasCost = 0;
+            _log.error = $"invalid opcode: {_log.op?.toString()}";
+        }
+        else
+        {
+            _log.error = error.GetEvmExceptionDescription();
+        }
+        if (_pendingStep)
+        {
+            InvokeStep();
+            _failedBeforeExecution = true;
+            return;
+        }
+        if (error == EvmExceptionType.AccessViolation && _log.op?.Value == Instruction.RETURNDATACOPY)
+        {
+            UInt256 sourceOffset = _operationStack.PeekUInt256(1);
+            if (sourceOffset.IsUint64)
+            {
+                // Geth reuses the popped source-offset slot for the end offset before its bounds check.
+                UInt256.AddOverflow(sourceOffset, _operationStack.PeekUInt256(2), out UInt256 endOffset);
+                byte[] faultStack = _operationStack.ToRawBytes();
+                endOffset.ToBigEndian(faultStack.AsSpan((_operationStack.Count - 2) * EvmStack.WordSize, EvmStack.WordSize));
+                _log.stack.Items = new TraceStack(faultStack);
+            }
+        }
         Invoke(TracerFunctions.fault);
     }
 
@@ -234,6 +326,15 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     {
         base.ReportActionRevert(gasLeft, output);
         InvokeExit(gasLeft, output, EvmExceptionType.Revert.GetEvmExceptionDescription());
+    }
+
+    /// <inheritdoc/>
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+        ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
+    {
+        ReportAction(gas, value, from, to!, input, callType, isPrecompileCall);
+        base.ReportActionError(error);
+        InvokeExit(gasLeft, ReadOnlyMemory<byte>.Empty, error.GetEvmExceptionDescription());
     }
 
     public override void ReportActionError(EvmExceptionType evmExceptionType)
@@ -265,7 +366,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         _ctx.gasUsed = gasSpent.SpentGas;
         _ctx.Output = output;
-        _ctx.error = error;
+        // A revert reason is decoded from the output, which an exceptional halt never has.
+        // The halting step's error carries Geth's detailed text; a failed code deposit or a precompile call has no such step.
+        _ctx.error = output.Length == 0 && error is not null && ErrorDescriptionsBySubstateError.TryGetValue(error, out string? description) ? _log.error ?? description : error;
     }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
@@ -284,23 +387,29 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     public override void SetOperationStack(TraceStack stack)
     {
         base.SetOperationStack(stack);
-        _log.stack = new Log.Stack(stack, _captureErrors ? _engine : null);
+        _operationStack = stack;
+        _log.stack.Items = stack;
 
+        if (!_pendingStep || _failedBeforeExecution)
+            InvokeStep();
+    }
+
+    private void InvokeStep()
+    {
+        _pendingStep = false;
         if (_functions.HasFlag(TracerFunctions.step))
         {
             Invoke(TracerFunctions.step);
         }
-
-        if (_log.op?.Value == Instruction.REVERT)
-        {
-            ReportOperationError(EvmExceptionType.Revert);
-        }
     }
+
+    /// <inheritdoc/>
+    public override void ReportStorageRefund(long refund) => _log.refund = CurrentRefund + refund;
 
     public override void ReportRefund(long refund)
     {
         base.ReportRefund(refund);
-        _log.refund += refund;
+        _log.refund = CurrentRefund;
     }
 
     private TracerFunctions CaptureFunctions(object tracer)
@@ -393,6 +502,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     {
         // A failed JS hook must not abort canonical execution or corrupt later transactions' prestate.
         if (_traceError is not null) return null;
+        Engine.CurrentEngine = _engine;
         bool observedNullThrow = false;
         try
         {
@@ -428,6 +538,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
                 || JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow)))
         {
             _engine.ThrowIfInterrupted();
+            if (function == TracerFunctions.setup)
+                throw new JavaScriptTraceFailure(exception, inputError ?? exception.Message);
             _traceError = inputError ?? exception.Message;
             return null;
         }

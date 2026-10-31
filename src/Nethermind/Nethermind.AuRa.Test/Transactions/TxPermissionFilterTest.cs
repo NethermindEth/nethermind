@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -80,6 +79,19 @@ public class TxPermissionFilterTest
     // Contract code: https://gist.github.com/arkpar/38a87cb50165b7e683585eec71acb05a
     [TestCaseSource(nameof(V1Tests))]
     public async Task<(bool IsAllowed, bool Cache)> V1(Func<Task<TestTxPermissionsBlockchain>> chainFactory, Transaction tx) => await ChainTest(chainFactory, tx, 1);
+
+    // A signature that recovers to no key leaves the sender null, which the contract call cannot encode.
+    [Test]
+    public async Task Denies_transaction_without_sender()
+    {
+        using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(nameof(V1));
+        Block head = chain.BlockTree.Head!;
+        Transaction tx = Build.A.Transaction.WithSenderAddress(null).TestObject;
+
+        AcceptTxResult isAllowed = chain.PermissionBasedTxFilter.IsAllowed(tx, head.Header, chain.SpecProvider.GetSpec(head.Header));
+
+        Assert.That((bool)isAllowed, Is.False);
+    }
 
     public static IEnumerable<TestCaseData> V2Tests()
     {
@@ -246,7 +258,7 @@ public class TxPermissionFilterTest
     [TestCase(3UL, ExpectedResult = true)]
     public bool allows_transactions_before_transitions(ulong blockNumber)
     {
-        VersionedTransactionPermissionContract transactionPermissionContract = new(AbiEncoder.Instance,
+        VersionedTransactionPermissionContract transactionPermissionContract = new(
             TestItem.AddressA,
             5,
             Substitute.For<IReadOnlyTxProcessorSource>(), new LruCache<ValueHash256, UInt256>(100, "TestCache"),
@@ -269,7 +281,7 @@ public class TxPermissionFilterTest
                 .AddSingleton<ISealer>(NullSealEngine.Instance) // Sealer not configured in test
                 .AddSingleton<PermissionBasedTxFilter, IReadOnlyTxProcessingEnvFactory, ISpecProvider, AuraStatefulComponents, PermissionBasedTxFilter.Cache>((envFactory, specProvider, auraStatefulComponents, txFilterCache) =>
                 {
-                    VersionedTransactionPermissionContract transactionPermissionContract = new(AbiEncoder.Instance, _contractAddress, 1,
+                    VersionedTransactionPermissionContract transactionPermissionContract = new(_contractAddress, 1,
                         envFactory.Create(), auraStatefulComponents.TransactionPermissionContractVersions, LimboLogs.Instance, specProvider);
 
                     return new PermissionBasedTxFilter(transactionPermissionContract, txFilterCache, LimboLogs.Instance);

@@ -3,8 +3,9 @@
 
 using System.IO.Abstractions;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Api;
+using Nethermind.Api.Monitoring;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Spec;
@@ -20,9 +21,11 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
+using Nethermind.Era1;
+using Nethermind.EraE.Config;
+using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -42,6 +45,13 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 {
     protected override void Load(ContainerBuilder builder)
     {
+        FlatArchiveMode.Apply(
+            configProvider.GetConfig<IFlatDbConfig>(),
+            configProvider.GetConfig<IPruningConfig>(),
+            configProvider.GetConfig<ISyncConfig>(),
+            configProvider,
+            logManager.GetClassLogger(typeof(FlatArchiveMode)));
+
         builder
             .AddServiceStopper()
             .AddSingleton<IGCStrategy>(NoGCStrategy.Instance)
@@ -69,14 +79,13 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>(), configProvider.GetConfig<ILogIndexConfig>()))
             .AddModule(new KeyStoreModule())
-            .AddModule(new MonitoringModule(configProvider.GetConfig<IMetricsConfig>()))
+            .AddSingleton<IMonitoringService, NoopMonitoringService>()
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
             // Sequences deferred block-data flushing before state persistence (see IStatePersistenceBarrier).
             .AddSingleton<IStatePersistenceBarrier, StatePersistenceBarrier>()
 
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INodeKeyManager>().LoadNodeKey())
-            .AddSingleton<IAbiEncoder>(AbiEncoder.Instance)
             .AddSingleton<IEciesCipher, EciesCipher>()
             .AddSingleton<ICryptoRandom, CryptoRandom>()
 
@@ -105,6 +114,20 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
         if (!configProvider.GetConfig<ITxPoolConfig>().BlobsSupport.IsPersistentStorage())
         {
             builder.AddSingleton<IBlobTxStorage>(NullBlobTxStorage.Instance);
+        }
+
+        // An era step holds the network back until ReviewBlockTree has processed the blocks left at the last
+        // shutdown, so it is registered only when it has a job to do. Keep the conditions in sync with EraCliRunner.Run.
+        IEraConfig eraConfig = configProvider.GetConfig<IEraConfig>();
+        if (!string.IsNullOrEmpty(eraConfig.ImportDirectory) || !string.IsNullOrEmpty(eraConfig.ExportDirectory))
+        {
+            builder.AddStep(typeof(EraStep));
+        }
+
+        IEraEConfig eraEConfig = configProvider.GetConfig<IEraEConfig>();
+        if (!string.IsNullOrEmpty(eraEConfig.ImportDirectory) || !string.IsNullOrEmpty(eraEConfig.ExportDirectory))
+        {
+            builder.AddStep(typeof(EraEStep));
         }
 
         if (configProvider.GetConfig<IReceiptConfig>().DeriveFromState)

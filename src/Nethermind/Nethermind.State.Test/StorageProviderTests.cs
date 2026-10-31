@@ -5,7 +5,9 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
@@ -420,7 +422,7 @@ public partial class StorageProviderTests(bool useFlat)
                 provider.GetOriginal(in probe, out UInt256 original);
                 Assert.That(original, Is.EqualTo((UInt256)7));
 
-                provider.Commit(Frontier.Instance);
+                provider.Commit(Frontier.Instance, new ReadCollectingStorageTracer());
                 capacities[round] = GetCollectionCapacity(GetPrivateField(provider._persistentStorageProvider, "_originalValues"));
             }
 
@@ -730,8 +732,11 @@ public partial class StorageProviderTests(bool useFlat)
         provider.Set(other, (UInt256)9);
         Assert.That(ReadSlot(provider, slot2), Is.EqualTo((UInt256)5), "a write in the same transaction is read back");
         provider.Restore(Snapshot.EmptyPosition, beforeSlot2, Snapshot.EmptyPosition);
-        Assert.That(ReadSlot(provider, slot2), Is.EqualTo(UInt256.Zero), "the reverted write is gone");
-        Assert.That(ReadSlot(provider, slot1), Is.EqualTo((UInt256)1), "the committed slot is unaffected by the revert");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadSlot(provider, slot2), Is.EqualTo(UInt256.Zero), "the reverted write is gone");
+            Assert.That(ReadSlot(provider, slot1), Is.EqualTo((UInt256)1), "the committed slot is unaffected by the revert");
+        }
         if (discardSecondTransaction) provider.Reset(resetBlockChanges: false);
         else provider.Commit(Frontier.Instance);
 
@@ -1170,9 +1175,12 @@ public partial class StorageProviderTests(bool useFlat)
         provider.SetTransientState(new StorageCell(ctx.Address1, 1), new UInt256(_values[3], isBigEndian: true));
         snapshots[3] = provider.TakeSnapshot();
 
-        Assert.That(snapshot, Is.EqualTo(snapshots[snapshot + 1].StorageSnapshot.TransientStorageSnapshot));
-        // Persistent storage is unimpacted by transient storage
-        Assert.That(snapshots[snapshot + 1].StorageSnapshot.PersistentStorageSnapshot, Is.EqualTo(-1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot, Is.EqualTo(snapshots[snapshot + 1].StorageSnapshot.TransientStorageSnapshot));
+            // Persistent storage is unimpacted by transient storage
+            Assert.That(snapshots[snapshot + 1].StorageSnapshot.PersistentStorageSnapshot, Is.EqualTo(-1));
+        }
 
         provider.Restore(snapshots[snapshot + 1]);
 
@@ -1651,10 +1659,13 @@ public partial class StorageProviderTests(bool useFlat)
         {
             snapshot--;
         }
-        Assert.That(snapshots[0].StorageSnapshot, Is.EqualTo(Snapshot.Storage.Empty));
-        Assert.That(snapshots[1].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(Snapshot.EmptyPosition, 0)));
-        Assert.That(snapshots[2].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(0, 1)));
-        Assert.That(snapshots[3].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(1, 1)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshots[0].StorageSnapshot, Is.EqualTo(Snapshot.Storage.Empty));
+            Assert.That(snapshots[1].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(Snapshot.EmptyPosition, 0)));
+            Assert.That(snapshots[2].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(0, 1)));
+            Assert.That(snapshots[3].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(1, 1)));
+        }
 
         provider.GetTransientState(new StorageCell(ctx.Address1, 1), out UInt256 storageValue25);
         Assert.That(storageValue25, Is.EqualTo(new UInt256(_values[snapshot + 1], isBigEndian: true)));
@@ -1725,9 +1736,10 @@ public partial class StorageProviderTests(bool useFlat)
     /// <summary>The originals-probe memo must not answer across caching rounds.</summary>
     /// <remarks>tx1 memoizes (cell, v1) while writing v2; after commit the next transaction's original for
     /// the same cell is v2. A memo without the round in its key silently returns v1, which mis-meters every
-    /// EIP-2200 SSTORE of tx2 without failing anything.</remarks>
+    /// EIP-2200 SSTORE of tx2 without failing anything. Without root commits the cell stays in the block's
+    /// changes, which still hold the pre-block value as <c>Before</c>.</remarks>
     [Test]
-    public void Get_original_after_commit_is_the_new_rounds_original()
+    public void Get_original_after_commit_is_the_new_rounds_original([Values] bool commitRoots)
     {
         using Context ctx = new(useFlat, setInitialState: false);
         WorldState provider = BuildStorageProvider(ctx);
@@ -1750,7 +1762,7 @@ public partial class StorageProviderTests(bool useFlat)
             provider.GetOriginal(in cell, out UInt256 firstTxOriginal);
             Assert.That(firstTxOriginal, Is.EqualTo((UInt256)1), "tx1 original is the committed value");
 
-            provider.Commit(Frontier.Instance);
+            provider.Commit(Frontier.Instance, commitRoots: commitRoots);
 
             provider.Get(in cell, out _);
             provider.GetOriginal(in cell, out UInt256 secondTxOriginal);
@@ -2306,9 +2318,12 @@ public partial class StorageProviderTests(bool useFlat)
             baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
         }
 
-        Assert.That(baseBlock.StateRoot, Is.Not.EqualTo(originalStateRoot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baseBlock.StateRoot, Is.Not.EqualTo(originalStateRoot));
 
-        Assert.That(ctx.WrittenData.SelfDestructed[TestItem.AddressA], Is.True);
+            Assert.That(ctx.WrittenData.SelfDestructed[TestItem.AddressA], Is.True);
+        }
         ctx.WrittenData.Clear();
 
         using (provider.BeginScope(baseBlock))
@@ -2324,9 +2339,12 @@ public partial class StorageProviderTests(bool useFlat)
             baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
         }
 
-        Assert.That(baseBlock.StateRoot, Is.EqualTo(originalStateRoot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baseBlock.StateRoot, Is.EqualTo(originalStateRoot));
 
-        Assert.That(ctx.WrittenData.SelfDestructed[TestItem.AddressA], Is.True);
+            Assert.That(ctx.WrittenData.SelfDestructed[TestItem.AddressA], Is.True);
+        }
     }
 
     [Test]
@@ -2481,7 +2499,7 @@ public partial class StorageProviderTests(bool useFlat)
         ReadCollectingStorageTracer tracer = new();
         provider.Commit(Frontier.Instance, tracer);
 
-        Assert.That(tracer.Reads, Is.EquivalentTo(readCells));
+        Assert.That(tracer.Reads.OrderBy(cell => cell.Index), Is.EqualTo(readCells));
 
         // The round's read capture must be cleared by the read-only commit:
         // a subsequent commit without new reads reports nothing.
@@ -2556,6 +2574,64 @@ public partial class StorageProviderTests(bool useFlat)
                 Assert.That(restored, Is.EqualTo((UInt256)17));
                 Assert.That(restoredOriginal, Is.EqualTo((UInt256)17));
             }
+        }
+    }
+
+    [Test]
+    public void Commit_WhenEmptyStorageSlotIsWrittenBackToItsOriginal_LeavesTheStorageRootAlone()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 1);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.Get(cell, out UInt256 original);
+            provider.Set(cell, (UInt256)1);
+            provider.Set(cell, UInt256.Zero);
+            provider.Commit(Frontier.Instance, NullStateTracer.Instance, commitRoots: false);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(original, Is.EqualTo(UInt256.Zero), "precondition: the contract's storage starts empty");
+                Assert.That(((ICollection)GetPrivateField(provider._persistentStorageProvider, "_toUpdateRoots")).Count, Is.Zero,
+                    "the first read of an empty-storage contract keeps its round stamp, so a slot written back to its original is not saved");
+            }
+        }
+    }
+
+    [TestCase(false, TestName = "Clear")]
+    [TestCase(true, TestName = "Destroy")]
+    public void GetOriginal_RereadUnderClearAfterMemoMoved_ReturnsPreClearValue(bool destroy)
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell first = new(ctx.Address1, 1);
+        StorageCell other = new(ctx.Address1, 2);
+        provider.Set(first, (UInt256)17);
+        provider.Commit(Frontier.Instance);
+
+        provider.Get(first, out _);
+        if (destroy) provider.MarkStorageDestroyed(ctx.Address1);
+        else provider.ClearStorage(ctx.Address1);
+
+        provider.Get(first, out UInt256 cleared);
+        provider.Get(other, out _);
+        provider.GetOriginal(first, out UInt256 original);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cleared, Is.EqualTo(UInt256.Zero), "the clear zeroes the slot for the rest of the round");
+            Assert.That(original, Is.EqualTo((UInt256)17), "the original is the value before the clear, even after another read moved the memo");
         }
     }
 
@@ -2910,8 +2986,8 @@ public partial class StorageProviderTests(bool useFlat)
             public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink = null)
                 => baseScope.HintBal(bal, sink);
 
-            public void ApplyBal(ReadOnlyBlockAccessList bal)
-                => baseScope.ApplyBal(bal);
+            public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken)
+                => baseScope.ApplyBal(bal, cancellationToken);
 
             public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 

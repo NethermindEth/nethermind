@@ -2,12 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Consensus.Tracing;
+using Nethermind.Core.Container;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Precompiles;
@@ -16,6 +26,8 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
+using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 using Testably.Abstractions.Testing;
 using Nethermind.Core;
@@ -24,6 +36,63 @@ namespace Nethermind.Evm.Test.Tracing;
 
 public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
 {
+    [TestCase(0)]
+    [TestCase(1)]
+    public async Task Bad_file_trace_validates_the_bad_store_body_signed_nonce(int nonceDelta)
+    {
+        MockFileSystem fileSystem = new();
+        fileSystem.Initialize();
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder.AddSingleton<IFileSystem>(fileSystem));
+        Block parent = chain.BlockTree.Head!;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent.Header, TestItem.AddressA);
+        Block canonical = await chain.AddBlock();
+        Transaction transaction = Build.A.Transaction.WithNonce(nonce + (ulong)nonceDelta).WithValue(1)
+            .WithCode(Prepare.EvmCode.STOP().Done).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block bad = new(canonical.Header.Clone(), [transaction], canonical.Uncles, canonical.Withdrawals);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(canonical.Transactions, Is.Empty);
+            Assert.That(bad.Hash, Is.EqualTo(canonical.Hash));
+        }
+        chain.Container.Resolve<IBadBlockStore>().Insert(bad);
+        IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
+        IOverridableEnv env = chain.Container.Resolve<ITraceEnvFactory>().CreateForTracing();
+        using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder => builder
+            .AddModule(validation)
+            .AddModule(new TransactionTraceModule(validation))
+            .AddModule(env)
+            .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
+            .AddScoped<TransactionProcessorAdapterFactory, ChangeableTransactionProcessorAdapter>(static adapter => adapter.ForProcessor));
+        IGethStyleTracer tracer = scope.Resolve<IGethStyleTracer>();
+        try
+        {
+            if (nonceDelta == 0)
+            {
+                string[] files = tracer.TraceBadBlockToFile(bad.Hash!, GethTraceOptions.Default, CancellationToken.None).ToArray();
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
+                Assert.That(files, Has.Length.EqualTo(1), "the empty canonical body must not replace the full bad-store body");
+#pragma warning restore NUnit2045
+                Assert.That(fileSystem.File.ReadAllText(files[0]), Does.Contain("\"opName\":\"STOP\""));
+            }
+            else
+            {
+                InvalidTransactionException? error = Assert.Throws<InvalidTransactionException>(() =>
+                    tracer.TraceBadBlockToFile(bad.Hash!, GethTraceOptions.Default, CancellationToken.None).ToArray());
+                Assert.That(error!.Message, Does.Contain("nonce too high"));
+            }
+        }
+        finally
+        {
+            string[] writtenFiles = fileSystem.Directory.GetFiles(fileSystem.Path.GetTempPath(), "block_*.jsonl");
+            Assert.That(writtenFiles, Has.Length.EqualTo(1));
+            foreach (string file in writtenFiles)
+            {
+                using FileSystemStream ownedRead = fileSystem.File.Open(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            }
+            Assert.That(chain.WorldStateManager.GlobalStateReader.GetNonce(canonical.Header, TestItem.AddressA), Is.EqualTo(nonce));
+        }
+    }
+
     [Test]
     public void File_summary_uses_unprefixed_output_and_line_feed([Values] bool returnsData)
     {
@@ -51,13 +120,15 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void File_summary_preserves_output_larger_than_stack_buffer()
+    public void File_summary_preserves_output_at_buffer_boundaries([Values(127, 128, 257, 1023, 1024)] int outputLength)
     {
-        byte[] code = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).Return(257, 0).Done;
+        byte[] code = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).Return(outputLength, 0).Done;
         string file = TraceFile(code);
         string summary = file.Split('\n', StringSplitOptions.RemoveEmptyEntries)[^1];
         using JsonDocument json = JsonDocument.Parse(summary);
-        Assert.That(json.RootElement.GetProperty("output").GetString(), Is.EqualTo(new string('0', 62) + "2a" + new string('0', 450)));
+        Assert.That(json.RootElement.GetProperty("output").GetString(),
+            Is.EqualTo(new string('0', 62) + "2a" + new string('0', (outputLength - 32) * 2)),
+            "the file summary must retain every output byte without adding a prefix or trimming leading zeros");
     }
 
     [TestCase("negative", 0)]
@@ -182,8 +253,11 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         JsonElement[] opcodes = trace.RootElement.EnumerateArray().Where(record => record.TryGetProperty("opName", out _)).ToArray();
         int firstReturnData = Array.FindIndex(opcodes, record => record.GetProperty("opName").GetString() == "RETURNDATASIZE");
         int lastReturnData = Array.FindLastIndex(opcodes, record => record.GetProperty("opName").GetString() == "CALL");
-        Assert.That(firstReturnData, Is.GreaterThan(0));
-        Assert.That(lastReturnData, Is.GreaterThan(firstReturnData));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstReturnData, Is.GreaterThan(0));
+            Assert.That(lastReturnData, Is.GreaterThan(firstReturnData));
+        }
 
         using (Assert.EnterMultipleScope())
         {

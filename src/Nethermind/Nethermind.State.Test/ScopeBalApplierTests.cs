@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -100,6 +101,44 @@ public class ScopeBalApplierTests
         }
     }
 
+    [Test]
+    public void ApplyBal_StopsWritingOnceCancelled([Values(0, 2)] int cancelAfter)
+    {
+        const int count = 4;
+        using CancellationTokenSource cancellation = new();
+        if (cancelAfter == 0) cancellation.Cancel();
+        int reads = 0;
+        IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.IWorldStateWriteBatch parent = Substitute.For<IWorldStateScopeProvider.IWorldStateWriteBatch>();
+        IWorldStateScopeProvider.IStorageWriteBatch child = Substitute.For<IWorldStateScopeProvider.IStorageWriteBatch>();
+        scope.StartWriteBatch(count).Returns(parent);
+        scope.Get(Arg.Any<Address>()).Returns(_ =>
+        {
+            if (++reads == cancelAfter) cancellation.Cancel();
+            return new Account(nonce: 1, balance: 1);
+        });
+        parent.CreateStorageWriteBatch(Arg.Any<Address>(), Arg.Any<int>()).Returns(child);
+        ReadOnlyAccountChanges[] changes = new ReadOnlyAccountChanges[count];
+        for (int i = 0; i < count; i++)
+        {
+            changes[i] = Build.An.AccountChanges.WithAddress(Address.FromNumber((UInt256)(i + 1)))
+                .WithNonceChanges(new NonceChange(1, 2))
+                .WithStorageChanges(1, new StorageChange(1, 2))
+                .TestObject;
+        }
+
+        ScopeBalApplier.Apply(scope, Build.A.BlockAccessList.WithAccountChanges(changes).TestObject, LimboLogs.Instance, cancellation.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reads, Is.EqualTo(cancelAfter), "accounts read");
+            parent.Received(cancelAfter).Set(Arg.Any<Address>(), Arg.Any<Account?>());
+            child.DidNotReceive().Set(Arg.Any<UInt256>(), Arg.Any<UInt256>());
+            child.Received(cancelAfter).Dispose();
+            parent.Received(1).Dispose();
+        }
+    }
+
     [TestCase(true, false)]
     [TestCase(true, true)]
     [TestCase(false, true)]
@@ -124,19 +163,75 @@ public class ScopeBalApplierTests
                 .WithCodeChanges(new CodeChange(1, [0x00]))
                 .WithStorageChanges(1, new StorageChange(1, 2)).TestObject).TestObject;
 
-        Exception? failure = Assert.Catch(() => ScopeBalApplier.Apply(scope, bal, LimboLogs.Instance));
+        (ILogManager logManager, InterfaceLogger logger) = CreateLogManager();
+
+        Exception? failure = Assert.Catch(() => ScopeBalApplier.Apply(scope, bal, logManager));
         // Without an earlier failure, the parent's disposal is itself the original and must not be swallowed.
         Assert.That(failure, Is.SameAs(writeFails ? writeFailure : parentDisposeFailure));
         child.Received(1).Dispose();
         parent.Received(1).Dispose();
         Assert.That(codeSetter.Disposed, Is.EqualTo(1));
+        // Each swallowed disposal failure is logged, through one logger resolved for both.
+        int swallowed = (writeFails ? 1 : 0) + (codeSetterDisposalFails ? 1 : 0);
+        logger.Received(swallowed).Warn(Arg.Is<string>(m => m.StartsWith("Swallowed disposal failure")));
+        logManager.Received(1).GetLogger(Arg.Any<string>());
+    }
+
+    [Test]
+    public void ApplyBal_WritesAndMarksCodeSharedByClonesOnce()
+    {
+        IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        CodeSetter codeSetter = new(null);
+        scope.StartWriteBatch(Arg.Any<int>()).Returns(Substitute.For<IWorldStateScopeProvider.IWorldStateWriteBatch>());
+        scope.CodeDb.BeginCodeWrite().Returns(codeSetter);
+        CodeChange shared = new(1, [0x01]);
+        CodeChange distinct = new(1, [0x02]);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithNonceChanges(new NonceChange(1, 1)).WithCodeChanges(shared).TestObject,
+            Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithNonceChanges(new NonceChange(1, 1)).WithCodeChanges(distinct).TestObject,
+            Build.An.AccountChanges.WithAddress(TestItem.AddressC).WithNonceChanges(new NonceChange(1, 1)).WithCodeChanges(shared).TestObject).TestObject;
+
+        ScopeBalApplier.Apply(scope, bal, LimboLogs.Instance);
+
+        Assert.That(codeSetter.Written, Is.EqualTo(new[] { shared.CodeHash, distinct.CodeHash }));
+        scope.CodeDb.Received(1).MarkCodePersisted(Arg.Is<ValueHash256>(h => h == shared.CodeHash));
+        scope.CodeDb.Received(1).MarkCodePersisted(Arg.Is<ValueHash256>(h => h == distinct.CodeHash));
+        scope.CodeDb.Received(2).MarkCodePersisted(Arg.Any<ValueHash256>());
+    }
+
+    [Test]
+    public void ApplyBal_DoesNotResolveLoggerWhenNothingIsReported()
+    {
+        IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        scope.StartWriteBatch(Arg.Any<int>()).Returns(Substitute.For<IWorldStateScopeProvider.IWorldStateWriteBatch>());
+        scope.Get(Arg.Any<Address>()).Returns(new Account(nonce: 1, balance: 1));
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                .WithNonceChanges(new NonceChange(1, 2))
+                .WithStorageChanges(1, new StorageChange(1, 2)).TestObject).TestObject;
+        (ILogManager logManager, _) = CreateLogManager();
+
+        ScopeBalApplier.Apply(scope, bal, logManager);
+
+        logManager.DidNotReceive().GetLogger(Arg.Any<string>());
+    }
+
+    private static (ILogManager LogManager, InterfaceLogger Logger) CreateLogManager()
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        ILogger wrapped = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetLogger(Arg.Any<string>()).Returns(wrapped);
+        return (logManager, logger);
     }
 
     private sealed class CodeSetter(Exception? disposeFailure) : IWorldStateScopeProvider.ICodeSetter
     {
         public int Disposed { get; private set; }
+        public List<ValueHash256> Written { get; } = [];
 
-        public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code) { }
+        public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code) => Written.Add(codeHash);
 
         public void Dispose()
         {

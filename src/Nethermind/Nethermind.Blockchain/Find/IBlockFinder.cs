@@ -27,10 +27,28 @@ namespace Nethermind.Blockchain.Find
 
         bool HasBlock(ulong blockNumber, Hash256 blockHash);
 
+        /// <summary>Gets the stored block metadata and chain level, if available.</summary>
+        (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(ulong number, Hash256 blockHash);
+
         /// Find a header. blockNumber is optional, but specifying it can improve performance.
         BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null);
 
         BlockHeader? FindHeader(ulong blockNumber, BlockTreeLookupOptions options);
+
+        /// <summary>
+        /// Finds the canonical header at <paramref name="blockNumber"/> if <paramref name="bloomMatches"/> accepts its
+        /// logs bloom, which is empty for a zero-length (EIP-7668) bloom.
+        /// </summary>
+        /// <param name="blockNumber">The number of the block.</param>
+        /// <param name="bloomMatches">Tells whether the bloom is a match.</param>
+        /// <param name="found">Whether a canonical header is stored at <paramref name="blockNumber"/>, whether or not its bloom is a match.</param>
+        /// <remarks>The bloom may be tested on the stored encoding, so a header it rejects need not be decoded.</remarks>
+        BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+        {
+            BlockHeader? header = FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
+            found = header is not null;
+            return found && bloomMatches(header!.Bloom!.Bytes) ? header : null;
+        }
 
         Hash256? FindBlockHash(ulong blockNumber);
 

@@ -23,14 +23,14 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// EVM call, applying APPROVE effects, enforcing the payer gate and producing per-frame receipts.</summary>
 public abstract partial class TransactionProcessorBase<TGasPolicy>
 {
-    /// <summary>EIP-7906: starts the slice the assertion opcodes read, for a POST_TX transaction on a
+    /// <summary>EIP-7906: starts the slice the assertion opcodes read, for a transaction with ASSERT frames on a
     /// path that is not already recording one. Returns the recorder so the caller can stop it.</summary>
     /// <remarks>Recording starts before the transaction touches state, so the prestate is its own baseline.
     /// The EIP-7928 condition mirrors block processing in both directions: without it, simulation could
     /// succeed on a chain whose blocks halt.</remarks>
-    private IBlockAccessListSource? BeginPostTxDiffRecording(Transaction tx, ExecutionOptions opts, IReleaseSpec spec)
+    private IBlockAccessListSource? BeginAssertFrameDiffRecording(Transaction tx, ExecutionOptions opts, IReleaseSpec spec)
     {
-        // The in-pool prefix simulation stops before the body, so no POST_TX frame ever runs under it.
+        // The in-pool prefix simulation stops before the body, so no ASSERT frame ever runs under it.
         if (!spec.IsEip7906Enabled
             || !spec.BlockLevelAccessListsEnabled
             || opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly)
@@ -42,7 +42,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         foreach (TxFrame frame in frames)
         {
-            if (frame.Mode == FrameMode.PostTx)
+            if (frame.Mode == FrameMode.Assert)
             {
                 recorder.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
                 return recorder;
@@ -53,12 +53,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     }
 
     /// <summary>Checks a frame transaction's nonce against the sender's state, under either nonce shape.</summary>
-    /// <remarks>With <see cref="Transaction.NonceKeys"/> every key must sit at <see cref="Transaction.Nonce"/>,
+    /// <remarks>With a non-empty <see cref="Transaction.NonceKeys"/> every key must sit at <see cref="Transaction.Nonce"/>, or for a single-use set every key must read 0,
     /// so the set is consumed as a unit. Assumes the caller has already checked well-formedness.</remarks>
     private TransactionResult ValidateFrameTxNonce(Transaction tx, Address sender)
     {
         UInt256[]? nonceKeys = tx.NonceKeys;
-        if (nonceKeys is null)
+        if (nonceKeys is null or [])
         {
             UInt256 accountNonce = WorldState.GetNonce(sender);
             return accountNonce == tx.Nonce
@@ -71,9 +71,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.Ok;
         }
 
-        if (tx.Nonce >= Eip8250Constants.MaxNonceSeq)
+        if (tx.Nonce == Eip8250Constants.MaxNonceSeq)
         {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce sequence is exhausted");
+            return FrameTxNonceMismatch(tooLow: true);
         }
 
         // Cold path only: re-read to report the same too-low / too-high distinction as the account nonce.
@@ -116,7 +116,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             // Structural, so it holds even where validation is skipped: the fixed-size buffers keyed on the set
             // take a well-formed one as their precondition, and eth_call and the simulator arrive without a validator.
-            if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
+            if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) || (nonceKeys.Length == 0 && tx.Nonce == Eip8250Constants.MaxNonceSeq))
             {
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
             }
@@ -156,16 +156,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         TxFrame[] frames = tx.Frames!;
-        UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out _);
-        UInt256 premiumPerGas = UInt256.Zero;
-        if (ShouldValidateGas(tx, opts) && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
-        {
-            TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
-            WorldState.Restore(txSnapshot);
-            return TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail(
-                $"max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas}");
-        }
-
         if (tx.NonceKeys is not null)
         {
             tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
@@ -178,34 +168,21 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
         }
 
-        // max_cost (TXPARAM 0x06) reserves at max_fee_per_gas, so it bounds the settlement products below;
-        // its blob leg is priced at the actual blob_base_fee so the escrow the payer sees is correct.
+        // The blob gas is priced at the block's blob_base_fee and paid from the max_fee budget: there is no per-blob-gas cap.
         UInt256 blobFee = UInt256.Zero;
-        if (tx.BlobVersionedHashes is { Length: > 0 })
+        if (tx.BlobVersionedHashes is { Length: > 0 }
+            && !_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out _, out blobFee))
         {
-            if (!_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas, out blobFee))
-            {
-                TraceLogInvalidTx(tx, "BLOB_BASE_FEE_OVERFLOW");
-                WorldState.Restore(txSnapshot);
-                return RequiredBalanceExceeds256Bits(tx);
-            }
-
-            // EIP-4844: max_fee_per_blob_gas must cover the current blob base fee, else the tx is invalid.
-            if (tx.MaxFeePerBlobGas.GetValueOrDefault() < feePerBlobGas)
-            {
-                TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_BLOB_GAS");
-                WorldState.Restore(txSnapshot);
-                return TransactionResult.ErrorType.InsufficientSenderBalance.WithDetail(
-                    BlockErrorMessages.InsufficientMaxFeePerBlobGas(tx.SenderAddress, tx.MaxFeePerBlobGas, feePerBlobGas));
-            }
-        }
-
-        if (UInt256.MultiplyOverflow((UInt256)txGasLimit, tx.DecodedMaxFeePerGas, out UInt256 maxCost)
-            || UInt256.AddOverflow(maxCost, blobFee, out maxCost))
-        {
-            TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE");
+            TraceLogInvalidTx(tx, "BLOB_BASE_FEE_OVERFLOW");
             WorldState.Restore(txSnapshot);
             return RequiredBalanceExceeds256Bits(tx);
+        }
+
+        TransactionResult budgetResult = PriceFeeBudget(tx, opts, header, txGasLimit, in blobFee, out UInt256 maxCost, out UInt256 effectiveGasPrice);
+        if (!budgetResult)
+        {
+            WorldState.Restore(txSnapshot);
+            return budgetResult;
         }
 
         FrameTxContext frameContext = new(
@@ -217,8 +194,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             sigHash,
             in maxCost,
             in tx.MaxPriorityFeePerGas,
-            tx.DecodedMaxFeePerGas,
-            tx.MaxFeePerBlobGas.GetValueOrDefault(),
             WorldState.GetNonce(sender),
             tx.NonceKeys)
         {
@@ -255,7 +230,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         FrameCheckpoint prefixEnd = new(
             txSnapshot, Index: -1, Refund: 0, StateGas: 0, Journal: 0,
             Destroys: accessTracker.DestroyList.TakeSnapshot());
-        bool postTxReverted = false;
+        bool assertReverted = false;
         // EIP-161: once any frame touches RIPEMD-160, the touch outlives every later rollback that
         // leaves the transaction valid, so it is tracked for the whole transaction rather than per frame.
         bool shouldRestoreRipemdTouch = false;
@@ -286,7 +261,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             Address resolvedTarget = frame.Target ?? sender;
             Address caller = isSender ? sender : Eip8141Constants.EntryPointAddress;
-            bool isStatic = frame.Mode is FrameMode.Verify or FrameMode.PostTx;
+            bool isStatic = frame.Mode is FrameMode.Verify or FrameMode.Assert;
 
             // ORIGIN returns the frame's caller throughout all call depths.
             VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
@@ -338,7 +313,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("VERIFY frame reverted");
             }
 
-            if (frame.Mode == FrameMode.PostTx && !frameSucceeded)
+            if (frame.Mode == FrameMode.Assert && !frameSucceeded)
             {
                 // A failed assertion discards the body down to the validation prefix, overriding any
                 // batch unroll, but unlike a VERIFY revert it leaves the transaction valid.
@@ -361,7 +336,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     frameContext.MarkFrameSkipped(s);
                 }
 
-                postTxReverted = true;
+                assertReverted = true;
                 break;
             }
 
@@ -369,7 +344,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             {
                 if (!payerWasSet && frameContext.Payer is not null)
                 {
-                    // End of the validation prefix: EIP-7906 keeps everything up to here when POST_TX reverts.
+                    // End of the validation prefix: EIP-7906 keeps everything up to here when ASSERT reverts.
                     prefixEnd = new FrameCheckpoint(
                         WorldState.TakeSnapshot(), Index: i, Refund: refundCounter, StateGas: totalFrameStateGasUsed,
                         Journal: frameContext.FrameJournalCheckpoint, Destroys: accessTracker.DestroyList.TakeSnapshot());
@@ -443,11 +418,43 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             totalFrameGasUsed: totalFrameGasUsed,
             totalFrameStateGasUsed: totalFrameStateGasUsed,
             refundCounter: refundCounter,
-            effectiveGasPrice: in effectiveGasPrice,
-            premiumPerGas: in premiumPerGas,
             blobFee: in blobFee,
             maxCost: in maxCost,
-            postTxReverted: postTxReverted);
+            assertReverted: assertReverted);
+    }
+
+    /// <summary>Prices the <c>max_fee</c> budget at <paramref name="header"/>'s base fees.</summary>
+    /// <param name="maxGas">The transaction's <c>max_gas</c>.</param>
+    /// <param name="maxCost">The escrow the payer's approval collects.</param>
+    /// <param name="effectiveGasPrice">The per-gas price <c>GASPRICE</c> reads; see <see cref="FrameTxFeeBudget.GasPrice"/>.</param>
+    /// <returns>An error when <c>max_fee</c> is below <c>required_max_fee</c>, unless a fee-less simulation skips the check.</returns>
+    private TransactionResult PriceFeeBudget(Transaction tx, ExecutionOptions opts, BlockHeader header, ulong maxGas,
+        in UInt256 blobFee, out UInt256 maxCost, out UInt256 effectiveGasPrice)
+    {
+        effectiveGasPrice = default;
+        UInt256 maxFee = tx.MaxFee;
+        if (!FrameTxFeeBudget.TryCalculate(in maxFee, in tx.MaxPriorityFeePerGas, maxGas, header.BaseFeePerGas, in blobFee,
+                out UInt256 requiredMaxFee, out maxCost))
+        {
+            TraceLogInvalidTx(tx, "REQUIRED_MAX_FEE_OVERFLOW");
+            return RequiredBalanceExceeds256Bits(tx);
+        }
+
+        // The ShouldValidateGas rule with max_fee in place of max_fee_per_gas. A gas-search probe prices limits the
+        // search picked, not the sender's, so like the escrow the budget is held only to the verifying run.
+        bool validateGas = (!opts.HasFlag(ExecutionOptions.SkipValidation) || !maxFee.IsZero || !tx.MaxPriorityFeePerGas.IsZero)
+            && !(opts.HasFlag(ExecutionOptions.FrameGasEstimation) && opts.HasFlag(ExecutionOptions.Restore));
+        if (validateGas && maxFee < requiredMaxFee)
+        {
+            TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE");
+            return TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail(
+                $"max fee less than required max fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFee: {maxFee}, requiredMaxFee: {requiredMaxFee}");
+        }
+
+        // max_cost is required_max_fee plus max_priority_fee, unless an unchecked simulation left it short of the former.
+        UInt256 maxPriorityFee = maxCost > requiredMaxFee ? maxCost - requiredMaxFee : UInt256.Zero;
+        effectiveGasPrice = FrameTxFeeBudget.GasPrice(header.BaseFeePerGas, in maxPriorityFee, maxGas);
+        return TransactionResult.Ok;
     }
 
     /// <summary>Settles a frame transaction once every frame has run: nets the EIP-3529 refund, computes the
@@ -460,8 +467,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// <param name="totalFrameGasUsed">Gas charged across all frames whose effects survived the loop.</param>
     /// <param name="totalFrameStateGasUsed">The state-gas dimension of that total, before correction.</param>
     /// <param name="refundCounter">The EIP-3529 refund accumulated by committed frames.</param>
-    /// <param name="maxCost">The escrow charged to the payer at approval, per TXPARAM 0x06.</param>
-    /// <param name="postTxReverted">Whether a POST_TX frame discarded the body, which the receipt reports as a failure.</param>
+    /// <param name="maxCost">The escrow, max_cost, charged to the payer at approval.</param>
+    /// <param name="assertReverted">Whether an ASSERT frame discarded the body, which the receipt reports as a failure.</param>
     /// <typeparam name="TTracing">As in <see cref="ExecuteFrameTx{TTracing}"/>.</typeparam>
     private TransactionResult SettleFrameTx<TTracing>(
         Transaction tx,
@@ -479,11 +486,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         ulong totalFrameGasUsed,
         long totalFrameStateGasUsed,
         long refundCounter,
-        in UInt256 effectiveGasPrice,
-        in UInt256 premiumPerGas,
         in UInt256 blobFee,
         in UInt256 maxCost,
-        bool postTxReverted)
+        bool assertReverted)
         where TTracing : struct, IFlag
     {
         if (frameContext.Payer is null)
@@ -536,19 +541,20 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // The payer was charged max_cost at approval; refund the remainder, keeping the burned base-fee
         // and blob legs. Both legs are bounded by max_cost, so the subtraction cannot underflow.
-        UInt256 spentCost = (UInt256)spentGas * effectiveGasPrice;
-        UInt256 chargedCost = spentCost + blobFee;
-        if (!frameContext.SkipFeeReservation && maxCost > chargedCost)
+        // The tip is bounded by what the escrow holds after the base fees, not by a per-gas cap.
+        UInt256 refund = FrameTxFeeBudget.Settle(in maxCost, in tx.MaxPriorityFeePerGas, spentGas, header.BaseFeePerGas, in blobFee,
+            out UInt256 baseFeePaid, out UInt256 blobFeePaid, out UInt256 fees);
+
+        if (!frameContext.SkipFeeReservation && !refund.IsZero)
         {
-            WorldState.AddToBalance(payer, maxCost - chargedCost, spec);
+            WorldState.AddToBalance(payer, refund, spec);
         }
 
         // Fee-collector chains collect the otherwise-burned legs, exactly as PayFees does.
-        UInt256 effectiveBaseFee = UInt256.Min(header.BaseFeePerGas, effectiveGasPrice);
-        UInt256 collectedFees = spec.IsEip1559Enabled ? effectiveBaseFee * (UInt256)spentGas : UInt256.Zero;
+        UInt256 collectedFees = spec.IsEip1559Enabled ? baseFeePaid : UInt256.Zero;
         if (spec.IsEip4844FeeCollectorEnabled)
         {
-            collectedFees += blobFee;
+            collectedFees += blobFeePaid;
         }
         if (spec.FeeCollector is not null && !collectedFees.IsZero)
         {
@@ -557,7 +563,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // EIP-7928: fee accounting touches the beneficiary regardless of premium, so the credit is
         // unconditional as in PayFees.
-        UInt256 fees = premiumPerGas * (UInt256)spentGas;
         WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
 
         if (accessTracker.TransientCreates is not null)
@@ -593,7 +598,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (TTracing.IsActive && tracer.IsTracingFees)
         {
             // Capped at the effective price paid, as in PayFees, so validation-off runs do not over-report.
-            tracer.ReportFees(fees, effectiveBaseFee * spentGas + blobFee);
+            tracer.ReportFees(fees, baseFeePaid + blobFeePaid);
         }
 
         if (TTracing.IsActive && _tracerFlags.IsTracingReceipt)
@@ -601,10 +606,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             frameReceiptTracer?.ReportFrameTxReceipt(payer, frameReceipts);
 
             GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, blockRegularGas + blockStateGas, gasRefund);
-            if (postTxReverted)
+            if (assertReverted)
             {
                 // The failed receipt rebuilds the log set from the frame receipts reported above.
-                tracer.MarkAsFailed(Eip8141Constants.EntryPointAddress, in gasConsumed, [], "POST_TX frame reverted");
+                tracer.MarkAsFailed(Eip8141Constants.EntryPointAddress, in gasConsumed, [], "ASSERT frame reverted");
             }
             else
             {
@@ -766,7 +771,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         // A bound this simulation rolls back, not an escrow: shared with the admission gate so both judge the
-        // same number, and its blob leg prices at max_fee_per_blob_gas since the fee at inclusion is unknown here.
+        // same number. It is max_fee, as the base fees at inclusion are unknown here.
         if (!FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 maxCost))
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction maximum cost cannot be priced");
@@ -775,7 +780,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out _);
         frameContext = new FrameTxContext(
             sender, tx.Nonce, tx.Frames!, tx.FrameSignatures ?? [], tx, sigHash,
-            in maxCost, in tx.MaxPriorityFeePerGas, tx.DecodedMaxFeePerGas, tx.MaxFeePerBlobGas.GetValueOrDefault(),
+            in maxCost, in tx.MaxPriorityFeePerGas,
             WorldState.GetNonce(sender),
             tx.NonceKeys);
 

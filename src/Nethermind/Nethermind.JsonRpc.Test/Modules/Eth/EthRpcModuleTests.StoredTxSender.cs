@@ -5,14 +5,17 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using NUnit.Framework;
 
@@ -39,7 +42,7 @@ public partial class EthRpcModuleTests
             StoredReceipts.FewerThanTransactions => [TestItem.AddressD],
             _ => null
         };
-        ((IClearableCache)test.Container.Resolve<IBlockStore>()).ClearCache();
+        EvictBlocks(test);
 
         ResultWrapper<TransactionForRpc> result = test.EthRpcModule.eth_getTransactionByBlockNumberAndIndex(new BlockParameter(blockNumber), 1);
 
@@ -59,11 +62,43 @@ public partial class EthRpcModuleTests
         TestRpcBlockchain test = ctx.Test;
         ulong blockNumber = await AddBlockWithTwoTransactionsFromB(test);
         regenerationForbidden = true;
-        ((IClearableCache)test.Container.Resolve<IBlockStore>()).ClearCache();
+        EvictBlocks(test);
 
         ResultWrapper<TransactionForRpc> result = test.EthRpcModule.eth_getTransactionByBlockNumberAndIndex(new BlockParameter(blockNumber), 1);
 
         Assert.That(((LegacyTransactionForRpc)result.Data).From, Is.EqualTo(TestItem.AddressB));
+    }
+
+    [Test]
+    public async Task Eth_get_transaction_by_block_and_index_reads_one_transaction_of_an_uncached_block()
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain test = ctx.Test;
+        ulong blockNumber = await AddBlockWithTwoTransactionsFromB(test);
+        Block block = test.BlockTree.FindBlock(blockNumber)!;
+        Transaction expected = block.Transactions[1];
+        using ArrayPoolList<byte> expectedRawList = TxDecoder.Instance.EncodeToArrayPoolList(expected, RlpBehaviors.SkipTypedWrapping);
+        byte[] expectedRaw = expectedRawList.ToArray();
+        EvictBlocks(test);
+
+        ResultWrapper<TransactionForRpc> byNumber = test.EthRpcModule.eth_getTransactionByBlockNumberAndIndex(new BlockParameter(blockNumber), 1);
+        ResultWrapper<TransactionForRpc> byHash = test.EthRpcModule.eth_getTransactionByBlockHashAndIndex(block.Hash!, 1);
+        using ResultWrapper<ArrayPoolList<byte>?> raw = test.EthRpcModule.eth_getRawTransactionByBlockNumberAndIndex(new BlockParameter(blockNumber), 1);
+        ResultWrapper<TransactionForRpc> pastEnd = test.EthRpcModule.eth_getTransactionByBlockNumberAndIndex(new BlockParameter(blockNumber), 2);
+        using ResultWrapper<ArrayPoolList<byte>?> rawPastEnd = test.EthRpcModule.eth_getRawTransactionByBlockNumberAndIndex(new BlockParameter(blockNumber), 2);
+
+        using (Assert.EnterMultipleScope())
+        {
+            LegacyTransactionForRpc fromNumber = (LegacyTransactionForRpc)byNumber.Data;
+            Assert.That(fromNumber.Hash, Is.EqualTo(expected.Hash));
+            Assert.That(fromNumber.From, Is.EqualTo(TestItem.AddressB));
+            Assert.That(fromNumber.BlockHash, Is.EqualTo(block.Hash));
+            Assert.That(fromNumber.TransactionIndex, Is.EqualTo((long?)1));
+            Assert.That(((LegacyTransactionForRpc)byHash.Data).Hash, Is.EqualTo(expected.Hash));
+            Assert.That(raw.Data!.ToArray(), Is.EqualTo(expectedRaw));
+            Assert.That(pastEnd.Data, Is.Null);
+            Assert.That(rawPastEnd.Data, Is.Null);
+        }
     }
 
     /// <summary>Adds a block with two transactions sent by <see cref="TestItem.AddressB"/>, then one more on top of it.</summary>
@@ -76,7 +111,16 @@ public partial class EthRpcModuleTests
         await test.AddBlock(transactions);
         ulong blockNumber = test.BlockTree.Head!.Number;
         await test.AddBlock();
+        test.Container.Resolve<IDeferredBlockDataWriter>().Drain();
         return blockNumber;
+    }
+
+    /// <summary>Makes the block store decode its blocks from the database, so their transactions carry no senders.</summary>
+    /// <remarks>Until the deferred writer lands a body, the store serves its pending snapshot, which shares the processed transactions.</remarks>
+    private static void EvictBlocks(TestRpcBlockchain test)
+    {
+        test.Container.Resolve<IDeferredBlockDataWriter>().Drain();
+        ((IClearableCache)test.Container.Resolve<IBlockStore>()).ClearCache();
     }
 
     /// <summary>Serves the receipts from <paramref name="iteratorReceipts"/> through the iterator, or the inner finder's when it returns null.</summary>

@@ -77,6 +77,41 @@ public class BranchSpliceTests
         Assert.That(Encode(restored), Is.EqualTo(Encode(expected)));
     }
 
+    /// <remarks>The guest encodes a branch into scratch shared by its depth (see <c>TrieNode.zkevm.cs</c>), so a branch short
+    /// enough to be embedded, whose RLP is kept, must not be left in it.</remarks>
+    [Test]
+    public void Embedded_branch_keeps_its_rlp_once_another_branch_at_its_depth_is_encoded([Values] bool restored)
+    {
+        TrieNode first = EmbeddedBranch(1, restored);
+        TrieNode second = EmbeddedBranch(2, restored);
+
+        ResolveKeyBelowRoot(first);
+        ResolveKeyBelowRoot(second);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Keccak, Is.Null);
+            Assert.That(first.FullRlp.AsSpan().ToArray(), Is.EqualTo(Encode(EmbeddedBranch(1, restored: false))));
+        }
+    }
+
+    /// <summary>A branch of two embedded leaves, itself short enough to be embedded; when <paramref name="restored"/>, the
+    /// second leaf is added after a decode, so the encoder splices it into the previous RLP.</summary>
+    private static TrieNode EmbeddedBranch(int seed, bool restored)
+    {
+        TrieNode branch = new(NodeType.Branch);
+        branch.SetChild(0, EmbeddedChild(seed));
+        if (restored) branch = Decode(Encode(branch));
+        branch.SetChild(1, EmbeddedChild(seed + 1));
+        return branch;
+    }
+
+    private static void ResolveKeyBelowRoot(TrieNode node)
+    {
+        TreePath path = TreePath.FromNibble([0]);
+        node.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+    }
+
     private static TrieNode FullBranch()
     {
         TrieNode branch = new(NodeType.Branch);

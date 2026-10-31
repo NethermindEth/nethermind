@@ -4,10 +4,12 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 using Nethermind.Blockchain.Tracing.ParityStyle;
@@ -23,14 +25,20 @@ namespace Nethermind.Blockchain.Tracing;
 /// and for the traces and receipts the trace store and trace dumps write.
 /// </summary>
 [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(GethTraceOptionsConverter.WireOptions))]
 [JsonSerializable(typeof(GethLikeCustomTrace))]
+[JsonSerializable(typeof(GethLikeTxTrace))]
+[JsonSerializable(typeof(Dictionary<string, JsonElement>))]
 [JsonSerializable(typeof(GethLikeCustomTrace.EmptyValue))]
+[JsonSerializable(typeof(FourByteIdCounts))]
 [JsonSerializable(typeof(GethLikeTxTraceCollection))]
 [JsonSerializable(typeof(NativeCallTracerCallFrame))]
 [JsonSerializable(typeof(NativeCallTracerConfig))]
+[JsonSerializable(typeof(NativeCallTracerConfig.JsonConfig), TypeInfoPropertyName = "NativeCallTracerJsonConfig")]
 [JsonSerializable(typeof(NativeCallTracerLogEntry))]
 [JsonSerializable(typeof(NativePrestateTracerAccount))]
 [JsonSerializable(typeof(NativePrestateTracerConfig))]
+[JsonSerializable(typeof(NativePrestateTracerConfig.JsonConfig), TypeInfoPropertyName = "NativePrestateTracerJsonConfig")]
 [JsonSerializable(typeof(NativePrestateTracerDiffMode))]
 [JsonSerializable(typeof(Dictionary<AddressAsKey, NativePrestateTracerAccount>))]
 [JsonSerializable(typeof(StateGasTrace))]

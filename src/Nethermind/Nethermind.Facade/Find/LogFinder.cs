@@ -4,15 +4,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.ExceptionServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -31,8 +30,12 @@ namespace Nethermind.Facade.Find
         IPrunedLogsRetention? prunedLogsRetention = null)
         : ILogFinder
     {
-        // PLINQ's fixed setup cost (chunk buffers, thread-pool hops) outweighs scanning a few blocks per worker inline.
+        // The parallel scan's fixed setup cost (thread-pool hops) outweighs scanning a few blocks per worker inline.
         private const int MinBlocksPerParallelWorker = 4;
+
+        // Chunks double each round of workers up to this cap: small first rounds keep short ranges balanced, larger
+        // later ones amortize the task hop that every chunk costs.
+        private const int MaxChunkDoublings = 4;
 
         private static int ParallelExecutions = 0;
         private static int ParallelLock = 0;
@@ -85,11 +88,33 @@ namespace Nethermind.Facade.Find
 
             if (_bodiesOnDisk)
             {
-                bool fromMissing = fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!);
+                bool fromMissing = ReceiptsMissing(fromBlock);
                 cancellationToken.ThrowIfCancellationRequested();
-                bool toMissing = toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!);
+                bool toMissing = ReceiptsMissing(toBlock);
 
-                if ((fromMissing || toMissing) && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
+                if (fromMissing && !WasPruned(fromBlock))
+                {
+                    // As in geth, a single block whose header bloom misses the filter has no logs to read.
+                    if (fromBlock.Hash == toBlock.Hash && !filter.Matches(fromBlock.Bloom!))
+                    {
+                        return new FoundLogs([], []);
+                    }
+
+                    throw new BlockNotProcessedException(fromBlock.Number);
+                }
+
+                if (toMissing && !WasPruned(toBlock))
+                {
+                    throw new BlockNotProcessedException(toBlock.Number);
+                }
+
+                // Sliced retention guarantees matching logs on the canonical chain by height, not receipts
+                // for a particular non-canonical block hash. A processed orphan with missing receipts must
+                // fail closed even when the same address is retained at this height.
+                if ((fromMissing || toMissing)
+                    && ((fromMissing && !_blockFinder.IsMainChain(fromBlock))
+                        || (toMissing && !_blockFinder.IsMainChain(toBlock))
+                        || !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number)))
                 {
                     throw new ResourceNotFoundException(fromMissing
                         ? $"Receipt not available for From block {fromBlock.Number}."
@@ -102,6 +127,27 @@ namespace Nethermind.Facade.Find
                 FilterLogsIteratively<BlockFilterLogs, FilterLog>(filter, fromBlock, toBlock, cancellationToken),
                 FilterLogsIteratively<BlockSerializedLogs, SerializedLogs>(filter, fromBlock, toBlock, cancellationToken));
         }
+
+        /// <summary>Throws when the receipts of <paramref name="header"/> are missing because the block is not processed yet.</summary>
+        /// <exception cref="BlockNotProcessedException">The block is not processed yet.</exception>
+        protected void ThrowIfNotProcessed(BlockHeader header)
+        {
+            if (_bodiesOnDisk && ReceiptsMissing(header) && !WasPruned(header))
+            {
+                throw new BlockNotProcessedException(header.Number);
+            }
+        }
+
+        private bool ReceiptsMissing(BlockHeader header) =>
+            header.Number != 0 && header.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(header.Number, header.Hash!);
+
+        /// <remarks>
+        /// Missing receipts on an already processed non-canonical block are unavailable history, not proof that
+        /// the block still awaits execution. Reorgs change canonical membership without clearing WasProcessed.
+        /// </remarks>
+        private bool WasPruned(BlockHeader header) =>
+            (_blockFinder.Head?.Number >= header.Number && _blockFinder.IsMainChain(header))
+            || _blockFinder.GetInfo(header.Number, header.Hash!).Info?.WasProcessed == true;
 
         protected bool RetainsLogsForFilter(LogFilter filter, ulong fromBlock, ulong toBlock) =>
             prunedLogsRetention is not null
@@ -138,26 +184,13 @@ namespace Nethermind.Facade.Find
                     ? $"Allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}."
                     : $"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
 
-                IEnumerable<T> wrapped = canRunParallel
-                    ? source.AsParallel().AsOrdered().WithDegreeOfParallelism(_rpcConfigGetLogsThreads)
-                    : source;
+                IEnumerable<TLog> logs = canRunParallel
+                    ? ScanInOrderedChunks(source, worker)
+                    : source.SelectMany(worker);
 
-                using IEnumerator<TLog> enumerator = wrapped.SelectMany(worker).GetEnumerator();
-                while (true)
+                foreach (TLog log in logs)
                 {
-                    try
-                    {
-                        if (!enumerator.MoveNext()) break;
-                    }
-                    catch (AggregateException e) when (FirstMappable(e) is { } mappable)
-                    {
-                        // PLINQ wraps worker exceptions, but the RPC layer maps bare types onto error codes — a
-                        // multi-block range must answer the same way a single-block range does.
-                        ExceptionDispatchInfo.Capture(mappable).Throw();
-                        throw; // unreachable; tells the compiler the catch does not complete
-                    }
-
-                    yield return enumerator.Current;
+                    yield return log;
                     cancellationToken.ThrowIfCancellationRequested();
                 }
             }
@@ -171,27 +204,82 @@ namespace Nethermind.Facade.Find
             }
         }
 
-        private static Exception? FirstMappable(AggregateException e)
+        /// <summary>Scans <paramref name="source"/> on worker tasks and yields the logs in source order.</summary>
+        /// <remarks>
+        /// At most one chunk per worker is in flight, so memory is bounded by that window rather than the range.
+        /// Logs scanned but never yielded are disposed when they are <see cref="IDisposable"/>, as <see cref="SerializedLogs"/> hold pooled buffers.
+        /// </remarks>
+        internal IEnumerable<TLog> ScanInOrderedChunks<T, TLog>(IEnumerable<T> source, Func<T, IEnumerable<TLog>> worker)
         {
-            // Unavailability wins over transient shapes (it stays true after a retry); an unexpected fault wins
-            // over both, so the aggregate falls through to the generic handler — the only site that logs it.
-            Exception? notFound = null;
-            Exception? transient = null;
-            foreach (Exception inner in e.Flatten().InnerExceptions)
+            Queue<Task<List<TLog>>> pending = new(_rpcConfigGetLogsThreads);
+            using CancellationTokenSource abandoned = new();
+            using IEnumerator<T> items = source.GetEnumerator();
+            List<TLog>? current = null;
+            int delivered = 0;
+            try
             {
-                switch (inner)
+                bool sourceDrained = false;
+                int chunksStarted = 0;
+                while (true)
                 {
-                    case ResourceNotFoundException:
-                        notFound ??= inner;
-                        break;
-                    case ConcurrencyLimitReachedException or OperationCanceledException:
-                        transient ??= inner;
-                        break;
-                    default:
-                        return null;
+                    while (!sourceDrained && pending.Count < _rpcConfigGetLogsThreads)
+                    {
+                        int chunkSize = MinBlocksPerParallelWorker << Math.Min(MaxChunkDoublings, chunksStarted++ / _rpcConfigGetLogsThreads);
+                        List<T> chunk = new(chunkSize);
+                        while (chunk.Count < chunkSize && items.MoveNext()) chunk.Add(items.Current);
+                        sourceDrained = chunk.Count < chunkSize;
+                        if (chunk.Count != 0) pending.Enqueue(Task.Run(() => ScanChunk(chunk, worker, abandoned.Token)));
+                    }
+
+                    if (!pending.TryDequeue(out Task<List<TLog>>? next)) yield break;
+
+                    current = next.GetAwaiter().GetResult();
+                    for (delivered = 0; delivered < current.Count;)
+                    {
+                        yield return current[delivered++];
+                    }
                 }
             }
-            return notFound ?? transient;
+            finally
+            {
+                // Workers must not outlive the parallel slot.
+                abandoned.Cancel();
+                ((Task)Task.WhenAll(pending)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing).GetAwaiter().GetResult();
+
+                if (current is not null) DisposeFrom(current, delivered);
+                foreach (Task<List<TLog>> task in pending)
+                {
+                    if (task.IsCompletedSuccessfully) DisposeFrom(task.Result, 0);
+                }
+            }
+        }
+
+        private static List<TLog> ScanChunk<T, TLog>(List<T> chunk, Func<T, IEnumerable<TLog>> worker, CancellationToken abandoned)
+        {
+            List<TLog> logs = [];
+            try
+            {
+                foreach (T item in chunk)
+                {
+                    if (abandoned.IsCancellationRequested) break;
+                    logs.AddRange(worker(item));
+                }
+            }
+            catch
+            {
+                DisposeFrom(logs, 0);
+                throw;
+            }
+
+            return logs;
+        }
+
+        private static void DisposeFrom<TLog>(List<TLog> logs, int start)
+        {
+            for (int i = start; i < logs.Count; i++)
+            {
+                if (logs[i] is IDisposable disposable) disposable.Dispose();
+            }
         }
 
         private IEnumerable<TLog> FilterLogsIteratively<TBlockLogs, TLog>(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
@@ -204,7 +292,24 @@ namespace Nethermind.Facade.Find
 
             ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
             bool tryParallel = ScansInParallel(rangeSize, _rpcConfigGetLogsThreads);
-            return FilterLogsInBlocksParallel<TBlockLogs, TLog>(filter, BlockNumbers(fromBlock.Number, rangeSize), tryParallel, cancellationToken);
+            Func<ReadOnlySpan<byte>, bool> bloomMatches = bloom =>
+            {
+                if (bloom.IsEmpty) return true;
+                BloomStructRef bloomRef = new(bloom);
+                return filter.Matches(ref bloomRef);
+            };
+
+            // A block-hash filter can target a processed block that is not canonical, so a lookup by number misses it.
+            if (fromBlock.Hash == toBlock.Hash)
+            {
+                return RunParallel([fromBlock], header => FindLogsInBlock<TBlockLogs, TLog>(filter, header, cancellationToken), tryParallel: false, cancellationToken);
+            }
+
+            return RunParallel(BlockNumbers(fromBlock.Number, rangeSize),
+                number => FindHeaderIfBloomMatchesOrLogError(number, bloomMatches, cancellationToken) is { } header
+                    ? FindLogsInBlock<TBlockLogs, TLog>(filter, header.Hash, header.Number, header.Timestamp, cancellationToken)
+                    : [],
+                tryParallel, cancellationToken);
         }
 
         internal static bool ScansInParallel(ulong rangeSize, int workers) => rangeSize >= (ulong)(workers * MinBlocksPerParallelWorker);
@@ -324,6 +429,7 @@ namespace Nethermind.Facade.Find
 
             TxReceipt[] receipts = GetReceipts(blockHash, blockNumber);
             long logIndexInBlock = 0;
+            bool receiptsRecovered = false;
             if (receipts is not null)
             {
                 for (int i = 0; i < receipts.Length; i++)
@@ -342,7 +448,12 @@ namespace Nethermind.Facade.Find
                             LogEntry log = receipt.Logs[j];
                             if (filter.Accepts(log))
                             {
-                                RecoverReceiptsData(blockHash, receipts);
+                                if (!receiptsRecovered)
+                                {
+                                    RecoverReceiptsData(blockHash, receipts);
+                                    receiptsRecovered = true;
+                                }
+
                                 yield return new FilterLog(logIndexInBlock, receipt, log, blockTimestamp);
                             }
 
@@ -362,12 +473,24 @@ namespace Nethermind.Facade.Find
             token.ThrowIfCancellationRequested();
 
             BlockHeader? block = _blockFinder.FindHeader(blockNumber);
-            if (block is null && _logger.IsError)
-            {
-                _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
-            }
+            if (block is null) LogMissingBlock(blockNumber);
 
             return block;
+        }
+
+        private BlockHeader? FindHeaderIfBloomMatchesOrLogError(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+
+            BlockHeader? block = _blockFinder.FindCanonicalHeaderIfBloomMatches(blockNumber, bloomMatches, out bool found);
+            if (!found) LogMissingBlock(blockNumber);
+
+            return block;
+        }
+
+        private void LogMissingBlock(ulong blockNumber)
+        {
+            if (_logger.IsError) _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
         }
 
         /// <summary>Collects the logs of one block that the filter accepts, in the shape <typeparamref name="TLog"/>.</summary>

@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System.Buffers;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -16,10 +17,13 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 using static Nethermind.Benchmarks.State.FlatWorldStateBenchmarkHarness;
 
@@ -97,6 +101,7 @@ public class StorageDeleteWarmupBenchmark
 
     private FlatWorldStateScope _scope = null!;
     private CountingReader _reader = null!;
+    private INodeRecordBuffer _buffer = null!;
     private long _measuredLoads;
     private long _measuredOps;
 
@@ -111,9 +116,10 @@ public class StorageDeleteWarmupBenchmark
         _address = DeriveAddress(7);
 
         // Build the trie in memory, then move all of it into persistence so every iteration starts cold.
+        using INodeRecordBuffer buffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
         SnapshotBundle bundle = new(
-            new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
-            new NullTrieNodeCache(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), buffer.PinAll()),
+            buffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         CapturingCommitTarget commitTarget = new();
         using FlatWorldStateScope scope = new(StateId.PreGenesis, bundle, new NullCodeDb(), commitTarget, _config, new NoopTrieWarmer(), NullLogManager.Instance);
 
@@ -128,8 +134,10 @@ public class StorageDeleteWarmupBenchmark
         _baseStateId = new StateId(BaseBlockNumber, scope.RootHash);
 
         FlatSnapshot snapshot = commitTarget.LastSnapshot ?? throw new InvalidOperationException("The base commit produced no snapshot");
-        _persistence = new RocksDbPersistence(new SnapshotableMemColumnsDb<FlatDbColumns>(), NullLogManager.Instance);
+        _persistence = new RocksDbPersistence(new SnapshotableMemColumnsDb<FlatDbColumns>(), NullLogManager.Instance, NullTrieNodeLog.Instance);
         Persist(_persistence, snapshot);
+        snapshot.Dispose();
+        _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, commitTarget.LastResource);
 
         // A spread of existing slots, the same every iteration.
         Random random = new(42);
@@ -148,9 +156,10 @@ public class StorageDeleteWarmupBenchmark
     /// </summary>
     private void GrowNodeCache()
     {
+        using INodeRecordBuffer buffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
         SnapshotBundle bundle = new(
-            new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
-            new NullTrieNodeCache(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), buffer.PinAll()),
+            buffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         using FlatWorldStateScope scope = new(_baseStateId, bundle, new NullCodeDb(), new CapturingCommitTarget(), _config, new InlineTrieWarmer(WarmupMode.PathOnly), NullLogManager.Instance);
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(_address);
         for (int s = 0; s < 4_000; s++) storageTree.HintSet(Slot(s));
@@ -160,9 +169,10 @@ public class StorageDeleteWarmupBenchmark
     public void IterationSetup()
     {
         _reader = new CountingReader(_persistence.CreateReader(), ReadMicros);
+        _buffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
         SnapshotBundle bundle = new(
-            new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
-            new NullTrieNodeCache(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), _buffer.PinAll()),
+            _buffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         InlineTrieWarmer warmer = new(Warmup);
         _scope = new FlatWorldStateScope(_baseStateId, bundle, new NullCodeDb(), new CapturingCommitTarget(), _config, warmer, NullLogManager.Instance);
 
@@ -177,6 +187,7 @@ public class StorageDeleteWarmupBenchmark
     {
         _scope.Dispose();
         _scope = null!;
+        _buffer.Dispose();
     }
 
     [GlobalCleanup]
@@ -210,14 +221,14 @@ public class StorageDeleteWarmupBenchmark
         using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To, WriteFlags.None);
         foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts) batch.SetAccount(kv.Key.Key, kv.Value);
         foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages) batch.SetStorage(kv.Key.Key.Item1, kv.Key.Key.Item2, kv.Value);
-        foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes)
+        foreach ((TreePath path, _, NodeRecord record) in snapshot.StateNodes)
         {
-            if (kv.Value.FullRlp.IsNotNull) batch.SetStateTrieNode(kv.Key.Key, kv.Value.FullRlp.AsSpan());
+            batch.SetStateTrieNode(path, record.Rlp);
         }
 
-        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
+        foreach ((Hash256 address, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)
         {
-            if (kv.Value.FullRlp.IsNotNull) batch.SetStorageTrieNode(kv.Key.Key.Item1, kv.Key.Key.Item2, kv.Value.FullRlp.AsSpan());
+            batch.SetStorageTrieNode(address, path, record.Rlp);
         }
     }
 
@@ -270,6 +281,18 @@ public class StorageDeleteWarmupBenchmark
         {
             Read();
             return inner.TryLoadStorageRlp(address, path, flags);
+        }
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Read();
+            return inner.TryLoadStateRlp(path, flags, action, arg);
+        }
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Read();
+            return inner.TryLoadStorageRlp(address, path, flags, action, arg);
         }
 
         public Account? GetAccount(Address address) => inner.GetAccount(address);

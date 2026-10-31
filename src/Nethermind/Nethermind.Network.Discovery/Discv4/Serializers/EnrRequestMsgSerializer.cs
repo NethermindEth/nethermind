@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
@@ -10,41 +9,36 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
 
-public sealed class EnrRequestMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<EnrRequestMsg>
+public sealed class EnrRequestMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IMessageSerializer<EnrRequestMsg>
 {
-    public void Serialize(IByteBuffer byteBuffer, EnrRequestMsg msg)
+    public int Serialize(Span<byte> destination, EnrRequestMsg msg)
     {
-        int length = GetLength(msg, out int contentLength);
+        GetDataLength(msg, out int contentLength);
 
-        byteBuffer.MarkIndex();
-        PrepareBufferForSerialization(byteBuffer, length, (byte)msg.MsgType);
-        ByteBufferRlpWriter writer = new(byteBuffer);
+        RlpWriter writer = StartPacket(destination, (byte)msg.MsgType);
         writer.StartSequence(contentLength);
         writer.Encode(msg.ExpirationTime);
 
-        byteBuffer.ResetIndex();
-
-        AddSignatureAndMdc(byteBuffer, length + 1);
-
-        byteBuffer.MarkReaderIndex();
-        msg.Hash = ReadHash(byteBuffer, byteBuffer.ReaderIndex);
-        byteBuffer.ResetReaderIndex();
+        int length = CompletePacket(destination, in writer, out ValueHash256 mdc);
+        msg.Hash = mdc;
+        return length;
     }
 
-    public EnrRequestMsg Deserialize(IByteBuffer msgBytes)
+    public EnrRequestMsg Deserialize(ReadOnlySpan<byte> msgBytes)
     {
-        (PublicKey farPublicKey, ValueHash256 mdc, IByteBuffer data) = PrepareForDeserialization(msgBytes);
-        RlpReader ctx = new(data.AsSpan());
+        (PublicKey farPublicKey, ValueHash256 mdc) = PrepareForDeserialization(msgBytes, out ReadOnlySpan<byte> data);
+        RlpReader ctx = new(data);
 
         ctx.ReadSequenceLength();
         long expirationTime = ctx.DecodeLong();
 
-        data.SetReaderIndex(data.ReaderIndex + ctx.Position);
         EnrRequestMsg msg = new(farPublicKey, mdc, expirationTime);
         return msg;
     }
 
-    public int GetLength(EnrRequestMsg message, out int contentLength)
+    public int GetLength(EnrRequestMsg message) => GetPacketLength(GetDataLength(message, out _));
+
+    private static int GetDataLength(EnrRequestMsg message, out int contentLength)
     {
         contentLength = Rlp.LengthOf(message.ExpirationTime);
         return Rlp.LengthOfSequence(contentLength);

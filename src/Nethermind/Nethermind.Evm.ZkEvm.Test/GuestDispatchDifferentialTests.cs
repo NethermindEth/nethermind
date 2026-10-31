@@ -48,12 +48,14 @@ public class GuestDispatchDifferentialTests
     /// <remarks>The guest installs its handlers on every spec, so a fork that gates or reprices one of them has to be here.</remarks>
     private static readonly IReleaseSpec[] Forks = [Byzantium.Instance, Constantinople.Instance, Shanghai.Instance, ReleaseSpec, Amsterdam.Instance];
     private static readonly IReleaseSpec[] StorageLoadForks = [ReleaseSpec, Amsterdam.Instance];
+    // Both sides of EIP-3529, which changed the refunds the guest SSTORE handler grants.
+    private static readonly IReleaseSpec[] StorageWriteForks = [Berlin.Instance, ReleaseSpec];
     private static readonly BlockHeader Header = new(Hash256.Zero, Hash256.Zero, Address.Zero, UInt256.Zero, 1, 30_000_000, 1, []);
 
     public enum Table { Untraced, Cancelable, Traced }
 
     private readonly record struct Outcome(
-        EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize, EthereumGasPolicy Policy);
+        EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize, EthereumGasPolicy Policy, long Refund);
 
     [Test]
     public void Random_programs_match_the_shared_handlers([ValueSource(nameof(Forks))] IReleaseSpec spec, [Range(0, 7)] int seed)
@@ -244,6 +246,8 @@ public class GuestDispatchDifferentialTests
             "600160016001",
             "73FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF16",
             "73FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE16",
+            "73FFFFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF16",
+            "73FFFFFFFFFFFFFFFFFEFFFFFFFFFFFFFFFFFFFFFF16",
             "73FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF17",
             "63FFFFFFFF16",
             "63FFFFFFFE16",
@@ -274,6 +278,14 @@ public class GuestDispatchDifferentialTests
             "60016002101561000B57005B1900",
             "600260011061000A57005B1900",
             "60026001101561000B57005B1900",
+            "6001600210600957005B1900",
+            "6002600110600957005B1900",
+            "6002600110600357005B1900",
+            "600456005B1900",
+            "600356005B1900",
+            "6000600657005B1900",
+            "6001600657005B1900",
+            "6001600457005B1900",
             "61000556005B1900",
             "600061000757005B1900",
             "600161000757005B1900",
@@ -395,6 +407,55 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
+    /// Addends below the modulus take the guest's inline ADDMOD: their sums fall on both sides of the modulus, and above
+    /// 2^256 for a modulus above 2^255, and one with the largest addend sums to the modulus exactly. An addend at or
+    /// above the modulus takes the general path.
+    /// </remarks>
+    [Test]
+    public void Addition_below_the_modulus_matches_the_shared_handlers([Range(0, 3)] int seed)
+    {
+        UInt256 bn254 = UInt256.Parse("21888242871839275222246405745257275088696311169201772083599007584476017209221");
+        List<string> mismatches = [];
+        Random random = new(seed * 7883);
+        for (int i = 0; i < 400 && mismatches.Count < 5; i++)
+        {
+            UInt256 modulus = random.Next(5) switch
+            {
+                0 => bn254,
+                1 => UInt256.MaxValue - (ulong)random.Next(0, 300),
+                2 => (UInt256.One << 255) + (ulong)random.Next(1, 300),
+                3 => UInt256.Zero,
+                _ => RandomWord(random) | UInt256.One,
+            };
+
+            UInt256 largest = modulus.IsZero ? UInt256.MaxValue : modulus - 1;
+            List<byte> code = [(byte)Instruction.PUSH32, .. modulus.ToBigEndian()];
+            for (int operand = 0; operand < 2; operand++)
+            {
+                UInt256 addend = random.Next(8) switch
+                {
+                    0 => largest,
+                    1 => UInt256.Zero,
+                    2 => UInt256.One,
+                    3 => modulus,
+                    4 => modulus > UInt256.MaxValue - 300 ? UInt256.MaxValue : modulus + (ulong)random.Next(1, 300),
+                    _ => modulus.IsZero ? RandomWord(random) : RandomWord(random) % modulus,
+                };
+                code.AddRange([(byte)Instruction.PUSH32, .. addend.ToBigEndian()]);
+            }
+
+            code.AddRange([(byte)Instruction.ADDMOD, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP]);
+            byte[] program = [.. code];
+            Outcome untraced = Run(100_000, [], 0, new CodeInfo(program), Table.Untraced);
+            Outcome traced = Run(100_000, [], 0, new CodeInfo(program), Table.Traced);
+            if (!Matches(untraced, traced))
+                mismatches.Add($"code {Convert.ToHexString(program)}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>
     /// A PUSH1 or DUP fused with the opcode after it never writes the pushed or copied word, so the operands lean on the
     /// carries, borrows and signs that word meets in the one below it; both words left on the stack are stored to memory.
     /// </remarks>
@@ -472,10 +533,73 @@ public class GuestDispatchDifferentialTests
         }
     }
 
+    /// <remarks>
+    /// The writes leave a slot as it was, reset one to zero and back, create one and clear it again, and reset and then
+    /// clear a third, each slot first cold and then warm, so every charge and refund of EIP-2200 and EIP-3529 is taken.
+    /// Every amount of gas up to the program's need puts the end of the gas inside each charge and at the stipend sentry.
+    /// In a static frame the first write faults instead. The guest handler serves forks before EIP-8038 only.
+    /// </remarks>
+    [Test]
+    public void Storage_writes_match_the_shared_handlers([ValueSource(nameof(StorageWriteForks))] IReleaseSpec spec, [Values] bool isStatic)
+    {
+        (int Key, UInt256 Value)[] writes =
+        [
+            (5, StorageValueAt(5)), (6, 0), (6, StorageValueAt(6)), (FirstEmptyKey, 1), (FirstEmptyKey, 0), (7, 9), (7, 0),
+        ];
+        List<byte> program = [];
+        foreach ((int key, UInt256 value) in writes)
+        {
+            program.AddRange([(byte)Instruction.PUSH2, .. value.ToBigEndian()[^2..], (byte)Instruction.PUSH1, (byte)key, (byte)Instruction.SSTORE]);
+        }
+
+        program.AddRange([(byte)Instruction.PUSH1, 6, (byte)Instruction.SLOAD, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP]);
+        byte[] code = [.. program];
+        const ulong ample = 100_000;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(code), Table.Traced, spec, loadsStorage: true).GasLeft;
+
+        List<string> mismatches = [];
+        for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
+        {
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, spec, loadsStorage: true, isStatic: isStatic);
+            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, spec, loadsStorage: true, isStatic: isStatic);
+            if (!Matches(untraced, traced) || untraced.Refund != traced.Refund)
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        // The stipend sentry needs more gas at each write than the writes go on to use.
+        Outcome complete = Run(ample, [], 0, new CodeInfo(code), Table.Untraced, spec, loadsStorage: true, isStatic: isStatic);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mismatches, Is.Empty);
+            if (isStatic)
+            {
+                Assert.That(complete.Exception, Is.EqualTo(EvmExceptionType.StaticCallViolation));
+            }
+            else
+            {
+                Assert.That(complete.Exception, Is.EqualTo(EvmExceptionType.Stop));
+                Assert.That(complete.GasLeft, Is.EqualTo(ample - needed));
+                Assert.That(complete.Refund, Is.Not.Zero);
+                Assert.That(complete.Memory, Is.EqualTo(Convert.ToHexString(StorageValueAt(6).ToBigEndian())));
+            }
+        }
+    }
+
     /// <remarks>EIP-8038 SLOAD gas equals EIP-2929's, so only the table itself shows that the guest handler stays out.</remarks>
     [Test]
     public void Guest_storage_load_handler_is_installed_until_eip8038([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
         Assert.That(VirtualMachine<EthereumGasPolicy>.LoadsStorageThroughGuestHandlerForTests(spec), Is.EqualTo(!spec.IsEip8038Enabled));
+
+    [TestCaseSource(nameof(StorageStoreForks))]
+    public bool Guest_storage_store_handler_is_installed_until_eip8038(IReleaseSpec spec) =>
+        VirtualMachine<EthereumGasPolicy>.StoresStorageThroughGuestHandlerForTests(spec);
+
+    private static IEnumerable<TestCaseData> StorageStoreForks()
+    {
+        yield return new TestCaseData(Berlin.Instance).Returns(true);
+        yield return new TestCaseData(Osaka.Instance).Returns(true);
+        yield return new TestCaseData(Amsterdam.Instance).Returns(false);
+    }
 
     /// <remarks>
     /// Every amount of gas up to the program's need puts the end of the gas inside each charge. In a static frame the
@@ -597,6 +721,7 @@ public class GuestDispatchDifferentialTests
     {
         List<byte> code = [];
         List<int> destinationImmediates = [];
+        List<int> shortDestinationImmediates = [];
         if (random.Next(6) == 0)
         {
             // Pushes the destinations far enough out for a look-back to decide them.
@@ -666,13 +791,13 @@ public class GuestDispatchDifferentialTests
                             _ => (byte)Instruction.ISZERO
                         });
                         if (random.Next(2) == 0) code.Add((byte)Instruction.ISZERO);
-                        destinationImmediates.Add(code.Count + 1);
-                        code.AddRange([(byte)Instruction.PUSH2, 0, 0, (byte)Instruction.JUMPI]);
+                        AddDestinationPush(random, code, destinationImmediates, shortDestinationImmediates);
+                        code.Add((byte)Instruction.JUMPI);
                         break;
                     }
                 case < 92:
-                    destinationImmediates.Add(code.Count + 1);
-                    code.AddRange([(byte)Instruction.PUSH2, 0, 0, random.Next(2) == 0 ? (byte)Instruction.JUMP : (byte)Instruction.JUMPI]);
+                    AddDestinationPush(random, code, destinationImmediates, shortDestinationImmediates);
+                    code.Add(random.Next(2) == 0 ? (byte)Instruction.JUMP : (byte)Instruction.JUMPI);
                     break;
                 case < 94: code.AddRange([(byte)Instruction.PUSH2, (byte)random.Next(0, 5), (byte)random.Next(256), (byte)Instruction.MSTORE]); break;
                 case < 96: code.AddRange([(byte)Instruction.PUSH2, (byte)random.Next(0, 5), (byte)random.Next(256), (byte)Instruction.MLOAD]); break;
@@ -710,9 +835,32 @@ public class GuestDispatchDifferentialTests
             code[immediate + 1] = (byte)destination;
         }
 
+        List<int> shortJumpDestinations = jumpDestinations.FindAll(static destination => destination <= byte.MaxValue);
+        foreach (int immediate in shortDestinationImmediates)
+        {
+            code[immediate] = (byte)(shortJumpDestinations.Count > 0 && random.Next(5) != 0
+                ? shortJumpDestinations[random.Next(shortJumpDestinations.Count)]
+                : random.Next(0, code.Count + 3));
+        }
+
         // Sometimes cut the last opcode's immediates short.
         if (code.Count > 1 && random.Next(3) == 0) code.RemoveAt(code.Count - 1);
         return code.Count == 0 ? [(byte)Instruction.STOP] : code.ToArray();
+    }
+
+    /// <summary>A PUSH2 of a jump destination, or a PUSH1 of one as code shorter than 256 bytes has it, filled in once the code is complete.</summary>
+    private static void AddDestinationPush(Random random, List<byte> code, List<int> destinationImmediates, List<int> shortDestinationImmediates)
+    {
+        if (random.Next(3) == 0)
+        {
+            shortDestinationImmediates.Add(code.Count + 1);
+            code.AddRange([(byte)Instruction.PUSH1, 0]);
+        }
+        else
+        {
+            destinationImmediates.Add(code.Count + 1);
+            code.AddRange([(byte)Instruction.PUSH2, 0, 0]);
+        }
     }
 
     /// <summary>The opcode pairs the guest fuses, read off the paired untraced table.</summary>
@@ -796,7 +944,7 @@ public class GuestDispatchDifferentialTests
         for (int opcode = 0; opcode < handlers.Length; opcode++)
         {
             if (NeedsWorldStateOrHash((Instruction)opcode) &&
-                !(loadsStorage && (Instruction)opcode is Instruction.SLOAD or Instruction.TLOAD or Instruction.TSTORE) &&
+                !(loadsStorage && (Instruction)opcode is Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE) &&
                 !(returnData is not null && (Instruction)opcode is Instruction.RETURNDATASIZE or Instruction.RETURNDATACOPY))
                 handlers[opcode] = handlers[(int)Instruction.INVALID];
         }
@@ -830,11 +978,14 @@ public class GuestDispatchDifferentialTests
             memoryHex = Convert.ToHexString(memory);
         }
 
-        return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), pc, finalHead, stackHex, memoryHex, size, gasPolicy[0]);
+        return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), pc, finalHead, stackHex, memoryHex, size, gasPolicy[0], frame.Refund);
     }
 
-    /// <summary>The value every test world state holds at <paramref name="key"/>.</summary>
-    private static UInt256 StorageValueAt(UInt256 key) => key * 7 + 3;
+    /// <summary>The value every test world state holds at <paramref name="key"/> when the transaction starts.</summary>
+    /// <remarks>Zero from <see cref="FirstEmptyKey"/> on, so a write can create a slot.</remarks>
+    private static UInt256 StorageValueAt(UInt256 key) => key >= FirstEmptyKey ? UInt256.Zero : key * 7 + 3;
+
+    private const int FirstEmptyKey = 0x80;
 
     private static bool NeedsWorldStateOrHash(Instruction opcode) =>
         opcode is Instruction.KECCAK256 or Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE ||
@@ -852,8 +1003,15 @@ public class GuestDispatchDifferentialTests
             SetBlockExecutionContext(new BlockExecutionContext(Header, spec));
             _txTracer = new SilentTracer();
             _worldState = Substitute.For<IWorldState>();
+            Dictionary<StorageCell, UInt256> storage = [];
             _worldState.When(static state => state.Get(Arg.Any<StorageCell>(), out Arg.Any<UInt256>()))
+                .Do(call => call[1] = storage.TryGetValue((StorageCell)call[0], out UInt256 value) ? value : StorageValueAt(((StorageCell)call[0]).Index));
+            _worldState.When(static state => state.GetOriginal(Arg.Any<StorageCell>(), out Arg.Any<UInt256>()))
                 .Do(static call => call[1] = StorageValueAt(((StorageCell)call[0]).Index));
+            _worldState.When(static state => state.Set(Arg.Any<StorageCell>(), Arg.Any<UInt256>()))
+                .Do(call => storage[(StorageCell)call[0]] = (UInt256)call[1]);
+            _worldState.When(static state => state.Set(Arg.Any<StorageCell>(), Arg.Any<UInt256>(), Arg.Any<UInt256>()))
+                .Do(call => storage[(StorageCell)call[0]] = (UInt256)call[1]);
             Dictionary<StorageCell, UInt256> transient = [];
             _worldState.When(static state => state.SetTransientState(Arg.Any<StorageCell>(), Arg.Any<UInt256>()))
                 .Do(call => transient[(StorageCell)call[0]] = (UInt256)call[1]);

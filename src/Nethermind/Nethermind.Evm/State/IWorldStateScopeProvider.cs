@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -65,6 +66,19 @@ public interface IWorldStateScopeProvider
 
         /// <inheritdoc cref="HintWarmAccount(Address)"/>
         void HintWarmSlot(Address address, in UInt256 index) { }
+
+        /// <summary>
+        /// Starts reading accounts and slots that will be read soon from persisted state, without returning them,
+        /// so that cold disk reads overlap. No-op for backends without asynchronous reads.
+        /// </summary>
+        /// <remarks>
+        /// The spans are the caller's scratch: layers filter them in place, so their contents may change. Once
+        /// <paramref name="cancellationToken"/> is cancelled no further batch is started; reads already started complete.
+        /// </remarks>
+        void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) { }
+
+        /// <summary>Whether <see cref="Prefetch"/> does anything, so callers can skip gathering keys.</summary>
+        bool SupportsPrefetch => false;
 
         /// <summary>
         /// Get the account information for the following address.
@@ -145,7 +159,8 @@ public interface IWorldStateScopeProvider
         /// call <see cref="UpdateRootHash"/> afterwards. See <see cref="ScopeBalApplier"/> for the generic implementation.
         /// </remarks>
         /// <param name="bal">The Block Access List whose last change per field is applied.</param>
-        void ApplyBal(ReadOnlyBlockAccessList bal);
+        /// <param name="cancellationToken">Once cancelled, the apply returns early, leaving the scope partially written and fit only to be discarded.</param>
+        void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default);
     }
 
     /// <summary>

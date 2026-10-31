@@ -22,10 +22,12 @@ using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Optimism.Rpc;
@@ -97,7 +99,7 @@ public class OptimismEthRpcModuleTest
         public Address? RecoverAddress(Signature signature, in ValueHash256 message) => null;
     }
 
-    private sealed class NullSenderTransactionForRpc(Transaction transaction) : SignableTransactionForRpc
+    private sealed class NullSenderTransactionForRpc(Transaction transaction) : LegacyTransactionForRpc
     {
         public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
         {
@@ -257,6 +259,53 @@ public class OptimismEthRpcModuleTest
 
         Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo(expected),
             "the wallet holds a key for the account, so its real error must not become an unknown account");
+    }
+
+    [Test]
+    public async Task Send_transaction_without_nonce_gas_and_fees_fills_them([Values] bool forwardToSequencer)
+    {
+        UInt256 suggestedFee = 1_000_000_000;
+        IGasPriceOracle oracle = Substitute.For<IGasPriceOracle>();
+        oracle.GetMaxPriorityGasFeeEstimate().Returns(suggestedFee);
+        ITxSealer sealer = Substitute.For<ITxSealer>();
+        sealer.TrySeal(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(true);
+        IJsonRpcClient sequencer = Substitute.For<IJsonRpcClient>();
+        Transaction? sent = null;
+        sequencer.Post("eth_sendRawTransaction", Arg.Do<object?[]>(parameters =>
+            sent = TxDecoder.Instance.DecodeCompleteNotNull((byte[])parameters[0]!, RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping)))
+            .Returns($$"""{"jsonrpc":"2.0","id":67,"result":"{{ForwardedHash}}"}""");
+        ITxSender txSender = Substitute.For<ITxSender>();
+        txSender.SendTransaction(Arg.Do<Transaction>(tx => sent = tx), Arg.Any<TxHandlingOptions>())
+            .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
+        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithGasPriceOracle(oracle)
+            .WithTxSender(txSender)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: forwardToSequencer ? sequencer : null,
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: sealer,
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build(new TestSpecProvider(London.Instance));
+        await rpcBlockchain.AddBlock(Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressA)
+            .WithMaxFeePerGas(20.GWei).WithMaxPriorityFeePerGas(1.GWei).WithType(TxType.EIP1559)
+            .SignedAndResolved(TestItem.PrivateKeyC).TestObject);
+        object? request = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressC}}","to":"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c","value":"0x1"}""");
+
+        string serialized = await rpcBlockchain.TestEthRpc("eth_sendTransaction", request);
+
+        Assert.That(JToken.Parse(serialized)["error"], Is.Null, serialized);
+        BlockHeader head = rpcBlockchain.BlockTree.Head!.Header;
+        UInt256 nextBaseFee = BaseFeeCalculator.Calculate(head, rpcBlockchain.SpecProvider.GetSpecFor1559(head.Number + 1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sent!.Nonce, Is.EqualTo(1UL), "the nonce must follow the account's mined transaction");
+            Assert.That(sent.GasLimit, Is.EqualTo((ulong)GasCostOf.Transaction), "gas must be estimated");
+            Assert.That(sent.MaxPriorityFeePerGas, Is.EqualTo(suggestedFee), "the tip must come from the gas price oracle");
+            Assert.That(sent.MaxFeePerGas, Is.EqualTo(2 * nextBaseFee + suggestedFee), "the fee cap must be twice the next base fee plus the tip");
+        }
     }
 
     [Test]
@@ -595,8 +644,11 @@ public class OptimismEthRpcModuleTest
             Assert.That(firstTx["depositReceiptVersion"], Is.Null);
         else
             Assert.That(firstTx["depositReceiptVersion"]!.Value<string>(), Is.EqualTo(expectedDepositVersion));
-        Assert.That(secondTx["hash"]!.Value<string>(), Is.EqualTo(regularTx.Hash!.Bytes.ToHexString(withZeroX: true)));
-        Assert.That(secondTx["depositReceiptVersion"], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondTx["hash"]!.Value<string>(), Is.EqualTo(regularTx.Hash!.Bytes.ToHexString(withZeroX: true)));
+            Assert.That(secondTx["depositReceiptVersion"], Is.Null);
+        }
     }
 
     [Test]

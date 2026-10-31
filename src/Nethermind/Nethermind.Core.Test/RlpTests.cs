@@ -858,8 +858,11 @@ namespace Nethermind.Core.Test
             RlpWriter writer = new(buffer);
             TxDecoder.Instance.Encode(ref writer, (Transaction[]?)null);
 
-            Assert.That(writer.Position, Is.EqualTo(Rlp.OfEmptyList.Length));
-            Assert.That(buffer, Is.EqualTo(Rlp.OfEmptyList.Bytes));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(writer.Position, Is.EqualTo(Rlp.OfEmptyList.Length));
+                Assert.That(buffer, Is.EqualTo(Rlp.OfEmptyList.Bytes));
+            }
         }
 
         [Test]
@@ -1103,8 +1106,11 @@ namespace Nethermind.Core.Test
             byte[] data = Rlp.Encode(Rlp.Encode(new byte[contentLength])).Bytes;
 
             RlpReader ctx = new(data.AsSpan());
-            Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
-            Assert.That(ctx.Position, Is.EqualTo(prefixLength));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
+                Assert.That(ctx.Position, Is.EqualTo(prefixLength));
+            }
         }
 
         [TestCase(2, 56)]
@@ -1116,8 +1122,11 @@ namespace Nethermind.Core.Test
             byte[] data = Rlp.Encode(new byte[contentLength]).Bytes;
 
             RlpReader ctx = new(data.AsSpan());
-            Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
-            Assert.That(ctx.Position, Is.EqualTo(prefixLength));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
+                Assert.That(ctx.Position, Is.EqualTo(prefixLength));
+            }
         }
 
         private static byte[] ExpectedValueHash(ValueHash256? value)

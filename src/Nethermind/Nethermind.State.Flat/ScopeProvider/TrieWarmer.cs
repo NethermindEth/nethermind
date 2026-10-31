@@ -57,7 +57,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         int configuredWorkerCount = flatDbConfig.TrieWarmerWorkerCount;
         int workerCount = configuredWorkerCount == -1
-            ? Math.Max(Environment.ProcessorCount * 3 / 4, 1)
+            ? DefaultWorkerCount(Environment.ProcessorCount)
             : configuredWorkerCount;
         workerCount = Math.Max(workerCount, 2); // Min worker count is 2
 
@@ -67,6 +67,11 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             _processors[i] = new Processor(this);
         }
     }
+
+    /// <summary>The worker count when <see cref="IFlatDbConfig.TrieWarmerWorkerCount"/> is -1.</summary>
+    /// <remarks>The workers mostly wait on storage reads, so on a machine with few cores 3/4 of them keeps too few reads in flight.</remarks>
+    internal static int DefaultWorkerCount(int processorCount) =>
+        Math.Max(processorCount * 3 / 4, Math.Min(12, processorCount * 3 / 2));
 
     private sealed class Processor(TrieWarmer owner) : IThreadPoolWorkItem
     {
@@ -174,8 +179,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         }
         // It can be missing when the warmer lags so much behind that the node is now gone.
         catch (TrieNodeException) { }
-        // Because it runs in parallel, it could happen that the bundle changed, which causes this.
-        catch (NodeHashMismatchException) { }
         // Because it runs in parallel, it could be that the scope is disposed of early.
         catch (ObjectDisposedException) { }
         // Scope disposal can null pooled snapshot maps while a queued warmup is already inside trie traversal.

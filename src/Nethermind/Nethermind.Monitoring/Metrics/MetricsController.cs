@@ -17,12 +17,12 @@ using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api.Monitoring;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Metric;
-using Nethermind.Monitoring.Config;
 using Prometheus;
 
 [assembly: InternalsVisibleTo("Nethermind.Monitoring.Test")]
@@ -40,6 +40,7 @@ namespace Nethermind.Monitoring.Metrics
         // Largely for testing reason
         internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = [];
 
+        private readonly bool _prometheusEnabled;
         private readonly bool _useCounters;
         private readonly bool _enableDetailedMetric;
 
@@ -364,6 +365,7 @@ namespace Nethermind.Monitoring.Metrics
             }
 
             _intervalMilliseconds = (metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds) * 1000 / 2;
+            _prometheusEnabled = metricsConfig.Enabled;
             _useCounters = metricsConfig.CountersEnabled;
             _enableDetailedMetric = metricsConfig.EnableDetailedMetric;
         }
@@ -390,6 +392,8 @@ namespace Nethermind.Monitoring.Metrics
             {
                 callback();
             }
+
+            if (!_prometheusEnabled) return;
 
             foreach (IMetricUpdater[] updaters in _updaterValues)
             {

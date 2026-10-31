@@ -18,12 +18,10 @@ public interface IHistoryConfig : IConfig
         DefaultValue = "null")]
     uint? RetentionEpochs { get; set; }
 
-    // Default matches the mainnet weak-subjectivity period — BALs older than that are not useful for state reconstruction during weak-subjectivity sync
     [ConfigItem(
-        Description = "The number of epochs to retain block access lists (BALs).",
-        DefaultValue = "3533",
-        HiddenFromDocs = true)]
-    uint BalRetentionEpochs { get; set; }
+        Description = "The number of epochs to retain block access lists (BALs). Must be at least the chain's minBalRetentionEpochs chainspec parameter. Defaults to that minimum, including on archive nodes. Set to 4294967295 to keep all BALs when history pruning is disabled.",
+        DefaultValue = "null")]
+    uint? BalRetentionEpochs { get; set; }
 
     // Set to 0 to prune every slot
     [ConfigItem(

@@ -30,8 +30,11 @@ namespace Nethermind.Core.Test.Crypto
             EthereumEcdsa ecdsa = new(chainId);
             ecdsa.Sign(key, tx, isEip155Enabled: false);
 
-            Assert.That(tx.Signature!.V, Is.EqualTo(27).Or.EqualTo(28));
-            Assert.That(ecdsa.RecoverAddress(tx), Is.EqualTo(key.Address));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tx.Signature!.V, Is.EqualTo(27).Or.EqualTo(28));
+                Assert.That(ecdsa.RecoverAddress(tx), Is.EqualTo(key.Address));
+            }
         }
 
         [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId, true)]
@@ -124,6 +127,7 @@ namespace Nethermind.Core.Test.Crypto
                 Assert.That(result, Is.True);
                 Assert.That(recovered, Is.SequenceEqualTo(ecdsa.RecoverPublicKey(tx, useSignatureChainId)!.PrefixedBytes));
                 Assert.That(PublicKey.ComputeAddress(recovered[1..]), Is.EqualTo(key.Address));
+                Assert.That(ecdsa.RecoverAddress(tx, encoded, useSignatureChainId), Is.EqualTo(key.Address));
             }
         }
 

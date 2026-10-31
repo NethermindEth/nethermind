@@ -19,8 +19,8 @@ public interface IBlockAccessListSource
     /// <remarks>Block processing installs one per block; simulation installs one per transaction that
     /// reads its own diff, and stays idle otherwise. Defaulted so a source written against the
     /// single-property contract still loads, but the default throws rather than silently no-opping:
-    /// this hook drives the EIP-7906 POST_TX diff, so a source that reaches recording without
+    /// this hook drives the EIP-7906 ASSERT diff, so a source that reaches recording without
     /// supplying it is a wiring gap that must fail loud, not quietly disable a consensus behaviour.</remarks>
     void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal)
-        => throw new NotSupportedException($"{GetType().Name} does not implement {nameof(SetGeneratingBlockAccessList)}; a source that records the EIP-7906 POST_TX diff must override it.");
+        => throw new NotSupportedException($"{GetType().Name} does not implement {nameof(SetGeneratingBlockAccessList)}; a source that records the EIP-7906 ASSERT diff must override it.");
 }

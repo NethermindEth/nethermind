@@ -35,6 +35,12 @@ public class BlockOverride
         return result;
     }
 
+    /// <summary>Gets or sets the requested beacon root. Single-call methods reject it; see <see cref="BeaconRootNotSupported"/>.</summary>
+    public Hash256? BeaconRoot { get; set; }
+
+    /// <summary>The error of a single-call method given an unsupported <see cref="BeaconRoot"/> override.</summary>
+    public const string BeaconRootNotSupported = "block override \"beaconRoot\" is not supported for this RPC method";
+
     public void ApplyOverrides(BlockHeader result)
     {
         if (Time is not null) result.Timestamp = Time.Value;

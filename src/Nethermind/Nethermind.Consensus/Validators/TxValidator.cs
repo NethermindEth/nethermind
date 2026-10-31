@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Validation;
 using Nethermind.Crypto;
@@ -91,9 +92,9 @@ public sealed class TxValidator : ITxValidator
             new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
             NonceCapTxValidator.Instance,
             expectedChainIdTxValidator,
-            GasFieldsTxValidator.Instance,
-            // The frame-tx decoder always populates both blob fields, so the presence-based
-            // NonBlobFieldsTxValidator would reject every frame tx; this one checks them by value.
+            // EIP-8141 fees are [max_fee, max_priority_fee_per_gas]: there is no per-gas cap to order the tip against.
+            // The frame-tx decoder always populates blob_versioned_hashes, so the presence-based
+            // NonBlobFieldsTxValidator would reject every frame tx; this one checks it by value.
             FrameTxFieldsTxValidator.Instance,
             FrameTxNonceKeysTxValidator.Instance,
             MempoolBlobTxProofVersionValidator.Instance,
@@ -266,7 +267,7 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
             return error!;
         }
 
-        // The POST_TX gate the head validator also carries is already answered by the call above.
+        // The ASSERT gate the head validator also carries is already answered by the call above.
         ValidationResult gasReservationResult = FrameTxHeadFieldsTxValidator.ValidateGasReservation(transaction, releaseSpec);
         if (!gasReservationResult)
         {
@@ -278,11 +279,6 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
         byte[]?[]? blobVersionedHashes = transaction.BlobVersionedHashes;
         if (blobVersionedHashes is { Length: > 0 })
         {
-            if (transaction.MaxFeePerBlobGas is null)
-            {
-                return TxErrorMessages.BlobTxMissingMaxFeePerBlobGas;
-            }
-
             ValidationResult blobGasLimitResult = BlobFieldsTxValidator.ValidateBlobGasLimits(blobVersionedHashes.Length, releaseSpec);
             return !blobGasLimitResult ? blobGasLimitResult : BlobFieldsTxValidator.ValidateBlobVersionedHashes(blobVersionedHashes);
         }
@@ -292,9 +288,9 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
 }
 
 /// <summary>The frame-transaction rules of <see cref="FrameTxFieldsTxValidator"/> whose verdict a change of
-/// head specification can flip: the EIP-7906 POST_TX gate and the spec-priced execution-gas reservation.</summary>
+/// head specification can flip: the EIP-7906 ASSERT gate and the spec-priced execution-gas reservation.</summary>
 /// <remarks>
-/// A POST_TX frame admitted after EIP-7906 is invalid on a head below it, and a repricing of the intrinsic or
+/// An ASSERT frame admitted after EIP-7906 is invalid on a head below it, and a repricing of the intrinsic or
 /// floored gas moves the reservation across the EIP-7825 cap while <see cref="GasLimitCapTxValidator"/> skips
 /// frame transactions. This therefore also runs in <see cref="HeadTxValidator"/>.
 /// What that validator checks and this one does not is either fork-independent frame shape, or the EIP-7594 blob
@@ -315,9 +311,9 @@ public sealed class FrameTxHeadFieldsTxValidator : ITxValidator
         {
             foreach (TxFrame frame in frames)
             {
-                if (frame.Mode == FrameMode.PostTx)
+                if (frame.Mode == FrameMode.Assert)
                 {
-                    return FrameTxValidation.PostTxNotEnabled;
+                    return FrameTxValidation.AssertFrameNotEnabled;
                 }
             }
         }
@@ -325,7 +321,7 @@ public sealed class FrameTxHeadFieldsTxValidator : ITxValidator
         return ValidateGasReservation(transaction, releaseSpec);
     }
 
-    /// <summary>The reservation leg alone, for the caller that has already answered the POST_TX gate.</summary>
+    /// <summary>The reservation leg alone, for the caller that has already answered the ASSERT gate.</summary>
     internal static ValidationResult ValidateGasReservation(Transaction transaction, IReleaseSpec releaseSpec)
     {
         if (transaction.Frames is null)
@@ -379,7 +375,7 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
             return FrameTxValidation.KeyedNoncesNotEnabled;
         }
 
-        return KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) && transaction.Nonce < Eip8250Constants.MaxNonceSeq
+        return KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) && (nonceKeys.Length != 0 || transaction.Nonce < Eip8250Constants.MaxNonceSeq)
             ? ValidationResult.Success
             : FrameTxValidation.MalformedNonceKeySet;
     }
@@ -609,8 +605,8 @@ public abstract class BaseSignatureTxValidator : ITxValidator
             return TxErrorMessages.InvalidTxSignature;
         }
 
-        UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
-        UInt256 rValue = new(signature.RAsSpan, isBigEndian: true);
+        UInt256 sValue = Bytes.ReadUInt256BigEndian(signature.SAsSpan);
+        UInt256 rValue = Bytes.ReadUInt256BigEndian(signature.RAsSpan);
 
         UInt256 sMax = releaseSpec.IsEip2Enabled ? SecP256k1Curve.HalfNPlusOne : SecP256k1Curve.N;
         return sValue.IsZero || sValue >= sMax ? TxErrorMessages.InvalidTxSignature
@@ -633,6 +629,10 @@ public sealed class SignatureTxValidator : BaseSignatureTxValidator
 {
     public static readonly SignatureTxValidator Instance = new();
     private SignatureTxValidator() { }
+
+    // A typed transaction signs with a y_parity of 0 or 1, never with a V that carries a chain id.
+    protected override ValidationResult ValidateChainId(Transaction transaction, IReleaseSpec releaseSpec) =>
+        TxErrorMessages.InvalidTxSignature;
 }
 
 public sealed class NoContractCreationTxValidator : ITxValidator
@@ -687,5 +687,5 @@ public sealed class NonceCapTxValidator : ITxValidator
         IsWellFormed(transaction, releaseSpec);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.Nonce < ulong.MaxValue ? ValidationResult.Success : TxErrorMessages.NonceTooHigh;
+        transaction.Nonce < ulong.MaxValue || KeyedNonceManager.UsesKeyedNonce(transaction) ? ValidationResult.Success : TxErrorMessages.NonceTooHigh;
 }

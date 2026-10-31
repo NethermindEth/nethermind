@@ -21,4 +21,8 @@ internal readonly struct VmTracerFlags(ITxTracer tracer)
 
     /// <inheritdoc cref="VmTracerFlags.AllowsReturnScratch"/>
     public readonly bool AllowsReturnScratch = !tracer.IsTracingMemory && !tracer.IsTracingReturnData;
+
+    /// <inheritdoc cref="VmTracerFlags.AllowsTopLevelReturnScratch"/>
+    public readonly bool AllowsTopLevelReturnScratch =
+        !tracer.IsTracingMemory && !tracer.IsTracingReturnData && tracer is ITxOutputTracingFilter { IsTracingOutput: false };
 }

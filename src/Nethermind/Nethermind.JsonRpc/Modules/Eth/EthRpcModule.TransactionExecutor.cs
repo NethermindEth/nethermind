@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -26,8 +27,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         // Single call executor
         private abstract class TxExecutor<TResult>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider)
-            : ExecutorBase<TResult, TransactionForRpc, Transaction>(blockchainBridge, blockFinder, rpcConfig)
         {
+            protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge;
+            protected readonly IBlockFinder _blockFinder = blockFinder;
+            protected readonly IJsonRpcConfig _rpcConfig = rpcConfig;
             protected bool NoBaseFee { get; private set; }
             private BlockOverride? _blockOverride;
             private CancellationToken _requestToken;
@@ -56,8 +59,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
             /// </summary>
             public bool ChecksFork { private get; init; } = true;
 
-            protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
+            protected virtual Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
+                if (BlockchainBridge.GetUnsupportedBlockOverrideError(_blockOverride) is { } error)
+                    return Result<Transaction>.Fail(error);
                 if (AcceptsZeroBlobFeeCap)
                     call = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call);
 
@@ -71,14 +76,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return tx;
             }
 
-            protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
+            private ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
                 if (stateOverride is not null)
                 {
                     IReleaseSpec spec = specProvider.GetSpec(header);
-                    foreach ((Address address, AccountOverride accountOverride) in stateOverride)
+                    foreach ((Address address, AccountOverride? accountOverride) in stateOverride)
                     {
-                        if (accountOverride.MovePrecompileToAddress is not null &&
+                        if (accountOverride?.MovePrecompileToAddress is not null &&
                             spec.IsPrecompile(address) &&
                             accountOverride.MovePrecompileToAddress == address)
                         {
@@ -96,7 +101,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ExecuteTx(header, tx, stateOverride, linked.Token);
             }
 
-            public override ResultWrapper<TResult> Execute(
+            public virtual ResultWrapper<TResult> Execute(
                 TransactionForRpc transactionCall,
                 BlockParameter? blockParameter,
                 Dictionary<Address, AccountOverride>? stateOverride = null,
@@ -104,15 +109,33 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 NoBaseFee = !transactionCall.ShouldSetBaseFee();
 
-                return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
+                searchResult ??= _blockFinder.SearchForHeader(blockParameter);
+                if (searchResult.Value.IsError) return ResultWrapper<TResult>.Fail(searchResult.Value);
+
+                BlockHeader header = searchResult.Value.Object!;
+                if (!_blockchainBridge.HasStateForBlock(header))
+                {
+                    return ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+                }
+
+                CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
+                try
+                {
+                    Result<Transaction> prepareResult = Prepare(transactionCall, header);
+                    return !prepareResult.Success(out Transaction? data, out string? error)
+                        ? ResultWrapper<TResult>.Fail(error, ErrorCodes.InvalidInput)
+                        : Execute(header, data, stateOverride, timeout.Token);
+                }
+                finally
+                {
+                    JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
+                }
             }
 
             /// <param name="requestToken">Cancels this execution along with work the request did before it, so both share one timeout.</param>
             public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null,
                 BlockOverride? blockOverride = null, CancellationToken requestToken = default, SearchResult<BlockHeader>? searchResult = null)
             {
-                if (blockOverride?.Withdrawals is not null)
-                    return ResultWrapper<TResult>.Fail(BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams);
                 ulong gasCap = _rpcConfig.GasCap.EffectiveGasCap();
                 if (blockOverride?.GasLimit > gasCap)
                     return ResultWrapper<TResult>.Fail($"GasLimit value is too large, max value {gasCap}", ErrorCodes.InvalidInput);
@@ -223,7 +246,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override bool AcceptsZeroBlobFeeCap => false;
 
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header) =>
-                feeDefaults.Error is { } feeDefaultsError ? feeDefaultsError : base.Prepare(call, header);
+                feeDefaults.Error is { } feeDefaultsError ? feeDefaultsError
+                : GetSpec(header) is { IsEip2930Enabled: false } spec ? TxErrorMessages.InvalidTxType(spec.Name)
+                : base.Prepare(call, header);
 
             /// <summary>What filling a request's fee defaults found: the rule it broke, and a filled fee cap wider than 256 bits.</summary>
             public readonly record struct FeeDefaults(string? Error, BigInteger? FeeCapBeyond256Bits);
@@ -235,12 +260,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
             /// applied. A request that sets one of the fee cap and priority fee after London gets the other before it
             /// is priced: a missing priority fee is the node's suggested one, and a missing fee cap is the priority fee
             /// plus twice the block's base fee. A request with no fee field at all stays unpriced, so a sender that
-            /// cannot afford fees the node would pick can still get its access list.
+            /// cannot afford fees the node would pick can still get its access list. A frame request naming
+            /// <c>maxFee</c> has its fee cap and gets only a missing priority fee.
             /// </remarks>
             public static FeeDefaults FillFeeDefaults(TransactionForRpc call, BlockHeader header, bool isLondon, IGasPriceOracle gasPriceOracle)
             {
                 if (FeeDefaultRules.Error(call, isLondon) is { } feeDefaultsError)
                     return new FeeDefaults(feeDefaultsError, null);
+
+                if (isLondon && call is FrameTransactionForRpc { MaxFee: not null } budgeted)
+                {
+                    budgeted.MaxPriorityFeePerGas ??= gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+                    return default;
+                }
 
                 // Before London the rules above leave no fee field to fill.
                 if (!isLondon

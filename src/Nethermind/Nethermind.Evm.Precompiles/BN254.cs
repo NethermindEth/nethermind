@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -19,10 +20,34 @@ internal static unsafe class BN254
     internal const int PairSize = 192;
     private const int MaxStackPairCount = 32;
 
+    // The curve seed x: p = 36x^4 + 36x^3 + 24x^2 + 6x + 1, r = 36x^4 + 36x^3 + 18x^2 + 6x + 1
+    internal const ulong Seed = 4965661367192848881;
+
+    // ξ^((p - 1) / 3) and ξ^((p - 1) / 2) for ξ = 9 + u, the coefficients of ψ
+    private static readonly mclBnFp2* PsiCoefficients;
+
     static BN254()
     {
         if (mclBn_init(MCL_BN_SNARK1, MCLBN_COMPILED_TIME_VAR) != 0)
             throw new InvalidOperationException("MCL initialization failed");
+
+        // Let mclBnG2_isValid check only the curve equation; the subgroup is checked by IsInG2
+        mclBn_verifyOrderG2(0);
+
+        PsiCoefficients = (mclBnFp2*)NativeMemory.Alloc(2, (nuint)sizeof(mclBnFp2));
+        SetFp(ref PsiCoefficients[0].d0, "21575463638280843010398324269430826099269044274347216827212613867836435027261"u8);
+        SetFp(ref PsiCoefficients[0].d1, "10307601595873709700152284273816112264069230130616436755625194854815875713954"u8);
+        SetFp(ref PsiCoefficients[1].d0, "2821565182194536844548159561693502659359617185244120367078079554186484126554"u8);
+        SetFp(ref PsiCoefficients[1].d1, "3505843767911556378687030309984248845540243509899259641013678093033130930403"u8);
+    }
+
+    private static void SetFp(ref mclBnFp fp, ReadOnlySpan<byte> value)
+    {
+        fixed (byte* ptr = value)
+        {
+            if (mclBnFp_setStr(ref fp, ptr, (nuint)value.Length, 10) != 0)
+                throw new InvalidOperationException("MCL field element initialization failed");
+        }
     }
 
     /// <summary>Adds two BN254 G1 points and writes the normalized result (EIP-196).</summary>
@@ -98,17 +123,16 @@ internal static unsafe class BN254
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static string? CheckPairing(byte[] output, ReadOnlySpan<byte> input)
+    internal static string? CheckPairing(ReadOnlySpan<byte> input, out bool isOne)
     {
-        if (output.Length < 32)
-            return Errors.Failed;
-
         // Empty input means "true" by convention
         if (input.Length == 0)
         {
-            output[31] = 1;
+            isOne = true;
             return null;
         }
+
+        isOne = false;
 
         if (input.Length % PairSize != 0)
             return Errors.Bn254PairingInputLength;
@@ -119,14 +143,15 @@ internal static unsafe class BN254
         {
             return pairCount switch
             {
-                1 => CheckPairingSingle(output, data),
-                _ => CheckPairingVector(output, data, pairCount),
+                1 => CheckPairingSingle(data, out isOne),
+                _ => CheckPairingVector(data, pairCount, out isOne),
             };
         }
     }
 
-    private static string? CheckPairingSingle(byte[] output, byte* data)
+    private static string? CheckPairingSingle(byte* data, out bool isOne)
     {
+        isOne = false;
         string? error = DeserializeG1(data, out mclBnG1 g1, out bool g1IsZero);
         if (error is not null)
             return error;
@@ -137,7 +162,7 @@ internal static unsafe class BN254
 
         if (g1IsZero || g2IsZero)
         {
-            output[31] = 1;
+            isOne = true;
             return null;
         }
 
@@ -145,12 +170,13 @@ internal static unsafe class BN254
         mclBn_millerLoop(ref acc, g1, g2);
         mclBn_finalExp(ref acc, acc);
 
-        output[31] = Convert.ToByte(mclBnGT_isOne(acc) == 1);
+        isOne = mclBnGT_isOne(acc) == 1;
         return null;
     }
 
-    private static string? CheckPairingVector(byte[] output, byte* data, int pairCount)
+    private static string? CheckPairingVector(byte* data, int pairCount, out bool isOne)
     {
+        isOne = false;
         // Process the pairs in chunks of at most MaxStackPairCount so the scratch buffers stay a fixed,
         // input-independent size on the stack (the >MaxStackPairCount case never grows the allocation),
         // while still feeding the vectorized multi-Miller-loop for every pair rather than falling back to
@@ -213,13 +239,13 @@ internal static unsafe class BN254
         // All pairs had a zero element -> valid
         if (!hasMl)
         {
-            output[31] = 1;
+            isOne = true;
             return null;
         }
 
         mclBn_finalExp(ref acc, acc);
 
-        output[31] = Convert.ToByte(mclBnGT_isOne(acc) == 1);
+        isOne = mclBnGT_isOne(acc) == 1;
         return null;
     }
 
@@ -291,31 +317,52 @@ internal static unsafe class BN254
 
         mclBnFp_setInt32(ref point.z.d0, 1);
 
-        if (mclBnG2_isValid(point) == 1 && mclBnG2_isValidOrder(point) == 1)
-            return null;
+        if (mclBnG2_isValid(point) == 0)
+            return Errors.Bn254NotOnCurve;
 
-        // mcl's validity check covers the order too, so the curve equation tells which of the two failed
-        return IsOnTwist(point) ? Errors.Bn254NotInSubgroup : Errors.Bn254NotOnCurve;
+        return IsInG2(point) ? null : Errors.Bn254NotInSubgroup;
     }
 
-    /// <summary>Whether an affine point satisfies y^2 = x^3 + 3 / (9 + u), the twist G2 lies on (EIP-197).</summary>
-    private static bool IsOnTwist(in mclBnG2 point)
+    /// <summary>Whether a point on the twist lies in G2, the subgroup of order r.</summary>
+    /// <remarks>
+    /// Tests [x + 1]Q + ψ([x]Q) + ψ²([x]Q) = ψ³([2x]Q) for the seed x (eprint 2022/348), which needs a 63-bit
+    /// scalar multiplication instead of the 254-bit one by r. The test is exact on the whole twist: ψ² = tψ - p there,
+    /// so it reduces to (a + bψ)Q = 0, and the degree a² + abt + b²p shares only the prime r with the twist order.
+    /// </remarks>
+    internal static bool IsInG2(in mclBnG2 point)
     {
-        mclBnFp2 b = default;
-        mclBnFp_setInt32(ref b.d0, 9);
-        mclBnFp_setInt32(ref b.d1, 1);
-        mclBnFp2_inv(ref b, b);
-        mclBnFp2 three = default;
-        mclBnFp_setInt32(ref three.d0, 3);
-        mclBnFp2_mul(ref b, three, b);
+        // Double-and-add rather than mclBnG2_mul, which may use endomorphism acceleration that assumes the point is in G2
+        mclBnG2 xQ = point;
+        for (int bit = BitOperations.Log2(Seed) - 1; bit >= 0; bit--)
+        {
+            mclBnG2_dbl(ref xQ, xQ);
+            if ((Seed >> bit & 1) != 0)
+                mclBnG2_add(ref xQ, xQ, point);
+        }
 
-        Unsafe.SkipInit(out mclBnFp2 ySquared);
-        Unsafe.SkipInit(out mclBnFp2 xCubedPlusB);
-        mclBnFp2_sqr(ref ySquared, point.y);
-        mclBnFp2_sqr(ref xCubedPlusB, point.x);
-        mclBnFp2_mul(ref xCubedPlusB, xCubedPlusB, point.x);
-        mclBnFp2_add(ref xCubedPlusB, xCubedPlusB, b);
-        return mclBnFp2_isEqual(ySquared, xCubedPlusB) == 1;
+        Unsafe.SkipInit(out mclBnG2 left);
+        mclBnG2_add(ref left, xQ, point);
+        mclBnG2 psi = xQ;
+        Psi(ref psi);
+        mclBnG2_add(ref left, left, psi);
+        Psi(ref psi);
+        mclBnG2_add(ref left, left, psi);
+        Psi(ref psi);
+        mclBnG2_dbl(ref psi, psi);
+        return mclBnG2_isEqual(left, psi) == 1;
+    }
+
+    /// <summary>
+    /// Applies the untwist-Frobenius-twist endomorphism ψ(x, y) = (conj(x)·ξ^((p - 1) / 3), conj(y)·ξ^((p - 1) / 2)).
+    /// </summary>
+    /// <remarks>Conjugation is a field automorphism, so conjugating z as well keeps it valid in mcl's Jacobian coordinates.</remarks>
+    private static void Psi(ref mclBnG2 point)
+    {
+        mclBnFp_neg(ref point.x.d1, point.x.d1);
+        mclBnFp_neg(ref point.y.d1, point.y.d1);
+        mclBnFp_neg(ref point.z.d1, point.z.d1);
+        mclBnFp2_mul(ref point.x, point.x, PsiCoefficients[0]);
+        mclBnFp2_mul(ref point.y, point.y, PsiCoefficients[1]);
     }
 
     private static bool SerializeG1(in mclBnG1 point, byte[] output)

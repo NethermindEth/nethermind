@@ -168,12 +168,6 @@ jobs:
           merge-multiple: true
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}
 
-      - name: Write checksums
-        working-directory: ${{ env.PACKAGE_DIR }}
-        run: |
-          find . -maxdepth 1 -name '*.zip' ! -name '*-ref-assemblies.zip' -printf '%P\n' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS
-          cat SHA256SUMS
-
       - name: Sign packages
         env:
           GPG_PASSPHRASE: ${{ secrets.PPA_GPG_PASSPHRASE }}
@@ -182,24 +176,25 @@ jobs:
         run: |
           printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
 
-          for file_name in $(awk '{print $2}' SHA256SUMS) SHA256SUMS; do
-            gpg --no-tty --batch --yes --pinentry-mode loopback \
-              --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
-              -o "$file_name.asc" -ab "$file_name"
-          done
+          # One signature over the checksums covers every file
+          sha256sum *-{linux,macos,windows}-{arm64,x64}.zip > SHA256SUMS
+          cat SHA256SUMS
+          gpg --no-tty --batch --yes --pinentry-mode loopback \
+            --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
+            -o SHA256SUMS.asc -ab SHA256SUMS
 
+      # Unlike the key signature, the attestation binds each file to this workflow and commit
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*.zip
+          subject-checksums: ${{ env.PACKAGE_DIR }}/SHA256SUMS
 
-      - name: Upload signatures
+      - name: Upload checksums
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ${{ needs.build.outputs.package-prefix }}-signatures
-          path: |
-            ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/SHA256SUMS
-            ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*.asc
+          name: ${{ needs.build.outputs.package-prefix }}-checksums
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/SHA256SUMS*
+          if-no-files-found: error
           retention-days: ${{ env.PACKAGE_RETENTION }}
 
   publish-github:
@@ -227,7 +222,7 @@ jobs:
           GIT_TAG: ${{ needs.build.outputs.version }}
           GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
-          cp $PACKAGE_DIR/**/*.zip $PACKAGE_DIR/**/*.asc $PACKAGE_DIR/**/SHA256SUMS $PACKAGE_DIR
+          cp $PACKAGE_DIR/**/*.zip $PACKAGE_DIR/**/SHA256SUMS* $PACKAGE_DIR
           rm -rf $PACKAGE_DIR/*/
           rm -f $PACKAGE_DIR/*-ref-assemblies.zip
           echo "Publishing packages to GitHub"
@@ -241,14 +236,14 @@ jobs:
 
           ### [CONTENT PLACEHOLDER]
 
-          #### Build signatures
+          #### Build signature
 
-          The packages and `SHA256SUMS` are signed with the following OpenPGP key: `AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E`
+          `SHA256SUMS` lists every file and is signed with the following OpenPGP key: `AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E`
 
-          Every package also has a build provenance attestation. Verify it against the release workflow, not just the repository:
+          Each file listed in `SHA256SUMS` also has a build provenance attestation. Verify it against the release workflow, not just the repository:
 
           ```
-          gh attestation verify <package> -R NethermindEth/nethermind --deny-self-hosted-runners \
+          gh attestation verify <file> -R NethermindEth/nethermind --deny-self-hosted-runners \
             --cert-identity-regex '^https://github\.com/NethermindEth/nethermind/\.github/workflows/release\.yml@refs/heads/(master|release/.+)$'
           ```
           EOF
@@ -258,7 +253,7 @@ jobs:
 
           cd $PACKAGE_DIR
           echo "Uploading assets"
-          gh release upload "$GIT_TAG" *.zip *.asc SHA256SUMS --clobber
+          gh release upload "$GIT_TAG" *.zip SHA256SUMS SHA256SUMS.asc --clobber
 
           # The tag must still point to the commit that was built and signed
           tag_commit=$(git ls-remote origin "refs/tags/$GIT_TAG^{}" | cut -f1)
@@ -268,7 +263,7 @@ jobs:
           fi
 
           # Draft assets are editable, so the release must hold exactly the signed files, byte for byte
-          expected=$(sha256sum -- *.zip *.asc SHA256SUMS | awk '{ print "sha256:" $1 " " $2 }' | LC_ALL=C sort)
+          expected=$(sha256sum -- *.zip SHA256SUMS SHA256SUMS.asc | awk '{ print "sha256:" $1 " " $2 }' | LC_ALL=C sort)
           actual=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
             --jq ".[] | select(.tag_name == \"$GIT_TAG\") | .assets[] | \"\(.digest) \(.name)\"" | LC_ALL=C sort)
           if [[ "$expected" != "$actual" ]]; then
