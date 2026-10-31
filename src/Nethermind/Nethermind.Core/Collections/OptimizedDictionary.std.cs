@@ -18,6 +18,8 @@ namespace Nethermind.Core.Collections;
 /// </remarks>
 public sealed class OptimizedDictionary<TKey, TValue> : Dictionary<TKey, TValue> where TKey : notnull, IEquatable<TKey>
 {
+    private SparseClearTrimmer _trimmer;
+
     public OptimizedDictionary() { }
 
     public OptimizedDictionary(int capacity) : base(capacity) { }
@@ -31,4 +33,26 @@ public sealed class OptimizedDictionary<TKey, TValue> : Dictionary<TKey, TValue>
 
     /// <inheritdoc cref="CollectionsMarshal.GetValueRefOrAddDefault{TKey,TValue}(Dictionary{TKey,TValue},TKey,out bool)"/>
     public ref TValue? GetValueRefOrAddDefault(TKey key, out bool exists) => ref CollectionsMarshal.GetValueRefOrAddDefault(this, key, out exists);
+
+    /// <summary>Clears the map and shrinks its storage once it exceeds <see cref="CollectionExtensions.DefaultTrimAboveCapacity"/>.</summary>
+    /// <remarks>
+    /// A map that stays sparse across many clears is also shrunk to fit them; see <see cref="SparseClearTrimmer"/>.
+    /// Only an empty map is shrunk, and an empty map fills its slots from the first in insertion order whatever its
+    /// capacity, so the shrink changes neither its contents nor its enumeration order.
+    /// </remarks>
+    public void ClearAndTrim()
+    {
+        int count = Count;
+        Clear();
+        int trimTo = _trimmer.OnClear(count, Capacity);
+        if (trimTo != 0) TrimExcess(trimTo);
+    }
+
+    /// <summary>Clears the map and shrinks its storage to <paramref name="trimToCapacity"/> once it exceeds <paramref name="trimAboveCapacity"/>.</summary>
+    /// <remarks>A map with its own capacity floor, such as a pooled one, is never shrunk below it for sparseness.</remarks>
+    public void ClearAndTrim(int trimAboveCapacity, int trimToCapacity)
+    {
+        Clear();
+        if (Capacity > trimAboveCapacity) TrimExcess(trimToCapacity);
+    }
 }
