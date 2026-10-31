@@ -6,6 +6,7 @@ using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -49,7 +50,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             GetReceiptsMessageSerializer serializer = new();
             IByteBuffer payload = Unpooled.WrappedBuffer(bytes);
 
-            Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
+            Assert.Throws<RlpReaderException>(() => serializer.Deserialize(payload));
         }
 
         private static IEnumerable<TestCaseData> InvalidPayloads()

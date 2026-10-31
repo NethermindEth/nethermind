@@ -13,6 +13,7 @@ using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -48,7 +49,7 @@ public class ReceiptsResponseBudgetTests
     {
         using DisposableByteBuffer content = Unpooled.WrappedBuffer(payload).AsDisposable();
 
-        Assert.That(() => ReceiptsResponseBudget.ThrowIfExceeded(content, fieldsBeforeReceipts, 1, [5]), Throws.TypeOf<RlpException>());
+        Assert.That(() => ReceiptsResponseBudget.ThrowIfExceeded(content, fieldsBeforeReceipts, 1, [5]), Throws.TypeOf<RlpReaderException>());
     }
 
     private static ArrayPoolList<TxReceipt[]> BuildBlocks(int[] receiptsPerBlock) =>

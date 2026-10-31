@@ -25,6 +25,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -69,7 +70,7 @@ public class ZeroNettyP2PHandlerTests
 
     private static IEnumerable<TestCaseData> ExpectedCommunicationExceptions()
     {
-        yield return new TestCaseData(new RlpException("malformed message")).SetName("RLP_exception_is_logged_at_trace");
+        yield return new TestCaseData(new RlpReaderException("malformed message")).SetName("RLP_exception_is_logged_at_trace");
         yield return new TestCaseData(ReadTimeoutException.Instance).SetName("Read_timeout_is_logged_at_trace");
     }
 

@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
@@ -216,7 +217,7 @@ public class Eth72MessageSerializerTests
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
         serializer.Serialize(buffer, message);
 
-        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -228,7 +229,7 @@ public class Eth72MessageSerializerTests
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
         serializer.Serialize(buffer, message);
 
-        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -342,7 +343,7 @@ public class Eth72MessageSerializerTests
         }
         else
         {
-            Assert.That(deserialize, Throws.InstanceOf<RlpException>());
+            Assert.That(deserialize, Throws.InstanceOf<RlpReaderException>());
         }
     }
 
@@ -360,7 +361,7 @@ public class Eth72MessageSerializerTests
         buffer.WriteBytes(encoded);
         NewPooledTransactionHashesMessageSerializer72 serializer = new();
 
-        Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -372,7 +373,7 @@ public class Eth72MessageSerializerTests
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
         serializer.Serialize(buffer, message);
 
-        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpReaderException>());
     }
 
     [TestCase(1, 0, 1)]
@@ -395,7 +396,7 @@ public class Eth72MessageSerializerTests
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
         serializer.Serialize(buffer, message);
 
-        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -417,23 +418,14 @@ public class Eth72MessageSerializerTests
         NewPooledTransactionHashesMessageSerializer72 serializer = new();
 
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
-        ByteBufferRlpWriter writer = new(buffer);
         byte[] types = [1];
-        int sizesLength = Rlp.LengthOf(size);
-        int hashesLength = Rlp.LengthOf(Hash256.Zero);
-        int totalSize = Rlp.LengthOf(types)
-            + Rlp.LengthOfSequence(sizesLength)
-            + Rlp.LengthOfSequence(hashesLength)
-            + Rlp.LengthOf(BlobCellMask.Full.ToBytes());
-        writer.StartSequence(totalSize);
-        writer.Encode(types);
-        writer.StartSequence(sizesLength);
-        writer.Encode(size);
-        writer.StartSequence(hashesLength);
-        writer.Encode(Hash256.Zero);
-        writer.Encode(BlobCellMask.Full.ToBytes());
+        buffer.WriteBytes(Rlp.Encode(
+            Rlp.Encode(types),
+            Rlp.Encode(new[] { Rlp.Encode(size) }),
+            Rlp.Encode(new[] { Rlp.Encode(Hash256.Zero) }),
+            Rlp.Encode(BlobCellMask.Full.ToBytes())).Bytes);
 
-        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -442,21 +434,13 @@ public class Eth72MessageSerializerTests
         NewPooledTransactionHashesMessageSerializer72 serializer = new();
 
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
-        ByteBufferRlpWriter writer = new(buffer);
         byte[] types = [1];
-        int sizesLength = Rlp.LengthOf(1);
-        int hashesLength = Rlp.LengthOf(Hash256.Zero);
-        int totalSize = Rlp.LengthOf(types)
-            + Rlp.LengthOfSequence(sizesLength)
-            + Rlp.LengthOfSequence(hashesLength);
-        writer.StartSequence(totalSize);
-        writer.Encode(types);
-        writer.StartSequence(sizesLength);
-        writer.Encode(1);
-        writer.StartSequence(hashesLength);
-        writer.Encode(Hash256.Zero);
+        buffer.WriteBytes(Rlp.Encode(
+            Rlp.Encode(types),
+            Rlp.Encode(new[] { Rlp.Encode(1) }),
+            Rlp.Encode(new[] { Rlp.Encode(Hash256.Zero) })).Bytes);
 
-        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -582,7 +566,7 @@ public class Eth72MessageSerializerTests
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
         serializer.Serialize(buffer, message);
 
-        Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpReaderException>());
     }
 
     private static byte[] BuildCanonicalCellsVector(byte[] hash, byte[] cellMask, byte[][] wireCells)

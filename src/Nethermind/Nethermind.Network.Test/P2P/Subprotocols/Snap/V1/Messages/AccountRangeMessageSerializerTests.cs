@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using NUnit.Framework;
@@ -133,7 +134,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             AccountRangeMessageSerializer serializer = new();
 
-            Assert.Throws<RlpException>(() => serializer.Deserialize(serialized));
+            Assert.Throws<RlpReaderException>(() => serializer.Deserialize(serialized));
         }
 
         [Test]
@@ -162,7 +163,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             byte[] serialized = EncodeMessageWithNullAccountPath();
             AccountRangeMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize(serialized), Throws.InstanceOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(serialized), Throws.InstanceOf<RlpReaderException>());
         }
 
         [Test]
@@ -171,7 +172,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             byte[] serialized = EncodeMessageWithNullAccount();
             AccountRangeMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpReaderException>());
         }
 
         private static byte[] EncodeMessageWithNullAccountPath()
@@ -190,7 +191,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                 + Rlp.LengthOfSequence(0);
 
             byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             writer.StartSequence(contentLength);
             writer.Encode(1L);
             writer.StartSequence(pathsWithAccountsContentLength);
@@ -210,7 +211,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                 + Rlp.LengthOfSequence(0);
 
             byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             writer.StartSequence(contentLength);
             writer.Encode(1L);
             writer.StartSequence(pathsWithAccountsContentLength);

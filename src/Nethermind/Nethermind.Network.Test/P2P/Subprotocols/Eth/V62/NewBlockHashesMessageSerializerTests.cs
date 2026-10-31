@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -26,7 +27,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             NewBlockHashesMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize([0xc3, 0xc2, 0x80, 0x01]), Throws.InstanceOf<RlpException>());
+            Assert.That(() => serializer.Deserialize([0xc3, 0xc2, 0x80, 0x01]), Throws.InstanceOf<RlpReaderException>());
         }
 
         [Test]

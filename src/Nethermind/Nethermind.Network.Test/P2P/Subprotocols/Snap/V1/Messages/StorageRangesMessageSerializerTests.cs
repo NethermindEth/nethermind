@@ -8,6 +8,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using NUnit.Framework;
@@ -144,7 +145,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             Assert.That(
                 () => serializer.Deserialize([0xc7, 0x01, 0xc4, 0xc3, 0xc2, 0x80, 0x80, 0xc0]),
-                Throws.InstanceOf<RlpException>());
+                Throws.InstanceOf<RlpReaderException>());
         }
 
         [TestCase(SnapMessageLimits.MaxProofs, false)]

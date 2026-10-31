@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -26,7 +27,7 @@ public class BlockBodiesMessageSerializerTests
         HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
 
         using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(bytes).AsDisposable();
-        Assert.Throws<RlpException>(() => new BlockBodiesMessageSerializer().Deserialize(buffer));
+        Assert.Throws<RlpReaderException>(() => new BlockBodiesMessageSerializer().Deserialize(buffer));
 
         TransactionPoolTestHelper.AssertAllReturned(pooled);
     }

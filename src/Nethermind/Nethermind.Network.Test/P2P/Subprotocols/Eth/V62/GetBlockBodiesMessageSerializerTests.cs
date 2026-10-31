@@ -4,6 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -59,7 +60,7 @@ public class GetBlockBodiesMessageSerializerTests
     {
         GetBlockBodiesMessageSerializer serializer = new();
 
-        Assert.That(() => serializer.Deserialize([0xc1, 0x80]), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize([0xc1, 0x80]), Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]

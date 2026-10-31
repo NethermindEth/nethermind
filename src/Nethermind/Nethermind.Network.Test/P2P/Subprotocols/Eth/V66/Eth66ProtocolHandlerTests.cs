@@ -308,17 +308,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             ReserveAllButOneMessage(scheduler, reservations);
             const int count = 16;
             byte[] transaction = malformed ? [0xc0] : [0xc9, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x1b, 0x01, 0x01];
-            int contentLength = count * transaction.Length;
             using DisposableByteBuffer packet = Unpooled.Buffer(256).AsDisposable();
-            ByteBufferRlpWriter writer = new(packet);
+            Rlp transactions = Rlp.Encode(Enumerable.Repeat(new Rlp(transaction), count).ToArray());
             if (pooledResponse)
             {
                 long requestId = RequestTransaction(Build.A.Transaction.SignedAndResolved().TestObject);
-                writer.StartSequence(Rlp.LengthOf(requestId) + Rlp.LengthOfSequence(contentLength));
-                writer.Encode(requestId);
+                transactions = Rlp.Encode(Rlp.Encode(requestId), transactions);
             }
-            writer.StartSequence(contentLength);
-            for (int i = 0; i < count; i++) packet.WriteBytes(transaction);
+            packet.WriteBytes(transactions.Bytes);
 
             Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet)
             {

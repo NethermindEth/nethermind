@@ -7,6 +7,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using NUnit.Framework;
@@ -117,7 +118,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024).AsDisposable();
             serializer.Serialize(buffer, msg);
 
-            Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpReaderException>());
         }
 
         [Test]

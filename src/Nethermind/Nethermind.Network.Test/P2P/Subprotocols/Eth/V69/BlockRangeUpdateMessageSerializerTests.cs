@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -53,6 +54,6 @@ public class BlockRangeUpdateMessageSerializerTests
     {
         BlockRangeUpdateMessageSerializer serializer = new();
 
-        Assert.That(() => serializer.Deserialize(Bytes.FromHexString("c3808080")), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(Bytes.FromHexString("c3808080")), Throws.InstanceOf<RlpReaderException>());
     }
 }

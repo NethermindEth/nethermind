@@ -10,8 +10,10 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -46,7 +48,7 @@ public class TransactionsMessageSerializerTests
         {
             buffer.Clear();
             buffer.WriteBytes(Rlp.Encode(TxDecoder.Instance.Encode(source, RlpBehaviors.InMempoolForm), Rlp.OfEmptyList).Bytes);
-            Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpReaderException>());
         }
         if (returnMode == BlobReturnMode.MalformedWrapper)
         {
@@ -54,7 +56,7 @@ public class TransactionsMessageSerializerTests
             serializer.Serialize(buffer, message);
             // Replace the empty commitments list with a byte string, after the blob was decoded.
             buffer.SetByte(buffer.WriterIndex - 2, 0x80);
-            Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpReaderException>());
         }
 
         Array.Fill(blob, (byte)0x22);
@@ -213,8 +215,7 @@ public class TransactionsMessageSerializerTests
             .WithTo(TestItem.AddressA)
             .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
             .TestObject;
-        RlpReader probe = new(TxDecoder.Instance.Encode(typedTx, RlpBehaviors.InMempoolForm).Bytes);
-        (int _, int contentLength) = probe.PeekPrefixAndContentLength();
+        (int _, int contentLength) = RlpTestHelper.PrefixAndContentLength(TxDecoder.Instance.Encode(typedTx, RlpBehaviors.InMempoolForm).Bytes);
 
         TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = contentLength });
         using TransactionsMessage message = new(new[] { typedTx }.ToPooledList());
@@ -260,7 +261,7 @@ public class TransactionsMessageSerializerTests
         using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(EncodeAsSequence(new[] { itemPrefix })).AsDisposable();
         TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = 10 });
 
-        Assert.That(() => serializer.Deserialize(buffer).Dispose(), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(buffer).Dispose(), Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -434,7 +435,7 @@ public class TransactionsMessageSerializerTests
         Transaction reusable = TxDecoder.TxObjectPool.Get();
         TxDecoder.TxObjectPool.Return(reusable);
 
-        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpReaderException>());
 
         Transaction returned = TxDecoder.TxObjectPool.Get();
         try

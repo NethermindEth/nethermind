@@ -7,6 +7,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
@@ -33,7 +34,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             if (trailingData)
             {
-                Assert.Throws<RlpException>(() => serializer.Deserialize(buffer));
+                Assert.Throws<RlpReaderException>(() => serializer.Deserialize(buffer));
             }
             else
             {

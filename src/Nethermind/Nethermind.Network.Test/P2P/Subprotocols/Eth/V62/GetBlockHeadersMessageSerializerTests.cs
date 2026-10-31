@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -121,7 +122,7 @@ public class GetBlockHeadersMessageSerializerTests
             Assert.That(deserialized.MaxHeaders, Is.EqualTo(1));
             Assert.That(deserialized.Skip, Is.EqualTo(2));
             Assert.That(deserialized.Reverse, Is.EqualTo(1));
-            Assert.That(reader.Position, Is.EqualTo(bytes.Length));
+            Assert.That(reader.BytesRead, Is.EqualTo(bytes.Length));
         }
     }
 

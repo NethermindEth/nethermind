@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 using NUnit.Framework;
@@ -70,7 +71,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
         NewPooledTransactionHashesMessageSerializer serializer = new();
         byte[] bytes = Convert.FromHexString("c502c10ac180");
 
-        Assert.That(() => serializer.Deserialize(bytes), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(bytes), Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -168,7 +169,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
             "c802c164fb7fffffff", "c802c164fbffffffff", "c702fb7fffffffc0", "c702fbffffffffc0")] string malformed)
     {
         NewPooledTransactionHashesMessageSerializer serializer = new();
-        Assert.That(() => serializer.Deserialize(Convert.FromHexString(malformed)), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(Convert.FromHexString(malformed)), Throws.InstanceOf<RlpReaderException>());
         using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(Convert.FromHexString("c380c0c0"));
         using (Assert.EnterMultipleScope())
         {
@@ -222,7 +223,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
             buffer.SetIndex(7, 7 + length);
             // NUnit 5.0.0 Assert.Catch(Action, string) only matches exactly System.Exception, so pass the type explicitly
             Exception error = Assert.Catch(typeof(Exception), () => serializer.Deserialize(buffer), $"cut {length}");
-            Assert.That(error, Is.InstanceOf<RlpException>().Or.InstanceOf<IndexOutOfRangeException>()
+            Assert.That(error, Is.InstanceOf<RlpReaderException>().Or.InstanceOf<IndexOutOfRangeException>()
                 .Or.InstanceOf<ArgumentOutOfRangeException>(), $"cut {length}");
             using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(bytes);
             Assert.That(serializer.Serialize(next), Is.EqualTo(bytes), $"lease after cut {length}");
@@ -242,7 +243,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
         byte[] bytes = serializer.Serialize(source);
         if (delta > 0)
         {
-            Assert.That(() => serializer.Deserialize(bytes), Throws.InstanceOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(bytes), Throws.InstanceOf<RlpReaderException>());
         }
         else
         {

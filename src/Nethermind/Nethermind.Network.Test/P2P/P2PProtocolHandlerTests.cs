@@ -19,6 +19,7 @@ using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -488,7 +489,7 @@ namespace Nethermind.Network.Test.P2P
             };
             using HelloMessage secondHello = CreateHello();
 
-            Assert.Catch<RlpException>(() => p2PProtocolHandler.HandleMessage(malformedFirstHello));
+            Assert.Catch<RlpReaderException>(() => p2PProtocolHandler.HandleMessage(malformedFirstHello));
             Assert.DoesNotThrow(() => p2PProtocolHandler.HandleMessage(CreateP2PPacket(secondHello)));
 
             using (Assert.EnterMultipleScope())
