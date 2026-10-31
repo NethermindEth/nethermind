@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Clique
             // Tally
             Dictionary<Address, Tally> tally = DecodeTally(ref fields);
             Snapshot snapshot = new(number, hash, signers, tally) { Votes = votes };
-            decoderContext.ExitSequence(fields, itemLength);
+            decoderContext.ExitSequenceIgnoringRest(fields, itemLength);
 
             return snapshot;
         }
@@ -81,7 +81,7 @@ namespace Nethermind.Consensus.Clique
                 signers.Add(signer, signedAt);
             }
 
-            decoderContext.ExitSequence(items, itemLength);
+            decoderContext.ExitSequenceIgnoringRest(items, itemLength);
             return signers;
         }
 
@@ -100,7 +100,7 @@ namespace Nethermind.Consensus.Clique
                 Vote vote = new(signer, block, address, authorize);
                 votes.Add(vote);
             }
-            decoderContext.ExitSequence(items, itemLength);
+            decoderContext.ExitSequenceIgnoringRest(items, itemLength);
             return votes;
         }
 
@@ -119,7 +119,7 @@ namespace Nethermind.Consensus.Clique
                 tallyItem.Votes = votes;
                 tally[address] = tallyItem;
             }
-            decoderContext.ExitSequence(items, itemLength);
+            decoderContext.ExitSequenceIgnoringRest(items, itemLength);
             return tally;
         }
 

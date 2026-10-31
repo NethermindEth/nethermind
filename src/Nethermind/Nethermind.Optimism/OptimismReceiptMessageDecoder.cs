@@ -53,7 +53,6 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
             txReceipt.TxType = (TxType)envelope[0];
             RlpReader payload = new(envelope[1..]);
             DecodeReceipt<TCanonicalChecks>(ref payload, txReceipt, rlpBehaviors);
-            payload.CheckEnd();
         }
 
         return txReceipt;
@@ -101,7 +100,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
             }
         }
 
-        ctx.ExitSequence(in fields, receiptLength, rlpBehaviors);
+        ctx.ExitSequenceIgnoringRest(in fields, receiptLength);
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowUnexpectedPostStateLength(int length)

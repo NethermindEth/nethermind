@@ -80,7 +80,7 @@ public class OptimismCompactReceiptStorageDecoder :
             txReceipt.DepositReceiptVersion = fields.DecodeULong<TCanonicalChecks>();
         }
 
-        decoderContext.ExitSequence(in fields, receiptLength, rlpBehaviors);
+        decoderContext.ExitSequenceIgnoringRest(in fields, receiptLength);
         return txReceipt;
 
         [DoesNotReturn, StackTraceHidden]
@@ -139,7 +139,7 @@ public class OptimismCompactReceiptStorageDecoder :
             fields.SkipItem<TCanonicalChecks>();
         }
 
-        decoderContext.ExitSequence(in fields, receiptLength);
+        decoderContext.ExitSequenceIgnoringRest(in fields, receiptLength);
     }
 
     public void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors none,

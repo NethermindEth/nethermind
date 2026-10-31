@@ -88,7 +88,7 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
             ValueHash256 oldHash = entry.DecodeValueKeccak() ?? CodeHashChange.NoCode;
             ValueHash256 newHash = entry.DecodeValueKeccak() ?? CodeHashChange.NoCode;
             uint newCodeSize = entry.DecodeUInt<TCanonicalChecks>();
-            codeReader.ExitSequence(in entry, entryLength);
+            codeReader.ExitSequenceIgnoringRest(in entry, entryLength);
             codeChanges.Add(new CodeHashEntry(oldHash, newHash, newCodeSize));
         }
 
@@ -103,7 +103,7 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
                 ?? throw new RlpReaderException("SlotCountChange.AddressHash must not be empty");
             ulong oldCount = entry.DecodeULong<TCanonicalChecks>();
             ulong newCount = entry.DecodeULong<TCanonicalChecks>();
-            slotReader.ExitSequence(in entry, entryLength);
+            slotReader.ExitSequenceIgnoringRest(in entry, entryLength);
             slotChanges.Add(new SlotCountEntry(addressHash, oldCount, newCount));
         }
 
@@ -114,7 +114,7 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
         long storageTrieBytesDelta = fields.HasNext ? fields.DecodeLong<TCanonicalChecks>() : 0;
         long accountsAddedDelta = fields.HasNext ? fields.DecodeLong<TCanonicalChecks>() : 0;
 
-        ctx.ExitSequence(in fields, outerLength, rlpBehaviors);
+        ctx.ExitSequenceIgnoringRest(in fields, outerLength);
 
         return new BlockDiffRecord(
             blockNumber,

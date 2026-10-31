@@ -33,7 +33,7 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
         Address[] candidates = XdcRlpHelpers.DecodeAddressArray(ref fields);
         T snapshot = CreateSnapshot(number, hash256, candidates);
         DecodeContent(ref fields, snapshot);
-        decoderContext.ExitSequence(in fields, itemLength, rlpBehaviors);
+        decoderContext.ExitSequenceIgnoringRest(in fields, itemLength);
         return snapshot;
     }
 

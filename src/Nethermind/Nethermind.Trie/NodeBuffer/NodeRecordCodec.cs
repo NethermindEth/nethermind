@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
@@ -108,20 +109,20 @@ internal static class NodeRecordCodec
         hashMask = 0;
         try
         {
-            RlpReader reader = new RlpReader(rlp).EnterSequence(out int length);
+            RlpReader reader = new RlpReader(rlp).EnterSequence<OffFlag>(out int length);
             if (length != rlp.Length) return false;
 
             int itemCount = CountUpToThreeItems(reader);
             if (itemCount > 2) return TryDecodeBranch(ref reader, out kind, out hashMask);
             if (itemCount < 2) return false;
 
-            ReadOnlySpan<byte> hexPrefix = reader.ReadBytes();
+            ReadOnlySpan<byte> hexPrefix = reader.ReadBytes<OffFlag>();
             if (!IsHexPrefix(hexPrefix)) return false;
 
             if (NodeRlp.IsLeafHexPrefix(hexPrefix))
             {
                 kind = NodeRecordKind.Leaf;
-                reader.ReadBytes();
+                reader.ReadBytes<OffFlag>();
                 return true;
             }
 
@@ -142,7 +143,7 @@ internal static class NodeRecordCodec
         int count = 0;
         for (; count < 3 && reader.HasNext; count++)
         {
-            reader.SkipItem();
+            reader.SkipItem<OffFlag>();
         }
 
         return count;
@@ -177,7 +178,7 @@ internal static class NodeRecordCodec
             else if (child == ChildRefKind.Inline) kind = NodeRecordKind.InlineBranch;
         }
 
-        return reader.ReadBytes().IsEmpty && !reader.HasNext;
+        return reader.ReadBytes<OffFlag>().IsEmpty && !reader.HasNext;
     }
 
     /// <returns>False for a child that is malformed or embeds anything but a leaf.</returns>
@@ -186,11 +187,11 @@ internal static class NodeRecordCodec
         if (reader.IsNextSequence)
         {
             kind = ChildRefKind.Inline;
-            ReadOnlySpan<byte> inlineRlp = reader.ReadEncodedItem();
+            ReadOnlySpan<byte> inlineRlp = reader.ReadEncodedItem<OffFlag>();
             return inlineRlp.Length < ValueHash256.MemorySize && IsInlineLeaf(inlineRlp);
         }
 
-        ReadOnlySpan<byte> hash = reader.ReadBytes();
+        ReadOnlySpan<byte> hash = reader.ReadBytes<OffFlag>();
         kind = hash.IsEmpty ? ChildRefKind.Empty : ChildRefKind.Hash;
         return hash.IsEmpty || hash.Length == ValueHash256.MemorySize;
     }
@@ -198,9 +199,9 @@ internal static class NodeRecordCodec
     /// <remarks>An embedded branch or extension would need two keys sharing 224 bits, which keccak keys never do.</remarks>
     internal static bool IsInlineLeaf(ReadOnlySpan<byte> rlp)
     {
-        RlpReader reader = new RlpReader(rlp).EnterSequence(out int length);
-        ReadOnlySpan<byte> key = reader.ReadBytes();
-        reader.ReadBytes();
+        RlpReader reader = new RlpReader(rlp).EnterSequence<OffFlag>(out int length);
+        ReadOnlySpan<byte> key = reader.ReadBytes<OffFlag>();
+        reader.ReadBytes<OffFlag>();
         return !reader.HasNext && length == rlp.Length && IsHexPrefix(key) && NodeRlp.IsLeafHexPrefix(key);
     }
 

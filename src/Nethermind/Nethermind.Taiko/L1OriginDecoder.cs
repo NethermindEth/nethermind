@@ -45,7 +45,7 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
         bool isForcedInclusion = fields.HasNext && fields.DecodeBool();
         byte[]? signature = fields.HasNext ? fields.DecodeByteArray<TCanonicalChecks>() : null;
 
-        decoderContext.ExitSequence(in fields, itemLength, rlpBehaviors);
+        decoderContext.ExitSequenceIgnoringRest(in fields, itemLength);
         return new(blockId, l2BlockHash, l1BlockHeight, l1BlockHash, buildPayloadArgsId, isForcedInclusion, signature);
     }
 
