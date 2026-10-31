@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Json;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -543,7 +544,7 @@ public class DebugRpcModule(
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("invalid argument 1", ErrorCodes.InvalidParams);
         }
-        catch (RlpException)
+        catch (RlpReaderException)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Error decoding block RLP: {blockRlp.ToHexString()}", ErrorCodes.InvalidInput);
         }
@@ -1371,7 +1372,7 @@ public class DebugRpcModule(
                 block.Header.TotalDifficulty = 1;
             }
         }
-        catch (RlpException)
+        catch (RlpReaderException)
         {
             error = GetRlpDecodingFailureResult<TResult>(blockRlp);
             return null;
