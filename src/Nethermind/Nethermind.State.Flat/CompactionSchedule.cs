@@ -5,6 +5,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Flat;
@@ -102,7 +103,8 @@ public sealed class CompactionSchedule : ICompactionSchedule
         }
 
         // On-disk RLP format uses long for backward compatibility; decode as long to detect corrupt negatives.
-        long decoded = new RlpReader(stored).DecodeLong();
+        RlpReader reader = new(stored);
+        long decoded = reader.DecodeLong<OffFlag>();
         if (decoded < 0)
         {
             if (logger.IsWarn) logger.Warn($"Stored FlatDb compaction offset {decoded} is negative; regenerating");

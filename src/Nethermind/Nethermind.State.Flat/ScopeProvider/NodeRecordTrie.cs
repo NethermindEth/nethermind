@@ -5,6 +5,8 @@ using System.Buffers;
 using System.Diagnostics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
@@ -108,10 +110,9 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
                     return null;
                 case ChildRefKind.Inline:
                     // A node embedded in its parent is always a leaf here, as the bulk set only embeds leaves.
-                    RlpReader reader = new(child.InlineRlp);
-                    reader.ReadSequenceLength();
-                    ReadOnlySpan<byte> hexPrefix = reader.DecodeByteArraySpan();
-                    ReadOnlySpan<byte> value = reader.DecodeByteArraySpan();
+                    RlpReader reader = new RlpReader(child.InlineRlp).EnterSequence<OffFlag>(out _);
+                    ReadOnlySpan<byte> hexPrefix = reader.ReadBytes<OffFlag>();
+                    ReadOnlySpan<byte> value = reader.ReadBytes<OffFlag>();
                     int inlineKeyLength = NodeRlp.HexPrefixNibbleCount(hexPrefix);
                     NodeRlp.ReadHexPrefix(hexPrefix, 0, nodeKey);
                     return path.Length + inlineKeyLength == keyPath.Length && path.Append(nodeKey[..inlineKeyLength]) == keyPath ? value.ToArray() : null;

@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.Persistence;
@@ -238,7 +239,7 @@ public static class PersistedSnapshotBuilder
                 else
                 {
                     int rlpLen = AccountDecoder.Slim.GetLength(account);
-                    RlpWriter rlpWriter = new(rlpBuffer);
+                    RlpWriter rlpWriter = RlpWriter.ContentWriter(rlpBuffer);
                     AccountDecoder.Slim.Encode(account, ref rlpWriter);
                     table.Add(keyBuf[..len], rlpBuffer[..rlpLen]);
                 }

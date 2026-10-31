@@ -10,6 +10,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.Persistence;
@@ -228,7 +229,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
             return true;
         }
         RlpReader ctx = new(rlp);
-        account = AccountDecoder.Slim.Decode(ref ctx);
+        account = AccountDecoder.Slim.Decode(ref ctx, RlpBehaviors.TrustedInput);
         return true;
     }
 
@@ -257,7 +258,8 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
         if ((ulong)b.Length > PersistedSnapshotTags.RlpSlotValueBufferSize)
             ThrowInvalidSlotLength(b.Length);
         using NoOpPin pin = reader.PinBuffer(b);
-        slotValue = BaseFlatPersistence.DecodeSlotValue(new RlpReader(pin.Buffer).DecodeByteArraySpan());
+        RlpReader slotReader = new(pin.Buffer);
+        slotValue = BaseFlatPersistence.DecodeSlotValue(slotReader.DecodeByteArraySpan<OffFlag>());
     }
 
     [DoesNotReturn]
@@ -312,12 +314,17 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
         BlobArenaFile file = _blobManager.GetFile(blobArenaId);
         Span<byte> buf = stackalloc byte[MaxTrieNodeRlpBytes];
         int bytesRead = file.RandomRead(offset, buf);
-        RlpReader ctx = new(buf[..bytesRead]);
-        int totalLength = ctx.PeekNextRlpLength();
-        if (totalLength > bytesRead)
+        int totalLength;
+        try
+        {
+            totalLength = new RlpReader(buf[..bytesRead]).ReadEncodedItem<OffFlag>().Length;
+        }
+        catch (RlpReaderException e)
+        {
             throw new InvalidDataException(
-                $"Trie-node RLP at blob arena {blobArenaId}+{offset} declares {totalLength} bytes " +
-                $"but only {bytesRead} were read (MaxTrieNodeRlpBytes = {MaxTrieNodeRlpBytes}).");
+                $"Trie-node RLP at blob arena {blobArenaId}+{offset} declares more bytes " +
+                $"than the {bytesRead} that were read (MaxTrieNodeRlpBytes = {MaxTrieNodeRlpBytes}).", e);
+        }
         action(buf[..totalLength], arg);
     }
 

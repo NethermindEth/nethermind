@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
@@ -119,7 +120,7 @@ public sealed class FlatStorageTree(
             ValueHash256 key = default;
             StorageTree.ComputeKeyWithLookup(index, ref key);
             byte[]? encoded = GetTrie().TryGet(key);
-            UInt256 treeValue = encoded is null ? default : new UInt256(new RlpReader(encoded).DecodeByteArraySpan(), isBigEndian: true);
+            UInt256 treeValue = encoded is null ? default : new UInt256(new RlpReader(encoded).ReadBytes<OffFlag>(), isBigEndian: true);
             if (treeValue != value)
             {
                 throw new TrieException($"Get slot got wrong value. Address {_address}, {GetTrie().RootHash}, {index}. Tree: {treeValue} vs Flat: {value}. Self destruct it {selfDestructKnownStateIdx}");
