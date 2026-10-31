@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -33,23 +33,12 @@ public class GuestReceiptEncodingTests
         }
     }
 
-    /// <remarks>
-    /// The one-pass encoding takes only an <see cref="RlpWriter"/>, so a byte-buffer writer gets the generic encoding,
-    /// which measures neither through the one-pass length nor into a buffer sized by it.
-    /// </remarks>
     private static byte[] EncodeGeneric(TxReceipt receipt, RlpBehaviors behaviors)
     {
-        IByteBuffer buffer = Unpooled.Buffer();
-        try
-        {
-            ByteBufferRlpWriter writer = new(buffer);
-            Decoder.Encode(ref writer, receipt, behaviors);
-            return buffer.ReadAllBytesAsArray();
-        }
-        finally
-        {
-            buffer.Release();
-        }
+        byte[] buffer = new byte[Decoder.GetLength(receipt, behaviors)];
+        RlpWriter writer = RlpWriter.ContentWriter(buffer);
+        Decoder.Encode(ref writer, receipt, behaviors);
+        return buffer;
     }
 
     private static TxReceipt CreateReceipt(Random random, TxType type)
