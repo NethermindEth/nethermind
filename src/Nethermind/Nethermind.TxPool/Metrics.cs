@@ -117,7 +117,7 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxPaymasterLimitReached;
 
         [CounterMetric]
-        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their validation prefix relies on EIP-8298 mutable code already relied on by the maximum number of pending transactions.")]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their validation prefix relies on an account whose code can change (EIP-8298), or that EIP-8151 ecRecover recovered, already relied on by the maximum number of pending transactions.")]
         public static long PendingTransactionsFrameTxCodeDependencyLimitReached;
 
         [CounterMetric]

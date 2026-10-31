@@ -59,7 +59,7 @@ public enum FrameTxSimulationOutcome
 /// <param name="indeterminate">Whether the outcome reflects a bound or a fault rather than the prefix.</param>
 /// <param name="nodeBound">Whether that bound was one this node imposed on itself.</param>
 /// <param name="yielded">Whether the simulation stood aside for work this node was doing at that moment.</param>
-/// <param name="codeDependencies">EIP-8298 targets an accepted prefix relied on whose code could change.</param>
+/// <param name="codeDependencies">Accounts whose code an accepted prefix relied on and could change: EIP-8298 targets and EIP-8151 ecRecover signers.</param>
 public readonly struct FrameTxSimulationResult(
     FrameTxSimulationOutcome outcome,
     Address? payer,
@@ -99,7 +99,8 @@ public readonly struct FrameTxSimulationResult(
     /// <remarks>A spent per-head budget is not yielded: it holds until the next head by design.</remarks>
     public bool Yielded { get; } = yielded;
 
-    /// <summary>EIP-8298 targets an accepted prefix relied on whose code could change through DELEGATECALL or CALLCODE.</summary>
+    /// <summary>Accounts an accepted prefix relied on whose code could change: EIP-8298 targets reachable through DELEGATECALL
+    /// or CALLCODE, and accounts EIP-8151 ecRecover recovered.</summary>
     public IReadOnlyList<FrameTxCodeDependency> CodeDependencies { get; } = codeDependencies ?? [];
 
     /// <summary>The prefix ran to <paramref name="payer"/>.</summary>
