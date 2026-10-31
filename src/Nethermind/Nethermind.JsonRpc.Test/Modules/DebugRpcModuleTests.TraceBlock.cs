@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -43,6 +44,7 @@ using Nethermind.State;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -2045,14 +2047,7 @@ public partial class DebugRpcModuleTests
         };
         if (inputKind == "extra-field")
         {
-            RlpReader reader = new(input);
-            int contentLength = reader.ReadSequenceLength();
-            byte[] expanded = new byte[Rlp.LengthOfSequence(contentLength + 1)];
-            RlpWriter writer = new(expanded);
-            writer.StartSequence(contentLength + 1);
-            input.AsSpan(reader.Position).CopyTo(expanded.AsSpan(writer.Position));
-            expanded[^1] = 0x80;
-            input = expanded;
+            input = RlpTestHelper.WithTrailingItem(input);
         }
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlock", input);
         JToken json = JToken.Parse(response);

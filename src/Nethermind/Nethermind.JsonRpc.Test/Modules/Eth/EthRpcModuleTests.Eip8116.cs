@@ -16,6 +16,7 @@ using Nethermind.Evm;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
