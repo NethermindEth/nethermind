@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core.Extensions;
@@ -772,11 +773,17 @@ public partial class DebugRpcModuleTests
 
         if (expected == "lookup")
         {
+            string message = method switch
+            {
+                "debug_traceBlockByNumber" => $"block #{blockNumber} not found",
+                "debug_traceBlockByHash" => $"block {selector} not found",
+                _ => throw new ArgumentOutOfRangeException(nameof(method), method, null)
+            };
             using (Assert.EnterMultipleScope())
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
-                Assert.That((string?)json["error"]?["message"], Is.EqualTo(method == "debug_traceBlockByNumber"
-                    ? $"block #{blockNumber} not found" : $"Cannot find header for block hash: {selector}"), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo(message), response);
+                Assert.That(json["result"], Is.Null, response);
             }
             return;
         }
@@ -1522,7 +1529,7 @@ public partial class DebugRpcModuleTests
                 foreach (bool parentAvailable in values)
                 {
                     yield return new TestCaseData(method, streaming, parentAvailable, true, false, "");
-                    if (method == "debug_traceBlockByNumber")
+                    if (method is "debug_traceBlockByNumber" or "debug_traceBlockByHash")
                     {
                         yield return new TestCaseData(method, streaming, parentAvailable, false, false, "");
                         yield return new TestCaseData(method, streaming, parentAvailable, true, true, "");
@@ -1596,7 +1603,8 @@ public partial class DebugRpcModuleTests
             {
                 Assert.That(actual["result"], Is.Null, response);
                 Assert.That(actual["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.ResourceNotFound));
-                Assert.That(actual["error"]?["message"]?.Value<string>(), Is.EqualTo($"block #{unprocessed.Number} not found"));
+                Assert.That(actual["error"]?["message"]?.Value<string>(), Is.EqualTo(method == "debug_traceBlockByHash"
+                    ? $"block {unprocessed.Hash} not found" : $"block #{unprocessed.Number} not found"));
             }
             return;
         }
@@ -1817,6 +1825,180 @@ public partial class DebugRpcModuleTests
             Assert.That(supplied.Hash, Is.EqualTo(original.Hash), "the supplied body deliberately disagrees with the empty stored header");
         }
         return (original, supplied);
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByHash_unknown_hash_uses_block_error([Values] bool streaming)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", TestItem.KeccakD);
+        JToken actual = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["result"], Is.Null);
+            Assert.That((int?)actual["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That((string?)actual["error"]?["message"], Is.EqualTo($"block {TestItem.KeccakD} not found"));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByHash_replays_retained_orphan([Values] bool streaming)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block canonical = await chain.AddBlock();
+        Block orphan = Build.A.Block.WithParent(parent).WithExtraData([0x01]).TestObject;
+        chain.BlockTree.SuggestBlock(orphan, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        Assert.That(chain.BlockTree.FindHash(orphan.Number), Is.EqualTo(canonical.Hash));
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", orphan.Hash!);
+        JToken actual = JToken.Parse(response);
+        JToken? result = actual["result"];
+        Assert.That(result, Is.TypeOf<JArray>(), response);
+        JArray traces = (JArray)result!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["error"], Is.Null, response);
+            Assert.That(traces, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByHash_retained_body_without_total_difficulty_does_not_create_level(
+        [Values] bool streaming, [Values] bool bodyAvailable, [Values] bool headerTotalDifficultyAvailable)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(chain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .WithTo(TestItem.AddressC).WithValue(1).WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block retained = Build.A.Block.WithParent(parent).WithTransactions(transaction).TestObject;
+        retained.Header.TotalDifficulty = null;
+        IHeaderStore headerStore = chain.Container.Resolve<IHeaderStore>();
+        IBlockStore blockStore = chain.Container.Resolve<IBlockStore>();
+        headerStore.Insert(retained.Header);
+        if (bodyAvailable) blockStore.Insert(retained);
+        BlockHeader cachedHeader = retained.Header.Clone();
+        cachedHeader.TotalDifficulty = headerTotalDifficultyAvailable ? UInt256.One : null;
+        headerStore.Cache(cachedHeader);
+        Block? storedBody = blockStore.Get(retained.Number, retained.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.ChainLevelInfoRepository.LoadLevel(retained.Number), Is.Null);
+            Assert.That(storedBody, bodyAvailable ? Is.Not.Null : Is.Null);
+            Assert.That(storedBody?.TotalDifficulty, Is.Null);
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(parent.Hash), "the hash replay must not use the head fast path");
+            Assert.That(chain.StateReader.HasStateForBlock(parent), Is.True);
+        }
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", retained.Hash!);
+        JToken actual = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.ChainLevelInfoRepository.LoadLevel(retained.Number), Is.Null, "read-only replay must not create chain metadata");
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(parent.Hash));
+            if (!bodyAvailable)
+            {
+                Assert.That(actual["result"], Is.Null, response);
+                Assert.That((int?)actual["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound));
+                Assert.That((string?)actual["error"]?["message"], Is.EqualTo($"block {retained.Hash} not found"));
+            }
+            else
+            {
+                Assert.That(actual["error"], Is.Null, response);
+            }
+        }
+        if (!bodyAvailable) return;
+        JArray? traces = actual["result"] as JArray;
+        Assert.That(traces, Has.Count.EqualTo(1), response);
+        if (traces is not { Count: 1 }) return;
+        JToken trace = traces[0]!["result"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)traces[0]!["txHash"], Is.EqualTo(transaction.Hash!.ToString()));
+            Assert.That((long?)trace["gas"], Is.EqualTo(21_000));
+            Assert.That((bool?)trace["failed"], Is.False);
+        }
+    }
+
+    [TestCase("head", false)]
+    [TestCase("head", true)]
+    [TestCase("canonical", false)]
+    [TestCase("canonical", true)]
+    [TestCase("orphan", false)]
+    [TestCase("orphan", true)]
+    public async Task Debug_traceBlockByHash_shared_lookup_preserves_canonical_and_head_selection(string targetKind, bool requireCanonical)
+    {
+        IGethStyleTracer? tracer = null;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<IGethStyleTracer>((_, inner) => tracer = inner));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(chain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .WithTo(TestItem.AddressC).WithValue(1).WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block target = await chain.AddBlock(transaction);
+        if (targetKind == "head")
+        {
+            chain.BlockTree.DeleteOldBlock(target.Number, target.Hash!);
+            Assert.That(chain.Container.Resolve<IBlockStore>().Get(target.Number, target.Hash!), Is.Null);
+        }
+        else
+        {
+            await chain.AddBlock();
+            if (targetKind == "orphan")
+            {
+                target = Build.A.Block.WithParent(parent).WithTransactions(transaction).WithExtraData([0x01]).TestObject;
+                chain.BlockTree.SuggestBlock(target, BlockTreeSuggestOptions.ForceDontSetAsMain);
+            }
+        }
+        _ = chain.DebugRpcModule;
+        Assert.That(tracer, Is.Not.Null);
+        if (tracer is null) return;
+        BlockParameter selector = new(target.Hash!, requireCanonical);
+        if (targetKind == "orphan" && requireCanonical)
+        {
+            Assert.That(() => tracer.TraceBlock(selector, GethTraceOptions.Default, CancellationToken.None), Throws.ArgumentNullException);
+            return;
+        }
+        IReadOnlyCollection<GethLikeTxTrace> traces = tracer.TraceBlock(selector, GethTraceOptions.Default, CancellationToken.None);
+        using IDisposable? traceOwner = traces as IDisposable;
+        Assert.That(traces, Has.Count.EqualTo(1));
+        foreach (GethLikeTxTrace trace in traces)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trace.TxHash, Is.EqualTo(transaction.Hash));
+                Assert.That(trace.Gas, Is.EqualTo(21_000));
+                Assert.That(trace.Failed, Is.False);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByHash_checks_genesis_body_before_rejecting_replay([Values] bool streaming, [Values] bool bodyAvailable)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        BlockHeader genesis = chain.BlockTree.Genesis!;
+        if (!bodyAvailable) chain.BlockTree.DeleteOldBlock(genesis.Number, genesis.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.FindHeader(genesis.Hash!), Is.Not.Null);
+            Assert.That(chain.BlockTree.FindBlock(genesis.Hash!), bodyAvailable ? Is.Not.Null : Is.Null);
+        }
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", genesis.Hash!);
+        JToken actual = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["result"], Is.Null);
+            Assert.That((int?)actual["error"]?["code"], Is.EqualTo(bodyAvailable ? ErrorCodes.InvalidInput : ErrorCodes.ResourceNotFound));
+            Assert.That((string?)actual["error"]?["message"], Is.EqualTo(bodyAvailable
+                ? "genesis is not traceable" : $"block {genesis.Hash} not found"));
+        }
     }
 
     [Test]
