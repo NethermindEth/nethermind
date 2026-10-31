@@ -14,7 +14,7 @@ public class PingMessageSerializerTests
     {
         PingMessage msg = PingMessage.Instance;
         PingMessageSerializer serializer = new();
-        byte[] serialized = serializer.Serialize(msg);
+        byte[] serialized = serializer.SerializeToArray(msg);
         Assert.That(serialized[0], Is.EqualTo(0xc0));
         using PingMessage deserialized = serializer.Deserialize(serialized);
         Assert.That(deserialized, Is.Not.Null);

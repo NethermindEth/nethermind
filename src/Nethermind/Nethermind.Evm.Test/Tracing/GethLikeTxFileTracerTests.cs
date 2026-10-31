@@ -4,9 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Precompiles;
@@ -37,8 +39,11 @@ public class GethLikeTxFileTracerTests : GethLikeTracerTestsBase
     {
         GethLikeTxTrace trace = ExecuteAndTraceToFile(static e => { }, GetBytecode(), GethTraceOptions.Default);
 
-        Assert.That(trace.Gas, Is.EqualTo(24));
-        Assert.That(trace.ReturnValue.Length, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Gas, Is.EqualTo(24));
+            Assert.That(trace.ReturnValue.Length, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -278,6 +283,62 @@ public class GethLikeTxFileTracerTests : GethLikeTracerTestsBase
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default with { DisableStack = true });
 
         Assert.That(entries.All(e => e.Stack is null), Is.True);
+    }
+
+    [Test]
+    public void Should_write_stack_and_memory_from_buffers_reused_across_entries()
+    {
+        List<GethTxFileTraceEntry> entries = [];
+        HashSet<byte[]> stackArrays = [];
+        HashSet<byte[]> memoryArrays = [];
+
+        ExecuteAndTraceToFile(e =>
+        {
+            if (e.Stack is { Length: > 0 } stack && MemoryMarshal.TryGetArray(stack, out ArraySegment<byte> stackSegment))
+                stackArrays.Add(stackSegment.Array!);
+            if (e.Memory is { Length: > 0 } memory && MemoryMarshal.TryGetArray(memory, out ArraySegment<byte> memorySegment))
+                memoryArrays.Add(memorySegment.Array!);
+            entries.Add(CloneTraceEntry(e));
+        }, GetBytecode(), GethTraceOptions.Default with { EnableMemory = true });
+
+        UInt256 data1 = new(Bytes.FromHexString(SampleHexData1), isBigEndian: true);
+        UInt256 data2 = new(Bytes.FromHexString(SampleHexData2), isBigEndian: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stackArrays, Has.Count.EqualTo(1));
+            Assert.That(memoryArrays, Has.Count.EqualTo(1));
+            Assert.That(entries[2].GetStackWord(0), Is.EqualTo(data1));
+            Assert.That(entries[2].GetStackWord(1), Is.EqualTo(UInt256.Zero));
+            Assert.That(entries[5].GetStackWord(0), Is.EqualTo(data2));
+            Assert.That(entries[5].GetStackWord(1), Is.EqualTo((UInt256)32));
+            Assert.That(entries[3].MemoryWordCount(), Is.EqualTo(1));
+            Assert.That(entries[3].GetMemoryWord(0), Is.EqualTo(data1));
+            Assert.That(entries[6].GetMemoryWord(0), Is.EqualTo(data1));
+            Assert.That(entries[6].GetMemoryWord(1), Is.EqualTo(data2));
+        }
+    }
+
+    [Test]
+    public void Dispose_detaches_the_reused_entry_from_the_pooled_buffers()
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, GetBytecode());
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        GethTxFileTraceEntry? lastEntry = null;
+        GethLikeTxFileTracer tracer = new(e => lastEntry = e, GethTraceOptions.Default with { EnableMemory = true });
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+        tracer.BuildResult();
+
+        bool hadSnapshots = lastEntry!.Stack is not null && lastEntry.Memory is not null;
+        tracer.Dispose();
+        tracer.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hadSnapshots, Is.True);
+            Assert.That(lastEntry.Stack, Is.Null);
+            Assert.That(lastEntry.Memory, Is.Null);
+        }
     }
 
     /// <summary>

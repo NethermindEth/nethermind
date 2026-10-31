@@ -3,10 +3,13 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
@@ -36,16 +39,27 @@ public sealed class CapabilitiesSszHandler : SszEndpointHandlerBase
 
     private static byte[] BuildBody()
     {
-        string supportedForksJson = JsonSerializer.Serialize(SszRestPaths.SupportedForksOrdered, SszRestJsonContext.Default.IReadOnlyListString);
+        string supportedForksJson = JsonSerializer.Serialize(SszRestPaths.SupportedForksOrdered, SszRestJsonContext.Default.IEnumerableString);
+        string forkScopedEndpointsJson = JsonSerializer.Serialize(ForkScopedEndpointNames(), SszRestJsonContext.Default.IEnumerableString);
+        string blobVersionsJson = JsonSerializer.Serialize(BlobVersionNames(), SszRestJsonContext.Default.IEnumerableString);
 
         return Encoding.UTF8.GetBytes(
             $"{{\"supported_forks\":{supportedForksJson}," +
-            $"\"fork_scoped_endpoints\":[\"payloads\",\"forkchoice\",\"bodies\"]," +
-            $"\"independently_versioned\":{{\"blobs\":[\"v1\",\"v2\",\"v3\",\"v4\"]}}," +
-            $"\"unscoped_endpoints\":[\"capabilities\",\"identity\"]," +
+            $"\"fork_scoped_endpoints\":{forkScopedEndpointsJson}," +
+            $"\"independently_versioned\":{{\"{SszRestPaths.Blobs}\":{blobVersionsJson}}}," +
+            $"\"unscoped_endpoints\":[\"{SszRestPaths.Capabilities}\",\"{SszRestPaths.ClientVersion}\"]," +
             $"\"limits\":{{" +
             $"\"bodies.max_count\":{SszRestLimits.MaxBodiesRequest}," +
             $"\"blobs.max_versioned_hashes\":{SszRestLimits.MaxBlobsRequest}," +
             $"\"payload.max_bytes\":{SszMiddleware.MaxBodySize}}}}}");
     }
+
+    // The spec advertises POST bodies/hash and GET bodies together as one "bodies" family.
+    private static IEnumerable<string> ForkScopedEndpointNames() =>
+        SszRestPaths.ForkScopedEndpoints
+            .Select(static endpoint => endpoint.Resource is SszRestPaths.PayloadBodiesByHash ? SszRestPaths.PayloadBodiesByRange : endpoint.Resource)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+    private static IEnumerable<string> BlobVersionNames() =>
+        Enumerable.Range(EngineApiVersions.GetBlobs.V1, EngineApiVersions.GetBlobs.Latest - EngineApiVersions.GetBlobs.V1 + 1).Select(static version => $"v{version}");
 }

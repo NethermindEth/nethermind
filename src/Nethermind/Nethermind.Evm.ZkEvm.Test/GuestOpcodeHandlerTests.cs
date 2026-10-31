@@ -266,6 +266,15 @@ public class GuestOpcodeHandlerTests
             (3 + 3 + 3 + 6) + (3 + 3) + (3 + 3 + 6),
             [0, .. WordA, .. new byte[32], 0, .. WordA[..31], .. new byte[31]]);
 
+        yield return Succeeds("MSTORE and MLOAD at half-word offsets",
+            Code([
+                PUSH32, .. WordA, PUSH1, 4, MSTORE,
+                PUSH1, 4, MLOAD,
+                PUSH1, 0x44, MSTORE,
+                STOP]),
+            (3 + 3 + 3 + 6) + (3 + 3) + (3 + 3 + 6),
+            [.. new byte[4], .. WordA, .. new byte[32], .. WordA, .. new byte[28]]);
+
         yield return Succeeds("MLOAD past the active memory",
             Code(PUSH1, 0x40, MLOAD, PUSH1, 0, MSTORE, STOP),
             (3 + 3 + 9) + (3 + 3),
@@ -352,9 +361,9 @@ public class GuestOpcodeHandlerTests
         // Operands below 2^64, powers of two on either side, a zero divisor, and wider ones the shared handlers take.
         (BigInteger Top, BigInteger Second)[] factors =
         [
-            (ulong.MaxValue, ulong.MaxValue), (ulong.MaxValue, 7), (7, ulong.MaxValue), (0, wordA), (wordA, 0), (wordA, 1), (1, wordA),
+            (ulong.MaxValue, ulong.MaxValue), (ulong.MaxValue, 7), (7, ulong.MaxValue), (7, 0), (0, wordA), (wordA, 0), (wordA, 1), (1, wordA),
             (BigInteger.One << 200, wordA), (wordA, BigInteger.One << 64), (wordA, BigInteger.One << 224), (wordA, BigInteger.One << 255),
-            (wordA, wordB), (wordB, (BigInteger.One << 64) + 1),
+            (wordA, wordB), (wordB, wordA), (wordA, wordA), (wordB, (BigInteger.One << 64) + 1),
         ];
         foreach ((BigInteger top, BigInteger second) in factors)
         {
@@ -381,7 +390,7 @@ public class GuestOpcodeHandlerTests
         // which read as zero-padded.
         byte[] input = Enumerable.Range(1, 40).Select(static b => (byte)b).ToArray();
         byte[] padded = [.. input, .. new byte[256]];
-        foreach (int offset in (int[])[0, 8, 9, 39, 40, 200])
+        foreach (int offset in (int[])[0, 4, 8, 9, 39, 40, 200])
         {
             yield return Succeeds($"CALLDATALOAD at {offset}", Code(PUSH1, (byte)offset, CALLDATALOAD, PUSH1, 0, MSTORE, STOP),
                 3 + 3 + (3 + 3 + 3), padded[offset..(offset + 32)], input);
@@ -702,7 +711,7 @@ public class GuestOpcodeHandlerTests
             stack.HoistInputData(env.InputData.Span);
             VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = table, Vm = vm, Memory = ref frame.Memory };
             exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[Unsafe.ReadUnaligned<ushort>(ref stack.Code)])(
-                ref stack, gas, ref state, ref stack.Code, stack.Head, table, ref stack.Code, ref stack.Bottom);
+                ref stack, gas, ref state, ref stack.Code, stack.Head, table, ref stack.Code, ref Unsafe.Add(ref stack.Bottom, stack.Head * EvmStack.WordSize));
         }
 
         ulong size = frame.Memory.Size;

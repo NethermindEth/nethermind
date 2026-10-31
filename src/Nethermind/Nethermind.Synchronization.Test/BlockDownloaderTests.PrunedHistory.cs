@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -106,6 +108,24 @@ public partial class BlockDownloaderTests
                 PeerInfo? next = ci.ArgAt<IPeerAllocationStrategy>(1).Allocate(null, peers, stats, ctx.BlockTree);
                 return Task.FromResult(next is null ? null : (int?)stats.GetOrAdd(next.SyncPeer.Node).GetCurrentRequestLimit(ci.ArgAt<RequestType>(0)));
             });
+
+    /// <summary>
+    /// Whether a size estimate strategy skips peers that pruned a window starting at block 1 and ranks the rest by
+    /// <paramref name="speedType"/>.
+    /// </summary>
+    private static bool SkipsPrunedPeersAndRanksBy(IPeerAllocationStrategy strategy, TransferSpeedType speedType)
+    {
+        PeerInfo pruned = HistoryPeerTestHelpers.Create(TestItem.PublicKeyA, earliest: 2, supportsAccessLists: true);
+        PeerInfo serving = HistoryPeerTestHelpers.Create(TestItem.PublicKeyB, earliest: 1, supportsAccessLists: true);
+        INodeStats nodeStats = Substitute.For<INodeStats>();
+        INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+        stats.GetOrAdd(pruned.SyncPeer.Node).Returns(nodeStats);
+        stats.GetOrAdd(serving.SyncPeer.Node).Returns(nodeStats);
+
+        PeerInfo? allocated = strategy.Allocate(null, [pruned, serving], stats, Substitute.For<IBlockTree>());
+
+        return allocated == serving && nodeStats.ReceivedCalls().Any(call => call.GetArguments() is [TransferSpeedType queried] && queried == speedType);
+    }
 
     private static PeerInfo StatsPeer(INodeStatsManager stats, PublicKey key, ulong earliest, long speed, int limit)
     {

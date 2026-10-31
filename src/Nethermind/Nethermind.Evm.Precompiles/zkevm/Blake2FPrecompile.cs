@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Zkvm.Abstractions;
 
@@ -13,6 +14,9 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Blake2FPrecompile
 {
+    public static Address Address => field ??= Address.FromNumber(9);
+    private static ReadOnlyMemory<byte> InvalidFlagInput => new byte[RequiredInputLength].WithValueAt(212, 0xFF);
+
     [SkipLocalsInit]
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {

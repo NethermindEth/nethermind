@@ -5,21 +5,26 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
 public sealed partial class CodeInfo
 {
+    public static CodeInfo Empty => field ??= new CodeInfo(_emptyAnalyzer);
+    private static JumpDestinationAnalyzer _emptyAnalyzer => field ??= new JumpDestinationAnalyzer(new CodeInfo(), skipAnalysis: true);
+
     private ReadOnlyMemory<byte> _code;
 
     /// <remarks>
-    /// Copies unless the code is an <see cref="ExecutableCodeMemory"/> buffer, as any other buffer promises nothing
-    /// about the bytes after the code. Padding here rather than on first execution keeps <see cref="Code"/> a plain
-    /// field read, which the guest pays for on every code access.
+    /// Copies unless the code is an <see cref="ExecutableCodeMemory"/> buffer, or code it placed in the input a guest
+    /// reuses, as any other buffer promises nothing about the bytes after the code. Padding here rather than on first
+    /// execution keeps <see cref="Code"/> a plain field read, which the guest pays for on every code access.
     /// </remarks>
     partial void InitializeCode(ReadOnlyMemory<byte> code) =>
         _code = code.IsEmpty ? code
             : ExecutableCodeMemory.TryGetExecutionBuffer(code, out byte[]? buffer) ? buffer.AsMemory(0, code.Length)
+            : FirstTouchMemoryFlag.IsActive && ExecutableCodeMemory.IsPlaced(code) ? code
             : CreatePaddedCode(code.Span).AsMemory(0, code.Length);
 
     public partial ReadOnlyMemory<byte> Code => _code;
@@ -64,15 +69,11 @@ public sealed partial class CodeInfo
         fixed (long* bits = bitmap)
         {
             if ((((nuint)code | (nuint)bits) & (sizeof(long) - 1)) != 0) return;
-            ZiskJumpDestBitmap(bits, code, (ulong)CodeLength);
+            Accelerators.JumpDestBitmap((ulong*)bits, code, (nuint)CodeLength);
         }
 
         _analyzedUntil = CodeLength;
     }
-
-    /// <summary>ZisK's JUMPDEST bitmap precompile, from the guest's <c>jump_dest.S</c>.</summary>
-    [DllImport("__Internal", EntryPoint = "zisk_jump_dest_bitmap", ExactSpelling = true), SuppressGCTransition]
-    private static extern unsafe void ZiskJumpDestBitmap(long* bitmap, byte* code, ulong size);
 
     /// <summary>Extends the scan far enough to decide <paramref name="destination"/>, and reports whether it is a jump destination.</summary>
     /// <param name="destination">A destination inside the code.</param>
@@ -91,27 +92,39 @@ public sealed partial class CodeInfo
 
     /// <summary>
     /// <see cref="AnalyzeJump"/> for <paramref name="destination"/>, a position inside the code whose bit is still
-    /// clear, in code that does not start with STOP.
+    /// clear, in code that does not start with STOP, if <paramref name="bitmap"/> is this code's <see cref="IncrementalJumpBitmap"/>.
     /// </summary>
     /// <param name="destination">A destination inside the code.</param>
-    /// <param name="bitmap">This code's <see cref="IncrementalJumpBitmap"/>.</param>
+    /// <param name="bitmap">The bitmap the jump is checked against.</param>
     /// <param name="code">The first byte of this code.</param>
-    /// <remarks>Code that starts with STOP halts before any jump, so a running jump needs no test for it.</remarks>
+    /// <remarks>
+    /// Code that starts with STOP halts before any jump, so a running jump needs no test for it. The bitmap is compared
+    /// with the field, as in <see cref="IsJumpProvenByLookBack"/>, so the scanned-jump handler makes no call.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal bool AnalyzeRunningJump(nint destination, long[] bitmap, ref byte code) =>
+    internal bool AnalyzeRunningJump(nint destination, long[]? bitmap, ref byte code) =>
+        ReferenceEquals(bitmap, _incrementalJumpBitmap) &&
         Unsafe.Add(ref code, destination) == (byte)Instruction.JUMPDEST &&
-        JumpDestinationAnalyzer.AnalyzeJump(destination, bitmap, ref code, ref _analyzedUntil);
+        JumpDestinationAnalyzer.AnalyzeJump(destination, bitmap!, ref code, ref _analyzedUntil);
 
-    /// <summary>Reports whether a single look-back proves <paramref name="destination"/> the destination of the jump running.</summary>
+    /// <summary>
+    /// Reports whether <paramref name="bitmap"/> is this code's <see cref="IncrementalJumpBitmap"/> and a single look-back
+    /// proves <paramref name="destination"/> the destination of the jump running.
+    /// </summary>
     /// <param name="destination">A destination inside the code.</param>
+    /// <param name="bitmap">The bitmap the jump is checked against.</param>
     /// <param name="code">The first byte of this code.</param>
     /// <remarks>
     /// The part of <see cref="AnalyzeJump"/> that needs no call and no bounds check, so a frameless handler can take
     /// it; the caller marks a proven destination. A false answer leaves the destination to <see cref="AnalyzeJump"/>.
     /// Code that starts with STOP halts before any jump, so unlike <see cref="AnalyzeJump"/> this does not test for it.
+    /// The bitmap is compared with the field rather than <see cref="IncrementalJumpBitmap"/>, whose lazy creation is a
+    /// call that would give the handler a frame; a bitmap not created yet compares unequal and so is left to
+    /// <see cref="AnalyzeJump"/> too.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal bool IsJumpProvenByLookBack(nint destination, ref byte code) =>
+    internal bool IsJumpProvenByLookBack(nint destination, long[]? bitmap, ref byte code) =>
+        ReferenceEquals(bitmap, _incrementalJumpBitmap) &&
         Unsafe.Add(ref code, destination) == (byte)Instruction.JUMPDEST &&
         JumpDestinationAnalyzer.IsProvenByLookBack(destination, ref code, _analyzedUntil);
 }

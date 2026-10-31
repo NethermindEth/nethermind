@@ -42,16 +42,18 @@ public class CompositeDiscoveryAppTests
 
     [Test]
     [NonParallelizable]
-    public async Task StartAsync_ReleasesSocketWhenBindFails()
+    public async Task StartAsync_ReleasesSocketWhenBindFails([Values] bool portInUse)
     {
         int port;
         using (Socket blocker = CreateUdpListenerSocket(IPAddress.Any, 0))
         {
             port = ((IPEndPoint)blocker.LocalEndPoint!).Port;
-            NetworkConfig networkConfig = new() { LocalIp = "0.0.0.0", DiscoveryPort = port };
+            // 192.0.2.1 is an RFC 5737 documentation address, never assigned to a local interface.
+            string localIp = portInUse ? "0.0.0.0" : "192.0.2.1";
+            NetworkConfig networkConfig = new() { LocalIp = localIp, DiscoveryPort = port };
             IIPResolver ipResolver = Substitute.For<IIPResolver>();
             ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
-                new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.Loopback)));
+                new IIPResolver.NethermindIp(IPAddress.Parse(localIp), IPAddress.Loopback)));
             NetworkListenerState listenerState = new(networkConfig, ipResolver, LimboLogs.Instance);
             RecordingDiscoveryApp discoveryApp = new();
             RecordingChannelFactory channelFactory = new();
@@ -63,7 +65,8 @@ public class CompositeDiscoveryAppTests
                 [discoveryApp],
                 channelFactory);
 
-            Assert.That(async () => await app.StartAsync(), Throws.TypeOf<PortInUseException>());
+            Assert.That(async () => await app.StartAsync(),
+                Throws.TypeOf(portInUse ? typeof(PortInUseException) : typeof(ListenerBindException)));
 
             Assert.That(channelFactory.CreatedSockets, Has.Count.EqualTo(1));
             using (Assert.EnterMultipleScope())
@@ -140,8 +143,11 @@ public class CompositeDiscoveryAppTests
 
             await sender.SendToAsync(data, listener);
 
-            Assert.That(await second.Received.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(data));
-            Assert.That(first.InitializedSockets, Is.EqualTo(second.InitializedSockets));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(await second.Received.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(data));
+                Assert.That(first.InitializedSockets, Is.EqualTo(second.InitializedSockets));
+            }
         }
         finally
         {
@@ -166,8 +172,11 @@ public class CompositeDiscoveryAppTests
             new IPEndPoint(IPAddress.Parse(preferredIp), 40404),
             out Node? node);
 
-        Assert.That(result, Is.True);
-        Assert.That(node, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(node!.Host, Is.EqualTo(expectedIp));
@@ -189,8 +198,11 @@ public class CompositeDiscoveryAppTests
             preferredEndpoint: null,
             out Node? node);
 
-        Assert.That(result, Is.False);
-        Assert.That(node, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(node, Is.Null);
+        }
     }
 
     [TestCase("0.0.0.0", true, false)]
@@ -267,8 +279,11 @@ public class CompositeDiscoveryAppTests
             Assert.Ignore("IPv6 is not supported on this host.");
         }
 
-        using Socket? ipv6Blocker = portInUse ? CreateUdpListenerSocket(IPAddress.IPv6Any, 0) : null;
-        int port = ipv6Blocker is not null ? ((IPEndPoint)ipv6Blocker.LocalEndPoint!).Port : GetAvailableUdpPort();
+        // A port allocated in the IPv6 namespace may already be taken on IPv4, so reserve the IPv4 port
+        // and hold it until the fallback binds.
+        using Socket ipv4Reservation = CreateUdpListenerSocket(IPAddress.Any, 0);
+        int port = ((IPEndPoint)ipv4Reservation.LocalEndPoint!).Port;
+        using Socket? ipv6Blocker = portInUse ? CreateUdpListenerSocket(IPAddress.IPv6Any, port) : null;
         NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
         InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
         underlyingLogger.IsWarn.Returns(true);
@@ -278,7 +293,15 @@ public class CompositeDiscoveryAppTests
         try
         {
             pool.Bind(
-                address => CreateSocket(portInUse ? address : IPAddress.Any, createdSockets),
+                address =>
+                {
+                    if (address.Equals(listenerState.FallbackAddress))
+                    {
+                        ipv4Reservation.Dispose();
+                    }
+
+                    return CreateSocket(portInUse ? address : IPAddress.Any, createdSockets);
+                },
                 port,
                 datagram =>
                 {
@@ -415,6 +438,29 @@ public class CompositeDiscoveryAppTests
     }
 
     [Test]
+    public async Task StopAsync_ReturnsAfterListenerStateIsCleared()
+    {
+        NetworkListenerState listenerState = CreateListenerState("0.0.0.0", IPAddress.Any);
+        DiscoveryConnectionsPool pool = CreatePool(listenerState);
+        TaskCompletionSource clearing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim release = new();
+        pool.Bind(_ => new CloseObservingSocket(clearing.Task), 30303, static datagram => datagram.Dispose());
+        listenerState.Changed += (_, _) =>
+        {
+            if (listenerState.DiscoveryAddress is not null) return;
+            clearing.TrySetResult();
+            release.Wait(TimeSpan.FromSeconds(5));
+        };
+
+        Task stop = pool.StopAsync();
+        bool stoppedBeforeCleared = stop.IsCompleted;
+        release.Set();
+        await stop;
+
+        Assert.That(stoppedBeforeCleared, Is.False);
+    }
+
+    [Test]
     [NonParallelizable]
     public async Task ListenerState_ClearsWhenSocketClosesUnexpectedly()
     {
@@ -453,8 +499,11 @@ public class CompositeDiscoveryAppTests
         List<(byte[] Data, IPEndPoint Sender)> received = await ReceiveThroughPoolAsync(
             IPEndPoint.Parse("127.0.0.2:10000"), 2, [invalid, first, invalid, second]);
 
-        Assert.That(received[0].Data, Is.EqualTo(first));
-        Assert.That(received[1].Data, Is.EqualTo(second));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(received[0].Data, Is.EqualTo(first));
+            Assert.That(received[1].Data, Is.EqualTo(second));
+        }
     }
 
     [TestCase("::1", "127.0.0.2", "127.0.0.2", Description = "IPv4 sender on a dual-stack listener")]
@@ -677,6 +726,34 @@ public class CompositeDiscoveryAppTests
     {
         using Socket socket = CreateUdpListenerSocket(IPAddress.Any, 0);
         return ((IPEndPoint)socket.LocalEndPoint!).Port;
+    }
+
+    /// <summary>
+    /// Ends its receive loop on another thread when disposed, and returns from the first dispose only once
+    /// <paramref name="listenerStateClearing"/> completes, so the receive task is complete while its continuations still run.
+    /// </summary>
+    private sealed class CloseObservingSocket(Task listenerStateClearing) : IDatagramSocket
+    {
+        private readonly TaskCompletionSource<int> _receive = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _disposed;
+
+        public IPEndPoint? LocalEndpoint { get; private set; }
+
+        public void Bind(IPEndPoint localEndpoint) => LocalEndpoint = localEndpoint;
+
+        public ValueTask SendToAsync(ReadOnlyMemory<byte> datagram, IPEndPoint remoteEndpoint, CancellationToken cancellationToken = default)
+            => ValueTask.CompletedTask;
+
+        public ValueTask<int> ReceiveFromAsync(Memory<byte> buffer, SocketAddress receivedAddress, CancellationToken cancellationToken = default)
+            => new(_receive.Task);
+
+        public void Dispose()
+        {
+            // The receive loop disposes the socket again when it ends; only the first dispose waits.
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            _receive.TrySetException(new ObjectDisposedException(nameof(CloseObservingSocket)));
+            listenerStateClearing.Wait(TimeSpan.FromSeconds(5));
+        }
     }
 
     private sealed class RecordingChannelFactory : IChannelFactory

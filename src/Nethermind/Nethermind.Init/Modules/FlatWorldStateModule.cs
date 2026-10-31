@@ -3,7 +3,9 @@
 
 using System;
 using System.IO;
+using System.IO.Abstractions;
 using Autofac;
+using Nethermind.Api.Monitoring;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
@@ -19,10 +21,11 @@ using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
 using Nethermind.Api;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -33,6 +36,10 @@ namespace Nethermind.Init.Modules;
 
 public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 {
+    private const string VerifyTrieDirectory = "verify-trie";
+    private const string PersistedSnapshotDirectory = "persistedSnapshot";
+    private const string TrieNodeLogDirectory = "flatTrieNodeLog";
+
     protected override void Load(ContainerBuilder builder)
     {
         builder
@@ -41,7 +48,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<FlatStateReader>()
             .AddSingleton<FlatWorldStateManager>()
             .AddSingleton<FlatTrieVerifier, IFlatDbManager, IPersistence, ILogManager, IInitConfig>((flatDbManager, persistence, logManager, initConfig) =>
-                new FlatTrieVerifier(flatDbManager, persistence, logManager, Path.Combine(initConfig.BaseDbPath, "verify-trie")))
+                new FlatTrieVerifier(flatDbManager, persistence, logManager, VerifyTrieDirectory.GetApplicationResourcePath(initConfig.BaseDbPath)))
             .AddSingleton<FlatStateBoundary>()
 
             // Stub out the pruning trie store admin RPC with a disabled response.
@@ -51,7 +58,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IProcessExitSource>(),
-                ctx.Resolve<ITrieNodeCache>(),
+                ctx.Resolve<INodeRecordBuffer>(),
                 ctx.Resolve<ISnapshotCompactor>(),
                 ctx.Resolve<ISnapshotRepository>(),
                 ctx.Resolve<IPersistenceManager>(),
@@ -61,18 +68,18 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
             .AddSingleton<IResourcePool, ResourcePool>()
-            .AddSingleton<ITrieNodeCache, TrieNodeCache>()
+            .AddSingleton<INodeRecordBuffer, IFlatDbConfig>(c => new NodeRecordBuffer(c.TrieNodeLogEnabled ? 0 : c.CompressedNodeRecordBufferMemoryBudget, NodeRecordBuffer.DefaultGenerationBytes))
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
             .AddSingleton<IArenaManager, IFlatDbConfig, IInitConfig, ILogManager>((cfg, initConfig, logManager) =>
             {
-                string basePath = Path.Combine(initConfig.BaseDbPath, "persistedSnapshot");
+                string basePath = PersistedSnapshotDirectory.GetApplicationResourcePath(initConfig.BaseDbPath);
                 return new ArenaManager(Path.Combine(basePath, "arena"), cfg, logManager);
             })
             .AddSingleton<BlobArenaManager, IFlatDbConfig, IInitConfig>((cfg, initConfig) =>
             {
-                string basePath = Path.Combine(initConfig.BaseDbPath, "persistedSnapshot");
+                string basePath = PersistedSnapshotDirectory.GetApplicationResourcePath(initConfig.BaseDbPath);
                 return new BlobArenaManager(
                     Path.Combine(basePath, "blob"),
                     cfg.ArenaFileSizeBytes);
@@ -102,9 +109,20 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .Resolve<IDbFactory>()
                 .CreateDb(new DbSettings(
                     nameof(DbNames.PersistedSnapshotCatalog),
-                    Path.Combine("persistedSnapshot", "catalog"))))
+                    Path.Combine(PersistedSnapshotDirectory, "catalog"))))
             .AddSingleton<SnapshotCatalog>()
             .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
+            .AddSingleton<ITrieNodeLog, IFlatDbConfig, IInitConfig, IColumnsDb<FlatDbColumns>, IFileSystem, ILogManager>((cfg, initConfig, db, fileSystem, logManager) =>
+            {
+                string basePath = TrieNodeLogDirectory.GetApplicationResourcePath(initConfig.BaseDbPath);
+                // The log is recovered across restarts, keeping its deduplication window, unless it is now disabled or
+                // its shard layout changed; then whatever the previous run left is merged into RocksDB first.
+                if (!cfg.TrieNodeLogEnabled || !TrieNodeLog.MatchesOnDiskLayout(basePath, fileSystem, cfg))
+                    TrieNodeLog.MergeAllOnDisk(basePath, fileSystem, db, logManager);
+                return cfg.TrieNodeLogEnabled
+                    ? new TrieNodeLog(basePath, fileSystem, db, cfg, logManager)
+                    : NullTrieNodeLog.Instance;
+            })
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
             .Add<CarryForwardCachingPersistence>()
@@ -117,7 +135,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     FlatLayout.Flat => ctx.Resolve<RocksDbPersistence>(),
                     FlatLayout.FlatInTrie => ctx.Resolve<FlatInTriePersistence>(),
                     FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat =>
-                        new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout),
+                        new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout, ctx.Resolve<ITrieNodeLog>()),
                     _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
 

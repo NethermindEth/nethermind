@@ -122,8 +122,11 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Default_size_limits_match_eth_protocol_limits()
     {
-        Assert.That(SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit, Is.EqualTo(2UL.MiB));
-        Assert.That(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit, Is.EqualTo(10UL.MiB));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit, Is.EqualTo(2UL.MiB));
+            Assert.That(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit, Is.EqualTo(10UL.MiB));
+        }
     }
 
     [Test]
@@ -359,6 +362,88 @@ public class Eth70ProtocolHandlerTests
         Assert.That(seenOffsets.AsSpan(), Is.SequenceEqualTo(new[] { 0L, 2L }));
     }
 
+    /// <summary>The running gas total has to carry across pages when EIP-8116 receipts hold per-transaction gas.</summary>
+    [Test]
+    public async Task Should_sum_receipt_gas_across_partial_pages_against_header([Values] bool isEip8116Enabled)
+    {
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 75;
+        // Pages of two take two continuations, the second of which starts from a running total carried over.
+        const int receiptCount = 5;
+        const int pageSize = 2;
+        Hash256 blockHash = TestItem.KeccakA;
+        _syncManager.FindHeader(blockHash).Returns(Build.A.BlockHeader
+            .WithHash(blockHash)
+            .WithNumber(1)
+            .WithGasUsed(GasCostOf.Transaction * receiptCount)
+            .TestObject);
+
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip8116Enabled.Returns(isEip8116Enabled);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        TxReceipt[] receipts = new TxReceipt[receiptCount];
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (isEip8116Enabled ? 1 : (ulong)(i + 1)), Logs = [] };
+        }
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            int first = (int)sent.FirstBlockReceiptIndex;
+            bool lastBlockIncomplete = first + pageSize < receipts.Length;
+            ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts.Skip(first).Take(pageSize).ToArray() }.ToPooledList(), lastBlockIncomplete);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+
+        Assert.That(result, Has.Count.EqualTo(1));
+        AssertReceiptsEqual(result[0], receipts);
+    }
+
+    /// <summary>Without a local header the fork is unknown, so decreasing per-transaction gas is accepted once EIP-8116 is scheduled.</summary>
+    [Test]
+    public async Task Should_accept_decreasing_receipt_gas_of_unknown_block_once_eip8116_is_scheduled([Values] bool eip8116Scheduled)
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        _syncManager.FindHeader(blockHash).Returns((BlockHeader?)null);
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip8116Enabled.Returns(eip8116Scheduled);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        TxReceipt[] receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] },
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        async Task Act()
+        {
+            using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+            Assert.That(result, Has.Count.EqualTo(1));
+        }
+
+        if (eip8116Scheduled)
+        {
+            await Act();
+        }
+        else
+        {
+            SubprotocolException? exception = await Assert.ThrowsAsync<SubprotocolException>(async () => await Act());
+            Assert.That(exception?.Message, Is.EqualTo("Cumulative gas decreased within block receipts"));
+        }
+    }
+
     [Test]
     public async Task Partial_first_block_is_checked_against_its_remaining_expected_receipts([Values] bool exceedsCount)
     {
@@ -366,10 +451,12 @@ public class Eth70ProtocolHandlerTests
 
         TxReceipt[] block1 = BuildSequentialReceipts(3);
         TxReceipt[] block2 = BuildSequentialReceipts(2);
+        int requestCount = 0;
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            requestCount++;
             if (sent.FirstBlockReceiptIndex == 0)
             {
                 using ReceiptsMessage70 firstPage = new(sent.RequestId, new[] { block1.Take(2).ToArray() }.ToPooledList(), true);
@@ -383,10 +470,6 @@ public class Eth70ProtocolHandlerTests
                 UndecodableResponse.AssertReceiptsRejectedBeforeDecoding(_handler.HandleMessage,
                     UndecodableResponse.CreateReceipts(sent.RequestId, remaining + 1, Rlp.Encode(0)),
                     Eth70MessageCode.Receipts);
-
-                // Ends the still-pending request so the paging loop stops.
-                using ReceiptsMessage70 empty = new(sent.RequestId, ArrayPoolList<TxReceipt[]>.Empty(), false);
-                HandleZeroMessage(empty, Eth70MessageCode.Receipts);
                 return;
             }
 
@@ -399,7 +482,11 @@ public class Eth70ProtocolHandlerTests
 
         if (exceedsCount)
         {
-            Assert.That(async () => await task, Throws.TypeOf<SubprotocolException>().With.Message.Contains("no progress"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(async () => await task, Throws.InstanceOf<OperationCanceledException>());
+                Assert.That(requestCount, Is.EqualTo(2));
+            }
             return;
         }
 
@@ -775,12 +862,16 @@ public class Eth70ProtocolHandlerTests
     [TestCase(true, true, 1, 2, null)]
     [TestCase(false, false, 2, 1, "Block gas used mismatch between receipts and header")]
     [TestCase(true, false, 2, 1, null)]
+    [TestCase(false, false, 1, 2, "Block gas used exceeds header value", true)]
+    [TestCase(false, false, 2, 1, "Block gas used mismatch between receipts and header", true)]
+    [TestCase(false, false, 2, 2, null, true)]
     public async Task Should_validate_receipt_cumulative_against_header_gas_used_by_spec(
         bool isEip7778Enabled,
         bool isEip8037Enabled,
         int headerGasUsedMultiplier,
         int receiptGasUsedMultiplier,
-        string? expectedException)
+        string? expectedException,
+        bool isEip8116Enabled = false)
     {
         Hash256 blockHash = TestItem.KeccakA;
         BlockHeader header = Build.A.BlockHeader
@@ -793,12 +884,14 @@ public class Eth70ProtocolHandlerTests
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         spec.IsEip7778Enabled.Returns(isEip7778Enabled);
         spec.IsEip8037Enabled.Returns(isEip8037Enabled);
+        spec.IsEip8116Enabled.Returns(isEip8116Enabled);
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         TxReceipt[] receipts = new TxReceipt[receiptGasUsedMultiplier];
         for (int i = 0; i < receipts.Length; i++)
         {
-            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (ulong)(i + 1), Logs = [] };
+            // EIP-8116 receipts hold each transaction's own gas rather than the running total.
+            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (isEip8116Enabled ? 1 : (ulong)(i + 1)), Logs = [] };
         }
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
@@ -863,8 +956,11 @@ public class Eth70ProtocolHandlerTests
 
         // Handler should make only 1 request - not loop trying to get remaining 3 blocks
         // When peer returns fewer than requested with incomplete=false, it means peer can't/won't provide more
-        Assert.That(requestCount, Is.EqualTo(1), "handler should not loop requesting more when peer returned fewer with incomplete=false");
-        Assert.That(result, Has.Count.EqualTo(7), "should return what peer gave us without looping");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requestCount, Is.EqualTo(1), "handler should not loop requesting more when peer returned fewer with incomplete=false");
+            Assert.That(result, Has.Count.EqualTo(7), "should return what peer gave us without looping");
+        }
     }
 
     [Test]
@@ -967,8 +1063,11 @@ public class Eth70ProtocolHandlerTests
 
         ReceiptsMessage70 response = RequestReceipts(Keccak.Zero, TestItem.KeccakA);
 
-        Assert.That(response.TxReceipts, Is.Empty);
-        Assert.That(response.LastBlockIncomplete, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.TxReceipts, Is.Empty);
+            Assert.That(response.LastBlockIncomplete, Is.False);
+        }
     }
 
     [Test]

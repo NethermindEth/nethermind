@@ -52,6 +52,8 @@ public class EraExporterTests
 
                     ReadOnlySpan<char> secondWord = lineSpan[(spaceIndex + 1)..];
                     Assert.That(secondWord.EndsWith(".era1".AsSpan()));
+                    string fileName = secondWord.ToString();
+                    Assert.That(File.Exists(Path.Combine(tmpDirectory, fileName)), $"{fileName} does not exist");
                 }
             }
         }
@@ -69,7 +71,7 @@ public class EraExporterTests
         IEraExporter sut = container.Resolve<IEraExporter>();
         string tmpDirectory = container.ResolveTempDirPath();
 
-        Assert.That(() => sut.Export(tmpDirectory, 0UL, to), Throws.TypeOf<ArgumentException>());
+        Assert.That(() => { _ = sut.Export(tmpDirectory, 0UL, to); }, Throws.TypeOf<ArgumentException>());
     }
 
     [Test]

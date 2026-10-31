@@ -20,9 +20,6 @@ namespace Nethermind.Evm;
 public partial class VmState<TGasPolicy> : IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private static readonly EvmObjectPool<VmState<TGasPolicy>> _statePool = new(
-        maxShared: VirtualMachineStatics.MaxCallDepth * 2);
-
     public byte[]? DataStack;
     public TGasPolicy Gas;
     public long InitialStateGasUsed;
@@ -52,6 +49,13 @@ public partial class VmState<TGasPolicy> : IDisposable
     /// recipient; on this frame's error/revert no account is created, so the parent refunds it.
     /// </summary>
     public bool NewAccountCharged { get; private set; } // TODO: move to CallEnv
+
+    /// <summary>
+    /// EIP-8360: the executing account is a <c>TCREATE</c> account, so storage opcodes act on transient storage
+    /// and <c>CREATE2</c> halts. Also true for code it runs through <c>DELEGATECALL</c> or <c>CALLCODE</c>.
+    /// </summary>
+    /// <remarks>Set on frame entry only under specs that enable EIP-8360; handlers for other specs never read it.</remarks>
+    public bool IsTransientCreateContext { get; internal set; } // TODO: move to CallEnv
 
     // EIP-7979 return addresses: allocated on the first CALLSUB, then kept with the pooled state.
     private int[]? _returnStack;
@@ -299,7 +303,7 @@ public partial class VmState<TGasPolicy> : IDisposable
     public Address From => ExecutionType switch
     {
         ExecutionType.STATICCALL or ExecutionType.CALL or ExecutionType.CALLCODE or ExecutionType.CREATE
-            or ExecutionType.CREATE2 or ExecutionType.TRANSACTION => Env.Caller,
+            or ExecutionType.CREATE2 or ExecutionType.TCREATE or ExecutionType.TRANSACTION => Env.Caller,
         ExecutionType.DELEGATECALL => Env.ExecutingAccount,
         _ => throw new ArgumentOutOfRangeException(),
     };
@@ -364,8 +368,8 @@ public partial class VmState<TGasPolicy> : IDisposable
     }
 
     /// <inheritdoc cref="InitializeStacks(ReadOnlySpan{byte}, out EvmStack)"/>
-    /// <param name="txTracer">The tracer the stack reports to.</param>
-    public void InitializeStacks(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
+    /// <param name="txTracer">The tracer the stack reports pushes to, or <c>null</c> when no tracer observes them.</param>
+    public void InitializeStacks(ITxTracer? txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         byte[]? dataStack = DataStack;
@@ -380,7 +384,7 @@ public partial class VmState<TGasPolicy> : IDisposable
 
     /// <summary>Rebuilds a resumed frame's EVM stack over <paramref name="codeSpan"/>.</summary>
     /// <inheritdoc cref="InitializeStacks(ITxTracer, ReadOnlySpan{byte}, out EvmStack)" path="/param"/>
-    internal void RestoreStack<TTracingInst>(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
+    internal void RestoreStack<TTracingInst>(ITxTracer? txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
         where TTracingInst : struct, IFlag
     {
         Debug.Assert(IsContinuation && !_isDisposed && DataStack is not null,

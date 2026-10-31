@@ -14,6 +14,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -51,8 +52,8 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         // so slot-presence detection can't kick in — pin the raw encoding up front.
         BasePersistence.SetSlotEncoding(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
         _persistence = IsPreimage
-            ? new PreimageRocksdbPersistence(_columnsDb, _logManager, layout)
-            : new RocksDbPersistence(_columnsDb, _logManager);
+            ? new PreimageRocksdbPersistence(_columnsDb, _logManager, layout, NullTrieNodeLog.Instance)
+            : new RocksDbPersistence(_columnsDb, _logManager, NullTrieNodeLog.Instance);
     }
 
     [TearDown]
@@ -267,8 +268,11 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
-        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
-        Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
+            Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -286,9 +290,12 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
-        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
-        Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(1));
-        Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
+            Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(1));
+            Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -308,9 +315,12 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
-        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
-        Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(0));
-        Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
+            Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(0));
+            Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -338,9 +348,12 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
-        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(3));
-        Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
-        Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.Stats.AccountCount, Is.EqualTo(3));
+            Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
+            Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -363,10 +376,13 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
-        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
-        Assert.That(verifier.Stats.SlotCount, Is.EqualTo(2));
-        Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
-        Assert.That(verifier.Stats.MismatchedSlot, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
+            Assert.That(verifier.Stats.SlotCount, Is.EqualTo(2));
+            Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
+            Assert.That(verifier.Stats.MismatchedSlot, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -388,9 +404,12 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
-        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
-        Assert.That(verifier.Stats.SlotCount, Is.EqualTo(1));
-        Assert.That(verifier.Stats.MismatchedSlot, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
+            Assert.That(verifier.Stats.SlotCount, Is.EqualTo(1));
+            Assert.That(verifier.Stats.MismatchedSlot, Is.EqualTo(1));
+        }
     }
 
     // Enough slots that the root and all 16 children are full branches, triggering the partitioned path.
@@ -515,9 +534,12 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
-        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
-        Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
-        Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(2), "Should detect 2 orphaned flat storage entries");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
+            Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
+            Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(2), "Should detect 2 orphaned flat storage entries");
+        }
     }
 
     [Test]
@@ -551,9 +573,12 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
-        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(3));
-        Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(1)); // Account C mismatched
-        Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(1)); // Account B missing in flat
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.Stats.AccountCount, Is.EqualTo(3));
+            Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(1)); // Account C mismatched
+            Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(1)); // Account B missing in flat
+        }
     }
 
 }

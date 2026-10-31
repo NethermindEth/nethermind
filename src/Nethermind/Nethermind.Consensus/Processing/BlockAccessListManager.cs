@@ -86,6 +86,8 @@ public partial class BlockAccessListManager(
     // surplus-reads budget must leave room for what their own execution grant can read.
     private ulong _postExecutionReadAllowance;
     private bool _hasGeneratedValidationIndexUpdates;
+    // Number of leading rows (0, 1, ...) that ValidateBlockAccessList has compared against the suggested BAL.
+    private uint _validatedRowCount;
     // for tests
     internal bool HasGeneratedValidationIndexUpdates => _hasGeneratedValidationIndexUpdates;
     // Latched when a per-tx slice surfaces a generated-only account that the column index
@@ -155,14 +157,9 @@ public partial class BlockAccessListManager(
             {
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
                 ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;
-                _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Transactions.Length, addressIndex);
-                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents, trackStorageReads: _readPlan is null);
-                ulong suggestedReads = 0;
-                foreach (ReadOnlyAccountChanges ac in suggested.AccountChanges)
-                {
-                    if (!IsSystemContract(ac.Address)) suggestedReads += (ulong)ac.StorageReads.Length;
-                }
-                _suggestedChargeableStorageReads = suggestedReads;
+                _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Header, suggestedBlock.Transactions.Length, addressIndex);
+                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents, trackStorageReads: VerifyOnly && _readPlan is null);
+                _suggestedChargeableStorageReads = (ulong)suggested.TotalStorageReads - SystemContractStorageReads(suggested);
             }
             _gasRemaining = suggestedBlock.GasUsed;
         }
@@ -214,6 +211,12 @@ public partial class BlockAccessListManager(
 
     public void Setup(Block block)
     {
+        // A block that does not run in parallel releases what an earlier parallel block that failed still kept.
+        if (!ParallelExecutionEnabled && _parallelTxProcessorWithWorldStateManager is { IsValueCreated: true } parallel)
+        {
+            parallel.Value.ReleaseKeptParentReaders();
+        }
+
         if (Enabled)
         {
             _txProcessorWithWorldStateManager = !ZkEvmFlag.IsActive && ParallelExecutionEnabled
@@ -250,6 +253,16 @@ public partial class BlockAccessListManager(
             MergeAndReturnBal();
             _txProcessorWithWorldStateManager.NextTransaction();
         }
+    }
+
+    public int CountPendingTransactionItems()
+    {
+        // Block building runs sequentially, so the current slice is the single processor's.
+        if (!Enabled || ParallelExecutionEnabled || _currentGeneratedBlockAccessList is null) return 0;
+
+        CheckInitialized();
+        BlockAccessListAtIndex? slice = _txProcessorWithWorldStateManager.Get(null).WorldState.GetGeneratingBlockAccessList();
+        return slice is null ? 0 : _currentGeneratedBlockAccessList.CountNewItems(slice);
     }
 
     public void Rollback()
@@ -324,6 +337,7 @@ public partial class BlockAccessListManager(
         _generatedChargeableStorageReads = 0ul;
         _postExecutionReadAllowance = 0ul;
         _hasGeneratedValidationIndexUpdates = false;
+        _validatedRowCount = 0;
         _hasGeneratedRequiredReadAccountMismatch = false;
         _currentGeneratedBlockAccessList = null;
     }

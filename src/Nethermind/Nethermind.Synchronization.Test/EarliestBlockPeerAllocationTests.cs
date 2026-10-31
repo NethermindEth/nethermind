@@ -70,6 +70,8 @@ public class EarliestBlockPeerAllocationTests
 
         PeerInfo atFloor = HistoryPeerTestHelpers.Create(TestItem.PublicKeyA, earliest: expectedFloor, supportsAccessLists: true);
         PeerInfo aboveFloor = HistoryPeerTestHelpers.Create(TestItem.PublicKeyB, earliest: expectedFloor + 1, supportsAccessLists: true);
+        atFloor.SyncPeer.HeadNumber.Returns(firstReceipt + 1);
+        aboveFloor.SyncPeer.HeadNumber.Returns(firstReceipt + 1);
         INodeStatsManager stats = Substitute.For<INodeStatsManager>();
 
         IPeerAllocationStrategy strategy = new BlocksSyncPeerAllocationStrategyFactory().Create(request);
@@ -93,7 +95,7 @@ public class EarliestBlockPeerAllocationTests
     {
         PeerInfo[] peers = [HistoryPeerTestHelpers.Create(TestItem.PublicKeyA, earliest: GnosisBarrier), HistoryPeerTestHelpers.Create(TestItem.PublicKeyB, earliest: GnosisBarrier)];
 
-        PeerInfo? allocated = BlocksSyncPeerAllocationStrategyFactory.ForBlocksFrom(10_830_000)
+        PeerInfo? allocated = new EarliestBlockPeerAllocationStrategy(BlocksSyncPeerAllocationStrategyFactory.AllocationStrategy, 10_830_000)
             .Allocate(null, peers, Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
 
         Assert.That(allocated, Is.Null);

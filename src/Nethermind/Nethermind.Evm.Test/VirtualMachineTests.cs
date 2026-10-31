@@ -445,6 +445,30 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Cancellation_FusedJumpReachesInterval_PollsBeforeSuccessor([Values(2, 3)] int pushSize)
+    {
+        const int prefixLength = 1021;
+        int destination = prefixLength + pushSize + 2;
+        byte[] code = new byte[destination + 2];
+        code.AsSpan(0, prefixLength).Fill((byte)Instruction.JUMPDEST);
+        code[prefixLength] = (byte)((int)Instruction.PUSH1 + pushSize - 1);
+        code[destination - 3] = (byte)(destination >> 8);
+        code[destination - 2] = (byte)destination;
+        code[destination - 1] = (byte)Instruction.JUMP;
+        code[destination] = (byte)Instruction.JUMPDEST;
+        CountingCancellationTracer tracer = new();
+
+        Execute(tracer, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null, "the jump lands on a valid destination");
+            Assert.That(tracer.PollCount, Is.EqualTo(2), "the fused destination completes the 1024-opcode interval");
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(1025), "the counter includes the jump, its destination and STOP");
+        }
+    }
+
     private static byte[] CreateCancellationCode(int continuingOpcodeCount, bool appendStop, Instruction opcode)
     {
         byte[] code = new byte[continuingOpcodeCount + (appendStop ? 1 : 0)];
@@ -908,30 +932,20 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Trace_invalid_jump_exception()
+    public void Trace_invalid_jump_exception([Values(Instruction.JUMP, Instruction.JUMPI)] Instruction instruction)
     {
-        byte[] code = Prepare.EvmCode
-            .PushData(255)
-            .Op(Instruction.JUMP)
-            .Done;
+        byte[] code = instruction == Instruction.JUMPI
+            ? Prepare.EvmCode.PushData(1).PushData(255).Op(instruction).Done
+            : Prepare.EvmCode.PushData(255).Op(instruction).Done;
 
-        GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
+        using GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
 
-        Assert.That(trace.Entries.Any(static e => e.Error is not null), Is.True);
-    }
-
-    [Test]
-    public void Trace_invalid_jumpi_exception()
-    {
-        byte[] code = Prepare.EvmCode
-            .PushData(1)
-            .PushData(255)
-            .Op(Instruction.JUMPI)
-            .Done;
-
-        GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
-
-        Assert.That(trace.Entries.Any(static e => e.Error is not null), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.True);
+            Assert.That(trace.Gas, Is.EqualTo(40000));
+            Assert.That(trace.Entries.Any(static e => e.Error is not null), Is.False);
+        }
     }
 
     [Test(Description = "Test a case where the trace is created for one transaction and subsequent untraced transactions keep adding entries to the first trace created.")]
@@ -983,7 +997,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         JsonElement sstoreEntry = doc.RootElement.GetProperty("structLogs")[4];
         JsonElement storage = sstoreEntry.GetProperty("storage");
         const string zero32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
+#pragma warning disable NUnit2045 // Check the storage shape before reading its slot.
         Assert.That(storage.EnumerateObject().Count(), Is.EqualTo(1), "SSTORE storage has one slot");
+#pragma warning restore NUnit2045
         Assert.That(storage.GetProperty(zero32).GetString(), Is.EqualTo(zero32), "SSTORE storage[0x0]=0x0");
     }
 
@@ -2537,7 +2553,9 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         tracker.WarmUp(Probe);
         VmState<EthereumGasPolicy> broken = RentChild(frames, envs, in tracker);
         UInt256 location = 0x40;
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(broken.Memory.TrySaveWord(in location, DirtyWord), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(broken.Memory.Size, Is.EqualTo(0x60));
 
         // Clearing the journals the frame snapshotted makes its restore throw inside Dispose.

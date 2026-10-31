@@ -80,8 +80,11 @@ public class TxPoolContentListsTests
             localAccounts,
             maxTransactionsLists);
 
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
 
         return result.Data!.Select(static list => list.TxList.OfType<EIP1559TransactionForRpc>().Select(static tx => (int)tx.Input![0]).ToArray()).ToArray();
     }
@@ -233,8 +236,11 @@ public class TxPoolContentListsTests
         ResultWrapper<PreBuiltTxList[]?> result = rpcModule.taikoAuth_txPoolContent(
             Address.Zero, 1, 30_000_000, (ulong)maxBytesPerTxList, null, 10);
 
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Has.Length.EqualTo(expectedBatchCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Has.Length.EqualTo(expectedBatchCount));
+        }
         Assert.That(result.Data![0].EstimatedGasUsed, Is.EqualTo((ulong)Transaction.BaseTxGasCost));
     }
 

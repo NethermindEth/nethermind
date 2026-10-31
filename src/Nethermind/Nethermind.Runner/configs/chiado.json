@@ -1,7 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "MemoryHint": 768000000,
     "ChainSpecPath": "chainspec/chiado.json",
     "GenesisHash": "0xada44fd8d2ecab8b08f256af07ad3e777f17fb434f8f8e678b312f576212ba9a",
     "BaseDbPath": "nethermind_db/chiado",
@@ -18,10 +17,9 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 23130000,
-    "PivotHash": "0x7784815519b2374671b70daecb58adfdb28b42f2e1ae02156e25d3b7b41671e7",
+    "PivotNumber": 23660000,
+    "PivotHash": "0x1276f3fb2c2a90fe7165b589ab89eec8599369d1ae06beb6501c3cc8523dca5f",
     "PivotTotalDifficulty": "231708131825107706987652208063906496124457284",
-    "FastSyncCatchUpHeightDelta": 10000000000,
     "UseGethLimitsInFastBlocks": false
   },
   "Blocks": {

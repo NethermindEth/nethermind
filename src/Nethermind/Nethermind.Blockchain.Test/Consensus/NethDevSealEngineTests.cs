@@ -18,8 +18,11 @@ namespace Nethermind.Blockchain.Test.Consensus
         public void Defaults_are_fine()
         {
             NethDevSealEngine nethDevSealEngine = new();
-            Assert.That(nethDevSealEngine.Address, Is.EqualTo(Address.Zero));
-            Assert.That(nethDevSealEngine.CanSeal(1, Keccak.Zero), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(nethDevSealEngine.Address, Is.EqualTo(Address.Zero));
+                Assert.That(nethDevSealEngine.CanSeal(1, Keccak.Zero), Is.True);
+            }
         }
 
         [Test, MaxTime(Timeout.MaxTestTime)]
@@ -33,9 +36,12 @@ namespace Nethermind.Blockchain.Test.Consensus
         public void Validations_return_true()
         {
             NethDevSealEngine nethDevSealEngine = new();
-            Assert.That(nethDevSealEngine.ValidateParams(null, null), Is.EqualTo(true));
-            Assert.That(nethDevSealEngine.ValidateSeal(null, false), Is.EqualTo(true));
-            Assert.That(nethDevSealEngine.ValidateSeal(null, true), Is.EqualTo(true));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(nethDevSealEngine.ValidateParams(null, null), Is.EqualTo(true));
+                Assert.That(nethDevSealEngine.ValidateSeal(null, false), Is.EqualTo(true));
+                Assert.That(nethDevSealEngine.ValidateSeal(null, true), Is.EqualTo(true));
+            }
         }
 
         [Test, MaxTime(Timeout.MaxTestTime)]

@@ -212,8 +212,11 @@ public class BackgroundTaskSchedulerTests
             }, TimeSpan.FromMilliseconds(1));
         }
 
-        Assert.That(expiredRan.Wait(TimeSpan.FromSeconds(30)), Is.True, "Expired tasks did not all run within 30s");
-        Assert.That(cancelledCount, Is.EqualTo(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expiredRan.Wait(TimeSpan.FromSeconds(30)), Is.True, "Expired tasks did not all run within 30s");
+            Assert.That(cancelledCount, Is.EqualTo(5));
+        }
 
         RaiseBranchProcessingCompleted(branchProcessing);
 
@@ -230,8 +233,11 @@ public class BackgroundTaskSchedulerTests
             });
         }
 
-        Assert.That(postBlockRan.Wait(TimeSpan.FromSeconds(30)), Is.True, "Post-block tasks did not all run within 30s");
-        Assert.That(postBlockCount, Is.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(postBlockRan.Wait(TimeSpan.FromSeconds(30)), Is.True, "Post-block tasks did not all run within 30s");
+            Assert.That(postBlockCount, Is.EqualTo(3));
+        }
     }
 
     [Test]
@@ -506,10 +512,10 @@ public class BackgroundTaskSchedulerTests
     /// </summary>
     private static async Task BlockTheOnlyWorker(BackgroundTaskScheduler scheduler, SemaphoreSlim release)
     {
-        DotNetty.Common.Concurrency.TaskCompletionSource running = new();
+        TaskCompletionSource running = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Assert.That(Schedule(scheduler, async (_, token) =>
         {
-            running.TrySetResult(0);
+            running.TrySetResult();
             // Observes the token so disposing the scheduler cannot deadlock on an unreleased semaphore
             await release.WaitAsync(token);
         }), Is.True);

@@ -19,11 +19,11 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class StateTree : PatriciaTree
+    public partial class StateTree : PatriciaTree
     {
         private static readonly AccountDecoder _decoder = new();
 
-        public static readonly Rlp EmptyAccountRlp = _decoder.Encode(Account.TotallyEmpty);
+        public static Rlp EmptyAccountRlp => field ??= _decoder.Encode(Account.TotallyEmpty);
 
         [DebuggerStepThrough]
         public StateTree(ICappedArrayPool? bufferPool = null)
@@ -39,6 +39,7 @@ namespace Nethermind.State
         }
 
         [DebuggerStepThrough]
+        [SkipLocalsInit]
         public Account? Get(Address address, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> bytes = Get(KeccakCache.Compute(address.Bytes).BytesAsSpan, rootHash);
@@ -84,10 +85,17 @@ namespace Nethermind.State
                 : new CappedArray<byte>(account.IsTotallyEmpty ? EmptyAccountRlp.Bytes : _decoder.EncodeAsBytes(account)));
         }
 
-        [SkipLocalsInit]
         internal void SetAccounts(Dictionary<AddressAsKey, Account?> accounts)
         {
-            using ArrayPoolListRef<BulkSetEntry> entries = new(accounts.Count);
+            using ArrayPoolListRef<BulkSetEntry> entries = CreateAccountEntries(accounts);
+            BulkSet(entries);
+        }
+
+        /// <summary>The bulk-set entries writing <paramref name="accounts"/>, a null account deleting its key.</summary>
+        [SkipLocalsInit]
+        internal static ArrayPoolListRef<BulkSetEntry> CreateAccountEntries(Dictionary<AddressAsKey, Account?> accounts)
+        {
+            ArrayPoolListRef<BulkSetEntry> entries = new(accounts.Count);
             Unsafe.SkipInit(out KeyHashBatch batch);
             batch.Initialize(Address.Size);
             foreach (KeyValuePair<AddressAsKey, Account?> entry in accounts)
@@ -99,8 +107,11 @@ namespace Nethermind.State
                 if (batch.IsFull) batch.Flush(entries.AsSpan());
             }
             batch.Flush(entries.AsSpan());
-            BulkSet(entries);
+            return entries;
         }
+
+        /// <summary>Writes the changed accounts into the tree.</summary>
+        internal partial void WriteAccounts(Dictionary<AddressAsKey, Account?> accounts);
 
         public StateTreeBulkSetter BeginSet(int estimatedEntries) => new(estimatedEntries, this);
 

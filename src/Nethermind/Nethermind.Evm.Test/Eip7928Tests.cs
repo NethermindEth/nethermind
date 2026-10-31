@@ -128,25 +128,31 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     private static void AssertPureAccountRead(AccountChangesAtIndex? accountChanges)
     {
         Assert.That(accountChanges, Is.Not.Null);
-        Assert.That(accountChanges!.BalanceChange, Is.Null);
-        Assert.That(accountChanges.NonceChange, Is.Null);
-        Assert.That(accountChanges.CodeChange, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountChanges!.BalanceChange, Is.Null);
+            Assert.That(accountChanges.NonceChange, Is.Null);
+            Assert.That(accountChanges.CodeChange, Is.Null);
+        }
     }
 
     private static void AssertEqual(ReadOnlyAccountChanges expected, AccountChangesAtIndex? actual)
     {
         Assert.That(actual, Is.Not.Null);
-        Assert.That(actual!.Address, Is.EqualTo(expected.Address));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual!.Address, Is.EqualTo(expected.Address));
 
-        Assert.That(actual.BalanceChange, expected.BalanceChanges.Length == 0
-            ? Is.Null
-            : Is.EqualTo((BalanceChange?)expected.BalanceChanges[0]));
-        Assert.That(actual.NonceChange, expected.NonceChanges.Length == 0
-            ? Is.Null
-            : Is.EqualTo((NonceChange?)expected.NonceChanges[0]));
-        Assert.That(actual.CodeChange, expected.CodeChanges.Length == 0
-            ? Is.Null
-            : Is.EqualTo((CodeChange?)expected.CodeChanges[0]));
+            Assert.That(actual.BalanceChange, expected.BalanceChanges.Length == 0
+                ? Is.Null
+                : Is.EqualTo((BalanceChange?)expected.BalanceChanges[0]));
+            Assert.That(actual.NonceChange, expected.NonceChanges.Length == 0
+                ? Is.Null
+                : Is.EqualTo((NonceChange?)expected.NonceChanges[0]));
+            Assert.That(actual.CodeChange, expected.CodeChanges.Length == 0
+                ? Is.Null
+                : Is.EqualTo((CodeChange?)expected.CodeChanges[0]));
+        }
 
         // Compare storage changes (one entry per slot, all at index 0).
         Dictionary<UInt256, StorageChange> actualStorage = [];
@@ -201,8 +207,11 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     {
         AccountChangesAtIndex? accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges, Is.Not.Null);
-        Assert.That(accountChanges!.StorageChanges.TryGetValue(key, out StorageChange slotChange), Is.True);
-        Assert.That(slotChange.Value, Is.EqualTo(value));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountChanges!.StorageChanges.TryGetValue(key, out StorageChange slotChange), Is.True);
+            Assert.That(slotChange.Value, Is.EqualTo(value));
+        }
     }
 
     private static void AssertNonceChange(BlockAccessListAtIndex bal, Address address, ulong value)
@@ -216,7 +225,9 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     {
         AccountChangesAtIndex? accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges, Is.Not.Null);
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
         Assert.That(accountChanges!.CodeChange, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(accountChanges.CodeChange!.Value.Index, Is.EqualTo(0u));
         Assert.That(accountChanges.CodeChange.Value.Code, Is.EqualTo(code));
     }
@@ -225,8 +236,11 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     {
         AccountChangesAtIndex? accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges, Is.Not.Null);
-        Assert.That(accountChanges!.StorageChangeCount, Is.EqualTo(0));
-        Assert.That(accountChanges.StorageReads, Does.Contain(key));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountChanges!.StorageChangeCount, Is.EqualTo(0));
+            Assert.That(accountChanges.StorageReads, Does.Contain(key));
+        }
     }
 
     private static byte[] BuildDelegationCode(Address target) =>
@@ -1433,18 +1447,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .TestObject;
         processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
 
-        SystemCall systemCall = new()
-        {
-            Data = parentHash.BytesToArray(),
-            GasLimit = systemCallGasLimit,
-            GasPrice = header.BaseFeePerGas,
-            SenderAddress = Address.SystemUser,
-            To = Eip2935Constants.BlockHashHistoryAddress,
-            Value = 0ul,
-        };
-        systemCall.Hash = systemCall.CalculateHash();
-
-        processor.Execute(systemCall, NullTxTracer.Instance);
+        processor.Execute(BuildSystemCall(Eip2935Constants.BlockHashHistoryAddress, parentHash.BytesToArray(), systemCallGasLimit, header), NullTxTracer.Instance);
 
         AccountChangesAtIndex? accountChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Eip2935Constants.BlockHashHistoryAddress);
         Assert.That(accountChanges, Is.Not.Null);
@@ -1471,6 +1474,59 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 Assert.That(accountChanges.StorageReads, Is.Empty);
             }
         }
+    }
+
+    /// <summary>
+    /// EIP-7928: SYSTEM_ADDRESS stays out of the BAL unless the system contract's own code accesses it.
+    /// Canonical predeploy bytecode only uses <c>CALLER</c>; non-canonical code may read the caller's account.
+    /// </summary>
+    [Test]
+    public void System_call_records_system_address_only_when_code_reads_it([Values] bool codeReadsCaller)
+    {
+        InitWorldState(TestState);
+        Address predeploy = Eip7251Constants.ConsolidationRequestPredeployAddress;
+        if (codeReadsCaller)
+        {
+            byte[] readCallerBalance = Prepare.EvmCode
+                .Op(Instruction.CALLER)
+                .Op(Instruction.BALANCE)
+                .Op(Instruction.POP)
+                .Op(Instruction.STOP)
+                .Done;
+            TestState.InsertCode(predeploy, ValueKeccak.Compute(readCallerBalance), readCallerBalance, SpecProvider.GenesisSpec);
+        }
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithGasLimit(120_000_000ul)
+            .WithBaseFee(1.GWei)
+            .TestObject;
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+
+        processor.Execute(BuildSystemCall(predeploy, [], 30_000_000ul, header), NullTxTracer.Instance);
+
+        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bal.GetAccountChanges(predeploy), Is.Not.Null);
+            Assert.That(bal.GetAccountChanges(Address.SystemUser), codeReadsCaller ? Is.Not.Null : Is.Null);
+        }
+    }
+
+    private static SystemCall BuildSystemCall(Address to, byte[] data, ulong gasLimit, BlockHeader header)
+    {
+        SystemCall systemCall = new()
+        {
+            Data = data,
+            GasLimit = gasLimit,
+            GasPrice = header.BaseFeePerGas,
+            SenderAddress = Address.SystemUser,
+            To = to,
+            Value = 0ul,
+        };
+        systemCall.Hash = systemCall.CalculateHash();
+        return systemCall;
     }
 
     private static IEnumerable<TestCaseData> CodeTestSource

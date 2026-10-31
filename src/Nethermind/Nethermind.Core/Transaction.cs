@@ -70,6 +70,8 @@ namespace Nethermind.Core
         /// </summary>
         [JsonIgnore]
         public ulong BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
+        /// <summary>Whether <see cref="BlockGasUsed"/> was set by an execution rather than falling back to <see cref="GasLimit"/>.</summary>
+        internal bool HasBlockGasUsed => _blockGasUsed > 0;
         public Address? To { get; set; }
         private UInt256 _gasPrice;
         private UInt256 _value;
@@ -101,7 +103,7 @@ namespace Nethermind.Core
 
         [JsonIgnore]
         internal bool IsHashCalculated => _hash is not null;
-        internal Hash256 CalculateHashInternal()
+        private Hash256 CalculateHashInternal()
         {
             Hash256? hash = _hash;
             if (hash is not null) return hash;
@@ -209,6 +211,14 @@ namespace Nethermind.Core
 
         public UInt256? MaxFeePerBlobGas { get; set; } // eip4844
 
+        /// <summary>
+        /// The EIP-8141 <c>max_fee</c>: the total fee, in wei, a frame transaction pays at most for its execution,
+        /// state and blob gas. Zero for every other type.
+        /// </summary>
+        /// <remarks>A frame transaction has no <c>max_fee_per_gas</c>; <see cref="DecodedMaxFeePerGas"/> holds
+        /// <see cref="FrameTxValidation.ImpliedMaxFeePerGas"/>, the per-gas view mempool and block-building policy read.</remarks>
+        public UInt256 MaxFee { get; set; }
+
         public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
 
         private object? _networkWrapper;
@@ -272,7 +282,7 @@ namespace Nethermind.Core
         /// https://eips.ethereum.org/EIPS/eip-8250
         /// </summary>
         /// <remarks><see langword="null"/> for the EIP-8141 envelope, whose single nonce is the sender's
-        /// linear account nonce — the same domain EIP-8250 addresses as the key <c>0</c>.</remarks>
+        /// linear account nonce — the domain EIP-8250 selects with the empty key set.</remarks>
         public UInt256[]? NonceKeys { get; set; }
 
         /// <summary>Zero and non-zero byte counts of EIP-8250's <c>nonce_calldata</c>, priced in addition to frame and
@@ -296,7 +306,7 @@ namespace Nethermind.Core
         /// <summary>
         /// Encoded transaction length
         /// </summary>
-        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs) => shouldCountBlobs
+        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs) => shouldCountBlobs || !MayHaveNetworkForm
               ? _size ??= sizeCalculator.GetLength(this, true)
               : sizeCalculator.GetLength(this, false);
 
@@ -395,6 +405,7 @@ namespace Nethermind.Core
                 obj.Timestamp = default;
                 obj.AccessList = default;
                 obj.MaxFeePerBlobGas = default;
+                obj.MaxFee = default;
                 obj.BlobVersionedHashes = default;
                 PooledBlobBuffers.Return(obj);
                 obj.NetworkWrapper = default;
@@ -452,6 +463,7 @@ namespace Nethermind.Core
             tx.Timestamp = Timestamp;
             tx.AccessList = AccessList;
             tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
+            tx.MaxFee = MaxFee;
             tx.BlobVersionedHashes = BlobVersionedHashes;
             tx.NetworkWrapper = NetworkWrapper;
             tx.IsServiceTransaction = IsServiceTransaction;

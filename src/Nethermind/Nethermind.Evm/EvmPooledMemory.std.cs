@@ -2,16 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Collections;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm;
 
 public partial struct EvmPooledMemory
 {
+    // Above this, a cache miss rents from the shared pool instead of allocating (pow2 sizes from
+    // here up are LOH-sized).
+    private const int MaxNewAllocLength = 1 << 16;
     private const int MaxSharedArrayLength = 1 << 20;
     // Buffers above this limit are allocated directly and are never returned to a pool.
     private const int MaxLargePooledArrayLength = 1 << 22;
     private static readonly System.Buffers.ArrayPool<byte> _largeArrayPool =
         System.Buffers.ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
+
+    private static readonly TraceMemory EmptyTraceMemory = new(0, default);
 
     private static byte[] RentLarge(int minLength, out ulong initializedSize)
     {

@@ -12,6 +12,8 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class KzgPointEvaluationPrecompile
 {
+    public static Address Address { get; } = Address.FromNumber(0x0a);
+
     // The top three bits of a compressed BLS12-381 point: compression, infinity and the sign of y.
     private const byte FlagsMask = 0b1110_0000;
     private const byte Uncompressed = 0b0000_0000;
@@ -21,12 +23,8 @@ public partial class KzgPointEvaluationPrecompile
     private const byte CompressedInfinity = 0b1100_0000;
     private const string SubgroupCheckFailed = "invalid point: subgroup check failed";
 
-    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
-    {
-        Metrics.KzgPointEvaluationPrecompile++;
-
-        return RunInternal(inputData);
-    }
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _) =>
+        RunInternal(inputData);
 
     /// <remarks>
     /// The reason is go-ethereum's, which reports what its KZG library rejects first: a claimed value or evaluation

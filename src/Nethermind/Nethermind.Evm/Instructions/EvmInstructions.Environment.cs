@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -564,7 +565,11 @@ public static partial class EvmInstructions
         if (address is null) goto StackUnderflow;
 
         // Charge gas for account access. If insufficient gas remains, abort.
-        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address)) goto OutOfGas;
+        ulong traceGasCost = TTracingInst.IsActive && vm.IsTracingOperationStart ? vm.GetAccountAccessTraceGasCost(address, spec.GasCosts.BalanceCost) : 0;
+        bool gasAvailable = TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address);
+        if (TTracingInst.IsActive)
+            vm.TraceOperationReady(traceGasCost, gasAvailable ? null : "out of gas");
+        if (!gasAvailable) goto OutOfGas;
 
         // EIP-8279: the account enters the block access list on the transaction's first touch, metered after its charge.
         if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(address)) goto OutOfGas;
@@ -637,7 +642,11 @@ public static partial class EvmInstructions
         Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
         // Check if enough gas for account access and charge accordingly.
-        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address)) goto OutOfGas;
+        ulong traceGasCost = TTracingInst.IsActive && vm.IsTracingOperationStart ? vm.GetAccountAccessTraceGasCost(address, spec.GasCosts.ExtCodeHashCost) : 0;
+        bool gasAvailable = TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address);
+        if (TTracingInst.IsActive)
+            vm.TraceOperationReady(traceGasCost, gasAvailable ? null : "out of gas");
+        if (!gasAvailable) goto OutOfGas;
         // EIP-8279: the account enters the block access list on the transaction's first touch, metered after its charge.
         if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(address)) goto OutOfGas;
 
@@ -662,6 +671,86 @@ public static partial class EvmInstructions
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
+
+    /// <summary>
+    /// Implements the SETCODEFROM opcode (EIP-8298): adopts the code hash of a deployed source account.
+    /// </summary>
+    /// <remarks>
+    /// Valid source pushes 1 and updates the executing account's code hash; invalid source pushes 0 with no
+    /// state change. Static context halts exceptionally. The running frame keeps its loaded code; in initcode
+    /// the adopted code replaces the return data when the creation completes.
+    /// </remarks>
+    [SkipLocalsInit]
+    internal static EvmExceptionType InstructionSetCodeFrom<TGasPolicy, TTracingInst, TSpec>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+        where TSpec : struct, IAccessSpec
+    {
+        VmState<TGasPolicy> vmState = vm.VmState;
+        if (vmState.IsStatic) goto StaticCallViolation;
+
+        IReleaseSpec spec = vm.Spec;
+        if (IsSystemContract(spec, vmState.Env.ExecutingAccount)) goto BadInstruction;
+        // SETCODEFROM_SOURCE_GAS: the source account access plus a fixed source code validation charge.
+        if (!TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess)) goto OutOfGas;
+
+        Address? source = stack.PopAddress(vm.AddressCache);
+        if (source is null) goto StackUnderflow;
+        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, source)) goto OutOfGas;
+        // EIP-8279: the source enters the block access list on the transaction's first touch, metered after its charge.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(source)) goto OutOfGas;
+
+        // Valid source: not created in this transaction, exists, has code, and that code is regular deployed code
+        // (not 0xEF-prefixed per EIP-3541/7702). A missing account reads as the empty code hash, so the code check
+        // also covers existence. The creation set is the one EIP-6780 SELFDESTRUCT consults.
+        if (vmState.AccessTracker.CreateList.Contains(source)) goto InvalidSource;
+        IWorldState state = vm.WorldState;
+        ValueHash256 codeHash = state.GetCodeHash(source);
+        if (codeHash == ValueKeccak.OfAnEmptyString) goto InvalidSource;
+        // The repository resolves a precompile address, including one moved there by an override, to the precompile
+        // rather than to the code held in state.
+        CodeInfo? sourceCode = spec.IsPrecompile(source) ? null : vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(source, spec);
+        ReadOnlyMemory<byte> code = sourceCode is null || sourceCode.IsPrecompile
+            ? CodeInfoRepository.GetCodeInfo(state, source, in codeHash).Code
+            : sourceCode.Code;
+        if (CodeDepositHandler.CodeIsInvalid(spec, code)) goto InvalidSource;
+
+        // The current account access is charged before the hash comparison, ACCOUNT_WRITE before the write.
+        if (!TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess)) goto OutOfGas;
+        Address executingAccount = vmState.Env.ExecutingAccount;
+        if (state.GetCodeHash(executingAccount) != codeHash)
+        {
+            if (!TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite)) goto OutOfGas;
+            // EIP-8279: the executing account's code change enters the block access list as the adopted code hash
+            // (EIP-8298), never as bytecode; an adopted creation never reaches the deposit, so this is its only metering.
+            if (TSpec.IsEip8279Enabled && !vm.TryMeterBalData(Eip8279Constants.AdoptedCodeHashBytes)) goto OutOfGas;
+            // Install by the known hash, passing the code so the adopted hash always resolves.
+            state.AdoptCode(executingAccount, in codeHash, code, spec);
+        }
+
+        return stack.PushOne<TTracingInst>();
+        // Jump forward to be unpredicted by the branch predictor.
+    InvalidSource:
+        return stack.PushZero<TTracingInst, OnFlag>();
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    StaticCallViolation:
+        return EvmExceptionType.StaticCallViolation;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
+    }
+
+    /// <summary>EIP-8298: an account the protocol calls from <c>SYSTEM_ADDRESS</c> during block processing; the EIP-6110 deposit contract is not one.</summary>
+    private static bool IsSystemContract(IReleaseSpec spec, Address address)
+        => address == spec.Eip4788ContractAddress
+        || address == spec.Eip2935ContractAddress
+        || address == spec.Eip7002ContractAddress
+        || address == spec.Eip7251ContractAddress
+        || (spec.IsEip8282Enabled
+            && (address == Eip8282Constants.BuilderDepositRequestPredeployAddress
+                || address == Eip8282Constants.BuilderExitRequestPredeployAddress));
 
     /// <summary>
     /// Implements the PREVRANDAO opcode.
@@ -795,9 +884,8 @@ public static partial class EvmInstructions
             return tracedPush;
         }
 
-        // Push the bytes the provider already holds: for storage-backed BLOCKHASH (EIP-7709) the hash comes
-        // from state, and materialising a Hash256 for it allocates once per call for a value the next
-        // instruction discards.
+        // Push the bytes the provider already holds rather than materialising a Hash256 for a value the next
+        // instruction discards. EIP-7709 is served by InstructionBlockHashFromState instead.
         ReadOnlySpan<byte> blockHashBytes = default;
         bool found = !outOfRange && vm.BlockHashProvider.TryGetBlockhash(header, a.u0, vm.Spec, out blockHashBytes);
 
@@ -805,6 +893,60 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    /// <summary>
+    /// Implements <c>BLOCKHASH</c> under EIP-7709, serving the hash from the EIP-2935 history contract's storage.
+    /// </summary>
+    /// <remarks>
+    /// Selected in place of <see cref="InstructionBlockHash{TGasPolicy,TTracingInst}"/> when EIP-7709 is enabled, so the
+    /// block-tree path is unchanged on forks without it. Arguments outside the last
+    /// <see cref="Eip2935Constants.BlockHashServeWindow"/> blocks return zero without touching state, even though the
+    /// ring buffer may still hold them. Within the window the read has the full effects of <c>SLOAD</c> on
+    /// <c>arg % HISTORY_SERVE_WINDOW</c>: the cold/warm charge, warming of the slot (not of the history contract's
+    /// account, as in execution-specs), EIP-8279 metering of the storage key, and state-access recording through
+    /// <see cref="VirtualMachine{TGasPolicy}.WorldState"/>.
+    /// </remarks>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/> on success; <see cref="EvmExceptionType.OutOfGas"/> if the base cost or
+    /// the storage access cannot be paid; <see cref="EvmExceptionType.StackUnderflow"/> if the stack is empty.
+    /// </returns>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionBlockHashFromState<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        if (!TGasPolicy.UpdateGas<BlockHashGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+
+        if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
+
+        ulong currentNumber = vm.BlockExecutionContext.Header.Number;
+        if (!a.IsUint64 || a.u0 >= currentNumber || currentNumber - a.u0 > Eip2935Constants.BlockHashServeWindow)
+        {
+            return stack.PushZero<TTracingInst, OnFlag>();
+        }
+
+        IReleaseSpec spec = vm.Spec;
+        StorageCell storageCell = new(
+            spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
+            new UInt256(a.u0 % spec.Eip2935RingBufferSize));
+
+        if (!TGasPolicy.UpdateGas<SLoadGasCost>(ref gas, spec)
+            || !TGasPolicy.TryConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec)
+            || !vm.TryMeterBalStorageKey(in storageCell))
+        {
+            return EvmExceptionType.OutOfGas;
+        }
+
+        vm.WorldState.Get(in storageCell, out UInt256 value);
+        EvmExceptionType pushResult = stack.PushUInt256<TTracingInst>(in value);
+
+        if (DispatchFlags.ConstTracing && vm.TxTracer.IsTracingBlockHash && !value.IsZero)
+        {
+            vm.TxTracer.ReportBlockHash(new Hash256(value.ToBigEndian()));
+        }
+
+        return pushResult;
     }
 
     /// <summary>

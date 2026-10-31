@@ -17,9 +17,10 @@ using Nethermind.State.Proofs;
 namespace Nethermind.JsonRpc.Data;
 
 /// <summary>
-/// Metadata for eth, debug and trace payloads, and for those method signatures do not name: <c>eth_config</c> builds its result
-/// as nodes, proofs are written by a converter, peer protocols are stored as <see cref="object"/>, diagnostics wrap responses,
-/// the client builds its own requests, and results are written by their runtime collection types.
+/// Metadata for eth, debug and trace payloads, and for those method signatures do not name: <c>eth_config</c> and
+/// <c>debug_config</c> build their results as nodes, proofs are written by a converter, peer protocols are stored as
+/// <see cref="object"/>, diagnostics wrap responses, the client builds its own requests, and results are written by their
+/// runtime collection types.
 /// </summary>
 [JsonSourceGenerationOptions(
     GenerationMode = JsonSourceGenerationMode.Metadata,
@@ -36,6 +37,7 @@ namespace Nethermind.JsonRpc.Data;
 [JsonSerializable(typeof(ParityLikeTxTrace))]
 // payloads method signatures do not name
 [JsonSerializable(typeof(ForkConfigSummary))]
+[JsonSerializable(typeof(DebugConfigSummary))]
 [JsonSerializable(typeof(ForkConfig))]
 [JsonSerializable(typeof(BlobScheduleSettingsForRpc))]
 [JsonSerializable(typeof(OrderedDictionary<string, Address>))]
@@ -47,11 +49,13 @@ namespace Nethermind.JsonRpc.Data;
 [JsonSerializable(typeof(RpcReport))]
 [JsonSerializable(typeof(Client.JsonRpcClientRequest))]
 [JsonSerializable(typeof(LogEntryForRpc[]))]
+[JsonSerializable(typeof(Modules.Eth.BadBlock[]))]
 [JsonSerializable(typeof(Modules.DebugModule.GethLikeTxTraceStreamingResult))]
 [JsonSerializable(typeof(Modules.Trace.ParityTxTraceFromReplay[]))]
 [JsonSerializable(typeof(Modules.Trace.ParityTxTraceFromStore[]))]
 [JsonSerializable(typeof(Nethermind.Core.Collections.ArrayPoolList<Modules.Trace.ParityTxTraceFromStore>))]
 [JsonSerializable(typeof(Nethermind.Core.Collections.ArrayPoolList<Nethermind.Facade.Filters.FilterLog>))]
+[JsonSerializable(typeof(Modules.Eth.SerializedLogsResult))]
 [JsonSerializable(typeof(Nethermind.Core.Collections.ArrayPoolList<Nethermind.Core.Crypto.Hash256>))]
 [JsonSerializable(typeof(ReceiptsForRpc<ReceiptForRpc>))]
 [JsonSerializable(typeof(Modules.Admin.PeerInfo.ProtocolVersion))]

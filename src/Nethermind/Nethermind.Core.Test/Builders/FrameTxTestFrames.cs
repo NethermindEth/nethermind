@@ -36,7 +36,7 @@ public static class FrameTxTestFrames
     /// replaced rather than returned for the caller to install.</remarks>
     public static void SignSecp256k1(Transaction tx, PrivateKey key, Address? signer)
     {
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, default)];
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
         byte[] raw = Secp256k1SignatureBytes(new Ecdsa().Sign(key, FrameTxSigHash.ComputeValue(tx)));
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, raw)];
     }
@@ -69,6 +69,16 @@ public static class FrameTxTestFrames
         }
 
         return entries;
+    }
+
+    /// <summary>A SECP256K1 entry by <paramref name="key"/> over an explicit digest, so entries can be built
+    /// independently of each other and of the transaction's signature hash.</summary>
+    public static TxFrameSignature DigestSignature(PrivateKey key, byte fill)
+    {
+        byte[] digest = new byte[Hash256.Size];
+        digest[31] = fill;
+        byte[] raw = Secp256k1SignatureBytes(new Ecdsa().Sign(key, new ValueHash256(digest)));
+        return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key.Address, digest, raw);
     }
 
     /// <summary>New entries with the same content, as a node holds after decoding a gossiped transaction.</summary>
@@ -104,8 +114,8 @@ public static class FrameTxTestFrames
     public static TxFrame Execution(ulong gasLimit = 1_000) =>
         new(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, gasLimit, UInt256.Zero, default);
 
-    public static TxFrame PostTx(ulong gasLimit = 1_000) =>
-        new(FrameMode.PostTx, FrameFlags.None, TestItem.AddressB, gasLimit, UInt256.Zero, default);
+    public static TxFrame AssertFrame(ulong gasLimit = 1_000) =>
+        new(FrameMode.Assert, FrameFlags.None, TestItem.AddressB, gasLimit, UInt256.Zero, default);
 
     /// <summary>A VERIFY frame carrying no approval scope: a validation step ahead of the approving frame.</summary>
     /// <remarks>The prefix grammar names no shape starting with one, so a layout leading with it is unrecognized.</remarks>

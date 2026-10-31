@@ -12,7 +12,9 @@ on:
         options:
           - 'all'
           - devp2p
-          - ethereum/eest
+          - ethereum/eels/consume-engine
+          - ethereum/eels/consume-rlp
+          - ethereum/eels/consume-sync
           - ethereum/engine
           - ethereum/graphql
           - ethereum/rpc-compat
@@ -53,7 +55,7 @@ on:
   workflow_call:
 
 concurrency:
-  group: hive-tests-${{ github.ref }}
+  group: hive-tests-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -124,7 +126,7 @@ jobs:
           outputs: type=docker,dest=${{ github.workspace }}/image.tar
 
       - name: Upload image artifact
-        uses: actions/upload-artifact@v7
+        uses: ./nethermind/.github/actions/upload-artifact
         with:
           name: nethermind-image-${{ github.run_id }}
           overwrite: true
@@ -153,7 +155,7 @@ jobs:
           path: nethermind
 
       - name: Download image artifact
-        uses: actions/download-artifact@v8
+        uses: ./nethermind/.github/actions/download-artifact
         with:
           name: nethermind-image-${{ github.run_id }}
 
@@ -180,22 +182,28 @@ jobs:
         env:
           LIMIT: ${{ matrix.limit }}
         run: |
-          HIVE_ARGS="--client nethermind
-            --sim ${{ matrix.suite }}
-            --sim.loglevel $LOG_LEVEL
-            --sim.parallelism ${{ matrix.parallelism || env.DEFAULT_PARALLELISM }}"
-          [[ -n "$LIMIT" ]] && HIVE_ARGS+=" --sim.limit $LIMIT"
-          [[ -n "$BUILDARG" ]] && HIVE_ARGS+=" --sim.buildarg \"$BUILDARG\""
-          ./hive $HIVE_ARGS
+          hive_args=(--client nethermind
+            --sim "${{ matrix.suite }}"
+            --sim.loglevel "$LOG_LEVEL"
+            --sim.parallelism "${{ matrix.parallelism || env.DEFAULT_PARALLELISM }}")
+          [[ -n "$LIMIT" ]] && hive_args+=(--sim.limit "$LIMIT")
+          [[ -n "$BUILDARG" ]] && hive_args+=(--sim.buildarg "$BUILDARG")
+          ./hive "${hive_args[@]}"
 
       - name: Upload results
-        uses: actions/upload-artifact@v7
+        uses: ./nethermind/.github/actions/upload-artifact
         with:
           name: results-${{ strategy.job-index }}-${{ github.run_number }}-${{ github.run_attempt }}
           path: hive/workspace
           retention-days: 7
 
+      - name: Set up .NET
+        uses: ./nethermind/.github/actions/setup-dotnet
+        with:
+          global-json-file: nethermind/global.json
+
       - name: Print results
+        working-directory: nethermind
         run: |
-          rm -f hive/workspace/logs/hive.json
-          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+          rm -f ../hive/workspace/logs/hive.json
+          dotnet run --file scripts/hive-results.cs -- "../hive/workspace/logs/*.json"

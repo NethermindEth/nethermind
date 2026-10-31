@@ -227,15 +227,20 @@ public class BlockAccessListBasedWorldStateTests
             Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec), Is.True);
 
             traced.Restore(afterCreate);
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec, out UInt256 oldBalance), Is.False);
+#pragma warning restore NUnit2045
             Assert.That(oldBalance, Is.EqualTo(new UInt256(balanceChange)));
 
             traced.Restore(beforeCreate);
             Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec), Is.EqualTo(!initiallyExists));
 
             traced.Clear();
-            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec, out oldBalance), Is.EqualTo(!initiallyExists));
-            Assert.That(oldBalance, Is.EqualTo(UInt256.Zero));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec, out oldBalance), Is.EqualTo(!initiallyExists));
+                Assert.That(oldBalance, Is.EqualTo(UInt256.Zero));
+            }
         }
     }
 
@@ -265,8 +270,11 @@ public class BlockAccessListBasedWorldStateTests
             }
 
             traced.Restore(beforeCreate);
-            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balance, Spec, out oldBalance), Is.True);
-            Assert.That(oldBalance, Is.EqualTo(UInt256.Zero));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balance, Spec, out oldBalance), Is.True);
+                Assert.That(oldBalance, Is.EqualTo(UInt256.Zero));
+            }
         }
     }
 
@@ -358,9 +366,12 @@ public class BlockAccessListBasedWorldStateTests
         using (scope)
         {
             Snapshot before = parent.TakeSnapshot();
-            Assert.That(bws.GetBalance(cell.Address), Is.EqualTo((UInt256)100));
-            Assert.That(bws.AccountExists(cell.Address), Is.True);
-            Assert.That(bws.IsDeadAccount(cell.Address), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bws.GetBalance(cell.Address), Is.EqualTo((UInt256)100));
+                Assert.That(bws.AccountExists(cell.Address), Is.True);
+                Assert.That(bws.IsDeadAccount(cell.Address), Is.False);
+            }
             if (!decorate) Assert.That(parent.TakeSnapshot(), Is.EqualTo(before), "account read must not journal");
 
             bws.Get(cell, out UInt256 storageValue4);
@@ -588,9 +599,12 @@ public class BlockAccessListBasedWorldStateTests
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal);
         using (scope)
         {
-            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
-            Assert.That(bws.GetBalance(new Address(TestItem.AddressA.Bytes)), Is.EqualTo((UInt256)10));
-            Assert.That(bws.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)30));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
+                Assert.That(bws.GetBalance(new Address(TestItem.AddressA.Bytes)), Is.EqualTo((UInt256)10));
+                Assert.That(bws.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)30));
+            }
             Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
             Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
                 () => bws.GetBalance(TestItem.AddressC));
@@ -768,6 +782,56 @@ public class BlockAccessListBasedWorldStateTests
         });
 
         static byte[]? Read(ReadOnlyMemory<byte> code) => code.IsNull() ? null : code.ToArray();
+    }
+
+    // EIP-8298: an adopted change declares only a hash, whose bytecode is declared at a lower index or is pre-block.
+    [Test]
+    public void GetCode_ResolvesAdoptedCodeByHash([Values] bool declaredInBlock)
+    {
+        byte[] code = [0x60, 0x2a];
+        ValueHash256 hash = ValueKeccak.Compute(code);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithCodeChanges(CodeChange.Adopted(2, hash)).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithCodeChanges(declaredInBlock ? [new CodeChange(1, code)] : []).TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(3, bal, ws =>
+        {
+            if (declaredInBlock) return;
+            ws.CreateAccount(TestItem.AddressB, 1);
+            ws.InsertCode(TestItem.AddressB, hash, code, Spec);
+        });
+        using (scope)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bws.GetCodeHash(TestItem.AddressA), Is.EqualTo(hash), "code hash");
+                Assert.That(bws.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(code), "code");
+                Assert.That(bws.TryGetAccount(TestItem.AddressA, out AccountStruct account), Is.True, "exists");
+                Assert.That(account.CodeHash, Is.EqualTo(hash), "account code hash");
+            }
+        }
+    }
+
+    // A suggested BAL adopting a hash with no source bytecode is malformed: the parallel path retries sequentially
+    // only on InvalidBlockLevelAccessListException, so the code database's InvalidOperationException must not escape.
+    [Test]
+    public void GetCode_AdoptedHashWithoutSourceBytecode_ThrowsInvalidBlockLevelAccessList([Values] bool declaredAtSameIndex)
+    {
+        byte[] code = [0x60, 0x2a];
+        ValueHash256 hash = ValueKeccak.Compute(code);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithCodeChanges(CodeChange.Adopted(2, hash)).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithCodeChanges(declaredAtSameIndex ? [new CodeChange(3, code)] : []).TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(3, bal);
+        using (scope)
+        {
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.GetCode(TestItem.AddressA));
+        }
     }
 
     [Test]

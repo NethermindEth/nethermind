@@ -1,15 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
@@ -22,10 +26,16 @@ public class FlatStateReaderTests
 {
     private static readonly BlockHeader _header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject;
 
-    private static readonly FlatDbConfig _smallTrieCacheConfig = new() { TrieCacheMemoryBudget = MemorySizes.MiB };
+    private INodeRecordBuffer _buffer = null!;
 
-    private static FlatStateReader CreateReader(IFlatDbManager manager, ITrieNodeCache? trieNodeCache = null) =>
-        new(new MemDb(), manager, trieNodeCache ?? new TrieNodeCache(_smallTrieCacheConfig, LimboLogs.Instance), NullHistoricalTrieVisitor.Instance, LimboLogs.Instance);
+    [SetUp]
+    public void SetUp() => _buffer = FlatTestHelpers.NewTestBuffer();
+
+    [TearDown]
+    public void TearDown() => _buffer.Dispose();
+
+    private FlatStateReader CreateReader(IFlatDbManager manager) =>
+        new(new MemDb(), manager, NullHistoricalTrieVisitor.Instance, LimboLogs.Instance);
 
     public static readonly TestCaseData[] UnavailableStateReads =
     [
@@ -43,32 +53,100 @@ public class FlatStateReaderTests
     }
 
     [Test]
-    public void RunTreeVisitor_OnHistoricalBundle_ThrowsMissingTrieNodeException()
+    public void RunTreeVisitor_OnHistoricalState_ThrowsMissingTrieNodeExceptionWithoutGatheringABundle()
     {
-        FlatStateReader reader = CreateReader(new HistoricalBundleFlatDbManager());
+        FlatStateReader reader = CreateReader(new HistoricalStateFlatDbManager());
 
         MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => reader.RunTreeVisitor(new TreeDumper(), _header));
         Assert.That(exception!.Message, Does.Contain("historical"));
     }
 
-    [TestCase(true, false, 0, TestName = "RunTreeVisitor_Proof_ServesRootsFromTrieNodeCache")]
-    [TestCase(false, false, 1, TestName = "RunTreeVisitor_Proof_LoadsRootsFromBundleOnTrieNodeCacheMiss")]
-    [TestCase(true, true, 1, TestName = "RunTreeVisitor_FullScan_BypassesTrieNodeCache")]
-    public void RunTreeVisitor_TrieNodeCache_DecidesBundleLoads(bool rootsInTrieNodeCache, bool fullScan, int expectedLoadsPerTrie)
+    [Test]
+    public void RunTreeVisitor_WhenStateTurnsHistoricalAfterTheRoutingCheck_ThrowsMissingTrieNodeException()
+    {
+        FlatStateReader reader = CreateReader(new LateHistoricalFlatDbManager());
+
+        MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => reader.RunTreeVisitor(new TreeDumper(), _header));
+        Assert.That(exception!.Message, Does.Contain("historical"));
+    }
+
+    [Test]
+    public void RunTreeVisitor_LoadsTrieRootsFromBundle([Values] bool fullScan)
     {
         CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
-        TrieNodeCache trieNodeCache = new(_smallTrieCacheConfig, LimboLogs.Instance);
-        if (rootsInTrieNodeCache) trieReader.AddRootsTo(trieNodeCache);
-        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader), trieNodeCache);
+        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot: null, persisted: null));
 
         if (fullScan) reader.RunTreeVisitor(new TreeDumper(), header);
         else reader.RunTreeVisitor(new AccountProofCollector(TestItem.AddressA, [(UInt256)1]), header);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(trieReader.StateRlpLoads, Is.EqualTo(expectedLoadsPerTrie));
-            Assert.That(trieReader.StorageRlpLoads, Is.EqualTo(expectedLoadsPerTrie));
+            Assert.That(trieReader.StateRlpLoads, Is.EqualTo(1));
+            Assert.That(trieReader.StorageRlpLoads, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void RunTreeVisitor_ReadsSnapshotsBeforeBasePersistence([Values] bool fullScan, [Values] bool persistedSnapshot)
+    {
+        CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
+        ResourcePool pool = new(new FlatDbConfig());
+        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
+        trieReader.AddRootsTo(snapshot, _buffer);
+        using TempPath arenaPath = TempPath.GetTempDirectory();
+        using TempPath blobsPath = TempPath.GetTempDirectory();
+        using ArenaManager arena = TestFixtureHelpers.CreateArenaManager(arenaPath.Path);
+        using BlobArenaManager blobs = new(blobsPath.Path, 4L * 1024 * 1024);
+        using PersistedSnapshot? persisted = persistedSnapshot
+            ? TestFixtureHelpers.CreatePersistedSnapshot(arena, blobs, snapshot.From, snapshot.To, PersistedSnapshotBuilderTestExtensions.Build(snapshot, blobs))
+            : null;
+        trieReader.StateAvailable = false;
+        trieReader.StorageAvailable = false;
+        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, persistedSnapshot ? null : snapshot, persisted));
+
+        AssertVisit(reader, header, stateRoot, fullScan);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trieReader.StateRlpLoads, Is.Zero);
+            Assert.That(trieReader.StorageRlpLoads, Is.Zero);
+        }
+    }
+
+    private static void AssertVisit(FlatStateReader reader, BlockHeader header, Hash256 stateRoot, bool fullScan)
+    {
+        if (fullScan)
+        {
+            TreeDumper dumper = new();
+            reader.RunTreeVisitor(dumper, header);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dumper.ToString(), Does.Contain("STATE TREE"));
+                Assert.That(dumper.ToString(), Does.Contain("ACCOUNT"));
+                Assert.That(dumper.ToString(), Does.Not.Contain("MISSING"));
+            }
+        }
+        else
+        {
+            AccountProofCollector collector = new(TestItem.AddressA, [(UInt256)1]);
+            reader.RunTreeVisitor(collector, header);
+            AccountProof proof = collector.BuildResult();
+#pragma warning disable NUnit2045 // The lengths are prerequisites for indexing the proofs below; keep them fail-fast.
+            Assert.That(proof.Proof, Has.Length.EqualTo(1));
+            Assert.That(proof.StorageProofs, Has.Length.EqualTo(1));
+            Assert.That(proof.StorageProofs[0].Proof, Has.Length.EqualTo(1));
+#pragma warning restore NUnit2045
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(proof.Address, Is.EqualTo(TestItem.AddressA));
+                Assert.That(proof.Balance, Is.EqualTo(UInt256.One));
+                Assert.That(proof.Nonce, Is.Zero);
+                Assert.That(Keccak.Compute(proof.Proof[0]), Is.EqualTo(stateRoot));
+                Assert.That(Keccak.Compute(proof.StorageProofs[0].Proof[0]), Is.EqualTo(proof.StorageRoot));
+                Assert.That(proof.StorageProofs[0].Value!.Value.ToArray(), Is.EqualTo(new byte[] { 1 }));
+            }
         }
     }
 
@@ -84,10 +162,20 @@ public class FlatStateReaderTests
         public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) { }
     }
 
-    private class CurrentBundleFlatDbManager(IPersistence.IPersistenceReader persistenceReader) : IFlatDbManager
+    private class CurrentBundleFlatDbManager(IPersistence.IPersistenceReader persistenceReader, Snapshot? snapshot, PersistedSnapshot? persisted) : IFlatDbManager
     {
-        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
-            new(new SnapshotPooledList(0), persistenceReader, false, PersistedSnapshotStack.Empty(false));
+        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
+        {
+            snapshot?.AcquireLease();
+            SnapshotPooledList snapshots = snapshot is null ? new SnapshotPooledList(0) : FlatTestHelpers.SnapshotList(snapshot);
+            PersistedSnapshotStack persistedSnapshots = PersistedSnapshotStack.Empty(false);
+            if (persisted is not null)
+            {
+                Assert.That(persisted.TryAcquire(), Is.True);
+                persistedSnapshots = new(new PersistedSnapshotList(1) { persisted }, recordDetailedMetrics: false);
+            }
+            return new(snapshots, persistenceReader, false, persistedSnapshots, bufferPin: null);
+        }
 
         public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
         public void FlushCache(CancellationToken cancellationToken) { }
@@ -96,10 +184,12 @@ public class FlatStateReaderTests
         public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) { }
     }
 
-    private sealed class CountingTrieReader(Hash256 addressHash, byte[] stateRootRlp, byte[] storageRootRlp) : IPersistence.IPersistenceReader
+    private sealed class CountingTrieReader(Hash256 addressHash, StateTree stateTree, StorageTree storageTree) : IPersistence.IPersistenceReader
     {
         public int StateRlpLoads { get; private set; }
         public int StorageRlpLoads { get; private set; }
+        public bool StateAvailable { get; set; } = true;
+        public bool StorageAvailable { get; set; } = true;
 
         public static CountingTrieReader WithSingleAccountAndSlot(Address address, UInt256 slot, out Hash256 stateRoot)
         {
@@ -113,39 +203,42 @@ public class FlatStateReaderTests
             stateTree.Set(address, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
             stateTree.Commit();
 
-            NodeStorage nodeStorage = new(trieDb);
             stateRoot = stateTree.RootHash;
-            return new CountingTrieReader(
-                addressHash,
-                nodeStorage.Get(null, TreePath.Empty, stateTree.RootHash)!,
-                nodeStorage.Get(addressHash, TreePath.Empty, storageTree.RootHash)!);
+            return new CountingTrieReader(addressHash, stateTree, storageTree);
         }
 
-        public void AddRootsTo(TrieNodeCache trieNodeCache)
+        public void AddRootsTo(Snapshot snapshot, INodeRecordBuffer buffer)
         {
-            TransientResource transientResource = new ResourcePool(_smallTrieCacheConfig).GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-            transientResource.Nodes.Set(null, TreePath.Empty, ResolvedNode(stateRootRlp));
-            transientResource.Nodes.Set(addressHash, TreePath.Empty, ResolvedNode(storageRootRlp));
-            trieNodeCache.Add(transientResource);
-        }
-
-        private static TrieNode ResolvedNode(byte[] rlp)
-        {
-            TrieNode node = new(NodeType.Unknown, Keccak.Compute(rlp), rlp);
-            node.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
-            return node;
+            snapshot.Content.SetStateNodeRlp(buffer, TreePath.Empty, stateTree.GetNodeByPath([])!);
+            snapshot.Content.SetStorageNodeRlp(buffer, addressHash, TreePath.Empty, storageTree.GetNodeByPath([])!);
         }
 
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)
         {
             StateRlpLoads++;
-            return path.Length == 0 ? stateRootRlp : null;
+            return StateAvailable ? stateTree.GetNodeByPath(path.ToNibble()) : null;
         }
 
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags)
         {
             StorageRlpLoads++;
-            return path.Length == 0 ? storageRootRlp : null;
+            return StorageAvailable && address == addressHash ? storageTree.GetNodeByPath(path.ToNibble()) : null;
+        }
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            byte[]? rlp = TryLoadStateRlp(path, flags);
+            if (rlp is null) return false;
+            action(rlp, arg);
+            return true;
+        }
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            byte[]? rlp = TryLoadStorageRlp(address, path, flags);
+            if (rlp is null) return false;
+            action(rlp, arg);
+            return true;
         }
 
         public Account? GetAccount(Address address) => null;
@@ -159,10 +252,26 @@ public class FlatStateReaderTests
         public void Dispose() { }
     }
 
-    private class HistoricalBundleFlatDbManager : IFlatDbManager
+    private class HistoricalStateFlatDbManager : IFlatDbManager
     {
+        public bool IsHistoricalState(in StateId stateId) => true;
+
         public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
-            new(new SnapshotPooledList(0), new NoopPersistenceReader(), false, PersistedSnapshotStack.Empty(false), isHistorical: true);
+            throw new InvalidOperationException("A historical proof must not gather a snapshot bundle.");
+
+        public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
+        public void FlushCache(CancellationToken cancellationToken) { }
+        public void DropStateNotReachableFrom(in StateId head) { }
+        public bool HasStateForBlock(in StateId stateId) => true;
+        public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) { }
+    }
+
+    private class LateHistoricalFlatDbManager : IFlatDbManager
+    {
+        public bool IsHistoricalState(in StateId stateId) => false;
+
+        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
+            new(new SnapshotPooledList(0), new NoopPersistenceReader(), false, PersistedSnapshotStack.Empty(false), bufferPin: null, isHistorical: true);
 
         public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
         public void FlushCache(CancellationToken cancellationToken) { }

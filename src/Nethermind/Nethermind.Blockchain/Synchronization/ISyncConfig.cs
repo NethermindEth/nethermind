@@ -24,7 +24,7 @@ public interface ISyncConfig : IConfig
         DefaultValue = "false")]
     bool FastSync { get; set; }
 
-    [ConfigItem(Description = "Whether to catch up consensus-finalized blocks by applying their EIP-7928 block access lists instead of executing them. State and receipts roots are verified; unfinalized blocks, and blocks whose data is unavailable or mismatched, execute normally.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to catch up consensus-finalized blocks by applying their EIP-7928 block access lists instead of executing them. State and receipts roots are verified; unfinalized blocks, and blocks whose data is unavailable or mismatched, execute normally.", DefaultValue = "false")]
     bool ReconstructFinalizedStateFromBlockAccessLists { get; set; }
 
     [Obsolete]
@@ -120,6 +120,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Whether to heal the state left by Snap sync using block access lists instead of trie nodes. Only applies to the flat state layout.", DefaultValue = "true", HiddenFromDocs = true)]
     bool BalHealing { get; set; }
 
+    [ConfigItem(Description = "_Technical._ Whether a flat state Snap sync interrupted by a restart resumes from the last checkpoint, saved every 5 minutes during its state ranges phase and at a graceful shutdown during BAL healing, instead of discarding the downloaded state and starting over. Kept as an opt-out while resuming is new: it keeps the downloaded state across the restart, so a fault in it could leave state that healing does not notice, whereas starting over always ends in a correct state at the cost of the time already spent. Set to `false` to always start over.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool SnapResume { get; set; }
+
     [ConfigItem(Description = $"Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. The range to verify is `{nameof(FixReceiptsStartingBlock)}`..`{nameof(FixReceiptsLastBlock)}`.", DefaultValue = "false")]
     public bool FixReceipts { get; set; }
 
@@ -205,7 +208,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Max distance between best suggested header and available state to assume state is synced.", DefaultValue = "0", HiddenFromDocs = true)]
     ulong HeaderStateDistance { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "0", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "128000000", HiddenFromDocs = true)]
     ulong FastHeadersMemoryBudget { get; set; }
 
     [ConfigItem(Description = "_Technical._ Enable storage range split.", DefaultValue = "false", HiddenFromDocs = true)]
@@ -214,9 +217,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Enable double write check during snap sync for debugging.", DefaultValue = "false", HiddenFromDocs = true)]
     bool EnableSnapDoubleWriteCheck { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Estimated size of memory for storing blocks during download.", DefaultValue = "200000000", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Estimated size of memory for storing blocks during download.", DefaultValue = "209715200", HiddenFromDocs = true)]
     long ForwardSyncDownloadBufferMemoryBudget { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Estimated max size of blocks in block processing queue before stop downloading.", DefaultValue = "200000000", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Estimated max size of blocks in block processing queue before stop downloading.", DefaultValue = "209715200", HiddenFromDocs = true)]
     long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; }
 }

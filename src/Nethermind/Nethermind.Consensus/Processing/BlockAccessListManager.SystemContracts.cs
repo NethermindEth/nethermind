@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -55,16 +54,6 @@ public partial class BlockAccessListManager
         preExecution.TxProcessor.Execute(transaction, NullTxTracer.Instance);
     }
 
-    public void InstallPredeploys(IReleaseSpec spec)
-    {
-        CheckInitialized();
-
-        // Probe the untraced parent state so a no-op block records nothing in the BAL; apply any
-        // change through the pre-execution (index 0) traced world state so it is captured there.
-        TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
-        PredeployInstaller.Install(stateProvider, preExecution.WorldState, spec);
-    }
-
     public void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec)
     {
         if (!spec.IsEip8253Enabled) return;
@@ -98,6 +87,6 @@ public partial class BlockAccessListManager
         CheckInitialized();
 
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
-        new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
+        postExecution.ExecutionRequests.ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 }

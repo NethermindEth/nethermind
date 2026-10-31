@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.Intrinsics.X86;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -48,7 +47,8 @@ public partial class TrieStoreScopeProvider(
     private readonly IStateHeaderProvider _stateHeaderProvider = stateHeaderProvider;
     private readonly ILogManager _logManager = logManager;
     protected StateTree? _backingStateTree;
-    private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, codeDbIsPersistent);
+    // Used as is: the stateless witness' store serves code as executable memory, which the EVM runs without a copy.
+    private readonly IWorldStateScopeProvider.ICodeDb _codeDb = codeDb as IWorldStateScopeProvider.ICodeDb ?? new KeyValueWithBatchingBackedCodeDb(codeDb, codeDbIsPersistent);
 
     protected StateTree BackingStateTree =>
         _backingStateTree ?? throw new InvalidOperationException("A state tree is only available within a world-state scope.");
@@ -140,7 +140,7 @@ public partial class TrieStoreScopeProvider(
 
         public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
 
-        public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.Apply(this, bal);
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken) => ScopeBalApplier.Apply(this, bal, _logManager, cancellationToken);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
@@ -303,6 +303,7 @@ public partial class TrieStoreScopeProvider(
             _storages.Clear();
         }
 
+        [SkipLocalsInit]
         internal StorageTree LookupStorageTree(Address address)
         {
             if (_storages.TryGetValue(address, out StorageTree? storageTree))
@@ -326,7 +327,6 @@ public partial class TrieStoreScopeProvider(
         ILogger logger) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
-        private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
         private Action<Address, Hash256>? _markDirty;
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
@@ -359,7 +359,7 @@ public partial class TrieStoreScopeProvider(
 
             OnAccountUpdated = null;
 
-            WriteAccounts(scope._backingStateTree, _dirtyAccounts);
+            scope._backingStateTree.WriteAccounts(_dirtyAccounts);
 
             scope.ClearLoadedAccounts();
 
@@ -367,9 +367,6 @@ public partial class TrieStoreScopeProvider(
             void Trace(Address address, Hash256 storageRoot, Account? account)
                 => logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
         }
-
-        /// <summary>Writes the changed accounts into <paramref name="stateTree"/>.</summary>
-        private static partial void WriteAccounts(StateTree stateTree, Dictionary<AddressAsKey, Account?> accounts);
     }
 
     public partial class StorageTreeBulkWriteBatch(

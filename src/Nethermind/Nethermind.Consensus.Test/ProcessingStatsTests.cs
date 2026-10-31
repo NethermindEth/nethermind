@@ -5,10 +5,13 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 using BlockchainMetrics = Nethermind.Blockchain.Metrics;
@@ -34,12 +37,10 @@ public class ProcessingStatsTests
         });
 
     [Test]
+    [ReleaseOnly("ProcessingStats emits every report when debug logging is enabled.")]
     public async Task UpdateStats_aggregates_multiple_updates_until_report_window() =>
         await WithRestoredBlockchainMetrics(async () =>
         {
-#if DEBUG
-            Assert.Ignore("ProcessingStats emits every report when debug logging is enabled.");
-#endif
             TestProcessingStats processingStats = CreateTestProcessingStats(out TaskCompletionSource<BlockStatistics> completion);
             processingStats.Start();
 
@@ -52,6 +53,48 @@ public class ProcessingStatsTests
             BlockStatistics stats = await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
             AssertStats(stats, blockCount: 2, blockFrom: 1, blockTo: 2, processingMs: 500, mGasPerSecond: 10);
+        });
+
+    [TestCase(LogLevel.Warn, 1L, 0, TestName = "GenerateReport_ReadsNoBalances_WhenInfoIsOff")]
+    [TestCase(LogLevel.Info, 2L, 0, TestName = "GenerateReport_ReadsNoBalances_ForAMultiBlockLine")]
+    [TestCase(LogLevel.Info, 1L, 2, TestName = "GenerateReport_ReadsBothBalances_ForASingleBlockLine")]
+    public Task GenerateReport_reads_beneficiary_balances_only_for_the_logged_single_block_line(LogLevel logLevel, long blockCount, int expectedReads) =>
+        WithRestoredBlockchainMetrics(() =>
+        {
+            IStateReader stateReader = Substitute.For<IStateReader>();
+            stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+            TestProcessingStats processingStats = new(stateReader, logLevel);
+            (BlockHeader baseBlock, Block block1, _) = BuildBlockTrio();
+
+            processingStats.AdvanceReportWindow();
+            processingStats.GenerateReportForTest(block1, baseBlock, blockCount, gasUsed: 2_000_000, transactionCount: 2, processingMicroseconds: 200_000);
+
+            stateReader.Received(expectedReads).TryGetAccount(Arg.Any<BlockHeader>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>());
+            return Task.CompletedTask;
+        });
+
+    [Test]
+    public Task GenerateReport_logs_reward_read_failure_at_error_only_when_state_is_not_pruned([Values] bool statePruned) =>
+        WithRestoredBlockchainMetrics(() =>
+        {
+            IStateReader stateReader = Substitute.For<IStateReader>();
+            stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+            Exception readFailure = statePruned
+                ? new MissingTrieNodeException("missing", null, TreePath.Empty, Keccak.Zero)
+                : new InvalidOperationException();
+            stateReader.TryGetAccount(Arg.Any<BlockHeader>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(_ => throw readFailure);
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsInfo.Returns(true);
+            logger.IsError.Returns(true);
+            TestProcessingStats processingStats = new(stateReader, logger: logger);
+            (BlockHeader baseBlock, Block block1, _) = BuildBlockTrio();
+
+            processingStats.AdvanceReportWindow();
+            processingStats.GenerateReportForTest(block1, baseBlock, blockCount: 1, gasUsed: 2_000_000, transactionCount: 2, processingMicroseconds: 200_000);
+
+            logger.Received(1).Info(Arg.Is<string>(line => line.StartsWith("Processed ")));
+            logger.Received(statePruned ? 0 : 1).Error(Arg.Any<string>(), Arg.Any<Exception>());
+            return Task.CompletedTask;
         });
 
     private static void AssertStats(BlockStatistics stats, long blockCount, ulong blockFrom, ulong blockTo, double processingMs, double mGasPerSecond)
@@ -139,8 +182,8 @@ public class ProcessingStatsTests
         }
     }
 
-    private sealed class TestProcessingStats(IStateReader stateReader)
-        : ProcessingStats(stateReader, new TestLogManager(LogLevel.Warn))
+    private sealed class TestProcessingStats(IStateReader stateReader, LogLevel logLevel = LogLevel.Warn, InterfaceLogger logger = null)
+        : ProcessingStats(stateReader, logger is null ? new TestLogManager(logLevel) : new OneLoggerLogManager(new ILogger(logger)))
     {
         private long _reportMs;
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Core.Collections;
 
@@ -11,6 +12,11 @@ public sealed partial class JournalSet<T> where T : notnull, IEquatable<T>
     public partial void Clear()
     {
         _set.Clear();
-        _items.Clear();
+        GuestList<T>.Reset(_items);
     }
+
+    private partial void Truncate(int count) => GuestList<T>.Truncate(_items, count);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private partial void AddItem(in T item) => GuestList<T>.Add(_items, in item);
 }

@@ -227,7 +227,7 @@ public partial class BlockProcessorTests
     [Test]
     public async Task AccessListSeed_ParallelBlockTrace_TracesTheRewardsOnTheStateAfterTheLastTransaction([Values] bool stream)
     {
-        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder.AddSingleton<IRewardCalculatorSource>(new ZeroRewardToTheBeneficiary()));
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder.AddSingleton<IRewardCalculator>(new ZeroRewardToTheBeneficiary()));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = Historical(await AddSharedStateBlock(chain));
         IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
@@ -256,6 +256,43 @@ public partial class BlockProcessorTests
                 Is.EqualTo(chain.JsonSerializer.Serialize(ParityTxTraceFromStore.FromTxTrace(sequential))),
                 "each transaction and the reward, traced on the seeded state, equal the replay");
             Assert.That(executions.Calls, Is.EqualTo(block.Transactions.Length), "the reward pass is seeded with the end of the block, so no transaction runs twice");
+        }
+    }
+
+    [Test]
+    public async Task AccessListSeed_ParallelBlockTrace_WhenTheBlockIsNeverRewarded_SkipsTheRewardPass([Values] bool stream)
+    {
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder.AddSingleton<IRewardCalculator>(NoBlockRewards.Instance));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = Historical(await AddSharedStateBlock(chain));
+        IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
+        ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.Rewards;
+        ExecutionCounter executions = new();
+        using ParallelTraceBudget budget = new(3);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, executions: executions), seeds, Budgets(chain, budget), LimboLogs.Instance);
+
+        IReadOnlyCollection<ParityLikeTxTrace> sequential = TraceWholeBlockThroughTraceEnvironment(chain, parent, block, _ => new ParityLikeBlockTracer(types));
+        int rewardTracers = 0;
+        List<ParityLikeTxTrace> emitted = [];
+        IReadOnlyList<ParityLikeTxTrace>? traces = null;
+        bool traced = stream
+            ? parallel.TryStream(block, parent,
+                (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
+                _ => { rewardTracers++; return new ParityLikeBlockTracer(types); }, batch => emitted.AddRange(batch), CancellationToken.None)
+            : parallel.TryTrace(block, parent,
+                (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
+                _ => { rewardTracers++; return new ParityLikeBlockTracer(types); }, CancellationToken.None, out traces);
+        if (stream) traces = emitted;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traced, Is.True, "a block with a valid access list is traced in parallel");
+            Assert.That(sequential.Count, Is.EqualTo(block.Transactions.Length), "precondition: the replay traces no reward");
+            Assert.That(chain.JsonSerializer.Serialize(ParityTxTraceFromStore.FromTxTrace(traces!)),
+                Is.EqualTo(chain.JsonSerializer.Serialize(ParityTxTraceFromStore.FromTxTrace(sequential))),
+                "skipping the reward pass leaves the traces equal to the replay");
+            Assert.That(rewardTracers, Is.Zero, "a block that is never rewarded is not replayed for its rewards");
+            Assert.That(executions.Calls, Is.EqualTo(block.Transactions.Length), "each transaction runs once");
         }
     }
 
@@ -470,8 +507,8 @@ public partial class BlockProcessorTests
     [Test]
     public async Task AccessListSeed_OnTheEip8253ForkBlock_TracesStartFromTheBumpedNonce()
     {
-        Address target = Eip8253Constants.MainnetAccounts[0];
-        IReleaseSpec eip8253 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true };
+        Address target = Eip8253TestData.MainnetAccounts[0];
+        IReleaseSpec eip8253 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true, Eip8253Accounts = [target] };
         TestSpecProvider specProvider = new(Bogota.Instance) { NextForkSpec = eip8253, ForkOnBlockNumber = 2, AllowTestChainOverride = false };
         using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder
             .AddSingleton<ISpecProvider>(specProvider)
@@ -562,8 +599,11 @@ public partial class BlockProcessorTests
         ];
 
         Block block = await chain.AddBlock(transactions);
-        Assert.That(block.Transactions.Length, Is.EqualTo(transactions.Length), "precondition: the block must hold every transaction of the scenario");
-        Assert.That(block.Header.BlockAccessListHash, Is.Not.Null, "precondition: an Amsterdam block commits to its access list");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions.Length, Is.EqualTo(transactions.Length), "precondition: the block must hold every transaction of the scenario");
+            Assert.That(block.Header.BlockAccessListHash, Is.Not.Null, "precondition: an Amsterdam block commits to its access list");
+        }
         return block;
 
         static Transaction Call(PrivateKey sender, ulong nonce, Address to, int value) =>

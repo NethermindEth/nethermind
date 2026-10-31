@@ -159,6 +159,9 @@ public enum Instruction : byte
     LOG3 = 0xa3,
     LOG4 = 0xa4,
 
+    // EIP-8298
+    SETCODEFROM = 0xa7,
+
     // EIP-8141 frame transactions
     APPROVE = 0xaa,
     TXPARAM = 0xb0,
@@ -170,8 +173,7 @@ public enum Instruction : byte
 
     // EIP-7906 transaction outcome assertions
     TXTRACE = 0xb6,
-    TXDIFF = 0xb7,
-    EVENTDATACOPY = 0xb8,
+    EVENTDATACOPY = 0xb7,
 
     // EIP-7979, draft: the spec's placeholder 0xb0-0xb2 collides with EIP-8141, so these use provisional values until the EIP assigns them.
     CALLSUB = 0xba,
@@ -188,7 +190,10 @@ public enum Instruction : byte
     RETURN = 0xf3,
     DELEGATECALL = 0xf4,
     CREATE2 = 0xf5,
+    // EIP-8360 leaves the opcode TBD; 0xf6 is provisional.
+    TCREATE = 0xf6,
     STATICCALL = 0xfa,
+    PAY = 0xfc, // EIP-5920
     REVERT = 0xfd,
     INVALID = 0xfe,
     SELFDESTRUCT = 0xff

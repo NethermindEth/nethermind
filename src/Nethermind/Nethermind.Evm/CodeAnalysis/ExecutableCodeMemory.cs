@@ -7,6 +7,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
+[assembly: InternalsVisibleTo("Nethermind.Stateless.Executor")]
+
 namespace Nethermind.Evm.CodeAnalysis;
 
 /// <summary>Allocates code memory that <see cref="CodeInfo"/> executes from without copying it.</summary>
@@ -47,6 +49,50 @@ public static class ExecutableCodeMemory
 
         buffer = null;
         return false;
+    }
+
+    /// <summary>Wraps <paramref name="code"/>, which lies in memory that never moves.</summary>
+    /// <remarks>Nothing promises padding after the code, so <see cref="CodeInfo"/> copies it.</remarks>
+    internal static unsafe ReadOnlyMemory<byte> Wrap(ReadOnlySpan<byte> code) =>
+        new FixedManager((byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(code)), code.Length, padded: false).Memory;
+
+    /// <summary>Copies <paramref name="code"/> to the front of <paramref name="destination"/>, followed by execution
+    /// padding, as code <see cref="CodeInfo"/> executes in place.</summary>
+    /// <param name="destination">Memory that never moves, with room for the code and <see cref="CodeInfo.ExecutionPadding"/>
+    /// bytes; it may overlap <paramref name="code"/>.</param>
+    /// <param name="code">The code.</param>
+    internal static unsafe ReadOnlyMemory<byte> Place(Span<byte> destination, ReadOnlySpan<byte> code)
+    {
+        destination = destination[..(code.Length + CodeInfo.ExecutionPadding)];
+        code.CopyTo(destination);
+        destination[code.Length..].Clear();
+        return new FixedManager((byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(destination)), code.Length, padded: true).Memory;
+    }
+
+    /// <summary>Gets whether <paramref name="code"/> is the whole of a <see cref="Place"/> result.</summary>
+    internal static bool IsPlaced(ReadOnlyMemory<byte> code) =>
+        MemoryMarshal.TryGetMemoryManager(code, out FixedManager? manager, out int start, out int length)
+        && manager.IsPadded && start == 0 && length == manager.CodeLength;
+
+    private sealed unsafe class FixedManager(byte* code, int codeLength, bool padded) : MemoryManager<byte>
+    {
+        public bool IsPadded => padded;
+
+        public int CodeLength => codeLength;
+
+        public override Span<byte> GetSpan() => new(code, codeLength);
+
+        /// <remarks><paramref name="elementIndex"/> is an offset into the code, from 0 to its length. The memory never
+        /// moves, so the handle pins nothing.</remarks>
+        public override MemoryHandle Pin(int elementIndex = 0)
+        {
+            ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)elementIndex, (uint)codeLength, nameof(elementIndex));
+            return new MemoryHandle(code + elementIndex);
+        }
+
+        public override void Unpin() { }
+
+        protected override void Dispose(bool disposing) { }
     }
 
     private sealed class Manager(int codeLength) : MemoryManager<byte>

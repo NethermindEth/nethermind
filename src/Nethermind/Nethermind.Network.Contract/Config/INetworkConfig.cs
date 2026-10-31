@@ -8,8 +8,7 @@ namespace Nethermind.Network.Config;
 
 public interface INetworkConfig : IConfig
 {
-    public const int DefaultNettyArenaOrder = -1;
-    public const int MaxNettyArenaOrder = 14;
+    public const int DefaultNettyArenaOrder = 11;
     public const int DefaultMaxNettyArenaCount = 8;
 
     /// <remarks>
@@ -106,10 +105,10 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "false", Description = "Whether to enable a verbose diagnostic tracing.")]
     bool DiagTracerEnabled { get; set; }
 
-    [ConfigItem(DefaultValue = "-1", Description = "The size of the DotNetty arena order. `-1` to depend on the memory hint.")]
+    [ConfigItem(DefaultValue = "11", Description = "The size of the DotNetty arena order. The chunk size is 4 KiB << order (8 MiB at 11). Negative values use the default.")]
     int NettyArenaOrder { get; set; }
 
-    [ConfigItem(DefaultValue = "8", Description = "The maximum DotNetty arena count. Increasing this on a high-core CPU without increasing the memory budget may reduce chunk size so much that it causes a huge memory allocation.")]
+    [ConfigItem(DefaultValue = "8", Description = "The maximum DotNetty arena count. Each arena holds chunks of 4 KiB << `NettyArenaOrder`.")]
     uint MaxNettyArenaCount { get; set; }
 
     [ConfigItem(DefaultValue = "", Description = "A comma-separated enode list to be used as boot nodes.")]
@@ -139,7 +138,7 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Disable feeding ENR DNS records to discv4 table")]
     bool DisableDiscV4DnsFeeder { get; set; }
 
-    [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Shutdown timeout when closing TCP port.")]
+    [ConfigItem(DefaultValue = "1000", HiddenFromDocs = true, Description = "[TECHNICAL] Shutdown timeout when closing TCP port.")]
     long RlpxHostShutdownCloseTimeoutMs { get; set; }
 
     [ConfigItem(DefaultValue = ProductInfo.DefaultPublicClientIdFormat, Description = "A template string for the public client id provided to external clients. Allowed placeholders: `{name}` `{version}` `{versionPostfix}` `{os}` `{runtime}`.")]

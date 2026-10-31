@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -72,6 +71,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private void EndOriginalsRound()
     {
         _lastCapturedCell = default;
+        EndPendingOriginalsRound();
         if (_parkedOriginalValues is not null)
         {
             OriginalsPool.Return(_originalValues);
@@ -107,8 +107,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _toUpdateRoots.Clear();
         }
     }
-
-    public void SetBackendScope(IWorldStateScopeProvider.IScope? scope) => _currentScope = scope;
 
     private IWorldStateScopeProvider.IScope CurrentScope =>
         _currentScope ?? throw new InvalidOperationException("Persistent storage can only be used within a world-state scope.");
@@ -235,21 +233,40 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void LoadCapturedOriginal(in StorageCell storageCell)
     {
-        if (!_originalValues.TryGetValue(storageCell, out UInt256 value))
-            throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+        if (!TryGetRoundOriginal(in storageCell, out UInt256 value))
+        {
+            EnsureOriginalsIndexed();
+            if (!_originalValues.TryGetValue(storageCell, out value))
+                throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+        }
 
         _lastCapturedCell = storageCell;
         _lastCapturedOriginal = value;
     }
 
+    /// <summary>The one-entry memo that <see cref="GetOrCreateStorage"/> and <see cref="TryGetStorage"/> share.</summary>
+    private bool TryGetRememberedStorage(Address address, [NotNullWhen(true)] out PerContractState? storage)
+    {
+        storage = _lastStorageAddress == address ? _lastStorage : null;
+        return storage is not null;
+    }
+
+    private void RememberStorage(Address address, PerContractState storage)
+    {
+        _lastStorageAddress = address;
+        _lastStorage = storage;
+    }
+
     public Hash256 GetStorageRoot(Address address) => GetOrCreateStorage(address).StorageRoot;
 
     private OptimizedHashSet<AddressAsKey>? _tempToUpdateRoots;
+    private Dictionary<StorageCell, StorageChangeTrace>? _commitTrace;
     /// <summary>
     /// Called by Commit
     /// Used for persistent storage specific logic
     /// </summary>
     /// <param name="tracer">Storage tracer</param>
+    [SkipLocalsInit]
     protected override void CommitCore(IStorageTracer tracer)
     {
         if (_logger.IsTrace) _logger.Trace("Committing storage changes");
@@ -271,7 +288,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         Dictionary<StorageCell, StorageChangeTrace>? trace;
         if (tracer.IsTracingStorage)
         {
-            trace = [];
+            trace = _commitTrace ??= [];
+            trace.ClearAndTrim();
             if (_destroyedThisRound.Count == 0)
             {
                 CommitChanges<OnFlag, OffFlag>(changes, toUpdateRoots, trace);
@@ -344,6 +362,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceOriginalValues(IStorageTracer tracer, Dictionary<StorageCell, StorageChangeTrace> trace)
     {
+        EnsureOriginalsIndexed();
         foreach ((StorageCell cell, UInt256 originalValue) in _originalValues)
         {
             if (trace.TryGetValue(cell, out StorageChangeTrace changeTrace))
@@ -367,6 +386,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         Debug.Assert(TStorageTracing.IsActive == (trace is not null));
         Debug.Assert(HasDestroyedAccounts.IsActive == (_destroyedThisRound.Count != 0));
         bool hasStorageClears = _storageClearJournal.Count != 0;
+        if (hasStorageClears) EnsureOriginalsIndexed();
 
         // Heads come mostly grouped by contract, so the root set is probed once per run of one.
         Address? lastRootUpdate = null;
@@ -395,21 +415,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 TraceUpdate(change);
             }
 
-            if (_originalValues.TryGetValue(change.StorageCell, out UInt256 initialValue) &&
-                initialValue == change.Value && (!hasStorageClears || !WasCleared(change.StorageCell.Address)))
+            if (SaveChangeUnlessRoundOriginal(in change, hasStorageClears)
+                && !ReferenceEquals(change.StorageCell.Address, lastRootUpdate))
             {
-                // no need to update the tree if the value is the same
-            }
-            else
-            {
-                if (!ReferenceEquals(change.StorageCell.Address, lastRootUpdate))
-                {
-                    lastRootUpdate = change.StorageCell.Address;
-                    toUpdateRoots.Add(lastRootUpdate);
-                }
-
-                GetOrCreateStorage(change.StorageCell.Address)
-                    .SaveChange(change.StorageCell, change.Value);
+                lastRootUpdate = change.StorageCell.Address;
+                toUpdateRoots.Add(lastRootUpdate);
             }
 
             if (TStorageTracing.IsActive)
@@ -635,16 +645,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private PerContractState GetOrCreateStorage(Address address)
     {
-        if (_lastStorageAddress == address && _lastStorage is not null)
-        {
-            return _lastStorage;
-        }
+        if (TryGetRememberedStorage(address, out PerContractState? remembered)) return remembered;
 
         ref PerContractState? value = ref _storages.GetValueRefOrAddDefault(address, out bool exists);
         if (!exists) value = PerContractState.Rent(address, this);
         PerContractState storage = value ?? ThrowNoStorageState(address);
-        _lastStorageAddress = address;
-        _lastStorage = storage;
+        RememberStorage(address, storage);
         return storage;
     }
 
@@ -715,22 +721,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// no side effects). Only the first-loaded value is captured here, backing
     /// <see cref="GetOriginal"/> and commit-time <see cref="IStorageTracer.ReportStorageRead"/>.
     /// </summary>
-    private void CaptureOriginalValue(in StorageCell cell, in UInt256 value)
-    {
-        OptimizedDictionary<StorageCell, UInt256> originals = _originalValues;
-        if (originals.Count == originals.Capacity && originals.Capacity > OriginalsGrowIntoLargeAbove && !originals.ContainsKey(cell))
-        {
-            GrowOriginalsIntoLarge();
-        }
+    private partial void CaptureOriginalValue(in StorageCell cell, in UInt256 value);
 
-        ref UInt256 slot = ref _originalValues.GetValueRefOrAddDefault(cell, out bool exists);
-        if (!exists)
-        {
-            slot = value;
-        }
-        _lastCapturedCell = cell;
-        _lastCapturedOriginal = slot;
-    }
+    private partial void EnsureOriginalsIndexed();
+
+    /// <summary>The original of a slot read in this round, taken from the slot's block change instead of the originals map.</summary>
+    /// <returns><c>false</c> when the block change cannot answer, and the caller reads the originals map.</returns>
+    private partial bool TryGetRoundOriginal(in StorageCell storageCell, out UInt256 value);
+
+    /// <summary>Saves a committed change unless it writes back the slot's original.</summary>
+    /// <returns><c>true</c> when the change was saved, so its storage root needs an update.</returns>
+    private partial bool SaveChangeUnlessRoundOriginal(in Change change, bool hasStorageClears);
+
+    private partial void EndPendingOriginalsRound();
+
+    private partial bool HasCapturedOriginals { get; }
 
     private void GrowOriginalsIntoLarge()
     {
@@ -784,14 +789,16 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// still read this round: those reads must be reported to storage tracers and the round's
     /// original-value capture must be cleared, which the change-driven commit otherwise does.
     /// </summary>
+    [SkipLocalsInit]
     public override void Commit(IStorageTracer tracer)
     {
         if (_changes.Count == 0)
         {
-            if (_originalValues.Count != 0)
+            if (HasCapturedOriginals)
             {
                 if (tracer.IsTracingStorage)
                 {
+                    EnsureOriginalsIndexed();
                     foreach (StorageCell cell in _originalValues.Keys)
                     {
                         tracer.ReportStorageRead(cell);
@@ -816,6 +823,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private void ResetContractState(Address address)
     {
+        EnsureOriginalsIndexed();
         IWorldStateScopeProvider.IScope currentScope = CurrentScope;
         _toUpdateRoots.TryAdd(address, true);
         PerContractState state = GetOrCreateStorage(address);
@@ -831,6 +839,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return;
         }
 
+        EnsureOriginalsIndexed();
         List<KeyValuePair<StorageCell, UInt256>>? originalValues = null;
         // Every storage read/write registers the contract before adding originals or journal entries.
         if (contractState is not null)
@@ -899,6 +908,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     protected override void RestoreStorageClear(int journalIndex)
     {
+        EnsureOriginalsIndexed();
         int lastIndex = _storageClearJournal.Count - 1;
         if ((uint)journalIndex >= (uint)_storageClearJournal.Count || journalIndex != lastIndex)
         {
@@ -963,6 +973,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public static implicit operator SlotKey(in UInt256 index) => new(in index);
 
         public static implicit operator UInt256(in SlotKey key) => key.Index;
+
+        /// <summary>The index viewed in place as a key, where the implicit conversion copies it into a temporary.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ref readonly SlotKey Of(in UInt256 index) => ref Unsafe.As<UInt256, SlotKey>(ref Unsafe.AsRef(in index));
     }
 
     private sealed class DefaultableDictionary()
@@ -1062,12 +1076,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public ref StorageChangeTrace GetValueRefOrAddDefault(in UInt256 storageCellIndex, out bool exists)
         {
             OptimizedDictionary<SlotKey, StorageChangeTrace> dictionary = _dictionary;
-            if (dictionary.Count == dictionary.Capacity && dictionary.Count >= GrowIntoLargeAt && !dictionary.ContainsKey(storageCellIndex))
+            if (dictionary.Count == dictionary.Capacity && dictionary.Count >= GrowIntoLargeAt && !dictionary.ContainsKey(SlotKey.Of(in storageCellIndex)))
             {
                 GrowIntoLarge();
             }
 
-            ref StorageChangeTrace value = ref _dictionary.GetValueRefOrAddDefault(storageCellIndex, out exists);
+            ref StorageChangeTrace value = ref _dictionary.GetValueRefOrAddDefault(SlotKey.Of(in storageCellIndex), out exists);
             if (!exists && _missingAreDefault)
             {
                 // Where we know the rest of the tree is empty
@@ -1101,7 +1115,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         public ref StorageChangeTrace GetValueRefOrNullRef(in UInt256 storageCellIndex)
-            => ref _dictionary.GetValueRefOrNullRef(storageCellIndex);
+            => ref _dictionary.GetValueRefOrNullRef(SlotKey.Of(in storageCellIndex));
 
         public OptimizedDictionary<SlotKey, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
 
@@ -1398,11 +1412,38 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         // The shift count is taken mod 64, so this keys on the low six bits of the slot.
         private static ulong SlotFilterBit(in UInt256 index) => 1UL << (int)index.u0;
 
+        public bool TryGetRoundOriginal(in UInt256 index, ulong round, out UInt256 original)
+        {
+            ref StorageChangeTrace entry = ref BlockChange.GetValueRefOrNullRef(in index);
+            if (Unsafe.IsNullRef(ref entry) || entry.CapturedRound != round)
+            {
+                original = default;
+                return false;
+            }
+
+            original = entry.After;
+            return true;
+        }
+
         public void SaveChange(in StorageCell storageCell, in UInt256 value)
+        {
+            ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
+            Save(in storageCell, in value, ref valueChanges, exists);
+        }
+
+        public bool SaveChangeUnlessRoundOriginal(in StorageCell storageCell, in UInt256 value, ulong round)
+        {
+            ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
+            if (exists && valueChanges.CapturedRound == round && valueChanges.After == value) return false;
+
+            Save(in storageCell, in value, ref valueChanges, exists);
+            return true;
+        }
+
+        private void Save(in StorageCell storageCell, in UInt256 value, ref StorageChangeTrace valueChanges, bool exists)
         {
             ForgetLastRead();
             _wasWritten = true;
-            ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists || valueChanges.IsInitialValue)
             {
                 valueChanges.Set(UInt256.Zero, value, isInitialValue: true);
@@ -1422,6 +1463,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         /// value cannot go stale; the round is part of the key, so the first read of each round still
         /// captures its original.
         /// </remarks>
+        [SkipLocalsInit]
         public void LoadFromTree(in StorageCell storageCell, out UInt256 value)
         {
             PersistentStorageProvider provider = Provider;
@@ -1437,28 +1479,29 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             ref StorageChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
             {
+                bool hadTree = _backend is not null;
                 LoadFromTreeStorage(in storageCell, out value);
+                if (!hadTree) valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out _);
 
                 valueChange.Set(value, value, isInitialValue: false);
             }
             else
             {
                 Provider._metrics.IncrementStorageTreeCache();
+                value = valueChange.After;
             }
 
             ulong round = provider._originalsRound;
             if (valueChange.CapturedRound != round)
             {
                 // Capture updates the provider's separate originals map, leaving this dictionary ref valid.
-                provider.CaptureOriginalValue(storageCell, valueChange.After);
+                provider.CaptureOriginalValue(storageCell, value);
                 valueChange.SetCapturedRound(round);
             }
 
             _lastReadIndex = storageCell.Index;
-            _lastReadValue = valueChange.After;
+            _lastReadValue = value;
             _lastReadRound = round;
-
-            value = valueChange.After;
         }
 
         public void LoadFromTreeStorage(in StorageCell storageCell, out UInt256 value)
@@ -1563,9 +1606,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         internal static PerContractState Rent(Address address, PersistentStorageProvider persistentStorageProvider)
             => Pool.Rent(address, persistentStorageProvider);
 
-        private static class Pool
+        private static partial class Pool
         {
-            private static readonly ConcurrentQueue<PerContractState> _pool = [];
             private static int _poolCount;
 
             public static PerContractState Rent(Address address, PersistentStorageProvider provider)

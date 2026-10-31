@@ -21,6 +21,8 @@ public class ConfigProvider : IConfigProvider
 
     private readonly Dictionary<Type, Type> _implementations = [];
 
+    private readonly List<string> _obsoleteSettingWarnings = [];
+
     public ConfigProvider()
     {
     }
@@ -91,6 +93,11 @@ public class ConfigProvider : IConfigProvider
 
     public object? GetRawValue(string category, string name)
     {
+        if (!IsReadable(category, name))
+        {
+            return null;
+        }
+
         for (int i = 0; i < _configSource.Count; i++)
         {
             (bool isSet, string? str) = _configSource[i].GetRawValue(category, name);
@@ -104,6 +111,52 @@ public class ConfigProvider : IConfigProvider
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
             .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
             ?.GetValue(value) : null;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="category"/> and <paramref name="name"/> resolve to a property declared on a
+    /// discovered config interface that is not flagged <see cref="ConfigItemAttribute.IsSensitive"/>.
+    /// </summary>
+    /// <remarks>
+    /// Sources build their lookup key from both parts (<c>Category.Name</c>, <c>NETHERMIND_CATEGORY_NAME</c>),
+    /// so a split that does not resolve to a property (e.g. an empty category with <c>KeyStore.TestNodeKey</c>
+    /// as the name) can still reach a sensitive value and is rejected.
+    /// </remarks>
+    private static bool IsReadable(string? category, string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+
+        bool found = false;
+        foreach ((Type configType, _) in ConfigTypesFromAssembly)
+        {
+            if (!IsCategory(configType, category)) continue;
+
+            PropertyInfo? property = configType.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            if (property is null) continue;
+
+            if (property.GetCustomAttribute<ConfigItemAttribute>()?.IsSensitive == true) return false;
+
+            found = true;
+        }
+
+        return found;
+    }
+
+    private static bool IsCategory(Type configType, string? category)
+    {
+        string? typeCategory = ConfigExtensions.GetCategoryName(configType);
+        if (typeCategory is null || string.IsNullOrEmpty(category))
+        {
+            return typeCategory is null && string.IsNullOrEmpty(category);
+        }
+
+        ReadOnlySpan<char> requested = category.AsSpan();
+        if (requested.EndsWith("Config", StringComparison.OrdinalIgnoreCase))
+        {
+            requested = requested[..^"Config".Length];
+        }
+
+        return requested.Equals(typeCategory, StringComparison.OrdinalIgnoreCase);
     }
 
     public void AddSource(IConfigSource configSource) => _configSource.Add(configSource);
@@ -142,12 +195,37 @@ public class ConfigProvider : IConfigProvider
                                 throw new InvalidOperationException($"Cannot set value of {category}.{name}", e);
                             }
 
+                            ObsoleteAttribute? obsolete = @interface.GetProperty(name)?.GetCustomAttribute<ObsoleteAttribute>()
+                                ?? propertyInfo.GetCustomAttribute<ObsoleteAttribute>();
+                            if (obsolete is not null)
+                            {
+                                string key = ConfigExtensions.GetCategoryName(@interface) is { } categoryName ? $"{categoryName}.{name}" : name;
+                                _obsoleteSettingWarnings.Add(string.IsNullOrEmpty(obsolete.Message)
+                                    ? $"{key} is deprecated."
+                                    : $"{key} is deprecated: {obsolete.Message}");
+                            }
+
                             break;
                         }
                     }
                 }
             }
         }
+    }
+
+    /// <summary>Gets a warning for each <see cref="ObsoleteAttribute"/> configuration item that a source sets.</summary>
+    /// <remarks>
+    /// The warning gives the <see cref="ObsoleteAttribute.Message"/> from the config interface, or else from the implementation.
+    /// An item counts only when a source has its key, so a value that differs from the default for another reason gives no warning.
+    /// </remarks>
+    public IReadOnlyList<string> GetObsoleteSettingWarnings()
+    {
+        if (_instances.IsEmpty)
+        {
+            Initialize();
+        }
+
+        return _obsoleteSettingWarnings;
     }
 
     public (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) FindIncorrectSettings()

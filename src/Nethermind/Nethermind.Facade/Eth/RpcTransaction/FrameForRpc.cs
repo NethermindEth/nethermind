@@ -14,7 +14,7 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 public class FrameForRpc
 {
     /// <summary>The frame's kind, one of the <see cref="FrameMode"/> values: <c>0</c> default,
-    /// <c>1</c> verify, <c>2</c> sender, <c>3</c> post-tx.</summary>
+    /// <c>1</c> verify, <c>2</c> sender, <c>3</c> assert.</summary>
     /// <remarks>It fixes both the caller the frame runs as and where the frame may appear in the transaction.
     /// Kept as the raw byte the RLP field carries, and written as a quantity.</remarks>
     [JsonConverter(typeof(ByteConverter))]

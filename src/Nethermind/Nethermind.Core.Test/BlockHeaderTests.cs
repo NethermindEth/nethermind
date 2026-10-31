@@ -53,6 +53,23 @@ public class BlockHeaderTests
     }
 
     [Test]
+    public void Clone_shares_the_bloom_and_fills_a_missing_one([Values] bool hasBloom)
+    {
+        BlockHeader header = new(
+            Keccak.Compute("parent"), Keccak.Compute("uncles"), Address.Zero, 1, 2, 3, 4, [5])
+        {
+            Bloom = hasBloom ? new Bloom([Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject]) : null
+        };
+
+        BlockHeader clone = header.Clone();
+
+        if (hasBloom)
+            Assert.That(clone.Bloom, Is.SameAs(header.Bloom));
+        else
+            Assert.That(clone.Bloom, Is.EqualTo(Bloom.Empty).And.Not.SameAs(Bloom.Empty));
+    }
+
+    [Test]
     public void Hash_as_expected()
     {
         BlockHeader header = new()
@@ -153,7 +170,7 @@ public class BlockHeaderTests
 
         BlockHeader child = parent.CreateSimulatedChild(112);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(child, Is.TypeOf<BlockHeader>());
             Assert.That(child.ParentHash, Is.EqualTo(parent.Hash!));
@@ -175,7 +192,7 @@ public class BlockHeaderTests
             Assert.That(child.ExcessBlobGas, Is.Null);
             Assert.That(child.ParentBeaconBlockRoot, Is.Null);
             Assert.That(child.SlotNumber, Is.EqualTo(parent.SlotNumber + 1));
-        });
+        }
     }
 
     [Test]

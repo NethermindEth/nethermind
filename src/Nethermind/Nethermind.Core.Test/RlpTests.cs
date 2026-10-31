@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -857,8 +858,11 @@ namespace Nethermind.Core.Test
             RlpWriter writer = new(buffer);
             TxDecoder.Instance.Encode(ref writer, (Transaction[]?)null);
 
-            Assert.That(writer.Position, Is.EqualTo(Rlp.OfEmptyList.Length));
-            Assert.That(buffer, Is.EqualTo(Rlp.OfEmptyList.Bytes));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(writer.Position, Is.EqualTo(Rlp.OfEmptyList.Length));
+                Assert.That(buffer, Is.EqualTo(Rlp.OfEmptyList.Bytes));
+            }
         }
 
         [Test]
@@ -1102,8 +1106,11 @@ namespace Nethermind.Core.Test
             byte[] data = Rlp.Encode(Rlp.Encode(new byte[contentLength])).Bytes;
 
             RlpReader ctx = new(data.AsSpan());
-            Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
-            Assert.That(ctx.Position, Is.EqualTo(prefixLength));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
+                Assert.That(ctx.Position, Is.EqualTo(prefixLength));
+            }
         }
 
         [TestCase(2, 56)]
@@ -1115,8 +1122,11 @@ namespace Nethermind.Core.Test
             byte[] data = Rlp.Encode(new byte[contentLength]).Bytes;
 
             RlpReader ctx = new(data.AsSpan());
-            Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
-            Assert.That(ctx.Position, Is.EqualTo(prefixLength));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
+                Assert.That(ctx.Position, Is.EqualTo(prefixLength));
+            }
         }
 
         private static byte[] ExpectedValueHash(ValueHash256? value)
@@ -1360,6 +1370,40 @@ namespace Nethermind.Core.Test
             // before all length bytes are present. The bounds check should catch this.
             Action act = () => new LiteRlpReader(truncatedData).PeekNextRlpLength(0);
             Assert.That(act, Throws.TypeOf<RlpException>());
+        }
+
+        [Test]
+        [NonParallelizable]
+        public unsafe void PeekLongPrefixAndContentLength_throws_on_truncated_length_ending_at_int_max([Values(0xB8, 0xF8)] byte prefix)
+        {
+            // The span's last byte is the prefix, so position + 1 + lengthOfLength wraps an int. The native
+            // block holds the byte one past the span's end, which an unchecked read would decode as a short
+            // non-canonical length instead of reporting truncation. Only its last page is ever touched.
+            const int position = int.MaxValue - 1;
+            byte* backing;
+            try
+            {
+                backing = (byte*)NativeMemory.Alloc((nuint)int.MaxValue + 1);
+            }
+            catch (OutOfMemoryException)
+            {
+                Assert.Ignore("Cannot allocate the 2 GB native block this test needs.");
+                return;
+            }
+
+            try
+            {
+                backing[position] = prefix;
+                backing[int.MaxValue] = 0x01;
+
+                Action act = () => new LiteRlpReader(new ReadOnlySpan<byte>(backing, int.MaxValue)).PeekNextRlpLength(position);
+
+                Assert.That(act, Throws.TypeOf<RlpException>().With.Message.Contains("truncated"));
+            }
+            finally
+            {
+                NativeMemory.Free(backing);
+            }
         }
     }
 }

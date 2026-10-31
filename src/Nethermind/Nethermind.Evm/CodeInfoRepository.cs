@@ -81,7 +81,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         CodeInfo codeInfo = InternalGetCodeInfo(codeSource);
 
-        delegationAddress = codeInfo.DelegatedAddress;
+        delegationAddress = codeInfo.DelegatedAddress is { } delegated && vmSpec.IsEip7702Enabled ? delegated : null;
         if (delegationAddress is not null)
         {
             if (followDelegation)
@@ -123,6 +123,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     protected virtual CodeInfo LoadCodeInfo(Address address, in ValueHash256 codeHash) =>
         codeHash == ValueKeccak.OfAnEmptyString ? _emptyCodeInfo : GetCodeInfo(_worldState, address, in codeHash);
 
+    [SkipLocalsInit]
     internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash)
     {
         // The one chokepoint where code is resolved by hash; record here so the witness also captures the account's trie path.
@@ -156,6 +157,15 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
         return worldState.InsertCode(codeOwner, in codeHash, code, spec);
+    }
+
+    public void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        InsertTransientCode(_worldState, code, codeOwner, spec);
+
+    public static void InsertTransientCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    {
+        ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
+        worldState.InsertTransientCode(codeOwner, in codeHash, code, spec);
     }
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>

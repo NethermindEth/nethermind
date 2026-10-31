@@ -62,7 +62,10 @@ namespace Nethermind.Consensus.Producers
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, targetBlock.Number))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
-            Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec);
+            // EIP-8141: the pool ranks a max_fee by a per-gas view that leaves out intrinsic gas, so the budget the
+            // processor checks is checked here too, rather than failing at execution in every block built.
+            Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec)
+                && FrameTxValidation.CoversRequiredMaxFee(tx, spec, baseFee, UInt256.Zero);
             bool BlobFilter(Transaction tx) => HasFullBlobData(tx) && filter(tx);
             // A revalidated pool has already rejected everything whose validity changes with the target spec.
             Func<Transaction, bool> pendingTxFilter = isRevalidatedForTarget
@@ -196,9 +199,17 @@ namespace Nethermind.Consensus.Producers
                         continue;
                     }
 
-                    if (validateForkSensitiveState)
+                    if (!FrameTxValidation.CoversRequiredMaxFee(blobTx, spec, baseFee, feePerBlobGas))
                     {
-                        if (blobTx is LightTransaction lightTransaction
+                        if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, max fee is below the required max fee.");
+                        continue;
+                    }
+
+                    // A frameless record only bounds max_gas from below, so a max_fee is checked exactly on the full tx.
+                    if (validateForkSensitiveState || (blobTx.SupportsFrames && blobTx.Frames is null))
+                    {
+                        if (validateForkSensitiveState
+                            && blobTx is LightTransaction lightTransaction
                             && lightTxValidator is not null
                             && !lightTxValidator.IsWellFormedLight(lightTransaction, spec))
                         {
@@ -206,7 +217,8 @@ namespace Nethermind.Consensus.Producers
                         }
 
                         if (!TryResolveBlob(blobTx, spec, out Transaction? fullBlobTx)
-                            || !IsForkSensitiveStateValid(fullBlobTx, spec))
+                            || (validateForkSensitiveState && !IsForkSensitiveStateValid(fullBlobTx, spec))
+                            || !FrameTxValidation.CoversRequiredMaxFee(fullBlobTx, spec, baseFee, feePerBlobGas))
                         {
                             rejectedBlobCount += txBlobCount;
                             if (rejectedBlobCount > maxRejectedBlobsToConsider)
@@ -499,6 +511,8 @@ namespace Nethermind.Consensus.Producers
         {
             static abstract TResult Select(Transaction transaction, ulong resource);
             static abstract ulong GetResource(Transaction transaction, IReleaseSpec spec);
+            /// <summary>The part of a candidate's <paramref name="resource"/> that counts against its sender's later transactions.</summary>
+            static abstract ulong GetChainResource(Transaction transaction, ulong resource, IReleaseSpec spec);
             static abstract bool EnforceSequentialNonces { get; }
         }
 
@@ -513,13 +527,26 @@ namespace Nethermind.Consensus.Producers
                 spec.IsEip8037Enabled && Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(transaction, spec, out ulong executionReservation, out _)
                     ? Math.Min(transaction.BlockGasUsed, executionReservation)
                     : transaction.BlockGasUsed;
+            /// <remarks>
+            /// A transaction that has not run must fit at its gas limit, but it uses no less than the base cost of a
+            /// transaction, so only that counts against its sender's later ones. The picker still checks each of them
+            /// against the gas left in the block.
+            /// </remarks>
+            public static ulong GetChainResource(Transaction transaction, ulong resource, IReleaseSpec spec) =>
+                transaction.HasBlockGasUsed ? resource : Math.Min(resource, MinimumGas(transaction, spec));
             public static bool EnforceSequentialNonces => false;
+
+            private static ulong MinimumGas(Transaction transaction, IReleaseSpec spec) =>
+                transaction.SupportsFrames ? (ulong)Eip8141Constants.IntrinsicGasCost
+                : spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780
+                : GasCostOf.Transaction;
         }
 
         private readonly struct BlobOrdering : IOrdering<(Transaction, ulong)>
         {
             public static (Transaction, ulong) Select(Transaction transaction, ulong resource) => (transaction, resource);
             public static ulong GetResource(Transaction transaction, IReleaseSpec spec) => (ulong)transaction.GetBlobCount();
+            public static ulong GetChainResource(Transaction transaction, ulong resource, IReleaseSpec spec) => resource;
             public static bool EnforceSequentialNonces => true;
         }
 
@@ -545,8 +572,8 @@ namespace Nethermind.Consensus.Producers
                 int entryIndex = entries[0].heapIndex;
                 (Transaction[] bucket, int index, _, ulong resource) = entries[entryIndex];
                 Transaction candidateTx = bucket[index];
-                ulong totalResource = resource + TOrdering.GetResource(candidateTx, spec);
-                bool accepted = totalResource <= resourceLimit && filter(candidateTx);
+                ulong candidateResource = TOrdering.GetResource(candidateTx, spec);
+                bool accepted = resource + candidateResource <= resourceLimit && filter(candidateTx);
                 int nextIndex = index + 1;
                 if (accepted && nextIndex < bucket.Length
                     && (!TOrdering.EnforceSequentialNonces
@@ -554,7 +581,7 @@ namespace Nethermind.Consensus.Producers
                         && bucket[nextIndex].Nonce == candidateTx.Nonce + 1))
                 {
                     entries.AsSpan()[entryIndex].index = nextIndex;
-                    entries.AsSpan()[entryIndex].resource = totalResource;
+                    entries.AsSpan()[entryIndex].resource = resource + TOrdering.GetChainResource(candidateTx, candidateResource, spec);
                     SiftDown(entries.AsSpan(), count, entryIndex, 0, comparer);
                 }
                 else

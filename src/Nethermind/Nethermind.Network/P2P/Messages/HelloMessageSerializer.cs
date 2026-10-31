@@ -3,22 +3,22 @@
 
 using System;
 using System.Text;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Messages
 {
-    public class HelloMessageSerializer : IZeroMessageSerializer<HelloMessage>
+    public class HelloMessageSerializer : IMessageSerializer<HelloMessage>
     {
         private static readonly RlpLimit ClientIdRlpLimit = RlpLimit.For<HelloMessage>(1_024, nameof(HelloMessage.ClientId));
 
-        public void Serialize(IByteBuffer byteBuffer, HelloMessage msg)
+        public int GetLength(HelloMessage msg) => Rlp.LengthOfSequence(GetLengths(msg).ContentLength);
+
+        public int Serialize(Span<byte> destination, HelloMessage msg)
         {
-            (int totalLength, int innerLength) = GetLength(msg);
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength), force: true);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            (int totalLength, int innerLength) = GetLengths(msg);
+            RlpWriter writer = new(destination);
             writer.StartSequence(totalLength);
             writer.Encode(msg.P2PVersion);
             writer.Encode(msg.ClientId);
@@ -35,9 +35,10 @@ namespace Nethermind.Network.P2P.Messages
 
             writer.Encode(msg.ListenPort);
             writer.Encode(msg.NodeId.Bytes);
+            return writer.Position;
         }
 
-        private static (int, int) GetLength(HelloMessage msg)
+        private static (int ContentLength, int CapabilitiesLength) GetLengths(HelloMessage msg)
         {
             int contentLength = 0;
             contentLength += Rlp.LengthOf(msg.P2PVersion);
@@ -55,11 +56,9 @@ namespace Nethermind.Network.P2P.Messages
             return (contentLength, innerContentLength);
         }
 
-        public HelloMessage Deserialize(IByteBuffer msgBytes) =>
-            msgBytes.DeserializeRlp(Deserialize);
-
-        private static HelloMessage Deserialize(ref RlpReader ctx)
+        public HelloMessage Deserialize(ReadOnlySpan<byte> msgBytes)
         {
+            RlpReader ctx = new(msgBytes);
             ctx.ReadSequenceLength();
 
             HelloMessage helloMessage = new();

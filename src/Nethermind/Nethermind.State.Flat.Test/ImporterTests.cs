@@ -12,6 +12,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -34,7 +35,7 @@ public class ImporterTests
         _trieDb = new MemDb();
         _stateTree = new StateTree(new RawScopedTrieStore(_trieDb), LimboLogs.Instance);
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance);
+        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance, NullTrieNodeLog.Instance);
         _importer = new Importer(new NodeStorage(_trieDb), _persistence, LimboLogs.Instance);
     }
 
@@ -99,8 +100,11 @@ public class ImporterTests
 
         // Straight after, not merely after: a periodic ingest flush would satisfy the weaker check on a larger seed.
         int advance = log.IndexOf("advance-pointer");
-        Assert.That(advance, Is.GreaterThan(0), "the state pointer must advance, and not before a flush");
-        Assert.That(log[advance - 1], Is.EqualTo("flush"), "the state pointer must advance straight after a flush");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(advance, Is.GreaterThan(0), "the state pointer must advance, and not before a flush");
+            Assert.That(log[advance - 1], Is.EqualTo("flush"), "the state pointer must advance straight after a flush");
+        }
     }
 
     [Test]

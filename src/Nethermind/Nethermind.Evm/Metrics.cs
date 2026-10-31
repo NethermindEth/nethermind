@@ -374,4 +374,10 @@ public partial class Metrics
     [Description("Total number of background tasks executed.")]
     public static long TotalBackgroundTasksExecuted => _totalBackgroundTasksExecuted.Value;
     public static void IncrementTotalBackgroundTasksExecuted() => Interlocked.Increment(ref _totalBackgroundTasksExecuted.Value);
+
+    private static long _balAdoptedCodeMissing;
+    [CounterMetric]
+    [Description("EIP-8298 code adoptions applied from a block access list whose bytecode was neither in the code database nor deposited in the block.")]
+    public static long BalAdoptedCodeMissing => Volatile.Read(ref _balAdoptedCodeMissing);
+    internal static void IncrementBalAdoptedCodeMissing() => Interlocked.Increment(ref _balAdoptedCodeMissing);
 }

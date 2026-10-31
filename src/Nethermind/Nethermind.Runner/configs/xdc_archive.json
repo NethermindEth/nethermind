@@ -34,9 +34,6 @@
   "Merge": {
     "Enabled": false
   },
-  "TraceStore": {
-    "Enabled": false
-  },
   "FlatDb": {
     "Enabled": false
   }

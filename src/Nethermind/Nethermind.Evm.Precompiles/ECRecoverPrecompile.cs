@@ -14,14 +14,9 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 {
-    public static ECRecoverPrecompile Instance { get; } = new();
-    private static readonly Result<byte[]> Empty = Array.Empty<byte>();
-
     private ECRecoverPrecompile() { }
 
-    public static Address Address { get; } = Address.FromNumber(1);
-
-    public string Name => "ECREC";
+    public string Name => VirtualMachineStatics.EcRecoverPrecompileName;
 
     private const int InputLength = 128;
 
@@ -44,14 +39,10 @@ public partial class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
     // The public key without the SEC1 uncompressed-point prefix, as the address hashes it.
     private const int PublicKeyLength = 64;
 
-    /// <summary>Counts the call for the host's metrics; the guest publishes none.</summary>
-    partial void CountCall();
-
     private readonly byte[] _zero31 = new byte[31];
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        CountCall();
         if (inputData.Length < InputLength)
             return RunInternal(inputData);
 

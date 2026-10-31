@@ -97,8 +97,11 @@ public class Eip2930Tests
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json)!;
 
         // A null accessList is the same as an omitted one, so it doesn't select the access-list type.
-        Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.EIP1559));
-        Assert.That(((AccessListTransactionForRpc)transactionForRpc).AccessList, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.EIP1559));
+            Assert.That(((AccessListTransactionForRpc)transactionForRpc).AccessList, Is.Null);
+        }
     }
 
     [Test]
@@ -111,8 +114,11 @@ public class Eip2930Tests
         Assert.That(txResult.ResultType, Is.EqualTo(ResultType.Success));
 
         Transaction transaction = (Transaction)txResult;
-        Assert.That(transaction.Type, Is.EqualTo(TxType.Legacy));
-        Assert.That(transaction.AccessList, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transaction.Type, Is.EqualTo(TxType.Legacy));
+            Assert.That(transaction.AccessList, Is.Null);
+        }
     }
 
     [TestCase(TxType.AccessList, """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":"0x1","chainId":"0x1","accessList":[]}""")]
@@ -234,7 +240,10 @@ public class Eip2930Tests
         Assert.That(txResult.ResultType, Is.EqualTo(ResultType.Success));
         Transaction afterConversion = (Transaction)txResult;
 
-        Assert.That(_serializer.Serialize(TransactionForRpc.FromTransaction(afterConversion)), Is.EqualTo(_serializer.Serialize(transactionForRpc)));
-        Assert.That(afterConversion.Data.AsArray(), Is.EqualTo(transaction.Data.AsArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_serializer.Serialize(TransactionForRpc.FromTransaction(afterConversion)), Is.EqualTo(_serializer.Serialize(transactionForRpc)));
+            Assert.That(afterConversion.Data.AsArray(), Is.EqualTo(transaction.Data.AsArray()));
+        }
     }
 }

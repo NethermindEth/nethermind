@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
@@ -35,8 +33,6 @@ public class BlockchainTestJsonOutputTests
     /// <summary>Enough mismatching accounts to carry the comparison past its eight-difference truncation threshold.</summary>
     private const int MismatchingAccounts = 12;
 
-    private static readonly TimeSpan NethtestTimeout = TimeSpan.FromMinutes(2);
-
     private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
     private string _directory = null!;
@@ -54,7 +50,7 @@ public class BlockchainTestJsonOutputTests
     [Test]
     public async Task Stdout_stays_parseable_json_when_a_test_reports_more_than_8_differences()
     {
-        (string stdout, string stderr) = await RunNethtest(WriteFixture());
+        (string stdout, string stderr) = await NethtestProcess.Run(["--blockTest", "--input", WriteFixture(), "--jsonout", "--neverTrace"]);
 
         using (Assert.EnterMultipleScope())
         {
@@ -66,6 +62,23 @@ public class BlockchainTestJsonOutputTests
         }
     }
 
+    /// <summary>
+    /// A traced run streams its JSONL trace to stderr, so the truncation notice and the failure line
+    /// must stay out of it. The fixture has no blocks, so the trace is just the test-end record.
+    /// </summary>
+    [Test]
+    public async Task Traced_run_writes_only_json_lines_to_stderr()
+    {
+        (string stdout, string stderr) = await NethtestProcess.Run(["--blockTest", "--input", WriteFixture(), "--trace"]);
+
+        string[] lines = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lines, Has.Length.EqualTo(1).And.All.StartsWith("{\"testEnd\":"), stderr);
+            Assert.That(ResultCount(stdout), Is.EqualTo(1), "the failure is still reported in the results document");
+        }
+    }
+
     private static int ResultCount(string stdout)
     {
         using JsonDocument document = JsonDocument.Parse(stdout);
@@ -73,39 +86,6 @@ public class BlockchainTestJsonOutputTests
     }
 
     private static string Trim(string output) => output.Length <= 200 ? output : $"{output[..200]}...";
-
-    /// <summary>Runs the built nethtest binary over a fixture the way the nethtest workflow does.</summary>
-    private static async Task<(string Stdout, string Stderr)> RunNethtest(string fixture)
-    {
-        string executable = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "nethtest.exe" : "nethtest");
-        Assert.That(File.Exists(executable), $"nethtest was not built next to the tests at {executable}");
-
-        using Process process = new()
-        {
-            StartInfo = new ProcessStartInfo(executable, ["--blockTest", "--input", fixture, "--jsonout", "--neverTrace"])
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            }
-        };
-
-        process.Start();
-        // Both streams are drained before waiting, so neither can fill its buffer and block the run.
-        Task<string> stdout = process.StandardOutput.ReadToEndAsync();
-        Task<string> stderr = process.StandardError.ReadToEndAsync();
-        using CancellationTokenSource timeout = new(NethtestTimeout);
-        try
-        {
-            await process.WaitForExitAsync(timeout.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            process.Kill(entireProcessTree: true);
-            Assert.Fail($"nethtest did not exit within {NethtestTimeout}");
-        }
-
-        return (await stdout, await stderr);
-    }
 
     /// <summary>
     /// Writes a fixture whose post-state expects accounts that its empty pre-state never creates, so
