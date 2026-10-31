@@ -9,6 +9,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
 using NUnit.Framework;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -18,8 +19,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using ConcurrentCollections;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -30,10 +34,14 @@ using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
+using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
+using Nethermind.State.Healing;
 using Nethermind.State.Proofs;
 using Nethermind.State.SnapServer;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Test.FastSync;
 using NSubstitute;
 using Nethermind.Trie.Pruning;
 using Nethermind.Trie;
@@ -1151,6 +1159,7 @@ public class SnapProviderTests
         });
 
         using IPersistence.IPersistenceReader reader = new RocksDbPersistence(resumedDb, LimboLogs.Instance, NullTrieNodeLog.Instance).CreateReader();
+        SnapCheckpoint? finished = BasePersistence.ReadSnapCheckpoint(resumedDb.GetColumnDb(FlatDbColumns.Metadata)) is { } record ? SnapCheckpoint.Decode(record) : null;
         using (Assert.EnterMultipleScope())
         {
             foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
@@ -1159,7 +1168,8 @@ public class SnapProviderTests
             }
 
             Assert.That(resumedPivot.UpdatedStorages, Is.EquivalentTo(uninterruptedPivot.UpdatedStorages), "accounts to heal");
-            Assert.That(BasePersistence.ReadSnapCheckpoint(resumedDb.GetColumnDb(FlatDbColumns.Metadata)), Is.Null, "a finished state ranges phase leaves no checkpoint");
+            Assert.That(finished?.Partitions.Select(static p => p.MoreAccountsToRight), Is.EqualTo(new[] { false }), "a finished state ranges phase leaves a checkpoint of finished ranges");
+            Assert.That(finished?.StorageRangesToRefetch(), Is.Empty, "with no storage left to download");
 
             Assert.That(reader.GetAccountRaw(deleted), Is.Null, "the account deleted since the checkpoint");
             RlpReader changed = new(reader.GetAccountRaw(withChangedBalance));
@@ -1183,9 +1193,282 @@ public class SnapProviderTests
         }
 
         static ValueHash256 SlotKey(int slot) => Keccak.Compute(slot.ToBigEndianByteArray());
+    }
 
-        static SortedDictionary<string, string> ReadColumn(IColumnsDb<FlatDbColumns> db, FlatDbColumns column) =>
-            new(db.GetColumnDb(column).GetAll().ToDictionary(static kv => Convert.ToHexString(kv.Key), static kv => Convert.ToHexString(kv.Value)));
+    public enum HealingStop { DuringReassembly, AfterChunk, AfterRound, AwaitingFinalPivot }
+
+    /// <summary>
+    /// BAL healing writes skip the WAL, so the checkpoint of the finished ranges is deleted before healing writes
+    /// anything, and a crash during healing starts the sync over. A graceful stop lands between the chunks healing writes,
+    /// flushes them and saves the checkpoint again, so the restarted sync reassembles the trie over them and replays the
+    /// BALs from the anchor again. That has to leave the flat state a run never stopped leaves, under a trie it verifies
+    /// against. The BALs delete and revive accounts, clear and set slots and deploy code, in both rounds of healing.
+    /// </summary>
+    [Test]
+    public async Task Flat_snap_sync_stopped_during_healing_resumes_to_the_state_of_a_run_never_stopped([Values] HealingStop stop, [Values] bool crash)
+    {
+        const int movePivotAt = 6;
+        const int accountCount = 40;
+
+        TestRawTrieStore sourceStore = new(new TestMemDb());
+        StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
+        SnapStateServer server = new(sourceStore.AsReadOnly(), LimboLogs.Instance);
+        Dictionary<Address, Account> accounts = [];
+        Dictionary<Address, StorageTree> storages = [];
+        for (int i = 0; i < accountCount; i++)
+        {
+            Address address = TestItem.Addresses[i];
+            accounts[address] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
+            if (i % 3 != 0) continue;
+
+            StorageTree storage = new(sourceStore.GetTrieStore(address.ToAccountPath.ToCommitment()), LimboLogs.Instance);
+            for (int slot = 1; slot <= 4; slot++) storage.Set((UInt256)slot, [(byte)slot]);
+            storages[address] = storage;
+        }
+
+        // Accounts 2 and 5 hold no storage, so an empty balance deletes them.
+        byte[] code = [0x60, 0x00, 0x60, 0x01];
+        Dictionary<ulong, List<ReadOnlyAccountChanges>> changes = [];
+        Dictionary<ulong, Hash256> roots = new() { [1] = CommitSource(1) };
+        SetBalance(2, 1, 1000);
+        SetSlot(2, 0, 1, 0x42);
+        SetBalance(2, 2, 0);
+        roots[2] = CommitSource(2);
+        SetSlot(5, 3, 2, 0);
+        DeployCode(9, 4);
+        SetBalance(19, 5, 0);
+        roots[20] = CommitSource(20);
+        SetBalance(25, 5, 77);
+        SetSlot(30, 0, 3, 0x99);
+        SetBalance(30, 2, 5);
+        SetBalance(38, 1, 2000);
+        roots[40] = CommitSource(40);
+
+        Dictionary<ulong, BlockHeader> headers = [];
+        BlockAccessListStore balStore = new(new MemDb());
+        for (ulong number = 1; number <= 40; number++)
+        {
+            headers[number] = Build.A.BlockHeader.WithNumber(number).WithParentHash(headers.GetValueOrDefault(number - 1)?.Hash ?? Keccak.Zero)
+                .WithStateRoot(roots.GetValueOrDefault(number) ?? Keccak.EmptyTreeHash).TestObject;
+            if (number > 1)
+                balStore.Insert(number, headers[number].Hash!, Build.A.BlockAccessList.WithAccountChanges([.. changes.GetValueOrDefault(number) ?? []]).TestObject);
+        }
+
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindHeader(Arg.Any<ulong>()).Returns(call => headers.GetValueOrDefault(call.Arg<ulong>()));
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+            .Returns(call => headers.Values.FirstOrDefault(header => header.Hash == call.Arg<Hash256>()));
+        blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(true);
+        ManualTimestamper timestamper = new(DateTimeOffset.FromUnixTimeSeconds((long)headers[1].Timestamp).UtcDateTime);
+        TestSyncConfig syncConfig = new() { SnapResume = true, SnapSyncAccountRangePartitionCount = 1 };
+        List<byte[]?> checkpointsWhileApplying = [];
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> resumedDb = new();
+        using CancellationTokenSource shutdown = new();
+        byte[]? rangesCheckpoint = null;
+        HealingPivot stoppedPivot = new(headers[1], headers[20], headers[40]);
+        StateSyncRunner stopped = StartNode(resumedDb, stoppedPivot, stopping: true);
+        Exception? thrown = null;
+        try
+        {
+            await stopped.RunSnapSyncWithBalHealing(headers[1], shutdown.Token);
+        }
+        catch (Exception e)
+        {
+            thrown = e;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown, crash ? Is.Not.Null.And.Not.InstanceOf<OperationCanceledException>() : Is.InstanceOf<OperationCanceledException>());
+            Assert.That(ReadCheckpoint(resumedDb), crash ? Is.Null : Is.EqualTo(rangesCheckpoint).And.Not.Null, "the checkpoint left by the stop");
+        }
+
+        StateSyncRunner resumed = StartNode(resumedDb, new HealingPivot(headers[40], headers[40]), stopping: false);
+        BlockHeader? anchor = resumed.GetResumedAnchor();
+        if (crash)
+        {
+            Assert.That(anchor, Is.Null, "nothing to resume after a crash");
+            CreateFlatSnapTrieFactory(resumedDb, syncConfig).EnsureInitialize();
+            Assert.That(resumedDb.GetColumnDb(FlatDbColumns.Account).GetAll(), Is.Empty, "the sync starts over");
+            return;
+        }
+
+        Assert.That(anchor, Is.EqualTo(headers[1]), "the anchor resumed from");
+        await resumed.RunSnapSyncWithBalHealing(anchor!, default);
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> uninterruptedDb = new();
+        await StartNode(uninterruptedDb, new HealingPivot(headers[1], headers[20], headers[40]), stopping: false).RunSnapSyncWithBalHealing(headers[1], default);
+
+        using IPersistence.IPersistenceReader reader = new RocksDbPersistence(resumedDb, LimboLogs.Instance, NullTrieNodeLog.Instance).CreateReader();
+        TestErrorLogManager verifierErrors = new();
+        FlatTrieVerifier verifier = new(verifierErrors);
+        verifier.Verify(reader, new FlatLocalDbContext.ReadOnlyTrieStore(reader), roots[40], default);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(checkpointsWhileApplying, Is.Not.Empty.And.All.Null, "the checkpoint is gone while healing writes");
+            Assert.That(ReadColumn(resumedDb, FlatDbColumns.Account), Is.EqualTo(ReadColumn(uninterruptedDb, FlatDbColumns.Account)), "account column");
+            Assert.That(ReadColumn(resumedDb, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(uninterruptedDb, FlatDbColumns.Storage)), "storage column");
+            Assert.That(verifier.Stats, Is.EqualTo(new FlatTrieVerifier.VerificationStats(accounts.Count, verifier.Stats.SlotCount, 0, 0, 0, 0)), "flat against trie");
+            Assert.That(verifierErrors.Errors, Is.Empty, "trie node hashes");
+        }
+
+        // One node's run: the ranges with the pivot moved at movePivotAt, or resumed already finished, then healing.
+        StateSyncRunner StartNode(IColumnsDb<FlatDbColumns> db, HealingPivot pivot, bool stopping)
+        {
+            FlatSnapTrieFactory factory = CreateFlatSnapTrieFactory(db, syncConfig);
+            ISnapSyncRunner snapSyncRunner = Substitute.For<ISnapSyncRunner>();
+            snapSyncRunner.Run(Arg.Any<CancellationToken>()).Returns(async _ =>
+            {
+                await RunSnapSync(factory, syncConfig, pivot, server, beforeRequest: request =>
+                {
+                    if (request == movePivotAt) pivot.Header = headers[2];
+                });
+                rangesCheckpoint ??= ReadCheckpoint(db);
+            });
+
+            IBlockAccessListStore observedBals = Substitute.For<IBlockAccessListStore>();
+            observedBals.Exists(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(call => balStore.Exists(call.ArgAt<ulong>(0), call.ArgAt<Hash256>(1)));
+            observedBals.Get(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(call =>
+            {
+                checkpointsWhileApplying.Add(ReadCheckpoint(db));
+                // The second chunk of the first round, from the block after the anchor.
+                if (call.ArgAt<ulong>(0) == headers[1].Number + 1 + FlatBalHealing.BalsChunkSize) StopIf(HealingStop.AfterChunk);
+                return balStore.Get(call.ArgAt<ulong>(0), call.ArgAt<Hash256>(1));
+            });
+
+            RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
+            FlatBalHealing flatHealing = new(blockTree, observedBals, new TrieReassembler(persistence, LimboLogs.Instance), persistence,
+                Substitute.For<ITreeSyncStore>(), new MemDb(), new Lazy<ICodeRecovery>(Substitute.For<ICodeRecovery>()), LimboLogs.Instance);
+            IBalHealing healing = Substitute.For<IBalHealing>();
+            healing.Reassemble(Arg.Any<IReadOnlyCollection<Hash256>>(), Arg.Any<CancellationToken>()).Returns(call =>
+                flatHealing.Reassemble(new StopAfterStorageTries(call.Arg<IReadOnlyCollection<Hash256>>(), () => StopIf(HealingStop.DuringReassembly)), call.Arg<CancellationToken>()));
+            healing.ApplyRange(Arg.Any<Hash256>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>()).Returns(call =>
+                flatHealing.ApplyRange(call.ArgAt<Hash256>(0), call.ArgAt<BlockHeader>(1), call.ArgAt<BlockHeader>(2), call.ArgAt<CancellationToken>(3)));
+            healing.TryRecoverMissingCode(Arg.Any<CancellationToken>()).Returns(call => flatHealing.TryRecoverMissingCode(call.Arg<CancellationToken>()));
+
+            pivot.OnUpdate = round =>
+            {
+                if (round == 1) StopIf(HealingStop.AfterRound);
+            };
+            pivot.CanFinalizeAt = _ =>
+            {
+                StopIf(HealingStop.AwaitingFinalPivot);
+                return !stopping || stop != HealingStop.AwaitingFinalPivot;
+            };
+
+            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+            syncModeSelector.WaitUntilMode(Arg.Any<Func<SyncMode, bool>>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+            syncPeerPool.InitializedPeers.Returns([]);
+            return new StateSyncRunner(snapSyncRunner, factory, healing, new StateHealingStrategy(syncConfig, new Lazy<IBalHealing>(healing), LimboLogs.Instance),
+                new BalFetcher(syncPeerPool, blockTree, observedBals, syncConfig, LimboLogs.Instance), pivot, blockTree, null!, null!, syncConfig, syncModeSelector,
+                Substitute.For<ISyncProgressResolver>(), Substitute.For<IBeaconSyncStrategy>(), syncPeerPool, timestamper, null, null, LimboLogs.Instance);
+
+            void StopIf(HealingStop at)
+            {
+                if (!stopping || at != stop) return;
+                if (crash) throw new InvalidOperationException("Crashed");
+                shutdown.Cancel();
+            }
+        }
+
+        void SetBalance(ulong block, int account, UInt256 balance)
+        {
+            Address address = TestItem.Addresses[account];
+            if (balance.IsZero)
+            {
+                accounts.Remove(address);
+                sourceTree.Set(address, null);
+            }
+            else
+            {
+                accounts[address] = accounts.TryGetValue(address, out Account? existing) ? existing.WithChangedBalance(balance) : Build.An.Account.WithBalance(balance).TestObject;
+            }
+
+            AddChange(block, Build.An.AccountChanges.WithAddress(address).WithBalanceChanges(new BalanceChange(0, balance)).TestObject);
+        }
+
+        void SetSlot(ulong block, int account, int slot, byte value)
+        {
+            Address address = TestItem.Addresses[account];
+            storages[address].Set((UInt256)slot, [value]);
+            AddChange(block, Build.An.AccountChanges.WithAddress(address).WithStorageChanges((UInt256)slot, new StorageChange(0, value)).TestObject);
+        }
+
+        void DeployCode(ulong block, int account)
+        {
+            Address address = TestItem.Addresses[account];
+            accounts[address] = accounts[address].WithChangedNonce(1).WithChangedCodeHash(Keccak.Compute(code));
+            AddChange(block, Build.An.AccountChanges.WithAddress(address)
+                .WithNonceChanges(new NonceChange(0, 1)).WithCodeChanges(new CodeChange(0, code)).TestObject);
+        }
+
+        void AddChange(ulong block, ReadOnlyAccountChanges change)
+        {
+            if (!changes.TryGetValue(block, out List<ReadOnlyAccountChanges>? blockChanges)) changes[block] = blockChanges = [];
+            blockChanges.Add(change);
+        }
+
+        Hash256 CommitSource(ulong blockNumber)
+        {
+            using IBlockCommitter _ = sourceStore.BeginBlockCommit(blockNumber);
+            foreach ((Address address, StorageTree storage) in storages)
+            {
+                storage.Commit();
+                if (accounts.TryGetValue(address, out Account? account)) accounts[address] = account.WithChangedStorageRoot(storage.RootHash);
+            }
+
+            foreach ((Address address, Account account) in accounts) sourceTree.Set(address, account);
+            sourceTree.Commit();
+            return sourceTree.RootHash;
+        }
+
+        static byte[]? ReadCheckpoint(IColumnsDb<FlatDbColumns> db) => BasePersistence.ReadSnapCheckpoint(db.GetColumnDb(FlatDbColumns.Metadata));
+    }
+
+    private static SortedDictionary<string, string> ReadColumn(IColumnsDb<FlatDbColumns> db, FlatDbColumns column) =>
+        new(db.GetColumnDb(column).GetAll().ToDictionary(static kv => Convert.ToHexString(kv.Key), static kv => Convert.ToHexString(kv.Value)));
+
+    /// <summary>A pivot at <see cref="Header"/>, which each healing round moves to the next of <paramref name="rounds"/>, staying at the last.</summary>
+    private sealed class HealingPivot(BlockHeader header, params BlockHeader[] rounds) : IStateSyncPivot
+    {
+        private int _round;
+
+        public BlockHeader Header { get; set; } = header;
+
+        /// <summary>Called with the index of the round about to start.</summary>
+        public Action<int>? OnUpdate { get; set; }
+
+        public Func<BlockHeader, bool> CanFinalizeAt { get; set; } = static _ => true;
+
+        public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = [];
+
+        public ulong Diff => 0;
+
+        public BlockHeader GetPivotHeader() => Header;
+
+        public void UpdateHeaderForcefully()
+        {
+            OnUpdate?.Invoke(_round);
+            Header = rounds[Math.Min(_round++, rounds.Length - 1)];
+        }
+
+        public bool CanFinalize(BlockHeader pivot) => CanFinalizeAt(pivot);
+    }
+
+    /// <summary>Calls <paramref name="stop"/> once trie reassembly has gone through the accounts to heal, rebuilding their storage tries, and before it rebuilds the state trie.</summary>
+    private sealed class StopAfterStorageTries(IReadOnlyCollection<Hash256> accounts, Action stop) : IReadOnlyCollection<Hash256>
+    {
+        public int Count => accounts.Count;
+
+        public IEnumerator<Hash256> GetEnumerator()
+        {
+            foreach (Hash256 account in accounts) yield return account;
+            stop();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     private static FlatSnapTrieFactory CreateFlatSnapTrieFactory(IColumnsDb<FlatDbColumns> db, ISyncConfig syncConfig) =>

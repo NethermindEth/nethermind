@@ -13,6 +13,9 @@ namespace Nethermind.Synchronization.SnapSync;
 /// <remarks>
 /// Healing writes bypass the WAL, so they are not crash-durable until <see cref="FinalizeSync"/> flushes them, and
 /// they are never rolled back - a failed run is discarded by the next flat snap initialization clearing the columns.
+/// <see cref="ApplyRange"/> is cancelled only between the chunks of blocks it writes, and <see cref="Reassemble"/>
+/// rebuilds the same trie when run again, so once flushed, a run stopped by cancellation can be reassembled and healed
+/// again from the first pivot.
 /// </remarks>
 public interface IBalHealing
 {
