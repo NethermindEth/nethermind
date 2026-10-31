@@ -35,7 +35,7 @@ on:
         default: 4
         type: number
       buildarg:
-        description: Docker build arguments
+        description: Docker build arguments, e.g. tag=v21.0.1 for the eels simulators
         required: false
         type: string
       hive-repo:
@@ -146,6 +146,9 @@ jobs:
     env:
       LOG_LEVEL: ${{ github.event.inputs.log-level || '3' }}
       BUILDARG: ${{ github.event.inputs.buildarg || '' }}
+      # Image tag of the eels simulators: latest follows the newest execution-specs
+      # mainnet release with its framework fixes. A tag= buildarg overrides it.
+      EELS_TAG: latest
       HIVE_REPO: ${{ github.event.inputs.hive-repo || 'ethereum/hive' }}
       HIVE_BRANCH: ${{ github.event.inputs.hive-branch || 'master' }}
     steps:
@@ -181,12 +184,14 @@ jobs:
         working-directory: hive
         env:
           LIMIT: ${{ matrix.limit }}
+          SUITE: ${{ matrix.suite }}
         run: |
           hive_args=(--client nethermind
             --sim "${{ matrix.suite }}"
             --sim.loglevel "$LOG_LEVEL"
             --sim.parallelism "${{ matrix.parallelism || env.DEFAULT_PARALLELISM }}")
           [[ -n "$LIMIT" ]] && hive_args+=(--sim.limit "$LIMIT")
+          [[ "$SUITE" == ethereum/eels/* ]] && hive_args+=(--sim.buildarg "tag=$EELS_TAG")
           [[ -n "$BUILDARG" ]] && hive_args+=(--sim.buildarg "$BUILDARG")
           ./hive "${hive_args[@]}"
 
