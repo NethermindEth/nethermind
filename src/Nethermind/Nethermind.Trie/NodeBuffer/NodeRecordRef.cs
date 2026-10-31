@@ -42,8 +42,10 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
     {
         get
         {
-            RlpReader reader = new RlpReader(Rlp).EnterSequence<OffFlag>(out _);
-            return reader.ReadRaw(reader.Remaining);
+            ReadOnlySpan<byte> rlp = Rlp;
+            int position = 0;
+            new NodeRlpReader(rlp).ReadSequenceLength(ref position, out int length);
+            return rlp.Slice(position, length);
         }
     }
 
@@ -63,19 +65,17 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
                     : ChildRef.ForHash(new ValueHash256(Payload.Slice(index + ValueHash256.MemorySize * position + 1, ValueHash256.MemorySize)), Pointer(position));
             case NodeRecordKind.InlineBranch:
                 {
-                    RlpReader reader = new(Payload);
-                    for (int i = 0; i < index; i++)
-                    {
-                        reader.SkipItem<OffFlag>();
-                    }
-
-                    return ReadChild(ref reader, position);
+                    NodeRlpReader reader = new(Payload);
+                    int offset = 0;
+                    reader.SkipItems(ref offset, index);
+                    return ReadChild(reader, ref offset, position);
                 }
             case NodeRecordKind.Extension:
                 {
-                    RlpReader reader = new(Payload);
-                    reader.SkipItem<OffFlag>();
-                    return ReadChild(ref reader, 0);
+                    NodeRlpReader reader = new(Payload);
+                    int offset = 0;
+                    reader.SkipItem(ref offset);
+                    return ReadChild(reader, ref offset, 0);
                 }
             default:
                 return ThrowNoChildren();
@@ -110,10 +110,11 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
             return;
         }
 
-        RlpReader reader = new(Payload);
+        NodeRlpReader reader = new(Payload);
+        int cursor = 0;
         for (int i = 0; i < children.Length; i++)
         {
-            children[i] = ReadChild(ref reader, position);
+            children[i] = ReadChild(reader, ref cursor, position);
             if (children[i].Kind == ChildRefKind.Hash) position++;
         }
     }
@@ -133,10 +134,17 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
     private ulong Pointer(int position) =>
         BinaryPrimitives.ReadUInt64LittleEndian(_record[(NodeRecordCodec.HeaderLength + NodeRecordCodec.PointerLength * position)..]);
 
-    private ChildRef ReadChild(ref RlpReader reader, int position)
+    private ChildRef ReadChild(NodeRlpReader reader, ref int offset, int position)
     {
-        if (reader.IsNextSequence) return ChildRef.ForInline(reader.ReadEncodedItem<OffFlag>());
-        ReadOnlySpan<byte> hash = reader.ReadBytes<OffFlag>();
+        if (reader.IsSequenceNext(offset))
+        {
+            int length = reader.PeekNextRlpLength(offset);
+            ChildRef inline = ChildRef.ForInline(reader.Data.Slice(offset, length));
+            offset += length;
+            return inline;
+        }
+
+        reader.DecodeByteArraySpan(ref offset, out ReadOnlySpan<byte> hash);
         return hash.IsEmpty ? default : ChildRef.ForHash(new ValueHash256(hash), Pointer(position));
     }
 
