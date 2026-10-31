@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.StateDiffsWriter.Data;
 
@@ -35,7 +36,7 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
 
         int length = BlockDiffRecordDecoder.Instance.GetLength(record);
         byte[] payload = new byte[length];
-        RlpWriter writer = new(payload);
+        RlpWriter writer = RlpWriter.ContentWriter(payload);
         BlockDiffRecordDecoder.Instance.Encode(ref writer, record);
 
         using IColumnsWriteBatch<BlockDiffsColumns> batch = _db.StartWriteBatch();
@@ -80,7 +81,7 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
         byte[]? bytes = _blockDiffs.Get(key);
         if (bytes is null || bytes.Length == 0) return null;
         RlpReader ctx = new(bytes);
-        return BlockDiffRecordDecoder.Instance.Decode(ref ctx);
+        return BlockDiffRecordDecoder.Instance.Decode(ref ctx, RlpBehaviors.TrustedInput);
     }
 
     /// <summary>Running slot count for an address; 0 when never set or tombstoned.</summary>

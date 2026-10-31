@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.StateDiff.Core.Data;
 
@@ -13,7 +15,7 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
 {
     public static BlockDiffRecordDecoder Instance { get; } = new();
 
-    public override void Encode<TWriter>(ref TWriter stream, BlockDiffRecord? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(ref RlpWriter stream, BlockDiffRecord? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -22,80 +24,97 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
         }
 
         int contentLength = GetContentLength(item);
-        stream.StartSequence(contentLength);
+        RlpSequence sequence = stream.StartSequence(contentLength);
 
         stream.Encode(item.BlockNumber);
         stream.Encode(item.StateRoot);
 
         int codeChangesContent = GetCodeHashChangesContentLength(item.CodeHashChanges);
-        stream.StartSequence(codeChangesContent);
+        RlpSequence codeChanges = stream.StartSequence(codeChangesContent);
         foreach (CodeHashEntry entry in item.CodeHashChanges)
         {
             int entryContent = GetCodeHashEntryContentLength(entry);
-            stream.StartSequence(entryContent);
+            RlpSequence entrySequence = stream.StartSequence(entryContent);
             EncodeHashOrEmpty(ref stream, entry.OldHash);
             EncodeHashOrEmpty(ref stream, entry.NewHash);
             stream.Encode(entry.NewCodeSize);
+            stream.EndSequence(entrySequence);
         }
 
+        stream.EndSequence(codeChanges);
+
         int slotChangesContent = GetSlotCountChangesContentLength(item.SlotCountChanges);
-        stream.StartSequence(slotChangesContent);
+        RlpSequence slotChanges = stream.StartSequence(slotChangesContent);
         foreach (SlotCountEntry entry in item.SlotCountChanges)
         {
             int entryContent = GetSlotCountEntryContentLength(entry);
-            stream.StartSequence(entryContent);
+            RlpSequence entrySequence = stream.StartSequence(entryContent);
             // HashedAddress is pinned at 32 raw bytes; no empty-string short-circuit here unlike code-hash fields.
             stream.Encode(entry.AddressHash);
             stream.Encode(entry.OldCount);
             stream.Encode(entry.NewCount);
+            stream.EndSequence(entrySequence);
         }
+
+        stream.EndSequence(slotChanges);
 
         // Trailing additive fields, always emitted so the on-wire length matches GetContentLength.
         stream.Encode(item.AccountTrieBytesDelta);
         stream.Encode(item.StorageTrieBytesDelta);
         stream.Encode(item.AccountsAddedDelta);
+        stream.EndSequence(sequence);
     }
 
     public override int GetLength(BlockDiffRecord? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetContentLength(item));
 
     protected override BlockDiffRecord DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+            ? Decode<OffFlag>(ref ctx, rlpBehaviors)
+            : Decode<OnFlag>(ref ctx, rlpBehaviors);
+
+    private static BlockDiffRecord Decode<TCanonicalChecks>(ref RlpReader ctx, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
     {
-        int outerLen = ctx.ReadSequenceLength();
-        int outerEnd = ctx.Position + outerLen;
+        RlpReader fields = ctx.EnterSequence<TCanonicalChecks>(out int outerLength);
 
-        long blockNumber = ctx.DecodeLong();
-        Hash256 stateRoot = ctx.DecodeKeccak();
+        long blockNumber = fields.DecodeLong<TCanonicalChecks>();
+        Hash256 stateRoot = fields.DecodeKeccak();
 
-        int codeSeqLen = ctx.ReadSequenceLength();
-        int codeSeqEnd = ctx.Position + codeSeqLen;
+        RlpReader codeReader = fields.EnterSequence<TCanonicalChecks>(out int codeLength);
         List<CodeHashEntry> codeChanges = [];
-        while (ctx.Position < codeSeqEnd)
+        while (codeReader.HasNext)
         {
-            ctx.ReadSequenceLength();
-            ValueHash256 oldHash = ctx.DecodeValueKeccak() ?? CodeHashChange.NoCode;
-            ValueHash256 newHash = ctx.DecodeValueKeccak() ?? CodeHashChange.NoCode;
-            uint newCodeSize = ctx.DecodeUInt();
+            RlpReader entry = codeReader.EnterSequence<TCanonicalChecks>(out int entryLength);
+            ValueHash256 oldHash = entry.DecodeValueKeccak() ?? CodeHashChange.NoCode;
+            ValueHash256 newHash = entry.DecodeValueKeccak() ?? CodeHashChange.NoCode;
+            uint newCodeSize = entry.DecodeUInt<TCanonicalChecks>();
+            codeReader.ExitSequence(in entry, entryLength);
             codeChanges.Add(new CodeHashEntry(oldHash, newHash, newCodeSize));
         }
 
-        int slotSeqLen = ctx.ReadSequenceLength();
-        int slotSeqEnd = ctx.Position + slotSeqLen;
+        fields.ExitSequence(in codeReader, codeLength);
+
+        RlpReader slotReader = fields.EnterSequence<TCanonicalChecks>(out int slotLength);
         List<SlotCountEntry> slotChanges = [];
-        while (ctx.Position < slotSeqEnd)
+        while (slotReader.HasNext)
         {
-            ctx.ReadSequenceLength();
-            ValueHash256 addressHash = ctx.DecodeValueKeccak()
-                ?? throw new RlpException("SlotCountChange.AddressHash must not be empty");
-            ulong oldCount = ctx.DecodeULong();
-            ulong newCount = ctx.DecodeULong();
+            RlpReader entry = slotReader.EnterSequence<TCanonicalChecks>(out int entryLength);
+            ValueHash256 addressHash = entry.DecodeValueKeccak()
+                ?? throw new RlpReaderException("SlotCountChange.AddressHash must not be empty");
+            ulong oldCount = entry.DecodeULong<TCanonicalChecks>();
+            ulong newCount = entry.DecodeULong<TCanonicalChecks>();
+            slotReader.ExitSequence(in entry, entryLength);
             slotChanges.Add(new SlotCountEntry(addressHash, oldCount, newCount));
         }
 
+        fields.ExitSequence(in slotReader, slotLength);
+
         // Optional trailing fields: pre-extension payloads stop early, so a missing slot reads as zero.
-        long accountTrieBytesDelta = ctx.Position < outerEnd ? ctx.DecodeLong() : 0;
-        long storageTrieBytesDelta = ctx.Position < outerEnd ? ctx.DecodeLong() : 0;
-        long accountsAddedDelta = ctx.Position < outerEnd ? ctx.DecodeLong() : 0;
+        long accountTrieBytesDelta = fields.HasNext ? fields.DecodeLong<TCanonicalChecks>() : 0;
+        long storageTrieBytesDelta = fields.HasNext ? fields.DecodeLong<TCanonicalChecks>() : 0;
+        long accountsAddedDelta = fields.HasNext ? fields.DecodeLong<TCanonicalChecks>() : 0;
+
+        ctx.ExitSequence(in fields, outerLength, rlpBehaviors);
 
         return new BlockDiffRecord(
             blockNumber,
@@ -107,8 +126,7 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
             accountsAddedDelta);
     }
 
-    private static void EncodeHashOrEmpty<TWriter>(ref TWriter stream, in ValueHash256 hash)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    private static void EncodeHashOrEmpty(ref RlpWriter stream, in ValueHash256 hash)
     {
         if (hash == CodeHashChange.NoCode)
         {
