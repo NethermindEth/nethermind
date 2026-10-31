@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -70,7 +71,7 @@ public sealed class StorageRangeVisitor(Address address, in ValueHash256 startKe
         }
 
         RlpReader reader = new(node.Value.AsSpan());
-        ReadOnlySpan<byte> content = reader.DecodeByteArraySpan(RlpLimit.L32);
+        ReadOnlySpan<byte> content = reader.DecodeByteArraySpan<OffFlag>(RlpLimit.L32);
         ValueHash256 value = default;
         content.CopyTo(value.BytesAsSpan[(ValueHash256.MemorySize - content.Length)..]);
         _slots.Add((key, value));

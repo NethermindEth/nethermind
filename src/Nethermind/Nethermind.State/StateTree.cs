@@ -11,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -49,7 +50,7 @@ namespace Nethermind.State
             }
 
             RlpReader context = new(bytes);
-            return _decoder.Decode(ref context);
+            return _decoder.Decode(ref context, RlpBehaviors.TrustedInput);
         }
 
         [DebuggerStepThrough]
@@ -62,7 +63,7 @@ namespace Nethermind.State
                 return false;
             }
 
-            return _decoder.TryDecodeStruct(bytes, out account);
+            return _decoder.TryDecodeStruct<OffFlag>(bytes, out account);
         }
 
         [DebuggerStepThrough]
@@ -75,7 +76,7 @@ namespace Nethermind.State
             }
 
             RlpReader context = new(bytes);
-            return _decoder.Decode(ref context);
+            return _decoder.Decode(ref context, RlpBehaviors.TrustedInput);
         }
 
         public void Set(Address address, Account? account)

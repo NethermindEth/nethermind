@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -288,7 +289,10 @@ namespace Nethermind.State.Proofs
             for (int i = 0; i < _hashedStorageKeys.Length; i++)
             {
                 if (IsFullPathMatch(_hashedStorageKeys[i], ctx.Path, node.Key))
-                    _accountProof.StorageProofs[i].Value = new RlpReader(node.Value.AsSpan()).DecodeByteArray();
+                {
+                    RlpReader reader = new(node.Value.AsSpan());
+                    _accountProof.StorageProofs[i].Value = reader.DecodeByteArray();
+                }
             }
         }
 
