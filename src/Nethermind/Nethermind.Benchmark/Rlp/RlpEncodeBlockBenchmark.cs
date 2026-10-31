@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Benchmarks.Rlp
@@ -69,7 +70,7 @@ namespace Nethermind.Benchmarks.Rlp
         {
             int length = _blockDecoder.GetLength(_block, RlpBehaviors.None);
             byte[] bytes = new byte[length];
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             _blockDecoder.Encode(ref writer, _block);
             return Bytes.Empty;
         }
