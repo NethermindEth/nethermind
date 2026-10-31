@@ -201,6 +201,7 @@ public abstract class TransactionTestBase
         ["TransactionException.RLP_LEADING_ZEROS_DATA_SIZE"] = ["Length starts with 0"],
         ["TransactionException.RLP_LEADING_ZEROS_GASLIMIT"] = ["Non-canonical integer"],
         ["TransactionException.RLP_LEADING_ZEROS_GASPRICE"] = ["Non-canonical integer"],
+        ["TransactionException.RLP_LEADING_ZEROS_PRIORITY_FEE"] = ["Non-canonical integer"],
         ["TransactionException.RLP_LEADING_ZEROS_R"] = ["Collection count"],
         ["TransactionException.RLP_LEADING_ZEROS_S"] = ["Collection count"],
         ["TransactionException.RLP_LEADING_ZEROS_V"] = ["Non-canonical integer"],
