@@ -11,6 +11,7 @@ using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Discovery.Discv5.Packets;
 using Nethermind.Network.Enr;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using Org.BouncyCastle.Crypto;
@@ -323,7 +324,7 @@ public class CodecTests
             Rlp.Encode(new byte[17]),
             Rlp.Encode(30303)));
 
-        Assert.That(() => MessageCodec.Decode(message), Throws.InstanceOf<RlpException>());
+        Assert.That(() => MessageCodec.Decode(message), Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -361,7 +362,7 @@ public class CodecTests
         using TalkRespMsg message = new([0, 0, 0, 4], new byte[] { 5, 6, 7, 8 });
         using ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
 
-        Assert.That(() => MessageCodec.Decode(encoded), Throws.TypeOf<RlpException>());
+        Assert.That(() => MessageCodec.Decode(encoded), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -461,7 +462,7 @@ public class CodecTests
         Array.Fill(distances, Rlp.Encode(1));
         byte[] message = CreateMessage(MessageType.FindNode, Rlp.Encode(Rlp.Encode(new byte[] { 1 }), Rlp.Encode(distances)));
 
-        Assert.That(() => MessageCodec.Decode(message), Throws.TypeOf<RlpException>());
+        Assert.That(() => MessageCodec.Decode(message), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -471,7 +472,7 @@ public class CodecTests
         Array.Fill(records, Rlp.Encode(Array.Empty<byte>()));
         byte[] message = CreateMessage(MessageType.Nodes, Rlp.Encode(Rlp.Encode(new byte[] { 1 }), Rlp.Encode(1), Rlp.Encode(records)));
 
-        Assert.That(() => MessageCodec.Decode(message), Throws.TypeOf<RlpException>());
+        Assert.That(() => MessageCodec.Decode(message), Throws.TypeOf<RlpReaderException>());
     }
 
     private static PacketCodec CreateCodec(PrivateKey privateKey)
