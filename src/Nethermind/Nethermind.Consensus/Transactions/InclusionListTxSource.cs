@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Transactions;
@@ -43,7 +44,7 @@ public class InclusionListTxSource(
         {
             return decoded.Value;
         }
-        catch (Exception ex) when (ex is RlpException or ArgumentException)
+        catch (Exception ex) when (ex is RlpReaderException or ArgumentException)
         {
             // Lazy caches the failure, so a malformed list is reported once per build, not per improvement.
             if (_logger.IsWarn) _logger.Warn($"Discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message}); building without it.");

@@ -7,6 +7,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Processing;
@@ -44,7 +45,7 @@ public sealed class BlockAccessListRecoveryStep(IBlockAccessListStore balStore, 
         {
             stored = balStore.Get(block.Number, blockHash);
         }
-        catch (RlpException ex)
+        catch (RlpReaderException ex)
         {
             if (_logger.IsWarn) _logger.Warn($"Ignoring undecodable stored block access list of {block.ToString(Block.Format.Short)}: {ex.Message}");
             return;

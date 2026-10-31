@@ -13,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Tracing;
@@ -114,7 +115,7 @@ public sealed class BlockAccessListPrefixStateSeedSource(IPrefixStateSeedSource 
         {
             return store.Get((ulong)block.Number, blockHash);
         }
-        catch (RlpException e)
+        catch (RlpReaderException e)
         {
             if (Interlocked.Exchange(ref _reportedCorruption, 1) == 0 && _logger.IsWarn)
                 _logger.Warn($"The stored access list of block {block.Number} ({blockHash}) does not decode; its traces replay the transactions ahead of the target. Further such lists are not reported. {e.Message}");
