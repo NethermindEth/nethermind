@@ -66,7 +66,8 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowUnexpectedPostStateLength(int length)
-            => throw new RlpReaderException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");    }
+            => throw new RlpReaderException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
+    }
 
     /// <summary>The receipt's content length, and the length of the inner sequence the encoder repeats:
     /// the per-frame receipts for a frame transaction, the logs for every other type.</summary>
