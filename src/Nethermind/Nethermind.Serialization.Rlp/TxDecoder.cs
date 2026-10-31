@@ -7,6 +7,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 
@@ -256,6 +258,31 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         EncodeTx(ref writer, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
         Rlp.CheckLength(in writer, bytes.Length);
         return new Rlp(bytes);
+    }
+
+    /// <summary>Computes the Keccak hash of the encoding that <see cref="EncodeTx(ref RlpWriter, T, RlpBehaviors, bool, bool, ulong)"/> writes.</summary>
+    /// <remarks>Encodes to an exact-size stack or pooled buffer, then hashes the buffer once.</remarks>
+    [SkipLocalsInit]
+    public ValueHash256 ComputeValueHash(T? item, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
+    {
+        const int maxStackLength = 512;
+        int length = GetLength(item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        if (length <= maxStackLength)
+        {
+            Span<byte> buffer = stackalloc byte[maxStackLength];
+            return EncodeAndHash(buffer[..length], item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        }
+
+        using ArrayPoolSpan<byte> pooled = new(length);
+        return EncodeAndHash(pooled, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+    }
+
+    private ValueHash256 EncodeAndHash(Span<byte> buffer, T? item, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
+    {
+        RlpWriter writer = RlpWriter.ContentWriter(buffer);
+        EncodeTx(ref writer, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        Rlp.CheckLength(in writer, buffer.Length);
+        return ValueKeccak.Compute(buffer);
     }
 
     /// <summary>
