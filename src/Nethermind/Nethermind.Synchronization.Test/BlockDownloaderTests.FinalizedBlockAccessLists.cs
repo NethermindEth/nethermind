@@ -8,8 +8,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -113,6 +115,31 @@ public partial class BlockDownloaderTests
         }
     }
 
+    // Without a peer that serves lists, or with one behind the block, the block executes at once, without a list or receipts.
+    [TestCase(EthVersions.Eth70, 1UL)]
+    [TestCase(EthVersions.Eth71, 0UL)]
+    public async Task Finalized_catchup_executes_at_once_without_a_peer_that_serves_the_list(byte protocolVersion, ulong peerHead)
+    {
+        await using CatchUp catchUp = CreateCatchUp(1);
+        catchUp.Peer.SyncPeer.ProtocolVersion.Returns(protocolVersion);
+        catchUp.Peer.SyncPeer.HeadNumber.Returns(peerHead);
+        Block block = catchUp.Blocks[0];
+        bool suggested = false;
+        catchUp.Ctx.BlockTree.NewBestSuggestedBlock += (_, args) => suggested |= args.Block.Hash == block.Hash;
+
+        BlocksRequest bodyRequest = (await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
+        bodyRequest.OwnedBodies = new OwnedBlockBodies([block.Body]);
+        catchUp.Downloader.HandleResponse(bodyRequest, catchUp.Peer);
+        BlocksRequest? next = await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next, Is.Null);
+            Assert.That(suggested, Is.True);
+            Assert.That(catchUp.Ctx.ReceiptStorage.HasBlock(block.Number, block.Hash!), Is.False);
+        }
+    }
+
     [Test]
     public async Task Finalized_catchup_keeps_requesting_data_cut_short_by_peer_limits()
     {
@@ -151,16 +178,20 @@ public partial class BlockDownloaderTests
     }
 
     /// <summary>Creates a node whose finalized beacon chain holds <paramref name="blockCount"/> blocks awaiting catch-up.</summary>
-    private CatchUp CreateCatchUp(int blockCount)
+    private CatchUp CreateCatchUp(int blockCount, bool reconstruct = true, IBlocksConfig? blocksConfig = null, Action<ContainerBuilder>? configurer = null)
     {
         IForwardHeaderProvider headers = Substitute.For<IForwardHeaderProvider>();
         IBeaconSyncStrategy beacon = Substitute.For<IBeaconSyncStrategy>();
         byte[] bal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
-        IContainer node = CreateMergeNode(builder => builder
-            .AddSingleton<IForwardHeaderProvider>(headers)
-            .AddSingleton<IBeaconSyncStrategy>(beacon)
-            .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance)),
-            new SyncConfig { ReconstructFinalizedStateFromBlockAccessLists = true });
+        IContainer node = CreateMergeNode(builder =>
+            {
+                builder
+                    .AddSingleton<IForwardHeaderProvider>(headers)
+                    .AddSingleton<IBeaconSyncStrategy>(beacon)
+                    .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance));
+                configurer?.Invoke(builder);
+            },
+            new SyncConfig { ReconstructFinalizedStateFromBlockAccessLists = reconstruct }, blocksConfig ?? new BlocksConfig());
         Context ctx = node.Resolve<Context>();
         TxReceipt[] receipts = [new TxReceipt { StatusCode = 1, GasUsedTotal = 21000, Bloom = Bloom.Empty, Logs = [] }];
         Hash256 receiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, Amsterdam.Instance, null);
@@ -194,6 +225,7 @@ public partial class BlockDownloaderTests
         public byte[] Bal { get; }
         public BlockDownloader Downloader { get; }
         public PeerInfo Peer { get; } = new(Substitute.For<ISyncPeer>());
+        public IBlockAccessListStore BalStore => _node.Resolve<IBlockAccessListStore>();
 
         public CatchUp(IContainer node, Block[] blocks, TxReceipt[] receipts, byte[] bal)
         {
@@ -204,6 +236,8 @@ public partial class BlockDownloaderTests
             Bal = bal;
             Downloader = (BlockDownloader)Ctx.FullSyncFeedComponent.BlockDownloader;
             Peer.SyncPeer.ProtocolVersion.Returns(EthVersions.Eth71);
+            Peer.SyncPeer.HeadNumber.Returns(blocks[^1].Number);
+            Ctx.PeerPool.InitializedPeers.Returns([Peer]);
         }
 
         public ValueTask DisposeAsync() => _node.DisposeAsync();

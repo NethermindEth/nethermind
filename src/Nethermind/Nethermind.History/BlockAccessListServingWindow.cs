@@ -27,12 +27,12 @@ public sealed class BlockAccessListServingWindow(
     /// <summary>Whether the block is inside the retention window of the highest known head.</summary>
     /// <param name="blockNumber">The requested block height.</param>
     /// <param name="peerHeadNumber">
-    /// The serving peer's head, which may be ahead during catch-up. It is capped at our best known header, so a peer
-    /// cannot move a block out of the window by advertising a far head.
+    /// The serving peer's head, which may be ahead during catch-up. It is capped at our best known header, beacon headers
+    /// included, so a peer cannot move a block out of the window by advertising a far head.
     /// </param>
     public bool Contains(ulong blockNumber, ulong peerHeadNumber = 0)
     {
-        ulong peerHead = ulong.Min(peerHeadNumber, blockTree.BestKnownNumber);
+        ulong peerHead = ulong.Min(peerHeadNumber, ulong.Max(blockTree.BestKnownNumber, blockTree.BestKnownBeaconNumber));
         ulong head = ulong.Max(peerHead, ulong.Max(blockTree.Head?.Number ?? 0, blockTree.SyncPivot.BlockNumber));
         return blockNumber >= head.SaturatingSub(_windowBlocks);
     }
