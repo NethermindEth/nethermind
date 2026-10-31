@@ -147,5 +147,25 @@ namespace Nethermind.Core.Test.Encoding
 
             Assert.That(DecodeContext, Throws.InstanceOf<RlpReaderException>().With.Message.Contain(error));
         }
+
+        [Test]
+        public void Rejects_list_of_one_byte_items(
+            [Values(1, 22, 23, 100_000)] int itemCount,
+            [Values(RlpBehaviors.None, RlpBehaviors.TrustedInput)] RlpBehaviors behaviors)
+        {
+            byte[] items = new byte[itemCount];
+            items.AsSpan().Fill(0x01);
+            byte[] invalid = new byte[RlpCodec.LengthOfSequence(itemCount)];
+            RlpWriter writer = RlpWriter.ContentWriter(invalid);
+            RlpSequence sequence = writer.StartSequence(itemCount);
+            writer.WriteEncoded(items);
+            writer.EndSequence(sequence);
+
+            Assert.That(() =>
+            {
+                RlpReader ctx = new(invalid);
+                _decoder.Decode(ref ctx, behaviors);
+            }, Throws.InstanceOf<RlpReaderException>());
+        }
     }
 }
