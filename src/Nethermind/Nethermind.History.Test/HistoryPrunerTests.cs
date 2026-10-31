@@ -33,6 +33,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
@@ -190,7 +191,7 @@ public class HistoryPrunerTests
             {
                 balStore.Received(1).DeleteRange(1, cutoff);
                 Assert.That(pruner.BalsDeletePointer, Is.EqualTo(cutoff));
-                Assert.That(new RlpReader(metadataDb.Get(MetadataDbKeys.BlockAccessListPruningDeletePointer)!).DecodeULong(), Is.EqualTo(cutoff));
+                Assert.That(RlpCodec.Read(metadataDb.Get(MetadataDbKeys.BlockAccessListPruningDeletePointer)!, static (ref RlpReader r) => r.DecodeULong()), Is.EqualTo(cutoff));
             }
             else
             {
@@ -963,7 +964,7 @@ public class HistoryPrunerTests
             });
         pruner.TryPruneHistory(CancellationToken.None);
 
-        Assert.That(new RlpReader(metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer)!).DecodeULong(),
+        Assert.That(RlpCodec.Read(metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer)!, static (ref RlpReader r) => r.DecodeULong()),
             Is.EqualTo(cutoff));
         retention.Received().OnPruningPassStarting(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<ulong>());
     }
@@ -1217,7 +1218,7 @@ public class HistoryPrunerTests
 #pragma warning disable NUnit2045 // The cursor must exist before it is decoded.
         Assert.That(cursor, Is.Not.Null, "without this write the boundary is durable and the reclaim behind it is not");
 #pragma warning restore NUnit2045
-        Assert.That(new RlpReader(cursor).DecodeULong(), Is.EqualTo(36UL));
+        Assert.That(RlpCodec.Read(cursor, static (ref RlpReader r) => r.DecodeULong()), Is.EqualTo(36UL));
     }
 
     [Test]

@@ -13,6 +13,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -338,7 +339,7 @@ public class BlockAccessListPrefixStateSeedSourceTests
     {
         IBlockAccessListStore store = Substitute.For<IBlockAccessListStore>();
         Block block = BuildBlock();
-        store.Get(ForkBlock, block.Hash).Returns(_ => throw new RlpException("corrupt"), _ => BuildAccessList(TestItem.KeccakA));
+        store.Get(ForkBlock, block.Hash).Returns(_ => throw new RlpReaderException("corrupt"), _ => BuildAccessList(TestItem.KeccakA));
         BlockAccessListPrefixStateSeedSource seeds = BuildSource(store);
         StateReadOverlaySlot slot = new();
 
