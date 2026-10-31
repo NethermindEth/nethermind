@@ -17,6 +17,8 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         private const int IndexLength = 32;
         private const int IndexRlpLength = 1 + IndexLength;
         private const byte IndexPrefix = Rlp.EmptyByteArrayByte + IndexLength;
+        // The smallest item: a short list with an address and an empty key list.
+        private const int MinItemLength = 1 + Rlp.LengthOfAddressRlp + 1;
 
         public static readonly AccessListDecoder Instance = new();
 
@@ -34,7 +36,11 @@ namespace Nethermind.Serialization.Rlp.Eip2930
 
             RlpReader items = reader.EnterSequence<TCanonicalChecks>(out int length);
 
-            AccessList.Builder accessListBuilder = new();
+            // The key count is an upper bound: all bytes that the items do not need at minimum are keys.
+            // Malformed items can be 1 byte long, so the payload length also caps the address count.
+            int addressCount = Math.Min(items.CountItems<TCanonicalChecks>(int.MaxValue), items.Remaining / MinItemLength);
+            int keyCount = (int)(Math.Max(0, items.Remaining - (long)addressCount * MinItemLength) / IndexRlpLength);
+            AccessList.Builder accessListBuilder = new(addressCount, keyCount);
             while (items.HasNext)
             {
                 RlpReader item = items.EnterSequence<TCanonicalChecks>(out int accessListItemLength);
