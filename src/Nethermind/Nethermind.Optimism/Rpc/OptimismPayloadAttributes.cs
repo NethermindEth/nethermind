@@ -11,6 +11,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.Rpc;
@@ -58,9 +59,9 @@ public class OptimismPayloadAttributes : PayloadAttributes
             {
                 return TxRlpDecoder.DecodeCompleteNotNull(t, RlpBehaviors.SkipTypedWrapping);
             }
-            catch (RlpException e)
+            catch (RlpReaderException e)
             {
-                throw new RlpException($"Transaction {i} is not valid", e);
+                throw new RlpReaderException($"Transaction {i} is not valid", e);
             }
         }).ToArray();
 
@@ -151,7 +152,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         {
             GetTransactions();
         }
-        catch (RlpException e)
+        catch (RlpReaderException e)
         {
             error = $"Error decoding transactions: {e}";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
