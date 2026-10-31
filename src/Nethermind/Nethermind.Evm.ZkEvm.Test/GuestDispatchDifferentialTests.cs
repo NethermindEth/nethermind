@@ -648,7 +648,7 @@ public class GuestDispatchDifferentialTests
     /// its need, which puts the end of the gas inside its word and expansion charges.
     /// </remarks>
     [Test]
-    public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2)] int memory)
+    public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.CODECOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2)] int memory)
     {
         byte[] data = new byte[40];
         for (int i = 0; i < data.Length; i++) data[i] = (byte)(i + 1);
@@ -659,7 +659,7 @@ public class GuestDispatchDifferentialTests
             _ => [(byte)Instruction.PUSH1, 0xbb, (byte)Instruction.PUSH2, 0x01, 0x00, (byte)Instruction.MSTORE],
         };
         UInt256[] destinations = [0, 7, 0x20, 0x40, 0x61, 0x120, 0x3f0, 0x400, UInt256.One << 32, UInt256.One << 64];
-        UInt256[] sources = [0, 5, 39, 40, 41, UInt256.One << 32, UInt256.One << 64];
+        UInt256[] sources = [0, 5, 39, 40, 41, 0x100, UInt256.One << 32, UInt256.One << 64];
         UInt256[] sizes = [0, 1, 31, 32, 33, 64, 200, UInt256.One << 32];
 
         List<string> mismatches = [];
@@ -670,7 +670,7 @@ public class GuestDispatchDifferentialTests
                     byte[] code =
                     [
                         .. prefix, (byte)Instruction.PUSH32, .. size.ToBigEndian(), (byte)Instruction.PUSH32, .. source.ToBigEndian(),
-                        (byte)Instruction.PUSH32, .. destination.ToBigEndian(), (byte)op, (byte)Instruction.MSIZE, (byte)Instruction.STOP
+                        (byte)Instruction.PUSH32, .. destination.ToBigEndian(), (byte)op, (byte)Instruction.MSIZE, (byte)Instruction.STOP, (byte)Instruction.INVALID
                     ];
                     Outcome fresh = Run(100_000, data, 0, new CodeInfo(code), Table.Traced, returnData: data);
                     ulong needed = 100_000 - fresh.GasLeft;
