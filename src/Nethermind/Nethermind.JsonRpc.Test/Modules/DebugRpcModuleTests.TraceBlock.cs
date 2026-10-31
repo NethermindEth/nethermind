@@ -55,6 +55,557 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public partial class DebugRpcModuleTests
 {
     [Test]
+    public async Task JavaScript_immediate_deadline_does_not_reclassify_setup_failure(
+        [Values] bool interrupt, [Values(0, -1)] int timeout)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        DeadlineExecution clock = new();
+        bool reached = false;
+        int timersDuringSetup = -1;
+        InvalidOperationException hostFailure = new("host failure");
+        Action fail = () =>
+        {
+            reached = true;
+            timersDuringSetup = clock.Timers.Count;
+            if (interrupt) engine.Interrupt();
+            else throw hostFailure;
+        };
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.failForTest=action;}}"))
+            installer.InvokeMethod("install", fail);
+        Exception failure = Assert.Catch(() =>
+        {
+            using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
+                "{fault:function(){},setup:function(){failForTest();},result:function(){return {};}}", timeoutSeconds: timeout);
+        })!;
+        Assert.That(failure, Is.Not.Null);
+        Exception origin = failure;
+        while (origin.InnerException is { } inner) origin = inner;
+        engine.Dispose();
+        clock.Advance(0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reached, Is.True);
+            Assert.That(timersDuringSetup, Is.Zero);
+            Assert.That(JavaScriptTraceFailure.IsRecoverable(failure), Is.False);
+            Assert.That(failure, Is.Not.TypeOf<GethTraceDeadlineException>());
+            Assert.That(failure.Message, Does.Not.Contain("execution timeout"));
+            if (interrupt) Assert.That(failure, Is.TypeOf<ScriptInterruptedException>());
+            else Assert.That(origin, Is.SameAs(hostFailure));
+            Assert.That(clock.Timers, Is.Empty);
+            Assert.That(Engine.CurrentEngine, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task JavaScript_nonpositive_deadline_starts_after_successful_setup_and_requires_watcher_delivery(
+        [Values(0, -1)] int timeout, [Values] bool deliver)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        DeadlineExecution clock = new();
+        bool setupReached = false;
+        bool resultReached = false;
+        int timersDuringSetup = -1;
+        Action setup = () =>
+        {
+            setupReached = true;
+            timersDuringSetup = clock.Timers.Count;
+        };
+        Action resultCallback = () => resultReached = true;
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer(
+            "{install:function(setup,result){globalThis.setupForTest=setup;globalThis.resultForTest=result;}}"))
+            installer.InvokeMethod("install", setup, resultCallback);
+        using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
+            "{fault:function(){},setup:function(){setupForTest();},result:function(){resultForTest();return 7;}}", timeoutSeconds: timeout);
+        Assert.That(clock.Timers, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(setupReached, Is.True);
+            Assert.That(timersDuringSetup, Is.Zero);
+            Assert.That(clock.Timers[0].Disposed, Is.False);
+        }
+        if (deliver)
+        {
+            clock.Timers[0].Fire();
+            Assert.Throws<GethTraceDeadlineException>(() => { using GethLikeTxTrace result = tracer.BuildResult(); });
+        }
+        else
+        {
+            using GethLikeTxTrace result = tracer.BuildResult();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TraceError, Is.Null);
+                Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo("7"));
+            }
+        }
+        tracer.Dispose();
+        engine.Dispose();
+        Assert.That(clock.Timers, Has.Count.EqualTo(1));
+        Assert.DoesNotThrow(clock.Timers[0].Fire);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resultReached, Is.EqualTo(!deliver));
+            Assert.That(clock.Timers[0].Disposed, Is.True);
+            Assert.That(Engine.CurrentEngine, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Scoped_javascript_block_tracer_skips_prefix_engines_and_preserves_selected_index(
+        [Values(0, 2)] int selectedAt, [Values] bool recover)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
+        Assert.That(block.Transactions, Has.Length.EqualTo(3));
+        DeadlineExecution clock = new();
+        GethTraceDeadlineScope scope = new();
+        Hash256 target = block.Transactions[selectedAt].Hash!;
+        GethTraceOptions options = new()
+        {
+            Tracer = "{fault:function(){},result:function(ctx){return {txIndex:ctx.txIndex};}}",
+            EnforceExecutionDeadline = true,
+            CaptureJavaScriptErrors = recover,
+            DeadlineScope = scope,
+            DeadlineClock = clock,
+            Timeout = TimeSpan.Zero
+        };
+        IBlockTracer<GethLikeTxTrace> inner = GethStyleTracer.CreateOptionsTracer(block.Header, options,
+            chain.MainWorldState, new TestSpecProvider(Prague.Instance));
+        using GethLikeBlockDeadlineTracer tracer = new(inner, options with { TxHash = target }, CancellationToken.None, scope);
+        tracer.StartNewBlockTrace(block);
+        for (int i = 0; i <= selectedAt; i++)
+        {
+            using ITxTracer transaction = tracer.StartNewTxTrace(block.Transactions[i]);
+            Assert.That(transaction, Is.TypeOf<CancellationTxTracer>());
+            ITxTracer child = ((CancellationTxTracer)transaction).InnerTracer;
+            using (Assert.EnterMultipleScope())
+            {
+                if (i < selectedAt)
+                {
+                    Assert.That(child, Is.SameAs(NullTxTracer.Instance), "prefix replay must never enter the JS transaction engine or its callbacks");
+                    Assert.That(Engine.CurrentEngine, Is.Null);
+                    Assert.That(scope.Current, Is.Null);
+                    Assert.That(clock.Timers, Is.Empty);
+                }
+                else
+                {
+                    Assert.That(child, Is.TypeOf<GethLikeJavaScriptTxTracer>());
+                    Assert.That(scope.Current, Is.Not.Null);
+                    Assert.That(clock.Timers, Has.Count.EqualTo(1));
+                }
+            }
+            tracer.EndTxTrace();
+        }
+        tracer.EndBlockTrace();
+        IReadOnlyCollection<GethLikeTxTrace> traces = tracer.BuildResult();
+        try
+        {
+            List<GethLikeTxTrace> selected = [];
+            foreach (GethLikeTxTrace trace in traces)
+                if (trace.TxHash == target) selected.Add(trace);
+            using (Assert.EnterMultipleScope())
+                Assert.That(selected, Has.Count.EqualTo(1));
+            Assert.That((int?)JToken.Parse(JsonSerializer.Serialize(selected[0], EthereumJsonSerializer.JsonOptions))["txIndex"], Is.EqualTo(selectedAt));
+            foreach (GethLikeTxTrace trace in traces)
+                if (trace.TxHash != target)
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(trace.CustomTracerResult, Is.Null, "an internal alignment entry is not an executed JS result");
+                        Assert.That(trace.TraceError, Is.Null);
+                    }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(clock.Timers, Has.Count.EqualTo(1));
+                Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+                Assert.That(scope.Current, Is.Null);
+                Assert.That(Engine.CurrentEngine, Is.Null);
+            }
+        }
+        finally
+        {
+            foreach (GethLikeTxTrace trace in traces) trace.Dispose();
+        }
+    }
+
+    [Test]
+    public async Task Specified_javascript_prefix_borrows_no_deadline_while_selected_and_direct_owners_expire(
+        [Values("prefix", "selected", "direct")] string ownership,
+        [Values(0, -1)] int timeout, [Values] bool deliver, [Values("step", "result")] string callback)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        DeadlineExecution clock = new();
+        using GethTraceDeadline owner = new(clock: clock);
+        using Engine engine = new(Prague.Instance);
+        Action expire = () => { if (deliver) clock.Advance(0); };
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.expirePrefixTest=action;}}"))
+            installer.InvokeMethod("install", expire);
+        GethTraceDeadlineScope? scope = ownership == "direct" ? null : new() { Current = ownership == "selected" ? owner : null };
+        using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
+            "{fault:function(){},step:function(){" + (callback == "step" ? "expirePrefixTest();" : "")
+                + "},result:function(){" + (callback == "result" ? "expirePrefixTest();" : "") + "return 7;}}", scope, timeout);
+        Assert.That(clock.Timers, ownership == "direct" ? Has.Count.EqualTo(1) : Is.Empty,
+            "a scoped prefix has no owner and must not create a standalone watchdog; a selected child borrows its unarmed owner");
+        if (ownership == "selected") owner.Start(TimeSpan.FromSeconds(timeout));
+        void Trace()
+        {
+            if (callback == "step") tracer.SetOperationStack(default);
+            using GethLikeTxTrace result = tracer.BuildResult();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TraceError, Is.Null);
+                Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo("7"));
+            }
+        }
+        if (deliver && ownership != "prefix") Assert.Throws<GethTraceDeadlineException>(Trace);
+        else Assert.DoesNotThrow(Trace);
+        tracer.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers, ownership == "prefix" ? Is.Empty : Has.Count.EqualTo(1));
+            Assert.That(owner.Expired, Is.EqualTo(deliver && ownership == "selected"));
+            if (ownership != "prefix") Assert.That(clock.Timers[0].Disposed, Is.EqualTo(ownership == "direct"));
+            if (scope is not null) Assert.That(scope.Current, Is.SameAs(ownership == "selected" ? owner : null));
+        }
+        owner.Dispose();
+        Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+    }
+
+    [Test]
+    public async Task ByNumber_filtered_javascript_prefix_never_owns_execution_deadline(
+        [Values("blockOverrides", "noBaseFee", "stateOverrides")] string replay,
+        [Values("0s", "-1s")] string timeout, [Values("prefix", "selected", "none")] string delivery)
+    {
+        DeadlineExecution clock = new() { DeliverOnlyAtTarget = delivery != "prefix" };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
+        Assert.That(block.Transactions, Has.Length.EqualTo(3));
+        clock.Target = delivery == "none" ? ulong.MaxValue : block.Transactions[2].Nonce;
+        clock.Enabled = true;
+        const string script = "{fault:function(){},result:function(){return {ok:true};}}";
+        Dictionary<string, object> options = new()
+        {
+            ["tracer"] = "muxTracer",
+            ["tracerConfig"] = new Dictionary<string, object> { [script] = new { }, ["callTracer"] = new { withLog = true } },
+            ["txHash"] = block.Transactions[2].Hash!,
+            ["timeout"] = timeout,
+            ["streamMode"] = false
+        };
+        if (replay != "noBaseFee") options[replay] = new { };
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock, noBaseFee: replay == "noBaseFee"),
+            "debug_traceBlockByNumber", block.Number, options);
+        JToken json = JToken.Parse(response);
+        if (delivery == "none") Assert.That(json["result"], Is.TypeOf<JArray>(), response);
+        using (Assert.EnterMultipleScope())
+        {
+            if (delivery == "none")
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((JArray)json["result"]!, Has.Count.EqualTo(1), response);
+                Assert.That((string?)json["result"]?[0]?["txHash"], Is.EqualTo(block.Transactions[2].Hash!.ToString()), response);
+                Assert.That((bool?)json["result"]?[0]?["result"]?[script]?["ok"], Is.True, response);
+            }
+            else
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+            Assert.That(clock.Calls, Is.EqualTo(3), "both prefixes execute before the selected owner's watcher can expire");
+            Assert.That(clock.Timers, Has.Count.EqualTo(1), "only the selected transaction may arm an execution deadline");
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Specified_javascript_scoped_deadline_propagates_actual_external_cancellation(
+        [Values("step", "result")] string callback, [Values] bool hasOwner)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using CancellationTokenSource external = new();
+        DeadlineExecution clock = new();
+        using GethTraceDeadline owner = new(external.Token, clock);
+        using Engine engine = new(Prague.Instance);
+        bool continued = false;
+        Action cancel = () => external.Cancel();
+        Action afterCancellation = () => continued = true;
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer(
+            "{install:function(cancel,after){globalThis.cancelTrace=cancel;globalThis.afterScopedCancellation=after;}}"))
+            installer.InvokeMethod("install", cancel, afterCancellation);
+        GethTraceDeadlineScope scope = new() { Current = hasOwner ? owner : null, External = external.Token };
+        string body = "cancelTrace();for(let i=0;i<10000;i++){};afterScopedCancellation();";
+        using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
+            "{fault:function(){},step:function(){" + (callback == "step" ? body : "")
+                + "},result:function(){" + (callback == "result" ? body : "") + "return {};}}", scope);
+        Assert.That(clock.Timers, Is.Empty, "a scoped child never starts a standalone watchdog");
+        if (hasOwner) owner.Start(TimeSpan.FromSeconds(1));
+        OperationCanceledException failure = Assert.Catch<OperationCanceledException>(() =>
+        {
+            if (callback == "step") tracer.SetOperationStack(default);
+            using GethLikeTxTrace result = tracer.BuildResult();
+        })!;
+        Assert.That(failure, Is.Not.Null);
+        tracer.Dispose();
+        Assert.That(clock.Timers, hasOwner ? Has.Count.EqualTo(1) : Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure.CancellationToken, Is.EqualTo(external.Token));
+            Assert.That(continued, Is.False, "external cancellation must interrupt V8 before the callback continues");
+            Assert.That(owner.Expired, Is.False, "external cancellation is not owned execution expiry");
+            if (hasOwner) Assert.That(clock.Timers[0].Disposed, Is.False, "the child does not dispose a borrowed owner");
+            Assert.That(scope.Current, Is.SameAs(hasOwner ? owner : null));
+        }
+        owner.Dispose();
+        Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+    }
+
+    [Test]
+    public async Task Specified_javascript_borrower_disposal_unregisters_without_disposing_deadline()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        DeadlineExecution clock = new() { Expiry = "before" };
+        using GethTraceDeadline owner = new(clock: clock);
+        using Engine engine = new(Prague.Instance);
+        using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
+            "{fault:function(){},result:function(){return {};}}", new GethTraceDeadlineScope { Current = owner });
+        owner.Start(TimeSpan.FromSeconds(1));
+        tracer.Dispose();
+        engine.Dispose();
+        Assert.DoesNotThrow(() => clock.Advance(0), "a disposed engine must no longer receive an interrupt");
+        Assert.That(clock.Timers, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(owner.Expired, Is.True);
+            Assert.That(clock.Timers[0].Disposed, Is.False);
+        }
+        owner.Dispose();
+        Assert.That(clock.Timers[0].Disposed, Is.True);
+    }
+
+    [Test]
+    public async Task ByNumber_buffered_javascript_accepts_go_timeout_range(
+        [Values("0s", "-1s", "1ns", "121s", "4294968s", "1s")] string timeout)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        DeadlineExecution clock = new();
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(context.DebugRpcModule, clock),
+            "debug_traceBlockByNumber", block.Number,
+            new { tracer = "{fault:function(){},result:function(){return {ok:true};}}", timeout, streamMode = false });
+        JToken json = JToken.Parse(response);
+        JToken? result = json["result"];
+        Assert.That(result, Is.TypeOf<JArray>(), response);
+        JArray entries = (JArray)result!;
+        Assert.That(entries, Has.Count.EqualTo(block.Transactions.Length));
+        foreach (JToken entry in entries) Assert.That((bool?)entry["result"]?["ok"], Is.True, response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That(clock.Timers, Has.Count.EqualTo(block.Transactions.Length));
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task ByNumber_buffered_javascript_owned_expiry_discards_partial_results(
+        [Values("0s", "-1s")] string timeout, [Values("before", "after")] string expiry,
+        [Values(-1, 0, 1, 2)] int selectedAt, [Values] bool mux)
+    {
+        DeadlineExecution clock = new() { Expiry = expiry, DeliverOnlyAtTarget = true };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
+        Assert.That(block.Transactions, Has.Length.EqualTo(3));
+        clock.Enabled = true;
+        clock.Target = block.Transactions[selectedAt >= 0 ? selectedAt : expiry == "before" ? 1 : 0].Nonce;
+        const string script = "{fault:function(){},result:function(){return {};}}";
+        Dictionary<string, object> options = new()
+        {
+            ["tracer"] = mux ? "muxTracer" : script,
+            ["timeout"] = timeout,
+            ["streamMode"] = false
+        };
+        if (mux) options["tracerConfig"] = new Dictionary<string, object> { [script] = new { }, ["callTracer"] = new { } };
+        if (selectedAt >= 0) options["txHash"] = block.Transactions[selectedAt].Hash!;
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
+            "debug_traceBlockByNumber", block.Number, options);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"), response);
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That(clock.Timers, Has.Count.EqualTo(selectedAt >= 0 || expiry == "after" ? 1 : 2));
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Specified_javascript_constructor_failure_releases_timer([Values] bool emptyScope)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        DeadlineExecution clock = new() { FailTimerChange = true };
+        void Construct()
+        {
+            using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
+                "{fault:function(){},result:function(){return {};}}", emptyScope ? new GethTraceDeadlineScope() : null);
+            using GethLikeTxTrace result = tracer.BuildResult();
+            Assert.That(result.TraceError, Is.Null);
+        }
+        if (emptyScope) Assert.DoesNotThrow(Construct);
+        else
+        {
+            InvalidOperationException failure = Assert.Throws<InvalidOperationException>(Construct)!;
+            Assert.That(failure, Is.Not.Null);
+            Assert.That(failure.Message, Is.EqualTo("timer change failure"));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers, emptyScope ? Is.Empty : Has.Count.EqualTo(1));
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Specified_javascript_request_cancellation_interrupts_user_code(
+        [Values("construction", "setup", "step", "result")] string phase)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        using CancellationTokenSource external = new();
+        DeadlineExecution clock = new();
+        bool continued = false;
+        Action cancel = () => external.Cancel();
+        Action afterCancellation = () => continued = true;
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer(
+            "{install:function(cancel,after){globalThis.cancelTrace=cancel;globalThis.afterCancellation=after;}}"))
+            installer.InvokeMethod("install", cancel, afterCancellation);
+        string body = "cancelTrace();for(let i=0;i<10000;i++){};afterCancellation();";
+        string script = "{fault:function(){},"
+            + (phase == "construction" ? "marker:(function(){" + body + "})()," : "")
+            + "setup:function(){" + (phase == "setup" ? body : "") + "},"
+            + "step:function(){" + (phase == "step" ? body : "") + "},"
+            + "result:function(){" + (phase == "result" ? body : "") + "return {};}}";
+        OperationCanceledException failure = Assert.Catch<OperationCanceledException>(() =>
+        {
+            using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock, script, external: external.Token);
+            if (phase == "step") tracer.SetOperationStack(default);
+            using GethLikeTxTrace result = tracer.BuildResult();
+        })!;
+        Assert.That(failure, Is.Not.Null);
+        engine.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure.CancellationToken, Is.EqualTo(external.Token));
+            Assert.That(external.IsCancellationRequested, Is.True);
+            Assert.That(continued, Is.False, "V8 must interrupt user code, not merely observe cancellation after its callback returns");
+            Assert.That(clock.Timers, Has.Count.EqualTo(phase is "construction" or "setup" ? 0 : 1));
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+            Assert.That(Engine.CurrentEngine, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Specified_javascript_unexpired_deadline_preserves_failure_provenance(
+        [Values("input", "host", "fatal", "cancellation", "interrupt", "input-interrupt", "user-timeout")] string kind)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        DeadlineExecution clock = new();
+        Action fail = kind switch
+        {
+            "input" => () => engine.AbortInput("deadline input marker"),
+            "host" => () => throw new InvalidOperationException("deadline host marker"),
+            "fatal" => () => throw CreateException(true, true, null),
+            "cancellation" => () => throw new OperationCanceledException(),
+            "interrupt" => engine.Interrupt,
+            "input-interrupt" => () =>
+            {
+                engine.AbortInput("deadline input marker");
+                engine.Interrupt();
+            }
+            ,
+            _ => () => { }
+        };
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.failDeadlineTrace=action;}}"))
+            installer.InvokeMethod("install", fail);
+        using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
+            "{fault:function(){},result:function(){failDeadlineTrace();throw "
+                + (kind == "user-timeout" ? "Error('execution timeout')" : "null") + ";}}");
+        if (kind is "input" or "user-timeout")
+        {
+            using GethLikeTxTrace result = tracer.BuildResult();
+            Assert.That(result.TraceError, Does.Contain(kind == "input" ? "deadline input marker" : "execution timeout"));
+        }
+        else
+        {
+            Exception failure = Assert.Catch(() => { using GethLikeTxTrace result = tracer.BuildResult(); })!;
+            Assert.That(failure, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(failure, Is.Not.TypeOf<GethTraceDeadlineException>());
+                Assert.That(JavaScriptTraceFailure.IsRecoverable(failure), Is.False, failure.ToString());
+            }
+        }
+        tracer.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers, Has.Count.EqualTo(1));
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Specified_javascript_owned_interrupt_is_typed(
+        [Values("result", "step")] string callback, [Values] bool emptyScope)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        DeadlineExecution clock = new() { Expiry = "before" };
+        Action expire = () => clock.Advance(0);
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.expireTrace=action;}}"))
+            installer.InvokeMethod("install", expire);
+        string body = "expireTrace();for(let i=0;i<10000;i++){};";
+        using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
+            "{fault:function(){},step:function(){" + (callback == "step" ? body : "")
+                + "},result:function(){" + (callback == "result" ? body : "") + "return {};}}",
+            emptyScope ? new GethTraceDeadlineScope() : null);
+        void Trace()
+        {
+            if (callback == "step") tracer.SetOperationStack(default);
+            using GethLikeTxTrace result = tracer.BuildResult();
+            Assert.That(result.TraceError, Is.Null);
+        }
+        if (emptyScope) Assert.DoesNotThrow(Trace);
+        else Assert.Throws<GethTraceDeadlineException>(Trace);
+        tracer.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers, emptyScope ? Is.Empty : Has.Count.EqualTo(1));
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
+    }
+
+    private static GethLikeJavaScriptTxTracer CreateDeadlineJavaScriptTracer(
+        Engine engine, TestRpcBlockchain chain, DeadlineExecution clock, string script,
+        GethTraceDeadlineScope? scope = null, int timeoutSeconds = 1, CancellationToken external = default) =>
+        new(engine, new JavaScriptDb(chain.MainWorldState), new JavaScriptContext(), new GethTraceOptions
+        {
+            EnforceExecutionDeadline = true,
+            CaptureJavaScriptErrors = true,
+            DeadlineClock = clock,
+            DeadlineScope = scope,
+            ExecutionCancellationToken = external,
+            Timeout = TimeSpan.FromSeconds(timeoutSeconds),
+            Tracer = script
+        });
+
+    [Test]
     public async Task Debug_traceBlockByNumber_buffered_execution_deadline(
         [Values("callTracer", "prestateTracer", "4byteTracer", "noopTracer", "")] string tracer,
         [Values("0s", "-1s", "1s")] string timeout, [Values] bool filtered)
@@ -216,11 +767,15 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    private static IDebugRpcModule WithDeadlineClock(IDebugRpcModule inner, TimeProvider clock)
+    private static IDebugRpcModule WithDeadlineClock(IDebugRpcModule inner, TimeProvider clock, bool noBaseFee = false)
     {
         IDebugRpcModule module = Substitute.For<IDebugRpcModule>();
         module.debug_traceBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>()).Returns(call =>
-            inner.debug_traceBlockByNumber(call.Arg<BlockParameter>(), call.Arg<GethTraceOptions>() with { DeadlineClock = clock }));
+            inner.debug_traceBlockByNumber(call.Arg<BlockParameter>(), call.Arg<GethTraceOptions>() with
+            {
+                DeadlineClock = clock,
+                NoBaseFee = noBaseFee || call.Arg<GethTraceOptions>().NoBaseFee
+            }));
         return module;
     }
 
@@ -553,9 +1108,10 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceBlock_setup_failure_precedes_timeout_policy(
         [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
         [Values("0s", "-1s", "121s", "5s")] string timeout,
-        [Values("error", "null", "primitive")] string failure)
+        [Values("error", "null", "primitive")] string failure, [Values] bool mux)
     {
         using Context context = await Context.Create();
+        DeadlineExecution clock = new();
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
         object selector = method switch
         {
@@ -564,8 +1120,11 @@ public partial class DebugRpcModuleTests
             _ => Rlp.Encode(block).ToString()
         };
         string thrown = failure switch { "null" => "null", "primitive" => "42", _ => "Error('setup-before-timeout')" };
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
-            new { tracer = "{fault:function(){},setup:function(){throw " + thrown + ";},result:function(){return {};}}", timeout });
+        string script = "{fault:function(){},setup:function(){throw " + thrown + ";},result:function(){return {};}}";
+        Dictionary<string, object> options = new() { ["tracer"] = mux ? "muxTracer" : script, ["timeout"] = timeout };
+        if (mux) options["tracerConfig"] = new Dictionary<string, object> { [script] = new { }, [script + " "] = new { } };
+        IDebugRpcModule module = method == "debug_traceBlockByNumber" ? WithDeadlineClock(context.DebugRpcModule, clock) : context.DebugRpcModule;
+        string response = await RpcTest.TestSerializedRequest(module, method, selector, options);
         JToken json = JToken.Parse(response);
         Assert.That(json["error"], Is.Null, response);
         JArray traces = (JArray)json["result"]!;
@@ -581,6 +1140,7 @@ public partial class DebugRpcModuleTests
                 Assert.That(traces[i]["result"], Is.Null, response);
             }
         }
+        if (method == "debug_traceBlockByNumber") Assert.That(clock.Timers, Is.Empty, "a recovered setup failure must never arm an execution timer");
     }
 
     private static IEnumerable<TestCaseData> RawBlockTimeoutCases()
@@ -975,6 +1535,8 @@ public partial class DebugRpcModuleTests
             ("result", 0, -1)
         ];
 
+        yield return new TestCaseData("debug_traceBlockByNumber", "setup-timeout", -1, null);
+        yield return new TestCaseData("debug_traceBlockByNumber", "missing-timeout", -1, null);
         foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock" })
         {
             foreach ((string failure, int failAt, int? selectedAt) in cases)
@@ -1050,21 +1612,24 @@ public partial class DebugRpcModuleTests
             "fault" => "{fault:function(){throw Error('fault failure');},result:function(ctx,db){" + resultBody + "}}",
             "precedence" => "{fault:function(){throw Error('later fault failure');},enter:function(){},exit:function(){if(this.fail)throw Error('later exit failure');},step:function(log,db){if(this.fail)throw Error('later step failure');if(db.getNonce(toAddress('" + TestItem.AddressB + "'))===" + failingExecutionNonce + "){this.fail=true;throw Error('first failure');}},result:function(ctx,db){if(this.fail)throw Error('later result failure');" + resultBody + "}}",
             _ when invalidRead is not null => "{fault:function(){},step:function(log,db){if(db.getNonce(toAddress('" + TestItem.AddressB + "'))===" + failingExecutionNonce + "){try{" + invalidRead + ";}catch(e){}throw Error('input abort was swallowed');}},result:function(ctx,db){" + resultBody + "}}",
-            "setup" => "{fault:function(){},setup:function(){throw Error('setup failure');},result:function(){return {};}}",
-            "missing" => "{fault:function(){}}",
+            "setup" or "setup-timeout" => "{fault:function(){},setup:function(){throw Error('setup failure');},result:function(){return {};}}",
+            "missing" or "missing-timeout" => "{fault:function(){}}",
             "noncallable" => "{fault:function(){},result:42}",
             "unknown" => "unknown-js-tracer",
             _ => "{result:}"
         };
         Hash256 selectedHash = selectedAt >= 0 ? block.Transactions[selectedAt.Value].Hash! : TestItem.KeccakA;
         object traceOptions = selectedAt is null ? new { tracer } : new { tracer, txHash = selectedHash };
+        bool immediateSetupFailure = failure is "setup-timeout" or "missing-timeout";
+        if (immediateSetupFailure) traceOptions = new { tracer, timeout = "0s", streamMode = false };
+        IDebugRpcModule module = immediateSetupFailure ? WithDeadlineClock(chain.DebugRpcModule, new DeadlineExecution()) : chain.DebugRpcModule;
         object blockSelector = method switch
         {
             "debug_traceBlockByHash" => block.Hash!,
             "debug_traceBlock" => Rlp.Encode(block).Bytes,
             _ => block.Number
         };
-        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockSelector, traceOptions);
+        string response = await RpcTest.TestSerializedRequest(module, method, blockSelector, traceOptions);
         JToken actual = JToken.Parse(response);
         Assert.That(actual["error"], Is.Null, response);
         JArray entries = (JArray)actual["result"]!;
@@ -1088,6 +1653,8 @@ public partial class DebugRpcModuleTests
                 {
                     Assert.That((string?)entries[index]["error"], Is.Not.Null.And.Not.Empty, response);
                     Assert.That(entries[index]["result"], Is.Null);
+                    if (immediateSetupFailure)
+                        Assert.That((string?)entries[index]["error"], Does.Contain(failure == "setup-timeout" ? "setup failure" : "required function result").And.Not.Contain("execution timeout"));
                     if (invalidRead is not null)
                     {
                         string expectedError = failure switch
