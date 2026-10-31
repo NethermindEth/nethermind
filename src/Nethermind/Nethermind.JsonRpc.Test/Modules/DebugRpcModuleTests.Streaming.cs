@@ -16,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Evm.Tracing;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
 using Newtonsoft.Json.Linq;
@@ -155,7 +156,7 @@ public partial class DebugRpcModuleTests
         ArrayBufferWriter<byte> buffer = new();
         using Utf8JsonWriter writer = new(buffer);
         StructLogEnvelopeWriter.EmitTraceObject(writer, null, CancellationToken.None,
-            (_, _, _) => throw (missingTrace ? new DebugRpcModule.TransactionTraceNotFoundException() : new TraceDurationFormatException("bad duration")),
+            (_, _, _) => throw (missingTrace ? new RpcErrorException(ErrorCodes.ResourceNotFound, "transaction not found") : new TraceDurationFormatException("bad duration")),
             LimboLogs.Instance.GetClassLogger<DebugRpcModuleTests>(), fallbackGas: 21_000);
         writer.Flush();
         JToken parsed = JToken.Parse(Encoding.UTF8.GetString(buffer.WrittenSpan));
