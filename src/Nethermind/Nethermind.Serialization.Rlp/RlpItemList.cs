@@ -31,7 +31,7 @@ public sealed class RlpItemList : IRlpItemList
     {
         _memoryOwner = new RefCountingMemoryOwner<byte>(memoryOwner);
         _rlpRegion = rlpRegion;
-        _prefixLength = GetPrefixLength(rlpRegion.Span);
+        _prefixLength = GetCheckedPrefixLength(rlpRegion.Span);
         _count = knownCount;
         _cachedIndex = 0;
         _cachedPosition = _prefixLength;
@@ -189,4 +189,19 @@ public sealed class RlpItemList : IRlpItemList
         <= 0xf7 => 1,
         _ => 1 + item[0] - 0xf7,
     };
+
+    /// <summary>Gets the prefix length of the first item of a region that is not checked yet.</summary>
+    /// <exception cref="RlpReaderException">The prefix is not canonical, or the item is truncated.</exception>
+    private static int GetCheckedPrefixLength(ReadOnlySpan<byte> region)
+    {
+        RlpReader reader = new(region);
+        if (reader.IsNextSequence)
+        {
+            RlpReader content = reader.EnterSequence(out int itemLength);
+            return itemLength - content.Remaining;
+        }
+
+        int contentLength = reader.ReadBytes().Length;
+        return reader.BytesRead - contentLength;
+    }
 }
