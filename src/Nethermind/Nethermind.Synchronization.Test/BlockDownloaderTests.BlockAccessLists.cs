@@ -163,13 +163,13 @@ public partial class BlockDownloaderTests
         syncPeer.IsInitialized.Returns(true);
         ctx.PeerPool.InitializedPeers.Returns([new PeerInfo(syncPeer)]);
 
-        using BlocksRequest bodyRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;
-        using BlocksRequest blockAccessListRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;
+        using BlocksRequest bodyRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.WithReceipts, 0, CancellationToken.None))!;
+        using BlocksRequest blockAccessListRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.WithReceipts, 0, CancellationToken.None))!;
 
-        await ctx.PeerPool.Received().EstimateRequestLimit(RequestType.Bodies, BlocksSyncPeerAllocationStrategyFactory.AllocationStrategy, AllocationContexts.Blocks, Arg.Any<CancellationToken>());
-        await ctx.PeerPool.Received().EstimateRequestLimit(RequestType.Receipts, BlocksSyncPeerAllocationStrategyFactory.ReceiptsAllocationStrategy, AllocationContexts.Blocks, Arg.Any<CancellationToken>());
+        await ctx.PeerPool.Received().EstimateRequestLimit(RequestType.Bodies, Arg.Is<IPeerAllocationStrategy>(s => SkipsPrunedPeersAndRanksBy(s, TransferSpeedType.Bodies)), AllocationContexts.Blocks, Arg.Any<CancellationToken>());
+        await ctx.PeerPool.Received().EstimateRequestLimit(RequestType.Receipts, Arg.Is<IPeerAllocationStrategy>(s => SkipsPrunedPeersAndRanksBy(s, TransferSpeedType.Receipts)), AllocationContexts.Blocks, Arg.Any<CancellationToken>());
         // Without a free eth/71 peer the estimate would only wait for an allocation, so the default size is used.
-        await ctx.PeerPool.Received(blockAccessListsPeerFree ? 1 : 0).EstimateRequestLimit(RequestType.BlockAccessLists, BlocksSyncPeerAllocationStrategyFactory.BlockAccessListsAllocationStrategy, AllocationContexts.BlockAccessLists, Arg.Any<CancellationToken>());
+        await ctx.PeerPool.Received(blockAccessListsPeerFree ? 1 : 0).EstimateRequestLimit(RequestType.BlockAccessLists, Arg.Is<IPeerAllocationStrategy>(s => SkipsPrunedPeersAndRanksBy(s, TransferSpeedType.BlockAccessLists)), AllocationContexts.BlockAccessLists, Arg.Any<CancellationToken>());
         Assert.That(blockAccessListRequest.BlockAccessListsRequests.Count, Is.EqualTo(1));
     }
 
