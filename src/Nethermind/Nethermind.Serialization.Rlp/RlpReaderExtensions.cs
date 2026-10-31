@@ -685,11 +685,11 @@ public static class RlpReaderExtensions
     {
         if (!decodeEmptyList && items.TryReadEmptySequence())
         {
-            if (!hasDefaultElement) ThrowInvalid($"RLP array item {index} is null");
+            if (!hasDefaultElement) ThrowInvalid($"Unexpected null array element at index {index}");
             return defaultElement!;
         }
 
-        return decodeItem(ref items) ?? throw new RlpReaderException($"RLP array item {index} is null");
+        return decodeItem(ref items) ?? throw new RlpReaderException($"Unexpected null array element at index {index}");
     }
 
     /// <summary>Builds a <see cref="UInt256"/> from the big-endian bytes of an integer of at most 32 bytes.</summary>

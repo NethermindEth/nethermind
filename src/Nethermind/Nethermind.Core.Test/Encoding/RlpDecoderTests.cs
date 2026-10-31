@@ -163,7 +163,7 @@ public class RlpDecoderTests
             context.DecodeNonNullArray(static (ref RlpReader c) => (c.DecodeKeccak(), c.DecodeULong()));
         }
 
-        Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("is null"));
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("null array element"));
     }
 
     [Test]
@@ -175,7 +175,7 @@ public class RlpDecoderTests
             context.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeInt());
         }
 
-        Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("is null"));
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("null array element"));
     }
 
     [Test]
