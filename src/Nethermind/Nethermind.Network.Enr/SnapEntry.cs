@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
@@ -16,13 +17,15 @@ public class SnapEntry(params int[] versions) : EnrContentEntry<int[]>(versions)
 
     protected override int GetRlpLengthOfValue() => Rlp.LengthOfSequence(GetContentLength());
 
-    protected override void EncodeValue<TWriter>(ref TWriter writer)
+    protected override void EncodeValue(ref RlpWriter writer)
     {
-        writer.StartSequence(GetContentLength());
+        RlpSequence sequence = writer.StartSequence(GetContentLength());
         foreach (int version in Value)
         {
             writer.Encode(version);
         }
+
+        writer.EndSequence(sequence);
     }
 
     private int GetContentLength()
