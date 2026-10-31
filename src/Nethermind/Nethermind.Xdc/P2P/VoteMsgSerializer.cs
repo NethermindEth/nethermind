@@ -12,19 +12,12 @@ internal class VoteMsgSerializer : IZeroInnerMessageSerializer<VoteMsg>
 {
     private static readonly VoteDecoder _voteDecoder = new();
 
-    public void Serialize(IByteBuffer byteBuffer, VoteMsg message)
-    {
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
-        ByteBufferRlpWriter writer = new(byteBuffer);
-        _voteDecoder.Encode(ref writer, message.Vote);
-    }
+    public void Serialize(IByteBuffer byteBuffer, VoteMsg message) =>
+        byteBuffer.WriteRlp(_voteDecoder, message.Vote);
 
     public VoteMsg Deserialize(IByteBuffer byteBuffer)
     {
-        RlpReader ctx = new(byteBuffer.AsSpan());
-        Types.Vote vote = _voteDecoder.Decode(ref ctx, RlpBehaviors.None);
-        byteBuffer.SkipBytes(ctx.Position);
+        Types.Vote vote = byteBuffer.DeserializeRlp(_voteDecoder);
         return new() { Vote = vote };
     }
 

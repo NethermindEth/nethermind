@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 
@@ -11,33 +11,33 @@ namespace Nethermind.Xdc.RLP;
 
 internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapshot
 {
-    protected TResult DecodeBase<TResult>(ref RlpReader decoderContext, Func<ulong, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
+    protected abstract T CreateSnapshot(ulong number, Hash256 hash, Address[] candidates);
+
+    protected virtual void DecodeContent(ref RlpReader fields, T snapshot) { }
+
+    protected override T DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+            ? Decode<OffFlag>(ref decoderContext, rlpBehaviors)
+            : Decode<OnFlag>(ref decoderContext, rlpBehaviors);
+
+    private T Decode<TCanonicalChecks>(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
     {
-        if (decoderContext.IsNextItemEmptyList())
+        if (decoderContext.TryReadEmptySequence())
         {
-            decoderContext.ReadByte();
             return null;
         }
 
-        decoderContext.ReadSequenceLength();
-        ulong number = decoderContext.DecodeULong();
-        Hash256 hash256 = decoderContext.DecodeKeccak();
-        Address[] candidates = XdcRlpHelpers.DecodeAddressArray(ref decoderContext);
-        return createSnapshot(number, hash256, candidates);
+        RlpReader fields = decoderContext.EnterSequence<TCanonicalChecks>(out int itemLength);
+        ulong number = fields.DecodeULong<TCanonicalChecks>();
+        Hash256 hash256 = fields.DecodeKeccak();
+        Address[] candidates = XdcRlpHelpers.DecodeAddressArray(ref fields);
+        T snapshot = CreateSnapshot(number, hash256, candidates);
+        DecodeContent(ref fields, snapshot);
+        decoderContext.ExitSequence(in fields, itemLength, rlpBehaviors);
+        return snapshot;
     }
 
-    public override Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (item is null)
-            return Rlp.OfEmptyList;
-
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-        return new Rlp(bytes);
-    }
-
-    public override void Encode<TWriter>(ref TWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(ref RlpWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -45,18 +45,18 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
             return;
         }
 
-        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        RlpSequence sequence = writer.StartSequence(GetContentLength(item, rlpBehaviors));
         EncodeContent(ref writer, item, rlpBehaviors);
+        writer.EndSequence(sequence);
     }
 
-    protected virtual void EncodeContent<TWriter>(ref TWriter writer, T item, RlpBehaviors rlpBehaviors)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    protected virtual void EncodeContent(ref RlpWriter writer, T item, RlpBehaviors rlpBehaviors)
     {
         writer.Encode(item.BlockNumber);
         writer.Encode(item.HeaderHash);
 
         if (item.NextEpochCandidates is null)
-            writer.StartSequence(0);
+            writer.EncodeNullObject();
         else
             XdcRlpHelpers.EncodeAddressSequence(ref writer, item.NextEpochCandidates);
     }

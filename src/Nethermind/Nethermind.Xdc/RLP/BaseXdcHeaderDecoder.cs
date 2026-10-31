@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using System;
 
@@ -41,37 +42,40 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         ulong timestamp,
         byte[] extraData);
 
-    protected abstract void DecodeHeaderSpecificFields(ref RlpReader decoderContext, TH header, RlpBehaviors rlpBehaviors, int headerCheck);
-    protected abstract void EncodeHeaderSpecificFields<TWriter>(ref TWriter writer, TH header, RlpBehaviors rlpBehaviors)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct;
+    protected abstract void DecodeHeaderSpecificFields(ref RlpReader fields, TH header, RlpBehaviors rlpBehaviors);
+    protected abstract void EncodeHeaderSpecificFields(ref RlpWriter writer, TH header, RlpBehaviors rlpBehaviors);
     protected abstract int GetHeaderSpecificContentLength(TH header, RlpBehaviors rlpBehaviors);
 
     protected override BlockHeader? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+            ? Decode<OffFlag>(ref decoderContext, rlpBehaviors)
+            : Decode<OnFlag>(ref decoderContext, rlpBehaviors);
+
+    private TH? Decode<TCanonicalChecks>(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
     {
-        if (decoderContext.IsNextItemEmptyList())
+        if (decoderContext.TryReadEmptySequence())
         {
-            decoderContext.ReadByte();
             return null;
         }
 
-        ReadOnlySpan<byte> headerRlp = decoderContext.PeekNextItem();
-        int headerSequenceLength = decoderContext.ReadSequenceLength();
-        int headerCheck = decoderContext.Position + headerSequenceLength;
+        RlpReader fields = decoderContext.EnterSequence<TCanonicalChecks>(out int itemLength);
+        RlpReader item = decoderContext;
+        ReadOnlySpan<byte> headerRlp = item.ReadRaw(itemLength);
 
         // Common fields
-        Hash256 parentHash = decoderContext.DecodeKeccak();
-        Hash256 unclesHash = decoderContext.DecodeKeccak();
-        Address beneficiary = decoderContext.DecodeAddress();
-        Hash256 stateRoot = decoderContext.DecodeKeccak();
-        Hash256 transactionsRoot = decoderContext.DecodeKeccak();
-        Hash256 receiptsRoot = decoderContext.DecodeKeccak();
-        Bloom bloom = decoderContext.DecodeBloom();
-        UInt256 difficulty = decoderContext.DecodeUInt256();
-        ulong number = decoderContext.DecodeULong();
-        ulong gasLimit = decoderContext.DecodeULong();
-        ulong gasUsed = decoderContext.DecodeULong();
-        ulong timestamp = decoderContext.DecodeULong();
-        byte[] extraData = decoderContext.DecodeByteArray();
+        Hash256 parentHash = fields.DecodeKeccak();
+        Hash256 unclesHash = fields.DecodeKeccak();
+        Address beneficiary = fields.DecodeAddress();
+        Hash256 stateRoot = fields.DecodeKeccak();
+        Hash256 transactionsRoot = fields.DecodeKeccak();
+        Hash256 receiptsRoot = fields.DecodeKeccak();
+        Bloom bloom = fields.DecodeBloom();
+        UInt256 difficulty = fields.DecodeUInt256<TCanonicalChecks>();
+        ulong number = fields.DecodeULong<TCanonicalChecks>();
+        ulong gasLimit = fields.DecodeULong<TCanonicalChecks>();
+        ulong gasUsed = fields.DecodeULong<TCanonicalChecks>();
+        ulong timestamp = fields.DecodeULong<TCanonicalChecks>();
+        byte[] extraData = fields.DecodeByteArray<TCanonicalChecks>();
 
         TH header = CreateHeader(
             parentHash, unclesHash, beneficiary,
@@ -84,20 +88,16 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         header.GasUsed = gasUsed;
         header.Hash = Keccak.Compute(headerRlp);
 
-        header.MixHash = decoderContext.DecodeKeccak();
-        header.Nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
+        header.MixHash = fields.DecodeKeccak();
+        header.Nonce = (ulong)fields.DecodeUInt256<TCanonicalChecks>(NonceLength);
 
-        DecodeHeaderSpecificFields(ref decoderContext, header, rlpBehaviors, headerCheck);
+        DecodeHeaderSpecificFields(ref fields, header, rlpBehaviors);
 
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            decoderContext.Check(headerCheck);
-        }
-
+        decoderContext.ExitSequence(in fields, itemLength, rlpBehaviors);
         return header;
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(ref RlpWriter writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (header is null)
         {
@@ -112,7 +112,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
             return;
         }
 
-        writer.StartSequence(GetContentLength(h, rlpBehaviors));
+        RlpSequence sequence = writer.StartSequence(GetContentLength(h, rlpBehaviors));
 
         // Common fields
         writer.Encode(h.ParentHash ?? Keccak.Zero);
@@ -132,25 +132,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         writer.Encode(h.Nonce, NonceLength);
 
         EncodeHeaderSpecificFields(ref writer, h, rlpBehaviors);
-    }
-
-    public override Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (item is null)
-        {
-            return Rlp.OfEmptyList;
-        }
-
-        if (item is not TH header)
-        {
-            EnsurePlainFallbackAllowed(item);
-            return FallbackDecoder.Encode(item, rlpBehaviors);
-        }
-
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-        return new Rlp(bytes);
+        writer.EndSequence(sequence);
     }
 
     public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)

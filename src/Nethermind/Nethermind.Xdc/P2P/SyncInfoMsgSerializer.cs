@@ -12,19 +12,12 @@ internal class SyncInfoMsgSerializer : IZeroInnerMessageSerializer<SyncInfoMsg>
 {
     private static readonly SyncInfoDecoder _syncInfoDecoder = new();
 
-    public void Serialize(IByteBuffer byteBuffer, SyncInfoMsg message)
-    {
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
-        ByteBufferRlpWriter writer = new(byteBuffer);
-        _syncInfoDecoder.Encode(ref writer, message.SyncInfo);
-    }
+    public void Serialize(IByteBuffer byteBuffer, SyncInfoMsg message) =>
+        byteBuffer.WriteRlp(_syncInfoDecoder, message.SyncInfo);
 
     public SyncInfoMsg Deserialize(IByteBuffer byteBuffer)
     {
-        RlpReader ctx = new(byteBuffer.AsSpan());
-        Types.SyncInfo syncInfo = _syncInfoDecoder.Decode(ref ctx, RlpBehaviors.None);
-        byteBuffer.SkipBytes(ctx.Position);
+        Types.SyncInfo syncInfo = byteBuffer.DeserializeRlp(_syncInfoDecoder);
         return new() { SyncInfo = syncInfo };
     }
 

@@ -13,19 +13,12 @@ internal class TimeoutMsgSerializer : IZeroInnerMessageSerializer<TimeoutMsg>
 {
     private static readonly TimeoutDecoder _timeDecoder = new();
 
-    public void Serialize(IByteBuffer byteBuffer, TimeoutMsg message)
-    {
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
-        ByteBufferRlpWriter writer = new(byteBuffer);
-        _timeDecoder.Encode(ref writer, message.Timeout);
-    }
+    public void Serialize(IByteBuffer byteBuffer, TimeoutMsg message) =>
+        byteBuffer.WriteRlp(_timeDecoder, message.Timeout);
 
     public TimeoutMsg Deserialize(IByteBuffer byteBuffer)
     {
-        RlpReader ctx = new(byteBuffer.AsSpan());
-        Timeout timeout = _timeDecoder.Decode(ref ctx, RlpBehaviors.None);
-        byteBuffer.SkipBytes(ctx.Position);
+        Timeout timeout = byteBuffer.DeserializeRlp(_timeDecoder);
         return new() { Timeout = timeout };
     }
 

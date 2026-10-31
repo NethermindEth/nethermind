@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 
@@ -11,34 +12,34 @@ internal sealed class XdcBlockInfoDecoder : RlpDecoder<BlockRoundInfo>
 {
     protected override BlockRoundInfo DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemEmptyList())
+        if (decoderContext.TryReadEmptySequence())
         {
-            decoderContext.ReadByte();
             return null;
         }
-        int sequenceLength = decoderContext.ReadSequenceLength();
-        int endPosition = decoderContext.Position + sequenceLength;
+        RlpReader fields = decoderContext.EnterSequence(out int itemLength);
 
-        byte[] hashBytes = decoderContext.DecodeByteArray();
+        byte[] hashBytes = fields.DecodeByteArray();
         if (hashBytes.Length > Hash256.Size)
-            throw new RlpException($"Hash length {hashBytes.Length} is longer than max size of 32.");
-        ulong round = decoderContext.DecodeULong();
-        ulong number = decoderContext.DecodeULong();
+            throw new RlpReaderException($"Hash length {hashBytes.Length} is longer than max size of 32.");
+        ulong round = fields.DecodeULong();
+        ulong number = fields.DecodeULong();
+        decoderContext.ExitSequence(in fields, itemLength, rlpBehaviors);
 
         return new BlockRoundInfo(new Hash256(hashBytes), round, number);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(ref RlpWriter writer, BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
             writer.EncodeNullObject();
             return;
         }
-        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        RlpSequence sequence = writer.StartSequence(GetContentLength(item, rlpBehaviors));
         writer.Encode(item.Hash);
         writer.Encode(item.Round);
         writer.Encode(item.BlockNumber);
+        writer.EndSequence(sequence);
     }
 
     public override int GetLength(BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
