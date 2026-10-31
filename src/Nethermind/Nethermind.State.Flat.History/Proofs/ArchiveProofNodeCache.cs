@@ -3,6 +3,8 @@
 
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -51,9 +53,8 @@ internal sealed class ArchiveProofNodeCache(int capacity)
 
     private static bool IsLeaf(ReadOnlySpan<byte> nodeRlp)
     {
-        RlpReader reader = new(nodeRlp);
-        reader.ReadSequenceLength();
-        ReadOnlySpan<byte> key = reader.DecodeByteArraySpan();
+        RlpReader reader = new RlpReader(nodeRlp).EnterSequence<OffFlag>(out _);
+        ReadOnlySpan<byte> key = reader.ReadBytes<OffFlag>();
         return !key.IsEmpty && (key[0] & LeafFlag) != 0;
     }
 }

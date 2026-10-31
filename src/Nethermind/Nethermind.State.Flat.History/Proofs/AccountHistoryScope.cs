@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -46,7 +47,7 @@ internal sealed class AccountHistoryScope(
         {
             return AccountRowRlp.Encode(storedValue);
         }
-        catch (Exception e) when (e is RlpException or InvalidDataException)
+        catch (Exception e) when (e is RlpReaderException or InvalidDataException)
         {
             throw new StateUnavailableException(e.Message);
         }

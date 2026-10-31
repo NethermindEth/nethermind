@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.State.Flat.History.Walk;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -298,7 +299,7 @@ internal sealed class HistoricalTrieNodeBuilder
                 composed.Release();
             }
         }
-        catch (Exception e) when (e is RlpException or InvalidDataException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+        catch (Exception e) when (e is RlpReaderException or InvalidDataException or IndexOutOfRangeException or ArgumentOutOfRangeException)
         {
             return null;
         }

@@ -11,6 +11,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -1001,7 +1002,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             if (account is null) return ReadOnlySpan<byte>.Empty;
 
             int contentLength = AccountDecoder.Slim.GetContentLength(account);
-            RlpWriter writer = new(buffer);
+            RlpWriter writer = RlpWriter.ContentWriter(buffer);
             AccountDecoder.Slim.Encode(account, ref writer, contentLength);
             return buffer[..Rlp.LengthOfSequence(contentLength)];
         }

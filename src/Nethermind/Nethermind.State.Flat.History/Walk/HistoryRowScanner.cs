@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.Persistence;
@@ -241,7 +242,7 @@ internal sealed class HistoryRowScanner(
         if (accountRow.IsEmpty) return Keccak.EmptyTreeHash.ValueHash256;
 
         RlpReader reader = new(accountRow);
-        if (!AccountDecoder.Slim.TryDecodeStruct(ref reader, out AccountStruct account))
+        if (!AccountDecoder.Slim.TryDecodeStruct<OffFlag>(ref reader, out AccountStruct account))
         {
             throw new InvalidOperationException("An account history row failed to decode; the column is corrupt.");
         }

@@ -7,6 +7,8 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Crypto;
+using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.Trie;
@@ -233,16 +235,25 @@ internal static class NodeViews
     public static bool TryReadExtensionPath(ReadOnlySpan<byte> rlp, Span<byte> nibbles, out int nibbleCount)
     {
         nibbleCount = 0;
-        RlpReader reader = new(rlp);
-        int length = reader.ReadSequenceLength();
-        return reader.PeekNumberOfItemsRemaining(reader.Position + length, maxSearch: 3) == 2 && !DecodeShortNode(rlp, nibbles, out nibbleCount, out _);
+        RlpReader reader = new RlpReader(rlp).EnterSequence<OffFlag>(out _);
+        return CountUpToThreeItems(reader) == 2 && !DecodeShortNode(rlp, nibbles, out nibbleCount, out _);
+    }
+
+    private static int CountUpToThreeItems(RlpReader reader)
+    {
+        int count = 0;
+        for (; count < 3 && reader.HasNext; count++)
+        {
+            reader.SkipItem<OffFlag>();
+        }
+
+        return count;
     }
 
     private static bool DecodeShortNode(ReadOnlySpan<byte> rlp, Span<byte> nibbles, out int nibbleCount, out ReadOnlySpan<byte> payload)
     {
-        RlpReader reader = new(rlp);
-        reader.ReadSequenceLength();
-        ReadOnlySpan<byte> hexPrefix = reader.DecodeByteArraySpan();
+        RlpReader reader = new RlpReader(rlp).EnterSequence<OffFlag>(out _);
+        ReadOnlySpan<byte> hexPrefix = reader.ReadBytes<OffFlag>();
         bool isLeaf = (hexPrefix[0] & 0x20) != 0;
         nibbleCount = 0;
         if ((hexPrefix[0] & 0x10) != 0) nibbles[nibbleCount++] = (byte)(hexPrefix[0] & 0x0F);
@@ -254,18 +265,17 @@ internal static class NodeViews
 
         if (isLeaf)
         {
-            payload = reader.DecodeByteArraySpan();
+            payload = reader.ReadBytes<OffFlag>();
             return true;
         }
 
-        if (reader.IsSequenceNext())
+        if (reader.IsNextSequence)
         {
-            (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength();
-            payload = reader.Read(prefixLength + contentLength);
+            payload = reader.ReadEncodedItem<OffFlag>();
             return false;
         }
 
-        payload = reader.DecodeByteArraySpan();
+        payload = reader.ReadBytes<OffFlag>();
         return false;
     }
 }
