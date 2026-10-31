@@ -5,6 +5,7 @@ using System.Net;
 using Nethermind.Core.Collections;
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Discovery.Serializers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5.Serializers;
@@ -18,7 +19,7 @@ internal sealed class PongMsgSerializer() : MsgSerializerBase<PongMsg>(MessageTy
             IPAddressRlp.GetLength(msg.RecipientIp) +
             Rlp.LengthOf(msg.RecipientPort);
 
-    protected override void SerializeCore<TWriter>(ref TWriter writer, PongMsg msg)
+    protected override void SerializeCore(ref RlpWriter writer, PongMsg msg)
     {
         Encode(ref writer, msg.EnrSequence);
         IPAddressRlp.Encode(ref writer, msg.RecipientIp);

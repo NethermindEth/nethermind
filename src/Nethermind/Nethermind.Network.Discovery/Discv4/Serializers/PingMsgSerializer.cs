@@ -6,6 +6,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
@@ -19,7 +20,7 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
         (_, int contentLength, int sourceAddressLength, int destinationAddressLength) = GetDataLength(msg);
 
         RlpWriter writer = StartPacket(destination, MsgTypeByte);
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         writer.Encode(msg.Version);
         Encode(ref writer, msg.SourceAddress, msg.SourceTcpPort, sourceAddressLength);
         Encode(ref writer, msg.DestinationAddress, msg.DestinationTcpPort, destinationAddressLength);
@@ -30,6 +31,7 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
             writer.Encode(msg.EnrSequence.Value);
         }
 
+        writer.EndSequence(sequence);
         int length = CompletePacket(destination, in writer, out ValueHash256 mdc);
         msg.Mdc = mdc;
         return length;
@@ -38,14 +40,7 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
     public PingMsg Deserialize(ReadOnlySpan<byte> msgBytes)
     {
         (PublicKey FarPublicKey, ValueHash256 Mdc) = PrepareForDeserialization(msgBytes, out ReadOnlySpan<byte> data);
-        RlpReader ctx = new(data);
-        int messageLength = ctx.ReadSequenceLength();
-        if (messageLength > ctx.Length - ctx.Position)
-        {
-            throw new RlpException("Ping list exceeds packet data.");
-        }
-
-        int messageEnd = ctx.Position + messageLength;
+        RlpReader ctx = new RlpReader(data).EnterSequence(out _);
         ReadOnlySpan<byte> versionBytes = ctx.DecodeByteArraySpan();
         int version = 0;
         if (versionBytes.Length < sizeof(int) ||
@@ -57,33 +52,34 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
             }
         }
 
-        ctx.ReadSequenceLength();
-        ReadOnlySpan<byte> sourceAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
+        RlpReader sourceReader = ctx.EnterSequence(out int sourceLength);
+        ReadOnlySpan<byte> sourceAddress = sourceReader.DecodeByteArraySpan(IpAddressRlpLimit);
 
-        int sourceUdpPort = ctx.DecodeInt();
-        int sourceTcpPort = ctx.DecodeInt();
+        int sourceUdpPort = sourceReader.DecodeInt();
+        int sourceTcpPort = sourceReader.DecodeInt();
+        ctx.ExitSequenceIgnoringRest(sourceReader, sourceLength);
 
         IPEndPoint source = GetAddress(sourceAddress, sourceUdpPort, allowZeroPort: true);
-        ctx.ReadSequenceLength();
-        ReadOnlySpan<byte> destinationAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
-        int destinationUdpPort = ctx.DecodeInt();
-        int destinationTcpPort = ctx.DecodeInt();
+        RlpReader destinationReader = ctx.EnterSequence(out int destinationLength);
+        ReadOnlySpan<byte> destinationAddress = destinationReader.DecodeByteArraySpan(IpAddressRlpLimit);
+        int destinationUdpPort = destinationReader.DecodeInt();
+        int destinationTcpPort = destinationReader.DecodeInt();
+        ctx.ExitSequenceIgnoringRest(destinationReader, destinationLength);
         IPEndPoint destination = GetAddress(destinationAddress, destinationUdpPort, allowZeroPort: true);
 
         long expireTime = ctx.DecodeLong();
         PingMsg msg = new(FarPublicKey, expireTime, source, destination, Mdc, sourceTcpPort, destinationTcpPort) { Version = version };
 
-        if (ctx.Position < messageEnd && IsNextEnrSequence(ctx))
+        if (ctx.HasNext && IsNextEnrSequence(ctx))
         {
             msg.EnrSequence = ctx.DecodeULong();
         }
 
-        while (ctx.Position < messageEnd)
+        while (ctx.HasNext)
         {
             ctx.SkipItem();
         }
 
-        ctx.Check(messageEnd);
         return msg;
     }
 
