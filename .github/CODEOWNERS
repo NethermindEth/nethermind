@@ -1,9 +1,10 @@
-/.github @rubo
-/scripts @rubo
-
-/Dockerfile* @rubo
+/Dockerfile* @rubo @cbermudez97 @stdevMac @kamilchodola
 /LICENSE* @rubo @LukaszRozmej @MarekM25
 *.md @rubo @LukaszRozmej @MarekM25
+
+/.agents @rubo @cbermudez97 @stdevMac @kamilchodola
+/.github @rubo @cbermudez97 @stdevMac @kamilchodola
+/scripts @rubo @cbermudez97 @stdevMac @kamilchodola
 
 /src/Nethermind/Ethereum.Test.Base @flcl42
 /src/Nethermind/Nethermind.Abi @LukaszRozmej
