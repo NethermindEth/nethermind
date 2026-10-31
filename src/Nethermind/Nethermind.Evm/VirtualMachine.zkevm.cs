@@ -48,6 +48,25 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     internal static bool StoresStorageThroughGuestHandlerForTests(IReleaseSpec spec) =>
         (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SSTORE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSStore);
 
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs CALL, STATICCALL and DELEGATECALL on the guest handler.</summary>
+    /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
+    internal static bool CallsThroughGuestHandlerForTests(IReleaseSpec spec)
+    {
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec);
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] guest = new delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[handlers.Length];
+        if (SpecFlags.Eip8038(spec))
+            SetCallHandlers<OnFlag, Eip8038On>(guest);
+        else
+            SetCallHandlers<OffFlag, Eip8038Off>(guest);
+
+        foreach (Instruction opcode in (ReadOnlySpan<Instruction>)[Instruction.CALL, Instruction.STATICCALL, Instruction.DELEGATECALL])
+        {
+            if ((nint)handlers[(int)opcode] != (nint)guest[(int)opcode]) return false;
+        }
+
+        return true;
+    }
+
     public object? ReturnData;
 
     /// <summary>The largest nested RETURN/REVERT output staged in the reused scratch buffer.</summary>
