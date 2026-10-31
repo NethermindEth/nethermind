@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 
@@ -68,7 +69,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         int networkSize = tx.GetLength();
         (int persistedEncodingSize, byte sizeFormatVersion) = GetPersistedEncodingSize(tx);
         byte[] bytes = new byte[GetLength(tx, paymaster, networkSize, persistedEncodingSize, sizeFormatVersion)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
 
         writer.Encode(tx.Timestamp);
         writer.Encode(tx.SenderAddress);
@@ -96,9 +97,9 @@ public class LightTxDecoder : TxDecoder<Transaction>
         int trailingContent = TrailingContentLength(tx, paymaster);
         if (trailingContent != 0)
         {
-            writer.StartSequence(trailingContent);
+            RlpSequence trailing = writer.StartSequence(trailingContent);
             if (tx.NonceKeys is { } nonceKeys) FrameTxNonceCalldata.EncodeKeys(nonceKeys, ref writer);
-            else writer.StartSequence(0);
+            else writer.EncodeNullObject();
 
             // Null when the payer is not what needs the slot: a record admitted without simulation names a
             // sponsor the cap counts, or a price the sender bound sums, with no payer to reserve against.
@@ -108,92 +109,92 @@ public class LightTxDecoder : TxDecoder<Transaction>
             writer.Encode(tx.PayerExposure ?? default);
             writer.Encode(paymaster);
             writer.Encode(tx.MaxFee);
+            writer.EndSequence(trailing);
         }
 
+        Rlp.CheckLength(in writer, bytes.Length);
         return bytes;
     }
 
     /// <summary>Reads a <c>nonce_keys</c> list, mapping the empty one to <c>null</c> as the record means it.</summary>
     private static UInt256[]? DecodeKeysOrNull(ref RlpReader ctx)
     {
-        UInt256[] keys = FrameTxNonceCalldata.DecodeKeys(ref ctx);
+        UInt256[] keys = FrameTxNonceCalldata.DecodeKeys<OffFlag>(ref ctx);
         return keys.Length == 0 ? null : keys;
     }
 
     public static LightTransaction Decode(byte[] data)
     {
         RlpReader ctx = new(data);
-        UInt256 timestamp = ctx.DecodeUInt256();
+        UInt256 timestamp = ctx.DecodeUInt256<OffFlag>();
         Address sender = ctx.DecodeAddress();
-        ulong nonce = ctx.DecodeULong();
+        ulong nonce = ctx.DecodeULong<OffFlag>();
         Hash256 hash = ctx.DecodeKeccak();
-        UInt256 value = ctx.DecodeUInt256();
-        ulong gasLimit = ctx.DecodeULong();
-        UInt256 gasPrice = ctx.DecodeUInt256();
-        UInt256 maxFeePerGas = ctx.DecodeUInt256();
-        UInt256 maxFeePerBlobGas = ctx.DecodeUInt256();
-        byte[][] blobVersionHashes = ctx.DecodeByteArrays(BlobTxDecoder.BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
-        ulong poolIndex = ctx.DecodeULong();
-        int size = ctx.DecodePositiveInt();
+        UInt256 value = ctx.DecodeUInt256<OffFlag>();
+        ulong gasLimit = ctx.DecodeULong<OffFlag>();
+        UInt256 gasPrice = ctx.DecodeUInt256<OffFlag>();
+        UInt256 maxFeePerGas = ctx.DecodeUInt256<OffFlag>();
+        UInt256 maxFeePerBlobGas = ctx.DecodeUInt256<OffFlag>();
+        byte[][] blobVersionHashes = ctx.DecodeByteArrays<OffFlag>(BlobTxDecoder.BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
+        ulong poolIndex = ctx.DecodeULong<OffFlag>();
+        int size = ctx.DecodePositiveInt<OffFlag>();
 
-        int optionalFieldCount = ctx.PeekNumberOfItemsRemaining(maxSearch: 8);
+        int optionalFieldCount = CountUpToEightItems(ctx);
         if (optionalFieldCount > 7)
         {
-            throw new RlpException($"Too many optional fields in {nameof(LightTransaction)}.");
+            throw new RlpReaderException($"Too many optional fields in {nameof(LightTransaction)}.");
         }
 
-        ProofVersion proofVersion = optionalFieldCount >= 1 ? (ProofVersion)ctx.DecodeByte() : default;
+        ProofVersion proofVersion = optionalFieldCount >= 1 ? (ProofVersion)ctx.DecodeByte<OffFlag>() : default;
         // Entries persisted before the mask field was added always hold full blobs.
         BlobCellMask blobCellMask = optionalFieldCount >= 2
-            ? BlobCellMask.FromBytes(ctx.DecodeByteArraySpan())
+            ? BlobCellMask.FromBytes(ctx.DecodeByteArraySpan<OffFlag>())
             : BlobCellMask.Full;
-        int persistedEncodingSize = optionalFieldCount >= 3 ? ctx.DecodePositiveInt() : 0;
-        byte sizeFormatVersion = optionalFieldCount >= 4 ? (byte)ctx.DecodeByte() : (byte)0;
+        int persistedEncodingSize = optionalFieldCount >= 3 ? ctx.DecodePositiveInt<OffFlag>() : 0;
+        byte sizeFormatVersion = optionalFieldCount >= 4 ? ctx.DecodeByte<OffFlag>() : (byte)0;
         int consensusEncodingSize = sizeFormatVersion == ConsensusEncodingSizeFormatVersion ? persistedEncodingSize : 0;
         int elidedNetworkEncodingSize = sizeFormatVersion == ElidedNetworkEncodingSizeFormatVersion ? persistedEncodingSize : 0;
-        TxType type = optionalFieldCount >= 5 ? (TxType)ctx.DecodeByte() : TxType.Blob;
+        TxType type = optionalFieldCount >= 5 ? (TxType)ctx.DecodeByte<OffFlag>() : TxType.Blob;
         // The deadline is the only optional scalar left, so a sequence here means the trailing group follows instead.
-        ulong? expiryDeadline = optionalFieldCount >= 6 && !ctx.IsSequenceNext() ? ctx.DecodeULong() : null;
+        ulong? expiryDeadline = optionalFieldCount >= 6 && !ctx.IsNextSequence ? ctx.DecodeULong<OffFlag>() : null;
         UInt256[]? nonceKeys = null;
         Address? payerAddress = null;
         UInt256? payerExposure = null;
         Address? paymaster = null;
         UInt256? maxFee = null;
-        if (ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1)
+        if (ctx.HasNext)
         {
-            int trailingLength = ctx.ReadSequenceLength();
-            int end = ctx.Position + trailingLength;
-            // Length-checked first: IsSequenceNext is an unguarded index that would read past an empty group.
+            RlpReader trailing = ctx.EnterSequence<OffFlag>(out int trailingLength);
             // A group not opening with the keys list is the flat nonce_keys list of a record from before max_fee.
-            if (trailingLength > 0 && ctx.IsSequenceNext())
+            if (trailing.HasNext && trailing.IsNextSequence)
             {
-                nonceKeys = DecodeKeysOrNull(ref ctx);
+                nonceKeys = DecodeKeysOrNull(ref trailing);
                 // Nullable: a record admitted without simulation leaves this slot empty.
-                if (ctx.Position < end) payerAddress = ctx.DecodeAddressOrNull();
-                if (ctx.Position < end)
+                if (trailing.HasNext) payerAddress = trailing.DecodeAddressOrNull();
+                if (trailing.HasNext)
                 {
                     // The placeholder must not read back as a price, or the sender's bound would charge the
                     // record at it rather than at max_fee.
-                    UInt256 priced = ctx.DecodeUInt256();
+                    UInt256 priced = trailing.DecodeUInt256<OffFlag>();
                     if (!priced.IsZero) payerExposure = priced;
                 }
 
-                if (ctx.Position < end) paymaster = ctx.DecodeAddressOrNull();
-                if (ctx.Position < end) maxFee = ctx.DecodeUInt256();
+                if (trailing.HasNext) paymaster = trailing.DecodeAddressOrNull();
+                if (trailing.HasNext) maxFee = trailing.DecodeUInt256<OffFlag>();
             }
 
             // Anything a later build appended is skipped, so a new slot costs this one that field rather than
             // making every record unreadable.
-            ctx.Position = end;
+            ctx.ExitSequenceIgnoringRest(trailing, trailingLength);
         }
 
-        ctx.Check(data.Length);
+        ctx.CheckEnd();
 
         // A frame record without max_fee was written for the per-gas fee shape, which no longer prices it: read as
         // zero it would understate what the transaction can cost, so it is unreadable rather than restored.
         if (type.SupportsFrames() && maxFee is null)
         {
-            throw new RlpException($"{nameof(TxType.FrameTx)} record carries no max_fee");
+            throw new RlpReaderException($"{nameof(TxType.FrameTx)} record carries no max_fee");
         }
 
         return new LightTransaction(
@@ -220,6 +221,17 @@ public class LightTxDecoder : TxDecoder<Transaction>
             payerExposure,
             paymaster,
             maxFee.GetValueOrDefault());
+    }
+
+    private static int CountUpToEightItems(RlpReader reader)
+    {
+        int count = 0;
+        for (; count < 8 && reader.HasNext; count++)
+        {
+            reader.SkipItem<OffFlag>();
+        }
+
+        return count;
     }
 
     private static void EncodeAvailableCellMask(Transaction tx, ref RlpWriter writer)
