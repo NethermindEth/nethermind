@@ -13,6 +13,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 using static Nethermind.Trie.BranchData;
@@ -398,16 +399,16 @@ namespace Nethermind.Trie
 
                 return TryDecodeRlp(in rlp, bufferPool);
             }
-            catch (RlpException)
+            catch (RlpReaderException)
             {
                 return false;
             }
         }
 
         /// <remarks>
-        /// Unverified persistence bytes reach the decoder, and a malformed body surfaces as an out-of-range read
-        /// rather than an <see cref="RlpException"/>: <c>LiteRlpReader</c> slices past the end on a truncated length
-        /// prefix, <c>HexPrefix</c> indexes an empty key. Both mean "not a node", which is what the <c>Try</c>
+        /// Unverified persistence bytes reach the decoder, and a malformed body can surface as an out-of-range read
+        /// rather than an <see cref="RlpReaderException"/>: <c>NodeRlpReader</c> slices past the end on an offset
+        /// past the data, <c>HexPrefix</c> indexes an empty key. Both mean "not a node", which is what the <c>Try</c>
         /// variant reports as <c>false</c>. Scoped to the decode so an out-of-range fault raised by the resolver
         /// still propagates instead of being reported as an absent node.
         /// </remarks>
@@ -440,7 +441,7 @@ namespace Nethermind.Trie
             }
             else
             {
-                LiteRlpReader reader = new(data);
+                NodeRlpReader reader = new(data);
                 reader.ReadSequenceLength(ref position, out _);
                 numberOfItems = itemsCount = CountUpToThreeItems(reader, position, data.Length);
             }
@@ -479,7 +480,7 @@ namespace Nethermind.Trie
         /// The third item's length is still read, so a malformed one throws as it did in the loop.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int CountUpToThreeItems(LiteRlpReader reader, int position, int end)
+        private static int CountUpToThreeItems(NodeRlpReader reader, int position, int end)
         {
             if (position >= end) return 0;
             position += reader.PeekNextRlpLength(position);
@@ -499,7 +500,7 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void DecodeLeafOrExtension(ReadOnlySpan<byte> data, int position, ICappedArrayPool? bufferPool)
         {
-            LiteRlpReader reader = new(data);
+            NodeRlpReader reader = new(data);
             reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> keySpan);
             int keyEnd = position;
             if (keySpan[0] >= 0x20)
@@ -632,7 +633,7 @@ namespace Nethermind.Trie
                 return null;
             }
 
-            LiteRlpReader nodeRlp = new(rlp);
+            NodeRlpReader nodeRlp = new(rlp);
             int position = SeekChildPosition(nodeRlp, i);
             if (!IsChildHashNext(nodeRlp, position))
             {
@@ -651,8 +652,8 @@ namespace Nethermind.Trie
         /// an embedded child.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsChildHashNext(LiteRlpReader nodeRlp, int position)
-            => nodeRlp.Data[position] == RlpHelpers.KeccakRlpPrefix
+        private static bool IsChildHashNext(NodeRlpReader nodeRlp, int position)
+            => nodeRlp.Data[position] == NodeRlpReader.KeccakRlpPrefix
                 || nodeRlp.PeekPrefixAndContentLength(position).ContentLength == Hash256.Size;
 
         public byte[]? GetInlineNodeRlp(int i)
@@ -663,7 +664,7 @@ namespace Nethermind.Trie
                 return null;
             }
 
-            LiteRlpReader nodeRlp = new(rlp);
+            NodeRlpReader nodeRlp = new(rlp);
             int position = SeekChildPosition(nodeRlp, i);
 
             if (!nodeRlp.IsSequenceNext(position))
@@ -683,7 +684,7 @@ namespace Nethermind.Trie
                 return false;
             }
 
-            LiteRlpReader nodeRlp = new(rlp);
+            NodeRlpReader nodeRlp = new(rlp);
             int position = SeekChildPosition(nodeRlp, i);
             if (!IsChildHashNext(nodeRlp, position))
             {
@@ -707,7 +708,7 @@ namespace Nethermind.Trie
                 CappedArray<byte> rlp = ReadRlp();
                 if (rlp.IsNotNull)
                 {
-                    LiteRlpReader nodeRlp = new(rlp);
+                    NodeRlpReader nodeRlp = new(rlp);
                     return nodeRlp.PeekNextRlpLength(SeekChildPosition(nodeRlp, i)) == 1;
                 }
             }
@@ -730,7 +731,7 @@ namespace Nethermind.Trie
             }
 
             CappedArray<byte> rlp = ReadRlp();
-            LiteRlpReader nodeRlp = new(rlp);
+            NodeRlpReader nodeRlp = new(rlp);
             int position = rlp.IsNotNull ? SeekChildPosition(nodeRlp, 0) : 0;
             int onlyChild = -1;
             for (int i = 0; i < BranchesCount; i++)
@@ -1258,7 +1259,7 @@ namespace Nethermind.Trie
         /// <summary>Returns the offset of child <paramref name="index"/> within this node's RLP.</summary>
         /// <param name="nodeRlp">This node's RLP; every caller has already established that it is present.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int SeekChildPosition(LiteRlpReader nodeRlp, int index)
+        private int SeekChildPosition(NodeRlpReader nodeRlp, int index)
         {
             Debug.Assert(!nodeRlp.Data.IsEmpty, "Seeking a child of a node with no RLP");
             if (nodeRlp.Data.Length == FullBranchRlpLength && IsBranch)
@@ -1310,7 +1311,7 @@ namespace Nethermind.Trie
             if (rlp.IsNotNull)
             {
                 // Allows to load children in parallel
-                LiteRlpReader nodeRlp = new(rlp);
+                NodeRlpReader nodeRlp = new(rlp);
                 int position = SeekChildPosition(nodeRlp, i);
 
                 switch (nodeRlp.Data[position])
@@ -1375,7 +1376,7 @@ namespace Nethermind.Trie
                 return chCount;
             }
 
-            LiteRlpReader nodeRlp = new(rlp);
+            NodeRlpReader nodeRlp = new(rlp);
             int position = 0;
             nodeRlp.SkipLength(ref position);
 
@@ -1452,7 +1453,7 @@ namespace Nethermind.Trie
             /// <summary>Sentinel for <see cref="_currentStreamIndex"/> before the first seek.</summary>
             private const int NoCursor = -1;
 
-            private LiteRlpReader _nodeRlp;
+            private NodeRlpReader _nodeRlp;
             private int _position;
 
             /// <summary>Index of the child <see cref="_position"/> sits at, or <see cref="NoCursor"/>.</summary>
@@ -1470,7 +1471,7 @@ namespace Nethermind.Trie
                     {
                         // The cursor is only meaningful against the buffer it was measured on, and
                         // ReadRlp() can hand back a different one once WriteRlp swaps the node's array.
-                        LiteRlpReader nodeRlp;
+                        NodeRlpReader nodeRlp;
                         int position;
                         if ((uint)_currentStreamIndex <= (uint)i)
                         {

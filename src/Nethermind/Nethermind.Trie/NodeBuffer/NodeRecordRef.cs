@@ -7,6 +7,8 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie.NodeBuffer;
@@ -31,10 +33,8 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
         get
         {
             RlpReader reader = new(Payload);
-            reader.SkipItem();
-            // Not DecodeByteArraySpan: it hands a one-byte value back from a static table, and NodeRecord.LeafValue needs it in place.
-            (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength();
-            return reader.Peek(prefixLength, contentLength);
+            reader.SkipItem<OffFlag>();
+            return reader.ReadBytes<OffFlag>();
         }
     }
 
@@ -42,13 +42,12 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
     {
         get
         {
-            RlpReader reader = new(Rlp);
-            int length = reader.ReadSequenceLength();
-            return reader.Read(length);
+            RlpReader reader = new RlpReader(Rlp).EnterSequence<OffFlag>(out _);
+            return reader.ReadRaw(reader.Remaining);
         }
     }
 
-    private ReadOnlySpan<byte> KeyHexPrefix => new RlpReader(Payload).DecodeByteArraySpan();
+    private ReadOnlySpan<byte> KeyHexPrefix => new RlpReader(Payload).ReadBytes<OffFlag>();
 
     /// <summary>Child <paramref name="index"/> of a branch, or the child of an extension, with its buffer pointer.</summary>
     public ChildRef Child(int index)
@@ -65,13 +64,17 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
             case NodeRecordKind.InlineBranch:
                 {
                     RlpReader reader = new(Payload);
-                    reader.SkipItems(index);
+                    for (int i = 0; i < index; i++)
+                    {
+                        reader.SkipItem<OffFlag>();
+                    }
+
                     return ReadChild(ref reader, position);
                 }
             case NodeRecordKind.Extension:
                 {
                     RlpReader reader = new(Payload);
-                    reader.SkipItem();
+                    reader.SkipItem<OffFlag>();
                     return ReadChild(ref reader, 0);
                 }
             default:
@@ -132,8 +135,8 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
 
     private ChildRef ReadChild(ref RlpReader reader, int position)
     {
-        if (reader.IsSequenceNext()) return ChildRef.ForInline(reader.Read(reader.PeekNextRlpLength()));
-        ReadOnlySpan<byte> hash = reader.DecodeByteArraySpan();
+        if (reader.IsNextSequence) return ChildRef.ForInline(reader.ReadEncodedItem<OffFlag>());
+        ReadOnlySpan<byte> hash = reader.ReadBytes<OffFlag>();
         return hash.IsEmpty ? default : ChildRef.ForHash(new ValueHash256(hash), Pointer(position));
     }
 
