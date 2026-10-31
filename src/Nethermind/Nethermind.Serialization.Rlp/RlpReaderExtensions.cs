@@ -398,7 +398,7 @@ public static class RlpReaderExtensions
 
     /// <summary>Reads a 32-byte hash, or <see langword="null"/> for <c>0x80</c>.</summary>
     public static ValueHash256? DecodeValueKeccak(this scoped ref RlpReader reader)
-        => reader.TryReadEmptyBytes() ? null : new ValueHash256(reader.ReadBytes(Hash256.Size));
+        => reader.TryReadEmptyBytes() ? (ValueHash256?)null : new ValueHash256(reader.ReadBytes(Hash256.Size));
 
     /// <summary>Reads a 32-byte hash.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
