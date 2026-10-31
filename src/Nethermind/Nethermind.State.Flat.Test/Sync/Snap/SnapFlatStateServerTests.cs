@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
@@ -162,7 +163,7 @@ public class SnapFlatStateServerTests
         _flatDbManager.GatherReadOnlySnapshotBundle(_stateId)
             .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null));
         WriteStateTrieRoot(stateRootRlp);
-        RlpException expected = Assert.Throws<RlpException>(() => AccountDecoder.Instance.Decode(accountRlp))!;
+        RlpReaderException expected = Assert.Throws<RlpReaderException>(() => AccountDecoder.Instance.Decode(accountRlp))!;
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(
             [new PathGroup { Group = [accountPath.BytesToArray(), []] }]);
         PathWithAccount[] accounts = [new(accountPath, Account.TotallyEmpty)];
@@ -170,9 +171,9 @@ public class SnapFlatStateServerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(() => _server.GetTrieNodes(pathSet, _rootHash, CancellationToken.None),
-                Throws.TypeOf<RlpException>().With.Message.EqualTo(expected.Message), "malformed trie payloads retain the account decoder error");
+                Throws.TypeOf<RlpReaderException>().With.Message.EqualTo(expected.Message), "malformed trie payloads retain the account decoder error");
             Assert.That(() => _server.GetStorageRanges(_rootHash, accounts, null, null, 4000, CancellationToken.None),
-                Throws.TypeOf<RlpException>().With.Message.EqualTo(expected.Message), "malformed range payloads retain the account decoder error");
+                Throws.TypeOf<RlpReaderException>().With.Message.EqualTo(expected.Message), "malformed range payloads retain the account decoder error");
         }
     }
 
