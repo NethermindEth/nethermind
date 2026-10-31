@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Taiko;
@@ -92,12 +93,13 @@ public class TaikoPayloadAttributes : PayloadAttributes
         }
 
         using ArrayPoolSpan<byte> bytes = new(Rlp.LengthOfSequence(contentLength));
-        RlpWriter writer = new(bytes);
-        writer.StartSequence(contentLength);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         foreach (Withdrawal withdrawal in withdrawals)
         {
             codec.Encode(ref writer, withdrawal);
         }
+        writer.EndSequence(sequence);
 
         hasher.AppendData(bytes);
     }

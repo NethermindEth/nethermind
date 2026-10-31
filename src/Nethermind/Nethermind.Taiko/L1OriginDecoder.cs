@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using System;
 
@@ -14,50 +16,48 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
     internal const int SignatureLength = 65;
 
     protected override L1Origin? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+            ? Decode<OffFlag>(ref decoderContext, rlpBehaviors)
+            : Decode<OnFlag>(ref decoderContext, rlpBehaviors);
+
+    private static L1Origin? Decode<TCanonicalChecks>(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
     {
-        if (decoderContext.IsNextItemEmptyList())
+        if (decoderContext.TryReadEmptySequence())
         {
-            decoderContext.ReadByte();
             return null;
         }
 
-        (int _, int contentLength) = decoderContext.ReadPrefixAndContentLength();
-        int itemsCount = decoderContext.PeekNumberOfItemsRemaining(maxSearch: contentLength);
+        RlpReader fields = decoderContext.EnterSequence<TCanonicalChecks>(out int itemLength);
 
-        UInt256 blockId = decoderContext.DecodeUInt256();
-        Hash256? l2BlockHash = decoderContext.DecodeKeccakOrNull();
-        long? l1BlockHeight = decoderContext.DecodeLong();
-        Hash256 l1BlockHash = decoderContext.DecodeKeccak();
+        UInt256 blockId = fields.DecodeUInt256<TCanonicalChecks>();
+        Hash256? l2BlockHash = fields.DecodeKeccakOrNull();
+        long? l1BlockHeight = fields.DecodeLong<TCanonicalChecks>();
+        Hash256 l1BlockHash = fields.DecodeKeccak();
 
         int[]? buildPayloadArgsId = null;
 
-        if (itemsCount >= 5)
+        if (fields.HasNext)
         {
-            byte[] buildPayloadBytes = decoderContext.DecodeByteArray();
+            byte[] buildPayloadBytes = fields.DecodeByteArray<TCanonicalChecks>();
             buildPayloadArgsId = buildPayloadBytes.Length > 0 ? Array.ConvertAll(buildPayloadBytes, Convert.ToInt32) : null;
         }
 
-        bool isForcedInclusion = itemsCount >= 6 && decoderContext.DecodeBool();
-        byte[]? signature = itemsCount >= 7 ? decoderContext.DecodeByteArray() : null;
+        bool isForcedInclusion = fields.HasNext && fields.DecodeBool();
+        byte[]? signature = fields.HasNext ? fields.DecodeByteArray<TCanonicalChecks>() : null;
 
+        decoderContext.ExitSequence(in fields, itemLength, rlpBehaviors);
         return new(blockId, l2BlockHash, l1BlockHeight, l1BlockHash, buildPayloadArgsId, isForcedInclusion, signature);
     }
 
-    public override Rlp Encode(L1Origin? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(ref RlpWriter writer, L1Origin item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (item is null)
-            return Rlp.OfEmptyList;
-
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-        return new(bytes);
+        RlpSequence sequence = writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        EncodeFields(ref writer, item);
+        writer.EndSequence(sequence);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, L1Origin item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    private static void EncodeFields(ref RlpWriter writer, L1Origin item)
     {
-        writer.StartSequence(GetContentLength(item, rlpBehaviors));
-
         writer.Encode(item.BlockId);
         writer.Encode(item.L2BlockHash);
         writer.Encode(item.L1BlockHeight ?? 0);
@@ -72,7 +72,7 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
         {
             if (item.BuildPayloadArgsId.Length is not BuildPayloadArgsIdLength)
             {
-                throw new RlpException($"{nameof(item.BuildPayloadArgsId)} should be exactly {BuildPayloadArgsIdLength}");
+                throw new RlpReaderException($"{nameof(item.BuildPayloadArgsId)} should be exactly {BuildPayloadArgsIdLength}");
             }
 
             Span<byte> buildPayloadArgsId = stackalloc byte[BuildPayloadArgsIdLength];
@@ -98,7 +98,7 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
         {
             if (item.Signature.Length != SignatureLength)
             {
-                throw new RlpException($"{nameof(item.Signature)} should be exactly {SignatureLength}");
+                throw new RlpReaderException($"{nameof(item.Signature)} should be exactly {SignatureLength}");
             }
 
             writer.Encode(item.Signature);
