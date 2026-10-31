@@ -126,7 +126,8 @@ internal static class BranchRlp
 
     private static void RequireNoValue(ref RlpReader reader)
     {
-        if (!IsEmptyItem(reader.PeekNextItem()))
+        RlpReader value = reader;
+        if (!IsEmptyItem(value.ReadEncodedItem<OffFlag>()))
         {
             throw new InvalidDataException("A branch of a fixed-width-key trie carries no value; this node is not a state or storage trie branch.");
         }
