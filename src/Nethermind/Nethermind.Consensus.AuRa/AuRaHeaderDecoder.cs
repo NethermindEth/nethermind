@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa;
@@ -36,7 +37,7 @@ public sealed class AuRaHeaderDecoder : HeaderDecoder
         ulong timestamp,
         byte[] extraData)
     {
-        if (decoderContext.PeekPrefixAndContentLength().ContentLength == Hash256.Size)
+        if (decoderContext.PeekByte() == Rlp.EmptyByteArrayByte + Hash256.Size)
         {
             return base.DecodeSealAndCreateHeader(
                 ref decoderContext, parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData);
@@ -47,7 +48,7 @@ public sealed class AuRaHeaderDecoder : HeaderDecoder
         // Third-party chain specs may persist non-standard genesis seals; live headers require full signatures.
         if (signature.Length == 0 || (number != 0 && signature.Length != Signature.Size))
         {
-            throw new RlpException("Invalid AuRa signature RLP.");
+            throw new RlpReaderException("Invalid AuRa signature RLP.");
         }
 
         return new AuRaBlockHeader(parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData)
@@ -62,7 +63,7 @@ public sealed class AuRaHeaderDecoder : HeaderDecoder
     /// unsealed headers are never persisted or sent — encoding runs only after sealing (the
     /// <see cref="RlpBehaviors.ForSealing"/> path omits the seal entirely).
     /// </remarks>
-    protected override void EncodeSeal<TWriter>(ref TWriter writer, BlockHeader header)
+    protected override void EncodeSeal(ref RlpWriter writer, BlockHeader header)
     {
         if (header is AuRaBlockHeader aura)
         {
