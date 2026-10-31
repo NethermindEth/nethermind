@@ -5,6 +5,7 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
@@ -37,6 +38,12 @@ public partial class Rlp
     // that read no static field (e.g. LengthOf) need no type initialization check on every call. Declared after
     // every other initialized static field: registration constructs decoders, which may read them.
     private static readonly bool _defaultDecodersRegistered = RegisterDefaultDecoders();
+
+    /// <summary>Writes <paramref name="hash"/> to the 32 bytes at <paramref name="destination"/>.</summary>
+    /// <remarks>See <c>Rlp.zkevm.cs</c> for the guest form.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteHash(ref byte destination, Hash256 hash) =>
+        Unsafe.As<byte, ValueHash256>(ref destination) = hash.ValueHash256;
 
     private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decodersSnapshot;
 
