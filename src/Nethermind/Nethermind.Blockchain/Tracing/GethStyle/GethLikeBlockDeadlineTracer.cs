@@ -47,6 +47,7 @@ internal sealed class GethLikeBlockDeadlineTracer(
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
+        ReleaseDeadline();
         _external.ThrowIfCancellationRequested();
         ITxTracer current = inner.StartNewTxTrace(tx);
         if (tx is null || options.TxHash is { } target && target != tx.Hash)
