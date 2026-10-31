@@ -326,7 +326,9 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
     /// <returns>A reader over the receipts of the list.</returns>
     public static RlpReader EnterCompactReceiptList(scoped ref RlpReader reader) => EnterCompactReceiptList<OnFlag>(ref reader);
 
-    private static RlpReader EnterCompactReceiptList<TCanonicalChecks>(scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag
+    /// <inheritdoc cref="EnterCompactReceiptList(ref RlpReader)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    public static RlpReader EnterCompactReceiptList<TCanonicalChecks>(scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag
     {
         RlpReader declared = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
         int headerLength = itemLength - declared.Remaining;

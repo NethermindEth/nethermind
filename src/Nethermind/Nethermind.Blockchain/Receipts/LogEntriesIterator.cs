@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
@@ -12,13 +13,14 @@ namespace Nethermind.Blockchain.Receipts
         private readonly LogEntry[]? _logs;
         private readonly int _length;
         private RlpReader _reader;
+        private readonly RlpReader _start;
         private readonly IReceiptRefDecoder _receiptRefDecoder;
         public long Index { get; private set; }
 
         public LogEntriesIterator(ReadOnlySpan<byte> data, IReceiptRefDecoder receiptRefDecoder)
         {
-            _reader = new RlpReader(data);
-            _length = _reader.ReadSequenceLength() + _reader.Position;
+            _reader = new RlpReader(data).EnterSequence<OffFlag>(out _);
+            _start = _reader;
             Index = -1;
             _logs = null;
             _receiptRefDecoder = receiptRefDecoder;
@@ -36,15 +38,14 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_logs is null)
             {
-                while (_reader.Position < _length)
+                while (_reader.HasNext)
                 {
-                    if (_reader.IsNextItemEmptyList())
+                    if (_reader.TryReadEmptySequence())
                     {
-                        _reader.ReadByte();
                         continue;
                     }
 
-                    _receiptRefDecoder.DecodeLogEntryStructRef(ref _reader, RlpBehaviors.None, out current);
+                    _receiptRefDecoder.DecodeLogEntryStructRef(ref _reader, RlpBehaviors.TrustedInput, out current);
                     Index++;
                     return true;
                 }
@@ -68,8 +69,7 @@ namespace Nethermind.Blockchain.Receipts
 
             if (_logs is null)
             {
-                _reader.Position = 0;
-                _reader.ReadSequenceLength();
+                _reader = _start;
             }
         }
 
@@ -77,15 +77,14 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_logs is null)
             {
-                while (_reader.Position < _length)
+                while (_reader.HasNext)
                 {
-                    if (_reader.IsNextItemEmptyList())
+                    if (_reader.TryReadEmptySequence())
                     {
-                        _reader.ReadByte();
                         continue;
                     }
 
-                    _reader.SkipItem();
+                    _reader.SkipItem<OffFlag>();
                     Index++;
                     return true;
                 }

@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 #pragma warning disable 618
 
@@ -15,7 +16,8 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IDb _blocksDb;
         private readonly int _length;
         private RlpReader _reader;
-        private readonly int _startingPosition;
+        private readonly RlpReader _start;
+        private readonly ReadOnlySpan<byte> _data;
 
         private readonly TxReceipt[]? _receipts;
         private int _receiptIndex;
@@ -38,7 +40,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             RlpReader reader = new(receiptsData);
             ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out ReadOnlySpan<byte> txHashes);
-            _reader = reader;
+            _data = receiptsData;
             _txHashes = txHashes;
             _blocksDb = blocksDb;
             _receipts = null;
@@ -49,8 +51,15 @@ namespace Nethermind.Blockchain.Receipts
             _recoveryContext = null;
             _receiptRefDecoder = receiptRefDecoder;
 
-            _startingPosition = _reader.Position;
-            _length = receiptsData.Length == 0 ? 0 : _reader.ReadSequenceLength() + _reader.Position;
+            if (receiptsData.Length != 0)
+            {
+                // The compact list declares one byte less than its receipts take, so a receipt counts while it
+                // starts before the declared end, as the receipts of the list do.
+                _length = reader.EnterSequence<OffFlag>(out _).Remaining;
+                _reader = ReceiptArrayStorageDecoder.EnterCompactReceiptList<OffFlag>(ref reader);
+            }
+
+            _start = _reader;
         }
 
         internal ReceiptsIterator(scoped in Span<byte> receiptsData, IDb blocksDb, IReceiptRefDecoder receiptRefDecoder,
@@ -81,16 +90,16 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_receipts is null)
             {
-                if (_reader.Position < _length)
+                if (_reader.BytesRead < _length)
                 {
                     if (_reader.IsNextItemEmptyList())
                     {
-                        _reader.Position = _length;
+                        _reader.ReadRaw(_reader.Remaining);
                         current = default;
                         return false;
                     }
 
-                    _receiptRefDecoder.DecodeStructRef(ref _reader, RlpBehaviors.Storage, out current);
+                    _receiptRefDecoder.DecodeStructRef(ref _reader, RlpBehaviors.Storage | RlpBehaviors.TrustedInput, out current);
                     _recoveryContext?.RecoverReceiptData(ref current);
                     _receiptIndex++;
                     return true;
@@ -111,14 +120,34 @@ namespace Nethermind.Blockchain.Receipts
 
         /// <summary>Returns how many receipts are left to iterate, reading only their RLP length prefixes.</summary>
         public readonly int CountRemaining() =>
-            _receipts is null ? _reader.PeekNumberOfItemsRemaining(_length) : _length - _receiptIndex;
+            _receipts is null ? CountItemsBeforeEnd() : _length - _receiptIndex;
+
+        private readonly int CountItemsBeforeEnd()
+        {
+            RlpReader reader = _reader;
+            int count = 0;
+            while (reader.BytesRead < _length)
+            {
+                reader.SkipItem<OffFlag>();
+                count++;
+            }
+
+            return count;
+        }
 
         /// <summary>Advances past the next <paramref name="count"/> receipts without decoding them.</summary>
         /// <remarks>Must not be called once recovery is configured: skipped receipts would not reach the recovery context.</remarks>
         public void Skip(int count)
         {
             if (_recoveryContext is not null) throw new InvalidOperationException("Cannot skip receipts while recovering them.");
-            if (_receipts is null) _reader.SkipItems(count);
+            if (_receipts is null)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    _reader.SkipItem<OffFlag>();
+                }
+            }
+
             _receiptIndex += count;
         }
 
@@ -196,11 +225,10 @@ namespace Nethermind.Blockchain.Receipts
             if (_recoveryContext is not null)
             {
                 // Need to replay the context.
-                _reader.Position = _startingPosition;
-                if (_length != 0) _reader.ReadSequenceLength();
+                _reader = _start;
                 for (int i = 0; i < _receiptIndex; i++)
                 {
-                    _receiptRefDecoder.DecodeStructRef(ref _reader, RlpBehaviors.Storage, out current);
+                    _receiptRefDecoder.DecodeStructRef(ref _reader, RlpBehaviors.Storage | RlpBehaviors.TrustedInput, out current);
                     _recoveryContext?.RecoverReceiptData(ref current);
                 }
             }
@@ -210,9 +238,9 @@ namespace Nethermind.Blockchain.Receipts
 
         public readonly void Dispose()
         {
-            if (_receipts is null && !_reader.Data.IsEmpty)
+            if (_receipts is null && !_data.IsEmpty)
             {
-                _blocksDb?.DangerousReleaseMemory(_reader.Data);
+                _blocksDb?.DangerousReleaseMemory(_data);
             }
             _recoveryContext?.Dispose();
             _selectiveLogRecoveryContext?.Dispose();
@@ -224,7 +252,7 @@ namespace Nethermind.Blockchain.Receipts
                 : new LogEntriesIterator(receipt.Logs);
 
         public readonly Hash256[] DecodeTopics(RlpReader reader) =>
-            _receiptRefDecoder.DecodeTopics(reader);
+            _receiptRefDecoder.DecodeTopics(reader, RlpBehaviors.TrustedInput);
 
         public readonly bool CanDecodeBloom => _receiptRefDecoder is null || _receiptRefDecoder.CanDecodeBloom;
     }

@@ -21,6 +21,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
@@ -292,7 +293,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 candidate = _blockStore.GetReceiptRecoveryBlock(oldBlockNumber, oldBlockHash);
             }
-            catch (RlpException exception)
+            catch (RlpReaderException exception)
             {
                 WarnMalformedTxIndexPrune(oldBlockNumber, exception);
                 return false;
@@ -311,14 +312,14 @@ namespace Nethermind.Blockchain.Receipts
                 RemoveBlockTx(ref block, writeBatch);
                 return true;
             }
-            catch (RlpException exception)
+            catch (RlpReaderException exception)
             {
                 WarnMalformedTxIndexPrune(block.Number, exception);
                 return false;
             }
         }
 
-        private void WarnMalformedTxIndexPrune(ulong blockNumber, RlpException exception)
+        private void WarnMalformedTxIndexPrune(ulong blockNumber, RlpReaderException exception)
         {
             if (_logger.IsWarn)
             {
@@ -346,7 +347,8 @@ namespace Nethermind.Blockchain.Receipts
 
             if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
 
-            ulong blockNum = new RlpReader(blockHashData).DecodeULong();
+            RlpReader blockNumReader = new(blockHashData);
+            ulong blockNum = blockNumReader.DecodeULong<OffFlag>();
             return _blockTree.FindBlockHash(blockNum);
         }
 
@@ -503,34 +505,36 @@ namespace Nethermind.Blockchain.Receipts
                 int index = MemoryMarshal.Cast<byte, ValueHash256>(txHashes).IndexOf(txHash.ValueHash256);
                 if (index < 0) return false;
 
-                int end = reader.ReadSequenceLength() + reader.Position;
-                RlpBehaviors behaviors = RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes
+                // The compact list declares one byte less than its receipts take, so a receipt counts while it
+                // starts before the declared end, as the receipts of the list do.
+                int end = reader.EnterSequence<OffFlag>(out _).Remaining;
+                RlpReader items = ReceiptArrayStorageDecoder.EnterCompactReceiptList<OffFlag>(ref reader);
+                RlpBehaviors behaviors = RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput
                     | (_eip7668EverEnabled && _specProvider.GetSpec(header).IsEip7668Enabled ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None);
                 CompactReceiptStorageDecoder decoder = CompactReceiptStorageDecoder.Instance;
                 TxReceipt? found = null;
                 ulong gasUsedBefore = 0;
                 int logsBefore = 0;
                 int count = 0;
-                for (; reader.Position < end; count++)
+                for (; items.BytesRead < end; count++)
                 {
                     // Get keeps only the receipts before an empty item, which then cannot be recovered.
-                    if (reader.IsNextItemEmptyList()) return false;
+                    if (items.IsNextItemEmptyList()) return false;
 
                     if (count < index)
                     {
-                        decoder.DecodeStructRef(ref reader, RlpBehaviors.Storage, out TxReceiptStructRef previous);
+                        decoder.DecodeStructRef(ref items, RlpBehaviors.Storage | RlpBehaviors.TrustedInput, out TxReceiptStructRef previous);
                         gasUsedBefore = previous.GasUsedTotal;
-                        RlpReader logs = new(previous.LogsRlp);
-                        logs.SkipLength();
-                        logsBefore += logs.PeekNumberOfItemsRemaining();
+                        RlpReader logs = new RlpReader(previous.LogsRlp).EnterSequence<OffFlag>(out _);
+                        logsBefore += logs.CountItems<OffFlag>(int.MaxValue);
                     }
                     else if (count == index)
                     {
-                        found = decoder.Decode(ref reader, behaviors);
+                        found = decoder.Decode(ref items, behaviors);
                     }
                     else
                     {
-                        reader.SkipItem();
+                        items.SkipItem<OffFlag>();
                     }
                 }
 
@@ -576,7 +580,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 return receiptsData.IsNullOrEmpty()
                     ? []
-                    : _storageDecoder.DecodeAllowingMissing(in receiptsData);
+                    : _storageDecoder.DecodeAllowingMissing(in receiptsData, RlpBehaviors.TrustedInput);
             }
             finally
             {
@@ -658,9 +662,9 @@ namespace Nethermind.Blockchain.Receipts
         /// </remarks>
         private TxReceipt[] Decode(in Span<byte> receiptsData, BlockHeader header)
         {
-            if (!_eip7668EverEnabled || !_specProvider.GetSpec(header).IsEip7668Enabled) return _storageDecoder.Decode(in receiptsData);
+            if (!_eip7668EverEnabled || !_specProvider.GetSpec(header).IsEip7668Enabled) return _storageDecoder.Decode(in receiptsData, RlpBehaviors.TrustedInput);
 
-            TxReceipt[] receipts = _storageDecoder.Decode(in receiptsData, RlpBehaviors.Eip7668Receipts);
+            TxReceipt[] receipts = _storageDecoder.Decode(in receiptsData, RlpBehaviors.Eip7668Receipts | RlpBehaviors.TrustedInput);
             receipts.SetZeroLengthBlooms();
             return receipts;
         }
@@ -1239,10 +1243,11 @@ namespace Nethermind.Blockchain.Receipts
 
             try
             {
-                number = new RlpReader(value).DecodeULong();
+                RlpReader reader = new(value);
+                number = reader.DecodeULong<OffFlag>();
                 return true;
             }
-            catch (RlpException)
+            catch (RlpReaderException)
             {
                 return false;
             }

@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain;
@@ -355,13 +356,17 @@ public partial class BlockTree
     private Hash256? DecodeMetadataKeccak(int key)
     {
         byte[]? rlp = _metadataDb.Get(key);
-        return rlp is null ? null : new RlpReader(rlp).DecodeKeccakOrNull();
+        if (rlp is null) return null;
+        RlpReader reader = new(rlp);
+        return reader.DecodeKeccakOrNull();
     }
 
     private ulong? DecodeMetadataULong(int key)
     {
         byte[]? rlp = _metadataDb.Get(key);
-        return rlp is null ? null : new RlpReader(rlp).DecodeULong();
+        if (rlp is null) return null;
+        RlpReader reader = new(rlp);
+        return reader.DecodeULong<OffFlag>();
     }
 
     public enum BinarySearchDirection
