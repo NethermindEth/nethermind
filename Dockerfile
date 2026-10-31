@@ -55,6 +55,6 @@ VOLUME /nethermind/nethermind_db
 EXPOSE 8545 8551 30303 30303/udp
 
 COPY --from=build /publish .
-COPY scripts/entrypoint.sh .
+COPY --chmod=0755 scripts/entrypoint.sh .
 
 ENTRYPOINT ["./entrypoint.sh"]

@@ -1,4 +1,5 @@
 /.github @rubo
+/.github/release-signers @LukaszRozmej @MarekM25 @rubo
 /scripts @rubo
 
 /Dockerfile* @rubo
