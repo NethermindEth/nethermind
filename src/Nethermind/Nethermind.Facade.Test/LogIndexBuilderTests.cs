@@ -279,12 +279,12 @@ public class LogIndexBuilderTests
         }
     }
 
-    [TestCase(10, 2, 1, TestName = "Should_WarnOnce_WhenTheStoredIndexEndsBelowTheBarrierAndReceiptsThereAreUnavailable")]
-    [TestCase(10, 50, 0, TestName = "Should_NotWarn_WhenReceiptsAboveTheBarrierAreNotReadableYet")]
-    [TestCase(10, MaxSyncBlock, 0, TestName = "Should_NotWarn_WhenIdleAtHead")]
-    [TestCase(MaxSyncBlock + 3, MaxSyncBlock, 0, TestName = "Should_NotWarn_WhenIdleAtAHeadBelowTheBarrier")]
+    [TestCase(10, 2, 1, "0/90", TestName = "Should_WarnOnce_WhenTheStoredIndexEndsBelowTheBarrierAndReceiptsThereAreUnavailable")]
+    [TestCase(10, 50, 0, "1/43", TestName = "Should_NotWarn_WhenReceiptsAboveTheBarrierAreNotReadableYet")]
+    [TestCase(10, MaxSyncBlock, 0, "1/1", TestName = "Should_NotWarn_WhenIdleAtHead")]
+    [TestCase(MaxSyncBlock + 3, MaxSyncBlock, 0, "1/1", TestName = "Should_NotWarn_WhenIdleAtAHeadBelowTheBarrier")]
     [CancelAfter(60_000)]
-    public async Task Should_WarnOnce_OnlyWhenTheForwardIndexIsStuckBelowTheBarrier(int barrier, int storedMax, int expectedWarnings, CancellationToken cancellation)
+    public async Task Should_WarnOnce_OnlyWhenTheForwardIndexIsStuckBelowTheBarrier(int barrier, int storedMax, int expectedWarnings, string expectedForwardProgress, CancellationToken cancellation)
     {
         _syncConfig.AncientReceiptsBarrier = (ulong)barrier;
         TestLogger logger = new();
@@ -324,6 +324,8 @@ public class LogIndexBuilderTests
                 "only a forward index stuck below the barrier must tell the operator, and only once instead of polling silently forever");
             Assert.That(builder.LastError, Is.Null);
             Assert.That(storage.MaxBlockNumber, Is.EqualTo(storedMax));
+            Assert.That(logger.LogList.Exists(line => line.Replace(" ", "").Contains($"(Forward){expectedForwardProgress}(")), Is.True,
+                "forward progress must count from the first block the forward walk indexes, not from the pivot");
         }
 
         await builder.StopAsync();
@@ -412,6 +414,62 @@ public class LogIndexBuilderTests
             Assert.That(storage.MinBlockNumber, Is.EqualTo(oldestStored),
                 "receipts below the oldest stored block are pruned, not late - the backward sync must complete there rather than poll forever");
         }
+    }
+
+    // Without fast sync the config pivot reads 0 wherever it came from, so one row covers that mode.
+    [TestCase(true, true)]
+    [TestCase(true, false)]
+    [TestCase(false, false)]
+    [CancelAfter(60_000)]
+    public async Task Should_StopBackwardSync_AtTheReceiptsBarrier_OfTheTreePivot(bool fastSync, bool pivotFromConsensusLayer, CancellationToken cancellation)
+    {
+        const ulong barrier = 50;
+        _syncConfig.FastSync = fastSync;
+        _syncConfig.SnapSync = fastSync;
+        // A pivot supplied by the consensus layer reaches only the block tree, never the config.
+        _syncConfig.PivotNumber = pivotFromConsensusLayer ? 0UL : _blockTree.SyncPivot.BlockNumber;
+        _syncConfig.AncientBodiesBarrier = barrier;
+        _syncConfig.AncientReceiptsBarrier = barrier;
+        ulong expectedMin = fastSync ? barrier : 0UL;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        tree.SyncPivot.Returns(realTree.SyncPivot);
+        tree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        tree.GetLowestBlock().Returns(_syncConfig.AncientBodiesBarrierCalc);
+        tree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci => ci.ArgAt<ulong>(0) < expectedMin
+                ? null
+                : realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1)));
+
+        TestLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(storage, tree);
+
+        await builder.StartAsync();
+        await builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MinBlockNumber, Is.EqualTo((int)expectedMin));
+            Assert.That(builder.MinTargetBlockNumber, Is.EqualTo(expectedMin));
+        }
+    }
+
+    [TestCase(100UL, 60UL, 50UL, 60UL)] // bodies barrier above the receipts barrier
+    [TestCase(100UL, 50UL, 60UL, 60UL)] // receipts barrier above the bodies barrier
+    [TestCase(40UL, 50UL, 50UL, 40UL)] // tree pivot below the barriers
+    [TestCase(0UL, 50UL, 50UL, 0UL)] // no pivot yet
+    public void MinTarget_is_keyed_on_the_tree_pivot(ulong treePivot, ulong bodies, ulong receipts, ulong expected)
+    {
+        _syncConfig.PivotNumber = 0;
+        _syncConfig.AncientBodiesBarrier = bodies;
+        _syncConfig.AncientReceiptsBarrier = receipts;
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        tree.SyncPivot.Returns((treePivot, Keccak.Zero));
+
+        Assert.That(GetService(new TestLogIndexStorage(), tree).MinTargetBlockNumber, Is.EqualTo(expected));
     }
 
     [Test]
