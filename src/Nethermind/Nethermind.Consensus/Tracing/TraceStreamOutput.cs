@@ -26,6 +26,7 @@ public sealed class TraceStreamOutput(Utf8JsonWriter writer, PipeWriter? output,
     /// <summary>Appends elements serialized ahead, with the separator the writer would put before them.</summary>
     public void WriteSerialized(ReadOnlySpan<byte> elements)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (output is null || elements.Length <= ContiguousLimitBytes)
         {
             writer.WriteRawValue(elements, skipInputValidation: true);

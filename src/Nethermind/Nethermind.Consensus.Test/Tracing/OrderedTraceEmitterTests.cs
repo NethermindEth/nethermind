@@ -304,6 +304,37 @@ public class OrderedTraceEmitterTests
         }
     }
 
+    [TestCase(0, 0, 1, 4096, TestName = "SerializedTraces_GrownSize_FirstBufferIsTheInitialSize")]
+    [TestCase(4096, 4096, 1, 8192, TestName = "SerializedTraces_GrownSize_Doubles")]
+    [TestCase(4096, 4000, 100_000, 104_000, TestName = "SerializedTraces_GrownSize_TakesTheRequiredSizeWhenLarger")]
+    [TestCase(1 << 30, 1 << 30, 1, 0x7FFFFFC7, TestName = "SerializedTraces_GrownSize_AtOneGibibyte_StopsAtTheLargestArray")]
+    [TestCase(0x7FFFFF00, 0x7FFFFF00, 1, 0x7FFFFFC7, TestName = "SerializedTraces_GrownSize_NearTheLargestArray_StopsThere")]
+    public void SerializedTraces_GrownSize_GrowsGeometricallyUpToTheLargestArray(int length, int written, int required, int expected) =>
+        Assert.That(SerializedTraces.GrownSize(length, written, required), Is.EqualTo(expected));
+
+    [Test]
+    public void SerializedTraces_GrownSize_BeyondTheLargestArray_Throws() =>
+        Assert.That(() => SerializedTraces.GrownSize(Array.MaxLength, Array.MaxLength, 1), Throws.InstanceOf<ArgumentOutOfRangeException>());
+
+    [Test]
+    public void TraceStreamOutput_WhenCancelled_WritesNothingMore()
+    {
+        ArrayBufferWriter<byte> output = new();
+        using Utf8JsonWriter writer = new(output, new JsonWriterOptions { SkipValidation = true });
+        using CancellationTokenSource cancellation = new();
+        TraceStreamOutput stream = new(writer, null, cancellation.Token, int.MaxValue);
+        writer.WriteStartArray();
+        stream.WriteSerialized("1"u8);
+        cancellation.Cancel();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => stream.WriteSerialized("2"u8), Throws.InstanceOf<OperationCanceledException>());
+            writer.Flush();
+            Assert.That(Encoding.UTF8.GetString(output.WrittenSpan), Is.EqualTo("[1"));
+        }
+    }
+
     [Test]
     public void TraceStreamOutput_WithElementsOfAnySize_WritesTheBytesTheWriterWouldWrite([Values] bool flushed)
     {

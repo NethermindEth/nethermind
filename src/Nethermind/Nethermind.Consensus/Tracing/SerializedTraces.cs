@@ -66,11 +66,19 @@ internal sealed class SerializedTraces : IBufferWriter<byte>
         int required = Math.Max(sizeHint, 1);
         if (_buffer.Length - _written >= required) return;
 
-        int size = Math.Max(Math.Max(InitialBufferSize, _written + required), 2 * _buffer.Length);
-        byte[] grown = ArrayPool<byte>.Shared.Rent(size);
+        byte[] grown = ArrayPool<byte>.Shared.Rent(GrownSize(_buffer.Length, _written, required));
         _buffer.AsSpan(0, _written).CopyTo(grown);
         if (_buffer.Length != 0) ArrayPool<byte>.Shared.Return(_buffer);
         _buffer = grown;
+    }
+
+    /// <summary>The next buffer size: doubled, at least what is required, at most <see cref="Array.MaxLength"/>, so
+    /// growth stays geometric up to the largest array instead of overflowing past 1 GiB.</summary>
+    internal static int GrownSize(int length, int written, int required)
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(required, Array.MaxLength - written);
+        int doubled = length <= Array.MaxLength / 2 ? 2 * length : Array.MaxLength;
+        return Math.Max(Math.Max(InitialBufferSize, written + required), doubled);
     }
 
     private void Clear()

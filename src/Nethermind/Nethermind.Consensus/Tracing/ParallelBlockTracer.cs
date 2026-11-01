@@ -57,7 +57,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
     /// <summary>Transactions per worker that a streamed block may have traced and not yet written: enough for the
     /// workers to pass a transaction that costs as much as many others, few enough that the traces waiting behind it
-    /// stay bounded. The value is not measured; the node A/B decides it.</summary>
+    /// stay bounded. The value is a heuristic.</summary>
     internal int StreamedPerWorker { get; init; } = 32;
 
     internal bool IsDisposing

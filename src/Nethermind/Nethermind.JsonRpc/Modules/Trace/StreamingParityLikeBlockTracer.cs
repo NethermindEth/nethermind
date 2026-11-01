@@ -225,11 +225,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IPar
     }
 
     /// <inheritdoc />
-    public void WriteSerialized(ReadOnlySpan<byte> elements)
-    {
-        _cancellationToken.ThrowIfCancellationRequested();
-        _output.WriteSerialized(elements);
-    }
+    public void WriteSerialized(ReadOnlySpan<byte> elements) => _output.WriteSerialized(elements);
 
     /// <summary>Tracers for the transactions of <paramref name="block"/> when it is traced in parallel; their traces are
     /// recycled once they are serialized.</summary>
