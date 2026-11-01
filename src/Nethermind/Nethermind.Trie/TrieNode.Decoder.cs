@@ -77,7 +77,7 @@ namespace Nethermind.Trie
             /// child, +995,495 ziskemu steps a block across the four passes that do so.
             /// </remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            private static ref object? FirstBranchChild(TrieNode item) => ref Branch(item)[0];
+            private static ref object? FirstBranchChild(TrieNode item) => ref Unsafe.AsRef(in Branch(item).Branches[0]);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             private static BranchData Branch(TrieNode item) => item._nodeData as BranchData ?? ThrowNotABranch();
@@ -1107,15 +1107,17 @@ namespace Nethermind.Trie
                 ref object? child = ref FirstBranchChild(item);
                 ref object? end = ref Unsafe.Add(ref child, BranchesCount);
                 ref object? last = ref end;
-                while (Unsafe.IsAddressGreaterThan(ref last, ref child) && Unsafe.Add(ref last, -1) is null)
+                ushort taken = TakenChildren(item);
+                while (Unsafe.IsAddressGreaterThan(ref last, ref child)
+                    && ((TracksTakenChildren && (taken & 1 << (ChildIndex(ref last, ref end) - 1)) == 0) || Unsafe.Add(ref last, -1) is null))
                 {
                     last = ref Unsafe.Add(ref last, -1);
                 }
 
-                for (; Unsafe.IsAddressLessThan(ref child, ref last); child = ref Unsafe.Add(ref child, 1))
+                for (; Unsafe.IsAddressLessThan(ref child, ref last); child = ref Unsafe.Add(ref child, 1), taken >>= 1)
                 {
                     int itemEnd = cursor + (ZkEvmFlag.IsActive ? CanonicalChildRlpLength(previousRlp[cursor]) : nodeRlp.PeekNextRlpLength(cursor));
-                    object? data = child;
+                    object? data = TracksTakenChildren && (taken & 1) == 0 ? null : child;
                     if (data is not null)
                     {
                         int i = ChildIndex(ref child, ref end);
@@ -1239,8 +1241,10 @@ namespace Nethermind.Trie
                 Bytes.Copy(nodeRlp, destination);
                 ref object? child = ref FirstBranchChild(item);
                 ref object? end = ref Unsafe.Add(ref child, BranchesCount);
-                for (; Unsafe.IsAddressLessThan(ref child, ref end); child = ref Unsafe.Add(ref child, 1))
+                ushort taken = TakenChildren(item);
+                for (; Unsafe.IsAddressLessThan(ref child, ref end) && (!TracksTakenChildren || taken != 0); child = ref Unsafe.Add(ref child, 1), taken >>= 1)
                 {
+                    if (TracksTakenChildren && (taken & 1) == 0) continue;
                     object? data = child;
                     if (data is null) continue;
                     if (ReferenceEquals(data, _nullNode)) return false;

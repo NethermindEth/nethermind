@@ -229,6 +229,19 @@ namespace Nethermind.Trie
         /// <remarks>Not on the host, which persists the new RLP. See <c>TrieNode.zkevm.cs</c> for the guest.</remarks>
         private static bool KeepsRlpOfHashedBranch => false;
 
+        /// <summary>Whether a walk over a branch's children skips the slots that never held one.</summary>
+        /// <remarks>Not on the host. See <c>TrieNode.zkevm.cs</c> for the guest.</remarks>
+        private static bool TracksTakenChildren => false;
+
+        /// <summary>The slots of <paramref name="item"/>, a branch, that may hold a child: all of them on the host.</summary>
+        private static ushort TakenChildren(TrieNode item) => ushort.MaxValue;
+
+        /// <summary>Records that the child in branch slot <paramref name="i"/> may differ from the one this node's RLP encodes:
+        /// nothing to record on the host.</summary>
+        internal void MarkChildChanged(int i)
+        {
+        }
+
         /// <summary>Rents the buffer the encoding of the branch at <paramref name="path"/> is written into: from <paramref name="pool"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static CappedArray<byte> RentBranchRlp(ICappedArrayPool? pool, int length, in TreePath path) => pool.SafeRent(length);

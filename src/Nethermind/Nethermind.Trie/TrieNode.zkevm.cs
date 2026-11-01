@@ -54,8 +54,20 @@ namespace Nethermind.Trie
         private ref object? DataItem(int i)
         {
             INodeData? nodeData = _nodeData;
-            if (nodeData is BranchData branch) return ref branch[i];
+            if (nodeData is BranchData branch)
+            {
+                branch.MarkTaken(i);
+                return ref branch[i];
+            }
             return ref nodeData![i];
+        }
+
+        /// <summary>Records that the child in branch slot <paramref name="i"/> may differ from the one this node's RLP encodes.</summary>
+        /// <remarks>For a write that changes the child in place rather than through <see cref="SetChild"/>; see <see cref="BranchData.Taken"/>.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void MarkChildChanged(int i)
+        {
+            if (FirstTouchMemoryFlag.IsActive && _nodeData is BranchData branch) branch.MarkTaken(i);
         }
 
         /// <summary>Whether this node awaits its hash, dirty, with <paramref name="child"/>, also unhashed, in slot <paramref name="i"/>.</summary>
@@ -242,6 +254,14 @@ namespace Nethermind.Trie
         /// Only where <see cref="FirstTouchMemoryFlag"/> is on: the other guests pay more for the scratch bookkeeping than they save.
         /// </remarks>
         private static bool KeepsRlpOfHashedBranch => FirstTouchMemoryFlag.IsActive;
+
+        /// <summary>Whether a walk over a branch's children skips the slots <see cref="BranchData.Taken"/> has no bit for.</summary>
+        /// <remarks>Only where <see cref="FirstTouchMemoryFlag"/> is on, as the bits are only kept there.</remarks>
+        private static bool TracksTakenChildren => FirstTouchMemoryFlag.IsActive;
+
+        /// <summary>The slots of <paramref name="item"/>, a branch, that may hold a child; see <see cref="BranchData.Taken"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ushort TakenChildren(TrieNode item) => Unsafe.As<BranchData>(item._nodeData!).Taken;
 
         /// <summary>The scratch branches are encoded into; see <see cref="KeepsRlpOfHashedBranch"/>.</summary>
         /// <remarks>A class of its own, with no initializer, so each access is a plain load rather than a class-initialization check.</remarks>

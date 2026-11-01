@@ -928,6 +928,8 @@ namespace Nethermind.Trie
                 for (int i = frames.Length - 1; i >= 0; i--)
                 {
                     TrieNode node = frames[i].Node;
+                    // The node's child on the path changed in place, so a re-encode that walks only changed slots takes it.
+                    node.MarkChildChanged((int)frames[i].ChildIdx);
                     if (node.Keccak is null && node.IsDirty) return;
                     node.Unseal();
                 }
