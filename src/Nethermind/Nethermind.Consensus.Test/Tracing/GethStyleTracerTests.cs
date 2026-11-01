@@ -158,6 +158,31 @@ public class GethStyleTracerTests
     }
 
     [Test]
+    public void Buffered_deadline_abandoned_expiration_survives_replacement_until_result(
+        [Values("selected", "unmatched", "null")] string next,
+        [Values] bool expireFirst, [Values] bool cancelExternal)
+    {
+        DeadlineClock clock = new();
+        using CancellationTokenSource external = new();
+        Transaction selected = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
+        Transaction following = next == "null" ? null : Build.A.Transaction
+            .WithHash(next == "selected" ? TestItem.KeccakA : TestItem.KeccakB).TestObject;
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
+        inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(_ => new DisposalCountingTracer());
+        inner.BuildResult().Returns(Array.Empty<GethLikeTxTrace>());
+        using GethLikeBlockDeadlineTracer tracer = new(inner,
+            new() { TxHash = selected.Hash, Timeout = TimeSpan.FromSeconds(1), DeadlineClock = clock }, external.Token);
+        using (ITxTracer first = tracer.StartNewTxTrace(selected))
+            clock.Advance(expireFirst ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(400));
+        using ITxTracer second = tracer.StartNewTxTrace(following);
+        if (cancelExternal) external.Cancel();
+
+        if (cancelExternal) Assert.Throws<OperationCanceledException>(() => tracer.BuildResult());
+        else if (expireFirst) Assert.Throws<GethTraceDeadlineException>(() => tracer.BuildResult());
+        else Assert.That(tracer.BuildResult, Throws.Nothing);
+    }
+
+    [Test]
     public void Buffered_deadline_excludes_prefix_and_distinguishes_external_cancellation([Values] bool externalCancellation)
     {
         DeadlineClock clock = new();
