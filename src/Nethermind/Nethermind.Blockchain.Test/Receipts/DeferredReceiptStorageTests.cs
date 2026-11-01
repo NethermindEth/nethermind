@@ -97,12 +97,17 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
     public void Deferred_insert_is_visible_before_flush()
     {
         (Block block, TxReceipt[] receipts) = PrepareBlock();
+        receipts[0].TxHash = block.Transactions[0].Hash;
         _storage.InsertDeferred(block, receipts, _specProvider.GetSpec(block.Header));
 
         // Kill the LRU so only the pending overlay can serve.
         _storage.ClearCache();
 
-        Assert.That(_storage.HasBlock(block.Number, block.Hash!), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.HasBlock(block.Number, block.Hash!), Is.True);
+            Assert.That(_storage.FindTransactionIndex(block, block.Transactions[0].Hash!), Is.EqualTo(0), "the pending receipts give the index");
+        }
         _storage.Get(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
 
 #pragma warning disable NUnit2045 // Each operation advances state required by the following check.

@@ -388,6 +388,7 @@ public class GethStyleTracer(
         }
 
         bool unaltered = allowIndexed && options.StateOverrides is null && options.BlockOverrides is null && !options.NoBaseFee;
+        if (txIndex < 0 && !useBlockAsBase && unaltered) txIndex = TransactionTraceBoundary.FindIndex(receiptFinder, prefixSeeds, block, txHash);
         BlockLogIndex? logIndex = null;
         bool tracePreceding = false;
         if (!useBlockAsBase && WantsLogIndex(options))

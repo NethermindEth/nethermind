@@ -638,6 +638,108 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(logIndexStart, Is.EqualTo(expected.GetBlockLogFirstIndex(1)));
     }
 
+    [Test]
+    public void FindTransactionIndex_reads_the_stored_hashes_and_hashes_only_the_target([Values] bool cached)
+    {
+        const int target = 2;
+        Block block = InsertThreeTransactionBlock(Build.A.Block.WithNumber(1));
+        _storage.ClearCache();
+        if (cached) _storage.Get(block);
+        Block decoded = Rlp.Decode<Block>(new BlockDecoder().EncodeAsBytes(block))!;
+        Hash256 txHash = block.Transactions[target].Hash!;
+
+        int index = _storage.FindTransactionIndex(decoded, txHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(index, Is.EqualTo(useCompactReceipts || cached ? target : -1), "only compact receipts store transaction hashes");
+            for (int i = 0; i < decoded.Transactions.Length; i++)
+            {
+                Assert.That(decoded.Transactions[i].IsHashCalculated, Is.EqualTo(i == index), $"transaction {i} is hashed only to confirm the index");
+            }
+        }
+    }
+
+    [Test]
+    public void FindTransactionIndex_returns_minus_one_when_the_stored_hashes_do_not_match_the_block()
+    {
+        Block block = InsertThreeTransactionBlock(Build.A.Block.WithNumber(1));
+        Block reordered = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA)
+            .WithTransactions(block.Transactions[1], block.Transactions[0], block.Transactions[2]).TestObject;
+        TxReceipt[] stored = WithTransactionHashes(block, Build.A.Receipt.WithGasUsedTotal(21_000).TestObject,
+            Build.A.Receipt.WithGasUsedTotal(42_000).TestObject, Build.A.Receipt.WithGasUsedTotal(63_000).TestObject);
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[reordered.Hash!.Bytes] = _decoder.EncodeAsBytes(stored, RlpBehaviors.Storage);
+        _storage.ClearCache();
+        Assert.That(_storage.FindTransactionIndex(block, block.Transactions[0].Hash!), Is.EqualTo(useCompactReceipts ? 0 : -1), "precondition: the stored hashes give the index");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.FindTransactionIndex(reordered, block.Transactions[0].Hash!), Is.EqualTo(-1), "the index of another order");
+            Assert.That(_storage.FindTransactionIndex(block, TestItem.KeccakH), Is.EqualTo(-1), "a transaction outside the block");
+        }
+    }
+
+    [Test]
+    public void FindTransactionIndex_returns_minus_one_without_stored_receipts()
+    {
+        Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        PrepareBlock(block);
+
+        Assert.That(_storage.FindTransactionIndex(block, block.Transactions[0].Hash!), Is.EqualTo(-1));
+    }
+
+    [Test]
+    public void FindTransactionIndex_returns_minus_one_when_the_stored_hashes_are_malformed()
+    {
+        Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        PrepareBlock(block);
+        byte[] malformed = new byte[2 + Hash256.Size - 1];
+        malformed[0] = ReceiptArrayStorageDecoder.CompactEncodingWithTxHashes;
+        malformed[1] = 0x80 + Hash256.Size - 1;
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = malformed;
+
+        int index = _storage.FindTransactionIndex(block, block.Transactions[0].Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(index, Is.EqualTo(-1), "the trace falls back to the lookup by hash");
+            _logger.Received(1).Warn(Arg.Is<string>(static message => message.Contains("malformed")));
+        }
+    }
+
+    /// <remarks>Two blocks at one height hold the same transactions in reverse order; neither is canonical.</remarks>
+    [Test]
+    public void FindTransactionIndex_reads_the_receipts_of_the_requested_block_at_its_height()
+    {
+        Block first = InsertThreeTransactionBlock(Build.A.Block.WithNumber(1).WithExtraData([0xAA]), ensureCanonical: false);
+        Block second = InsertThreeTransactionBlock(Build.A.Block.WithNumber(1).WithExtraData([0xBB]),
+            [first.Transactions[2], first.Transactions[1], first.Transactions[0]], ensureCanonical: false);
+        _storage.ClearCache();
+        Hash256 txHash = first.Transactions[0].Hash!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.FindTransactionIndex(first, txHash), Is.EqualTo(useCompactReceipts ? 0 : -1), "first block");
+            Assert.That(_storage.FindTransactionIndex(second, txHash), Is.EqualTo(useCompactReceipts ? 2 : -1), "second block");
+        }
+    }
+
+    private Block InsertThreeTransactionBlock(BlockBuilder builder, Transaction[]? transactions = null, bool ensureCanonical = true)
+    {
+        Block block = builder.WithReceiptsRoot(TestItem.KeccakA).WithTransactions(transactions ??
+        [
+            Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(2).SignedAndResolved().TestObject,
+        ]).TestObject;
+        PrepareBlock(block);
+        _storage.Insert(block, WithTransactionHashes(block, Build.A.Receipt.WithGasUsedTotal(21_000).TestObject,
+            Build.A.Receipt.WithGasUsedTotal(42_000).TestObject, Build.A.Receipt.WithGasUsedTotal(63_000).TestObject), ensureCanonical);
+        return block;
+    }
+
     private static TxReceipt[] WithTransactionHashes(Block block, params TxReceipt[] receipts)
     {
         for (int i = 0; i < receipts.Length; i++) receipts[i].TxHash = block.Transactions[i].Hash;

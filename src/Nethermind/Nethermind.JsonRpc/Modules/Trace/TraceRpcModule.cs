@@ -827,9 +827,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             using RentedTimeout timeout = cancellationToken.CanBeCanceled ? default : jsonRpcConfig.RentTimeout();
             CancellationToken token = cancellationToken.CanBeCanceled ? cancellationToken : timeout.Token;
             token.ThrowIfCancellationRequested();
-            // A prefix recorded under the block's own spec says nothing about the block run under another one, even
-            // though the header keeps its hash: no seed when the spec is overridden.
-            tracer2.Execute(blockToExecute, TransactionTraceBoundary.Wrap(tracer.WithCancellation(token), transactionHash, specOverride is null ? prefixSeeds : null));
+            tracer2.Execute(blockToExecute, WithTransactionBoundary(tracer.WithCancellation(token), blockToExecute, transactionHash, specOverride));
             return tracer.BuildResult();
         }
 
@@ -966,7 +964,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 blockToExecute = block.WithReplacedHeader(AdjustHeaderForSpec(block.Header, baseHeader, specOverride));
             }
             using Scope<ITracer> env = tracerEnv.BuildAndOverrideAtTarget(blockToExecute.Header, specOverride: specOverride);
-            env.Component.Execute(blockToExecute, TransactionTraceBoundary.Wrap(tracer.WithCancellation(ct), transactionHash, specOverride is null ? prefixSeeds : null));
+            env.Component.Execute(blockToExecute, WithTransactionBoundary(tracer.WithCancellation(ct), blockToExecute, transactionHash, specOverride));
+        }
+
+        private IBlockTracer WithTransactionBoundary(IBlockTracer tracer, Block block, Hash256? transactionHash, IReleaseSpec? specOverride)
+        {
+            // A prefix recorded under the block's own spec says nothing about the block run under another one, even
+            // though the header keeps its hash: no seed when the spec is overridden.
+            IPrefixStateSeedSource? seeds = specOverride is null ? prefixSeeds : null;
+            int index = transactionHash is null ? -1 : TransactionTraceBoundary.FindIndex(receiptFinder, seeds, block, transactionHash);
+            return TransactionTraceBoundary.WrapAt(tracer, transactionHash, index, seeds);
         }
 
         /// <summary>

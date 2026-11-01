@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Tracing;
 using Nethermind.Serialization.Rlp;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Tracing;
@@ -90,6 +93,32 @@ public class TransactionTraceBoundaryTests
         Hash256 hash = Rlp.Decode<Transaction>(Encoded[target], RlpBehaviors.SkipTypedWrapping).Hash!;
 
         Assert.That(((TransactionTraceBoundary)TransactionTraceBoundary.WrapAt(NullBlockTracer.Instance, hash, index)).IndexOf(block), Is.EqualTo(target));
+    }
+
+    [Test]
+    /// <remarks>The finder is substituted to count its reads; the seed source to state its coverage of the block.</remarks>
+    [TestCase(null, TestName = "NoSeedSource")]
+    [TestCase(false, TestName = "BlockNotCovered")]
+    [TestCase(true, TestName = "BlockCovered")]
+    public void FindIndex_reads_the_stored_index_only_when_a_seed_may_skip_the_prefix(bool? mayCover)
+    {
+        Block block = Build.A.Block.WithTransactions(Decode()).TestObject;
+        IReceiptFinder receipts = Substitute.For<IReceiptFinder>();
+        receipts.FindTransactionIndex(block, TestItem.KeccakA).Returns(7);
+        IPrefixStateSeedSource seeds = null;
+        if (mayCover is { } covers)
+        {
+            seeds = Substitute.For<IPrefixStateSeedSource>();
+            seeds.MayCover(block).Returns(covers);
+        }
+
+        int index = TransactionTraceBoundary.FindIndex(receipts, seeds, block, TestItem.KeccakA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(index, Is.EqualTo(mayCover == true ? 7 : -1), "a replayed prefix hashes its transactions anyway");
+            receipts.Received(mayCover == true ? 1 : 0).FindTransactionIndex(block, TestItem.KeccakA);
+        }
     }
 
     private static TransactionTraceBoundary Boundary(Hash256 hash) =>

@@ -14,6 +14,10 @@ public interface IPrefixStateSeedSource
     /// <summary>Whether this source can ever arm a slot; a read path is only prepared for an overlay when it can.</summary>
     bool Enabled { get; }
 
+    /// <summary>Whether this source may arm a slot for <paramref name="block"/>; false means it never will, so the
+    /// caller can skip work that only pays off when a prefix is seeded.</summary>
+    bool MayCover(Block block) => Enabled;
+
     /// <summary>Arms <paramref name="slot"/> with an overlay of everything the transactions before
     /// <paramref name="transactionIndex"/> wrote; reads of the scope in flight then see it ahead of the parent state.
     /// False leaves the slot untouched and means the caller replays the prefix as it always did.</summary>

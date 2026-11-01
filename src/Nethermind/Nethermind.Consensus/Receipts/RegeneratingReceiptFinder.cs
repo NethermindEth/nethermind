@@ -40,6 +40,10 @@ public sealed class RegeneratingReceiptFinder(
     public bool TryGetReceipt(ReceiptRecoveryBlock block, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart) =>
         inner.TryGetReceipt(block, txHash, out receipt, out txIndex, out logIndexStart);
 
+    /// <inheritdoc/>
+    /// <remarks>Serves stored receipts only: regenerating them would execute the block.</remarks>
+    public int FindTransactionIndex(Block block, Hash256 txHash) => inner.FindTransactionIndex(block, txHash);
+
     public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true)
     {
         TxReceipt[] stored = inner.Get(block, recover, recoverSender);

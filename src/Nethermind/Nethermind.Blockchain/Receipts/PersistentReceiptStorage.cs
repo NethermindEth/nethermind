@@ -500,7 +500,7 @@ namespace Nethermind.Blockchain.Receipts
                 RlpReader reader = new(receiptsData);
                 if (!ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out ReadOnlySpan<byte> txHashes)) return false;
 
-                int index = MemoryMarshal.Cast<byte, ValueHash256>(txHashes).IndexOf(txHash.ValueHash256);
+                int index = IndexOf(txHashes, txHash);
                 if (index < 0) return false;
 
                 int end = reader.ReadSequenceLength() + reader.Position;
@@ -549,24 +549,73 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        private static bool TryFind(TxReceipt[] receipts, int transactionCount, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart)
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Serves cached and pending receipts, and compact receipts read from the database that store their
+        /// transaction hashes. Only the transaction at the found index is hashed, to confirm it.
+        /// </remarks>
+        public int FindTransactionIndex(Block block, Hash256 txHash)
         {
-            int count = Math.Min(receipts.Length, transactionCount);
-            for (int i = 0; i < count; i++)
+            if (block.Hash is not { } blockHash || block.ReceiptsRoot == Keccak.EmptyTreeHash) return -1;
+
+            int index = FindStoredTransactionIndex(block.Number, blockHash, txHash);
+            Transaction[] transactions = block.Transactions;
+            return (uint)index < (uint)transactions.Length && transactions[index].Hash == txHash ? index : -1;
+        }
+
+        private int FindStoredTransactionIndex(ulong blockNumber, Hash256 blockHash, Hash256 txHash)
+        {
+            if (_receiptsCache.TryGet(blockHash, out TxReceipt[]? cached)) return cached is null ? -1 : IndexOf(cached, cached.Length, txHash);
+
+            if (_pendingReceipts is not null && _pendingReceipts.TryGet(blockHash, out (TxReceipt[] Receipts, RlpBehaviors Behaviors) pending))
             {
-                if (receipts[i].TxHash == txHash)
-                {
-                    receipt = receipts[i];
-                    txIndex = i;
-                    logIndexStart = receipts.GetBlockLogFirstIndex(i);
-                    return true;
-                }
+                return IndexOf(pending.Receipts, pending.Receipts.Length, txHash);
             }
 
-            receipt = null;
-            txIndex = -1;
-            logIndexStart = 0;
-            return false;
+            Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
+            try
+            {
+                RlpReader reader = new(receiptsData);
+                return ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out ReadOnlySpan<byte> txHashes) ? IndexOf(txHashes, txHash) : -1;
+            }
+            catch (RlpException exception)
+            {
+                // The index only spares the caller a lookup by hash, which does not depend on the stored receipts.
+                if (_logger.IsWarn) _logger.Warn($"Stored transaction hashes of block {blockNumber} ({blockHash}) are malformed: {exception.Message}");
+                return -1;
+            }
+            finally
+            {
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+            }
+        }
+
+        private static int IndexOf(ReadOnlySpan<byte> txHashes, Hash256 txHash) =>
+            MemoryMarshal.Cast<byte, ValueHash256>(txHashes).IndexOf(txHash.ValueHash256);
+
+        private static int IndexOf(TxReceipt[] receipts, int count, Hash256 txHash)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                if (receipts[i].TxHash == txHash) return i;
+            }
+
+            return -1;
+        }
+
+        private static bool TryFind(TxReceipt[] receipts, int transactionCount, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart)
+        {
+            txIndex = IndexOf(receipts, Math.Min(receipts.Length, transactionCount), txHash);
+            if (txIndex < 0)
+            {
+                receipt = null;
+                logIndexStart = 0;
+                return false;
+            }
+
+            receipt = receipts[txIndex];
+            logIndexStart = receipts.GetBlockLogFirstIndex(txIndex);
+            return true;
         }
 
         TxReceipt?[] IReceiptMigrationStore.GetForMigration(ulong blockNumber, Hash256 blockHash)

@@ -99,10 +99,13 @@ public partial class DebugRpcModuleTests
 
     /// <remarks>
     /// The first transaction is made to hash like the target. A lookup by hash stops there and traces it; the index the
-    /// request names does not. The transfers carry different values, so the two traces differ.
+    /// request names, or the stored receipts give for a request by hash, does not. The transfers carry different values,
+    /// so the two traces differ.
     /// </remarks>
     [Test]
-    public async Task Trace_by_block_and_index_uses_the_index_instead_of_a_hash_lookup()
+    public async Task Seeded_trace_uses_a_known_index_instead_of_a_hash_lookup(
+        [Values("debug_traceTransactionByBlockhashAndIndex", "debug_traceTransaction", "trace_transaction", "trace_replayTransaction")] string method,
+        [Values] bool streaming)
     {
         const int target = 2;
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
@@ -111,6 +114,7 @@ public partial class DebugRpcModuleTests
             .Build(builder => builder
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
                 .AddSingleton<IPrefixStateSeedSource>(new ChangesetPrefixStateSeedSource(index)));
+        chain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
         ulong nonce = chain.ReadOnlyState.GetNonce(TestItem.AddressB);
         Transaction[] transfers = new Transaction[SenderTestTransactions];
         for (int i = 0; i < transfers.Length; i++)
@@ -121,16 +125,24 @@ public partial class DebugRpcModuleTests
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await chain.AddBlock(transfers);
         Assert.That(block.Transactions, Has.Length.EqualTo(SenderTestTransactions), "precondition: every transaction is included");
+        Hash256 txHash = block.Transactions[target].Hash!;
         GethTraceOptions callTracer = new() { Tracer = NativeCallTracer.CallTracer };
 
-        JToken expected = await TraceByIndex(chain, block, target, callTracer);
+        JToken expected = await TraceTarget();
         IndexThroughTheCapture(chain, index, block, parent);
         Transaction[] stored = chain.BlockTree.FindBlock(block.Hash!)!.Transactions;
         stored[0].SetPreHash(Rlp.Encode(stored[target], RlpBehaviors.SkipTypedWrapping).Bytes);
-        Assert.That(stored[0].Hash, Is.EqualTo(stored[target].Hash), "precondition: the first transaction hashes like the target");
-        JToken seeded = await TraceByIndex(chain, block, target, callTracer);
+        Assert.That(stored[0].Hash, Is.EqualTo(txHash), "precondition: the first transaction hashes like the target");
+        JToken seeded = await TraceTarget();
 
         Assert.That(JToken.DeepEquals(seeded, expected), Is.True, $"{seeded}{Environment.NewLine}{expected}");
+
+        Task<JToken> TraceTarget() => method switch
+        {
+            "debug_traceTransactionByBlockhashAndIndex" => TraceByIndex(chain, block, target, callTracer),
+            "debug_traceTransaction" => TraceSingle(chain, method, txHash, callTracer),
+            _ => TraceSingle(chain, method, txHash),
+        };
     }
 
     private static async Task<JToken> TraceByIndex(TestRpcBlockchain chain, Block block, int index, GethTraceOptions options)
@@ -233,11 +245,16 @@ public partial class DebugRpcModuleTests
         return transactions;
     }
 
-    private static async Task<JToken> TraceSingle(TestRpcBlockchain chain, string method, Hash256 txHash)
+    private static async Task<JToken> TraceSingle(TestRpcBlockchain chain, string method, Hash256 txHash, GethTraceOptions? options = null)
     {
-        string response = method == "trace_transaction"
-            ? await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, txHash)
-            : await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, txHash);
+        string response = method switch
+        {
+            "trace_transaction" => await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, txHash),
+            "trace_replayTransaction" => await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, txHash, new[] { "trace" }),
+            _ => options is null
+                ? await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, txHash)
+                : await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, txHash, options),
+        };
         JToken result = JToken.Parse(response)["result"]!;
         Assert.That(result.Type, Is.Not.EqualTo(JTokenType.Null), response);
         return result;
