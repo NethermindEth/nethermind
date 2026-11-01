@@ -38,6 +38,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NSubstitute.Core;
@@ -54,6 +55,7 @@ public class DebugModuleTests
 {
     private readonly IJsonRpcConfig _jsonRpcConfig = new JsonRpcConfig();
     private readonly ISpecProvider _specProvider = SpecProviderSubstitute.Create();
+    private readonly IForkInfo _forkInfo = Substitute.For<IForkInfo>();
     private readonly IDebugBridge _debugBridge = Substitute.For<IDebugBridge>();
     private readonly IBlockFinder _blockFinder = Substitute.For<IBlockFinder>();
     private readonly IBlockchainBridge _blockchainBridge = Substitute.For<IBlockchainBridge>();
@@ -65,6 +67,7 @@ public class DebugModuleTests
         _debugBridge,
         _jsonRpcConfig,
         _specProvider,
+        _forkInfo,
         _blockchainBridge,
         new BlocksConfig(),
         _blockFinder,
