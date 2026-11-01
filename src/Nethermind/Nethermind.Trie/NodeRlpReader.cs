@@ -75,8 +75,29 @@ internal readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
     }
 
     /// <summary>Moves <paramref name="position"/> past the prefix of the item there.</summary>
+    /// <remarks>
+    /// Checks only that the prefix fits, not the payload: the callers read the items of the payload next, and those
+    /// reads check their bounds. A child seek starts here, so the length bytes are not decoded.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SkipLength(scoped ref int position) => position += ReadPrefix(position, out _);
+    public void SkipLength(scoped ref int position)
+    {
+        ReadOnlySpan<byte> data = _data;
+        if ((uint)position >= (uint)data.Length) ThrowInvalid("RLP is truncated");
+
+        int prefix = data[position];
+        int end = position + prefix switch
+        {
+            < Rlp.EmptyByteArrayByte => 0,
+            <= ShortStringMaxPrefix => 1,
+            < Rlp.EmptyListByte => prefix - ShortStringMaxPrefix + 1,
+            <= ShortListMaxPrefix => 1,
+            _ => prefix - ShortListMaxPrefix + 1,
+        };
+
+        if (end > data.Length) ThrowInvalid("RLP is truncated");
+        position = end;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool IsSequenceNext(int position) => _data[position] >= Rlp.EmptyListByte;

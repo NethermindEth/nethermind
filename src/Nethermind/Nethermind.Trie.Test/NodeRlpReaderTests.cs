@@ -55,6 +55,31 @@ public class NodeRlpReaderTests
         });
     }
 
+    [TestCase("c3820102", 1)]
+    [TestCase("f83a", 2)]
+    [TestCase("b838", 2)]
+    [TestCase("01", 0)]
+    public void SkipLength_moves_past_the_prefix(string hex, int expected)
+    {
+        int position = 0;
+        new NodeRlpReader(Bytes.FromHexString(hex)).SkipLength(ref position);
+        Assert.That(position, Is.EqualTo(expected));
+    }
+
+    [TestCase("f9")]
+    [TestCase("f901")]
+    [TestCase("bb0102")]
+    [TestCase("")]
+    public void SkipLength_throws_on_truncated_prefix(string hex)
+    {
+        byte[] data = Bytes.FromHexString(hex);
+        Assert.Throws<RlpReaderException>(() =>
+        {
+            int position = 0;
+            new NodeRlpReader(data).SkipLength(ref position);
+        });
+    }
+
     [Test]
     public void Truncated_child_throws()
     {

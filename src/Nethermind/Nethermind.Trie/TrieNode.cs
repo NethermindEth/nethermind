@@ -653,8 +653,12 @@ namespace Nethermind.Trie
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IsChildHashNext(NodeRlpReader nodeRlp, int position)
-            => nodeRlp.Data[position] == NodeRlpReader.KeccakRlpPrefix
-                || nodeRlp.PeekPrefixAndContentLength(position).ContentLength == Hash256.Size;
+            => nodeRlp.Data[position] switch
+            {
+                NodeRlpReader.KeccakRlpPrefix => true,
+                Rlp.EmptyByteArrayByte => false,
+                _ => nodeRlp.PeekPrefixAndContentLength(position).ContentLength == Hash256.Size,
+            };
 
         public byte[]? GetInlineNodeRlp(int i)
         {
