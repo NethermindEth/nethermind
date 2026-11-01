@@ -54,6 +54,7 @@ using System.Runtime.ExceptionServices;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Security;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -797,6 +798,21 @@ public partial class BlockProcessorTests
         }
     }
 
+    /// <summary>Collects the streamed traces as they are written, in block order.</summary>
+    private sealed class CollectingTraceStream<TTrace>(List<TTrace> collected) : IParallelTraceStream<TTrace>
+    {
+        public JsonWriterOptions? SerializeAheadOptions => null;
+
+        public void Serialize(IReadOnlyCollection<TTrace> traces, Utf8JsonWriter writer) => throw new NotSupportedException();
+
+        public void WriteSerialized(ReadOnlySpan<byte> elements) => throw new NotSupportedException();
+
+        public void Write(IReadOnlyCollection<TTrace> traces)
+        {
+            lock (collected) collected.AddRange(traces);
+        }
+    }
+
     private sealed class DisposalCounter : IDisposable
     {
         private int _disposals;
@@ -867,7 +883,7 @@ public partial class BlockProcessorTests
         bool traced = stream
             ? parallel.TryStream(block, parent,
                 (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
-                _ => new ParityLikeBlockTracer(types), batch => emitted.AddRange(batch), CancellationToken.None)
+                _ => new ParityLikeBlockTracer(types), new CollectingTraceStream<ParityLikeTxTrace>(emitted), CancellationToken.None)
             : parallel.TryTrace(block, parent,
                 (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
                 _ => new ParityLikeBlockTracer(types), CancellationToken.None, out traces);
@@ -892,6 +908,17 @@ public partial class BlockProcessorTests
         Task[] tasks = [Task.FromException(new OperationCanceledException())];
         Exception? actual = Assert.Throws<InvalidOperationException>(() => ParallelBlockTracer.Await(tasks, ExceptionDispatchInfo.Capture(primary)));
         Assert.That(actual, Is.SameAs(primary), "worker cleanup must not replace the caller's failure");
+    }
+
+    [Test]
+    public void ParallelBlockTracer_WhenHelpersNeverStarted_CompletesWithTheCallersWork()
+    {
+        using CancellationTokenSource unstarted = new();
+        unstarted.Cancel();
+        Task[] tasks = [Task.CompletedTask, Task.FromCanceled(unstarted.Token)];
+        Assert.DoesNotThrow(() => ParallelBlockTracer.Await(tasks), "a helper cancelled before it started traced nothing, and the cursor was spent without it");
+        Assert.Catch<OperationCanceledException>(() => ParallelBlockTracer.Await([Task.FromCanceled(unstarted.Token), Task.FromException(new OperationCanceledException())]),
+            "a helper that ran and stopped on cancellation left its transaction untraced");
     }
 
     [Test]
@@ -1035,7 +1062,7 @@ public partial class BlockProcessorTests
                 return new CompletionTracer<ParityLikeTxTrace>(new ParityLikeBlockTracer(txHash, types),
                     () => { if (transaction == 2) thirdFinished.Set(); });
             },
-            afterTransactions: null, batch => { lock (streamed) streamed.AddRange(batch); }, CancellationToken.None));
+            afterTransactions: null, new CollectingTraceStream<ParityLikeTxTrace>(streamed), CancellationToken.None));
         bool traced;
         try
         {
@@ -1276,7 +1303,7 @@ public partial class BlockProcessorTests
 
         bool accepted = stream
             ? parallel.TryStream(block, parent, (_, hash) => new ParityLikeBlockTracer(hash, ParityTraceTypes.Trace),
-                null, batch => emitted.AddRange(batch), CancellationToken.None)
+                null, new CollectingTraceStream<ParityLikeTxTrace>(emitted), CancellationToken.None)
             : parallel.TryTrace(block, parent, (_, hash) => new ParityLikeBlockTracer(hash, ParityTraceTypes.Trace),
                 null, CancellationToken.None, out traces);
 
@@ -1311,7 +1338,7 @@ public partial class BlockProcessorTests
         {
             if (stream)
                 parallel.TryStream(block, parent, (_, hash) => new ParityLikeBlockTracer(hash, ParityTraceTypes.Trace),
-                    afterTransactions, batch => emitted.AddRange(batch), CancellationToken.None);
+                    afterTransactions, new CollectingTraceStream<ParityLikeTxTrace>(emitted), CancellationToken.None);
             else
                 parallel.TryTrace(block, parent, (_, hash) => new ParityLikeBlockTracer(hash, ParityTraceTypes.Trace),
                     afterTransactions, CancellationToken.None, out _);

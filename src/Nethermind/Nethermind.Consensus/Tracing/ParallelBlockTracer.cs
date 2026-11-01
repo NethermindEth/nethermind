@@ -43,12 +43,22 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     private readonly IPrefixStateSeedSource _seeds;
     private readonly ParallelTraceBudgets _budgets;
     private readonly Workers _workers;
+    private readonly SerializedTraces.Pool _serialized;
     private readonly int _degree;
     private readonly ILogger _logger;
     private readonly object _runs = new();
+
+    /// <summary>Serialized transactions per degree kept for the next blocks; a run in flight may hold more.</summary>
+    private const int PooledPerDegree = 8;
+
     private bool _disposed;
     private int _inFlight;
     private IRewardCalculator? _rewardCalculator;
+
+    /// <summary>Transactions per worker that a streamed block may have traced and not yet written: enough for the
+    /// workers to pass a transaction that costs as much as many others, few enough that the traces waiting behind it
+    /// stay bounded. The value is not measured; the node A/B decides it.</summary>
+    internal int StreamedPerWorker { get; init; } = 32;
 
     internal bool IsDisposing
     {
@@ -62,6 +72,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         _environments = new ShareableOverridableEnvSource<Components>(buildEnvironment, _degree);
         _budgets = budgets;
         _workers = new Workers(2 * _degree);
+        _serialized = new SerializedTraces.Pool(_degree * PooledPerDegree);
         _seeds = seeds;
         _logger = logManager.GetClassLogger<ParallelBlockTracer>();
     }
@@ -74,7 +85,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions,
         CancellationToken token,
         [NotNullWhen(true)] out IReadOnlyList<TTrace>? traces) =>
-        Run(block, parent, forTransaction, afterTransactions, emit: null, token, out traces);
+        Run(block, parent, forTransaction, afterTransactions, stream: null, token, out traces);
 
     /// <inheritdoc />
     public bool TryStream<TTrace>(
@@ -82,16 +93,16 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         BlockHeader parent,
         Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction,
         Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions,
-        Action<IReadOnlyCollection<TTrace>> emit,
+        IParallelTraceStream<TTrace> stream,
         CancellationToken token) =>
-        Run(block, parent, forTransaction, afterTransactions, emit, token, out _);
+        Run(block, parent, forTransaction, afterTransactions, stream, token, out _);
 
     private bool Run<TTrace>(
         Block block,
         BlockHeader parent,
         Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction,
         Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions,
-        Action<IReadOnlyCollection<TTrace>>? emit,
+        IParallelTraceStream<TTrace>? stream,
         CancellationToken token,
         out IReadOnlyList<TTrace>? traces)
     {
@@ -110,20 +121,22 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             using ICoveredBlock coverage = covered;
 
             Transaction[] transactions = block.Transactions;
-            IReadOnlyCollection<TTrace>?[] results = new IReadOnlyCollection<TTrace>?[transactions.Length + 1];
-            Emitter<TTrace> emitter = new(results, emit);
-            int workers;
+            int workers = Math.Max(1, Math.Min(slots.Degree, transactions.Length - 1));
+            CollectedTraceResults<TTrace>? collected = null;
+            using ParallelTraceResults<TTrace> results = stream is null
+                ? collected = new CollectedTraceResults<TTrace>(transactions.Length + 1)
+                : CreateEmitter(stream, transactions.Length, workers);
             try
             {
                 using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+                using CancellationTokenSource unstarted = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
                 Cursor cursor = new();
 
                 IPrefixStateSeedSource callerSeeds = covered.CreateWorkerSeeds();
-                if (!TraceOne(block, parent, transactions, cursor.Next(), slots, callerSeeds, forTransaction, results, emitter, stop.Token)) return false;
+                results.Reserve(stop.Token);
+                if (!TraceOne(block, parent, transactions, cursor.Next(), slots, callerSeeds, forTransaction, results, stop.Token)) return false;
 
-                int helpers = Math.Min(slots.Degree, transactions.Length - 1) - 1;
-                Task[] tasks = new Task[Math.Max(0, helpers)];
-                workers = tasks.Length + 1;
+                Task[] tasks = new Task[workers - 1];
                 int queued = 0;
                 ExceptionDispatchInfo? failure = null;
                 try
@@ -131,10 +144,13 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                     for (; queued < tasks.Length; queued++)
                     {
                         IPrefixStateSeedSource seeds = covered.CreateWorkerSeeds();
-                        tasks[queued] = QueueWorker(() => TraceMany(block, parent, transactions, cursor, slots, seeds, forTransaction, results, emitter, stop), stop.Token);
+                        tasks[queued] = QueueWorker(() => TraceMany(block, parent, transactions, cursor, slots, seeds, forTransaction, results, stop), unstarted.Token);
                     }
 
-                    TraceMany(block, parent, transactions, cursor, slots, callerSeeds, forTransaction, results, emitter, stop);
+                    TraceMany(block, parent, transactions, cursor, slots, callerSeeds, forTransaction, results, stop);
+                    // The cursor is spent, so a helper that has not started would find nothing to trace; with the
+                    // worker threads held by other blocks it might not start before those finish.
+                    unstarted.Cancel();
                 }
                 catch (Exception exception)
                 {
@@ -150,34 +166,21 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                 // and no permit or environment either.
                 if (afterTransactions is not null && Volatile.Read(ref _rewardCalculator)?.MayReward(block.Header) != false)
                 {
-                    results[transactions.Length] = TraceAfterTransactions(block, parent, slots, covered.CreateWorkerSeeds(), afterTransactions, token);
-                    emitter.Publish();
+                    results.Add(transactions.Length, TraceAfterTransactions(block, parent, slots, covered.CreateWorkerSeeds(), afterTransactions, token));
                 }
 
+                results.Complete();
                 covered.Complete();
             }
             catch
             {
                 // Every worker has returned by now: Await let the failure out only once they had. What they finished
                 // and nobody received is this run's to release.
-                DisposeUnpublished(results);
+                results.DisposeUnpublished();
                 throw;
             }
 
-            if (emit is null)
-            {
-                List<TTrace> all = new(transactions.Length + 1);
-                foreach (IReadOnlyCollection<TTrace>? result in results)
-                {
-                    if (result is not null) all.AddRange(result);
-                }
-
-                traces = all;
-            }
-            else
-            {
-                traces = [];
-            }
+            traces = collected is null ? [] : collected.Flatten();
 
             if (_logger.IsTrace) _logger.Trace($"Traced block {block.Number} in parallel: {transactions.Length} transactions on {workers} workers.");
             return true;
@@ -188,20 +191,14 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         }
     }
 
-    /// <summary>A run that fails owns whatever its workers finished: a result the caller never received, or the
-    /// emitter never wrote, holds the tracer's frames and pooled buffers, and nothing else will let go of them.
-    /// A result the emitter did write was cleared from its slot as it went, so the caller keeps what it was handed.</summary>
-    private static void DisposeUnpublished<TTrace>(IReadOnlyCollection<TTrace>?[] results)
+    /// <summary>A streamed block serializes its traces on the workers when the stream allows it, and in block order
+    /// otherwise; either way only a window of transactions per worker is traced ahead of the response.</summary>
+    private ParallelTraceResults<TTrace> CreateEmitter<TTrace>(IParallelTraceStream<TTrace> stream, int transactions, int workers)
     {
-        for (int i = 0; i < results.Length; i++)
-        {
-            IReadOnlyCollection<TTrace>? result = results[i];
-            if (result is null) continue;
-
-            results[i] = null;
-            foreach (TTrace trace in result) trace.TryDispose();
-            result.TryDispose();
-        }
+        int window = workers * StreamedPerWorker;
+        return stream.SerializeAheadOptions is { } options
+            ? new SerializingTraceEmitter<TTrace>(stream, options, _serialized, transactions, window)
+            : new InTurnTraceEmitter<TTrace>(stream, transactions, window);
     }
 
     internal Task QueueWorker(Action action, CancellationToken token) => _workers.Run(action, token);
@@ -229,13 +226,21 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     }
 
     private void TraceMany<TTrace>(Block block, BlockHeader parent, Transaction[] transactions, Cursor cursor, ParallelTraceBudget slots, IPrefixStateSeedSource seeds,
-        Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction, IReadOnlyCollection<TTrace>?[] results, Emitter<TTrace> emitter, CancellationTokenSource stop)
+        Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction, ParallelTraceResults<TTrace> results, CancellationTokenSource stop)
     {
         try
         {
-            for (int i = cursor.Next(); i < transactions.Length; i = cursor.Next())
+            while (true)
             {
-                if (!TraceOne(block, parent, transactions, i, slots, seeds, forTransaction, results, emitter, stop.Token))
+                results.Reserve(stop.Token);
+                int i = cursor.Next();
+                if (i >= transactions.Length)
+                {
+                    results.Unreserve();
+                    return;
+                }
+
+                if (!TraceOne(block, parent, transactions, i, slots, seeds, forTransaction, results, stop.Token))
                     throw new InvalidOperationException("The tracer bounded the first transaction and refused a later one.");
             }
         }
@@ -248,10 +253,11 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
     /// <summary>False when the environment cannot seed or the tracer cannot be bounded; the caller replays the block.</summary>
     private bool TraceOne<TTrace>(Block block, BlockHeader parent, Transaction[] transactions, int index, ParallelTraceBudget slots, IPrefixStateSeedSource seeds,
-        Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction, IReadOnlyCollection<TTrace>?[] results, Emitter<TTrace> emitter, CancellationToken token)
+        Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction, ParallelTraceResults<TTrace> results, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         Hash256 hash = transactions[index].Hash!;
+        IReadOnlyCollection<TTrace>? traces = null;
         slots.Wait(token);
         try
         {
@@ -278,7 +284,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                 scope.Component.Processor.Process(OwnCopy(block), TraceProcessingOptions.ReadOnlyReplay, bounded, token);
                 if (!boundary.HasExecuted)
                     throw new InvalidOperationException("The indexed trace bypassed transaction prefix execution.");
-                results[index] = tracer.BuildResult();
+                traces = tracer.BuildResult();
             }
             catch (Exception exception)
             {
@@ -291,16 +297,22 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                 if (tracer is GethLikeBlockDeadlineTracer deadline) deadline.Dispose();
             }
         }
+        catch
+        {
+            // Releasing the tracer or the environment failed after the traces were built; nobody else holds them.
+            if (traces is not null) ParallelTraceResults<TTrace>.DisposeTraces(traces);
+            throw;
+        }
         finally
         {
             slots.Release();
         }
 
-        // Outside the permit and the environment on purpose: writing the trace out ends in a blocking flush of the
-        // response, which a client that stops reading can hold indefinitely. A worker that waits there must not be
-        // holding one of the node's processing environments while it does, or one unread response stops every trace
-        // on the node rather than its own.
-        emitter.Publish();
+        // Outside the permit and the environment on purpose: serializing the traces is the worker's own work, and
+        // writing them out ends in a blocking flush of the response, which a client that stops reading can hold
+        // indefinitely. A worker that waits there must not be holding one of the node's processing environments while
+        // it does, or one unread response stops every trace on the node rather than its own.
+        results.Add(index, traces);
         return true;
     }
 
@@ -347,7 +359,8 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     }
 
     /// <summary>Waits for every worker whatever happens: they stop on their own once the request is cancelled, and
-    /// what they hold is released only after they are gone.</summary>
+    /// what they hold is released only after they are gone. A worker that never started traced nothing, so when no
+    /// worker failed and the caller did not either, the run is complete.</summary>
     internal static void Await(ReadOnlySpan<Task> tasks, ExceptionDispatchInfo? primary = null)
     {
         try
@@ -356,6 +369,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         }
         catch (AggregateException e)
         {
+            if (primary is null && NoneFaulted(tasks)) return;
             if (primary is not null && primary.SourceException is not OperationCanceledException) primary.Throw();
             Exception first = e.InnerExceptions[0];
             foreach (Exception inner in e.InnerExceptions)
@@ -370,6 +384,16 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             ExceptionDispatchInfo.Capture(first).Throw();
         }
         primary?.Throw();
+    }
+
+    private static bool NoneFaulted(ReadOnlySpan<Task> tasks)
+    {
+        foreach (Task task in tasks)
+        {
+            if (task.IsFaulted) return false;
+        }
+
+        return true;
     }
 
     /// <summary>Waits for active requests, then releases owned workers and environments; the shared budget remains owned by its caller.</summary>
@@ -476,32 +500,6 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             }
 
             _jobs.Dispose();
-        }
-    }
-
-    /// <summary>Hands finished traces on in block order: a worker that finishes out of turn leaves its result for
-    /// the transaction before it, and whoever closes the gap passes the run on. Under the lock, so the sink is
-    /// written by one thread at a time, and a trace already handed on is released.</summary>
-    private sealed class Emitter<TTrace>(IReadOnlyCollection<TTrace>?[] results, Action<IReadOnlyCollection<TTrace>>? emit)
-    {
-        private readonly Lock _lock = new();
-        private int _next;
-
-        public void Publish()
-        {
-            if (emit is null) return;
-
-            lock (_lock)
-            {
-                while (_next < results.Length && results[_next] is { } ready)
-                {
-                    // Taken before it is written: a write that fails leaves a doomed response either way, and losing
-                    // the trace is better than a sibling finding the slot still armed and writing it twice.
-                    results[_next] = null;
-                    _next++;
-                    emit(ready);
-                }
-            }
         }
     }
 

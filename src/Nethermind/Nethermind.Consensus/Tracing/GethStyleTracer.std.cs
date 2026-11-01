@@ -487,11 +487,7 @@ public class GethStyleTracer(
                     return new GethLikeTxTraceCollection(parallel);
             }
             else if (parallelTracer.TryStream(block, FindParent(block), forTransaction, afterTransactions: null,
-                traces =>
-                {
-                    foreach (GethLikeTxTrace trace in traces) GethLikeBlockNativeStreamingTracer.Write(writer, pipeWriter, trace, cancellationToken);
-                },
-                cancellationToken))
+                new GethLikeTraceStream(writer, pipeWriter, cancellationToken), cancellationToken))
             {
                 return Array.Empty<GethLikeTxTrace>();
             }

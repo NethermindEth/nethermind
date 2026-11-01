@@ -14,20 +14,20 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace;
 public class StreamingParityLikeBlockTracerFlushTests
 {
     [Test]
-    public void WriteTraces_keeps_small_traces_buffered_until_the_threshold()
+    public void Write_keeps_small_traces_buffered_until_the_threshold()
     {
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0));
         using Utf8JsonWriter writer = new(pipe.Writer, new JsonWriterOptions { SkipValidation = true });
         using StreamingParityLikeBlockTracer tracer = new(ParityTraceTypes.Trace, ParityTraceStreamMode.Store, includeTxHash: false, writer, pipe.Writer, CancellationToken.None);
 
-        tracer.WriteTraces([BuildRewardTrace()]);
-        tracer.WriteTraces([BuildRewardTrace()]);
+        tracer.Write([BuildRewardTrace()]);
+        tracer.Write([BuildRewardTrace()]);
 
         Assert.That(pipe.Reader.TryRead(out _), Is.False);
 
         while (writer.BytesCommitted < StreamingParityLikeBlockTracer.FlushThresholdBytes)
         {
-            tracer.WriteTraces([BuildRewardTrace()]);
+            tracer.Write([BuildRewardTrace()]);
         }
 
 #pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
