@@ -22,15 +22,17 @@ public sealed class PrestateRecord : RefCountingDisposable
     private readonly int _length;
     private readonly int[] _index;
     private readonly Account?[] _accounts;
+    private readonly long[] _poisonedClears;
     private readonly int _accountCount;
     private readonly int _slotCount;
 
-    private PrestateRecord(byte[] buffer, int length, int[] index, Account?[] accounts, int accountCount, int slotCount)
+    private PrestateRecord(byte[] buffer, int length, int[] index, Account?[] accounts, long[] poisonedClears, int accountCount, int slotCount)
     {
         _buffer = buffer;
         _length = length;
         _index = index;
         _accounts = accounts;
+        _poisonedClears = poisonedClears;
         _accountCount = accountCount;
         _slotCount = slotCount;
     }
@@ -40,7 +42,7 @@ public sealed class PrestateRecord : RefCountingDisposable
     public int SlotCount => _slotCount;
 
     /// <summary>Memory the record holds, charged to the cache budget.</summary>
-    public long ByteSize => _buffer.Length + (long)_index.Length * sizeof(int) + (long)_accounts.Length * IntPtr.Size;
+    public long ByteSize => _buffer.Length + (long)_index.Length * sizeof(int) + (long)_accounts.Length * IntPtr.Size + (long)_poisonedClears.Length * sizeof(long);
 
     public ulong BlockNumber => BinaryPrimitives.ReadUInt64LittleEndian(_buffer.AsSpan(PrestateRecordFormat.BlockNumberOffset));
 
@@ -75,7 +77,9 @@ public sealed class PrestateRecord : RefCountingDisposable
 
         Account?[] accounts = ArrayPool<Account?>.Shared.Rent(accountCount);
         accounts.AsSpan(0, accountCount).Clear();
-        return new PrestateRecord(buffer, data.Length, index, accounts, accountCount, slotCount);
+        long[] poisonedClears = ArrayPool<long>.Shared.Rent(accountCount);
+        poisonedClears.AsSpan(0, accountCount).Clear();
+        return new PrestateRecord(buffer, data.Length, index, accounts, poisonedClears, accountCount, slotCount);
     }
 
     /// <summary>False when the record does not hold the account value; the caller then reads history. A held absent
@@ -140,6 +144,11 @@ public sealed class PrestateRecord : RefCountingDisposable
 
         return false;
     }
+
+    /// <summary>Whether slot reads of the account at <paramref name="account"/> must go to history because of a
+    /// poisoned clear, remembered for every reader of this state (<see cref="PoisonedClearMemo"/>).</summary>
+    internal bool HasPoisonedClearAbove<TSource>(int account, Address address, TSource source) where TSource : IPoisonedClearSource =>
+        PoisonedClearMemo.HasPoisonedClearAbove(_poisonedClears, account, address, source);
 
     private int FindAccount(Address address)
     {
@@ -286,5 +295,6 @@ public sealed class PrestateRecord : RefCountingDisposable
         ArrayPool<byte>.Shared.Return(_buffer);
         ArrayPool<int>.Shared.Return(_index);
         ArrayPool<Account?>.Shared.Return(_accounts, clearArray: true);
+        ArrayPool<long>.Shared.Return(_poisonedClears);
     }
 }

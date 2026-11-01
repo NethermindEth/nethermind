@@ -21,7 +21,7 @@ public class PoisonedClearMemoTests
     ///    sampled before the publish.
     /// </summary>
     [Test]
-    public void RequiresHistory_WhenAProbeRacesAPublish_NeverTrustsTheStaleAnswer()
+    public void HasPoisonedClearAbove_WhenAProbeRacesAPublish_NeverTrustsTheStaleAnswer()
     {
         long[] memo = new long[1];
         RacingSource source = new() { Generation = 5 };
@@ -30,11 +30,11 @@ public class PoisonedClearMemoTests
         {
             source.Generation = 6;
             source.Poisoned = true;
-            threadB = PoisonedClearMemo.RequiresHistory(memo, 0, TestItem.AddressA, source);
+            threadB = PoisonedClearMemo.HasPoisonedClearAbove(memo, 0, TestItem.AddressA, source);
         };
 
-        bool threadA = PoisonedClearMemo.RequiresHistory(memo, 0, TestItem.AddressA, source);
-        bool later = PoisonedClearMemo.RequiresHistory(memo, 0, TestItem.AddressA, source);
+        bool threadA = PoisonedClearMemo.HasPoisonedClearAbove(memo, 0, TestItem.AddressA, source);
+        bool later = PoisonedClearMemo.HasPoisonedClearAbove(memo, 0, TestItem.AddressA, source);
 
         using (Assert.EnterMultipleScope())
         {
@@ -45,15 +45,32 @@ public class PoisonedClearMemoTests
     }
 
     [Test]
-    public void RequiresHistory_WithoutAPublish_ProbesOnce()
+    public void HasPoisonedClearAbove_WithoutAPublish_ProbesOnce()
     {
         long[] memo = new long[1];
         RacingSource source = new() { Generation = 5 };
 
-        PoisonedClearMemo.RequiresHistory(memo, 0, TestItem.AddressA, source);
-        PoisonedClearMemo.RequiresHistory(memo, 0, TestItem.AddressA, source);
+        PoisonedClearMemo.HasPoisonedClearAbove(memo, 0, TestItem.AddressA, source);
+        PoisonedClearMemo.HasPoisonedClearAbove(memo, 0, TestItem.AddressA, source);
 
         Assert.That(source.Probes, Is.EqualTo(1), "a settled answer is reused until a capture publishes");
+    }
+
+    /// <summary>A warm trace opens one bundle, and so one history reader, per transaction. The answer belongs to the
+    /// state, so the record remembers it for all of them: the clears column is probed once, not once per bundle.</summary>
+    [Test]
+    public void Record_ReadByTwoBundlesOfItsState_ProbesThePoisonedClearOnce()
+    {
+        byte[] bytes = PrestateRecordTests.Encode(capture => capture.OnSlotRead(TestItem.AddressA, 1, 5));
+        using PrestateRecord record = PrestateRecord.TryOpen(bytes, new StateId(9, TestItem.KeccakA))!;
+        Assert.That(record.TryGetSlot(TestItem.AddressA, 1, out _, out int account), Is.True, "precondition: the record holds the slot");
+        RacingSource firstBundle = new() { Generation = 5 };
+        RacingSource secondBundle = new() { Generation = 5 };
+
+        record.HasPoisonedClearAbove(account, TestItem.AddressA, firstBundle);
+        record.HasPoisonedClearAbove(account, TestItem.AddressA, secondBundle);
+
+        Assert.That(firstBundle.Probes + secondBundle.Probes, Is.EqualTo(1), "a per-bundle memo would seek the clears column in every transaction of a warm trace");
     }
 
     private sealed class RacingSource : IPoisonedClearSource
@@ -67,7 +84,7 @@ public class PoisonedClearMemoTests
 
         public bool HasCapturedSince(long generation) => Generation != generation;
 
-        public bool RequiresHistory(Address address, bool slot)
+        public bool HasPoisonedClearAbove(Address address)
         {
             Probes++;
             bool answer = Poisoned;

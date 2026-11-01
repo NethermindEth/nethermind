@@ -572,6 +572,34 @@ public class PrestateRecordTests
     }
 
     [Test]
+    public void Cache_AfterEvictingALeasedRecord_LoadsAFreshOneAndTheOldStaysReadable()
+    {
+        using MemDb db = new();
+        PrestateRecordStore store = new(db);
+        StateId other = new(11, TestItem.KeccakB);
+        store.Write(Parent, Encode(capture => capture.OnAccountRead(First, new Account(1, 1))));
+        store.Write(other, Encode(capture => capture.OnAccountRead(First, null), other));
+        long size;
+        using (PrestateRecord probe = store.Read(Parent, out _)!) size = probe.ByteSize;
+        PrestateRecordCache cache = new(store, new FlatDbConfig { HistoryPrestateRecordsCacheBytes = size }, LimboLogs.Instance);
+        Assert.That(cache.TryLease(Parent, out PrestateRecord? held), Is.True, "precondition: the record is leased");
+        bool leasedOther = cache.TryLease(other, out PrestateRecord? evicting);
+        evicting?.Dispose();
+        Assert.That(leasedOther, Is.True, "precondition: the second record evicts the first");
+
+        bool again = cache.TryLease(Parent, out PrestateRecord? reloaded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(again, Is.True);
+            Assert.That(reloaded, Is.Not.SameAs(held), "an evicted record is not handed out again; the lookup loads a fresh one");
+            Assert.That(held!.TryGetAccount(First, out Account? account) && account!.Nonce == 1, Is.True, "the reader that held it keeps reading it");
+        }
+        held!.Dispose();
+        reloaded?.Dispose();
+    }
+
+    [Test]
     public void Cache_WhenTheStoreThrows_AnswersNoRecord()
     {
         using FailingDb db = new();

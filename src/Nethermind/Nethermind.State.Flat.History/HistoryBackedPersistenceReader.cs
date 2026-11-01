@@ -86,13 +86,14 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
         }
     }
 
-    /// <summary>Whether a read of <paramref name="address"/> here must come from this reader, which owns the fail-closed
-    /// rules: every read of a slice-restricted state, and a slot read of an account with a poisoned self-destruct above
-    /// this state. A reader answering from elsewhere sends such reads here, so their errors are kept.</summary>
-    public bool RequiresHistory(Address address, bool slot) =>
-        _sliceScopes is not null || slot && _historyReader.HasPoisonedClearAbove(_block.BlockNumber, address, _clearsCache);
+    /// <summary>Every read of this state must come from this reader, which fails closed outside the retained slices; a
+    /// reader answering from elsewhere sends all reads here.</summary>
+    internal bool IsSliceRestricted => _sliceScopes is not null;
 
-    /// <summary>Moves when a capture publishes; a "not poisoned" answer taken before it may no longer hold.</summary>
+    /// <summary>A slot read of <paramref name="address"/> here may fail closed because of a poisoned self-destruct above
+    /// this state; a reader answering from elsewhere sends such reads here, so the error is kept.</summary>
+    public bool HasPoisonedClearAbove(Address address) => _historyReader.HasPoisonedClearAbove(_block.BlockNumber, address, _clearsCache);
+
     public long ClearsGeneration => _historyReader.CaptureGeneration;
 
     public bool HasCapturedSince(long generation) => _historyReader.HasCapturedSince(generation);
