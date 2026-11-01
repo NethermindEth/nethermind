@@ -80,32 +80,49 @@ public class GethStyleTracerTests
             {
                 clock.Advance(expireFirst ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(600));
             }
-            using ITxTracer second = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
-            Assert.That(clock.Timers, Has.Count.EqualTo(2));
-            using (Assert.EnterMultipleScope())
+            if (expireFirst)
             {
-                Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(1));
-                Assert.That(clock.Timers[1].DisposeCount, Is.Zero);
+                Assert.Throws<GethTraceDeadlineException>(() => tracer.StartNewTxTrace(Build.A.Transaction.TestObject));
+                Assert.That(clock.Timers, Has.Count.EqualTo(1));
+                Assert.That(first.IsCancelled, Is.True);
+                Assert.That(clock.Timers[0].FireQueued, Throws.Nothing);
+                Assert.Throws<GethTraceDeadlineException>(() => tracer.BuildResult());
+                if (cancelExternal)
+                {
+                    external.Cancel();
+                    Assert.That(tracer.Expired, Is.False);
+                    Assert.Throws<OperationCanceledException>(() => tracer.BuildResult());
+                }
             }
-            Assert.That(clock.Timers[0].FireQueued, Throws.Nothing);
-            clock.Advance(TimeSpan.FromMilliseconds(400));
-            Assert.That(second.IsCancelled, Is.False);
-            if (cancelExternal) external.Cancel();
-            clock.Advance(TimeSpan.FromMilliseconds(600));
-            using (Assert.EnterMultipleScope())
+            else
             {
-                Assert.That(first.IsCancelled, Is.EqualTo(expireFirst));
-                Assert.That(second.IsCancelled, Is.True);
-                Assert.That(tracer.Expired, Is.EqualTo(!cancelExternal));
+                using ITxTracer second = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
+                Assert.That(clock.Timers, Has.Count.EqualTo(2));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(1));
+                    Assert.That(clock.Timers[1].DisposeCount, Is.Zero);
+                }
+                Assert.That(clock.Timers[0].FireQueued, Throws.Nothing);
+                clock.Advance(TimeSpan.FromMilliseconds(400));
+                Assert.That(second.IsCancelled, Is.False);
+                if (cancelExternal) external.Cancel();
+                clock.Advance(TimeSpan.FromMilliseconds(600));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(first.IsCancelled, Is.EqualTo(expireFirst));
+                    Assert.That(second.IsCancelled, Is.True);
+                    Assert.That(tracer.Expired, Is.EqualTo(!cancelExternal));
+                }
+                if (cancelExternal) Assert.Throws<OperationCanceledException>(tracer.EndTxTrace);
+                else Assert.Throws<GethTraceDeadlineException>(tracer.EndTxTrace);
             }
-            if (cancelExternal) Assert.Throws<OperationCanceledException>(tracer.EndTxTrace);
-            else Assert.Throws<GethTraceDeadlineException>(tracer.EndTxTrace);
         }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(clock.Timers.TrueForAll(timer => timer.DisposeCount == 1), Is.True);
             Assert.That(firstInner.DisposeCount, Is.EqualTo(1));
-            Assert.That(secondInner.DisposeCount, Is.EqualTo(1));
+            Assert.That(secondInner.DisposeCount, Is.EqualTo(expireFirst ? 0 : 1));
             inner.DidNotReceive().EndTxTrace();
         }
     }
@@ -133,12 +150,22 @@ public class GethStyleTracerTests
         {
             InvalidOperationException failure = new("next setup failed");
             inner.StartNewTxTrace(following).Returns(_ => throw failure);
-            Assert.That(Assert.Throws<InvalidOperationException>(() => tracer.StartNewTxTrace(following)), Is.SameAs(failure));
+            if (expireFirst)
+            {
+                Assert.Throws<GethTraceDeadlineException>(() => tracer.StartNewTxTrace(following));
+                inner.DidNotReceive().StartNewTxTrace(following);
+            }
+            else Assert.That(Assert.Throws<InvalidOperationException>(() => tracer.StartNewTxTrace(following)), Is.SameAs(failure));
         }
         else if (next == "external-cancellation")
         {
             external.Cancel();
             Assert.Throws<OperationCanceledException>(() => tracer.StartNewTxTrace(following));
+            inner.DidNotReceive().StartNewTxTrace(following);
+        }
+        else if (expireFirst)
+        {
+            Assert.Throws<GethTraceDeadlineException>(() => tracer.StartNewTxTrace(following));
             inner.DidNotReceive().StartNewTxTrace(following);
         }
         else
@@ -152,7 +179,7 @@ public class GethStyleTracerTests
         {
             Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(1));
             Assert.That(clock.Timers[0].FireQueued, Throws.Nothing);
-            Assert.That(tracer.Expired, Is.False);
+            Assert.That(tracer.Expired, Is.EqualTo(expireFirst && next != "external-cancellation"));
             Assert.That(firstInner.DisposeCount, Is.EqualTo(1));
         }
     }
@@ -174,12 +201,18 @@ public class GethStyleTracerTests
             new() { TxHash = selected.Hash, Timeout = TimeSpan.FromSeconds(1), DeadlineClock = clock }, external.Token);
         using (ITxTracer first = tracer.StartNewTxTrace(selected))
             clock.Advance(expireFirst ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(400));
-        using ITxTracer second = tracer.StartNewTxTrace(following);
         if (cancelExternal) external.Cancel();
 
-        if (cancelExternal) Assert.Throws<OperationCanceledException>(() => tracer.BuildResult());
-        else if (expireFirst) Assert.Throws<GethTraceDeadlineException>(() => tracer.BuildResult());
-        else Assert.That(tracer.BuildResult, Throws.Nothing);
+        // Expiry may fail fast at replacement; neither boundary may return partial success.
+        void ReplaceAndBuildResult()
+        {
+            using ITxTracer second = tracer.StartNewTxTrace(following);
+            tracer.BuildResult();
+        }
+
+        if (cancelExternal) Assert.Throws<OperationCanceledException>(ReplaceAndBuildResult);
+        else if (expireFirst) Assert.Throws<GethTraceDeadlineException>(ReplaceAndBuildResult);
+        else Assert.That(ReplaceAndBuildResult, Throws.Nothing);
     }
 
     [Test]

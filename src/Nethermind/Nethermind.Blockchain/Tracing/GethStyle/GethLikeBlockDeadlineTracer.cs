@@ -22,8 +22,9 @@ internal sealed class GethLikeBlockDeadlineTracer(
     private GethTraceDeadline? _deadline;
     private bool _transferred;
     private bool _disposed;
+    private bool _expired;
 
-    internal bool Expired => _deadline?.Expired == true;
+    internal bool Expired => (_expired || _deadline?.Expired == true) && !_external.IsCancellationRequested;
     public bool IsTracingRewards => inner.IsTracingRewards;
 
     internal static IBlockTracer<GethLikeTxTrace> Wrap(IBlockTracer<GethLikeTxTrace> tracer, GethTraceOptions options, CancellationToken external) =>
@@ -48,7 +49,7 @@ internal sealed class GethLikeBlockDeadlineTracer(
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
         ReleaseDeadline();
-        _external.ThrowIfCancellationRequested();
+        CheckDeadline();
         ITxTracer current = inner.StartNewTxTrace(tx);
         if (tx is null || options.TxHash is { } target && target != tx.Hash)
             return current.WithCancellation(_external);
@@ -116,7 +117,15 @@ internal sealed class GethLikeBlockDeadlineTracer(
         return result;
     }
 
-    private void ReleaseDeadline() => DisposableExtensions.DisposeAndNull(ref _deadline);
+    private void ReleaseDeadline()
+    {
+        GethTraceDeadline? deadline = _deadline;
+        _deadline = null;
+        if (deadline is null) return;
+        deadline.Dispose();
+        // Disposal serializes with the watcher, so capture its final delivery state afterward.
+        _expired |= deadline.Expired;
+    }
 
     internal void HandleFailure(Exception exception)
     {
