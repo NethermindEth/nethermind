@@ -230,6 +230,10 @@ public class RlpWriterTest
         => Assert.That(() => Rlp.Write(static (ref RlpWriter w) => w.Write(-1)), Throws.TypeOf<ArgumentOutOfRangeException>());
 
     [Test]
+    public void StartSequenceWithNegativeLength()
+        => Assert.That(static () => Rlp.Write(static (ref RlpWriter w) => w.StartSequence(-1)), Throws.TypeOf<ArgumentOutOfRangeException>());
+
+    [Test]
     public void WriteToTooShortDestination()
         => Assert.That(static () =>
         {
@@ -239,7 +243,7 @@ public class RlpWriterTest
 
     // Payload lengths around the short and long prefix forms, in every writer mode.
     [Test]
-    public void WriteSequenceWithDeclaredLength([Values(0, 2, 60, 300)] int stringLength)
+    public void WriteSequenceWithDeclaredLength([Values(0, 2, 60, 253, 254, 255, 256, 300)] int stringLength)
     {
         byte[] value = new byte[stringLength];
         byte[] expected = Rlp.Write(value, static (ref RlpWriter w, byte[] value) => w.WriteSequence(value, WritePayload));
