@@ -74,6 +74,24 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Maximum scratch database size in GiB for bulk transaction-index replay. Reaching the limit pauses replay without dropping its checkpoint.", DefaultValue = "1024")]
     int HistoryTransactionIndexBulkFillMaxGiB { get; set; }
 
+    [ConfigItem(Description = "Keep, per block, the pre-block value of every account and storage slot the block read, in the separate prestateRecords database, and serve historical traces and calls from it before flat history. Records are written by the transaction index builder behind the history watermark, never on the block processing path, so they need HistoryTransactionIndexEnabled. A key the record does not hold is read from flat history as before. Off by default; a node that leaves it off pays nothing and has no prestateRecords directory.", DefaultValue = "false")]
+    bool HistoryPrestateRecordsEnabled { get; set; }
+
+    [ConfigItem(Description = "Blocks of pre-state records to keep below the history watermark. Records below max(watermark - this, history floor + 1) are deleted. 0 keeps every record down to the history floor.", DefaultValue = "216000")]
+    ulong HistoryPrestateRecordsRetentionBlocks { get; set; }
+
+    [ConfigItem(Description = "Largest pre-state record, in bytes before compression, that is written. A block whose record would be larger is not recorded and its traces read flat history.", DefaultValue = "4194304")]
+    int HistoryPrestateRecordsMaxRecordBytes { get; set; }
+
+    [ConfigItem(Description = "Memory, in bytes, of the cache of opened pre-state records shared by historical reads.", DefaultValue = "67108864")]
+    long HistoryPrestateRecordsCacheBytes { get; set; }
+
+    [ConfigItem(Description = "Flat history reads one historical state must make before it opens a pre-state record that is not cached yet, so that a single point read never pays a record read. 0 opens the record at once.", DefaultValue = "8")]
+    int HistoryPrestateRecordsLazyOpenReads { get; set; }
+
+    [ConfigItem(Description = "Percentage of pre-state record reads that are also read from flat history and compared. A mismatch logs an error and stops record reads until restart. 0 compares nothing.", DefaultValue = "0")]
+    int HistoryPrestateRecordsVerifyPercent { get; set; }
+
     [ConfigItem(Description = "Serve eth_getProof at heights below the flat state boundary from the archive commitment columns. Requires an unwindowed (v2) flat history whose commitments cover the height; off by default.", DefaultValue = "false")]
     bool ArchiveProofServeEnabled { get; set; }
 

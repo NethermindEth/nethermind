@@ -14,6 +14,7 @@ using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
 using Nethermind.State.Flat.History.Changesets;
+using Nethermind.State.Flat.History.Prestate;
 using Nethermind.State.Flat.History.Proofs;
 
 namespace Nethermind.Init.Modules;
@@ -54,7 +55,8 @@ public class FlatHistoryModule : Module
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
                 ctx.Resolve<HistoryScopeGate>(),
-                ctx.Resolve<ILogManager>()))
+                ctx.Resolve<ILogManager>(),
+                ctx.ResolveOptional<PrestateRecordCache>()))
             .AddStep(typeof(SeedFlatHistoryGenesis))
             .AddStep(typeof(StartHistoryWindowPruner))
             // Only a node configuring slices tells the history pruner to keep any receipts; everyone else keeps

@@ -16,16 +16,20 @@ namespace Nethermind.State.OverridableEnv;
 public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetimeScope, ISpecProvider specProvider, IPrefixStateSeedSource? prefixSeeds = null)
     : IOverridableEnvFactory, ITraceEnvFactory
 {
-    public IOverridableEnv Create() => Create(readOverlay: null);
+    public IOverridableEnv Create() => Create(readOverlay: null, decorateScopeProvider: null);
 
-    public IOverridableEnv CreateForTracing() => Create(prefixSeeds is { Enabled: true } ? new StateReadOverlaySlot() : null);
+    public IOverridableEnv Create(Func<IWorldStateScopeProvider, IWorldStateScopeProvider> decorateScopeProvider) =>
+        Create(readOverlay: null, decorateScopeProvider);
 
-    private IOverridableEnv Create(StateReadOverlaySlot? readOverlay)
+    public IOverridableEnv CreateForTracing() => Create(prefixSeeds is { Enabled: true } ? new StateReadOverlaySlot() : null, decorateScopeProvider: null);
+
+    private IOverridableEnv Create(StateReadOverlaySlot? readOverlay, Func<IWorldStateScopeProvider, IWorldStateScopeProvider>? decorateScopeProvider)
     {
         IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
         IWorldStateScopeProvider scopeProvider = readOverlay is null
             ? overridableScope.WorldState
             : new OverlaidScopeProvider(overridableScope.WorldState, readOverlay);
+        if (decorateScopeProvider is not null) scopeProvider = decorateScopeProvider(scopeProvider);
 
         // eth_simulateV1 and the tracers share these envs and bring their own recorder, so only add one
         // where a diff can actually be read.

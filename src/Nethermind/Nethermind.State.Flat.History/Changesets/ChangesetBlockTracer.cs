@@ -21,6 +21,9 @@ internal sealed class ChangesetBlockTracer(TransactionChangesetStore store, IWri
 
     public bool IsTracingRewards => false;
 
+    /// <summary>The hash of the block traced last, or null before the first.</summary>
+    public Hash256? BlockHash { get; private set; }
+
     /// <summary>Every transaction of the block was seen and reported something. Every transaction changes at least
     /// its sender's nonce, so an empty changeset means the execution was not observed, as under parallel execution
     /// where the per-worker world states report nothing, and the rows must not be claimed.</summary>
@@ -34,7 +37,8 @@ internal sealed class ChangesetBlockTracer(TransactionChangesetStore store, IWri
         _transactionIndex = -1;
         _expectedTransactions = block.Transactions.Length;
         _everyTransactionObserved = true;
-        store.WriteBlockHash(_block, block.Hash ?? ThrowUnsealed(block), batch);
+        BlockHash = block.Hash ?? ThrowUnsealed(block);
+        store.WriteBlockHash(_block, BlockHash, batch);
     }
 
     /// <summary>One tracer over the one collector, reset per transaction: nothing holds a tracer past EndTxTrace.</summary>

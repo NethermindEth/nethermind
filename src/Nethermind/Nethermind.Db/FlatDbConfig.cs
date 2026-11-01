@@ -27,6 +27,12 @@ public class FlatDbConfig : IFlatDbConfig
     public int HistoryTransactionIndexWorkers { get; set; } = 1;
     public bool HistoryTransactionIndexBulkFillEnabled { get; set; } = false;
     public int HistoryTransactionIndexBulkFillMaxGiB { get; set; } = 1024;
+    public bool HistoryPrestateRecordsEnabled { get; set; } = false;
+    public ulong HistoryPrestateRecordsRetentionBlocks { get; set; } = 216000;
+    public int HistoryPrestateRecordsMaxRecordBytes { get; set; } = 4 * 1024 * 1024;
+    public long HistoryPrestateRecordsCacheBytes { get; set; } = 64 * 1024 * 1024;
+    public int HistoryPrestateRecordsLazyOpenReads { get; set; } = 8;
+    public int HistoryPrestateRecordsVerifyPercent { get; set; } = 0;
     public bool ArchiveProofServeEnabled { get; set; } = false;
     public bool ArchiveProofBuildEnabled { get; set; } = false;
     public int ArchiveProofFanOut { get; set; } = 8;

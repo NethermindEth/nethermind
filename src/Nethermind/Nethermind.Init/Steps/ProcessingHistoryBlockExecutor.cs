@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.State.Flat.History.Changesets;
 using Nethermind.State.OverridableEnv;
@@ -155,9 +156,13 @@ public sealed class ProcessingHistoryBlockExecutorFactory(
 
     public Hash256? GetCanonicalHash(ulong block) => blockTree.FindHeader(block, BlockTreeLookupOptions.RequireCanonical)?.Hash;
 
-    public IHistoryBlockExecutor Create()
+    public IHistoryBlockExecutor Create() => CreateExecutor(envFactory.Create());
+
+    public IHistoryBlockExecutor Create(Func<IWorldStateScopeProvider, IWorldStateScopeProvider> decorateScopeProvider) =>
+        CreateExecutor(envFactory.Create(decorateScopeProvider));
+
+    private ProcessingHistoryBlockExecutor CreateExecutor(IOverridableEnv env)
     {
-        IOverridableEnv env = envFactory.Create();
         ILifetimeScope? scope = null;
         try
         {

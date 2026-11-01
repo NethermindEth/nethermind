@@ -9,10 +9,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Changesets;
+using Nethermind.State.Flat.History.Prestate;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -597,6 +600,111 @@ public class TransactionChangesetBuilderTests
         await builder.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));
     }
 
+    [Test]
+    public void TryBuildNext_WithPrestateRecords_WritesTheRecordOfTheParentState()
+    {
+        Capture(upTo: 20);
+        using MemDb records = new();
+        PrestateRecordStore store = new(records);
+        _executor.ScopeProvider = PrestateScopeProvider(out _);
+        using TransactionChangesetBuilder builder = Builder(Index(), store);
+
+        bool built = builder.TryBuildNext();
+
+        using PrestateRecord? record = store.Read(new StateId(19, ParentRoot), out _);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built, Is.True);
+            Assert.That(record, Is.Not.Null, "the one-shot build records the parent reads of the block it executes");
+            Assert.That(record!.TryGetAccount(TestItem.AddressA, out Account? account) && account!.Nonce == 3, Is.True);
+            Assert.That(record.BlockNumber, Is.EqualTo(20UL));
+        }
+    }
+
+    [Test]
+    public void TryBuildNext_WhenTheCaptureFails_StillBuildsAndWritesNoRecord()
+    {
+        Capture(upTo: 20);
+        using MemDb records = new();
+        PrestateRecordStore store = new(records);
+        _executor.ScopeProvider = PrestateScopeProvider(out _);
+        _executor.HintDuringExecution = true;
+        TransactionChangesetIndex index = Index();
+        using TransactionChangesetBuilder builder = Builder(index, store);
+
+        bool built = builder.TryBuildNext();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built, Is.True, "a record is derived data; failing to record must not fail the changeset build");
+            Assert.That(index.Covers(20), Is.True);
+            Assert.That(store.Read(new StateId(19, ParentRoot), out _), Is.Null);
+        }
+    }
+
+    [Test]
+    public void TryBuildNext_WhenTheRowsAreAlreadyThere_WritesNoRecord()
+    {
+        Capture(upTo: 5);
+        using MemDb records = new();
+        PrestateRecordStore store = new(records);
+        _executor.ScopeProvider = PrestateScopeProvider(out _);
+        TransactionChangesetIndex index = Index();
+        index.TryClaim(3, 3);
+        Block block = Build.A.Block.WithNumber(4).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        WriteInline(index, block);
+        _executor.CanonicalHashes[4] = block.Hash!;
+        using TransactionChangesetBuilder builder = Builder(index, store);
+
+        builder.TryBuildNext();
+
+        Assert.That(store.Read(new StateId(3, ParentRoot), out _), Is.Null, "a block that is not executed has no reads to record");
+    }
+
+    [Test]
+    public void TryBuildNextChunk_WithPrestateRecords_WritesNoRecord()
+    {
+        Capture(upTo: 300);
+        _config.HistoryTransactionIndexRetrofitFromBlock = 1;
+        _config.HistoryTransactionIndexWorkers = 2;
+        using MemDb records = new();
+        PrestateRecordStore store = new(records);
+        _executor.ScopeProvider = PrestateScopeProvider(out _);
+        using TransactionChangesetBuilder builder = Builder(Index(), store);
+        builder.TryBuildNext();
+        Assert.That(store.Read(new StateId(299, ParentRoot), out _), Is.Not.Null, "precondition: the tip build records");
+
+        bool built = builder.TryBuildNextChunk(_executor);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built, Is.True);
+            Assert.That(store.Read(new StateId(298, ParentRoot), out _), Is.Null,
+                "a chunk keeps one state open across blocks, so its later blocks never read their parent values from the scope");
+        }
+    }
+
+    private static readonly ValueHash256 ParentRoot = TestItem.KeccakE.ValueHash256;
+
+    private static IWorldStateScopeProvider PrestateScopeProvider(out IWorldStateScopeProvider.IScope scope)
+    {
+        IWorldStateScopeProvider provider = Substitute.For<IWorldStateScopeProvider>();
+        IWorldStateScopeProvider.IScope inner = Substitute.For<IWorldStateScopeProvider.IScope>();
+        inner.Get(TestItem.AddressA).Returns(new Account(3, 30));
+        provider.TryBeginScope(Arg.Any<BlockHeader?>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope?>())
+            .Returns(call =>
+            {
+                call[2] = inner;
+                return true;
+            });
+        scope = inner;
+        return provider;
+    }
+
+    private TransactionChangesetBuilder Builder(TransactionChangesetIndex index, PrestateRecordStore store) =>
+        new(index, _executor, _availability, _config, LimboLogs.Instance,
+            prestateRecorder: new PrestateRecorder(store, _availability, new FlatDbConfig { HistoryPrestateRecordsEnabled = true }, LimboLogs.Instance));
+
     private TransactionChangesetBuilder Builder() => Builder(Index());
 
     private TransactionChangesetBuilder Builder(TransactionChangesetIndex index) =>
@@ -670,7 +778,21 @@ public class TransactionChangesetBuilderTests
 
         public Hash256? GetCanonicalHash(ulong block) => CanonicalHashes.GetValueOrDefault(block);
 
+        public Func<IWorldStateScopeProvider, IWorldStateScopeProvider>? Decorator { get; private set; }
+
+        /// <summary>When set, each execution opens the parent scope through the decorator and reads one account, as
+        /// a real block execution does.</summary>
+        public IWorldStateScopeProvider? ScopeProvider { get; set; }
+
+        public bool HintDuringExecution { get; set; }
+
         public IHistoryBlockExecutor Create() => this;
+
+        public IHistoryBlockExecutor Create(Func<IWorldStateScopeProvider, IWorldStateScopeProvider> decorateScopeProvider)
+        {
+            Decorator = decorateScopeProvider;
+            return this;
+        }
 
         public IHistoryBlockRun? BeginRun(ulong firstBlock)
         {
@@ -696,7 +818,21 @@ public class TransactionChangesetBuilderTests
                 tracer.EndBlockTrace();
             }
 
+            if (ScopeProvider is not null) ReadParent(block);
             return true;
+        }
+
+        private void ReadParent(ulong block)
+        {
+            IWorldStateScopeProvider provider = Decorator is null ? ScopeProvider! : Decorator(ScopeProvider!);
+            BlockHeader parent = Build.A.BlockHeader.WithNumber(block - 1).WithStateRoot(new Hash256(ParentRoot)).TestObject;
+            provider.TryBeginScope(parent, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope);
+            using (scope)
+            {
+                scope!.Get(TestItem.AddressA);
+                if (HintDuringExecution) scope.HintGet(TestItem.AddressB, null);
+                scope.Commit(block);
+            }
         }
 
         public void Dispose()

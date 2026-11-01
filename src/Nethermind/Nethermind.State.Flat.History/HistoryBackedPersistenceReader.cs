@@ -85,6 +85,10 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
         }
     }
 
+    /// <summary>Whether a slot read of <paramref name="address"/> here may fail closed, so that a reader answering
+    /// from elsewhere sends it to <see cref="TryGetSlot"/> and keeps that error.</summary>
+    internal bool HasPoisonedClearAbove(Address address) => _historyReader.HasPoisonedClearAbove(_block.BlockNumber, address, _clearsCache);
+
     /// <summary>Fails closed for an address outside every retained slice. In-memory only.</summary>
     private void RequireRetainedBySlice(Address address)
     {

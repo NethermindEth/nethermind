@@ -178,6 +178,15 @@ public interface IDbConfig : IConfig
     /// </summary>
     string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; }
 
+    /// <summary>
+    /// RocksDB options for the prestateRecords database (one pre-block value record per block, read by point lookups).
+    /// Defaults to LZ4 compression, a point bloom filter and small write buffers.
+    /// </summary>
+    string PrestateRecordsDbRocksDbOptions { get; set; }
+
+    /// <summary>Options appended after <see cref="PrestateRecordsDbRocksDbOptions"/> (later keys win). Unset by default.</summary>
+    string? PrestateRecordsDbAdditionalRocksDbOptions { get; set; }
+
     string? PersistedSnapshotCatalogDbRocksDbOptions { get; set; }
     string? PersistedSnapshotCatalogDbAdditionalRocksDbOptions { get; set; }
 }

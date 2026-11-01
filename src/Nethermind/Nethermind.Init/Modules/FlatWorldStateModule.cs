@@ -209,6 +209,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         if (flatDbConfig.HistoryEnabled)
         {
             builder.AddModule(new FlatHistoryModule());
+            if (flatDbConfig.HistoryPrestateRecordsEnabled) builder.AddModule(new PrestateRecordsModule());
             if (flatDbConfig.HistoryTransactionIndexEnabled)
             {
                 builder

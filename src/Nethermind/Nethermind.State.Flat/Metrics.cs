@@ -569,4 +569,48 @@ public static class Metrics
     [Description("Newest trie node log generation merged into RocksDB, by shard")]
     [KeyIsLabel("shard")]
     public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogFlushedGeneration { get; } = new();
+    private static long _prestateRecordKeyReadsFromRecord;
+    private static long _prestateRecordKeyReadsFromHistory;
+
+    [CounterMetric]
+    [Description("Block pre-state records written by the transaction index builder")]
+    public static long PrestateRecordsWritten { get; set; }
+
+    [CounterMetric]
+    [Description("Blocks the transaction index builder executed without writing a pre-state record: the capture failed, the record was too large or the write failed")]
+    public static long PrestateRecordsSkipped { get; set; }
+
+    [CounterMetric]
+    [Description("Historical states that opened a pre-state record")]
+    public static long PrestateRecordLeaseHits { get; set; }
+
+    [CounterMetric]
+    [Description("Historical states that found no pre-state record for their state")]
+    public static long PrestateRecordLeaseAbsent { get; set; }
+
+    [CounterMetric]
+    [Description("Pre-state records that were found but not used because they failed validation")]
+    public static long PrestateRecordsInvalid { get; set; }
+
+    [CounterMetric]
+    [Description("Account and slot reads of historical states answered by a pre-state record")]
+    public static long PrestateRecordKeyReadsFromRecord => Volatile.Read(ref _prestateRecordKeyReadsFromRecord);
+
+    [CounterMetric]
+    [Description("Account and slot reads of historical states with a pre-state record that went to flat history because the record did not hold the key")]
+    public static long PrestateRecordKeyReadsFromHistory => Volatile.Read(ref _prestateRecordKeyReadsFromHistory);
+
+    public static void AddPrestateRecordKeyReads(long fromRecord, long fromHistory)
+    {
+        if (fromRecord != 0) Interlocked.Add(ref _prestateRecordKeyReadsFromRecord, fromRecord);
+        if (fromHistory != 0) Interlocked.Add(ref _prestateRecordKeyReadsFromHistory, fromHistory);
+    }
+
+    [CounterMetric]
+    [Description("Pre-state record values that differed from flat history in a verification read; the first one stops record reads until restart")]
+    public static long PrestateRecordVerifyMismatches { get; set; }
+
+    [GaugeMetric]
+    [Description("Bytes held by the cache of opened pre-state records")]
+    public static long PrestateRecordCacheBytes { get; set; }
 }

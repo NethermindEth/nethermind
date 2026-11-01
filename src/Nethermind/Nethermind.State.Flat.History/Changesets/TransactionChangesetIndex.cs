@@ -207,6 +207,9 @@ public sealed class TransactionChangesetIndex
         /// <summary>Records one block into this capture; valid until disposal.</summary>
         public IBlockTracer Tracer => _tracer;
 
+        /// <summary>The hash of the block the capture traced, or null before it started.</summary>
+        public Hash256? BlockHash => _tracer.BlockHash;
+
         /// <summary>Publishes a complete capture; otherwise discards the batch so an existing block stays intact.</summary>
         public bool Commit()
         {

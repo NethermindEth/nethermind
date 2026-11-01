@@ -6,6 +6,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.History.Prestate;
 
 namespace Nethermind.State.Flat.History.Changesets;
 
@@ -21,7 +22,8 @@ public sealed class TransactionChangesetBuilder(
     HistoryAvailability availability,
     IFlatDbConfig config,
     ILogManager logManager,
-    ITransactionIndexBulkFill? bulkFill = null) : IDisposable, IStoppableService
+    ITransactionIndexBulkFill? bulkFill = null,
+    PrestateRecorder? prestateRecorder = null) : IDisposable, IStoppableService
 {
     internal const ulong ChunkBlocks = 128;
     internal const int WarnAfterAttempts = 8;
@@ -42,6 +44,7 @@ public sealed class TransactionChangesetBuilder(
     private readonly HashSet<ulong> _stalledTops = [];
     private readonly List<Thread> _threads = [];
     private IHistoryBlockExecutor? _tipExecutor;
+    private PrestateCapture? _tipCapture;
     private ulong? _nextChunkTop;
     private long _progressReportedAt;
     private string? _lastFailure;
@@ -79,17 +82,25 @@ public sealed class TransactionChangesetBuilder(
     {
         if (!TryNextBlock(out ulong block)) return false;
 
-        _tipExecutor ??= executors.Create();
-        return TryBuildNext(block, _tipExecutor);
+        _tipExecutor ??= CreateTipExecutor(out _tipCapture);
+        return TryBuildNext(block, _tipExecutor, _tipCapture);
+    }
+
+    /// <summary>The executor of the thread that runs one-shot builds, which alone records pre-state: a chunk keeps one
+    /// state open across blocks, so its later blocks read from memory what a trace reads from the parent.</summary>
+    private IHistoryBlockExecutor CreateTipExecutor(out PrestateCapture? capture)
+    {
+        capture = prestateRecorder?.CreateCapture();
+        return capture is null ? executors.Create() : executors.Create(capture.Decorate);
     }
 
     /// <summary>The inline capture writes whole blocks ahead of coverage, so a height whose rows already carry the
     /// canonical block's hash is claimed as it stands: the rows and that hash are written in one atomic batch, so a
     /// matching hash proves them complete. Without this a single gap leaves the tip thread re-executing blocks that
     /// are already on disk, at a fraction of the rate sync produces them.</summary>
-    private bool TryBuildNext(ulong block, IHistoryBlockExecutor executor)
+    private bool TryBuildNext(ulong block, IHistoryBlockExecutor executor, PrestateCapture? capture)
     {
-        if (!HasCanonicalRows(block) && !Build(block, executor)) return false;
+        if (!HasCanonicalRows(block) && !Build(block, executor, capture)) return false;
 
         index.TryClaim(block, block);
         return true;
@@ -297,11 +308,11 @@ public sealed class TransactionChangesetBuilder(
         CancellationToken token = _cancellation.Token;
         using ManualResetEventSlim delay = new(false, spinCount: 0);
         using CancellationTokenRegistration registration = token.UnsafeRegister(static state => ((ManualResetEventSlim)state!).Set(), delay);
-        using IHistoryBlockExecutor executor = executors.Create();
+        using IHistoryBlockExecutor executor = CreateTipExecutor(out PrestateCapture? capture);
         while (!token.IsCancellationRequested)
         {
             long startedAt = Stopwatch.GetTimestamp();
-            bool built = Guarded(() => TryNextBlock(out ulong block) && TryBuildNext(block, executor), token);
+            bool built = Guarded(() => TryNextBlock(out ulong block) && TryBuildNext(block, executor, capture), token);
             if (token.IsCancellationRequested) return;
 
             ReportProgress();
@@ -378,10 +389,23 @@ public sealed class TransactionChangesetBuilder(
         }
     }
 
-    private bool Build(ulong block, IHistoryBlockExecutor executor)
+    /// <summary>The pre-state capture rides on the same execution, so recording costs no second run; its record is
+    /// written only after the changeset rows are committed, and a failure to record never fails the build.</summary>
+    private bool Build(ulong block, IHistoryBlockExecutor executor, PrestateCapture? prestate)
     {
         using TransactionChangesetIndex.BlockCapture capture = index.StartBlock(block);
-        if (!executor.TryExecute(block, capture.Tracer, _cancellation.Token) || !capture.Commit()) return false;
+        prestate?.Arm();
+        try
+        {
+            if (!executor.TryExecute(block, capture.Tracer, _cancellation.Token) || !capture.Commit()) return false;
+
+            if (prestate is not null && capture.BlockHash is { } blockHash)
+                prestateRecorder!.TryWrite(prestate, block, blockHash.ValueHash256, _cancellation.Token);
+        }
+        finally
+        {
+            prestate?.Reset();
+        }
 
         Interlocked.Increment(ref _builtSinceReport);
         return true;

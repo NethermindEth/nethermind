@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Logging;
+using Nethermind.State.Flat.History.Prestate;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 
@@ -20,7 +21,8 @@ public sealed class HistoricalFlatDbManager(
     IResourcePool resourcePool,
     bool enableDetailedMetrics,
     HistoryScopeGate scopeGate,
-    ILogManager logManager) : IFlatDbManager
+    ILogManager logManager,
+    PrestateRecordCache? prestateRecords = null) : IFlatDbManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<HistoricalFlatDbManager>();
 
@@ -52,7 +54,7 @@ public sealed class HistoricalFlatDbManager(
             throw new StateUnavailableException(reason);
         }
 
-        ReadOnlySnapshotBundle bundle = BuildHistoricalBundle(baseBlock, mode);
+        ReadOnlySnapshotBundle bundle = BuildHistoricalBundle(baseBlock, mode, ReaderFlags.None);
         try
         {
             return new SnapshotBundle(bundle, null, resourcePool, usage);
@@ -72,7 +74,7 @@ public sealed class HistoricalFlatDbManager(
         HistoricalReadMode mode = Classify(baseBlock);
         if (mode == HistoricalReadMode.NotHistorical) return inner.GatherReadOnlySnapshotBundle(baseBlock, readerFlags);
         if (mode == HistoricalReadMode.Unavailable) ThrowUnavailable(baseBlock);
-        return BuildHistoricalBundle(baseBlock, mode);
+        return BuildHistoricalBundle(baseBlock, mode, readerFlags);
     }
 
     public bool HasStateForBlock(in StateId stateId) =>
@@ -122,11 +124,17 @@ public sealed class HistoricalFlatDbManager(
 
     // Trie-less bundle: empty snapshot list over a history-backed reader. The reader serves account/storage values
     // only and throws on trie traversal / iteration, so post-block state-root recomputation must not walk it.
-    private ReadOnlySnapshotBundle BuildHistoricalBundle(in StateId baseBlock, HistoricalReadMode mode)
+    // A normal read with no special reader flags also consults the pre-state record of the state; scans and
+    // verification (Sync, FullScan) and slice-restricted reads, which must fail closed, keep the history reader alone.
+    private ReadOnlySnapshotBundle BuildHistoricalBundle(in StateId baseBlock, HistoricalReadMode mode, ReaderFlags readerFlags)
     {
-        HistoryBackedPersistenceReader reader = new(historyReader, baseBlock, scopeGate, restrictToSlices: mode == HistoricalReadMode.Restricted);
+        HistoryBackedPersistenceReader history = new(historyReader, baseBlock, scopeGate, restrictToSlices: mode == HistoricalReadMode.Restricted);
+        IPersistence.IPersistenceReader reader = history;
         try
         {
+            if (prestateRecords is not null && mode == HistoricalReadMode.Normal && readerFlags == ReaderFlags.None)
+                reader = new RecordBackedPersistenceReader(history, prestateRecords, baseBlock);
+
             return new(new SnapshotPooledList(0),
                 reader,
                 enableDetailedMetrics,

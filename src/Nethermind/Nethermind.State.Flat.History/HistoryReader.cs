@@ -264,6 +264,11 @@ public sealed class HistoryReader
         return true;
     }
 
+    /// <summary>Whether a storage read of <paramref name="address"/> at <paramref name="block"/> may fail closed
+    /// because an over-cap self-destruct above it left no per-slot rows. Only the v3 format records such clears.</summary>
+    internal bool HasPoisonedClearAbove(ulong block, Address address, StorageClearsScopeCache clearsCache) =>
+        _isV3 && clearsCache.TryGetPoisonedClearAbove(address.ToAccountPath, _storageClears, _availability, block, out _);
+
     internal ReadScopeState CreateReadScopeState() => new(_isV3);
 
     internal struct ReadScopeState(bool enabled) : IDisposable

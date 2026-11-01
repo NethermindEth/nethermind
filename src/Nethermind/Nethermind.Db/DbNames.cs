@@ -9,6 +9,7 @@ namespace Nethermind.Db
         public const string State = "state";
         public const string Flat = "flat";
         public const string FlatHistory = "flatHistory";
+        public const string PrestateRecords = "prestateRecords";
         public const string Code = "code";
         public const string Blocks = "blocks";
         public const string Headers = "headers";

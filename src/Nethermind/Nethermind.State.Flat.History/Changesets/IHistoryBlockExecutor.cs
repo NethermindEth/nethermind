@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.State.Flat.History.Changesets;
@@ -31,6 +32,10 @@ public interface IHistoryBlockExecutorFactory
 {
     /// <summary>Returns a caller-owned executor, which must be disposed after its final run.</summary>
     IHistoryBlockExecutor Create();
+
+    /// <summary>Returns a caller-owned executor whose world state reads and writes through the scope provider
+    /// <paramref name="decorateScopeProvider"/> returns for the one the executor would use.</summary>
+    IHistoryBlockExecutor Create(Func<IWorldStateScopeProvider, IWorldStateScopeProvider> decorateScopeProvider);
     /// <summary>Returns the last supported canonical height at or below the bound, or null when it cannot be determined.</summary>
     ulong? GetLastSupportedBlock(ulong lowerBound, ulong upperBound) => lowerBound <= upperBound ? upperBound : null;
 
