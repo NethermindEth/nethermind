@@ -264,7 +264,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             try
             {
                 IBlockTracer cancelable = GethLikeBlockDeadlineTracer.WithCancellation(tracer, token);
-                IBlockTracer bounded = TransactionTraceBoundary.Wrap(cancelable, hash, seeds);
+                IBlockTracer bounded = TransactionTraceBoundary.WrapAt(cancelable, hash, index, seeds);
                 if (bounded is not TransactionTraceBoundary boundary)
                 {
                     tracer.TryDispose();
