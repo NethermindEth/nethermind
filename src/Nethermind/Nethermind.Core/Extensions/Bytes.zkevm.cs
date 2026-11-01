@@ -80,16 +80,17 @@ public static unsafe partial class Bytes
 
     /// <summary>Copies <paramref name="source"/> to the start of <paramref name="destination"/>.</summary>
     /// <remarks>
-    /// Corelib copies more than 64 bytes through a GC-transition wrapper around the zkVM's <c>memmove</c>
-    /// that spills every callee-saved register, ~60 steps a call whatever the length. Where
-    /// <see cref="ZiskFlag"/> is on, this calls <c>memmove</c> directly, so overlapping spans stay safe;
-    /// elsewhere it keeps corelib's copy. See <c>Bytes.std.cs</c> for the host form.
+    /// On ZisK, corelib copies more than 64 bytes through a GC-transition wrapper around the zkVM's <c>memmove</c>
+    /// that spills every callee-saved register, ~60 steps a call whatever the length. On SP1, corelib's
+    /// <c>SpanHelpers.Memmove</c> adds ~13 instructions to each copy of more than 16 bytes before it reaches the same
+    /// routine. Where <see cref="ZiskFlag"/> or <see cref="Sp1Flag"/> is on, this calls <c>memmove</c> directly, so
+    /// overlapping spans stay safe; elsewhere it keeps corelib's copy. See <c>Bytes.std.cs</c> for the host form.
     /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="destination"/> is shorter than <paramref name="source"/>.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Copy(ReadOnlySpan<byte> source, Span<byte> destination)
     {
-        if (!ZiskFlag.IsActive)
+        if (!ZiskFlag.IsActive && !Sp1Flag.IsActive)
         {
             source.CopyTo(destination);
             return;
@@ -106,14 +107,15 @@ public static unsafe partial class Bytes
     /// which may overlap.</summary>
     /// <remarks>
     /// Where <see cref="ZiskFlag"/> is on, this is the zkVM's <c>memmove</c>, which its runtime turns into a
-    /// DMA precompile; elsewhere it is corelib's copy. Unpinned pointers are safe because nothing between taking
+    /// DMA precompile, and where <see cref="Sp1Flag"/> is on it is the guest's assembly <c>memmove</c>; elsewhere
+    /// it is corelib's copy. Unpinned pointers are safe because nothing between taking
     /// them and the call returning can reach a GC safepoint: the import suppresses the GC transition and the
-    /// callee is a two-instruction thunk.
+    /// callee is native code with no calls back into managed code.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Memmove(void* destination, void* source, nuint length)
     {
-        if (ZiskFlag.IsActive) Accelerators.Memmove(destination, source, length);
+        if (ZiskFlag.IsActive || Sp1Flag.IsActive) Accelerators.Memmove(destination, source, length);
         else Buffer.MemoryCopy(source, destination, length, length);
     }
 

@@ -186,7 +186,7 @@ public class SimpleDispatcher<T>(
             }
             catch (Exception e)
             {
-                if (_logger.IsWarn) _logger.Warn($"Failure when executing request {e}");
+                if (_logger.IsWarn) _logger.Warn($"Failure when executing request ({e.GetType().Name}) {e:hide}");
             }
             Metrics.SyncDispatcherDispatchTimeMicros.Observe(
                 Stopwatch.GetElapsedTime(dispatchTime).TotalMicroseconds, new StringLabel(_feedName));

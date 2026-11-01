@@ -147,17 +147,17 @@ namespace Nethermind.Consensus.Processing
                     return "Invalid nonce sequence - malformed key set";
                 }
 
+                ulong expected = currentTx.Nonce == Eip8250Constants.MaxNonceSeq ? 0 : currentTx.Nonce;
                 foreach (ref readonly UInt256 nonceKey in nonceKeys.AsSpan())
                 {
                     ulong current = KeyedNonceManager.CurrentNonceSeq(stateProvider, currentTx.SenderAddress!, in nonceKey);
-                    if (current != currentTx.Nonce)
+                    if (current != expected)
                     {
                         return $"Invalid nonce sequence - key {nonceKey} expected {current}";
                     }
                 }
 
-                // Well-formed and every key at nonce_seq leaves exhaustion as the only reason the set was rejected.
-                return $"Invalid nonce sequence - exhausted at {currentTx.Nonce}";
+                return "Invalid nonce sequence";
             }
 
             private static bool HasEnoughFunds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)

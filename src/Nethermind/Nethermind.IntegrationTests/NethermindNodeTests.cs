@@ -1,5 +1,6 @@
 using System;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
@@ -18,12 +19,15 @@ public class NethermindNodeTests
 {
     private IContainer _nethermindContainer;
 
-    private async Task StartContainerAsync(string[] commandOverride = null, bool waitForInit = true, bool suppressStartFailures = false)
+    private async Task StartContainerAsync(string[] commandOverride = null, bool waitForInit = true, bool suppressStartFailures = false,
+        (string Path, string Contents)? configFile = null)
     {
         string[] defaultCommand = new[] { "--config", "sepolia", "--JsonRpc.Enabled", "true", "--JsonRpc.Host", "0.0.0.0", "--JsonRpc.Port", "8545", "--JsonRpc.EnginePort", "8551", "--JsonRpc.EngineHost", "0.0.0.0", "--JsonRpc.JwtSecretFile", "jwt.hex" };
         string[] command = commandOverride ?? defaultCommand;
 
         ContainerBuilder builder = await Utils.BuildNethermindContainerAsync(command, waitForInit);
+        if (configFile is { } file)
+            builder = builder.WithResourceMapping(Encoding.UTF8.GetBytes(file.Contents), file.Path);
 
         _nethermindContainer = builder.Build();
 
@@ -82,16 +86,7 @@ public class NethermindNodeTests
 
         await StartContainerAsync(commandWithoutConfig, waitForInit: false, suppressStartFailures: true);
 
-        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (DateTime.UtcNow < deadline && _nethermindContainer.State != TestcontainersStates.Exited)
-        {
-            await Task.Delay(200);
-        }
-
-        string cleanStdout = await _nethermindContainer.GetCleanStdoutAsync();
-        string cleanStderr = await _nethermindContainer.GetCleanStderrAsync();
-
-        string combinedLogs = cleanStdout + cleanStderr;
+        string combinedLogs = await GetExitedContainerLogsAsync();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(combinedLogs, Does.Contain("Configuration file not found.")
@@ -103,6 +98,33 @@ public class NethermindNodeTests
                 Assert.That(combinedLogs, Does.Not.Contain(privatePath));
             }
         }
+    }
+
+    [Test]
+    public async Task Nethermind_ShouldReportJsonPosition_WhenConfigIsMalformed([Values] bool maskSensitiveData)
+    {
+        const string path = "/private-config-test.json";
+        const string contents = "{\n  \"Init\": \"private-config-value\",\n  !\n}";
+        await StartContainerAsync(["--config", path, "--Init.MaskSensitiveData", maskSensitiveData.ToString()],
+            waitForInit: false, suppressStartFailures: true, configFile: (path, contents));
+
+        string combinedLogs = await GetExitedContainerLogsAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(combinedLogs, Does.Contain("Invalid JSON at line 2, byte position 2."));
+            Assert.That(combinedLogs, Does.Not.Contain(path).And.Not.Contain("private-config-value"));
+        }
+    }
+
+    private async Task<string> GetExitedContainerLogsAsync()
+    {
+        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (DateTime.UtcNow < deadline && _nethermindContainer.State != TestcontainersStates.Exited)
+            await Task.Delay(200);
+
+        Assert.That(_nethermindContainer.State, Is.EqualTo(TestcontainersStates.Exited));
+        return await _nethermindContainer.GetCleanStdoutAsync() + await _nethermindContainer.GetCleanStderrAsync();
     }
 
     [Test]

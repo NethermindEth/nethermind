@@ -148,7 +148,7 @@ public class BalFetcher(
                 }
             }
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception e)
         {
             requestFailed = true;

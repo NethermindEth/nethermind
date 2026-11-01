@@ -245,7 +245,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
                 catch (Exception e)
                 {
-                    if (Logger.IsWarn) Logger.Warn($"Failure when executing request {e:hide}");
+                    if (Logger.IsWarn) Logger.Warn($"Failure when executing request ({e.GetType().Name}) {e:hide}");
                 }
                 Metrics.SyncDispatcherDispatchTimeMicros.Observe(Stopwatch.GetElapsedTime(dispatchTimeStart).TotalMicroseconds, new StringLabel(_feedName));
 

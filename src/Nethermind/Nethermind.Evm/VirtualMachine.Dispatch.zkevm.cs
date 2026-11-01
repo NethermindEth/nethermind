@@ -21,6 +21,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public ref TGasPolicy Gas;
 
         /// <summary>The table the chain dispatches through, for handlers that reload it after their body.</summary>
+        /// <remarks>In the form <see cref="RawCalliHelper.DispatchTable"/> gives, so read only through the chain's table helpers.</remarks>
         public nint* OpcodeHandlers;
 
         public VirtualMachine<TGasPolicy> Vm;
@@ -114,13 +115,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         fixed (nint* entries = handlers)
         {
             nint* table = entries + FollowerHandlersLength;
+            nint* dispatched = RawCalliHelper.DispatchTable(table);
             // Unscoped because a function pointer cannot declare its parameters scoped; the chain ends before this call does.
-            DispatchState state = new() { Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = table, Vm = this, Memory = ref VmState.Memory };
+            DispatchState state = new() { Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = dispatched, Vm = this, Memory = ref VmState.Memory };
 
             ushort opcodes = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref stack.Code, programCounter));
             EvmExceptionType exceptionType =
                 ((delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[opcodes])(
-                    ref stack, GetExecutionGas(ref gas), ref state, ref Unsafe.Add(ref stack.Code, programCounter), stack.Head, table, ref stack.Code, ref Unsafe.Add(ref stack.Bottom, stack.Head * EvmStack.WordSize));
+                    ref stack, GetExecutionGas(ref gas), ref state, ref Unsafe.Add(ref stack.Code, programCounter), stack.Head, dispatched, ref stack.Code, ref Unsafe.Add(ref stack.Bottom, stack.Head * EvmStack.WordSize));
             stack.Head = state.Head;
             programCounter = state.FinalProgramCounter;
             return exceptionType;
@@ -270,7 +272,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             // Padded code reads STOP past its end, so wherever a successful opcode leaves the counter it resolves to a
             // handler. A failed one can leave it anywhere, so this read waits for the status.
             ip = ref Unsafe.Add(ref code, pc);
-            nint next = AlignedTable(handlers)[PairAt(ref ip)];
+            nint next = HandlerAt(handlers, PairAt(ref ip));
 
             Debug.Assert(state.Vm.ReturnData is null,
                 "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");
@@ -374,7 +376,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (pc != fallthroughPc)
             {
                 ip = ref Unsafe.Add(ref code, pc);
-                nint taken = AlignedTable(handlers)[ip];
+                nint taken = HandlerAt(handlers, ip);
                 IL.EnsureLocal(in taken);
 
                 IL.Emit.Ldarg(nameof(stack));
@@ -403,7 +405,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             else
             {
                 ip = ref Unsafe.Add(ref code, fallthroughPc);
-                nint notTaken = AlignedTable(handlers)[ip];
+                nint notTaken = HandlerAt(handlers, ip);
                 IL.EnsureLocal(in notTaken);
 
                 IL.Emit.Ldarg(nameof(stack));

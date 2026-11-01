@@ -741,6 +741,7 @@ public partial class EthRpcModuleTests
         foreach (FrameForRpc frame in placeholder.Frames!) frame.StateGas = 0;
         foreach (FrameForRpc frame in signed.Frames!) frame.StateGas = 0;
         signed.Nonce = ctx.Test.ReadOnlyState.GetNonce(TestItem.AddressC);
+        signed.Signatures![0].Signature = new byte[TxFrameSignature.Secp256k1SignatureLength];
         Transaction tx = signed.ToTransaction().Data!;
         tx.ChainId = ctx.Test.Bridge.GetChainId();
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
