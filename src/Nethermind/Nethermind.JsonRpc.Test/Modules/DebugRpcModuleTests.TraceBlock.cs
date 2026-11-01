@@ -124,6 +124,148 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task By_number_deferred_execution_excludes_competing_production_rental([Values] bool expires)
+    {
+        DeadlineExecution clock = new() { Expiry = "after" };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        Block block = await AddDeadlineCommitmentBlock(chain, large: false);
+        clock.Target = block.Transactions[0].Nonce;
+        clock.Enabled = true;
+        chain.RpcConfig.EnabledModules = [ModuleType.Debug];
+        IRpcModuleFactory<IDebugRpcModule> productionFactory = chain.Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>();
+        List<(IDebugRpcModule Inner, IDebugRpcModule Clocked)> modules = [];
+        IRpcModuleFactory<IDebugRpcModule> factory = Substitute.For<IRpcModuleFactory<IDebugRpcModule>>();
+        factory.Create().Returns(_ =>
+        {
+            IDebugRpcModule inner = productionFactory.Create();
+            IDebugRpcModule clocked = WithDeadlineClock(inner, clock);
+            modules.Add((inner, clocked));
+            return clocked;
+        });
+        BoundedModulePool<IDebugRpcModule> pool = new(factory, 1, 200_000, new RpcLimits(queuedLimit: 1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(modules[0].Inner, Is.Not.SameAs(modules[1].Inner));
+            Assert.That(modules[0].Clocked, Is.Not.SameAs(modules[1].Clocked));
+        }
+        chain.Container.Resolve<IRpcModuleProvider>().Register(pool);
+        IJsonRpcService service = chain.Container.Resolve<IJsonRpcService>();
+        JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IDebugRpcModule.debug_traceBlockByNumber), block.Number,
+            new { timeout = expires ? "1s" : "5s", streamMode = true });
+        using JsonRpcResponse response = await service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http));
+        using CancellationTokenSource cancellation = new();
+        cancellation.CancelAfter(120_000);
+        using RecyclableMemoryStream stream = RecyclableStream.GetStream("debug-competing-rental");
+        PipeWriter writer = new RewindableStreamPipeWriter(stream);
+        TimeSpan wait = TimeSpan.FromSeconds(10);
+        List<Task<IDebugRpcModule>> rentals = [];
+        Task? writing = null;
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response.TryGetStreamableResult(out _), Is.True);
+                Assert.That(clock.Calls, Is.Zero, "execution must remain deferred while the module is rented");
+            }
+            Task<IDebugRpcModule> first = RentExclusive();
+            await AssertQueued(first);
+            writing = JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, cancellation.Token).AsTask();
+            await writing.WaitAsync(wait);
+            await writer.FlushAsync(cancellation.Token).AsTask().WaitAsync(wait);
+            await AssertQueued(first);
+            JToken json = JToken.Parse(Encoding.UTF8.GetString(stream.ToArray()));
+            if (expires)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput));
+                    Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"));
+                    Assert.That(json["result"], Is.Null);
+                }
+            }
+            else
+            {
+                JToken? result = json["result"];
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(json["error"], Is.Null);
+                    Assert.That(result, Is.TypeOf<JArray>());
+                }
+                JArray traces = (JArray)result!;
+                Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length));
+                for (int i = 0; i < traces.Count; i++)
+                    Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()));
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(clock.Calls, Is.EqualTo(expires ? 1 : block.Transactions.Length));
+                Assert.That(clock.Timers, Has.Count.EqualTo(expires ? 1 : block.Transactions.Length));
+                Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+            }
+            response.Dispose();
+            IDebugRpcModule firstModule = await first.WaitAsync(wait);
+            Assert.That(firstModule, Is.SameAs(modules[0].Clocked));
+            response.Dispose();
+            Task<IDebugRpcModule> second = RentExclusive();
+            await AssertQueued(second);
+            await ReturnRental(first);
+            IDebugRpcModule secondModule = await second.WaitAsync(wait);
+            Assert.That(secondModule, Is.SameAs(firstModule));
+            await ReturnRental(second);
+        }
+        finally
+        {
+            try
+            {
+                cancellation.Cancel();
+                if (writing is { IsCompleted: false }) await writing.WaitAsync(wait);
+            }
+            finally
+            {
+                try { response.Dispose(); }
+                finally
+                {
+                    try
+                    {
+                        List<Exception> cleanupFailures = [];
+                        foreach (Task<IDebugRpcModule> rental in rentals.ToArray())
+                        {
+                            try { await ReturnRental(rental); }
+                            catch (Exception exception) { cleanupFailures.Add(exception); }
+                        }
+                        Assert.That(cleanupFailures, Is.Empty);
+                    }
+                    finally { await writer.CompleteAsync().AsTask().WaitAsync(wait); }
+                }
+            }
+        }
+
+        Task<IDebugRpcModule> RentExclusive()
+        {
+            Task<IDebugRpcModule> rental = pool.GetModule(false);
+            rentals.Add(rental);
+            return rental;
+        }
+
+        async Task AssertQueued(Task<IDebugRpcModule> rental)
+        {
+            Assert.That(rental.IsCompleted, Is.False);
+            // Saturating the private queue proves admission to the production slow path.
+            Task<IDebugRpcModule> overflow = RentExclusive();
+            await Assert.ThrowsAsync<LimitExceededException>(() => overflow.WaitAsync(wait));
+            rentals.Remove(overflow);
+        }
+
+        async Task ReturnRental(Task<IDebugRpcModule> rental)
+        {
+            IDebugRpcModule module = await rental.WaitAsync(wait);
+            rentals.Remove(rental);
+            pool.ReturnModule(module);
+        }
+    }
+
+    [Test]
     public async Task ByNumber_execution_deadline_preserves_buffered_native_compatibility(
         [Values("callTracer", "prestateTracer", "4byteTracer", "noopTracer", "")] string tracer,
         [Values("0s", "-1s", "1s")] string timeout, [Values] bool filtered, [Values] bool streamMode)
