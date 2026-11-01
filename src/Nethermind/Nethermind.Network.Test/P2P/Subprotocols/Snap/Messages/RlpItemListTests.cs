@@ -76,6 +76,22 @@ public class RlpItemListTests
     }
 
     [TestCaseSource(nameof(TestCases))]
+    public void ForwardSkipAccess_ReturnsCorrectData(byte[][] items)
+    {
+        using RlpItemList list = CreateList(items);
+
+        for (int i = 0; i < items.Length; i += 2)
+        {
+            Assert.That(list[i], Is.SequenceEqualTo(Rlp.Encode(items[i]).Bytes), $"item {i}");
+        }
+
+        for (int i = 1; i < items.Length; i += 2)
+        {
+            Assert.That(list.ReadContent(i).ToArray(), Is.EqualTo(items[i]), $"content {i}");
+        }
+    }
+
+    [TestCaseSource(nameof(TestCases))]
     public void BackwardAccess_ReturnsCorrectData(byte[][] items)
     {
         if (items.Length < 2) return;

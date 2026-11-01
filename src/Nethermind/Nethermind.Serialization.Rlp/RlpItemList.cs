@@ -18,6 +18,8 @@ public sealed class RlpItemList : IRlpItemList
 
     private int _cachedIndex;
     private int _cachedPosition;
+    // Length of the item at _cachedIndex, so that a walk in index order reads each item once; zero before a read.
+    private int _cachedLength;
 
     private RlpItemList? _pooledChild;
     private RlpItemList? _parent;
@@ -63,9 +65,11 @@ public sealed class RlpItemList : IRlpItemList
         {
             ReadOnlySpan<byte> span = _rlpRegion.Span;
             int position = GetPosition(span, index);
+            ReadOnlySpan<byte> item = ReadItem(span, position);
             _cachedIndex = index;
             _cachedPosition = position;
-            return ReadItem(span, position);
+            _cachedLength = item.Length;
+            return item;
         }
     }
 
@@ -140,6 +144,7 @@ public sealed class RlpItemList : IRlpItemList
         _count = -1;
         _cachedIndex = 0;
         _cachedPosition = _prefixLength;
+        _cachedLength = 0;
         _wasDisposed = false;
     }
 
@@ -153,7 +158,12 @@ public sealed class RlpItemList : IRlpItemList
     {
         int scanFrom;
         int position;
-        if (index >= _cachedIndex)
+        if (index > _cachedIndex && _cachedLength != 0)
+        {
+            scanFrom = _cachedIndex + 1;
+            position = _cachedPosition + _cachedLength;
+        }
+        else if (index >= _cachedIndex)
         {
             scanFrom = _cachedIndex;
             position = _cachedPosition;
