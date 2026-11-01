@@ -647,6 +647,79 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    private static IEnumerable<TestCaseData> BufferedMuxDeadlineCases()
+    {
+        const string script = "{fault:function(){},result:function(){return {};}}";
+        (string Child, string Name, bool Supported)[] graphs =
+        [
+            ("noopTracer", "noop", false),
+            ("stateGasTracer", "stateGas", false),
+            ("", "both", false),
+            (script, "javascript", true),
+            ("callTracer", "call", true),
+            ("prestateTracer", "prestate", true),
+            ("4byteTracer", "4byte", true)
+        ];
+        foreach (bool filtered in new[] { false, true })
+        {
+            foreach (string tracer in new[] { "noopTracer", "stateGasTracer" })
+                yield return new TestCaseData(tracer, null, false, filtered)
+                    .SetName($"{nameof(Debug_traceBlockByNumber_buffered_mux_execution_deadline)}_bare_{tracer}_{filtered}");
+
+            foreach (bool nested in new[] { false, true })
+            {
+                foreach ((string child, string name, bool supported) in graphs)
+                {
+                    Dictionary<string, object> children = new();
+                    if (child.Length != 0) children[child] = new { };
+                    if (child.Length == 0 || supported)
+                    {
+                        children["noopTracer"] = new { };
+                        children["stateGasTracer"] = new { };
+                    }
+                    object config = nested ? new Dictionary<string, object> { ["muxTracer"] = children } : children;
+                    yield return new TestCaseData("muxTracer", JsonSerializer.Serialize(config), supported, filtered)
+                        .SetName($"{nameof(Debug_traceBlockByNumber_buffered_mux_execution_deadline)}_{name}_nested_{nested}_filtered_{filtered}");
+                }
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(BufferedMuxDeadlineCases))]
+    public async Task Debug_traceBlockByNumber_buffered_mux_execution_deadline(
+        string tracer, string? configuration, bool deadlineSupported, bool filtered)
+    {
+        DeadlineExecution clock = new();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        Block block = await chain.AddBlock(CreateTraceBlockTransactions(chain));
+        clock.Enabled = true;
+        Dictionary<string, object> options = new() { ["tracer"] = tracer, ["timeout"] = "0s", ["streamMode"] = false };
+        if (configuration is not null) options["tracerConfig"] = JsonSerializer.Deserialize<JsonElement>(configuration);
+        if (filtered) options["txHash"] = block.Transactions[^1].Hash!;
+
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
+            "debug_traceBlockByNumber", block.Number, options);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            if (deadlineSupported)
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+            else
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That(json["result"] as JArray, Has.Count.EqualTo(filtered ? 1 : block.Transactions.Length), response);
+            }
+            Assert.That(clock.Calls, Is.GreaterThan(0));
+            Assert.That(clock.Timers, deadlineSupported ? Is.Not.Empty : Is.Empty);
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
+    }
+
     [TestCase("callTracer", "onlyTopCall")]
     [TestCase("prestateTracer", "diffMode")]
     public async Task Debug_traceBlockByNumber_native_config_error_precedes_expired_deadline(string tracer, string field)
