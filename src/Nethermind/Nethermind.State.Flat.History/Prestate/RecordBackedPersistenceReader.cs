@@ -17,21 +17,16 @@ namespace Nethermind.State.Flat.History.Prestate;
 /// so a read answers the same either way. A record that is not cached yet is opened only after
 /// <see cref="PrestateRecordCache.LazyOpenReads"/> history reads, so a single point read never pays for it. Reads the
 /// history reader must serve itself to keep its errors (<see cref="HistoryBackedPersistenceReader.RequiresHistory"/>)
-/// go there. The poisoned-clear answer is remembered per record account until a capture publishes, which is when the
-/// history reader would probe again too.
+/// go there. The poisoned-clear answer is remembered per record account by <see cref="PoisonedClearMemo"/>. One reader
+/// serves every thread that reads the bundle of its state.
 /// </remarks>
 internal sealed class RecordBackedPersistenceReader : IPersistence.IPersistenceReader
 {
-    private const byte PoisonUnknown = 0;
-    private const byte PoisonAbsent = 1;
-    private const byte PoisonPresent = 2;
-
     private readonly HistoryBackedPersistenceReader _history;
     private readonly PrestateRecordCache _cache;
     private readonly StateId _block;
     private PrestateRecord? _record;
-    private byte[]? _poison;
-    private long _poisonGeneration;
+    private long[]? _poison;
     private int _openAttempted;
     private int _disposed;
     private long _historyReads;
@@ -86,21 +81,10 @@ internal sealed class RecordBackedPersistenceReader : IPersistence.IPersistenceR
 
     private bool RequiresHistory(Address address, int account)
     {
-        byte[]? poison = Volatile.Read(ref _poison);
-        if (poison is null) return _history.RequiresHistory(address, slot: true);
-
-        if (_history.HasCapturedSince(Volatile.Read(ref _poisonGeneration)))
-        {
-            Volatile.Write(ref _poisonGeneration, _history.ClearsGeneration);
-            Array.Clear(poison);
-        }
-
-        byte known = Volatile.Read(ref poison[account]);
-        if (known != PoisonUnknown) return known == PoisonPresent;
-
-        bool requires = _history.RequiresHistory(address, slot: true);
-        Volatile.Write(ref poison[account], requires ? PoisonPresent : PoisonAbsent);
-        return requires;
+        long[]? poison = Volatile.Read(ref _poison);
+        return poison is null
+            ? _history.RequiresHistory(address, slot: true)
+            : PoisonedClearMemo.RequiresHistory(poison, account, address, _history);
     }
 
     private void OnHistoryRead(PrestateRecord? record)
@@ -115,23 +99,22 @@ internal sealed class RecordBackedPersistenceReader : IPersistence.IPersistenceR
         if (_cache.TryLease(_block, out PrestateRecord? record)) Publish(record!);
     }
 
-    /// <summary>Publishes a leased record. Dispose and publish both take the record out with an exchange, so exactly
-    /// one of them releases the lease, whichever runs last.</summary>
+    /// <summary>Publishes a leased record. Publish and Dispose each make a full-fence exchange before they look at the
+    /// other's flag or slot, so whichever runs second sees the first, and exactly one of them releases the lease.</summary>
     private void Publish(PrestateRecord record)
     {
-        Volatile.Write(ref _poisonGeneration, _history.ClearsGeneration);
-        byte[] poison = ArrayPool<byte>.Shared.Rent(record.AccountCount);
+        long[] poison = ArrayPool<long>.Shared.Rent(record.AccountCount);
         poison.AsSpan(0, record.AccountCount).Clear();
-        Volatile.Write(ref _poison, poison);
-        Volatile.Write(ref _record, record);
+        Interlocked.Exchange(ref _poison, poison);
+        Interlocked.Exchange(ref _record, record);
         if (Volatile.Read(ref _disposed) != 0) Release();
     }
 
     private void Release()
     {
         Interlocked.Exchange(ref _record, null)?.Dispose();
-        byte[]? poison = Interlocked.Exchange(ref _poison, null);
-        if (poison is not null) ArrayPool<byte>.Shared.Return(poison);
+        long[]? poison = Interlocked.Exchange(ref _poison, null);
+        if (poison is not null) ArrayPool<long>.Shared.Return(poison);
     }
 
     private bool ShouldVerify()

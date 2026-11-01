@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -28,6 +29,7 @@ internal sealed class PrestateCaptureScopeProvider : IWorldStateScopeProvider
     private readonly CaptureWriteBatch _writeBatch;
     private readonly Dictionary<AddressAsKey, CaptureStorageTree> _trees = [];
     private readonly Stack<CaptureStorageTree> _freeTrees = new();
+    private int _ownerThread;
 
     public PrestateCaptureScopeProvider(IWorldStateScopeProvider inner, PrestateCapture capture)
     {
@@ -56,7 +58,14 @@ internal sealed class PrestateCaptureScopeProvider : IWorldStateScopeProvider
             return true;
         }
 
-        scope = _capture.OnScopeOpened(new StateId(baseBlock)) ? _scope.Bind(innerScope) : innerScope;
+        if (!_capture.OnScopeOpened(new StateId(baseBlock)))
+        {
+            scope = innerScope;
+            return true;
+        }
+
+        _ownerThread = Environment.CurrentManagedThreadId;
+        scope = _scope.Bind(innerScope);
         return true;
     }
 
@@ -68,8 +77,15 @@ internal sealed class PrestateCaptureScopeProvider : IWorldStateScopeProvider
         return _inner.TryBeginScopeAtTarget(targetBlock, metrics, out scope);
     }
 
+    /// <remarks>
+    /// Not thread-safe, and it does not need to be: storage trees are created on the executing thread. The parallel
+    /// storage commit (<c>PersistentStorageProvider.UpdateRootHashesMultiThread</c>) reaches <c>EnsureStorageTree</c> on
+    /// its workers only after the commit has ensured every tree serially on the calling thread, so there it never
+    /// creates one. The assert guards that ordering.
+    /// </remarks>
     private IWorldStateScopeProvider.IStorageTree StorageTree(Address address, IWorldStateScopeProvider.IStorageTree innerTree)
     {
+        Debug.Assert(Environment.CurrentManagedThreadId == _ownerThread, "capture storage trees are created only on the thread that opened the scope");
         if (_trees.TryGetValue(address, out CaptureStorageTree? tree) && ReferenceEquals(tree.Inner, innerTree)) return tree;
 
         if (tree is null)

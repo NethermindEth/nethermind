@@ -5,6 +5,7 @@ using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.State.Flat.History.Prestate;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 
@@ -16,7 +17,7 @@ namespace Nethermind.State.Flat.History;
 /// </summary>
 /// <remarks>Routing is not atomic with scope registration, so the constructor re-validates availability after
 /// <see cref="HistoryScopeGate.EnterScope"/>.</remarks>
-internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistenceReader
+internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistenceReader, IPoisonedClearSource
 {
     private readonly HistoryReader _historyReader;
     private readonly StateId _block;
@@ -88,13 +89,13 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
     /// <summary>Whether a read of <paramref name="address"/> here must come from this reader, which owns the fail-closed
     /// rules: every read of a slice-restricted state, and a slot read of an account with a poisoned self-destruct above
     /// this state. A reader answering from elsewhere sends such reads here, so their errors are kept.</summary>
-    internal bool RequiresHistory(Address address, bool slot) =>
+    public bool RequiresHistory(Address address, bool slot) =>
         _sliceScopes is not null || slot && _historyReader.HasPoisonedClearAbove(_block.BlockNumber, address, _clearsCache);
 
     /// <summary>Moves when a capture publishes; a "not poisoned" answer taken before it may no longer hold.</summary>
-    internal long ClearsGeneration => _historyReader.CaptureGeneration;
+    public long ClearsGeneration => _historyReader.CaptureGeneration;
 
-    internal bool HasCapturedSince(long generation) => _historyReader.HasCapturedSince(generation);
+    public bool HasCapturedSince(long generation) => _historyReader.HasCapturedSince(generation);
 
     /// <summary>Fails closed for an address outside every retained slice. In-memory only.</summary>
     private void RequireRetainedBySlice(Address address)
