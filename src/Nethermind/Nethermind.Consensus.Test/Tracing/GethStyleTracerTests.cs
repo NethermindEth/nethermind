@@ -83,8 +83,11 @@ public class GethStyleTracerTests
             if (expireFirst)
             {
                 Assert.Throws<GethTraceDeadlineException>(() => tracer.StartNewTxTrace(Build.A.Transaction.TestObject));
-                Assert.That(clock.Timers, Has.Count.EqualTo(1));
-                Assert.That(first.IsCancelled, Is.True);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(clock.Timers, Has.Count.EqualTo(1));
+                    Assert.That(first.IsCancelled, Is.True);
+                }
                 Assert.That(clock.Timers[0].FireQueued, Throws.Nothing);
                 Assert.Throws<GethTraceDeadlineException>(() => tracer.BuildResult());
                 if (cancelExternal)
