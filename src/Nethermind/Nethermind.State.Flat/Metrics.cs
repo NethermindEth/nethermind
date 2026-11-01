@@ -569,28 +569,44 @@ public static class Metrics
     [Description("Newest trie node log generation merged into RocksDB, by shard")]
     [KeyIsLabel("shard")]
     public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogFlushedGeneration { get; } = new();
+    private static long _prestateRecordsWritten;
+    private static long _prestateRecordsSkipped;
+    private static long _prestateRecordLeaseHits;
+    private static long _prestateRecordLeaseAbsent;
+    private static long _prestateRecordsInvalid;
+    private static long _prestateRecordVerifyMismatches;
     private static long _prestateRecordKeyReadsFromRecord;
     private static long _prestateRecordKeyReadsFromHistory;
 
     [CounterMetric]
     [Description("Block pre-state records written by the transaction index builder")]
-    public static long PrestateRecordsWritten { get; set; }
+    public static long PrestateRecordsWritten => Volatile.Read(ref _prestateRecordsWritten);
+
+    public static void RecordPrestateRecordWritten() => Interlocked.Increment(ref _prestateRecordsWritten);
 
     [CounterMetric]
     [Description("Blocks the transaction index builder executed without writing a pre-state record: the capture failed, the record was too large or the write failed")]
-    public static long PrestateRecordsSkipped { get; set; }
+    public static long PrestateRecordsSkipped => Volatile.Read(ref _prestateRecordsSkipped);
+
+    public static void RecordPrestateRecordSkipped() => Interlocked.Increment(ref _prestateRecordsSkipped);
 
     [CounterMetric]
     [Description("Historical states that opened a pre-state record")]
-    public static long PrestateRecordLeaseHits { get; set; }
+    public static long PrestateRecordLeaseHits => Volatile.Read(ref _prestateRecordLeaseHits);
+
+    public static void RecordPrestateRecordLeaseHit() => Interlocked.Increment(ref _prestateRecordLeaseHits);
 
     [CounterMetric]
     [Description("Historical states that found no pre-state record for their state")]
-    public static long PrestateRecordLeaseAbsent { get; set; }
+    public static long PrestateRecordLeaseAbsent => Volatile.Read(ref _prestateRecordLeaseAbsent);
+
+    public static void RecordPrestateRecordLeaseAbsent() => Interlocked.Increment(ref _prestateRecordLeaseAbsent);
 
     [CounterMetric]
-    [Description("Pre-state records that were found but not used because they failed validation")]
-    public static long PrestateRecordsInvalid { get; set; }
+    [Description("Pre-state records that were found but not used because they failed validation or could not be read")]
+    public static long PrestateRecordsInvalid => Volatile.Read(ref _prestateRecordsInvalid);
+
+    public static void RecordPrestateRecordInvalid() => Interlocked.Increment(ref _prestateRecordsInvalid);
 
     [CounterMetric]
     [Description("Account and slot reads of historical states answered by a pre-state record")]
@@ -608,7 +624,9 @@ public static class Metrics
 
     [CounterMetric]
     [Description("Pre-state record values that differed from flat history in a verification read; the first one stops record reads until restart")]
-    public static long PrestateRecordVerifyMismatches { get; set; }
+    public static long PrestateRecordVerifyMismatches => Volatile.Read(ref _prestateRecordVerifyMismatches);
+
+    public static void RecordPrestateRecordVerifyMismatch() => Interlocked.Increment(ref _prestateRecordVerifyMismatches);
 
     [GaugeMetric]
     [Description("Bytes held by the cache of opened pre-state records")]

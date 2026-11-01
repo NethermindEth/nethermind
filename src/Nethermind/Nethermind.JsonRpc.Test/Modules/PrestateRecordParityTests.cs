@@ -33,10 +33,12 @@ namespace Nethermind.JsonRpc.Test.Modules;
 /// Scenario:
 /// 1. A flat-history chain is seeded at genesis like a node that captured from there.
 /// 2. A setup block deploys a counter contract.
-/// 3. The traced block calls the counter twice, creates a contract that writes storage in its constructor, delegates
-///    an account to the counter with an EIP-7702 authorization and calls it, and sends value to a fresh account.
+/// 3. The traced block calls the counter twice, creates a contract that writes storage in its constructor, creates a
+///    contract that self-destructs in its constructor, delegates an account to the counter with an EIP-7702
+///    authorization and calls it, and sends value to a fresh account.
 /// 4. One more block follows, then the in-memory state is flushed, so both blocks read their parent from history.
 /// </remarks>
+[NonParallelizable]
 public class PrestateRecordParityTests
 {
     private static readonly object CallTracer = new { tracer = "callTracer" };
@@ -48,18 +50,19 @@ public class PrestateRecordParityTests
         using Chain chain = await Chain.Create();
         ulong traced = chain.Traced.Number;
 
+        long hitsAtStart = Nethermind.State.Flat.Metrics.PrestateRecordLeaseHits;
         string[] history = await chain.TraceAll(traced);
-        Assert.That(chain.Cache.LeaseHits, Is.Zero, "precondition: no record exists yet, so the traces read history");
+        Assert.That(Nethermind.State.Flat.Metrics.PrestateRecordLeaseHits, Is.EqualTo(hitsAtStart), "precondition: no record exists yet, so the traces read history");
 
         long invalidBefore = Nethermind.State.Flat.Metrics.PrestateRecordsInvalid;
         chain.WriteRawRecord(chain.Traced, [1, 2, 3]);
         string[] withCorruptRecord = await chain.TraceAll(traced);
-        long hitsAfterCorrupt = chain.Cache.LeaseHits;
+        long hitsAfterCorrupt = Nethermind.State.Flat.Metrics.PrestateRecordLeaseHits - hitsAtStart;
         long invalidAfter = Nethermind.State.Flat.Metrics.PrestateRecordsInvalid;
 
         Assert.That(chain.TryRecord(chain.Traced), Is.True, "precondition: the builder capture records the block");
         string[] replayedFromRecord = await chain.TraceAll(traced);
-        long hitsAfterRecord = chain.Cache.LeaseHits;
+        long hitsAfterRecord = Nethermind.State.Flat.Metrics.PrestateRecordLeaseHits - hitsAtStart;
 
         chain.Index(chain.Traced);
         string[] parallelFromRecord = await chain.TraceAll(traced);
@@ -72,6 +75,27 @@ public class PrestateRecordParityTests
             Assert.That(hitsAfterRecord, Is.GreaterThan(0L), "the traces must actually read the record for the comparison to mean anything");
             Assert.That(replayedFromRecord, Is.EqualTo(history), "a sequential replay from the record answers like history");
             Assert.That(parallelFromRecord, Is.EqualTo(history), "a seeded parallel trace from the record answers like history");
+        }
+    }
+
+    /// <summary>The production builder, resolved from the node modules with the flag on, records the tip block on its own
+    /// thread.</summary>
+    [Test]
+    public async Task Builder_FromTheNodeModules_RecordsTheTipBlockOnItsThread()
+    {
+        using Chain chain = await Chain.Create();
+        Assert.That(chain.HasRecord(chain.Head), Is.False, "precondition: nothing is recorded before the builder runs");
+        TransactionChangesetBuilder builder = chain.Resolve<TransactionChangesetBuilder>();
+
+        builder.Start();
+
+        try
+        {
+            Assert.That(() => chain.HasRecord(chain.Head), Is.True.After(30_000, 100), "the tip-following thread captures the block it indexes");
+        }
+        finally
+        {
+            builder.Dispose();
         }
     }
 
@@ -111,11 +135,12 @@ public class PrestateRecordParityTests
         private readonly TestRpcBlockchain _blockchain;
         private readonly IDb _records;
 
-        private Chain(TestRpcBlockchain blockchain, Block setup, Block traced)
+        private Chain(TestRpcBlockchain blockchain, Block setup, Block traced, Block head)
         {
             _blockchain = blockchain;
             Setup = setup;
             Traced = traced;
+            Head = head;
             Cache = blockchain.Container.Resolve<PrestateRecordCache>();
             _records = blockchain.Container.ResolveKeyed<IDb>(DbNames.PrestateRecords);
         }
@@ -123,6 +148,16 @@ public class PrestateRecordParityTests
         public Block Setup { get; }
 
         public Block Traced { get; }
+
+        public Block Head { get; }
+
+        public T Resolve<T>() where T : notnull => _blockchain.Container.Resolve<T>();
+
+        public bool HasRecord(Block block)
+        {
+            using PrestateRecord? record = Resolve<PrestateRecordStore>().Read(new StateId(_blockchain.BlockTree.FindHeader(block.ParentHash!)!), out _);
+            return record is not null;
+        }
 
         public PrestateRecordCache Cache { get; }
 
@@ -141,6 +176,7 @@ public class PrestateRecordParityTests
             Block setup = await blockchain.AddBlock(Deploy(counter, nonce++));
 
             byte[] constructorWrites = Prepare.EvmCode.PushData(0x2a).PushData(1).Op(Instruction.SSTORE).ForInitOf(counter).Done;
+            byte[] constructorDestructs = Prepare.EvmCode.PushData(TestItem.AddressE).Op(Instruction.SELFDESTRUCT).Done;
             EthereumEcdsa ecdsa = new(blockchain.SpecProvider.ChainId);
             AuthorizationTuple delegation = ecdsa.Sign(TestItem.PrivateKeyD, blockchain.SpecProvider.ChainId, counterAddress,
                 blockchain.ReadOnlyState.GetNonce(TestItem.AddressD));
@@ -148,18 +184,19 @@ public class PrestateRecordParityTests
                 Call(counterAddress, nonce++),
                 Call(counterAddress, nonce++),
                 Deploy(constructorWrites, nonce++),
+                Deploy(constructorDestructs, nonce++),
                 Build.A.Transaction.WithType(TxType.SetCode).WithTo(TestItem.AddressD).WithNonce(nonce++).WithGasLimit(200_000)
                     .WithMaxFeePerGas(1_000_000_000).WithMaxPriorityFeePerGas(1).WithChainId(blockchain.SpecProvider.ChainId)
                     .WithAuthorizationCode(delegation).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
                 Build.A.Transaction.WithTo(TestItem.AddressF).WithValue(5).WithNonce(nonce++).WithGasLimit(50_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject);
-            Assert.That(traced.Transactions, Has.Length.EqualTo(5), "precondition: every transaction is included");
-            await blockchain.AddBlock();
+            Assert.That(traced.Transactions, Has.Length.EqualTo(6), "precondition: every transaction is included");
+            Block head = await blockchain.AddBlock();
 
             blockchain.WorldStateManager.FlushCache(CancellationToken.None);
             IFlatDbManager flat = blockchain.Container.Resolve<IFlatDbManager>();
             Assert.That(flat.IsHistoricalState(new StateId(blockchain.BlockTree.FindHeader(traced.ParentHash!)!)), Is.True,
                 "precondition: the traced block reads its parent from flat history");
-            return new Chain(blockchain, setup, traced);
+            return new Chain(blockchain, setup, traced, head);
         }
 
         public async Task<string[]> TraceAll(ulong block) =>
@@ -180,7 +217,7 @@ public class PrestateRecordParityTests
             PrestateRecorder recorder = _blockchain.Container.Resolve<PrestateRecorder>();
             PrestateCapture capture = recorder.CreateCapture();
             using IHistoryBlockExecutor executor = _blockchain.Container.Resolve<IHistoryBlockExecutorFactory>().Create(capture.Decorate);
-            capture.Arm();
+            using PrestateCapture.ArmedCapture armed = capture.Arm();
             bool executed = executor.TryExecute(block.Number, NullBlockTracer.Instance, CancellationToken.None);
             Assert.That(executed, Is.True, "precondition: the block executes on its parent");
             bool written = recorder.TryWrite(capture, block.Number, block.Hash!.ValueHash256, CancellationToken.None);
@@ -199,9 +236,13 @@ public class PrestateRecordParityTests
 
         public byte[] ReadRawRecord(Block block) => _records.Get(Key(block))!;
 
-        /// <summary>Writes through the store, so the cache does not keep trusting an earlier "no record".</summary>
-        public void WriteRawRecord(Block block, byte[] value) =>
-            _blockchain.Container.Resolve<PrestateRecordStore>().Write(new StateId(_blockchain.BlockTree.FindHeader(block.ParentHash!)!), value);
+        /// <summary>Writes and invalidates, as the recorder does, so the cache does not keep trusting an earlier miss.</summary>
+        public void WriteRawRecord(Block block, byte[] value)
+        {
+            StateId parent = new(_blockchain.BlockTree.FindHeader(block.ParentHash!)!);
+            _blockchain.Container.Resolve<PrestateRecordStore>().Write(parent, value);
+            Cache.Invalidate(parent);
+        }
 
         private byte[] Key(Block block)
         {

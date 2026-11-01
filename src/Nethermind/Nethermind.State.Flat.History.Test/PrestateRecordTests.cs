@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -16,6 +17,7 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
 
+[NonParallelizable]
 public class PrestateRecordTests
 {
     private static readonly StateId Parent = new(9, TestItem.KeccakA);
@@ -94,6 +96,20 @@ public class PrestateRecordTests
         yield return Case("UnknownAccountFlag", static b => Set(b, FirstFlags, 0x29));
         yield return Case("SlotsOnlyAccountWithValue", static b => Set(b, FirstFlags, 0x19));
         yield return Case("ValueLongerThanAWord", static b => Set(b, FirstSlotIndexEnd + 1, 33));
+        yield return Case("PaddingByte2NotZero", static b => Set(b, PrestateRecordFormat.PaddingOffset, 1));
+        yield return Case("PaddingByte3NotZero", static b => Set(b, PrestateRecordFormat.PaddingOffset + 1, 1));
+        yield return Case("SlotsWithoutAccounts", static b => Set(b, PrestateRecordFormat.AccountCountOffset, 0));
+        yield return Case("SlotCountZero", static b => Set(b, FirstSlotCount, 0));
+        yield return Case("NotRecordedWithoutSlots", static b => Set(b, FirstFlags, PrestateRecordFormat.AccountValueNotRecorded));
+        yield return Case("AbsentAccountWithCode", static b => Set(b, SecondAddressEnd + 1, PrestateRecordFormat.AccountHasCode));
+        yield return Case("AbsentAccountWithRoot", static b => Set(b, SecondAddressEnd + 1, PrestateRecordFormat.AccountHasStorageRoot));
+        yield return Case("OverlongVarInt", static b =>
+        {
+            byte[] copy = (byte[])b.Clone();
+            copy.AsSpan(FirstNonce, PrestateRecordFormat.MaxVarIntLength + 1).Fill(0xFF);
+            return copy;
+        });
+        yield return Case("ShortHeader", static b => b[..(PrestateRecordFormat.HeaderLength - 1)]);
     }
 
     /// <remarks>
@@ -111,6 +127,161 @@ public class PrestateRecordTests
         PrestateRecord? opened = PrestateRecord.TryOpen(corrupted, Parent);
 
         Assert.That(opened, Is.Null, "a malformed record must never answer a read");
+    }
+
+    /// <remarks>The account has nonce 1, a zero balance and no slots, so its code hash starts at offset 151 and its storage
+    /// root right after it.</remarks>
+    [Test]
+    public void Record_WithAnEmptyHashWrittenAsBytes_IsNotOpened([Values] bool codeHash)
+    {
+        byte[] valid = Encode(capture => capture.OnAccountRead(First, new Account(1, 0, TestItem.KeccakB, TestItem.KeccakC)));
+        Assert.That(PrestateRecord.TryOpen(valid, Parent), Is.Not.Null, "precondition: the unmodified record opens");
+        byte[] corrupted = (byte[])valid.Clone();
+        int offset = FirstNonce + 2 + (codeHash ? 0 : Hash256.Size);
+        (codeHash ? Keccak.OfAnEmptyString : Keccak.EmptyTreeHash).Bytes.CopyTo(corrupted.AsSpan(offset));
+
+        PrestateRecord? opened = PrestateRecord.TryOpen(corrupted, Parent);
+
+        Assert.That(opened, Is.Null, "an empty hash is a cleared flag, never bytes");
+    }
+
+    [Test]
+    public void Encode_AtTheExactSizeCap_EncodesAndOneByteLessDoesNot()
+    {
+        PrestateCapture capture = Captured(c =>
+        {
+            c.OnAccountRead(First, new Account(3, 1_000_000, TestItem.KeccakB, TestItem.KeccakC));
+            c.OnSlotRead(First, 1, 0x0102);
+            c.OnSlotRead(Second, 7, 0);
+        });
+        Assert.That(capture.TryEncode(10, TestItem.KeccakH, 1 << 20, out byte[]? unbounded, out int length), Is.True, "precondition: the capture encodes");
+        byte[] reference = unbounded.AsSpan(0, length).ToArray();
+
+        bool exact = capture.TryEncode(10, TestItem.KeccakH, length, out byte[]? atCap, out int atCapLength);
+        bool under = capture.TryEncode(10, TestItem.KeccakH, length - 1, out _, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exact, Is.True, "the measured size is the encoded size, so a cap equal to it fits");
+            Assert.That(atCap.AsSpan(0, atCapLength).ToArray(), Is.EqualTo(reference));
+            Assert.That(under, Is.False);
+            using PrestateRecord record = PrestateRecord.TryOpen(reference, Parent)!;
+            Assert.That(record.BlockHash, Is.EqualTo(TestItem.KeccakH.ValueHash256), "the header carries the block hash");
+        }
+    }
+
+    [Test]
+    public void Recorder_WhenTheCaptureIsNotOfTheBlocksParent_WritesNothing()
+    {
+        using MemDb db = new();
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        PrestateRecordStore store = new(db);
+        PrestateRecorder recorder = new(store, new HistoryAvailability(columns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)),
+            new FlatDbConfig { HistoryPrestateRecordsEnabled = true }, LimboLogs.Instance);
+        PrestateCapture capture = Captured(c => c.OnAccountRead(First, null));
+
+        bool written = recorder.TryWrite(capture, Parent.BlockNumber + 2, TestItem.KeccakH.ValueHash256, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(written, Is.False, "a record is keyed by the parent, so a capture of another state must not be stored under it");
+            Assert.That(store.Read(Parent, out bool found), Is.Null);
+            Assert.That(found, Is.False);
+        }
+    }
+
+    [TestCase(0UL, null, null, 0UL, TestName = "PruneFloor_KeepAllWithoutHistoryFloor_IsZero")]
+    [TestCase(0UL, 10UL, 1000UL, 11UL, TestName = "PruneFloor_KeepAll_FollowsTheHistoryFloor")]
+    [TestCase(100UL, 10UL, 1000UL, 900UL, TestName = "PruneFloor_Window_IsWatermarkMinusRetention")]
+    [TestCase(100UL, 10UL, 100UL, 11UL, TestName = "PruneFloor_WatermarkEqualToRetention_FollowsTheHistoryFloor")]
+    [TestCase(100UL, 950UL, 1000UL, 951UL, TestName = "PruneFloor_HistoryFloorAboveTheWindow_Wins")]
+    public void PruneFloor_FromRetentionAndAvailability(ulong retention, ulong? historyFloor, ulong? watermark, ulong expected)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        HistoryAvailability availability = new(columns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
+        if (watermark is { } mark) Publish(columns, availability, mark);
+        if (historyFloor is { } floor) availability.PublishGlobalFloor(floor);
+        using MemDb db = new();
+        PrestateRecorder recorder = new(new PrestateRecordStore(db), availability, new FlatDbConfig { HistoryPrestateRecordsRetentionBlocks = retention }, LimboLogs.Instance);
+
+        Assert.That(recorder.PruneFloor(), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Prune_WithinTheInterval_DoesNotPruneAgain()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        HistoryAvailability availability = new(columns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
+        Publish(columns, availability, 5000);
+        availability.PublishGlobalFloor(10);
+        using MemDb db = new();
+        PrestateRecordStore store = new(db);
+        PrestateRecorder recorder = new(store, availability, new FlatDbConfig { HistoryPrestateRecordsRetentionBlocks = 0 }, LimboLogs.Instance);
+
+        recorder.Prune(2000, CancellationToken.None);
+        ulong first = store.Floor;
+        availability.PublishGlobalFloor(20);
+        recorder.Prune(2000 + PrestateRecorder.PruneIntervalBlocks - 1, CancellationToken.None);
+        ulong withinInterval = store.Floor;
+        recorder.Prune(2000 + PrestateRecorder.PruneIntervalBlocks, CancellationToken.None);
+
+        Assert.That((first, withinInterval, store.Floor), Is.EqualTo((11UL, 11UL, 21UL)), "pruning runs once per interval");
+    }
+
+    [Test]
+    public void Store_PruneBelowALowerFloor_KeepsTheHigherOneAndTheCacheFollowsIt()
+    {
+        using MemDb db = new();
+        PrestateRecordStore store = new(db);
+        StateId nine = new(9, TestItem.KeccakB);
+        StateId ten = new(10, TestItem.KeccakC);
+        store.Write(nine, Encode(capture => capture.OnAccountRead(First, null), nine));
+        store.Write(ten, Encode(capture => capture.OnAccountRead(First, null), ten));
+        PrestateRecordCache cache = new(store, new FlatDbConfig(), LimboLogs.Instance);
+        Assert.That(cache.TryLease(nine, out PrestateRecord? cachedNine), Is.True, "precondition: the record below the coming floor is cached");
+        cachedNine!.Dispose();
+
+        store.PruneBelow(10, reclaim: false);
+        store.PruneBelow(5, reclaim: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Floor, Is.EqualTo(10UL), "the floor never moves down");
+            Assert.That(store.Read(nine, out _), Is.Null);
+            using PrestateRecord? kept = store.Read(ten, out _);
+            Assert.That(kept, Is.Not.Null, "the record at the floor stays");
+            Assert.That(cache.TryLeaseCached(nine, out _), Is.False, "a cached record below the floor is not handed out");
+            Assert.That(cache.TryLease(nine, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void Cache_OverBudget_EvictsTheLeastRecentlyUsed()
+    {
+        using MemDb db = new();
+        PrestateRecordStore store = new(db);
+        StateId a = new(10, TestItem.KeccakB);
+        StateId b = new(11, TestItem.KeccakC);
+        StateId c = new(12, TestItem.KeccakD);
+        foreach (StateId state in new[] { a, b, c }) store.Write(state, Encode(capture => capture.OnAccountRead(First, null), state));
+        long size;
+        using (PrestateRecord probe = store.Read(a, out _)!) size = probe.ByteSize;
+        PrestateRecordCache cache = new(store, new FlatDbConfig { HistoryPrestateRecordsCacheBytes = 2 * size }, LimboLogs.Instance);
+
+        Lease(cache, a);
+        Lease(cache, b);
+        Lease(cache, a);
+        Lease(cache, c);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryLeaseCached(b, out _), Is.False, "the least recently used record goes first");
+            Assert.That(cache.TryLeaseCached(a, out PrestateRecord? keptA), Is.True, "a re-leased record counts as recent");
+            keptA?.Dispose();
+            Assert.That(cache.TryLeaseCached(c, out PrestateRecord? keptC), Is.True);
+            keptC?.Dispose();
+            Assert.That(cache.Bytes, Is.EqualTo(2 * size), "the evicted record's bytes are released from the budget");
+        }
     }
 
     [Test]
@@ -139,7 +310,7 @@ public class PrestateRecordTests
         {
             capture.OnAccountWritten(First, removedWithStorage: false);
             capture.OnAccountRead(First, new Account(5, 5));
-            capture.OnSlotWritten(Second, 1);
+            capture.OnStorageWritten(Second);
             capture.OnSlotRead(Second, 1, 9);
             capture.OnAccountRead(Second, new Account(3, 3));
         });
@@ -161,7 +332,7 @@ public class PrestateRecordTests
             capture.OnSlotRead(First, 1, 4);
             capture.OnAccountWritten(First, removedWithStorage: true);
             capture.OnSlotRead(First, 2, 6);
-            capture.OnStorageCleared(Second);
+            capture.OnStorageWritten(Second);
             capture.OnSlotRead(Second, 1, 8);
         });
         using PrestateRecord record = PrestateRecord.TryOpen(bytes, Parent)!;
@@ -187,11 +358,12 @@ public class PrestateRecordTests
     public void Capture_ResetThenAnotherParent_HoldsNoKeyOfTheFirst()
     {
         PrestateCapture capture = new();
-        capture.Arm();
-        capture.OnScopeOpened(new StateId(3, TestItem.KeccakD));
-        capture.OnAccountRead(First, new Account(1, 1));
-        capture.OnSlotRead(First, 1, 1);
-        capture.Reset();
+        using (capture.Arm())
+        {
+            capture.OnScopeOpened(new StateId(3, TestItem.KeccakD));
+            capture.OnAccountRead(First, new Account(1, 1));
+            capture.OnSlotRead(First, 1, 1);
+        }
 
         byte[] bytes = Encode(capture, c => c.OnAccountRead(Second, new Account(2, 2)));
         using PrestateRecord record = PrestateRecord.TryOpen(bytes, Parent)!;
@@ -224,7 +396,7 @@ public class PrestateRecordTests
     public void Capture_WhenASecondScopeOpens_Fails()
     {
         PrestateCapture capture = new();
-        capture.Arm();
+        using PrestateCapture.ArmedCapture armed = capture.Arm();
         capture.OnScopeOpened(Parent);
 
         bool second = capture.OnScopeOpened(new StateId(4, TestItem.KeccakE));
@@ -261,7 +433,7 @@ public class PrestateRecordTests
     {
         PrestateCapture capture = new();
         IWorldStateScopeProvider provider = capture.Decorate(InnerProvider(out _));
-        capture.Arm();
+        using PrestateCapture.ArmedCapture armed = capture.Arm();
         IWorldStateScopeProvider.IScope scope = OpenScope(provider);
 
         switch (call)
@@ -281,7 +453,7 @@ public class PrestateRecordTests
         PrestateCapture capture = new();
         IWorldStateScopeProvider provider = capture.Decorate(InnerProvider(out IWorldStateScopeProvider.IScope inner));
         inner.Get(First).Returns(new Account(4, 4));
-        capture.Arm();
+        using PrestateCapture.ArmedCapture armed = capture.Arm();
         IWorldStateScopeProvider.IScope scope = OpenScope(provider);
 
         scope.Get(First);
@@ -311,12 +483,12 @@ public class PrestateRecordTests
         PrestateCapture capture = new();
         IWorldStateScopeProvider provider = capture.Decorate(InnerProvider(out IWorldStateScopeProvider.IScope inner));
         inner.Get(First).Returns(new Account(4, 4));
-        capture.Arm();
+        using PrestateCapture.ArmedCapture armed = capture.Arm();
         IWorldStateScopeProvider.IScope scope = OpenScope(provider);
         scope.Get(First);
 
         scope.Dispose();
-        scope.Get(Second);
+        capture.OnAccountRead(Second, null);
 
         using (Assert.EnterMultipleScope())
         {
@@ -361,7 +533,7 @@ public class PrestateRecordTests
     }
 
     [Test]
-    public void Cache_AbsentThenWritten_FindsTheRecord()
+    public void Cache_AbsentThenWrittenAndInvalidated_FindsTheRecord([Values] bool invalidate)
     {
         using MemDb db = new();
         PrestateRecordStore store = new(db);
@@ -369,8 +541,11 @@ public class PrestateRecordTests
         Assert.That(cache.TryLease(Parent, out _), Is.False, "precondition: nothing written yet");
 
         store.Write(Parent, Encode(capture => capture.OnAccountRead(First, null)));
+        if (invalidate) cache.Invalidate(Parent);
 
-        Assert.That(cache.TryLease(Parent, out PrestateRecord? record), Is.True, "a write invalidates the remembered absence");
+        bool found = cache.TryLease(Parent, out PrestateRecord? record);
+        Assert.That(found, Is.EqualTo(invalidate), "the absence is remembered until the writer invalidates exactly that state");
+        if (!invalidate) return;
         record!.Dispose();
     }
 
@@ -406,6 +581,18 @@ public class PrestateRecordTests
         Assert.That(cache.TryLease(Parent, out _), Is.False, "a lookup never throws into the read path");
     }
 
+    private static void Lease(PrestateRecordCache cache, in StateId state)
+    {
+        Assert.That(cache.TryLease(state, out PrestateRecord? record), Is.True, "precondition: the record is leased");
+        record!.Dispose();
+    }
+
+    private static void Publish(SnapshotableMemColumnsDb<FlatHistoryColumns> columns, HistoryAvailability availability, ulong watermark)
+    {
+        HistoryColumnsWriter.MarkBlock(columns, watermark, ValueKeccak.Zero);
+        availability.PublishWatermark(watermark, HistoryAvailability.FormatVersion);
+    }
+
     private static byte[] ValidTwoAccountRecord() => Encode(capture =>
     {
         capture.OnAccountRead(First, new Account(1, 0x0100));
@@ -416,6 +603,7 @@ public class PrestateRecordTests
 
     private const int FirstFlags = PrestateRecordFormat.HeaderLength + 20;
     private const int FirstNonce = FirstFlags + 1;
+    private const int FirstSlotCount = FirstNonce + 1 + 3;
     private const int FirstSlotIndexEnd = FirstNonce + 1 + 3 + 1 + 31;
     private const int SecondAddressEnd = FirstSlotIndexEnd + 1 + 1 + 1 + 32 + 1 + 19;
 
@@ -442,7 +630,7 @@ public class PrestateRecordTests
 
     private static PrestateCapture Captured(PrestateCapture capture, Action<PrestateCapture> record, StateId parent, Action<PrestateCapture>? after)
     {
-        capture.Arm();
+        _ = capture.Arm();
         capture.OnScopeOpened(parent);
         record(capture);
         capture.OnCommit();

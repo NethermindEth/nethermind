@@ -18,8 +18,8 @@ public sealed class PrestateRecordStore
     private static ReadOnlySpan<byte> FloorKey => [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, (byte)'f', (byte)'l', (byte)'o', (byte)'o', (byte)'r'];
 
     private readonly IDb _db;
+    private readonly Lock _floorLock = new();
     private ulong _floor;
-    private long _generation;
 
     public PrestateRecordStore(IDb db)
     {
@@ -31,16 +31,14 @@ public sealed class PrestateRecordStore
     /// <summary>Records of parent states below this block are pruned or about to be; none is read.</summary>
     public ulong Floor => Volatile.Read(ref _floor);
 
-    /// <summary>Moves on every write, so a cached "no record" taken before a write is not trusted after it.</summary>
-    public long Generation => Volatile.Read(ref _generation);
-
     [SkipLocalsInit]
     public void Write(in StateId parent, ReadOnlySpan<byte> record)
     {
         Span<byte> key = stackalloc byte[PrestateRecordFormat.KeyLength];
         PrestateRecordFormat.WriteKey(parent, key);
-        _db.PutSpan(key, record, WriteFlags.LowPriority);
-        Interlocked.Increment(ref _generation);
+        // Normal priority: the database is separate and written only by the builder thread, off block processing, and a
+        // low-priority write could stall that thread behind compaction for no benefit to anyone else.
+        _db.PutSpan(key, record);
     }
 
     /// <summary>Opens the record of <paramref name="parent"/>. <paramref name="found"/> tells an absent record from one
@@ -67,13 +65,17 @@ public sealed class PrestateRecordStore
     [SkipLocalsInit]
     public void PruneBelow(ulong floor, bool reclaim)
     {
-        if (floor <= Floor) return;
+        lock (_floorLock)
+        {
+            if (floor <= _floor) return;
 
-        Span<byte> value = stackalloc byte[sizeof(ulong)];
-        BinaryPrimitives.WriteUInt64BigEndian(value, floor);
-        _db.PutSpan(FloorKey, value);
-        Volatile.Write(ref _floor, floor);
-        _db.DeleteBlockNumberRange(0, floor);
+            Span<byte> value = stackalloc byte[sizeof(ulong)];
+            BinaryPrimitives.WriteUInt64BigEndian(value, floor);
+            _db.PutSpan(FloorKey, value);
+            Volatile.Write(ref _floor, floor);
+            _db.DeleteBlockNumberRange(0, floor);
+        }
+
         if (reclaim) _db.ReclaimBlockNumberRange(0, floor);
     }
 }

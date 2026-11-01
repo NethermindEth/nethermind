@@ -786,9 +786,7 @@ public class TransactionChangesetBuilderTests
 
         public bool HintDuringExecution { get; set; }
 
-        public IHistoryBlockExecutor Create() => this;
-
-        public IHistoryBlockExecutor Create(Func<IWorldStateScopeProvider, IWorldStateScopeProvider> decorateScopeProvider)
+        public IHistoryBlockExecutor Create(Func<IWorldStateScopeProvider, IWorldStateScopeProvider>? decorateScopeProvider = null)
         {
             Decorator = decorateScopeProvider;
             return this;

@@ -3,6 +3,7 @@
 
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -17,16 +18,17 @@ namespace Nethermind.State.Flat.History.Prestate;
 /// from block to block.</summary>
 /// <remarks>
 /// Soundness rule: a value is kept only if the scope returned it before any write to that key, any write to its
-/// account (for the account) or any clear of its account's storage (for a slot) reached the scope. The scope was
-/// opened at the parent and nothing else writes into it, so such a value is the parent value, whatever the world
+/// account (for the account) or any storage write or clear of its account (for a slot) reached the scope. The scope
+/// was opened at the parent and nothing else writes into it, so such a value is the parent value, whatever the world
 /// state caches above the scope. Only the first scope opened while armed is recorded, and nothing after it commits or
-/// closes: a read-only replay never commits, so the close ends the block.
+/// closes: a read-only replay never commits, so the close ends the block. A storage write is recorded per account when
+/// its batch is created, on the committing thread, because the slot writes of a batch may run on parallel workers.
 /// </remarks>
 public sealed class PrestateCapture
 {
     private const byte Read = 1;
     private const byte Written = 2;
-    private const byte StorageCleared = 4;
+    private const byte StorageWritten = 4;
 
     private readonly Dictionary<AddressAsKey, AccountCapture> _accounts = [];
     private readonly Dictionary<StorageCell, SlotCapture> _slots = [];
@@ -35,6 +37,7 @@ public sealed class PrestateCapture
     private bool _recording;
     private bool _finished;
     private string? _failure;
+    private bool _failedUnexpectedly;
     private StateId _parent;
 
     /// <summary>The parent state of the recorded execution; valid once <see cref="IsComplete"/>.</summary>
@@ -46,18 +49,23 @@ public sealed class PrestateCapture
     /// <summary>Why the capture cannot be used, or null.</summary>
     public string? Failure => _failure ?? (!_scopeOpened ? "no scope was opened" : !_finished ? "the scope did not end" : null);
 
+    /// <summary>The execution asked the scope for something a sequential replay should never ask; records stay
+    /// missing until that changes, so it is worth an operator's attention.</summary>
+    public bool FailedUnexpectedly => _failedUnexpectedly;
+
     /// <summary>Wraps the scope provider of an execution environment so that the scopes it opens report here.</summary>
     public IWorldStateScopeProvider Decorate(IWorldStateScopeProvider inner) => new PrestateCaptureScopeProvider(inner, this);
 
-    /// <summary>Starts a capture: the next scope opened is recorded.</summary>
-    public void Arm()
+    /// <summary>Starts a capture: the next scope opened is recorded. Disposing the result drops everything captured,
+    /// so no key can leak into the next block on any exit.</summary>
+    public ArmedCapture Arm()
     {
         Reset();
         _armed = true;
+        return new ArmedCapture(this);
     }
 
-    /// <summary>Drops everything captured; called on every exit, so no key leaks into the next block.</summary>
-    public void Reset()
+    private void Reset()
     {
         _accounts.Clear();
         _slots.Clear();
@@ -66,6 +74,7 @@ public sealed class PrestateCapture
         _recording = false;
         _finished = false;
         _failure = null;
+        _failedUnexpectedly = false;
         _parent = default;
     }
 
@@ -74,7 +83,7 @@ public sealed class PrestateCapture
         if (!_armed) return false;
         if (_scopeOpened)
         {
-            Fail("a second scope was opened during one capture");
+            Fail("a second scope was opened during one capture", unexpected: true);
             return false;
         }
 
@@ -95,9 +104,11 @@ public sealed class PrestateCapture
         _finished = true;
     }
 
-    internal void Fail(string reason)
+    internal void Fail(string reason, bool unexpected)
     {
+        if (!_armed) return;
         _failure ??= reason;
+        _failedUnexpectedly |= unexpected;
         _recording = false;
     }
 
@@ -113,57 +124,46 @@ public sealed class PrestateCapture
     internal void OnSlotRead(Address address, in UInt256 index, in UInt256 value)
     {
         if (!_recording) return;
-        if (_accounts.TryGetValue(address, out AccountCapture account) && (account.Flags & StorageCleared) != 0) return;
-        ref SlotCapture entry = ref CollectionsMarshal.GetValueRefOrAddDefault(_slots, new StorageCell(address, index), out _);
-        if (entry.Flags != 0) return;
+        if (_accounts.TryGetValue(address, out AccountCapture account) && (account.Flags & StorageWritten) != 0) return;
+        ref SlotCapture entry = ref CollectionsMarshal.GetValueRefOrAddDefault(_slots, new StorageCell(address, index), out bool exists);
+        if (exists) return;
         entry.Value = value;
-        entry.Flags = Read;
     }
 
     internal void OnAccountWritten(Address address, bool removedWithStorage)
     {
         if (!_recording) return;
         ref AccountCapture entry = ref CollectionsMarshal.GetValueRefOrAddDefault(_accounts, address, out _);
-        entry.Flags |= removedWithStorage ? (byte)(Written | StorageCleared) : Written;
+        entry.Flags |= removedWithStorage ? (byte)(Written | StorageWritten) : Written;
     }
 
-    internal void OnSlotWritten(Address address, in UInt256 index)
-    {
-        if (!_recording) return;
-        ref SlotCapture entry = ref CollectionsMarshal.GetValueRefOrAddDefault(_slots, new StorageCell(address, index), out _);
-        entry.Flags |= Written;
-        OnAccountWritten(address, removedWithStorage: false);
-    }
-
-    internal void OnStorageCleared(Address address) => OnAccountWritten(address, removedWithStorage: true);
+    /// <summary>A storage write batch was opened for the account: any of its slots, or all of them, may change.</summary>
+    internal void OnStorageWritten(Address address) => OnAccountWritten(address, removedWithStorage: true);
 
     /// <summary>Encodes the captured values as a record of the block <paramref name="blockNumber"/> with hash
     /// <paramref name="blockHash"/>. The buffer is rented; the caller returns it. False, with nothing rented, when the
     /// record would exceed <paramref name="maxBytes"/>.</summary>
-    public bool TryEncode(ulong blockNumber, in ValueHash256 blockHash, int maxBytes, out byte[]? buffer, out int length)
+    public bool TryEncode(ulong blockNumber, in ValueHash256 blockHash, int maxBytes, [NotNullWhen(true)] out byte[]? buffer, out int length)
     {
-        buffer = null;
-        length = 0;
         CapturedSlot[] slots = ArrayPool<CapturedSlot>.Shared.Rent(_slots.Count);
         CapturedAccount[] accounts = ArrayPool<CapturedAccount>.Shared.Rent(_accounts.Count + _slots.Count);
-        try
+        int slotCount = CollectSlots(slots);
+        int accountCount = CollectAccounts(accounts, slots.AsSpan(0, slotCount));
+        long measured = Measure(accounts.AsSpan(0, accountCount), slots.AsSpan(0, slotCount));
+        if (measured > maxBytes)
         {
-            int slotCount = CollectSlots(slots);
-            int accountCount = CollectAccounts(accounts, slots.AsSpan(0, slotCount));
-            long measured = Measure(accounts.AsSpan(0, accountCount), slots.AsSpan(0, slotCount));
-            if (measured > maxBytes) return false;
+            buffer = null;
+            length = 0;
+        }
+        else
+        {
+            buffer = ArrayPool<byte>.Shared.Rent((int)measured);
+            length = Encode(buffer, accounts.AsSpan(0, accountCount), slots.AsSpan(0, slotCount), _parent, blockNumber, blockHash);
+        }
 
-            byte[] rented = ArrayPool<byte>.Shared.Rent((int)measured);
-            int written = Encode(rented, accounts.AsSpan(0, accountCount), slots.AsSpan(0, slotCount), _parent, blockNumber, blockHash);
-            buffer = rented;
-            length = written;
-            return true;
-        }
-        finally
-        {
-            ArrayPool<CapturedSlot>.Shared.Return(slots, clearArray: true);
-            ArrayPool<CapturedAccount>.Shared.Return(accounts, clearArray: true);
-        }
+        ArrayPool<CapturedSlot>.Shared.Return(slots, clearArray: true);
+        ArrayPool<CapturedAccount>.Shared.Return(accounts, clearArray: true);
+        return buffer is not null;
     }
 
     private int CollectSlots(CapturedSlot[] slots)
@@ -171,7 +171,6 @@ public sealed class PrestateCapture
         int count = 0;
         foreach (KeyValuePair<StorageCell, SlotCapture> slot in _slots)
         {
-            if (slot.Value.Flags != Read) continue;
             slots[count++] = new CapturedSlot(slot.Key.Address, slot.Key.Index, slot.Value.Value);
         }
 
@@ -345,7 +344,13 @@ public sealed class PrestateCapture
     private struct SlotCapture
     {
         public UInt256 Value;
-        public byte Flags;
+    }
+
+    /// <summary>Drops the capture when disposed. The default value disposes nothing, so a caller without a capture
+    /// can use the same <c>using</c>.</summary>
+    public readonly struct ArmedCapture(PrestateCapture? capture) : IDisposable
+    {
+        public void Dispose() => capture?.Reset();
     }
 
     private readonly record struct CapturedAccount(Address Address, Account? Value, bool Recorded);

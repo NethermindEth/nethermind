@@ -630,7 +630,7 @@ public partial class BlockProcessorTests
         Block first = await AddThreeTransferBlock(chain);
         Block second = await AddThreeTransferBlock(chain, firstNonce: 3);
         IBlockTree counting = CountingBlockTree(chain.BlockTree);
-        ProcessingHistoryBlockExecutorFactory factory = new(counting, chain.SpecProvider, chain.Container.Resolve<IOverridableEnvFactory>(), chain.Container, chain.Container.Resolve<IBlockValidationModule[]>());
+        ProcessingHistoryBlockExecutorFactory factory = new(counting, chain.SpecProvider, chain.Container.Resolve<IScopeDecoratingEnvFactory>(), chain.Container, chain.Container.Resolve<IBlockValidationModule[]>());
         using IHistoryBlockExecutor executor = factory.Create();
 
         Assert.That(executor.TryExecute((ulong)first.Number, NullBlockTracer.Instance, CancellationToken.None), Is.True);
@@ -661,7 +661,7 @@ public partial class BlockProcessorTests
         IBlockTree counting = CountingBlockTree(chain.BlockTree);
         Block sibling = Build.A.Block.WithNumber(second.Number).WithParentHash(TestItem.KeccakA).WithTransactions(second.Transactions).TestObject;
         counting.FindBlock((ulong)second.Number, Arg.Any<BlockTreeLookupOptions>()).Returns(sibling);
-        ProcessingHistoryBlockExecutorFactory factory = new(counting, chain.SpecProvider, chain.Container.Resolve<IOverridableEnvFactory>(), chain.Container, chain.Container.Resolve<IBlockValidationModule[]>());
+        ProcessingHistoryBlockExecutorFactory factory = new(counting, chain.SpecProvider, chain.Container.Resolve<IScopeDecoratingEnvFactory>(), chain.Container, chain.Container.Resolve<IBlockValidationModule[]>());
         using IHistoryBlockExecutor executor = factory.Create();
         using IHistoryBlockRun run = executor.BeginRun((ulong)first.Number)!;
 

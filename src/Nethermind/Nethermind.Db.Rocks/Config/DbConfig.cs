@@ -446,7 +446,7 @@ public class DbConfig : IDbConfig
     public string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
 
     // Records are read whole by key and never scanned, so the point bloom pays on every miss.
-    public string PrestateRecordsDbRocksDbOptions { get; set; } =
+    public string? PrestateRecordsDbRocksDbOptions { get; set; } =
         "compression=kLZ4Compression;" +
         "block_based_table_factory.filter_policy=bloomfilter:10;" +
         "write_buffer_size=16000000;" +

@@ -124,15 +124,15 @@ public sealed class HistoricalFlatDbManager(
 
     // Trie-less bundle: empty snapshot list over a history-backed reader. The reader serves account/storage values
     // only and throws on trie traversal / iteration, so post-block state-root recomputation must not walk it.
-    // A normal read with no special reader flags also consults the pre-state record of the state; scans and
-    // verification (Sync, FullScan) and slice-restricted reads, which must fail closed, keep the history reader alone.
+    // A read with no special reader flags also consults the pre-state record of the state; scans and verification
+    // (Sync, FullScan) keep the history reader alone. The history reader decides which reads it must serve itself.
     private ReadOnlySnapshotBundle BuildHistoricalBundle(in StateId baseBlock, HistoricalReadMode mode, ReaderFlags readerFlags)
     {
         HistoryBackedPersistenceReader history = new(historyReader, baseBlock, scopeGate, restrictToSlices: mode == HistoricalReadMode.Restricted);
         IPersistence.IPersistenceReader reader = history;
         try
         {
-            if (prestateRecords is not null && mode == HistoricalReadMode.Normal && readerFlags == ReaderFlags.None)
+            if (prestateRecords is not null && readerFlags == ReaderFlags.None)
                 reader = new RecordBackedPersistenceReader(history, prestateRecords, baseBlock);
 
             return new(new SnapshotPooledList(0),

@@ -11,24 +11,25 @@ namespace Nethermind.State.Flat.History.Prestate;
 /// budget. A record is read and validated once however many readers ask for it at the same time.</summary>
 /// <remarks>
 /// The cache holds one lease on each record it keeps; a reader takes its own. Eviction drops only the cache's lease,
-/// so a record in use stays valid until its last reader ends. A missing or unusable record is remembered for a short
-/// time, and only until the store writes again. A lookup never throws: a failing store answers "no record", and the
-/// reader keeps reading history.
+/// so a record in use stays valid until its last reader ends. A missing or unusable record is remembered for
+/// <see cref="NegativeLifetime"/>, or until the recorder writes that state's record and invalidates it. A record's
+/// pooled buffer is rounded up to a power of two, and the budget charges the rounded size. A lookup never throws: a
+/// failing store answers "no record", and the reader keeps reading history.
 /// </remarks>
 public sealed class PrestateRecordCache(PrestateRecordStore store, IFlatDbConfig config, ILogManager logManager)
 {
     internal static readonly TimeSpan NegativeLifetime = TimeSpan.FromSeconds(60);
-    private const long NegativeEntryBytes = 64;
 
-    private readonly PrestateRecordStore _store = store;
+    /// <summary>A remembered miss: the entry object, its dictionary slot and its recency node.</summary>
+    internal const long NegativeEntryBytes = 256;
+
     private readonly long _budget = Math.Max(0, config.HistoryPrestateRecordsCacheBytes);
     private readonly ILogger _logger = logManager.GetClassLogger<PrestateRecordCache>();
     private readonly object _sync = new();
     private readonly Dictionary<StateId, Entry> _entries = [];
     private readonly LinkedList<StateId> _recency = new();
     private long _bytes;
-    private volatile bool _disabled;
-    private long _leaseHits;
+    private int _disabled;
 
     /// <summary>History reads a state makes before it opens a record that is not cached.</summary>
     public int LazyOpenReads { get; } = Math.Max(0, config.HistoryPrestateRecordsLazyOpenReads);
@@ -37,18 +38,22 @@ public sealed class PrestateRecordCache(PrestateRecordStore store, IFlatDbConfig
     public int VerifyPercent { get; } = Math.Clamp(config.HistoryPrestateRecordsVerifyPercent, 0, 100);
 
     /// <summary>False after a verification mismatch, until restart.</summary>
-    public bool IsEnabled => !_disabled;
+    public bool IsEnabled => Volatile.Read(ref _disabled) == 0;
 
-    /// <summary>Records handed to readers since start.</summary>
-    public long LeaseHits => Interlocked.Read(ref _leaseHits);
+    internal long Bytes
+    {
+        get
+        {
+            lock (_sync) return _bytes;
+        }
+    }
 
-    internal long Bytes => Interlocked.Read(ref _bytes);
-
-    /// <summary>A lease on the cached record of <paramref name="parent"/>, without any store read.</summary>
+    /// <summary>A lease on the cached record of <paramref name="parent"/>, without any store read. False below the
+    /// store floor, as <see cref="TryLease"/> is.</summary>
     public bool TryLeaseCached(in StateId parent, out PrestateRecord? record)
     {
         record = null;
-        if (_disabled) return false;
+        if (!IsEnabled || parent.BlockNumber < store.Floor) return false;
 
         lock (_sync)
         {
@@ -56,7 +61,7 @@ public sealed class PrestateRecordCache(PrestateRecordStore store, IFlatDbConfig
             record = Lease(entry);
         }
 
-        CountHit();
+        Metrics.RecordPrestateRecordLeaseHit();
         return true;
     }
 
@@ -65,7 +70,7 @@ public sealed class PrestateRecordCache(PrestateRecordStore store, IFlatDbConfig
     public bool TryLease(in StateId parent, out PrestateRecord? record)
     {
         record = null;
-        if (_disabled || parent.BlockNumber < _store.Floor) return false;
+        if (!IsEnabled || parent.BlockNumber < store.Floor) return false;
 
         Entry? loading = null;
         lock (_sync)
@@ -91,7 +96,7 @@ public sealed class PrestateRecordCache(PrestateRecordStore store, IFlatDbConfig
                     continue;
                 }
 
-                if (entry.Generation == _store.Generation && Stopwatch.GetElapsedTime(entry.CreatedAt) < NegativeLifetime) return false;
+                if (Stopwatch.GetElapsedTime(entry.CreatedAt) < NegativeLifetime) return false;
 
                 Remove(entry);
             }
@@ -99,51 +104,69 @@ public sealed class PrestateRecordCache(PrestateRecordStore store, IFlatDbConfig
 
         if (record is not null)
         {
-            CountHit();
+            Metrics.RecordPrestateRecordLeaseHit();
             return true;
         }
 
-        PrestateRecord? opened = Load(parent, loading!);
+        PrestateRecord? opened = Load(parent);
         lock (_sync)
         {
             loading!.Loading = false;
-            loading.Record = opened;
-            loading.Node = _recency.AddFirst(parent);
-            Charge(opened?.ByteSize ?? NegativeEntryBytes);
-            record = opened is null ? null : Lease(loading);
+            if (loading.Invalidated)
+            {
+                _entries.Remove(parent);
+            }
+            else
+            {
+                loading.Record = opened;
+                loading.Node = _recency.AddFirst(parent);
+                Charge(opened?.ByteSize ?? NegativeEntryBytes);
+            }
+
+            record = opened is null ? null : loading.Invalidated ? opened : Lease(loading);
             Evict();
             Monitor.PulseAll(_sync);
         }
 
         if (record is null) return false;
-        CountHit();
+        Metrics.RecordPrestateRecordLeaseHit();
         return true;
+    }
+
+    /// <summary>Forgets what is cached for <paramref name="parent"/>, so the record just written there is read on the
+    /// next lookup instead of a remembered miss.</summary>
+    public void Invalidate(in StateId parent)
+    {
+        lock (_sync)
+        {
+            if (!_entries.TryGetValue(parent, out Entry? entry)) return;
+            if (entry.Loading) entry.Invalidated = true;
+            else Remove(entry);
+        }
     }
 
     /// <summary>Stops every record read after a value differed from history.</summary>
     public void Disable(string reason)
     {
-        if (_disabled) return;
-        _disabled = true;
-        Metrics.PrestateRecordVerifyMismatches++;
+        if (Interlocked.Exchange(ref _disabled, 1) != 0) return;
+        Metrics.RecordPrestateRecordVerifyMismatch();
         if (_logger.IsError) _logger.Error($"Pre-state records disagree with flat history and are no longer read until restart: {reason}");
     }
 
-    private PrestateRecord? Load(in StateId parent, Entry entry)
+    private PrestateRecord? Load(in StateId parent)
     {
-        entry.Generation = _store.Generation;
         try
         {
-            PrestateRecord? record = _store.Read(parent, out bool found);
+            PrestateRecord? record = store.Read(parent, out bool found);
             if (record is not null) return record;
 
-            if (found) Metrics.PrestateRecordsInvalid++;
-            else Metrics.PrestateRecordLeaseAbsent++;
+            if (found) Metrics.RecordPrestateRecordInvalid();
+            else Metrics.RecordPrestateRecordLeaseAbsent();
             return null;
         }
         catch (Exception exception)
         {
-            Metrics.PrestateRecordsInvalid++;
+            Metrics.RecordPrestateRecordInvalid();
             if (_logger.IsWarn) _logger.Warn($"Pre-state record of state {parent} could not be read; reading flat history instead: {exception.Message}");
             return null;
         }
@@ -173,8 +196,12 @@ public sealed class PrestateRecordCache(PrestateRecordStore store, IFlatDbConfig
     private void Remove(Entry entry)
     {
         _entries.Remove(entry.Parent);
-        if (entry.Node is not null) _recency.Remove(entry.Node);
-        Charge(-(entry.Record?.ByteSize ?? NegativeEntryBytes));
+        if (entry.Node is not null)
+        {
+            _recency.Remove(entry.Node);
+            Charge(-(entry.Record?.ByteSize ?? NegativeEntryBytes));
+        }
+
         entry.Record?.Dispose();
     }
 
@@ -184,19 +211,13 @@ public sealed class PrestateRecordCache(PrestateRecordStore store, IFlatDbConfig
         Metrics.PrestateRecordCacheBytes = _bytes;
     }
 
-    private void CountHit()
-    {
-        Interlocked.Increment(ref _leaseHits);
-        Metrics.PrestateRecordLeaseHits++;
-    }
-
     private sealed class Entry(StateId parent)
     {
         public readonly StateId Parent = parent;
         public readonly long CreatedAt = Stopwatch.GetTimestamp();
         public PrestateRecord? Record;
         public bool Loading = true;
-        public long Generation;
+        public bool Invalidated;
         public LinkedListNode<StateId>? Node;
     }
 }

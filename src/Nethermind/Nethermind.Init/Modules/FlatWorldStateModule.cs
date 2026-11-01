@@ -209,7 +209,18 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         if (flatDbConfig.HistoryEnabled)
         {
             builder.AddModule(new FlatHistoryModule());
-            if (flatDbConfig.HistoryPrestateRecordsEnabled) builder.AddModule(new PrestateRecordsModule());
+            if (flatDbConfig.HistoryPrestateRecordsEnabled)
+            {
+                if (!flatDbConfig.HistoryTransactionIndexEnabled)
+                {
+                    throw new InvalidConfigurationException(
+                        "FlatDb.HistoryPrestateRecordsEnabled requires FlatDb.HistoryTransactionIndexEnabled: records are written by the " +
+                        "transaction index builder, so with the index off none would ever be written. Enable the index or unset the flag.", -1);
+                }
+
+                builder.AddModule(new PrestateRecordsModule());
+            }
+
             if (flatDbConfig.HistoryTransactionIndexEnabled)
             {
                 builder
@@ -224,12 +235,13 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             || flatDbConfig.ArchiveProofBuildEnabled
             || flatDbConfig.ArchiveProofServeEnabled
             || flatDbConfig.HistoryTransactionIndexEnabled
-            || flatDbConfig.HistoryTransactionIndexRetrofitFromBlock != 0)
+            || flatDbConfig.HistoryTransactionIndexRetrofitFromBlock != 0
+            || flatDbConfig.HistoryPrestateRecordsEnabled)
         {
             throw new InvalidConfigurationException(
                 "FlatDb.HistoryRetention, FlatDb.HistorySliceAddresses, FlatDb.HistoryVerifyEveryBlock, " +
-                "FlatDb.ArchiveProofBuildEnabled, FlatDb.ArchiveProofServeEnabled, FlatDb.HistoryTransactionIndexEnabled and " +
-                "FlatDb.HistoryTransactionIndexRetrofitFromBlock all require FlatDb.HistoryEnabled: " +
+                "FlatDb.ArchiveProofBuildEnabled, FlatDb.ArchiveProofServeEnabled, FlatDb.HistoryTransactionIndexEnabled, " +
+                "FlatDb.HistoryTransactionIndexRetrofitFromBlock and FlatDb.HistoryPrestateRecordsEnabled all require FlatDb.HistoryEnabled: " +
                 "with it off no history is captured, so these settings would be silently ignored. Enable FlatDb.HistoryEnabled or unset them.", -1);
         }
     }

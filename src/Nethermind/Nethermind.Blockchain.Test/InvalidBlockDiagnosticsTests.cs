@@ -15,7 +15,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.State;
 using Nethermind.Init;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
@@ -128,8 +127,6 @@ public class InvalidBlockDiagnosticsTests
         public volatile bool Armed;
 
         public int Created => Volatile.Read(ref _created);
-
-        public IOverridableEnv Create(Func<IWorldStateScopeProvider, IWorldStateScopeProvider> decorateScopeProvider) => inner.Create(decorateScopeProvider);
 
         public IOverridableEnv Create()
         {

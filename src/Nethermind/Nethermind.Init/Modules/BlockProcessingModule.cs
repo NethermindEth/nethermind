@@ -111,6 +111,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<OverridableEnvFactory>()
                 .Bind<IOverridableEnvFactory, OverridableEnvFactory>()
                 .Bind<ITraceEnvFactory, OverridableEnvFactory>()
+                .Bind<IScopeDecoratingEnvFactory, OverridableEnvFactory>()
             .AddScopedOpenGeneric(typeof(IOverridableEnv<>), typeof(DisposableScopeOverridableEnv<>))
             .AddSingleton<InvalidBlockDiagnostics>()
 

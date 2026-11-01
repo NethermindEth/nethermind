@@ -33,6 +33,9 @@ internal static class PrestateRecordFormat
 
     public const int VersionOffset = 0;
     public const int FlagsOffset = 1;
+    /// <summary>Two zero bytes after the flags.</summary>
+    public const int PaddingOffset = 2;
+    public const int PaddingLength = 2;
     public const int AccountCountOffset = 4;
     public const int SlotCountOffset = 8;
     public const int SenderCountOffset = 12;
@@ -43,8 +46,6 @@ internal static class PrestateRecordFormat
     public const int ReservedOffset = 96;
 
     public const int MaxVarIntLength = 10;
-    public const int MaxAccountLength = Address.Size + 1 + MaxVarIntLength + 1 + 32 + Hash256.Size + Hash256.Size + MaxVarIntLength;
-    public const int MaxSlotLength = 32 + 1 + 32;
     /// <summary>The smallest possible encoding of each, which bounds the counts a header may claim.</summary>
     public const int MinAccountLength = Address.Size + 1;
     public const int MinSlotLength = 32 + 1;

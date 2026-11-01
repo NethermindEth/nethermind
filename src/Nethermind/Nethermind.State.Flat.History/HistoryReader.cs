@@ -269,6 +269,10 @@ public sealed class HistoryReader
     internal bool HasPoisonedClearAbove(ulong block, Address address, StorageClearsScopeCache clearsCache) =>
         _isV3 && clearsCache.TryGetPoisonedClearAbove(address.ToAccountPath, _storageClears, _availability, block, out _);
 
+    internal long CaptureGeneration => _availability.CaptureGeneration;
+
+    internal bool HasCapturedSince(long generation) => _availability.HasCapturedSince(generation);
+
     internal ReadScopeState CreateReadScopeState() => new(_isV3);
 
     internal struct ReadScopeState(bool enabled) : IDisposable

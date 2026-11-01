@@ -30,12 +30,10 @@ public interface IHistoryBlockRun : IDisposable
 /// <summary>Creates isolated executors; each executor and its runs belong to one worker.</summary>
 public interface IHistoryBlockExecutorFactory
 {
-    /// <summary>Returns a caller-owned executor, which must be disposed after its final run.</summary>
-    IHistoryBlockExecutor Create();
-
-    /// <summary>Returns a caller-owned executor whose world state reads and writes through the scope provider
-    /// <paramref name="decorateScopeProvider"/> returns for the one the executor would use.</summary>
-    IHistoryBlockExecutor Create(Func<IWorldStateScopeProvider, IWorldStateScopeProvider> decorateScopeProvider);
+    /// <summary>Returns a caller-owned executor, which must be disposed after its final run. When
+    /// <paramref name="decorateScopeProvider"/> is given, the executor's world state reads and writes through the scope
+    /// provider it returns for the one the executor would use.</summary>
+    IHistoryBlockExecutor Create(Func<IWorldStateScopeProvider, IWorldStateScopeProvider>? decorateScopeProvider = null);
     /// <summary>Returns the last supported canonical height at or below the bound, or null when it cannot be determined.</summary>
     ulong? GetLastSupportedBlock(ulong lowerBound, ulong upperBound) => lowerBound <= upperBound ? upperBound : null;
 

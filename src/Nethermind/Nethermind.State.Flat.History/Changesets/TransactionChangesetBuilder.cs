@@ -394,18 +394,11 @@ public sealed class TransactionChangesetBuilder(
     private bool Build(ulong block, IHistoryBlockExecutor executor, PrestateCapture? prestate)
     {
         using TransactionChangesetIndex.BlockCapture capture = index.StartBlock(block);
-        prestate?.Arm();
-        try
-        {
-            if (!executor.TryExecute(block, capture.Tracer, _cancellation.Token) || !capture.Commit()) return false;
+        using PrestateCapture.ArmedCapture armed = prestate is null ? default : prestate.Arm();
+        if (!executor.TryExecute(block, capture.Tracer, _cancellation.Token) || !capture.Commit()) return false;
 
-            if (prestate is not null && capture.BlockHash is { } blockHash)
-                prestateRecorder!.TryWrite(prestate, block, blockHash.ValueHash256, _cancellation.Token);
-        }
-        finally
-        {
-            prestate?.Reset();
-        }
+        if (prestate is not null && capture.BlockHash is { } blockHash)
+            prestateRecorder!.TryWrite(prestate, block, blockHash.ValueHash256, _cancellation.Token);
 
         Interlocked.Increment(ref _builtSinceReport);
         return true;

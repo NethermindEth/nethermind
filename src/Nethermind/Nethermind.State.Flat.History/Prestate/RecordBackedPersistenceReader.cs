@@ -15,16 +15,25 @@ namespace Nethermind.State.Flat.History.Prestate;
 /// <remarks>
 /// A record value is the exact value at this state (the record is keyed and checked by the state's number and root),
 /// so a read answers the same either way. A record that is not cached yet is opened only after
-/// <see cref="PrestateRecordCache.LazyOpenReads"/> history reads, so a single point read never pays for it. A slot
-/// of an account with a poisoned self-destruct above this state goes to history, which fails closed there.
+/// <see cref="PrestateRecordCache.LazyOpenReads"/> history reads, so a single point read never pays for it. Reads the
+/// history reader must serve itself to keep its errors (<see cref="HistoryBackedPersistenceReader.RequiresHistory"/>)
+/// go there. The poisoned-clear answer is remembered per record account until a capture publishes, which is when the
+/// history reader would probe again too.
 /// </remarks>
 internal sealed class RecordBackedPersistenceReader : IPersistence.IPersistenceReader
 {
+    private const byte PoisonUnknown = 0;
+    private const byte PoisonAbsent = 1;
+    private const byte PoisonPresent = 2;
+
     private readonly HistoryBackedPersistenceReader _history;
     private readonly PrestateRecordCache _cache;
     private readonly StateId _block;
     private PrestateRecord? _record;
+    private byte[]? _poison;
+    private long _poisonGeneration;
     private int _openAttempted;
+    private int _disposed;
     private long _historyReads;
     private long _recordReads;
 
@@ -35,8 +44,8 @@ internal sealed class RecordBackedPersistenceReader : IPersistence.IPersistenceR
         _block = block;
         if (cache.TryLeaseCached(block, out PrestateRecord? cached))
         {
-            _record = cached;
             _openAttempted = 1;
+            Publish(cached!);
         }
         else if (cache.LazyOpenReads == 0)
         {
@@ -49,7 +58,7 @@ internal sealed class RecordBackedPersistenceReader : IPersistence.IPersistenceR
     public Account? GetAccount(Address address)
     {
         PrestateRecord? record = Volatile.Read(ref _record);
-        if (record is not null && _cache.IsEnabled && record.TryGetAccount(address, out Account? account))
+        if (record is not null && _cache.IsEnabled && record.TryGetAccount(address, out Account? account) && !_history.RequiresHistory(address, slot: false))
         {
             Interlocked.Increment(ref _recordReads);
             return ShouldVerify() ? VerifyAccount(address, account) : account;
@@ -62,7 +71,7 @@ internal sealed class RecordBackedPersistenceReader : IPersistence.IPersistenceR
     public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
     {
         PrestateRecord? record = Volatile.Read(ref _record);
-        if (record is not null && _cache.IsEnabled && record.TryGetSlot(address, slot, out UInt256 value) && !_history.HasPoisonedClearAbove(address))
+        if (record is not null && _cache.IsEnabled && record.TryGetSlot(address, slot, out UInt256 value, out int account) && !RequiresHistory(address, account))
         {
             Interlocked.Increment(ref _recordReads);
             if (ShouldVerify()) VerifySlot(address, slot, ref value);
@@ -75,6 +84,25 @@ internal sealed class RecordBackedPersistenceReader : IPersistence.IPersistenceR
         return _history.TryGetSlot(address, slot, ref outValue);
     }
 
+    private bool RequiresHistory(Address address, int account)
+    {
+        byte[]? poison = Volatile.Read(ref _poison);
+        if (poison is null) return _history.RequiresHistory(address, slot: true);
+
+        if (_history.HasCapturedSince(Volatile.Read(ref _poisonGeneration)))
+        {
+            Volatile.Write(ref _poisonGeneration, _history.ClearsGeneration);
+            Array.Clear(poison);
+        }
+
+        byte known = Volatile.Read(ref poison[account]);
+        if (known != PoisonUnknown) return known == PoisonPresent;
+
+        bool requires = _history.RequiresHistory(address, slot: true);
+        Volatile.Write(ref poison[account], requires ? PoisonPresent : PoisonAbsent);
+        return requires;
+    }
+
     private void OnHistoryRead(PrestateRecord? record)
     {
         long reads = Interlocked.Increment(ref _historyReads);
@@ -84,7 +112,26 @@ internal sealed class RecordBackedPersistenceReader : IPersistence.IPersistenceR
     private void Open()
     {
         if (Interlocked.Exchange(ref _openAttempted, 1) != 0) return;
-        if (_cache.TryLease(_block, out PrestateRecord? record)) Volatile.Write(ref _record, record);
+        if (_cache.TryLease(_block, out PrestateRecord? record)) Publish(record!);
+    }
+
+    /// <summary>Publishes a leased record. Dispose and publish both take the record out with an exchange, so exactly
+    /// one of them releases the lease, whichever runs last.</summary>
+    private void Publish(PrestateRecord record)
+    {
+        Volatile.Write(ref _poisonGeneration, _history.ClearsGeneration);
+        byte[] poison = ArrayPool<byte>.Shared.Rent(record.AccountCount);
+        poison.AsSpan(0, record.AccountCount).Clear();
+        Volatile.Write(ref _poison, poison);
+        Volatile.Write(ref _record, record);
+        if (Volatile.Read(ref _disposed) != 0) Release();
+    }
+
+    private void Release()
+    {
+        Interlocked.Exchange(ref _record, null)?.Dispose();
+        byte[]? poison = Interlocked.Exchange(ref _poison, null);
+        if (poison is not null) ArrayPool<byte>.Shared.Return(poison);
     }
 
     private bool ShouldVerify()
@@ -114,8 +161,9 @@ internal sealed class RecordBackedPersistenceReader : IPersistence.IPersistenceR
 
     public void Dispose()
     {
-        Metrics.AddPrestateRecordKeyReads(_recordReads, _record is null ? 0 : _historyReads);
-        _record?.Dispose();
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        Metrics.AddPrestateRecordKeyReads(Interlocked.Read(ref _recordReads), Volatile.Read(ref _record) is null ? 0 : Interlocked.Read(ref _historyReads));
+        Release();
         _history.Dispose();
     }
 

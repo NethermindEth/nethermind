@@ -22,6 +22,7 @@ namespace Nethermind.State.Flat.History.Test;
 /// Each test stores a record for that state whose values differ from history where it matters, so an answer shows
 /// which source served it. Real records never differ; the verification test covers the case where one does.
 /// </summary>
+[NonParallelizable]
 public class RecordBackedPersistenceReaderTests
 {
     private const ulong Block = 2;
@@ -31,6 +32,7 @@ public class RecordBackedPersistenceReaderTests
 
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _columns = null!;
+    private HistoryAvailability _availability = null!;
     private HistoryReader _historyReader = null!;
     private HistoryScopeGate _gate = null!;
     private MemDb _records = null!;
@@ -49,6 +51,7 @@ public class RecordBackedPersistenceReaderTests
         (HistoryAvailability availability, HistoryRowFormat format) = HistoryColumnsWriter.CreateSharedFormat(_columns,
             new FlatDbConfig { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 1000 });
         Assert.That(format.IsV3, Is.True, "precondition: the windowed format records poisoned clears");
+        _availability = availability;
         _historyReader = new HistoryReader(_db, _columns, availability, format, LimboLogs.Instance);
         _gate = new HistoryScopeGate();
         _records = new MemDb();
@@ -186,6 +189,96 @@ public class RecordBackedPersistenceReaderTests
         }
 
         Assert.That(_gate.TryDrainForFloorAdvance(TimeSpan.Zero, CancellationToken.None), Is.True, "a leaked scope would stop history pruning");
+    }
+
+    [TestCase(6, false, TestName = "TryGetSlot_WhenVerificationFindsAMismatch_ReturnsHistoryAndStopsRecordReads")]
+    [TestCase(5, true, TestName = "TryGetSlot_WhenVerificationMatches_KeepsRecordReads")]
+    public void TryGetSlot_Verification(int recorded, bool stillEnabled)
+    {
+        WriteRecord(capture => capture.OnSlotRead(First, 1, (UInt256)recorded));
+        PrestateRecordCache cache = new(_store, new FlatDbConfig { HistoryPrestateRecordsLazyOpenReads = 0, HistoryPrestateRecordsVerifyPercent = 100 }, LimboLogs.Instance);
+        using RecordBackedPersistenceReader reader = new(History(), cache, State);
+        UInt256 value = default;
+
+        bool found = reader.TryGetSlot(First, 1, ref value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found && value == 5, Is.True, "a verified read answers with the history value");
+            Assert.That(cache.IsEnabled, Is.EqualTo(stillEnabled));
+        }
+    }
+
+    [Test]
+    public void TryGetSlot_AfterRecordReadsStopped_ReadsHistory()
+    {
+        WriteRecord(capture =>
+        {
+            capture.OnAccountRead(First, new Account(9, 90));
+            capture.OnSlotRead(First, 1, 6);
+        });
+        PrestateRecordCache cache = new(_store, new FlatDbConfig { HistoryPrestateRecordsLazyOpenReads = 0 }, LimboLogs.Instance);
+        using RecordBackedPersistenceReader reader = new(History(), cache, State);
+        cache.Disable("test");
+        UInt256 value = default;
+
+        bool found = reader.TryGetSlot(First, 1, ref value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found && value == 5, Is.True, "a disabled cache sends every read to history");
+            Assert.That(reader.GetAccount(First)!.Nonce, Is.EqualTo(1UL));
+        }
+    }
+
+    [Test]
+    public void HistoricalBundle_RestrictedToSlices_FailsClosedEvenWhenTheRecordHoldsTheAccount()
+    {
+        _availability.PublishScope(HistoryKeyLayout.ToFlatStateKey(TestItem.AddressD.ToAccountPath.Bytes), 0);
+        _availability.PublishGlobalFloor(Block + 1);
+        WriteRecord(capture => capture.OnAccountRead(First, new Account(9, 90)));
+        HistoricalFlatDbManager manager = Manager(new PrestateRecordCache(_store, new FlatDbConfig { HistoryPrestateRecordsLazyOpenReads = 0 }, LimboLogs.Instance));
+
+        using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(State);
+
+        Assert.That(() => bundle.GetAccount(First), Throws.InstanceOf<MissingTrieNodeException>(),
+            "an address outside every retained slice must fail closed, whatever the record holds");
+    }
+
+    [Test]
+    public void HistoricalBundle_WithARecordOfASiblingState_ReadsHistory()
+    {
+        StateId sibling = new(Block, TestItem.KeccakF);
+        _store.Write(sibling, PrestateRecordTests.Encode(capture => capture.OnAccountRead(First, new Account(9, 90)), sibling));
+        HistoricalFlatDbManager manager = Manager(new PrestateRecordCache(_store, new FlatDbConfig { HistoryPrestateRecordsLazyOpenReads = 0 }, LimboLogs.Instance));
+
+        using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(State);
+
+        Assert.That(bundle.GetAccount(First)!.Nonce, Is.EqualTo(1UL), "a record answers only for its own parent state root");
+    }
+
+    [Test]
+    public void TryGetSlot_OnTheUnwindowedFormat_IgnoresPoisonMarkers()
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        for (ulong block = 0; block <= 4; block++) HistoryColumnsWriter.MarkBlock(columns, block, Root(block));
+        HistoryColumnsWriter.SetWatermark(columns, 4);
+        (HistoryAvailability availability, HistoryRowFormat format) = HistoryColumnsWriter.CreateSharedFormat(columns, new FlatDbConfig { HistoryEnabled = true });
+        Assert.That(format.IsV3, Is.False, "precondition: the unwindowed format writes no poisoned clears");
+        IDb clears = columns.GetColumnDb(FlatHistoryColumns.StorageClears);
+        using (IWriteBatch batch = clears.StartWriteBatch())
+        {
+            new StorageClearStore(clears).RecordPoisonedClear(3, TestItem.AddressC.ToAccountPath.Bytes, batch);
+        }
+
+        WriteRecord(capture => capture.OnSlotRead(TestItem.AddressC, 1, 6));
+        HistoryReader historyReader = new(db, columns, availability, format, LimboLogs.Instance);
+        using RecordBackedPersistenceReader reader = new(new HistoryBackedPersistenceReader(historyReader, State, _gate),
+            new PrestateRecordCache(_store, new FlatDbConfig { HistoryPrestateRecordsLazyOpenReads = 0 }, LimboLogs.Instance), State);
+        UInt256 value = default;
+
+        Assert.That(reader.TryGetSlot(TestItem.AddressC, 1, ref value) && value == 6, Is.True, "only the windowed format fails closed on a poisoned clear");
     }
 
     private void WriteRecord(Action<PrestateCapture> record) => _store.Write(State, PrestateRecordTests.Encode(record, State));

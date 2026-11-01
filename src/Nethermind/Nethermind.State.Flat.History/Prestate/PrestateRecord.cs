@@ -101,11 +101,16 @@ public sealed class PrestateRecord : RefCountingDisposable
     }
 
     /// <summary>False when the record does not hold the slot; the caller then reads history.</summary>
+    public bool TryGetSlot(Address address, in UInt256 index, out UInt256 value) => TryGetSlot(address, index, out value, out _);
+
+    /// <inheritdoc cref="TryGetSlot(Address, in UInt256, out UInt256)"/>
+    /// <param name="account">The position of the account in the record, below <see cref="AccountCount"/>.</param>
     [SkipLocalsInit]
-    public bool TryGetSlot(Address address, in UInt256 index, out UInt256 value)
+    public bool TryGetSlot(Address address, in UInt256 index, out UInt256 value, out int account)
     {
         value = default;
         int position = FindAccount(address);
+        account = position;
         if (position < 0) return false;
 
         ReadOnlySpan<int> slotStarts = SlotStarts;
@@ -185,7 +190,7 @@ public sealed class PrestateRecord : RefCountingDisposable
         if (data.Length < PrestateRecordFormat.HeaderLength) return false;
         if (data[PrestateRecordFormat.VersionOffset] != PrestateRecordFormat.Version) return false;
         if (data[PrestateRecordFormat.FlagsOffset] != PrestateRecordFormat.RecordFlagNonAuthoritativeRoots) return false;
-        if (data[2] != 0 || data[3] != 0) return false;
+        if (data.Slice(PrestateRecordFormat.PaddingOffset, PrestateRecordFormat.PaddingLength).ContainsAnyExcept((byte)0)) return false;
         if (data.Slice(PrestateRecordFormat.ReservedOffset, PrestateRecordFormat.HeaderLength - PrestateRecordFormat.ReservedOffset).ContainsAnyExcept((byte)0)) return false;
         if (BinaryPrimitives.ReadUInt32LittleEndian(data[PrestateRecordFormat.SenderCountOffset..]) != 0) return false;
         if (BinaryPrimitives.ReadUInt64LittleEndian(data[PrestateRecordFormat.ParentNumberOffset..]) != parent.BlockNumber) return false;

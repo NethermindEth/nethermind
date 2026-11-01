@@ -94,7 +94,7 @@ public sealed class ProcessingHistoryBlockExecutor(
 public sealed class ProcessingHistoryBlockExecutorFactory(
     IBlockTree blockTree,
     ISpecProvider specProvider,
-    IOverridableEnvFactory envFactory,
+    IScopeDecoratingEnvFactory envFactory,
     ILifetimeScope rootLifetimeScope,
     IBlockValidationModule[] validationModules) : IHistoryBlockExecutorFactory
 {
@@ -156,13 +156,9 @@ public sealed class ProcessingHistoryBlockExecutorFactory(
 
     public Hash256? GetCanonicalHash(ulong block) => blockTree.FindHeader(block, BlockTreeLookupOptions.RequireCanonical)?.Hash;
 
-    public IHistoryBlockExecutor Create() => CreateExecutor(envFactory.Create());
-
-    public IHistoryBlockExecutor Create(Func<IWorldStateScopeProvider, IWorldStateScopeProvider> decorateScopeProvider) =>
-        CreateExecutor(envFactory.Create(decorateScopeProvider));
-
-    private ProcessingHistoryBlockExecutor CreateExecutor(IOverridableEnv env)
+    public IHistoryBlockExecutor Create(Func<IWorldStateScopeProvider, IWorldStateScopeProvider>? decorateScopeProvider = null)
     {
+        IOverridableEnv env = envFactory.Create(decorateScopeProvider);
         ILifetimeScope? scope = null;
         try
         {
