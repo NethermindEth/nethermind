@@ -136,6 +136,25 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
 
     private ChildRef ReadChild(NodeRlpReader reader, ref int offset, int position)
     {
+        // Most children are empty or a hash, which the prefix byte alone tells.
+        ReadOnlySpan<byte> data = reader.Data;
+        if ((uint)offset < (uint)data.Length)
+        {
+            byte prefix = data[offset];
+            if (prefix == Serialization.Rlp.Rlp.EmptyByteArrayByte)
+            {
+                offset++;
+                return default;
+            }
+
+            if (prefix == NodeRlpReader.KeccakRlpPrefix && data.Length - offset > ValueHash256.MemorySize)
+            {
+                ChildRef hashed = ChildRef.ForHash(new ValueHash256(data.Slice(offset + 1, ValueHash256.MemorySize)), Pointer(position));
+                offset += 1 + ValueHash256.MemorySize;
+                return hashed;
+            }
+        }
+
         if (reader.IsSequenceNext(offset))
         {
             int length = reader.PeekNextRlpLength(offset);
