@@ -273,9 +273,36 @@ public sealed partial class JumpDestinationAnalyzer
             marks = (ulong)Unsafe.Add(ref words, word);
         }
 
-        nint marked = (word << BitShiftPerInt64) + 63 - BitOperations.LeadingZeroCount(marks);
+        nint marked = (word << BitShiftPerInt64) + HighestSetBit(marks);
         return marked >= limit ? marked : -1;
     }
+
+    /// <summary>Returns the index of the highest set bit of <paramref name="value"/>, which must not be zero.</summary>
+    /// <remarks>
+    /// Without Zbb, <see cref="BitOperations.LeadingZeroCount(ulong)"/> calls a software fallback, and that call makes
+    /// the scanned-jump handler keep its values in callee-saved registers. The bit smear and the de Bruijn multiply
+    /// need no call.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static nint HighestSetBit(ulong value)
+    {
+        value |= value >> 1;
+        value |= value >> 2;
+        value |= value >> 4;
+        value |= value >> 8;
+        value |= value >> 16;
+        value |= value >> 32;
+        return Unsafe.Add(ref MemoryMarshal.GetReference(HighestSetBitIndices), (nint)((value * 0x03F7_9D71_B4CB_0A89UL) >> 58));
+    }
+
+    /// <summary>The index of the highest set bit, by the top 6 bits of the smeared value times the de Bruijn constant.</summary>
+    private static ReadOnlySpan<byte> HighestSetBitIndices =>
+    [
+        0, 47, 1, 56, 48, 27, 2, 60, 57, 49, 41, 37, 28, 16, 3, 61,
+        54, 58, 35, 52, 50, 42, 21, 44, 38, 32, 29, 23, 17, 11, 4, 62,
+        46, 55, 26, 59, 40, 36, 15, 53, 34, 51, 20, 43, 31, 22, 10, 45,
+        25, 39, 14, 33, 19, 30, 9, 24, 13, 18, 8, 12, 7, 6, 5, 63
+    ];
 
     /// <summary>Scans from the instruction start <paramref name="start"/> up to the JUMPDEST at <paramref name="destination"/> and reports whether it starts an instruction, marking it if so.</summary>
     /// <remarks>

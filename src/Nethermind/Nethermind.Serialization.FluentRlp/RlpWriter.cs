@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -128,17 +128,17 @@ public ref struct RlpWriter
 
     /// <summary>Writes a non-negative integer.</summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="value"/> is negative.</exception>
-    public unsafe void Write<T>(T value) where T : unmanaged, IBinaryInteger<T>
+    public void Write<T>(T value) where T : unmanaged, IBinaryInteger<T>
     {
         ArgumentOutOfRangeException.ThrowIfNegative(value);
 
-        if (sizeof(T) <= sizeof(ulong))
+        if (Unsafe.SizeOf<T>() <= sizeof(ulong))
         {
             WriteUInt64(ulong.CreateTruncating(value));
             return;
         }
 
-        Span<byte> bigEndian = stackalloc byte[sizeof(T)];
+        Span<byte> bigEndian = stackalloc byte[Unsafe.SizeOf<T>()];
         value.WriteBigEndian(bigEndian);
         WriteIntegerBytes(bigEndian);
     }

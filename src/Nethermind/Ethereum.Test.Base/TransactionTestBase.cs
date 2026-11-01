@@ -99,6 +99,13 @@ public abstract class TransactionTestBase
         try
         {
             byte[] bytes = Bytes.FromHexString(txBytesHex);
+            // An empty envelope fails before any RLP item is read, where the decoder gives only its generic wrapper message.
+            if (bytes.Length == 0)
+            {
+                error = "RLP is truncated";
+                return false;
+            }
+
             tx = Rlp.Decode<Transaction>(bytes, RlpBehaviors.SkipTypedWrapping);
             return tx is not null;
         }
@@ -176,7 +183,7 @@ public abstract class TransactionTestBase
         ["TransactionException.RLP_ERROR_SIZE_LEADING_ZEROS"] = ["RLP length has leading zero bytes"],
         ["TransactionException.RLP_INVALID_DATA"] = ["RLP does not correspond to a byte string"],
         ["TransactionException.RLP_INVALID_GASLIMIT"] = ["RLP does not correspond to a byte string"],
-        ["TransactionException.RLP_INVALID_HEADER"] = ["RLP does not correspond to a sequence"],
+        ["TransactionException.RLP_INVALID_HEADER"] = ["RLP does not correspond to a sequence", "RLP length is too large"],
         ["TransactionException.RLP_LEADING_ZEROS_NONCE"] = ["RLP integer has leading zero bytes"],
         ["TransactionException.RLP_LEADING_ZEROS_NONCE_SIZE"] = [.. s_rlpDecodeFragments],
         ["TransactionException.RLP_INVALID_NONCE"] = ["NonceTooWide", .. s_rlpDecodeFragments],

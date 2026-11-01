@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -192,12 +192,12 @@ public ref struct RlpReader
 
     /// <inheritdoc cref="ReadInteger{T}()"/>
     /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it.</typeparam>
-    public unsafe T ReadInteger<T, TCanonicalChecks>() where T : unmanaged, IBinaryInteger<T> where TCanonicalChecks : struct, IFlag
+    public T ReadInteger<T, TCanonicalChecks>() where T : unmanaged, IBinaryInteger<T> where TCanonicalChecks : struct, IFlag
     {
         ReadOnlySpan<byte> bigEndian = ReadIntegerBytes<TCanonicalChecks>();
-        if (bigEndian.Length > sizeof(T)) ThrowInvalid("RLP integer is too large");
+        if (bigEndian.Length > Unsafe.SizeOf<T>()) ThrowInvalid("RLP integer is too large");
 
-        if (sizeof(T) <= sizeof(ulong))
+        if (Unsafe.SizeOf<T>() <= sizeof(ulong))
         {
             ulong value = 0;
             foreach (byte b in bigEndian)
@@ -206,12 +206,12 @@ public ref struct RlpReader
             }
 
             // A full-width value of a signed type would come out negative.
-            int valueBits = sizeof(T) * 8 - (T.IsNegative(T.AllBitsSet) ? 1 : 0);
+            int valueBits = Unsafe.SizeOf<T>() * 8 - (T.IsNegative(T.AllBitsSet) ? 1 : 0);
             if (value >> (valueBits - 1) > 1) ThrowInvalid("RLP integer is too large");
             return T.CreateTruncating(value);
         }
 
-        Span<byte> buffer = stackalloc byte[sizeof(T)];
+        Span<byte> buffer = stackalloc byte[Unsafe.SizeOf<T>()];
         buffer.Clear();
         bigEndian.CopyTo(buffer[^bigEndian.Length..]);
         if (!T.TryReadBigEndian(buffer, isUnsigned: true, out T result) || T.IsNegative(result))

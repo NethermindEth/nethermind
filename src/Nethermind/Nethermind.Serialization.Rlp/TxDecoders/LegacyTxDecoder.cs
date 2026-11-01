@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
+using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
@@ -79,10 +82,64 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
     private static void DecodeSignature<TCanonicalChecks>(Transaction transaction, ref RlpReader reader, RlpBehaviors rlpBehaviors, bool allowEmptySignature)
         where TCanonicalChecks : struct, IFlag
     {
-        ulong v = DecodeSignatureItems<TCanonicalChecks>(ref reader, out ReadOnlySpan<byte> rBytes, out ReadOnlySpan<byte> sBytes);
+        RlpReader signatureItems = reader;
+        ulong v;
+        scoped ReadOnlySpan<byte> rBytes, sBytes;
+        try
+        {
+            v = DecodeSignatureItems<TCanonicalChecks>(ref reader, out rBytes, out sBytes);
+        }
+        catch (RlpReaderException e) when (TryGetWideVError(signatureItems, out string? error))
+        {
+            throw new RlpReaderException(error, e);
+        }
+
         transaction.Signature = allowEmptySignature && v == 0 && rBytes.IsEmpty && sBytes.IsEmpty
             ? null
             : SignatureBuilder.FromBytes(v, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
+    }
+
+    /// <summary>
+    /// Names the error of a transaction whose <c>[v, r, s]</c> items start at <paramref name="signatureItems"/> when its
+    /// <c>v</c> is too wide for a <see cref="ulong"/>.
+    /// </summary>
+    /// <remarks>
+    /// Only a <c>v</c> in its own slot counts: the seventh item, followed by <c>r</c> and <c>s</c> that end the transaction.
+    /// EIP-155 sets <c>v = 35 + 2 * chainId + parity</c>, so such a <c>v</c> can still hold a 64-bit chain id, which is
+    /// only one no supported network has. A chain id wider than 64 bits makes <c>v</c> itself invalid.
+    /// </remarks>
+    private static bool TryGetWideVError(RlpReader signatureItems, [NotNullWhen(true)] out string? error)
+    {
+        error = null;
+        if (!TrySkipSignatureItem(ref signatureItems, out ReadOnlySpan<byte> vBytes)
+            || vBytes.Length <= sizeof(ulong)
+            || vBytes[0] == 0
+            || !TrySkipSignatureItem(ref signatureItems, out _)
+            || !TrySkipSignatureItem(ref signatureItems, out _)
+            || signatureItems.HasNext)
+        {
+            return false;
+        }
+
+        UInt256 v = new(vBytes, isBigEndian: true);
+        UInt256 chainId = (v + v % 2 - 36) / 2;
+        error = chainId <= ulong.MaxValue
+            ? $"InvalidTxChainId: Chain id {chainId} in v is not supported."
+            : $"{TxErrorMessages.InvalidTxSignature} Chain id in v exceeds uint64.";
+        return true;
+    }
+
+    /// <summary>Moves past the byte string of at most 32 bytes that <paramref name="reader"/> is at.</summary>
+    private static bool TrySkipSignatureItem(ref RlpReader reader, out ReadOnlySpan<byte> content)
+    {
+        content = default;
+        if (!reader.HasNext || reader.IsNextSequence)
+        {
+            return false;
+        }
+
+        content = reader.ReadBytes<OffFlag>();
+        return content.Length <= 32;
     }
 
     private readonly struct Payload : ITxPayloadDecoder

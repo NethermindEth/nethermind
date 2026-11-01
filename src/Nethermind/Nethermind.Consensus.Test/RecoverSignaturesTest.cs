@@ -73,7 +73,7 @@ public class RecoverSignaturesTest
             ChainId = BlockchainIds.GenericNonRealNetwork,
             SenderAddress = TestItem.AddressA,
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 100_000, default, default)],
-            FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer.Address, default, default)],
+            FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer.Address, default, new byte[TxFrameSignature.Secp256k1SignatureLength])],
             DecodedMaxFeePerGas = 100,
         };
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
