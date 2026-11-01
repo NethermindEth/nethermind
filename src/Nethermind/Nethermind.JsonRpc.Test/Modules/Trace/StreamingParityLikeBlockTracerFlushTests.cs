@@ -1,11 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
+using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Modules.Trace;
 using NUnit.Framework;
 
@@ -35,6 +39,29 @@ public class StreamingParityLikeBlockTracerFlushTests
 #pragma warning restore NUnit2045
         Assert.That(read.Buffer.Length, Is.GreaterThanOrEqualTo(StreamingParityLikeBlockTracer.FlushThresholdBytes));
         pipe.Reader.AdvanceTo(read.Buffer.End);
+    }
+
+    [Test]
+    public void ParallelTxTracers_ReuseTheResultOfADisposedTransaction()
+    {
+        ArrayBufferWriter<byte> output = new();
+        using Utf8JsonWriter writer = new(output, new JsonWriterOptions { SkipValidation = true });
+        using StreamingParityLikeBlockTracer tracer = new(ParityTraceTypes.Trace, ParityTraceStreamMode.Store, includeTxHash: false, writer, null, CancellationToken.None);
+        using ParallelParityTxTracerPool pool = tracer.CreateParallelTxTracers(Build.A.Block.TestObject, ParityTraceTypes.Trace);
+
+        IBlockTracer<ParityLikeTxTrace> first = pool.For(TestItem.KeccakA);
+        IReadOnlyCollection<ParityLikeTxTrace> result = first.BuildResult();
+        result.TryDispose();
+        result.TryDispose();
+        IBlockTracer<ParityLikeTxTrace> second = pool.For(TestItem.KeccakB);
+        IBlockTracer<ParityLikeTxTrace> third = pool.For(TestItem.KeccakC);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.SameAs(first), "a disposed result traces the next transaction");
+            Assert.That(third, Is.Not.SameAs(first), "a result disposed twice is pooled once");
+            Assert.That(result, Is.InstanceOf<IReadOnlyList<ParityLikeTxTrace>>(), "the streams read it by index, without an enumerator");
+        }
     }
 
     private static ParityLikeTxTrace BuildRewardTrace() => new()

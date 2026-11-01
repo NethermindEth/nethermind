@@ -278,43 +278,128 @@ public class OrderedTraceEmitterTests
     [Test]
     public void SerializedTraces_ReusedAfterALargerTrace_HoldsOnlyItsOwnBytes()
     {
-        SerializedTraces.Pool pool = new(capacity: 1);
-        JsonWriterOptions options = new() { SkipValidation = true };
+        SerializedTraces.Pool pool = new(capacity: 1, retainedBytes: SerializedTraces.ChunkSize);
         string large = new('x', 100_000);
 
-        SerializedTraces first = pool.Rent();
-        Utf8JsonWriter writer = first.Start(options);
+        SerializedTraces first = pool.Rent(Options);
+        Utf8JsonWriter writer = first.Start(Options);
         writer.WriteStringValue(large);
         writer.Flush();
-        int largeLength = first.Written.Length;
+        long largeLength = first.Length;
         pool.Return(first);
 
-        SerializedTraces second = pool.Rent();
-        Utf8JsonWriter reused = second.Start(options);
+        SerializedTraces second = pool.Rent(Options);
+        Utf8JsonWriter reused = second.Start(Options);
         reused.WriteNumberValue(7);
         reused.WriteNumberValue(8);
         reused.Flush();
+        second.Seal();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(largeLength, Is.EqualTo(large.Length + 2), "precondition: the large trace outgrew the retained buffer");
+            Assert.That(largeLength, Is.EqualTo(large.Length + 2), "precondition: the large trace outgrew a chunk");
             Assert.That(second, Is.SameAs(first), "the instance is reused");
             Assert.That(reused, Is.SameAs(writer), "with its writer, when the options are the same");
-            Assert.That(Encoding.UTF8.GetString(second.Written), Is.EqualTo("7,8"), "a reused instance starts empty, and separates its elements as the response writer would");
+            Assert.That(Encoding.UTF8.GetString(second.Written.ToArray()), Is.EqualTo("7,8"), "a reused instance starts empty, and separates its elements as the response writer would");
         }
     }
 
-    [TestCase(0, 0, 1, 4096, TestName = "SerializedTraces_GrownSize_FirstBufferIsTheInitialSize")]
-    [TestCase(4096, 4096, 1, 8192, TestName = "SerializedTraces_GrownSize_Doubles")]
-    [TestCase(4096, 4000, 100_000, 104_000, TestName = "SerializedTraces_GrownSize_TakesTheRequiredSizeWhenLarger")]
-    [TestCase(1 << 30, 1 << 30, 1, 0x7FFFFFC7, TestName = "SerializedTraces_GrownSize_AtOneGibibyte_StopsAtTheLargestArray")]
-    [TestCase(0x7FFFFF00, 0x7FFFFF00, 1, 0x7FFFFFC7, TestName = "SerializedTraces_GrownSize_NearTheLargestArray_StopsThere")]
-    public void SerializedTraces_GrownSize_GrowsGeometricallyUpToTheLargestArray(int length, int written, int required, int expected) =>
-        Assert.That(SerializedTraces.GrownSize(length, written, required), Is.EqualTo(expected));
+    [Test]
+    public void SerializedTraces_ALargeTrace_IsHeldInChunksAndReadsBackWhole()
+    {
+        SerializedTraces.Pool pool = new(capacity: 1, retainedBytes: SerializedTraces.ChunkSize);
+        SerializedTraces serialized = pool.Rent(Options);
+        Utf8JsonWriter writer = serialized.Start(Options);
+        StringBuilder expected = new();
+        for (int i = 0; i < 20_000; i++)
+        {
+            writer.WriteNumberValue(i);
+            expected.Append(i == 0 ? "" : ",").Append(i);
+        }
+
+        writer.Flush();
+        serialized.Seal();
+        ReadOnlySequence<byte> written = serialized.Written;
+        int segments = 0;
+        bool bounded = true;
+        foreach (ReadOnlyMemory<byte> segment in written)
+        {
+            segments++;
+            bounded &= segment.Length <= SerializedTraces.ChunkSize;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(segments, Is.GreaterThan(1), "precondition: the trace spans several chunks");
+            Assert.That(bounded, Is.True, "no chunk is larger than the chunk size when no single token needs more");
+            Assert.That(Encoding.UTF8.GetString(written.ToArray()), Is.EqualTo(expected.ToString()));
+        }
+    }
 
     [Test]
-    public void SerializedTraces_GrownSize_BeyondTheLargestArray_Throws() =>
-        Assert.That(() => SerializedTraces.GrownSize(Array.MaxLength, Array.MaxLength, 1), Throws.InstanceOf<ArgumentOutOfRangeException>());
+    public void SerializedTracesPool_KeepsEveryInstance_ButChunkBytesOnlyUpToItsCap()
+    {
+        SerializedTraces.Pool pool = new(capacity: 2, retainedBytes: SerializedTraces.ChunkSize);
+        SerializedTraces first = Filled(pool);
+        SerializedTraces second = Filled(pool);
+        SerializedTraces third = Filled(pool);
+
+        pool.Return(first);
+        pool.Return(second);
+        pool.Return(third);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.RetainedBytes, Is.EqualTo(SerializedTraces.ChunkSize), "the first instance keeps its chunk");
+            Assert.That(second.RetainedBytes, Is.Zero, "the cap on kept bytes is reached, so the second keeps none");
+            Assert.That(pool.Rent(Options), Is.SameAs(second).Or.SameAs(first), "both are kept for reuse");
+            Assert.That(third.RetainedBytes, Is.Zero, "an instance past the capacity is dropped with nothing kept");
+        }
+
+        static SerializedTraces Filled(SerializedTraces.Pool pool)
+        {
+            SerializedTraces serialized = pool.Rent(Options);
+            Utf8JsonWriter writer = serialized.Start(Options);
+            writer.WriteNumberValue(1);
+            writer.Flush();
+            return serialized;
+        }
+    }
+
+    [Test]
+    public void SerializedTracesPool_RentsTheInstanceWhoseWriterHasTheOptions()
+    {
+        SerializedTraces.Pool pool = new(capacity: 2, retainedBytes: 0);
+        JsonWriterOptions deeper = new() { SkipValidation = true, MaxDepth = 32 };
+        SerializedTraces shallow = pool.Rent(Options);
+        Utf8JsonWriter shallowWriter = shallow.Start(Options);
+        SerializedTraces deep = pool.Rent(deeper);
+        deep.Start(deeper);
+        pool.Return(shallow);
+        pool.Return(deep);
+
+        SerializedTraces rented = pool.Rent(Options);
+        Utf8JsonWriter writer = rented.Start(Options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rented, Is.SameAs(shallow), "streams that serialize at different depths share the pool");
+            Assert.That(writer, Is.SameAs(shallowWriter), "and each keeps the writer it already has");
+        }
+    }
+
+    [Test]
+    public void GethLikeTraceStream_ReturnedOnAThread_IsReusedByTheNextRequestOnIt()
+    {
+        ArrayBufferWriter<byte> output = new();
+        using Utf8JsonWriter writer = new(output);
+        GethLikeTraceStream first = GethLikeTraceStream.Rent(writer, null, CancellationToken.None);
+        first.Return();
+        GethLikeTraceStream second = GethLikeTraceStream.Rent(writer, null, CancellationToken.None);
+        second.Return();
+
+        Assert.That(second, Is.SameAs(first));
+    }
 
     [Test]
     public void TraceStreamOutput_WhenCancelled_WritesNothingMore()
@@ -324,12 +409,12 @@ public class OrderedTraceEmitterTests
         using CancellationTokenSource cancellation = new();
         TraceStreamOutput stream = new(writer, null, cancellation.Token, int.MaxValue);
         writer.WriteStartArray();
-        stream.WriteSerialized("1"u8);
+        stream.WriteSerialized(new ReadOnlySequence<byte>("1"u8.ToArray()));
         cancellation.Cancel();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => stream.WriteSerialized("2"u8), Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(() => stream.WriteSerialized(new ReadOnlySequence<byte>("2"u8.ToArray())), Throws.InstanceOf<OperationCanceledException>());
             writer.Flush();
             Assert.That(Encoding.UTF8.GetString(output.WrittenSpan), Is.EqualTo("[1"));
         }
@@ -339,15 +424,19 @@ public class OrderedTraceEmitterTests
     public void TraceStreamOutput_WithElementsOfAnySize_WritesTheBytesTheWriterWouldWrite([Values] bool flushed)
     {
         string[] elements = ["small", new('l', 3 * TraceStreamOutput.ContiguousLimitBytes), "after", new('m', TraceStreamOutput.ContiguousLimitBytes)];
+        int[] numbers = new int[5_000];
+        for (int i = 0; i < numbers.Length; i++) numbers[i] = i;
 
         ArrayBufferWriter<byte> expected = new();
         using (Utf8JsonWriter direct = new(expected, new JsonWriterOptions { SkipValidation = true }))
         {
             direct.WriteStartArray();
             foreach (string element in elements) direct.WriteStringValue(element);
+            foreach (int number in numbers) direct.WriteNumberValue(number);
             direct.WriteEndArray();
         }
 
+        SerializedTraces.Pool pool = new(capacity: 1, retainedBytes: SerializedTraces.ChunkSize);
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0));
         using (Utf8JsonWriter writer = new(pipe.Writer, new JsonWriterOptions { SkipValidation = true }))
         {
@@ -355,18 +444,125 @@ public class OrderedTraceEmitterTests
             TraceStreamOutput output = new(writer, pipe.Writer, CancellationToken.None, flushed ? 1 : int.MaxValue);
             foreach (string element in elements)
             {
-                ArrayBufferWriter<byte> serialized = new();
-                using (Utf8JsonWriter alone = new(serialized, new JsonWriterOptions { SkipValidation = true })) alone.WriteStringValue(element);
-                output.WriteSerialized(serialized.WrittenSpan);
+                SerializedTraces serialized = pool.Rent(Options);
+                Utf8JsonWriter alone = serialized.Start(Options);
+                alone.WriteStringValue(element);
+                alone.Flush();
+                serialized.Seal();
+                output.WriteSerialized(serialized.Written);
+                pool.Return(serialized);
             }
+
+            SerializedTraces many = pool.Rent(Options);
+            Utf8JsonWriter several = many.Start(Options);
+            foreach (int number in numbers) several.WriteNumberValue(number);
+            several.Flush();
+            many.Seal();
+            Assert.That(many.Written.IsSingleSegment, Is.False, "precondition: one transaction's elements span several chunks");
+            output.WriteSerialized(many.Written);
+            pool.Return(many);
 
             writer.WriteEndArray();
         }
 
         pipe.Writer.Complete();
         pipe.Reader.TryRead(out ReadResult read);
-        Assert.That(read.Buffer.ToArray(), Is.EqualTo(expected.WrittenSpan.ToArray()), "a large element passes the writer by and still lands between the same separators");
+        Assert.That(read.Buffer.ToArray(), Is.EqualTo(expected.WrittenSpan.ToArray()), "chunks and large elements pass the writer by and still land between the same separators");
         pipe.Reader.AdvanceTo(read.Buffer.End);
+    }
+
+    [Test]
+    public void Emitter_WhenTheByteBudgetIsSpent_WaitsForTheWriteBeforeTakingAnotherTransaction()
+    {
+        RecordingStream stream = new(serializeAhead: true);
+        using SerializingTraceEmitter<int> emitter = new();
+        emitter.Start(stream, stream.SerializeAheadOptions!.Value, new SerializedTraces.Pool(8, SerializedTraces.ChunkSize), transactions: 4, window: 8, budgetBytes: 1);
+        Reserve(emitter, 2);
+
+        emitter.Add(1, new Traces(11, 12));
+        long pending = emitter.PendingBytes;
+        using (CancellationTokenSource blocked = new(TimeSpan.FromMilliseconds(200)))
+        {
+            Assert.Throws<OperationCanceledException>(() => emitter.Reserve(blocked.Token),
+                "with more bytes waiting than the budget, no further transaction is taken although the window has room");
+        }
+
+        emitter.Add(0, new Traces(0));
+        using CancellationTokenSource reserved = new(Timeout);
+        emitter.Reserve(reserved.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pending, Is.EqualTo("11,12".Length), "precondition: the bytes of the transaction waiting behind the first one");
+            Assert.That(emitter.PendingBytes, Is.Zero, "writing gives the bytes back");
+            Assert.That(stream.Json(), Is.EqualTo("[0,11,12]"));
+        }
+    }
+
+    [Test]
+    public void Emitter_ReusedForTheNextBlock_HasTheWindowOfThatBlock([Values] bool serializeAhead)
+    {
+        RecordingStream stream = new(serializeAhead);
+        SerializedTraces.Pool pool = new(8, SerializedTraces.ChunkSize);
+        using SerializingTraceEmitter<int> ahead = new();
+        using InTurnTraceEmitter<int> inTurn = new();
+        ParallelTraceResults<int> emitter = serializeAhead ? ahead : inTurn;
+
+        Start(window: 4);
+        Reserve(emitter, 2);
+        emitter.Add(0, new Traces(0));
+        emitter.Add(1, new Traces(1));
+        emitter.Complete();
+        emitter.Clear();
+
+        Start(window: 3);
+        Reserve(emitter, 3);
+        using CancellationTokenSource full = new(TimeSpan.FromMilliseconds(200));
+        Assert.Throws<OperationCanceledException>(() => emitter.Reserve(full.Token), "the second block has three places, not what the first left");
+        emitter.Clear();
+
+        void Start(int window)
+        {
+            if (serializeAhead) ahead.Start(stream, stream.SerializeAheadOptions!.Value, pool, transactions: 2, window, budgetBytes: long.MaxValue);
+            else inTurn.Start(stream, transactions: 2, window);
+        }
+    }
+
+    /// <summary>The emission of warm blocks allocates nothing: the slots, the window, the serialized chunks and their
+    /// writers are all reused, and the response is written through <see cref="TraceStreamOutput"/>.</summary>
+    [Test]
+    public void Emitter_ForWarmBlocks_AllocatesNothing()
+    {
+        const int transactions = 64;
+        RecordingStream stream = new(serializeAhead: true, throughOutput: true);
+        SerializedTraces.Pool pool = new(2 * transactions, 64 * SerializedTraces.ChunkSize);
+        using SerializingTraceEmitter<int> emitter = new();
+        int[][] traces = new int[transactions][];
+        for (int i = 0; i < transactions; i++) traces[i] = [i, i + 1];
+        JsonWriterOptions options = stream.SerializeAheadOptions!.Value;
+
+        for (int warm = 0; warm < 3; warm++) TraceBlock();
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int block = 0; block < 100; block++) TraceBlock();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.That(allocated, Is.Zero);
+
+        void TraceBlock()
+        {
+            stream.Restart();
+            emitter.Start(stream, options, pool, transactions, window: 8, budgetBytes: 1024 * 1024);
+            for (int i = 0; i < transactions; i++)
+            {
+                emitter.Reserve(CancellationToken.None);
+                // Out of order within the window: each odd transaction waits for the even one before it.
+                int index = i % 2 == 0 && i + 1 < transactions ? i + 1 : i % 2 == 1 ? i - 1 : i;
+                emitter.Add(index, traces[index]);
+            }
+
+            emitter.Complete();
+            emitter.Clear();
+        }
     }
 
     /// <summary>Takes the places in the window that the transactions a test adds would have taken off the cursor.</summary>
@@ -375,10 +571,21 @@ public class OrderedTraceEmitterTests
         for (int i = 0; i < transactions; i++) emitter.Reserve(CancellationToken.None);
     }
 
-    private static ParallelTraceResults<int> Create(RecordingStream stream, int transactions, int window) =>
-        stream.SerializeAheadOptions is { } options
-            ? new SerializingTraceEmitter<int>(stream, options, new SerializedTraces.Pool(window), transactions, window)
-            : new InTurnTraceEmitter<int>(stream, transactions, window);
+    private static readonly JsonWriterOptions Options = new() { SkipValidation = true, MaxDepth = 64 };
+
+    private static ParallelTraceResults<int> Create(RecordingStream stream, int transactions, int window)
+    {
+        if (stream.SerializeAheadOptions is { } options)
+        {
+            SerializingTraceEmitter<int> ahead = new();
+            ahead.Start(stream, options, new SerializedTraces.Pool(window, window * SerializedTraces.ChunkSize), transactions, window, budgetBytes: long.MaxValue);
+            return ahead;
+        }
+
+        InTurnTraceEmitter<int> inTurn = new();
+        inTurn.Start(stream, transactions, window);
+        return inTurn;
+    }
 
     private sealed class Traces(params int[] values) : List<int>(values), IDisposable
     {
@@ -395,22 +602,34 @@ public class OrderedTraceEmitterTests
     /// <summary>Writes each trace as a number into one JSON array, and counts any two writes that overlap.</summary>
     private sealed class RecordingStream : IParallelTraceStream<int>
     {
-        private readonly ArrayBufferWriter<byte> _output = new();
+        private readonly ArrayBufferWriter<byte> _output = new(1024 * 1024);
         private readonly Utf8JsonWriter _writer;
         private readonly bool _serializeAhead;
+        private readonly bool _throughOutput;
+        private TraceStreamOutput _streamOutput;
         private readonly Action<int> _beforeWrite;
         private readonly Action<int> _beforeSerialize;
         private int _writing;
         private int _overlapping;
         private int _emptyWrites;
 
-        public RecordingStream(bool serializeAhead, Action<int> beforeWrite = null, Action<int> beforeSerialize = null)
+        public RecordingStream(bool serializeAhead, Action<int> beforeWrite = null, Action<int> beforeSerialize = null, bool throughOutput = false)
         {
             _serializeAhead = serializeAhead;
             _beforeWrite = beforeWrite;
             _beforeSerialize = beforeSerialize;
+            _throughOutput = throughOutput;
             _writer = new Utf8JsonWriter(_output, new JsonWriterOptions { SkipValidation = true });
+            Restart();
+        }
+
+        /// <summary>Starts a new response in the same buffers.</summary>
+        public void Restart()
+        {
+            _output.ResetWrittenCount();
+            _writer.Reset();
             _writer.WriteStartArray();
+            _streamOutput = new TraceStreamOutput(_writer, null, CancellationToken.None, int.MaxValue);
         }
 
         public int OverlappingWrites => Volatile.Read(ref _overlapping);
@@ -423,10 +642,11 @@ public class OrderedTraceEmitterTests
         {
             try
             {
-                foreach (int trace in traces)
+                IReadOnlyList<int> list = (IReadOnlyList<int>)traces;
+                for (int i = 0; i < list.Count; i++)
                 {
-                    _beforeSerialize?.Invoke(trace);
-                    writer.WriteNumberValue(trace);
+                    _beforeSerialize?.Invoke(list[i]);
+                    writer.WriteNumberValue(list[i]);
                 }
             }
             finally
@@ -435,15 +655,16 @@ public class OrderedTraceEmitterTests
             }
         }
 
-        public void WriteSerialized(ReadOnlySpan<byte> elements)
+        public void WriteSerialized(in ReadOnlySequence<byte> elements)
         {
             Enter();
             try
             {
                 if (elements.IsEmpty) Interlocked.Increment(ref _emptyWrites);
-                Utf8Parser.TryParse(elements, out int first, out _);
+                Utf8Parser.TryParse(elements.FirstSpan, out int first, out _);
                 _beforeWrite?.Invoke(first);
-                _writer.WriteRawValue(elements, skipInputValidation: true);
+                if (_throughOutput) _streamOutput.WriteSerialized(elements);
+                else _writer.WriteRawValue(elements, skipInputValidation: true);
             }
             finally
             {
@@ -456,7 +677,8 @@ public class OrderedTraceEmitterTests
             Enter();
             try
             {
-                foreach (int trace in traces) _beforeWrite?.Invoke(trace);
+                IReadOnlyList<int> list = (IReadOnlyList<int>)traces;
+                for (int i = 0; i < list.Count; i++) _beforeWrite?.Invoke(list[i]);
                 Serialize(traces, _writer);
             }
             finally

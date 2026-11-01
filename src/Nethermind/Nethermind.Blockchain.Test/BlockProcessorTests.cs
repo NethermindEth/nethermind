@@ -48,6 +48,7 @@ using NSubstitute;
 using NUnit.Framework;
 using NUnit.Framework.Constraints;
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
@@ -805,7 +806,7 @@ public partial class BlockProcessorTests
 
         public void Serialize(IReadOnlyCollection<TTrace> traces, Utf8JsonWriter writer) => throw new NotSupportedException();
 
-        public void WriteSerialized(ReadOnlySpan<byte> elements) => throw new NotSupportedException();
+        public void WriteSerialized(in ReadOnlySequence<byte> elements) => throw new NotSupportedException();
 
         public void Write(IReadOnlyCollection<TTrace> traces)
         {
@@ -905,20 +906,22 @@ public partial class BlockProcessorTests
     public void ParallelBlockTracer_WhenWorkersCancel_PreservesThePrimaryFailure()
     {
         InvalidOperationException primary = new("state read failed");
-        Task[] tasks = [Task.FromException(new OperationCanceledException())];
-        Exception? actual = Assert.Throws<InvalidOperationException>(() => ParallelBlockTracer.Await(tasks, ExceptionDispatchInfo.Capture(primary)));
+        ExceptionDispatchInfo helper = ExceptionDispatchInfo.Capture(new OperationCanceledException());
+        Exception? actual = Assert.Throws<InvalidOperationException>(() => ParallelBlockTracer.ThrowFailure(ExceptionDispatchInfo.Capture(primary), helper));
         Assert.That(actual, Is.SameAs(primary), "worker cleanup must not replace the caller's failure");
     }
 
     [Test]
-    public void ParallelBlockTracer_WhenHelpersNeverStarted_CompletesWithTheCallersWork()
+    public void ParallelBlockTracer_WhenOnlyTheCallerWasCancelled_ReportsTheHelpersFailure()
     {
-        using CancellationTokenSource unstarted = new();
-        unstarted.Cancel();
-        Task[] tasks = [Task.CompletedTask, Task.FromCanceled(unstarted.Token)];
-        Assert.DoesNotThrow(() => ParallelBlockTracer.Await(tasks), "a helper cancelled before it started traced nothing, and the cursor was spent without it");
-        Assert.Catch<OperationCanceledException>(() => ParallelBlockTracer.Await([Task.FromCanceled(unstarted.Token), Task.FromException(new OperationCanceledException())]),
-            "a helper that ran and stopped on cancellation left its transaction untraced");
+        InvalidOperationException helper = new("state read failed");
+        Exception? actual = Assert.Throws<InvalidOperationException>(() =>
+            ParallelBlockTracer.ThrowFailure(ExceptionDispatchInfo.Capture(new OperationCanceledException()), ExceptionDispatchInfo.Capture(helper)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.SameAs(helper), "the caller stopped because a helper failed, and the helper's failure is the cause");
+            Assert.DoesNotThrow(() => ParallelBlockTracer.ThrowFailure(null, null), "a run in which nothing failed completes");
+        }
     }
 
     [Test]
@@ -1173,7 +1176,7 @@ public partial class BlockProcessorTests
         try
         {
             for (int i = 0; i < blockers.Length; i++)
-                blockers[i] = parallel.QueueWorker(() => { occupied.Signal(); releaseWorkers.Wait(); }, CancellationToken.None);
+                blockers[i] = parallel.QueueWorker(() => { occupied.Signal(); releaseWorkers.Wait(); });
             Assert.That(occupied.Wait(TimeSpan.FromSeconds(10)), Is.True);
             request = Task.Run(() =>
             {
@@ -1208,6 +1211,62 @@ public partial class BlockProcessorTests
             releaseWorkers.Set();
             await Task.WhenAll(blockers.Where(static task => task is not null));
             if (request is not null) await request;
+        }
+    }
+
+    /// <summary>Every worker thread is held by other work, so the helper the block queues cannot start: the caller
+    /// traces the whole block, abandons the helper and returns, without waiting for the held threads and without
+    /// throwing and catching anything on the way.</summary>
+    [Test]
+    public async Task ParallelBlockTracer_WhenHelpersCannotStart_FinishesOnTheCallerWithoutAnException()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance, seeds);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        IndexThroughTheCapture(chain, index, block, parent, Prague.Instance);
+        using ParallelTraceBudget budget = new(2);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
+        using CountdownEvent occupied = new(4);
+        using ManualResetEventSlim releaseWorkers = new(false);
+        Task[] blockers = new Task[4];
+        Thread? caller = null;
+        int thrown = 0;
+        EventHandler<FirstChanceExceptionEventArgs> count = (_, _) =>
+        {
+            if (Thread.CurrentThread == Volatile.Read(ref caller)) Interlocked.Increment(ref thrown);
+        };
+        try
+        {
+            for (int i = 0; i < blockers.Length; i++)
+                blockers[i] = parallel.QueueWorker(() => { occupied.Signal(); releaseWorkers.Wait(); });
+            Assert.That(occupied.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: every worker thread is held");
+
+            AppDomain.CurrentDomain.FirstChanceException += count;
+            (bool traced, int traces) = await Task.Run(() =>
+            {
+                Volatile.Write(ref caller, Thread.CurrentThread);
+                bool done = parallel.TryTrace(block, parent, (_, hash) => new ParityLikeBlockTracer(hash, ParityTraceTypes.Trace), null, CancellationToken.None,
+                    out IReadOnlyList<ParityLikeTxTrace>? result);
+                Volatile.Write(ref caller, null);
+                return (done, result?.Count ?? 0);
+            }).WaitAsync(TimeSpan.FromSeconds(10));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(traced, Is.True);
+                Assert.That(traces, Is.EqualTo(block.Transactions.Length), "the caller traced every transaction");
+                Assert.That(thrown, Is.Zero, "abandoning the helper that never started throws nothing");
+                Assert.That(releaseWorkers.IsSet, Is.False, "the block finished while the worker threads were still held");
+            }
+        }
+        finally
+        {
+            AppDomain.CurrentDomain.FirstChanceException -= count;
+            releaseWorkers.Set();
+            await Task.WhenAll(blockers.Where(static task => task is not null));
         }
     }
 

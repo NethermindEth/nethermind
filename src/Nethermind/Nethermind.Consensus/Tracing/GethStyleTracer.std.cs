@@ -486,10 +486,20 @@ public class GethStyleTracer(
                 if (parallelTracer.TryTrace(block, FindParent(block), forTransaction, afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))
                     return new GethLikeTxTraceCollection(parallel);
             }
-            else if (parallelTracer.TryStream(block, FindParent(block), forTransaction, afterTransactions: null,
-                new GethLikeTraceStream(writer, pipeWriter, cancellationToken), cancellationToken))
+            else
             {
-                return Array.Empty<GethLikeTxTrace>();
+                GethLikeTraceStream stream = GethLikeTraceStream.Rent(writer, pipeWriter, cancellationToken);
+                bool streamed;
+                try
+                {
+                    streamed = parallelTracer.TryStream(block, FindParent(block), forTransaction, afterTransactions: null, stream, cancellationToken);
+                }
+                finally
+                {
+                    stream.Return();
+                }
+
+                if (streamed) return Array.Empty<GethLikeTxTrace>();
             }
         }
 

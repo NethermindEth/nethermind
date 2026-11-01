@@ -343,7 +343,7 @@ public partial class BlockProcessorTests
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0));
         using Utf8JsonWriter writer = new(pipe.Writer, ResponseWriterOptions);
         writer.WriteStartArray();
-        FailingStream<GethLikeTxTrace> stream = new(new GethLikeTraceStream(writer, pipe.Writer, cancellation.Token), failingWrite, () =>
+        FailingStream<GethLikeTxTrace> stream = new(GethLikeTraceStream.Rent(writer, pipe.Writer, cancellation.Token), failingWrite, () =>
         {
             if (!cancel) throw new IOException("client went away");
             cancellation.Cancel();
@@ -390,7 +390,7 @@ public partial class BlockProcessorTests
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0));
         using Utf8JsonWriter writer = new(pipe.Writer, ResponseWriterOptions);
         writer.WriteStartArray();
-        IParallelTraceStream<GethLikeTxTrace> stream = new GethLikeTraceStream(writer, pipe.Writer, CancellationToken.None);
+        IParallelTraceStream<GethLikeTxTrace> stream = GethLikeTraceStream.Rent(writer, pipe.Writer, CancellationToken.None);
         if (failTheWrite) stream = new FailingStream<GethLikeTxTrace>(stream, failingWrite: 2, () => throw new IOException("client went away"));
 
         Task<bool> run = Task.Run(() => parallel.TryStream(block, parent, (state, txHash) =>
@@ -479,7 +479,7 @@ public partial class BlockProcessorTests
 
         bool StreamGeth(GethTraceOptions options)
         {
-            GethLikeTraceStream stream = new(writer, pipe.Writer, CancellationToken.None);
+            GethLikeTraceStream stream = GethLikeTraceStream.Rent(writer, pipe.Writer, CancellationToken.None);
             return parallel.TryStream(block, parent,
                 LastFirst<GethLikeTxTrace>((state, txHash) => GethStyleTracer.CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, chain.SpecProvider)),
                 afterTransactions: null, inTurn ? new InTurnStream<GethLikeTxTrace>(stream) : stream, CancellationToken.None);
@@ -511,7 +511,7 @@ public partial class BlockProcessorTests
 
         public void Serialize(IReadOnlyCollection<TTrace> traces, Utf8JsonWriter writer) => throw new NotSupportedException();
 
-        public void WriteSerialized(ReadOnlySpan<byte> elements) => throw new NotSupportedException();
+        public void WriteSerialized(in ReadOnlySequence<byte> elements) => throw new NotSupportedException();
 
         public void Write(IReadOnlyCollection<TTrace> traces) => inner.Write(traces);
     }
@@ -527,7 +527,7 @@ public partial class BlockProcessorTests
 
         public void Serialize(IReadOnlyCollection<TTrace> traces, Utf8JsonWriter writer) => inner.Serialize(traces, writer);
 
-        public void WriteSerialized(ReadOnlySpan<byte> elements)
+        public void WriteSerialized(in ReadOnlySequence<byte> elements)
         {
             int write = ++_writes;
             if (write > failingWrite) WritesAfterFailure++;

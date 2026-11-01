@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
@@ -11,6 +12,8 @@ namespace Nethermind.Consensus.Tracing;
 
 /// <summary>Where the workers of a block traced in parallel leave each transaction's traces, by its index in the
 /// block; the index after the last transaction holds the rewards.</summary>
+/// <remarks>Instances are reused from block to block: <see cref="Clear"/> ends one block, and each kind has its own
+/// call that starts the next.</remarks>
 internal abstract class ParallelTraceResults<TTrace> : IDisposable
 {
     /// <summary>Called before a worker takes its next transaction off the cursor, outside the processing permit.</summary>
@@ -28,6 +31,9 @@ internal abstract class ParallelTraceResults<TTrace> : IDisposable
     /// <summary>Releases what a failed run finished and nobody received. Called once every worker has returned.</summary>
     public abstract void DisposeUnpublished();
 
+    /// <summary>Lets go of the block, so the instance holds nothing of it while it waits for the next one.</summary>
+    public abstract void Clear();
+
     public virtual void Dispose() { }
 
     public static void DisposeTraces(IReadOnlyCollection<TTrace> traces)
@@ -38,18 +44,25 @@ internal abstract class ParallelTraceResults<TTrace> : IDisposable
 }
 
 /// <summary>Holds every transaction's traces until the block is done, for a caller that takes them all at once.</summary>
-internal sealed class CollectedTraceResults<TTrace>(int count) : ParallelTraceResults<TTrace>
+internal sealed class CollectedTraceResults<TTrace> : ParallelTraceResults<TTrace>
 {
-    private readonly IReadOnlyCollection<TTrace>?[] _results = new IReadOnlyCollection<TTrace>?[count];
+    private IReadOnlyCollection<TTrace>?[] _results = [];
+    private int _count;
+
+    public void Start(int count)
+    {
+        _results = ArrayPool<IReadOnlyCollection<TTrace>?>.Shared.Rent(count);
+        _count = count;
+    }
 
     public override void Add(int index, IReadOnlyCollection<TTrace> traces) => _results[index] = traces;
 
     public List<TTrace> Flatten()
     {
-        List<TTrace> all = new(_results.Length);
-        foreach (IReadOnlyCollection<TTrace>? result in _results)
+        List<TTrace> all = new(_count);
+        for (int i = 0; i < _count; i++)
         {
-            if (result is not null) all.AddRange(result);
+            if (_results[i] is { } result) all.AddRange(result);
         }
 
         return all;
@@ -57,7 +70,7 @@ internal sealed class CollectedTraceResults<TTrace>(int count) : ParallelTraceRe
 
     public override void DisposeUnpublished()
     {
-        for (int i = 0; i < _results.Length; i++)
+        for (int i = 0; i < _count; i++)
         {
             IReadOnlyCollection<TTrace>? result = _results[i];
             if (result is null) continue;
@@ -65,6 +78,13 @@ internal sealed class CollectedTraceResults<TTrace>(int count) : ParallelTraceRe
             _results[i] = null;
             DisposeTraces(result);
         }
+    }
+
+    public override void Clear()
+    {
+        if (_results.Length != 0) ArrayPool<IReadOnlyCollection<TTrace>?>.Shared.Return(_results, clearArray: true);
+        _results = [];
+        _count = 0;
     }
 }
 
@@ -83,16 +103,35 @@ internal sealed class CollectedTraceResults<TTrace>(int count) : ParallelTraceRe
 /// are reserved before the transactions are taken, so the oldest transaction not yet written always holds one, and
 /// the window cannot fill with transactions that wait for it.</para>
 /// </remarks>
-internal abstract class OrderedTraceEmitter<TTrace, TSlot>(int transactions, int window)
-    : ParallelTraceResults<TTrace> where TSlot : class
+internal abstract class OrderedTraceEmitter<TTrace, TSlot> : ParallelTraceResults<TTrace> where TSlot : class
 {
-    private readonly TSlot?[] _slots = new TSlot?[transactions + 1];
-    private readonly SemaphoreSlim _window = new(window, window);
+    private readonly SemaphoreSlim _window = new(0, int.MaxValue);
+    private TSlot?[] _slots = [];
+    private int _length;
+    private int _transactions;
     private int _next;
     private int _emitting;
     private bool _failed;
 
-    public override void Reserve(CancellationToken token) => _window.Wait(token);
+    /// <summary>Starts a block of <paramref name="transactions"/> with <paramref name="window"/> places.</summary>
+    protected void Start(int transactions, int window)
+    {
+        _transactions = transactions;
+        _length = transactions + 1;
+        _slots = ArrayPool<TSlot?>.Shared.Rent(_length);
+        _next = 0;
+        _failed = false;
+
+        // Every place of the last block came back unless it failed; either way no worker of it is left waiting.
+        int places = _window.CurrentCount;
+        if (places < window) _window.Release(window - places);
+        while (places-- > window) _window.Wait(0);
+    }
+
+    public override void Reserve(CancellationToken token)
+    {
+        if (!_window.Wait(0)) _window.Wait(token);
+    }
 
     public override void Unreserve() => _window.Release();
 
@@ -105,7 +144,8 @@ internal abstract class OrderedTraceEmitter<TTrace, TSlot>(int transactions, int
     /// <summary>Turns traces into what waits in a slot; runs on the worker, concurrently with the others.</summary>
     protected abstract TSlot Prepare(IReadOnlyCollection<TTrace> traces);
 
-    /// <summary>Writes a slot to the stream and lets go of it; runs while the emission is held.</summary>
+    /// <summary>Writes a slot to the stream and lets go of it, even when the write fails; runs while the emission is
+    /// held.</summary>
     protected abstract void Write(TSlot slot);
 
     /// <summary>Lets go of a slot that will never be written.</summary>
@@ -125,23 +165,23 @@ internal abstract class OrderedTraceEmitter<TTrace, TSlot>(int transactions, int
                 Interlocked.Exchange(ref _emitting, 0);
             }
 
-            if (next >= _slots.Length || Volatile.Read(ref _slots[next]) is null) return;
+            if (next >= _length || Volatile.Read(ref _slots[next]) is null) return;
         }
     }
 
     private int WriteReady()
     {
-        if (_failed) return _slots.Length;
+        if (_failed) return _length;
 
         int next = _next;
         try
         {
-            while (next < _slots.Length && Volatile.Read(ref _slots[next]) is { } slot)
+            while (next < _length && Volatile.Read(ref _slots[next]) is { } slot)
             {
                 _slots[next] = null;
                 _next = ++next;
                 Write(slot);
-                if (next <= transactions) _window.Release();
+                if (next <= _transactions) _window.Release();
             }
         }
         catch
@@ -155,9 +195,15 @@ internal abstract class OrderedTraceEmitter<TTrace, TSlot>(int transactions, int
         return next;
     }
 
+    public override void Complete()
+    {
+        if (_next < _transactions)
+            throw new InvalidOperationException($"A streamed block wrote {_next} of its {_transactions} transactions.");
+    }
+
     public override void DisposeUnpublished()
     {
-        for (int i = 0; i < _slots.Length; i++)
+        for (int i = 0; i < _length; i++)
         {
             TSlot? slot = _slots[i];
             if (slot is null) continue;
@@ -167,10 +213,13 @@ internal abstract class OrderedTraceEmitter<TTrace, TSlot>(int transactions, int
         }
     }
 
-    public override void Complete()
+    public override void Clear()
     {
-        if (_next < transactions)
-            throw new InvalidOperationException($"A streamed block wrote {_next} of its {transactions} transactions.");
+        if (_slots.Length != 0) ArrayPool<TSlot?>.Shared.Return(_slots, clearArray: true);
+        _slots = [];
+        _length = 0;
+        _transactions = 0;
+        _emitting = 0;
     }
 
     public override void Dispose() => _window.Dispose();
@@ -178,50 +227,123 @@ internal abstract class OrderedTraceEmitter<TTrace, TSlot>(int transactions, int
 
 /// <summary>Serializes each transaction's traces on the worker that traced them, so only copying the bytes into the
 /// response is left for the emission.</summary>
-internal sealed class SerializingTraceEmitter<TTrace>(
-    IParallelTraceStream<TTrace> stream, JsonWriterOptions options, SerializedTraces.Pool pool, int transactions, int window)
-    : OrderedTraceEmitter<TTrace, SerializedTraces>(transactions, window)
+/// <remarks>Besides the window, a byte budget bounds what is serialized and not yet written: a worker that finds it
+/// spent waits, before it takes another transaction, until the emission has written enough. The oldest transaction
+/// not yet written was taken already, so the wait cannot keep it from being written.</remarks>
+internal sealed class SerializingTraceEmitter<TTrace> : OrderedTraceEmitter<TTrace, SerializedTraces>
 {
+    private readonly ManualResetEventSlim _underBudget = new(true);
+    private IParallelTraceStream<TTrace>? _stream;
+    private SerializedTraces.Pool? _pool;
+    private JsonWriterOptions _options;
+    private long _budget;
+    private long _pending;
+
+    public void Start(IParallelTraceStream<TTrace> stream, JsonWriterOptions options, SerializedTraces.Pool pool, int transactions, int window, long budgetBytes)
+    {
+        _stream = stream;
+        _options = options;
+        _pool = pool;
+        _budget = budgetBytes;
+        _pending = 0;
+        _underBudget.Set();
+        Start(transactions, window);
+    }
+
+    /// <summary>The bytes serialized and not yet written.</summary>
+    internal long PendingBytes => Volatile.Read(ref _pending);
+
+    public override void Reserve(CancellationToken token)
+    {
+        while (Volatile.Read(ref _pending) > _budget)
+        {
+            _underBudget.Reset();
+            if (Volatile.Read(ref _pending) <= _budget)
+            {
+                _underBudget.Set();
+                break;
+            }
+
+            _underBudget.Wait(token);
+        }
+
+        base.Reserve(token);
+    }
+
     protected override SerializedTraces Prepare(IReadOnlyCollection<TTrace> traces)
     {
-        SerializedTraces serialized = pool.Rent();
+        SerializedTraces serialized = _pool!.Rent(_options);
         try
         {
-            Utf8JsonWriter writer = serialized.Start(options);
-            stream.Serialize(traces, writer);
+            Utf8JsonWriter writer = serialized.Start(_options);
+            _stream!.Serialize(traces, writer);
             writer.Flush();
-            return serialized;
+            serialized.Seal();
         }
         catch
         {
-            pool.Return(serialized);
+            _pool.Return(serialized);
             throw;
         }
+
+        Interlocked.Add(ref _pending, serialized.Length);
+        return serialized;
     }
 
     protected override void Write(SerializedTraces slot)
     {
         try
         {
-            if (!slot.Written.IsEmpty) stream.WriteSerialized(slot.Written);
+            if (slot.Length != 0) _stream!.WriteSerialized(slot.Written);
         }
         finally
         {
-            pool.Return(slot);
+            Release(slot);
         }
     }
 
-    protected override void Release(SerializedTraces slot) => pool.Return(slot);
+    protected override void Release(SerializedTraces slot)
+    {
+        long length = slot.Length;
+        _pool!.Return(slot);
+        if (Interlocked.Add(ref _pending, -length) <= _budget) _underBudget.Set();
+    }
+
+    public override void Clear()
+    {
+        base.Clear();
+        _stream = null;
+        _pool = null;
+    }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        _underBudget.Dispose();
+    }
 }
 
 /// <summary>Hands each transaction's traces to the stream to serialize in block order, for a stream whose output
 /// depends on what it wrote before.</summary>
-internal sealed class InTurnTraceEmitter<TTrace>(IParallelTraceStream<TTrace> stream, int transactions, int window)
-    : OrderedTraceEmitter<TTrace, IReadOnlyCollection<TTrace>>(transactions, window)
+internal sealed class InTurnTraceEmitter<TTrace> : OrderedTraceEmitter<TTrace, IReadOnlyCollection<TTrace>>
 {
+    private IParallelTraceStream<TTrace>? _stream;
+
+    public void Start(IParallelTraceStream<TTrace> stream, int transactions, int window)
+    {
+        _stream = stream;
+        Start(transactions, window);
+    }
+
     protected override IReadOnlyCollection<TTrace> Prepare(IReadOnlyCollection<TTrace> traces) => traces;
 
-    protected override void Write(IReadOnlyCollection<TTrace> slot) => stream.Write(slot);
+    protected override void Write(IReadOnlyCollection<TTrace> slot) => _stream!.Write(slot);
 
     protected override void Release(IReadOnlyCollection<TTrace> slot) => DisposeTraces(slot);
+
+    public override void Clear()
+    {
+        base.Clear();
+        _stream = null;
+    }
 }

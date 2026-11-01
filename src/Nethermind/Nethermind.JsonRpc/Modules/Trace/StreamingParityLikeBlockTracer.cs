@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text.Json;
@@ -41,7 +42,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IPar
     private readonly TxTraceFilter? _storeFilter;
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly ISpecProvider? _specProvider;
-    private readonly TraceStreamOutput _output;
+    private TraceStreamOutput _output;
 
     private ParityLikeTxTrace? _pendingRewardTrace;
     private Block? _block;
@@ -209,13 +210,13 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IPar
     {
         try
         {
-            foreach (ParityLikeTxTrace trace in traces)
+            if (traces is IReadOnlyList<ParityLikeTxTrace> list)
             {
-                _cancellationToken.ThrowIfCancellationRequested();
-                if (_mode == ParityTraceStreamMode.Replay)
-                    ParityReplayEnvelopeWriter.WriteFromTrace(writer, trace, _includeTxHash, _jsonOptions);
-                else
-                    EmitStoreItems(writer, trace);
+                for (int i = 0; i < list.Count; i++) SerializeOne(writer, list[i]);
+            }
+            else
+            {
+                foreach (ParityLikeTxTrace trace in traces) SerializeOne(writer, trace);
             }
         }
         finally
@@ -224,8 +225,17 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IPar
         }
     }
 
+    private void SerializeOne(Utf8JsonWriter writer, ParityLikeTxTrace trace)
+    {
+        _cancellationToken.ThrowIfCancellationRequested();
+        if (_mode == ParityTraceStreamMode.Replay)
+            ParityReplayEnvelopeWriter.WriteFromTrace(writer, trace, _includeTxHash, _jsonOptions);
+        else
+            EmitStoreItems(writer, trace);
+    }
+
     /// <inheritdoc />
-    public void WriteSerialized(ReadOnlySpan<byte> elements) => _output.WriteSerialized(elements);
+    public void WriteSerialized(in ReadOnlySequence<byte> elements) => _output.WriteSerialized(elements);
 
     /// <summary>Tracers for the transactions of <paramref name="block"/> when it is traced in parallel; their traces are
     /// recycled once they are serialized.</summary>

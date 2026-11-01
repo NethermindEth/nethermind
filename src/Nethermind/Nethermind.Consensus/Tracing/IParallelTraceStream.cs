@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Text.Json;
 
@@ -22,9 +22,9 @@ public interface IParallelTraceStream<TTrace>
     /// concurrently, by the worker that traced them.</summary>
     void Serialize(IReadOnlyCollection<TTrace> traces, Utf8JsonWriter writer);
 
-    /// <summary>Appends elements produced by <see cref="Serialize"/>. Called in block order by one thread at a time,
-    /// never with an empty span.</summary>
-    void WriteSerialized(ReadOnlySpan<byte> elements);
+    /// <summary>Appends elements produced by <see cref="Serialize"/>, which may span several segments. Called in block
+    /// order by one thread at a time, never with an empty sequence.</summary>
+    void WriteSerialized(in ReadOnlySequence<byte> elements);
 
     /// <summary>Serializes <paramref name="traces"/> into the response and releases them, even when it fails. Called in
     /// block order by one thread at a time, when <see cref="SerializeAheadOptions"/> is null.</summary>
