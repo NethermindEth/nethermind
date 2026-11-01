@@ -100,6 +100,7 @@ public class DebugRpcModule(
             return stateError;
         }
 
+        options = WithOpcodeStepLimit(options);
         if (CanStreamStructLogs(options))
         {
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
