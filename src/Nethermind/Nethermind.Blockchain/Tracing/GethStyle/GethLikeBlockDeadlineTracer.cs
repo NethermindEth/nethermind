@@ -32,8 +32,8 @@ internal sealed class GethLikeBlockDeadlineTracer(
     internal static IBlockTracer<GethLikeTxTrace> Wrap(
         Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> createTracer, GethTraceOptions options, CancellationToken external, bool streaming = false)
     {
-        bool supported = streaming || SupportsExecutionDeadline(options.Tracer, options.TracerConfig);
-        if (!options.EnforceExecutionDeadline || options.ParsedTimeout.Error is not null || !supported) return createTracer(options);
+        if (!options.EnforceExecutionDeadline || options.ParsedTimeout.Error is not null
+            || !streaming && !SupportsExecutionDeadline(options.Tracer, options.TracerConfig)) return createTracer(options);
         GethTraceDeadlineScope scope = new();
         GethLikeBlockDeadlineTracer tracer = new(createTracer(options with { DeadlineScope = scope }), options, external, scope);
         scope.BeforeEmission = tracer.CompleteExecution;
