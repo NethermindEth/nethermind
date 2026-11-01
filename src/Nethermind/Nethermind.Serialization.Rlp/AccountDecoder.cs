@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -344,6 +345,18 @@ namespace Nethermind.Serialization.Rlp
             if (length == UInt256Bytes) return RlpReaderExtensions.ToUInt256(item.Slice(start, UInt256Bytes));
 
             int end = start + length;
+            if (length <= sizeof(ulong) && end >= sizeof(ulong))
+            {
+                // Most balances fit in one word. One load that ends at the balance reads it; the mask drops the bytes
+                // before it, which are other fields of the item.
+                ulong word = BinaryPrimitives.ReverseEndianness(
+                    Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetReference(item), (nint)(uint)(end - sizeof(ulong)))));
+                ulong value = length == sizeof(ulong) ? word : word & ((1UL << (length * 8)) - 1);
+                return Vector256.IsHardwareAccelerated
+                    ? Unsafe.BitCast<Vector256<ulong>, UInt256>(Vector256.CreateScalar(value))
+                    : new UInt256(value);
+            }
+
             int end1 = Math.Max(end - sizeof(ulong), start);
             int end2 = Math.Max(end1 - sizeof(ulong), start);
             int end3 = Math.Max(end2 - sizeof(ulong), start);

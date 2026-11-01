@@ -49,6 +49,33 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
+        public void Decode_reads_back_every_field(
+            [Values(0UL, 1UL, 127UL, 128UL, 255UL, 256UL, ulong.MaxValue)] ulong nonce, [ValueSource(nameof(Words))] UInt256 balance, [Values] bool slim, [Values] bool hasStorageAndCode, [Values] bool trusted)
+        {
+            Account account = new(nonce, balance);
+            if (hasStorageAndCode) account = account.WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
+            AccountDecoder decoder = new(slim);
+            byte[] bytes = decoder.EncodeAsBytes(account);
+            RlpReader ctx = new(bytes);
+
+            Account decoded = decoder.Decode(ref ctx, trusted ? RlpBehaviors.TrustedInput : RlpBehaviors.None)!;
+            bool isStruct = trusted
+                ? decoder.TryDecodeStruct<OffFlag>(bytes, out AccountStruct decodedStruct)
+                : decoder.TryDecodeStruct(bytes, out decodedStruct);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.Nonce, Is.EqualTo(nonce));
+                Assert.That(decoded.Balance, Is.EqualTo(balance));
+                Assert.That(decoded.CodeHash, Is.EqualTo(account.CodeHash));
+                Assert.That(decoded.StorageRoot, Is.EqualTo(account.StorageRoot));
+                Assert.That(ctx.BytesRead, Is.EqualTo(bytes.Length));
+                Assert.That(isStruct, Is.True);
+                Assert.That(decodedStruct.Balance, Is.EqualTo(balance));
+            }
+        }
+
+        [Test]
         public void Roundtrip_test()
         {
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
