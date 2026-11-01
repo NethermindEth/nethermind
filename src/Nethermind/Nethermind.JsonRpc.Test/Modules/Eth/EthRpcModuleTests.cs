@@ -151,6 +151,20 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_config_does_not_include_debug_fields()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_config");
+        JToken result = JToken.Parse(serialized)["result"]!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["current"], Is.Not.Null);
+            Assert.That(result.SelectTokens("$..active"), Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task Eth_get_eth_feeHistory()
     {
         using Context ctx = await Context.Create();
@@ -302,19 +316,21 @@ public partial class EthRpcModuleTests
         }
     }
 
-    [TestCase(0ul, (ulong)int.MaxValue + 1, "activationTime")]
-    [TestCase((ulong)int.MaxValue + 1, null, "activationBlock")]
-    public async Task Eth_config_reports_activation_beyond_int_range(ulong blockNumber, ulong? timestamp, string property)
+    [TestCase(0ul, (ulong)long.MaxValue + 1, "activationTime", "activationBlock")]
+    [TestCase((ulong)long.MaxValue + 1, null, "activationBlock", "activationTime")]
+    public async Task Eth_config_reports_activation_beyond_int_range(ulong blockNumber, ulong? timestamp, string property, string absentProperty)
     {
         TestSpecProvider specProvider = new(Cancun.Instance) { TransitionActivations = [(ForkActivation)0, new ForkActivation(blockNumber, timestamp)] };
         using Context ctx = await Context.Create(specProvider);
 
-        JToken? activation = JToken.Parse(await ctx.Test.TestEthRpc("eth_config")).SelectToken($"result.next.{property}");
+        JToken? next = JToken.Parse(await ctx.Test.TestEthRpc("eth_config")).SelectToken("result.next");
+        JToken? activation = next?[property];
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(activation?.Type, Is.EqualTo(JTokenType.Integer));
             Assert.That(activation?.ToString(), Is.EqualTo((timestamp ?? blockNumber).ToString()));
+            Assert.That(next?[absentProperty], Is.Null);
         }
     }
 
@@ -1251,6 +1267,7 @@ public partial class EthRpcModuleTests
     [TestCase("""{"fromBlock":"0x64"}""", ErrorCodes.InvalidParams)]
     [TestCase("""{"fromBlock":"0x2","toBlock":"0x1"}""", ErrorCodes.InvalidParams)]
     [TestCase("""{"fromBlock":"safe"}""", ErrorCodes.ResourceNotFound)]
+    [TestCase("""{"blockHash":"0x00000000000000000000000000000000000000000000000000000000000000ff"}""", ErrorCodes.ResourceNotFound)]
     public async Task Eth_getFilterLogs_reports_unresolvable_range_like_eth_getLogs(string filter, int expectedErrorCode)
     {
         using Context ctx = await Context.Create();
