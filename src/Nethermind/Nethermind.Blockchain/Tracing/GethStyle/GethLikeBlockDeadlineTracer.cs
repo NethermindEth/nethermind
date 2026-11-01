@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
@@ -31,11 +32,26 @@ internal sealed class GethLikeBlockDeadlineTracer(
     internal static IBlockTracer<GethLikeTxTrace> Wrap(
         Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> createTracer, GethTraceOptions options, CancellationToken external)
     {
-        bool supported = !GethLikeNativeTracerFactory.IsNativeTracer(options.Tracer)
-            || options.Tracer is NativeCallTracer.CallTracer or NativePrestateTracer.PrestateTracer or Native4ByteTracer.FourByteTracer;
-        if (!options.EnforceExecutionDeadline || options.ParsedTimeout.Error is not null || !supported) return createTracer(options);
+        if (!options.EnforceExecutionDeadline || options.ParsedTimeout.Error is not null
+            || !SupportsExecutionDeadline(options.Tracer, options.TracerConfig)) return createTracer(options);
         GethTraceDeadlineScope scope = new();
         return new GethLikeBlockDeadlineTracer(createTracer(options with { DeadlineScope = scope }), options, external, scope);
+    }
+
+    private static bool SupportsExecutionDeadline(string tracer, JsonElement? config)
+    {
+        if (tracer != "muxTracer")
+            return !GethLikeNativeTracerFactory.IsNativeTracer(tracer)
+                || tracer is NativeCallTracer.CallTracer or NativePrestateTracer.PrestateTracer or Native4ByteTracer.FourByteTracer;
+
+        // Leave malformed configurations to the mux factory's existing error mapping.
+        if (config is not { ValueKind: JsonValueKind.Object } children) return false;
+        // Match the mux factory's last-value-wins dictionary without parsing child configurations.
+        Dictionary<string, JsonElement> effectiveChildren = [];
+        foreach (JsonProperty child in children.EnumerateObject()) effectiveChildren[child.Name] = child.Value;
+        foreach ((string name, JsonElement childConfig) in effectiveChildren)
+            if (SupportsExecutionDeadline(name, childConfig)) return true;
+        return false;
     }
 
     // A second cancellation wrapper would hide the transaction's IsCancelled from VM dispatch.

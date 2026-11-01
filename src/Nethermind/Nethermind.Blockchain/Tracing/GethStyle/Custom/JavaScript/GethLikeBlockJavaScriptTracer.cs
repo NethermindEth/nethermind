@@ -89,13 +89,18 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         _ctx.Input = tx.Data;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The base calls this once per transaction start. Skipping an ownerless prefix advances its hashed-transaction
+    /// index and appends an alignment placeholder for recovery and mux children. Filtered replay must discard and
+    /// dispose these prefix entries through <c>KeepTrace</c> before publishing results.
+    /// </remarks>
     protected override bool ShouldTraceTx(Transaction? tx)
     {
         if (tx is null || !base.ShouldTraceTx(tx)) return false;
         if (options.DeadlineScope is { Current: null })
         {
             if (tx.Hash is not null) _index++;
-            // Recovery and mux children require aligned entries until the selected-hash filter discards prefixes.
             AddTrace(new GethLikeTxTrace { TxHash = tx.Hash });
             return false;
         }
