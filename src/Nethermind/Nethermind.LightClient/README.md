@@ -474,9 +474,10 @@ fit. Submitted raw envelopes/sidecars are limited to 2 MiB; at most four such la
 requests run concurrently. Peer responses and proof nodes have separate size limits.
 The listener admits at most 64 active requests and has no authentication; keep
 it on loopback or place an authenticated gateway in front of it.
-Response budgets are per request: 64 simultaneous 16 MiB batch output buffers
-alone can retain up to 1 GiB, in addition to result objects, encoding scratch
-buffers, caches and network memory. Admission is not a global byte budget.
+Response budgets count committed UTF-8 bytes per request: 64 simultaneous
+16 MiB batch outputs can retain 1 GiB of committed output. Rented arrays and
+JSON-writer reservations can retain additional capacity, alongside result objects,
+caches and network memory. Admission is not a global byte budget.
 Each admitted request, including an entire batch, has a 90-second deadline;
 the listener returns HTTP 504 if that deadline expires before a response starts.
 The console shows each JSON-RPC method, its result, and its handling time. Batch
