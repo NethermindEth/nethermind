@@ -446,6 +446,49 @@ public class HistoryWindowPrunerTests
     }
 
     [Test]
+    public void PruneBlockMarkers_VoidsTheMatchedRootOfAPrunedMarker()
+    {
+        ValueHash256 rootBelowFloor = ValueKeccak.Compute("below"u8);
+        HistoryColumnsWriter.MarkBlockV3(_historyColumns, 11, rootBelowFloor);
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
+
+        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8); // floor = 12
+        Assert.That(_reader.IsCoveredAndRootMatches(new StateId(11, rootBelowFloor)), Is.True, "precondition: the match at block 11 is remembered");
+
+        pruner.RunOnePass(CancellationToken.None);
+        pruner.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(CountBlockMarkers(), Is.Zero, "precondition: the marker at block 11 is pruned");
+            Assert.That(_reader.IsCoveredAndRootMatches(new StateId(11, rootBelowFloor)), Is.False, "a remembered match must not outlive its marker");
+        }
+    }
+
+    [Test]
+    public void RunOnePass_FloorAdvance_RefusesARememberedBlockBelowTheNewFloor()
+    {
+        ValueHash256 root = ValueKeccak.Compute("remembered"u8);
+        HistoryColumnsWriter.MarkBlockV3(_historyColumns, 11, root);
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
+
+        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8); // floor = 12
+        Assert.That(_reader.IsAvailable(new StateId(11, root)), Is.True, "precondition: the floor and the match at block 11 are remembered");
+
+        pruner.RunOnePass(CancellationToken.None);
+        pruner.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_reader.IsBelowGlobalFloor(11), Is.True);
+            Assert.That(_reader.IsAvailable(new StateId(11, root)), Is.False, "a block below the published floor must never be served");
+            Assert.That(_reader.IsPrunedBelowFloor(11), Is.True);
+        }
+    }
+
+    [Test]
     public void RunOnePass_KeysWithLongLiveTails_DeletesExactlyTheDeadRowsAndSeeksPastEachLiveTail()
     {
         // 1. A plain and a sliced address each hold dead rows below their floor and 40 live rows above it.

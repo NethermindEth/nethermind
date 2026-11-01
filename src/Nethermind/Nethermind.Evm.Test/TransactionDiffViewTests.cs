@@ -21,59 +21,53 @@ public class TransactionDiffViewTests
     private static readonly byte[] Code = [0x60, 0x00];
     private static readonly byte[] Designator = [0xef, 0x01, 0x00, .. High.Bytes];
 
-    [Test]
-    public void TopicEvents_ExcludeSignatureTopicsAndDeduplicateEachLog()
+    private static TestCaseData[] CodeHashChanges() =>
+    [
+        new TestCaseData(Array.Empty<byte>(), Code) { TestName = "Build_CodeAppearingOnACodelessAccount_IsACodeChange" },
+        new TestCaseData(new byte[] { 0x00 }, Code) { TestName = "Build_CodeReplacingExistingCode_IsACodeChange" },
+        new TestCaseData(Array.Empty<byte>(), Designator) { TestName = "Build_DelegationInstalled_IsACodeChange" },
+        new TestCaseData(Designator, Array.Empty<byte>()) { TestName = "Build_DelegationCleared_IsACodeChange" },
+    ];
+
+    [TestCaseSource(nameof(CodeHashChanges))]
+    public void Build_EnumeratesEveryCodeHashChange(byte[] before, byte[] after)
     {
-        Hash256 topic = new(new string('f', 64));
-        Hash256 signature = new(new string('a', 64));
-        LogEntry[] logs =
-        [
-            new(Low, [], [topic]),
-            new(Mid, [], [signature, topic, signature, topic]),
-            new(High, [], [signature, topic]),
-        ];
-        TransactionDiffView view = TransactionDiffView.Build(new BlockAccessListAtIndex(), logs);
-        ValueHash256 topicValue = topic.ValueHash256;
-        ValueHash256 signatureValue = signature.ValueHash256;
-        UInt256 first = 0, second = 1, pastEnd = 2, huge = UInt256.MaxValue;
+        BlockAccessListAtIndex slice = new();
+        slice.AddCodeChange(Low, before, after);
+
+        TransactionDiffView view = TransactionDiffView.Build(slice, []);
+
+        Assert.That(view.CodeAddresses, Is.EqualTo(new[] { Low }));
+    }
+
+    [Test]
+    public void Build_CodeRestoredToItsPreTxValue_IsNotACodeChange()
+    {
+        BlockAccessListAtIndex slice = new();
+        slice.AddCodeChange(Low, Array.Empty<byte>(), Code);
+        slice.AddCodeChange(Low, Code, Array.Empty<byte>());
+
+        TransactionDiffView view = TransactionDiffView.Build(slice, []);
+
+        Assert.That(view.CodeAddresses, Is.Empty);
+    }
+
+    [TestCase(0ul, 1ul, true, TestName = "Build_NonceOfANewAccount_IsANonceChange")]
+    [TestCase(5ul, 6ul, true, TestName = "Build_IncrementedNonce_IsANonceChange")]
+    [TestCase(5ul, 5ul, false, TestName = "Build_NonceBackAtItsPreTxValue_IsNotANonceChange")]
+    public void Build_EnumeratesNetNonceChanges(ulong before, ulong after, bool listed)
+    {
+        BlockAccessListAtIndex slice = new();
+        slice.AddNonceChange(Low, before, before + 1);
+        if (after != before + 1) slice.AddNonceChange(Low, before + 1, after);
+
+        TransactionDiffView view = TransactionDiffView.Build(slice, []);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(view.TopicEventCount(in topicValue), Is.EqualTo(2));
-            Assert.That(view.TopicEventCount(in signatureValue), Is.EqualTo(1));
-            Assert.That(view.TryGetTopicEventGlobalIndex(in signatureValue, in first, out int signatureGlobal), Is.True);
-            Assert.That(signatureGlobal, Is.EqualTo(1));
-            Assert.That(view.TryGetTopicEventGlobalIndex(in topicValue, in first, out int firstGlobal), Is.True);
-            Assert.That(firstGlobal, Is.EqualTo(1));
-            Assert.That(view.TryGetTopicEventGlobalIndex(in topicValue, in second, out int secondGlobal), Is.True);
-            Assert.That(secondGlobal, Is.EqualTo(2));
-            Assert.That(view.TryGetTopicEventGlobalIndex(in topicValue, in pastEnd, out _), Is.False);
-            Assert.That(view.TryGetTopicEventGlobalIndex(in topicValue, in huge, out _), Is.False);
+            Assert.That(view.NonceAddresses, listed ? Is.EqualTo(new[] { Low }) : Is.Empty);
+            Assert.That(slice.GetAccountChanges(Low)!.PreTxNonce, Is.EqualTo(before));
         }
-    }
-
-    [TestCase(false, 1, TestName = "Code appearing on a codeless account is a deployment")]
-    [TestCase(true, 0, TestName = "Code replacing existing code is not a deployment")]
-    public void Build_EnumeratesDeploymentsByPreTxCode(bool hadCode, int expected)
-    {
-        BlockAccessListAtIndex slice = new();
-        slice.AddCodeChange(Low, hadCode ? new byte[] { 0x00 } : Array.Empty<byte>(), Code);
-
-        TransactionDiffView view = TransactionDiffView.Build(slice, []);
-
-        Assert.That(view.DeployedAddresses, Has.Length.EqualTo(expected));
-    }
-
-    // The spec excludes EIP-7702 delegation designators from contracts_deployed.
-    [Test]
-    public void Build_DelegationDesignatorOnFreshEoa_IsNotADeployment()
-    {
-        BlockAccessListAtIndex slice = new();
-        slice.AddCodeChange(Low, Array.Empty<byte>(), Designator);
-
-        TransactionDiffView view = TransactionDiffView.Build(slice, []);
-
-        Assert.That(view.DeployedAddresses, Is.Empty);
     }
 
     [Test]
@@ -88,7 +82,6 @@ public class TransactionDiffViewTests
         Assert.That(view.BalanceAddresses, Is.EqualTo(new[] { High }));
     }
 
-    // Contiguity per address is what the run lookup behind TXDIFF 0x06/0x07 relies on.
     [Test]
     public void Build_SortsSlotsByAddressThenKey()
     {
@@ -107,22 +100,8 @@ public class TransactionDiffViewTests
             new TransactionDiffView.SlotRef(Mid, 4),
             new TransactionDiffView.SlotRef(High, 2),
         }));
-        // A run past the first is what TXDIFF 0x06/0x07 misresolves if a start is ever left at zero.
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(SlotRun(view, Low), Is.EqualTo((0, 2)));
-            Assert.That(SlotRun(view, Mid), Is.EqualTo((2, 1)));
-            Assert.That(SlotRun(view, High), Is.EqualTo((3, 1)));
-        }
     }
 
-    private static (int Start, int Count) SlotRun(TransactionDiffView view, Address address)
-    {
-        Assert.That(view.TryGetSlotRun(address, out int start, out int count), Is.True);
-        return (start, count);
-    }
-
-    // TXDIFF 0x04: the EIP pins codehash_before to the empty-code hash for an undeployed contract.
     [TestCase(false, TestName = "Build_PreTxCodeHash_UndeployedContract_IsTheEmptyCodeHash")]
     [TestCase(true, TestName = "Build_PreTxCodeHash_ExistingCode_IsItsKeccak")]
     public void GetPreTxCodeHash_HashesThePreTxCode(bool hadCode)
@@ -156,62 +135,22 @@ public class TransactionDiffViewTests
         Assert.That(view.BalanceAddresses, Is.EqualTo(new[] { Low, Mid, High }));
     }
 
-    // Spec enumeration order for contracts_deployed is ascending by address.
     [Test]
-    public void Build_SortsDeployedAddressesAscending()
+    public void Build_SortsCodeAndNonceAddressesAscending()
     {
         BlockAccessListAtIndex slice = new();
-        slice.AddCodeChange(High, Array.Empty<byte>(), Code);
-        slice.AddCodeChange(Low, Array.Empty<byte>(), Code);
-        slice.AddCodeChange(Mid, Array.Empty<byte>(), Code);
+        foreach (Address address in new[] { High, Low, Mid })
+        {
+            slice.AddCodeChange(address, Array.Empty<byte>(), Code);
+            slice.AddNonceChange(address, 0, 1);
+        }
 
         TransactionDiffView view = TransactionDiffView.Build(slice, []);
 
-        Assert.That(view.DeployedAddresses, Is.EqualTo(new[] { Low, Mid, High }));
-    }
-
-    // TXDIFF 0x08/0x09: per-address event indexes stay in emission order and point back at global positions.
-    [Test]
-    public void Build_GroupsEventIndicesByAddressInEmissionOrder()
-    {
-        LogEntry[] logs = [Log(High), Log(Low), Log(High), Log(Mid), Log(High)];
-
-        TransactionDiffView view = TransactionDiffView.Build(new BlockAccessListAtIndex(), logs);
-
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(view.AddressEventCount(High), Is.EqualTo(3));
-            Assert.That(view.AddressEventCount(Low), Is.EqualTo(1));
-            Assert.That(view.AddressEventCount(Mid), Is.EqualTo(1));
-            Assert.That(GlobalIndices(view, High), Is.EqualTo(new[] { 0, 2, 4 }));
-            Assert.That(GlobalIndices(view, Low), Is.EqualTo(new[] { 1 }));
-            Assert.That(GlobalIndices(view, Mid), Is.EqualTo(new[] { 3 }));
+            Assert.That(view.CodeAddresses, Is.EqualTo(new[] { Low, Mid, High }));
+            Assert.That(view.NonceAddresses, Is.EqualTo(new[] { Low, Mid, High }));
         }
-    }
-
-    [Test]
-    public void TryGetAddressEventGlobalIndex_OutOfRangeOrUnknownAddress_IsRejected()
-    {
-        TransactionDiffView view = TransactionDiffView.Build(new BlockAccessListAtIndex(), [Log(Low)]);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(view.AddressEventCount(High), Is.Zero);
-            Assert.That(view.TryGetAddressEventGlobalIndex(High, UInt256.Zero, out _), Is.False);
-            Assert.That(view.TryGetAddressEventGlobalIndex(Low, UInt256.One, out _), Is.False);
-            Assert.That(view.TryGetAddressEventGlobalIndex(Low, UInt256.MaxValue, out _), Is.False);
-        }
-    }
-
-    private static LogEntry Log(Address address) => new(address, [], []);
-
-    private static int[] GlobalIndices(TransactionDiffView view, Address address)
-    {
-        int[] indices = new int[view.AddressEventCount(address)];
-        for (int i = 0; i < indices.Length; i++)
-        {
-            Assert.That(view.TryGetAddressEventGlobalIndex(address, (UInt256)(ulong)i, out indices[i]), Is.True);
-        }
-        return indices;
     }
 }

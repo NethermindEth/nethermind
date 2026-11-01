@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 
+# Failed master pushes share one group, so a fix starts only after the previous run has opened its PR.
+# Other runs skip every job, so each gets its own group and cannot replace a pending failed run.
+concurrency:
+  group: ${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.event == 'push' && 'flaky-test-fix' || github.run_id }}
+  cancel-in-progress: false
+
 env:
   RUNS: 20
   PROTECTED: '^(\.github|\.agents|\.claude|scripts)/|^(AGENTS|CLAUDE)\.md$|\.(props|targets|csproj|rsp)$|(^|/)(global\.json|nuget\.config)$|^\.gitmodules$|^src/(tests|bench_precompiles)$'
@@ -41,9 +47,6 @@ jobs:
     if: needs.limit.outputs.ok == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    concurrency:
-      group: flaky-test-fix
-      cancel-in-progress: false
     permissions:
       actions: read
       contents: read
