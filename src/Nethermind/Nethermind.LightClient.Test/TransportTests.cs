@@ -29,6 +29,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Config;
 using Nethermind.Db;
+using Nethermind.Evm.State;
+using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -3578,7 +3580,9 @@ public class TransportTests
         [Values("mainnet", "sepolia", "hoodi")] string network)
     {
         await using ExecutionPeerTransport transport = new(network, Nethermind.Logging.LimboLogs.Instance);
-        ISyncServer server = Services(transport).Resolve<ISyncServer>();
+        IContainer services = Services(transport);
+        ISyncServer server = services.Resolve<ISyncServer>();
+        PreBlockCaches caches = services.Resolve<MainProcessingContext>().LifetimeScope.Resolve<PreBlockCaches>();
         Hash256 expected = network switch
         {
             "mainnet" => KnownHashes.MainnetGenesis,
@@ -3596,7 +3600,13 @@ public class TransportTests
             Assert.That(server.Head.TotalDifficulty, Is.EqualTo(server.Genesis.Difficulty));
             Assert.That(server.Head.Timestamp, Is.EqualTo(server.Genesis.Timestamp));
             Assert.That(server.Head.StateRoot, Is.EqualTo(server.Genesis.StateRoot));
+            Assert.That(Capacity(caches.StateCache), Is.EqualTo(4));
+            Assert.That(Capacity(caches.StorageCache), Is.EqualTo(4));
         }
+
+        static int Capacity<TKey, TValue>(SeqlockCache<TKey, TValue> cache) where TKey : struct, IHash64bit<TKey> =>
+            ((Array)typeof(SeqlockCache<TKey, TValue>).GetField("_entries", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(cache)!).Length;
     }
 
     [Test]

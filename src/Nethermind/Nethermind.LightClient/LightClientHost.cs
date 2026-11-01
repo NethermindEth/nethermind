@@ -1,10 +1,33 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
+using DotNetty.Buffers;
+using Nethermind.Init.Steps;
+using Nethermind.Serialization.Rlp;
+
 namespace Nethermind.LightClient;
 
 internal static class LightClientHost
 {
+    internal static void ConfigureNetworkBuffers()
+    {
+        NettyMemoryEstimator.SetPageSize();
+        Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", "9");
+        Environment.SetEnvironmentVariable("io.netty.allocator.numHeapArenas", "2");
+        Environment.SetEnvironmentVariable("io.netty.allocator.numDirectArenas", "2");
+        InitializeNetworkBuffers();
+    }
+
+    /// <remarks>Keeps DotNetty static initialization after the process settings.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void InitializeNetworkBuffers()
+    {
+        NethermindBuffers.Default = PooledByteBufferAllocator.Default;
+        NethermindBuffers.RlpxAllocator = PooledByteBufferAllocator.Default;
+        NethermindBuffers.DiscoveryAllocator = PooledByteBufferAllocator.Default;
+    }
+
     internal static (int Beacon, int Quic, int Execution) ReadPorts(IConfiguration configuration)
     {
         int beacon = ReadPort("beacon-port", 9050);

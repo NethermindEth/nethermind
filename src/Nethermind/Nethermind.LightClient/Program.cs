@@ -19,6 +19,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using NLog.Config;
 using NLog.Targets;
 
+LightClientHost.ConfigureNetworkBuffers();
+
 if (Array.Exists(args, static arg => arg is "--help" or "-h"))
 {
     Console.WriteLine("Nethermind light client\n" +

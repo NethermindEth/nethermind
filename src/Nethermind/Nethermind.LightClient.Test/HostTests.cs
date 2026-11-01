@@ -5,8 +5,10 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using DotNetty.Buffers;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -16,6 +18,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 using NSubstitute;
 
 namespace Nethermind.LightClient.Test;
@@ -24,6 +27,95 @@ public class HostTests
 {
     private const string ChromeOrigin = "chrome-extension://nkbihfbeogaeaoehlefnkodbefgpgknn";
     private const string FirefoxOrigin = "moz-extension://12345678-1234-1234-1234-123456789abc";
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Network_buffers_bound_idle_pools_without_limiting_message_size(CancellationToken token)
+    {
+        const string ChildProcess = "NETHERMIND_LIGHTCLIENT_BUFFER_TEST";
+        if (Environment.GetEnvironmentVariable(ChildProcess) == "1")
+        {
+            LightClientHost.ConfigureNetworkBuffers();
+            AssertNetworkBuffers();
+            return;
+        }
+
+        ProcessStartInfo start = new(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        start.ArgumentList.Add(typeof(HostTests).Assembly.Location);
+        start.ArgumentList.Add("--filter");
+        start.ArgumentList.Add($"FullyQualifiedName~{nameof(Network_buffers_bound_idle_pools_without_limiting_message_size)}");
+        start.Environment[ChildProcess] = "1";
+        start.Environment["io.netty.allocator.maxOrder"] = "11";
+        start.Environment["io.netty.allocator.numHeapArenas"] = "8";
+        start.Environment["io.netty.allocator.numDirectArenas"] = "8";
+        using Process child = Process.Start(start)!;
+        Task<string> output = child.StandardOutput.ReadToEndAsync(token);
+        Task<string> error = child.StandardError.ReadToEndAsync(token);
+        try { await child.WaitForExitAsync(token); }
+        finally
+        {
+            if (!child.HasExited) child.Kill(entireProcessTree: true);
+            await child.WaitForExitAsync();
+        }
+        Assert.That(child.ExitCode, Is.Zero, $"{await output}\n{await error}");
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void AssertNetworkBuffers()
+    {
+        PooledByteBufferAllocator allocator = PooledByteBufferAllocator.Default;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(NethermindBuffers.Default, Is.SameAs(allocator));
+            Assert.That(NethermindBuffers.RlpxAllocator, Is.SameAs(allocator));
+            Assert.That(NethermindBuffers.DiscoveryAllocator, Is.SameAs(allocator));
+            Assert.That(allocator.Metric.HeapArenas(), Has.Count.EqualTo(2));
+            Assert.That(allocator.Metric.DirectArenas(), Has.Count.EqualTo(2));
+            Assert.That(allocator.Metric.ChunkSize, Is.EqualTo(2 * 1024 * 1024));
+        }
+
+        long HugeAllocations() => allocator.Metric.HeapArenas().Sum(static arena => arena.NumActiveHugeAllocations)
+            + allocator.Metric.DirectArenas().Sum(static arena => arena.NumActiveHugeAllocations);
+        long hugeBefore = HugeAllocations();
+        int[] lengths = [32, allocator.Metric.ChunkSize - 1, allocator.Metric.ChunkSize + 1, 16 * 1024 * 1024];
+        IByteBuffer?[] buffers = new IByteBuffer[lengths.Length];
+        try
+        {
+            for (int i = 0; i < lengths.Length; i++)
+            {
+                IByteBuffer buffer = allocator.Buffer(lengths[i], lengths[i]);
+                buffers[i] = buffer;
+                buffer.WriteZero(lengths[i]);
+                buffer.SetInt(0, 0x534e4150 + i);
+                buffer.SetByte(lengths[i] - 1, 0x80 + i);
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                for (int i = 0; i < buffers.Length; i++)
+                {
+                    Assert.That(buffers[i]!.ReadableBytes, Is.EqualTo(lengths[i]));
+                    Assert.That(buffers[i]!.GetInt(0), Is.EqualTo(0x534e4150 + i));
+                    Assert.That(buffers[i]!.GetByte(lengths[i] - 1), Is.EqualTo(0x80 + i));
+                }
+                Assert.That(HugeAllocations(), Is.EqualTo(hugeBefore + 2));
+            }
+        }
+        finally
+        {
+            foreach (IByteBuffer? buffer in buffers) buffer?.Release();
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buffers, Has.All.Property(nameof(IByteBuffer.ReferenceCount)).EqualTo(0));
+            Assert.That(HugeAllocations(), Is.EqualTo(hugeBefore));
+        }
+    }
 
     [Test]
     public void P2p_ports_preserve_defaults()

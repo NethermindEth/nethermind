@@ -1459,6 +1459,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             builder.RegisterInstance(new ProcessExitSource(stopToken)).As<IProcessExitSource>();
             builder.RegisterInstance(new EthereumJsonSerializer()).As<IJsonSerializer>();
             builder.RegisterInstance(new MemDbFactory()).As<IDbFactory>();
+            // This processing scope builds genesis; proof-backed calls use their own caches.
+            builder.RegisterInstance(new PreBlockCachesConfig { StateCacheSetsBits = 1, StorageCacheSetsBits = 1 });
             builder.RegisterInstance(transactionRelay).As<ITxPool>();
             builder.RegisterInstance(LightTxGossipPolicy.Instance).As<ITxGossipPolicySource>();
             builder.RegisterInstance(new LightSnapServer()).As<ISnapServer>();
