@@ -684,7 +684,19 @@ namespace Nethermind.Trie
                 return false;
             }
 
-            NodeRlpReader nodeRlp = new(rlp);
+            ReadOnlySpan<byte> span = rlp.AsSpan();
+            if (span.Length == FullBranchRlpLength && (uint)i < BranchesCount)
+            {
+                // The length and index checks keep the child inside the span, so the reads need no bounds checks.
+                ref byte child = ref Unsafe.Add(ref MemoryMarshal.GetReference(span), 3 + i * Rlp.LengthOfKeccakRlp);
+                if (child == NodeRlpReader.KeccakRlpPrefix && IsBranch)
+                {
+                    keccak = Unsafe.ReadUnaligned<ValueHash256>(ref Unsafe.Add(ref child, 1));
+                    return true;
+                }
+            }
+
+            NodeRlpReader nodeRlp = new(span);
             int position = SeekChildPosition(nodeRlp, i);
             if (!IsChildHashNext(nodeRlp, position))
             {

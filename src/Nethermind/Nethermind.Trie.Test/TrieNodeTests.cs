@@ -978,7 +978,35 @@ public class TrieNodeTests
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
                 Assert.That(restoredNode.GetChildHash(i), Is.EqualTo(Keccak.Compute([(byte)i])), $"child {i}");
+                Assert.That(restoredNode.GetChildHashAsValueKeccak(i, out ValueHash256 keccak), Is.True, $"has child {i}");
+                Assert.That(keccak, Is.EqualTo(Keccak.Compute([(byte)i]).ValueHash256), $"value child {i}");
             }
+        }
+    }
+
+    /// <remarks>
+    /// Fifteen hashes, one empty child and a 32-byte value also make 532 bytes, the length of a branch with sixteen
+    /// hashes, so the length alone does not tell that every child is a hash.
+    /// </remarks>
+    [Test]
+    public void Get_child_hash_reads_an_empty_child_of_a_branch_with_full_length([Values(0, 7, 15)] int emptyChild)
+    {
+        Rlp[] items = new Rlp[TrieNode.BranchesCount + 1];
+        for (int i = 0; i < TrieNode.BranchesCount; i++)
+        {
+            items[i] = i == emptyChild ? Rlp.OfEmptyByteArray : Rlp.Encode(Keccak.Compute([(byte)i]));
+        }
+
+        items[TrieNode.BranchesCount] = Rlp.Encode(Keccak.Compute("value"u8));
+        byte[] rlp = Rlp.Encode(items).Bytes;
+        TrieNode node = new(NodeType.Unknown, rlp);
+        node.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rlp, Has.Length.EqualTo(532), "RLP length");
+            Assert.That(node.GetChildHashAsValueKeccak(emptyChild, out _), Is.False, "empty child");
+            Assert.That(node.GetChildHash(emptyChild), Is.Null, "empty child hash");
         }
     }
 
