@@ -670,7 +670,7 @@ public partial class DebugRpcModuleTests
             {
                 foreach ((string child, string name, bool supported) in graphs)
                 {
-                    Dictionary<string, object> children = new();
+                    Dictionary<string, object> children = [];
                     if (child.Length != 0) children[child] = new { };
                     if (child.Length == 0 || supported)
                     {
