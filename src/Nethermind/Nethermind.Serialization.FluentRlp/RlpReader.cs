@@ -364,9 +364,18 @@ public ref struct RlpReader
 
         int start = position + 1;
         int length;
-        if (prefix > RlpPrefix.LongList)
+        if (prefix == RlpPrefix.LongList + 1 && (uint)start < (uint)buffer.Length)
         {
-            length = ReadLongListLength(ref MemoryMarshal.GetReference(buffer), buffer.Length, position, prefix, TCanonicalChecks.IsActive, out start);
+            // A one-byte length (56 to 255 bytes) is common, for example a log or a receipt, so it is read inline.
+            length = buffer[start];
+            if (TCanonicalChecks.IsActive && length <= RlpPrefix.MaxShortLength) ThrowInvalid("RLP length below 56 must use the short form");
+            start++;
+            if ((uint)(start + length) > (uint)buffer.Length) ThrowInvalid("RLP is truncated");
+        }
+        else if (prefix > RlpPrefix.LongList)
+        {
+            length = ReadLongListLength(ref MemoryMarshal.GetReference(buffer), buffer.Length, position, prefix, TCanonicalChecks.IsActive, out int longStart);
+            start = longStart;
         }
         else
         {
