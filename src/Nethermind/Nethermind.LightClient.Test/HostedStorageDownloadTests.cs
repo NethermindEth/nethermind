@@ -102,7 +102,7 @@ public class HostedStorageDownloadTests
         Account account = new(1, 2, Hash256.Zero, Keccak.OfAnEmptyString);
         using SlotsAndProofs response = new();
         Assert.That(() => HostedStorageDownload.VerifyPage(new(ValueKeccak.Zero, account), ValueKeccak.Zero, response, NullLogManager.Instance),
-            Throws.TypeOf<InvalidDataException>());
+            Throws.TypeOf<ExecutionDataUnavailableException>());
     }
 
     [Test]

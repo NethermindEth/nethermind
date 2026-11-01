@@ -4,7 +4,6 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Autofac;
-using Microsoft.Extensions.Caching.Memory;
 using Nethermind.Api;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
@@ -18,6 +17,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.Tracing;
+using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
@@ -28,11 +28,12 @@ using Nethermind.TxPool;
 namespace Nethermind.LightClient;
 
 /// <summary>Executes calls against authenticated state, fetching missing state between clean EVM attempts.</summary>
-internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvider specs, ILogManager logs) : IDisposable
+internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvider specs, ILogManager logs, TimeProvider? clock = null) : IDisposable
 {
     private const ulong GasCap = 10_000_000;
     private const int CodeCacheCapacity = 256;
-    private readonly MemoryCache _cache = new(new MemoryCacheOptions { SizeLimit = 32 * 1024 * 1024 });
+    private readonly VerifiedMemoryCache _cache = new();
+    private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly ICodeCache _codeCache = new StaticCodeCache(CodeCacheCapacity);
     private readonly IContainer _processing = new ContainerBuilder()
         .AddModule(new BlockProcessingModule(new InitConfig(), new BlocksConfig()))
@@ -49,6 +50,9 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             return new VerifiedBlockhashes(context.Head, context.Cache);
         })
         .AddScoped<ICodeCache, ILifetimeScope>(static scope => ((ExecutionState)scope.Tag).CodeCache)
+        .AddScoped<SingleCallRequestState>()
+        .BindScoped<IBlobBaseFeeOverrideProvider, SingleCallRequestState>()
+        .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
         .Build();
     private readonly SemaphoreSlim _slots = new(4);
     private readonly EthereumJsonSerializer _json = new();
@@ -61,21 +65,10 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             ? new Activity("LightClientCall").SetIdFormat(ActivityIdFormat.W3C).Start() : null;
         if (trace)
             _logger.Debug($"LC call id={diagnostic?.Id} parent={diagnostic?.ParentId} operation={(estimateGas ? "estimateGas" : "call")} block={head.BlockHash} number={head.Number} stateRoot={head.StateRoot}");
-        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(TimeSpan.FromSeconds(60));
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60), _clock);
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
         CancellationToken token = deadline.Token;
         long admissionStart = trace ? Stopwatch.GetTimestamp() : 0;
-        bool admitted = false;
-        try
-        {
-            await _slots.WaitAsync(token);
-            admitted = true;
-        }
-        finally
-        {
-            if (trace)
-                _logger.Debug($"LC call id={diagnostic?.Id} phase=admission admitted={admitted} elapsedMs={Stopwatch.GetElapsedTime(admissionStart).TotalMilliseconds:F3}");
-        }
         bool returned = false;
         try
         {
@@ -83,9 +76,12 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             returned = true;
             return result;
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new RpcException(-32002, "Execution request timed out.");
+        }
         finally
         {
-            _slots.Release();
             if (trace)
                 _logger.Debug($"LC call id={diagnostic?.Id} phase=completion outcome={(returned ? "completed" : "failed")} elapsedMs={Stopwatch.GetElapsedTime(admissionStart).TotalMilliseconds:F3}");
         }
@@ -102,21 +98,10 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             ? new Activity("LightClientCall").SetIdFormat(ActivityIdFormat.W3C).Start() : null;
         if (trace)
             _logger.Debug($"LC call id={diagnostic?.Id} parent={diagnostic?.ParentId} operation=frame-admission block={head.BlockHash} number={head.Number} stateRoot={head.StateRoot}");
-        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(TimeSpan.FromSeconds(60));
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60), _clock);
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
         CancellationToken token = deadline.Token;
         long admissionStart = trace ? Stopwatch.GetTimestamp() : 0;
-        bool admitted = false;
-        try
-        {
-            await _slots.WaitAsync(token);
-            admitted = true;
-        }
-        finally
-        {
-            if (trace)
-                _logger.Debug($"LC call id={diagnostic?.Id} phase=admission admitted={admitted} elapsedMs={Stopwatch.GetElapsedTime(admissionStart).TotalMilliseconds:F3}");
-        }
         bool returned = false;
         try
         {
@@ -126,73 +111,99 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             for (int attempt = 0; attempt < 128; attempt++)
             {
                 token.ThrowIfCancellationRequested();
-                using ILifetimeScope environment = CreateExecutionScope(head, codeCache);
-                IWorldState state = environment.Resolve<IWorldState>();
-                if (!state.TryBeginScope(header, out IDisposable? scope)) throw new RpcException(-32000, "Verified state is unavailable.");
-                using (scope)
+                MissingCallState missingState;
+                await EnterExecutionAsync(trace, token);
+                try
                 {
-                    long executionStart = trace ? Stopwatch.GetTimestamp() : 0;
-                    bool filling = false;
-                    bool completed = false;
-                    try
+                    using ILifetimeScope environment = CreateExecutionScope(head, codeCache);
+                    IWorldState state = environment.Resolve<IWorldState>();
+                    if (!state.TryBeginScope(header, out IDisposable? scope)) throw new RpcException(-32000, "Verified state is unavailable.");
+                    using (scope)
                     {
-                        if (transaction.NonceKeys is { } keys)
-                        {
-                            foreach (UInt256 key in keys)
-                                if (transaction.Nonce < KeyedNonceManager.CurrentNonceSeq(state, transaction.SenderAddress!, key))
-                                    throw new RpcException(-32003, "Frame transaction nonce is below authenticated keyed state.");
-                        }
-                        else if (transaction.Nonce < state.GetNonce(transaction.SenderAddress!))
-                            throw new RpcException(-32003, "Frame transaction nonce is below authenticated state.");
-                        ITransactionProcessor processor = environment.Resolve<ITransactionProcessor>();
-                        BlockExecutionContext context = new(contextHeader, spec);
-                        processor.SetBlockExecutionContext(in context);
-                        using FrameTxValidationTracer tracer = new(transaction.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress,
-                            state, spec, token: token, maxVerifyGas: TxPoolConfig.DefaultFrameTxMaxVerifyGas);
-                        TransactionResult result;
+                        long executionStart = trace ? Stopwatch.GetTimestamp() : 0;
+                        bool filling = false;
+                        bool completed = false;
                         try
                         {
-                            result = processor.Process(transaction, tracer,
-                                ExecutionOptions.Restore | ExecutionOptions.FrameValidationPrefixOnly);
+                            if (transaction.NonceKeys is { } keys)
+                            {
+                                foreach (UInt256 key in keys)
+                                    if (transaction.Nonce < KeyedNonceManager.CurrentNonceSeq(state, transaction.SenderAddress!, key))
+                                        throw new RpcException(-32003, "Frame transaction nonce is below authenticated keyed state.");
+                            }
+                            else if (transaction.Nonce < state.GetNonce(transaction.SenderAddress!))
+                                throw new RpcException(-32003, "Frame transaction nonce is below authenticated state.");
+                            ITransactionProcessor processor = environment.Resolve<ITransactionProcessor>();
+                            BlockExecutionContext context = new(contextHeader, spec);
+                            processor.SetBlockExecutionContext(in context);
+                            using FrameTxValidationTracer tracer = new(transaction.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress,
+                                state, spec, token: token, maxVerifyGas: TxPoolConfig.DefaultFrameTxMaxVerifyGas);
+                            TransactionResult result;
+                            try
+                            {
+                                result = processor.Process(transaction, tracer,
+                                    ExecutionOptions.Restore | ExecutionOptions.FrameValidationPrefixOnly);
+                            }
+                            catch (OperationCanceledException) when (!token.IsCancellationRequested && tracer.Violated)
+                            {
+                                throw new RpcException(-32003, tracer.ViolationReason!);
+                            }
+                            if (!result || tracer.Violated || tracer.Payer is null)
+                                throw new RpcException(-32003, tracer.ViolationReason ?? result.GetErrorMessage(null) ?? "Frame validation prefix failed.");
+                            completed = true;
+                            returned = true;
+                            return;
                         }
-                        catch (OperationCanceledException) when (!token.IsCancellationRequested && tracer.Violated)
+                        catch (MissingCallState missing)
                         {
-                            throw new RpcException(-32003, tracer.ViolationReason!);
+                            filling = true;
+                            if (trace)
+                                _logger.Debug($"LC call id={Activity.Current?.Id} phase=execution attempt={attempt + 1} outcome=missing kind={missing.Kind} elapsedMs={Stopwatch.GetElapsedTime(executionStart).TotalMilliseconds:F3}");
+                            missingState = missing;
                         }
-                        if (!result || tracer.Violated || tracer.Payer is null)
-                            throw new RpcException(-32003, tracer.ViolationReason ?? result.GetErrorMessage(null) ?? "Frame validation prefix failed.");
-                        completed = true;
-                        returned = true;
-                        return;
-                    }
-                    catch (MissingCallState missing)
-                    {
-                        filling = true;
-                        if (trace)
-                            _logger.Debug($"LC call id={Activity.Current?.Id} phase=execution attempt={attempt + 1} outcome=missing kind={missing.Kind} elapsedMs={Stopwatch.GetElapsedTime(executionStart).TotalMilliseconds:F3}");
-                        await FillAsync(head, missing, trace, token);
-                    }
-                    finally
-                    {
-                        if (trace && !filling)
-                            _logger.Debug($"LC call id={Activity.Current?.Id} phase=execution attempt={attempt + 1} outcome={(completed ? "completed" : "failed")} elapsedMs={Stopwatch.GetElapsedTime(executionStart).TotalMilliseconds:F3}");
+                        finally
+                        {
+                            if (trace && !filling)
+                                _logger.Debug($"LC call id={Activity.Current?.Id} phase=execution attempt={attempt + 1} outcome={(completed ? "completed" : "failed")} elapsedMs={Stopwatch.GetElapsedTime(executionStart).TotalMilliseconds:F3}");
+                        }
                     }
                 }
+                finally { _slots.Release(); }
+                await FillAsync(head, missingState, trace, token);
             }
             throw new RpcException(-32000, "Frame validation accessed too many distinct authenticated state items.");
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new RpcException(-32002, "Execution request timed out.");
+        }
         finally
         {
-            _slots.Release();
             if (trace)
                 _logger.Debug($"LC call id={diagnostic?.Id} phase=completion outcome={(returned ? "completed" : "failed")} elapsedMs={Stopwatch.GetElapsedTime(admissionStart).TotalMilliseconds:F3}");
+        }
+    }
+
+    private async Task EnterExecutionAsync(bool trace, CancellationToken token)
+    {
+        long started = trace ? Stopwatch.GetTimestamp() : 0;
+        bool admitted = false;
+        try
+        {
+            await _slots.WaitAsync(token);
+            admitted = true;
+        }
+        finally
+        {
+            if (trace)
+                _logger.Debug($"LC call id={Activity.Current?.Id} phase=admission admitted={admitted} elapsedMs={Stopwatch.GetElapsedTime(started).TotalMilliseconds:F3}");
         }
     }
 
     private ILifetimeScope CreateExecutionScope(VerifiedHead head, ICodeCache? codeCache = null) =>
         _processing.BeginLifetimeScope(new ExecutionState(head, _cache, codeCache ?? _codeCache));
 
-    private sealed record ExecutionState(VerifiedHead Head, MemoryCache Cache, ICodeCache CodeCache);
+    private sealed record ExecutionState(VerifiedHead Head, VerifiedMemoryCache Cache, ICodeCache CodeCache);
 
     private async Task<string> ExecuteCoreAsync(VerifiedHead head, System.Text.Json.JsonElement request, bool estimateGas, bool trace, CancellationToken token)
     {
@@ -203,6 +214,7 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             throw new RpcException(-32602, "Invalid transaction object.");
         }
         if (estimateGas && model.Gas == 0) model.Gas = null;
+        model = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(model);
         BlockHeader header = await GetHeaderAsync(head, trace, token);
         IReleaseSpec spec = specs.GetSpec(header);
         Nethermind.Core.Result<Transaction> converted = model.ToValidatedTransaction(gasCap: GasCap, spec: spec);
@@ -210,82 +222,94 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
         Transaction tx = converted.Data;
         tx.SenderAddress ??= Address.Zero;
         tx.Hash = tx.Type <= TxType.FrameTx ? null : tx.CalculateHash();
+        bool zeroBlobFee = tx.CarriesBlobs && (tx.MaxFeePerBlobGas ?? UInt256.Zero).IsZero;
+        if (zeroBlobFee) tx.MaxFeePerBlobGas = UInt256.Zero;
 
         for (int attempt = 0; attempt < 128; attempt++)
         {
             token.ThrowIfCancellationRequested();
-            using ILifetimeScope environment = CreateExecutionScope(head);
-            IWorldState state = environment.Resolve<IWorldState>();
-            if (!state.TryBeginScope(header, out IDisposable? scope)) throw new RpcException(-32000, "Verified state is unavailable.");
-            using (scope)
+            MissingCallState missingState;
+            await EnterExecutionAsync(trace, token);
+            try
             {
-                long executionStart = trace ? Stopwatch.GetTimestamp() : 0;
-                bool filling = false;
-                bool completed = false;
-                try
+                using ILifetimeScope environment = CreateExecutionScope(head);
+                if (zeroBlobFee) environment.Resolve<SingleCallRequestState>().BlobBaseFeeOverride = UInt256.Zero;
+                IWorldState state = environment.Resolve<IWorldState>();
+                if (!state.TryBeginScope(header, out IDisposable? scope)) throw new RpcException(-32000, "Verified state is unavailable.");
+                using (scope)
                 {
-                    if (tx.NonceKeys is null) tx.Nonce = state.GetNonce(tx.SenderAddress);
-                    BlockHeader callHeader = header.Clone();
-                    if (!model.ShouldSetBaseFee()) callHeader.BaseFeePerGas = 0;
-                    callHeader.IsPostMerge = true;
-                    callHeader.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(tx);
-                    ITransactionProcessor processor = environment.Resolve<ITransactionProcessor>();
-                    BlockExecutionContext context = new(callHeader, spec);
-                    if (estimateGas)
+                    long executionStart = trace ? Stopwatch.GetTimestamp() : 0;
+                    bool filling = false;
+                    bool completed = false;
+                    try
                     {
-                        GasEstimator estimator = new(processor, state);
-                        if (model is FrameTransactionForRpc { Frames: { } frames })
+                        if (tx.NonceKeys is null) tx.Nonce = state.GetNonce(tx.SenderAddress);
+                        BlockHeader callHeader = header.Clone();
+                        if (!model.ShouldSetBaseFee()) callHeader.BaseFeePerGas = 0;
+                        callHeader.IsPostMerge = true;
+                        callHeader.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(tx);
+                        ITransactionProcessor processor = environment.Resolve<ITransactionProcessor>();
+                        BlockExecutionContext context = zeroBlobFee ? new(callHeader, spec, UInt256.Zero) : new(callHeader, spec);
+                        if (estimateGas)
                         {
-                            bool[] fillExecution = new bool[frames.Length];
-                            bool[] fillState = new bool[frames.Length];
-                            bool missing = false;
-                            for (int i = 0; i < frames.Length; i++)
+                            GasEstimator estimator = new(processor, state);
+                            if (model is FrameTransactionForRpc { Frames: { } frames })
                             {
-                                fillExecution[i] = frames[i].ExecutionGas is null;
-                                fillState[i] = frames[i].StateGas is null;
-                                missing |= fillExecution[i] || fillState[i];
+                                bool[] fillExecution = new bool[frames.Length];
+                                bool[] fillState = new bool[frames.Length];
+                                bool missing = false;
+                                for (int i = 0; i < frames.Length; i++)
+                                {
+                                    fillExecution[i] = frames[i].ExecutionGas is null;
+                                    fillState[i] = frames[i].StateGas is null;
+                                    missing |= fillExecution[i] || fillState[i];
+                                }
+                                if (missing)
+                                {
+                                    Result<TxFrame[]> filled = estimator.EstimateFrameGas(tx, context, fillExecution, fillState, GasCap,
+                                        GasEstimator.DefaultErrorMargin, token, out bool reverted);
+                                    if (filled.IsError) throw new RpcException(reverted ? 3 : -32000, reverted ? "execution reverted" : filled.Error);
+                                    tx.Frames = filled.Data;
+                                    tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
+                                }
                             }
-                            if (missing)
-                            {
-                                Result<TxFrame[]> filled = estimator.EstimateFrameGas(tx, context, fillExecution, fillState, GasCap,
-                                    GasEstimator.DefaultErrorMargin, token, out bool reverted);
-                                if (filled.IsError) throw new RpcException(reverted ? 3 : -32000, filled.Error);
-                                tx.Frames = filled.Data;
-                                tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
-                            }
+                            GasEstimation estimation = estimator.Estimate(tx, in context, gasCap: GasCap, token: token);
+                            if (estimation.Reverted)
+                                throw new RpcException(3, TransactionSubstate.BuildRevertMessage(estimation.RevertData ?? [], estimation.Error),
+                                    (estimation.RevertData ?? []).ToHexString(withZeroX: true));
+                            if (estimation.Error is not null)
+                                throw new RpcException(-32000, estimation.Error);
+                            completed = true;
+                            return $"0x{estimation.Gas:x}";
                         }
-                        GasEstimation estimation = estimator.Estimate(tx, in context, gasCap: GasCap, token: token);
-                        if (estimation.Reverted)
-                            throw new RpcException(3, estimation.Error ?? "execution reverted", (estimation.RevertData ?? []).ToHexString(withZeroX: true));
-                        if (estimation.Error is not null)
-                            throw new RpcException(-32000, estimation.Error);
+                        CallOutputTracer tracer = new();
+                        TransactionResult result = processor.CallAndRestore(tx, in context, tracer.WithCancellation(token));
+                        string? error = result.GetErrorMessage(tracer.Error);
+                        if (result.EvmExceptionType == EvmExceptionType.Revert)
+                            throw new RpcException(3, TransactionSubstate.BuildRevertMessage(tracer.ReturnValue ?? [], error),
+                                (tracer.ReturnValue ?? []).ToHexString(withZeroX: true));
+                        if (error is not null)
+                            throw new RpcException(-32000, error);
+                        string output = (tracer.ReturnValue ?? []).ToHexString(withZeroX: true);
                         completed = true;
-                        return $"0x{estimation.Gas:x}";
+                        return output;
                     }
-                    CallOutputTracer tracer = new();
-                    TransactionResult result = processor.CallAndRestore(tx, in context, tracer.WithCancellation(token));
-                    string? error = result.GetErrorMessage(tracer.Error);
-                    if (result.EvmExceptionType == EvmExceptionType.Revert)
-                        throw new RpcException(3, error ?? "execution reverted", (tracer.ReturnValue ?? []).ToHexString(withZeroX: true));
-                    if (error is not null)
-                        throw new RpcException(-32000, error);
-                    string output = (tracer.ReturnValue ?? []).ToHexString(withZeroX: true);
-                    completed = true;
-                    return output;
-                }
-                catch (MissingCallState missing)
-                {
-                    filling = true;
-                    if (trace)
-                        _logger.Debug($"LC call id={Activity.Current?.Id} phase=execution attempt={attempt + 1} outcome=missing kind={missing.Kind} elapsedMs={Stopwatch.GetElapsedTime(executionStart).TotalMilliseconds:F3}");
-                    await FillAsync(head, missing, trace, token);
-                }
-                finally
-                {
-                    if (trace && !filling)
-                        _logger.Debug($"LC call id={Activity.Current?.Id} phase=execution attempt={attempt + 1} outcome={(completed ? "completed" : "failed")} elapsedMs={Stopwatch.GetElapsedTime(executionStart).TotalMilliseconds:F3}");
+                    catch (MissingCallState missing)
+                    {
+                        filling = true;
+                        if (trace)
+                            _logger.Debug($"LC call id={Activity.Current?.Id} phase=execution attempt={attempt + 1} outcome=missing kind={missing.Kind} elapsedMs={Stopwatch.GetElapsedTime(executionStart).TotalMilliseconds:F3}");
+                        missingState = missing;
+                    }
+                    finally
+                    {
+                        if (trace && !filling)
+                            _logger.Debug($"LC call id={Activity.Current?.Id} phase=execution attempt={attempt + 1} outcome={(completed ? "completed" : "failed")} elapsedMs={Stopwatch.GetElapsedTime(executionStart).TotalMilliseconds:F3}");
+                    }
                 }
             }
+            finally { _slots.Release(); }
+            await FillAsync(head, missingState, trace, token);
         }
         throw new RpcException(-32000, "Execution accessed too many distinct state items.");
     }
@@ -305,7 +329,7 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             BlockHeader header = await execution.GetHeaderAsync(head, token);
             if (header.Hash != head.BlockHash || header.Number != head.Number || header.StateRoot != head.StateRoot)
                 throw new RpcException(-32000, "Execution header does not match verified finality.");
-            _cache.Set(key, header, new MemoryCacheEntryOptions().SetSize(1024));
+            _cache.Set(key, header, 2048);
             verified = true;
             return header;
         }
@@ -326,13 +350,13 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             {
                 case MissingKind.Account:
                     Account account = await execution.GetAccountAsync(head, missing.Address!, token);
-                    _cache.Set((head.StateRoot, missing.Address!), account, new MemoryCacheEntryOptions().SetSize(256));
+                    _cache.Set((head.StateRoot, missing.Address!), account, 512);
                     break;
                 case MissingKind.Storage:
                     if (!_cache.TryGetValue((head.StateRoot, missing.Address!), out Account? owner) || owner is null)
                         throw new RpcException(-32000, "Account proof is unavailable for storage.");
                     UInt256 slot = await execution.GetStorageAsync(head, missing.Address!, owner, missing.Slot, token);
-                    _cache.Set((owner.StorageRoot, missing.Address!, missing.Slot), slot, new MemoryCacheEntryOptions().SetSize(64));
+                    _cache.Set((owner.StorageRoot, missing.Address!, missing.Slot), slot, 512);
                     break;
                 case MissingKind.Code:
                     Account? codeOwner = null;
@@ -347,11 +371,12 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
                     }
                     if (codeOwner is null) throw new RpcException(-32000, "Code hash has no authenticated account.");
                     byte[] code = await execution.GetCodeAsync(codeOwner, token);
-                    _cache.Set(missing.CodeHash, code, new MemoryCacheEntryOptions().SetSize(Math.Max(1, code.Length)));
+                    _cache.Set(missing.CodeHash, code, 256L + code.Length);
                     break;
                 case MissingKind.Blockhash:
-                    Hash256[] hashes = await execution.GetAncestorHashesAsync(head, missing.BlockNumber, token);
-                    _cache.Set((head.BlockHash, "ancestors"), (missing.BlockNumber, hashes), new MemoryCacheEntryOptions().SetSize(hashes.Length * 32L));
+                    ulong first = head.Number > 256 ? head.Number - 256 : 0;
+                    Hash256[] hashes = await execution.GetAncestorHashesAsync(head, first, token);
+                    _cache.Set((head.BlockHash, "ancestors"), (first, hashes), 256L + hashes.Length * 64L);
                     break;
             }
             filled = true;
@@ -379,10 +404,9 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
         public UInt256 Slot { get; init; }
         public ValueHash256 CodeHash { get; init; }
         public IReadOnlyList<Address>? KnownAccounts { get; init; }
-        public ulong BlockNumber { get; init; }
     }
 
-    private sealed class CallState(VerifiedHead head, MemoryCache cache) : IWorldStateScopeProvider
+    private sealed class CallState(VerifiedHead head, VerifiedMemoryCache cache) : IWorldStateScopeProvider
     {
         public bool HasRoot(BlockHeader? baseBlock) => baseBlock?.StateRoot == head.StateRoot;
         public bool HasStateForTargetBlock(BlockHeader targetBlock) => false;
@@ -397,7 +421,7 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             return scope is not null;
         }
 
-        private sealed class Scope(VerifiedHead head, MemoryCache cache) : IWorldStateScopeProvider.IScope, IWorldStateScopeProvider.ICodeDb
+        private sealed class Scope(VerifiedHead head, VerifiedMemoryCache cache) : IWorldStateScopeProvider.IScope, IWorldStateScopeProvider.ICodeDb
         {
             private readonly Dictionary<ValueHash256, byte[]> _newCode = [];
             private readonly HashSet<Address> _accounts = [];
@@ -431,7 +455,7 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             public void Dispose() { }
         }
 
-        private sealed class Storage(Address address, Hash256 root, MemoryCache cache) : IWorldStateScopeProvider.IStorageTree
+        private sealed class Storage(Address address, Hash256 root, VerifiedMemoryCache cache) : IWorldStateScopeProvider.IStorageTree
         {
             public Hash256 RootHash => root;
             public void Get(in UInt256 index, out UInt256 value)
@@ -465,7 +489,7 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
         }
     }
 
-    private sealed class VerifiedBlockhashes(VerifiedHead head, MemoryCache cache) : IBlockhashProvider
+    private sealed class VerifiedBlockhashes(VerifiedHead head, VerifiedMemoryCache cache) : IBlockhashProvider
     {
         public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)
         {
@@ -476,7 +500,7 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             if (cache.TryGetValue((head.BlockHash, "ancestors"), out (ulong First, Hash256[] Hashes) ancestors)
                 && number >= ancestors.First && number - ancestors.First < (ulong)ancestors.Hashes.Length)
                 return ancestors.Hashes[number - ancestors.First];
-            throw new MissingCallState(MissingKind.Blockhash) { BlockNumber = number };
+            throw new MissingCallState(MissingKind.Blockhash);
         }
         public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => Task.CompletedTask;
     }

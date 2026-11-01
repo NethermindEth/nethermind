@@ -39,11 +39,12 @@ internal sealed class LightClientStore
     public LightClientStore(BeaconChainSpec spec, Hash256 checkpoint, LightClientBootstrap bootstrap, ulong currentSlot)
     {
         _spec = spec;
+        Require(bootstrap.Header?.Beacon is { ParentRoot: not null, StateRoot: not null, BodyRoot: not null } beacon &&
+            SszRoots.HashTreeRoot(beacon) == checkpoint, "Bootstrap does not match the trusted checkpoint.");
         ValidateSupportedSlot(currentSlot);
         ValidateHeader(bootstrap.Header);
         LightClientHeader header = bootstrap.Header!;
         RequireLocal(header.Beacon!.Slot <= currentSlot, "Checkpoint is in the future.");
-        Require(SszRoots.HashTreeRoot(header.Beacon) == checkpoint, "Bootstrap does not match the trusted checkpoint.");
         ValidateCommittee(bootstrap.CurrentSyncCommittee);
         Require(VerifyBranch(SszRoots.HashTreeRoot(bootstrap.CurrentSyncCommittee!), bootstrap.CurrentSyncCommitteeBranch,
             header.IsGloas ? 2945 : 86, header.Beacon.StateRoot!), "Invalid current sync committee proof.");
@@ -87,6 +88,20 @@ internal sealed class LightClientStore
     internal int PreviousMaxParticipants => Volatile.Read(ref _snapshot).PreviousMaxParticipants;
 
     internal int CurrentMaxParticipants => Volatile.Read(ref _snapshot).CurrentMaxParticipants;
+    internal bool HasBestUpdate => Volatile.Read(ref _snapshot).BestUpdate is not null;
+
+    /// <summary>Compares authenticated replay state, excluding the separately persisted recovery candidate.</summary>
+    internal bool HasSameAuthenticatedState(LightClientStore other)
+    {
+        Snapshot left = Volatile.Read(ref _snapshot), right = Volatile.Read(ref other._snapshot);
+        return SszRoots.HashTreeRoot(left.Header.Beacon!) == SszRoots.HashTreeRoot(right.Header.Beacon!) &&
+            SszRoots.HashTreeRoot(left.SyncHeader.Beacon!) == SszRoots.HashTreeRoot(right.SyncHeader.Beacon!) &&
+            SszRoots.HashTreeRoot(left.OptimisticHeader.Beacon!) == SszRoots.HashTreeRoot(right.OptimisticHeader.Beacon!) &&
+            SszRoots.HashTreeRoot(left.CurrentCommittee) == SszRoots.HashTreeRoot(right.CurrentCommittee) &&
+            (left.NextCommittee is null ? right.NextCommittee is null : right.NextCommittee is not null &&
+                SszRoots.HashTreeRoot(left.NextCommittee) == SszRoots.HashTreeRoot(right.NextCommittee)) &&
+            left.PreviousMaxParticipants == right.PreviousMaxParticipants && left.CurrentMaxParticipants == right.CurrentMaxParticipants;
+    }
 
     /// <summary>A detached copy of the best signed update available for timeout recovery.</summary>
     internal LightClientUpdate? BestUpdate
@@ -164,7 +179,9 @@ internal sealed class LightClientStore
             nextCommittee = Clone(best.NextSyncCommittee!);
         }
 
-        LightClientHeader optimistic = target.Beacon.Slot > snapshot.OptimisticHeader.Beacon!.Slot
+        int safetyThreshold = Math.Max(snapshot.PreviousMaxParticipants, snapshot.CurrentMaxParticipants) / 2;
+        LightClientHeader optimistic = CountParticipants(best.SyncAggregate!) > safetyThreshold &&
+            target.Beacon.Slot > snapshot.OptimisticHeader.Beacon!.Slot
             ? CloneHeader(target) : snapshot.OptimisticHeader;
         Volatile.Write(ref _snapshot, snapshot with
         {
@@ -191,7 +208,6 @@ internal sealed class LightClientStore
         bool hasNextCommittee = HasNonzeroBranch(nextBranch);
         ulong attestedSlot = attested!.Beacon!.Slot;
         ulong finalizedSlot = hasFinality ? finalized?.Beacon?.Slot ?? 0 : 0;
-        RequireLocal(currentSlot >= signatureSlot, "Update signature slot is ahead of the local clock.");
         Require(signatureSlot > attestedSlot && attestedSlot >= finalizedSlot, "Invalid light-client update slot ordering.");
         ulong storePeriod = PeriodAtSlot(snapshot.SyncHeader.Beacon!.Slot);
         ulong signaturePeriod = PeriodAtSlot(signatureSlot);
@@ -209,11 +225,21 @@ internal sealed class LightClientStore
             "Invalid finality branch length.");
         if (hasFinality)
         {
-            ValidateHeader(finalized);
-            Require(VerifyBranch(SszRoots.HashTreeRoot(finalized!.Beacon!), finalityBranch, finalityIndex,
+            Hash256 finalizedRoot;
+            if (finalizedSlot == 0)
+            {
+                Require(IsEmptyHeader(finalized), "Genesis finality requires an empty finalized header.");
+                finalizedRoot = Hash256.Zero;
+            }
+            else
+            {
+                ValidateHeader(finalized);
+                finalizedRoot = SszRoots.HashTreeRoot(finalized!.Beacon!);
+            }
+            Require(VerifyBranch(finalizedRoot, finalityBranch, finalityIndex,
                 attested.Beacon.StateRoot!), "Invalid finality proof.");
         }
-        else Require(finalized is null || finalized.Beacon?.Slot == 0, "Unproved finalized header is present.");
+        else Require(finalized is null || IsEmptyHeader(finalized), "Unproved finalized header is present.");
 
         Require(nextBranch is null || nextBranch.Length == System.Numerics.BitOperations.Log2((uint)nextIndex),
             "Invalid next committee branch length.");
@@ -230,6 +256,7 @@ internal sealed class LightClientStore
 
         SyncCommittee signingCommittee = signaturePeriod == storePeriod ? snapshot.CurrentCommittee : snapshot.NextCommittee!;
         int participants = VerifySignature(signingCommittee, aggregate, signatureSlot, attested.Beacon);
+        RequireLocal(currentSlot >= signatureSlot, "Update signature slot is ahead of the local clock.");
         LightClientUpdate candidate = CloneUpdate(new LightClientUpdate
         {
             AttestedHeader = attested,
@@ -339,6 +366,13 @@ internal sealed class LightClientStore
             if (key != default) return false;
         return true;
     }
+
+    private static bool IsEmptyHeader(LightClientHeader? header) => header?.Beacon is
+    { Slot: 0, ProposerIndex: 0, ParentRoot: { } parent, StateRoot: { } state, BodyRoot: { } body } &&
+        parent == Hash256.Zero && state == Hash256.Zero && body == Hash256.Zero &&
+        (header.Execution is null || SszRoots.HashTreeRoot(header.Execution) == SszRoots.HashTreeRoot(new ExecutionPayloadHeader { ExtraData = [] })) &&
+        (header.ExecutionBlockHash is null || header.ExecutionBlockHash == Hash256.Zero) &&
+        !HasNonzeroBranch(header.ExecutionBranch);
 
     private static bool HasNonzeroBranch(Hash256[]? branch)
     {

@@ -54,6 +54,8 @@ internal static class HostedStorageDownload
             if (response.Proofs[i].Length is 0 or > ExecutionProofVerifier.MaxNodeBytes)
                 throw new InvalidDataException("Hosted storage range contains an invalid proof node.");
         IReadOnlyList<PathWithStorageSlot> slots = response.PathsAndSlots.Count == 0 ? [] : response.PathsAndSlots[0];
+        if (slots.Count == 0 && response.Proofs.Count == 0 && account.Account!.StorageRoot != Keccak.EmptyTreeHash)
+            throw new ExecutionDataUnavailableException("Execution peer does not have the requested storage root.");
         if (slots.Count > 131072)
             throw new InvalidDataException("Hosted storage range contains too many slots.");
         int bytes = 0;

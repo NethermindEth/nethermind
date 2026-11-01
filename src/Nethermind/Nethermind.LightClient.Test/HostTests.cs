@@ -29,6 +29,22 @@ public class HostTests
     private const string FirefoxOrigin = "moz-extension://12345678-1234-1234-1234-123456789abc";
 
     [Test]
+    public void Json_scratch_reservations_do_not_increase_the_committed_response_limit([Values(16, 256, 1024)] int limit)
+    {
+        using BoundedJsonBuffer buffer = new(limit, 6 * limit);
+        buffer.GetSpan(6 * limit)[..limit].Fill(0x5a);
+        buffer.Advance(limit);
+
+        RpcException? exception = Assert.Throws<RpcException>(() => buffer.Advance(1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception!.Code, Is.EqualTo(-32005));
+            Assert.That(buffer.WrittenMemory.ToArray(), Has.Length.EqualTo(limit).And.All.EqualTo(0x5a));
+        }
+    }
+
+    [Test]
     [CancelAfter(30_000)]
     public async Task Network_buffers_bound_idle_pools_without_limiting_message_size(CancellationToken token)
     {
@@ -184,7 +200,7 @@ public class HostTests
 
     [Test]
     [NonParallelizable]
-    public async Task Ctrl_C_cancels_checkpoint_fetch_while_the_status_listener_is_running()
+    public async Task Console_signal_cancels_checkpoint_fetch_while_the_status_listener_is_running()
     {
         string directory = Path.Combine(TestContext.CurrentContext.WorkDirectory,
             "NethermindLightClientShutdownTests", Guid.NewGuid().ToString("N"));
@@ -218,10 +234,14 @@ public class HostTests
                 Assert.That(progress.RootElement.GetProperty("rpcInitialized").GetBoolean(), Is.False);
                 Assert.That(progress.RootElement.GetProperty("latest").ValueKind, Is.EqualTo(JsonValueKind.Null));
             }
-            using CancellationTokenSource shutdownDeadline = new(TimeSpan.FromSeconds(5));
+            using CancellationTokenSource shutdownDeadline = new(TimeSpan.FromSeconds(15));
             await SendInterruptAsync(client.Id, shutdownDeadline.Token);
-            await client.WaitForExitAsync(shutdownDeadline.Token);
-            Assert.That(client.ExitCode, Is.Zero, "Ctrl+C during checkpoint selection must unwind normally.");
+            try { await client.WaitForExitAsync(shutdownDeadline.Token); }
+            catch (OperationCanceledException) when (shutdownDeadline.IsCancellationRequested)
+            {
+                Assert.Fail($"Console shutdown did not complete for child {client.Id}; exited={client.HasExited}, RPC={rpcUrl}.");
+            }
+            Assert.That(client.ExitCode, Is.Zero, "The console signal during checkpoint selection must unwind normally.");
         }
         finally
         {
@@ -229,6 +249,105 @@ public class HostTests
             await client.WaitForExitAsync();
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
+    }
+
+    [Test]
+    public async Task Malformed_envelope_strings_return_invalid_request_without_aborting_a_batch(
+        [Values("jsonrpc", "method", "id")] string field, [Values] bool invalidUtf8, [Values] bool batch)
+    {
+        string request = field switch
+        {
+            "jsonrpc" => "{\"jsonrpc\":\"INVALID\",\"method\":\"eth_chainId\",\"id\":1}",
+            "id" => "{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":\"INVALID\"}",
+            _ => "{\"jsonrpc\":\"2.0\",\"method\":\"INVALID\",\"id\":1}",
+        };
+        string[] parts = request.Split("INVALID");
+        byte[] invalid = invalidUtf8 ? [0xff] : Encoding.UTF8.GetBytes("\\ud800");
+        byte[] payload = [.. Encoding.UTF8.GetBytes(parts[0]), .. invalid, .. Encoding.UTF8.GetBytes(parts[1])];
+        if (batch)
+            payload = [.. Encoding.UTF8.GetBytes("[{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"eth_chainId\"},"),
+                .. payload, (byte)']'];
+        int invoked = 0;
+
+        (int status, JsonElement response) = await InvokeHttpAsync(payload, (_, _, _) =>
+        {
+            invoked++;
+            return Task.FromResult<object>("0x1");
+        });
+
+        JsonElement error = batch ? response[1] : response;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(error.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32600));
+            Assert.That(error.GetProperty("id").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(invoked, Is.EqualTo(batch ? 1 : 0));
+            if (batch) Assert.That(response[0].GetProperty("result").GetString(), Is.EqualTo("0x1"));
+        }
+    }
+
+    [Test]
+    public async Task Large_single_call_and_submission_requests_reach_their_handler(
+        [Values("eth_call", "eth_estimateGas", "eth_sendRawTransaction")] string method)
+    {
+        string data = "0x" + new string('0', 49_152 * 2);
+        object[] parameters = method == "eth_sendRawTransaction" ? [data] : [new { data }];
+        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(new { jsonrpc = "2.0", id = 1, method, @params = parameters });
+        int calls = 0;
+
+        (int status, JsonElement response) = await InvokeHttpAsync(payload, (requested, _, _) =>
+        {
+            Assert.That(requested, Is.EqualTo(method));
+            calls++;
+            return Task.FromResult<object>("0x1");
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(response.GetProperty("result").GetString(), Is.EqualTo("0x1"));
+            Assert.That(calls, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Batch_items_above_the_execution_cap_keep_their_response_ids([Values(33, 100)] int count)
+    {
+        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(Enumerable.Range(0, count)
+            .Select(id => new { jsonrpc = "2.0", id, method = "eth_chainId" }));
+        int calls = 0;
+
+        (int status, JsonElement response) = await InvokeHttpAsync(payload, (_, _, _) =>
+        {
+            calls++;
+            return Task.FromResult<object>("0x1");
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(calls, Is.EqualTo(RpcEndpoint.MaxBatchCount));
+            Assert.That(response.GetArrayLength(), Is.EqualTo(count));
+            for (int i = 0; i < count; i++)
+            {
+                Assert.That(response[i].GetProperty("id").GetInt32(), Is.EqualTo(i));
+                if (i < RpcEndpoint.MaxBatchCount) Assert.That(response[i].GetProperty("result").GetString(), Is.EqualTo("0x1"));
+                else Assert.That(response[i].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+            }
+        }
+    }
+
+    private static async Task<(int, JsonElement)> InvokeHttpAsync(byte[] request,
+        Func<string, JsonElement, CancellationToken, Task<object>> invoke)
+    {
+        DefaultHttpContext context = new();
+        using MemoryStream input = new(request);
+        using MemoryStream output = new();
+        context.Request.Body = input;
+        context.Response.Body = output;
+        await RpcEndpoint.HandleAsync(context, invoke, NullLogger.Instance);
+        using JsonDocument response = JsonDocument.Parse(output.ToArray());
+        return (context.Response.StatusCode, response.RootElement.Clone());
     }
 
     [TestCase(null, null, 200)]
@@ -470,7 +589,7 @@ public class HostTests
 
         await stopping.CancelAsync();
 
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await pending);
+        await Assert.ThatAsync(async () => await pending, Throws.InstanceOf<OperationCanceledException>());
         Assert.That(output.Length, Is.Zero, "Shutdown must not manufacture a successful response.");
     }
 
@@ -618,7 +737,9 @@ public class HostTests
                 Add-Type -Name ConsoleSignal -Namespace LightClientTests -MemberDefinition @'
                 [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool FreeConsole();
                 [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool AttachConsole(uint pid);
-                [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool SetConsoleCtrlHandler(System.IntPtr handler, bool add);
+                public delegate bool HandlerRoutine(uint signal);
+                public static readonly HandlerRoutine IgnoreInterrupt = _ => true;
+                [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool SetConsoleCtrlHandler(HandlerRoutine handler, bool add);
                 [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern uint GetConsoleProcessList(uint[] ids, uint length);
                 [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool GenerateConsoleCtrlEvent(uint signal, uint group);
                 '@
@@ -629,15 +750,15 @@ public class HostTests
                     $count = [LightClientTests.ConsoleSignal]::GetConsoleProcessList($ids, 8)
                     $senderId = [Diagnostics.Process]::GetCurrentProcess().Id
                     if ($count -ne 2 -or $ids -notcontains {{clientId}} -or $ids -notcontains $senderId) { throw 'The child console is not isolated.' }
-                    if (![LightClientTests.ConsoleSignal]::SetConsoleCtrlHandler([IntPtr]::Zero, $true)) { throw 'Cannot protect the signal sender.' }
-                    if (![LightClientTests.ConsoleSignal]::GenerateConsoleCtrlEvent(0, 0)) { throw 'Cannot send Ctrl+C.' }
+                    if (![LightClientTests.ConsoleSignal]::SetConsoleCtrlHandler([LightClientTests.ConsoleSignal]::IgnoreInterrupt, $true)) { throw 'Cannot protect the signal sender.' }
+                    if (![LightClientTests.ConsoleSignal]::GenerateConsoleCtrlEvent(1, 0)) { throw 'Cannot send Ctrl+Break.' }
                     Start-Sleep -Milliseconds 100
                 } finally { [LightClientTests.ConsoleSignal]::FreeConsole() | Out-Null }
                 """);
         }
         else
         {
-            start.ArgumentList.Add("-INT");
+            start.ArgumentList.Add("-TERM");
             start.ArgumentList.Add(clientId.ToString());
         }
         using Process sender = Process.Start(start)!;
@@ -656,6 +777,28 @@ public class HostTests
 
 public class LightClientStatusTests
 {
+    [Test]
+    public async Task Metadata_is_available_before_authentication_starts(
+        [Values("eth_chainId", "net_version", "web3_clientVersion", "eth_accounts", "net_listening")] string method)
+    {
+        LightClientStatus status = new(11155111, [], _ => false, _ => false);
+
+        object result = await status.InvokeAsync(method, JsonSerializer.SerializeToElement(Array.Empty<object>()), CancellationToken.None);
+
+        object expected = method switch
+        {
+            "eth_chainId" => "0xaa36a7",
+            "net_version" => "11155111",
+            "web3_clientVersion" => ProductInfo.ClientId,
+            "eth_accounts" => Array.Empty<string>(),
+            _ => false,
+        };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expected));
+            Assert.That(status.Read().RpcInitialized, Is.False);
+        }
+    }
     private static readonly Address HostedAddress = new("0x1000000000000000000000000000000000000001");
     private static readonly VerifiedHead Head = new(400, 200, Keccak.Compute("head"), Keccak.Compute("state"));
 

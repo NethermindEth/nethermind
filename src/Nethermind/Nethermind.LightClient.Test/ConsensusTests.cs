@@ -1293,7 +1293,7 @@ public class ConsensusTests
     public async Task Fresh_head_waiters_recheck_the_clock_without_repeated_repair_demand(CancellationToken token)
     {
         LightClientHeader header = PublicationHeader(180, 120);
-        RepairClock clock = new(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + 179 * Spec.SecondsPerSlot)));
+        RepairClock clock = new(DateTimeOffset.FromUnixTimeMilliseconds((long)(Spec.GenesisTime + 180 * Spec.SecondsPerSlot) * 1000 - 1500));
         ConsensusPublisher publisher = new(() => header, () => header,
             static (value, _) => Task.FromResult(ResolvedPublicationHeader(value)), static (_, _) => { }, clock);
         await publisher.PublishFinalizedAsync(token);
@@ -1302,16 +1302,15 @@ public class ConsensusTests
         Task<VerifiedHead> recovered = publisher.WaitForFreshLatestAsync(
             head => head.IsFresh(Spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds()), 10),
             () => repairs++, token);
-        await clock.WaitForTimersAsync(1);
-        Assert.That(clock.Advance(TimeSpan.FromSeconds(1)), Is.True);
-        await clock.WaitForTimersAsync(1);
+        await clock.WaitForTimersAsync(2);
+        Assert.That(clock.Advance(TimeSpan.FromMilliseconds(500)), Is.False);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(recovered.IsCompleted, Is.False, "the authenticated head is still ahead of the clock");
             Assert.That(repairs, Is.EqualTo(1), "periodic freshness checks must not flood consensus repair");
         }
 
-        Assert.That(clock.Advance(TimeSpan.FromSeconds(Spec.SecondsPerSlot - 1)), Is.True);
+        Assert.That(clock.Advance(TimeSpan.FromSeconds(1)), Is.True);
 
         Assert.That(await recovered.WaitAsync(token), Is.SameAs(published.Latest));
         using (Assert.EnterMultipleScope())
@@ -1784,6 +1783,179 @@ public class ConsensusTests
 
     private static LightClientStore Store(LightClientBootstrap bootstrap) =>
         new(Spec, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, bootstrap.Header.Beacon!.Slot);
+
+    [Test]
+    public void Bootstrap_checkpoint_binding_precedes_unsupported_slot_classification([Values] bool matchesCheckpoint)
+    {
+        LightClientBootstrap bootstrap = Bootstrap(0, 1);
+        Hash256 checkpoint = matchesCheckpoint ? SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!) : Hash(0x42);
+        BeaconChainSpec spec = Spec with { ElectraForkEpoch = 1 };
+        Assert.That(() => new LightClientStore(spec, checkpoint, bootstrap, 0),
+            matchesCheckpoint ? Throws.TypeOf<LightClientLocalStateException>() : Throws.TypeOf<InvalidDataException>());
+    }
+
+    [Test]
+    public async Task Fresh_head_wait_expires_without_publishing_or_substituting_an_old_head()
+    {
+        PublicationHarness harness = new();
+        int requests = 0;
+        Task<VerifiedHead> waiting = harness.Publisher.WaitForFreshLatestAsync(static _ => false,
+            () => requests++, CancellationToken.None);
+        await harness.Clock.WaitForTimersAsync(2);
+        Assert.That(waiting.IsCompleted, Is.False);
+        harness.Clock.Advance(TimeSpan.FromSeconds(2));
+        Assert.That(async () => await waiting, Throws.TypeOf<RpcException>().With.Property(nameof(RpcException.Code)).EqualTo(-32001));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requests, Is.EqualTo(1));
+            Assert.That(harness.Publisher.Heads.Latest, Is.Null);
+            Assert.That(harness.Publisher.Heads.Finalized, Is.Null);
+            Assert.That(harness.Clock.ActiveTimers, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Genesis_finality_authenticates_the_zero_root([Values] bool malformed, [Values] bool gloas)
+    {
+        BeaconChainSpec spec = gloas ? Spec with { GloasForkEpoch = 1 } : Spec;
+        LightClientBootstrap bootstrap = Bootstrap(0, 1);
+        LightClientStore store = new(spec, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, 0);
+        ulong attestedSlot = gloas ? 33UL : 17UL;
+        LightClientUpdate update = gloas ? GloasUpdate(0, attestedSlot, attestedSlot + 1, 1, spec, nextKey: 2)
+            : Update(0, attestedSlot, attestedSlot + 1, 1, nextKey: 2);
+        update.FinalizedHeader = new()
+        {
+            Beacon = new BeaconBlockHeader { ParentRoot = Hash256.Zero, StateRoot = malformed ? Hash(0x42) : Hash256.Zero, BodyRoot = Hash256.Zero },
+            Execution = gloas ? null : new ExecutionPayloadHeader { ExtraData = [] },
+            ExecutionBlockHash = gloas ? Hash256.Zero : null,
+            ExecutionBranch = Enumerable.Repeat(Hash256.Zero, gloas ? 11 : 4).ToArray(),
+            IsGloas = gloas,
+        };
+        int finalityIndex = gloas ? 735 : 169, committeeIndex = gloas ? 2946 : 87;
+        Hash256[] tree = Tree(new Dictionary<int, Hash256> { [finalityIndex] = Hash256.Zero, [committeeIndex] = SszRoots.HashTreeRoot(update.NextSyncCommittee!) });
+        update.AttestedHeader!.Beacon!.StateRoot = tree[1];
+        update.FinalityBranch = Branch(tree, finalityIndex);
+        update.NextSyncCommitteeBranch = Branch(tree, committeeIndex);
+        Sign(update, 1, 342, spec);
+
+        if (malformed) Assert.That(() => store.Process(update, attestedSlot + 1), Throws.TypeOf<InvalidDataException>());
+        else store.Process(update, attestedSlot + 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.NextSyncCommitteeKnown, Is.EqualTo(!malformed));
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(malformed ? 0 : attestedSlot));
+        }
+    }
+
+    [Test]
+    public void Forced_progress_keeps_latest_below_the_participation_safety_threshold()
+    {
+        LightClientStore store = Store(Bootstrap(1, 1));
+        store.Process(Update(2, 3, 4, 1), 4);
+        store.Process(Update(19, 20, 21, 1, participants: 100), 21);
+
+        Assert.That(store.ForceUpdate(8195), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(3));
+            Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void Signed_finalized_header_after_attestation_is_rejected()
+    {
+        LightClientStore store = Store(Bootstrap(1, 1));
+        LightClientUpdate update = Update(4, 3, 5, 1);
+        Assert.That(() => store.Process(update, 5), Throws.TypeOf<InvalidDataException>());
+        Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void An_unproved_nonempty_finalized_header_is_rejected_even_at_slot_zero()
+    {
+        LightClientStore store = Store(Bootstrap(1, 1));
+        LightClientUpdate update = Update(0, 2, 3, 1);
+        update.FinalityBranch = Enumerable.Repeat(Hash256.Zero, 7).ToArray();
+        Assert.That(() => store.Process(update, 3), Throws.TypeOf<InvalidDataException>());
+    }
+
+    [Test]
+    public void An_authenticated_next_committee_cannot_be_replaced_by_another_valid_proof()
+    {
+        LightClientStore store = Store(Bootstrap(1, 1));
+        store.Process(Update(1, 2, 3, 1, nextKey: 2), 3);
+        LightClientUpdate conflict = Update(1, 3, 4, 1, nextKey: 3);
+        Assert.That(() => store.Process(conflict, 4), Throws.TypeOf<InvalidDataException>());
+    }
+
+    [Test]
+    public void Public_keys_with_torsion_or_an_infinity_sum_are_rejected([Values] bool aggregateInfinity)
+    {
+        LightClientBootstrap bootstrap = Bootstrap(1, 1);
+        if (aggregateInfinity)
+        {
+            byte[] negative = bootstrap.CurrentSyncCommittee!.Pubkeys![0].Bytes.ToArray();
+            negative[0] ^= 0x20;
+            bootstrap.CurrentSyncCommittee.Pubkeys[1] = new BlsPublicKey(negative);
+        }
+        else
+        {
+            byte[] x = new byte[48], y = new byte[48];
+            y[^1] = 2;
+            Bls.P1Affine torsion = new(new long[Bls.P1Affine.Sz]);
+            torsion.Decode(x, y);
+            Assert.That(torsion.OnCurve(), Is.True);
+            Assert.That(torsion.InGroup(), Is.False);
+            Bls.P1 mixed = new(Key(1));
+            mixed.Add(torsion);
+            byte[] encoded = mixed.Compress();
+            Bls.P1Affine decoded = new(new long[Bls.P1Affine.Sz]);
+            Assert.That(decoded.TryDecode(encoded, out _), Is.True);
+            Assert.That(decoded.IsInf(), Is.False);
+            Assert.That(decoded.InGroup(), Is.False);
+            bootstrap.CurrentSyncCommittee!.Pubkeys![0] = new BlsPublicKey(encoded);
+        }
+        Hash256[] tree = Tree(new Dictionary<int, Hash256> { [86] = SszRoots.HashTreeRoot(bootstrap.CurrentSyncCommittee!) });
+        bootstrap.Header!.Beacon!.StateRoot = tree[1];
+        bootstrap.CurrentSyncCommitteeBranch = Branch(tree, 86);
+        LightClientStore store = Store(bootstrap);
+        LightClientUpdate update = Update(2, 3, 4, 1, participants: aggregateInfinity ? 2 : 1);
+        if (aggregateInfinity)
+        {
+            byte[] infinity = new byte[96];
+            infinity[0] = 0xc0;
+            update.SyncAggregate!.SyncCommitteeSignature = new BlsSignature(infinity);
+        }
+        Assert.That(() => store.Process(update, 4), Throws.TypeOf<InvalidDataException>());
+        Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void A_supermajority_ranks_above_an_update_with_committee_data()
+    {
+        LightClientStore store = Store(Bootstrap(1, 1));
+        LightClientUpdate weak = Update(1, 2, 3, 1, participants: 341, nextKey: 2);
+        weak.FinalizedHeader = null;
+        weak.FinalityBranch = null;
+        store.Process(weak, 4);
+        LightClientUpdate strong = Update(1, 3, 4, 1);
+        strong.FinalizedHeader = null;
+        strong.FinalityBranch = null;
+        store.Process(strong, 4);
+        Assert.That(store.BestUpdate!.SignatureSlot, Is.EqualTo(4));
+    }
+
+    [Test]
+    public void A_relevant_next_committee_ranks_before_the_older_slot_tie_break()
+    {
+        LightClientStore store = Store(Bootstrap(8188, 1));
+        store.Process(Update(8188, 8188, 8189, 1, nextKey: 2), 8193);
+        store.Process(Update(8188, 8191, 8192, 2, participants: 100, nextKey: 2), 8193);
+        store.Process(Update(8188, 8192, 8193, 2, participants: 100, nextKey: 3), 8193);
+        Assert.That(store.BestUpdate!.AttestedHeader!.Beacon!.Slot, Is.EqualTo(8192));
+    }
 
     internal static LightClientBootstrap Bootstrap(ulong slot, byte key)
     {

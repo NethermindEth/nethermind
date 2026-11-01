@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Net;
 using System.Net.Quic;
 using System.Text;
@@ -96,8 +97,13 @@ public sealed class BeaconP2P : IAsyncDisposable
         GossipMessageValidator? messageValidator = null,
         SlotClock? clock = null,
         Lazy<IBeaconSyncPeerPool>? peerPool = null,
-        Action<PubsubRouter, PubsubSettings>? configureGossip = null)
+        Action<PubsubRouter, PubsubSettings>? configureGossip = null,
+        bool lightClientRequests = false)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(config.QuicPort, nameof(IBeaconChainConfig.QuicPort));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(config.QuicPort, ushort.MaxValue, nameof(IBeaconChainConfig.QuicPort));
+        if (config.QuicPort != 0 && config.QuicPort == config.Discv5Port)
+            throw new ArgumentException("QUIC and discovery require different UDP ports.", nameof(IBeaconChainConfig.QuicPort));
         ArgumentOutOfRangeException.ThrowIfLessThan(config.GossipMaxPendingValidations, 1, nameof(IBeaconChainConfig.GossipMaxPendingValidations));
         ArgumentOutOfRangeException.ThrowIfLessThan(config.GossipMaxPendingValidationBytes, 1, nameof(IBeaconChainConfig.GossipMaxPendingValidationBytes));
         _config = config;
@@ -131,16 +137,17 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddLibp2p(builder =>
             {
                 if (config.QuicPort > 0) builder.WithQuic();
+                if (lightClientRequests)
+                    builder.AddProtocol<LightClientBootstrapProtocol>(isExposed: false)
+                        .AddProtocol<LightClientUpdatesByRangeProtocol>(isExposed: false)
+                        .AddProtocol<LightClientFinalityUpdateProtocol>(isExposed: false)
+                        .AddProtocol<LightClientOptimisticUpdateProtocol>(isExposed: false);
                 return builder.WithPubsub()
                 .AddProtocol<StatusProtocolV1>()
                 .AddProtocol<StatusProtocolV2>()
                 .AddProtocol<GoodbyeProtocol>()
                 .AddProtocol<Eth2PingProtocol>()
                 .AddProtocol<MetaDataProtocolV3>()
-                .AddProtocol<LightClientBootstrapProtocol>(isExposed: false)
-                .AddProtocol<LightClientUpdatesByRangeProtocol>(isExposed: false)
-                .AddProtocol<LightClientFinalityUpdateProtocol>(isExposed: false)
-                .AddProtocol<LightClientOptimisticUpdateProtocol>(isExposed: false)
                 .AddProtocol<BeaconBlocksByRangeProtocolV2>()
                 .AddProtocol<BeaconBlocksByRootProtocolV2>()
                 .AddProtocol<BeaconBlocksByHeadProtocolV1>()
@@ -568,7 +575,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             return await ExchangeAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(session, () => Tracked(timing, CopyOf(_statusSource.CurrentStatus)), cts, token, timing);
         }
         catch (Exception e) when (!token.IsCancellationRequested && (IsExchangeFailure(e) || e is TimeoutException or OperationCanceledException
-            || e is ChannelClosedException && !session.Closed.IsCancellationRequested))
+            || e is EndOfStreamException && !session.Closed.IsCancellationRequested))
         {
             if (_logger.IsTrace) _logger.Trace($"Status v2 with {session.RemoteAddress} failed ({e.Message}), falling back to v1");
             timing?.Restart();
@@ -787,7 +794,12 @@ public sealed class BeaconP2P : IAsyncDisposable
             return new PeerSessionClosedException($"peer disconnected {after}{waitingFor}: its libp2p session closed", e);
         }
 
-        if ((e as AggregateException)?.Flatten().InnerException is TimeoutException protocolBound)
+        Exception cause = (e as AggregateException)?.Flatten().InnerException ?? e;
+        if (cause is ChannelClosedException)
+            return new EndOfStreamException($"peer closed the request stream {after}{waitingFor} while its session remained open", e);
+        if (cause is EndOfStreamException) return cause;
+
+        if (cause is TimeoutException protocolBound)
         {
             return protocolBound;
         }

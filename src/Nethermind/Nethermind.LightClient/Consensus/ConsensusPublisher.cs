@@ -24,18 +24,27 @@ internal sealed class ConsensusPublisher(
     internal async Task<VerifiedHead> WaitForFreshLatestAsync(Func<VerifiedHead, bool> isFresh,
         Action requestRepair, CancellationToken cancellationToken)
     {
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2), clock);
+        using CancellationTokenSource wait = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, cancellationToken);
         PublishedHeads? requested = null;
-        while (true)
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            PublishedHeads observed = Heads;
-            if (observed.Latest is { } latest && isFresh(latest)) return latest;
-            if (!ReferenceEquals(requested, observed))
+            while (true)
             {
-                requestRepair();
-                requested = observed;
+                wait.Token.ThrowIfCancellationRequested();
+                PublishedHeads observed = Heads;
+                if (observed.Latest is { } latest && isFresh(latest)) return latest;
+                if (!ReferenceEquals(requested, observed))
+                {
+                    requestRepair();
+                    requested = observed;
+                }
+                await WaitForChangeOrTickAsync(observed, wait.Token);
             }
-            await WaitForChangeOrTickAsync(observed, cancellationToken);
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new RpcException(-32001, "A fresh authenticated optimistic execution head is unavailable; retry after consensus sync.");
         }
     }
 

@@ -11,12 +11,21 @@ and post-process it to XML.
 
 `kohaku-wallet.py` records real Sepolia wallet requests through a local HTTP proxy,
 including RPC errors, and replays the captured requests sequentially. It runs
-transfer, Railgun shield and balance commands as dry runs, blocks transaction
-submission, and keeps wallet copies and logs in ignored repository directories.
+transfer, Railgun shield and balance commands and blocks transaction-submission
+methods only when they pass through the recording proxy. It does not audit or
+restrict the CLI's other relayer, fallback RPC or outbound paths, so this is not
+a guarantee that the CLI cannot broadcast. Use disposable testnet wallets and
+credentials. Wallet copies and logs stay in ignored repository directories.
 The default CLI installation, encrypted wallet and credential runbook are the
 local wallet lab under `C:/base/projects/blank/fv-lc-reseach/tools`; paths can be
 overridden on the command line. Credentials are read locally and redacted from
 saved output.
+The current CLI receives the password through `--password`, which exposes it to
+local process observers while the child runs. Its secure `--password-file`
+reader rejects Windows; this harness does not invent an environment-variable or
+stdin convention or write an unchecked plaintext password file instead.
+Capture summaries record the proxy submission guard and the unassessed other
+outbound paths, rather than asserting `broadcast: false`.
 
 ```powershell
 python scripts/rpc-bench/kohaku-wallet.py self-test

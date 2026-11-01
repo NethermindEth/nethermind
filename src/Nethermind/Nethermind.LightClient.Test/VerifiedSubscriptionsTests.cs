@@ -81,7 +81,7 @@ public class VerifiedSubscriptionsTests
     }
 
     [Test]
-    public async Task Subscription_logs_wait_for_external_admission_while_new_external_reads_are_rejected([Values] bool cancel)
+    public async Task Subscription_logs_have_capacity_reserved_from_external_admission([Values] bool cancel)
     {
         using Source source = new();
         using VerifiedRpc rpc = new(source, () => Harness.Head(source.Current), 1, specProvider: MainnetSpecProvider.Instance);
@@ -89,23 +89,21 @@ public class VerifiedSubscriptionsTests
         await load.Entered;
         JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { source.Current.Hash!.ToString(), false });
         using CancellationTokenSource cancellation = new();
+        if (cancel) await cancellation.CancelAsync();
 
-        Task<JsonElement> logs = rpc.GetSubscriptionLogsAsync(source.Current.Header, cancellation.Token);
-        Assert.That(logs.IsCompleted, Is.False);
+        Task<JsonElement> logs = rpc.GetSubscriptionLogsAsync(source.Current.Header, static (_, _) => true, cancellation.Token);
         RpcException? rejected = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_getBlockByHash", parameters, CancellationToken.None));
         Assert.That(rejected!.Code, Is.EqualTo(-32005));
         if (cancel)
         {
-            await cancellation.CancelAsync();
             await Assert.ThatAsync(async () => { await logs; }, Throws.InstanceOf<OperationCanceledException>());
         }
-        await load.ReleaseAsync();
-
-        if (!cancel)
+        else
         {
             JsonElement result = await logs.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.That(result[0].GetProperty("blockHash").GetString(), Is.EqualTo(source.Current.Hash!.ToString()));
         }
+        await load.ReleaseAsync();
     }
 
     [Test]
@@ -154,8 +152,10 @@ public class VerifiedSubscriptionsTests
             await load.Entered;
             clock.ObservePublication = true;
             if (termination == "receipts") harness.Source.TamperReceipts = true;
+            else harness.Source.BlockGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
             harness.Publish(harness.Source.Add(11, harness.Source.Current, 1));
             await clock.Created.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            if (termination != "receipts") await harness.Source.FirstBodyStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
             if (termination == "deadline") clock.Expire();
             else if (termination == "shutdown") await harness.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
             else await load.ReleaseAsync();
@@ -353,7 +353,7 @@ public class VerifiedSubscriptionsTests
     }
 
     [Test]
-    public async Task A_batch_stops_before_collecting_further_results_when_its_response_exceeds_the_message_limit()
+    public async Task An_oversized_batch_returns_a_limit_error_without_closing_the_connection()
     {
         await using Harness harness = new();
         FakeSocket socket = harness.Connect();
@@ -362,12 +362,122 @@ public class VerifiedSubscriptionsTests
         harness.Source.BeforeCodeResponse = count => calls = count;
         socket.Push(Enumerable.Repeat(Request("eth_getCode", Address.ToString(), "latest"), 32).ToArray());
 
-        await socket.Aborted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        JsonElement response = await socket.Next();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(calls, Is.EqualTo(2));
-            Assert.That(socket.Output.Reader.TryRead(out _), Is.False);
+            Assert.That(response[0].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+            Assert.That(socket.State, Is.EqualTo(WebSocketState.Open));
         }
+        Assert.That((await socket.Request("eth_chainId")).GetProperty("result").GetString(), Is.EqualTo("0x1"));
+    }
+
+    [Test]
+    public async Task Discarded_batch_acknowledgements_do_not_activate_or_retain_subscriptions()
+    {
+        await using Harness harness = new();
+        FakeSocket socket = harness.Connect();
+        HashSet<string> acknowledged = [(await socket.Request("eth_subscribe", "newHeads")).GetProperty("result").GetString()!];
+        harness.Source.Code = new byte[150_000];
+        socket.Push(new[] { Request("eth_subscribe", "newHeads"), Request("eth_getCode", Address.ToString(), "latest") });
+
+        JsonElement failed = await socket.Next();
+        Assert.That(failed[0].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+        for (int i = 1; i < VerifiedSubscriptions.MaxSubscriptions; i++)
+            acknowledged.Add((await socket.Request("eth_subscribe", "newHeads")).GetProperty("result").GetString()!);
+
+        Block next = harness.Source.Add(11, harness.Source.Current, 1);
+        harness.Publish(next);
+        int notifications = acknowledged.Count;
+        for (int i = 0; i < notifications; i++)
+            Assert.That(acknowledged.Remove((await socket.Next()).GetProperty("params").GetProperty("subscription").GetString()!), Is.True);
+        Assert.That(acknowledged, Is.Empty);
+        Assert.That(socket.Output.Reader.TryRead(out _), Is.False);
+        Assert.That(socket.State, Is.EqualTo(WebSocketState.Open));
+    }
+
+    [Test]
+    public async Task Single_response_size_limits_keep_existing_subscriptions([Values(100_000, 150_000)] int codeBytes)
+    {
+        await using Harness harness = new();
+        FakeSocket socket = harness.Connect();
+        await socket.Request("eth_subscribe", "newHeads");
+        harness.Source.Code = new byte[codeBytes];
+
+        JsonElement response = await socket.Request("eth_getCode", Address.ToString(), "latest");
+
+        if (codeBytes == 100_000) Assert.That(response.GetProperty("result").GetString(), Has.Length.EqualTo(codeBytes * 2 + 2));
+        else Assert.That(response.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+        Block next = harness.Source.Add(11, harness.Source.Current, 1);
+        harness.Publish(next);
+        Assert.That((await socket.Next()).GetProperty("params").GetProperty("result").GetProperty("hash").GetString(), Is.EqualTo(next.Hash!.ToString()));
+        Assert.That(socket.State, Is.EqualTo(WebSocketState.Open));
+    }
+
+    [Test]
+    public async Task A_request_deadline_keeps_existing_subscriptions()
+    {
+        WriteClock clock = new();
+        TaskCompletionSource<VerifiedHead> repair = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using Harness harness = new(clock, token => repair.Task.WaitAsync(token));
+        FakeSocket socket = harness.Connect();
+        await socket.Request("eth_subscribe", "newHeads");
+        harness.Source.LatestFresh = false;
+        clock.ObservePublication = true;
+        Task<JsonElement> pending = socket.Request("eth_getBalance", Address.ToString(), "latest");
+        await clock.Created.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        clock.Expire();
+
+        JsonElement response = await pending;
+        Assert.That(response.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32002));
+        harness.Source.LatestFresh = true;
+        Block next = harness.Source.Add(11, harness.Source.Current, 1);
+        harness.Publish(next);
+        Assert.That((await socket.Next()).GetProperty("params").GetProperty("result").GetProperty("hash").GetString(), Is.EqualTo(next.Hash!.ToString()));
+        Assert.That(socket.State, Is.EqualTo(WebSocketState.Open));
+    }
+
+    [Test]
+    public async Task Unmatched_logs_do_not_exhaust_history_or_close_head_subscribers()
+    {
+        await using Harness harness = new();
+        FakeSocket logs = harness.Connect();
+        await logs.Request("eth_subscribe", "logs", new { address = Address.Zero.ToString() });
+        FakeSocket heads = harness.Connect();
+        await heads.Request("eth_subscribe", "newHeads");
+        Block parent = harness.Source.Current;
+        for (ulong number = 11; number <= 50; number++)
+        {
+            Block next = harness.Source.Add(number, parent, 1, logCount: 1_500);
+            harness.Publish(next);
+            Assert.That((await heads.Next()).GetProperty("params").GetProperty("result").GetProperty("hash").GetString(), Is.EqualTo(next.Hash!.ToString()));
+            parent = next;
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(heads.State, Is.EqualTo(WebSocketState.Open));
+            Assert.That(logs.State, Is.EqualTo(WebSocketState.Open));
+            Assert.That(harness.Source.BlockReads, Is.Zero, "unmatched verified receipts do not require a body");
+        }
+    }
+
+    [Test]
+    public async Task Invalid_log_data_closes_only_clients_that_requested_logs()
+    {
+        await using Harness harness = new();
+        FakeSocket logs = harness.Connect();
+        await logs.Request("eth_subscribe", "logs");
+        FakeSocket heads = harness.Connect();
+        await heads.Request("eth_subscribe", "newHeads");
+        harness.Source.TamperReceipts = true;
+        Block next = harness.Source.Add(11, harness.Source.Current, 1);
+
+        harness.Publish(next);
+
+        await logs.Aborted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That((await heads.Next()).GetProperty("params").GetProperty("result").GetProperty("hash").GetString(), Is.EqualTo(next.Hash!.ToString()));
+        Assert.That(heads.State, Is.EqualTo(WebSocketState.Open));
     }
 
     [TestCase("newPendingTransactions")]
@@ -469,9 +579,10 @@ public class VerifiedSubscriptionsTests
         internal List<Task> Tasks { get; } = [];
         internal List<HttpContext> Contexts { get; } = [];
 
-        internal Harness(TimeProvider? clock = null)
+        internal Harness(TimeProvider? clock = null, Func<CancellationToken, Task<VerifiedHead>>? waitForLatest = null)
         {
-            _rpc = new(Source, () => Head(Source.Current), 1, specProvider: MainnetSpecProvider.Instance, getLatestHead: () => Head(Source.Current));
+            _rpc = new(Source, () => Head(Source.Current), 1, specProvider: MainnetSpecProvider.Instance, getLatestHead: () => Head(Source.Current),
+                isLatestHeadFresh: _ => Source.LatestFresh, waitForLatestHead: waitForLatest);
             _subscriptions = new(Source, _rpc, NullLogger.Instance, clock);
             _subscriptions.PublishHead(Head(Source.Current));
         }
@@ -649,7 +760,9 @@ public class VerifiedSubscriptionsTests
         internal Action<int>? BeforeCodeResponse { get; set; }
         internal Action<BlockHeader>? HeaderRequested { get; set; }
         internal bool RejectBlocks { get; set; }
+        internal bool LatestFresh { get; set; } = true;
         internal TaskCompletionSource? BlockGate { get; set; }
+        internal TaskCompletionSource FirstBodyStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource BlocksStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal int HeaderReads => Volatile.Read(ref _headerReads);
         internal int BlockReads => Volatile.Read(ref _blockReads);
@@ -725,6 +838,7 @@ public class VerifiedSubscriptionsTests
             if (RejectBlocks) throw new InvalidOperationException("A header subscription must not request a block body.");
             if (BlockGate is { } gate)
             {
+                FirstBodyStarted.TrySetResult();
                 if (Interlocked.Increment(ref _blockedBlockReads) == 4) BlocksStarted.TrySetResult();
                 await gate.Task.WaitAsync(cancellationToken);
             }

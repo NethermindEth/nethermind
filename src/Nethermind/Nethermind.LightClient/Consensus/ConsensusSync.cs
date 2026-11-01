@@ -29,9 +29,10 @@ internal static class ConsensusSync
             validationToken.ThrowIfCancellationRequested();
             cancellationToken.ThrowIfCancellationRequested();
             // Unproved peer data must not cause a terminal local clock failure.
-            LightClientStore candidate = new(spec, checkpoint, value, value.Header?.Beacon?.Slot ?? CurrentSlot());
+            LightClientStore candidate;
             try
             {
+                candidate = new(spec, checkpoint, value, value.Header?.Beacon?.Slot ?? CurrentSlot());
                 ulong currentSlot = CurrentSlot();
                 if (candidate.FinalizedHeader.Beacon!.Slot > currentSlot)
                     throw new LightClientLocalStateException("Checkpoint is in the future.");
@@ -130,7 +131,11 @@ internal static class ConsensusSync
             ulong requestedPeriod = before + (knewNext ? 1UL : 0UL);
             using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(15));
-            await fetchUpdate(requestedPeriod, processUpdate, timeout.Token);
+            await fetchUpdate(requestedPeriod, async (update, token) =>
+            {
+                await processUpdate(update, token);
+                if (store.SyncProgress == (before, knewNext)) throw new IrrelevantLightClientUpdateException();
+            }, timeout.Token);
             if (store.SyncProgress == (before, knewNext)) break;
         }
     }

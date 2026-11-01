@@ -2,11 +2,14 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-"""Capture Kohaku Sepolia dry-run RPCs, then replay the same ordered requests.
+"""Capture Kohaku Sepolia RPCs through a guarded proxy, then replay them.
 
 Wallet copies and raw recordings belong in ignored repository-local data directories.
 The original CLI installation and wallet are only read. Passwords are loaded from
-the local runbook in memory and are never included in command metadata or logs.
+the local runbook in memory and redacted from saved output. The current CLI takes
+the password in process arguments, visible to local process observers. Use only
+disposable testnet wallets. The proxy blocks submission methods routed through
+it; other CLI relayer, fallback RPC or outbound paths are not constrained.
 Run summaries preserve wallet exit codes and report completed RPC outcomes,
 failed/pending request counts, and an ok/degraded/failed status. Raw JSONL rows
 remain authoritative when requests are still pending at the summary snapshot.
@@ -42,7 +45,8 @@ READ_METHODS = frozenset({
     "eth_getProof", "eth_getLogs", "eth_getBlockByNumber", "eth_getBlockByHash",
     "eth_getTransactionByHash", "eth_getTransactionByBlockNumberAndIndex",
     "eth_getTransactionReceipt", "eth_getBlockReceipts", "eth_createAccessList",
-    "eth_syncing", "net_version", "web3_clientVersion",
+    "eth_syncing", "net_version", "web3_clientVersion", "net_listening",
+    "eth_accounts", "eth_blobBaseFee",
 })
 
 
@@ -52,18 +56,37 @@ def timestamp():
 
 def secrets_from_runbook(path):
     contents = path.read_text(encoding="utf-8")
-    password = re.search(r"\| Wallet password \| `([^`]+)`", contents)
+    password = re.search(r"^\s*\|\s*Wallet password\s*\|\s*`([^`\r\n]+)`", contents, re.IGNORECASE | re.MULTILINE)
     if not password:
         raise ValueError("Runbook has no wallet-password table entry")
     secrets = [match.group(1) for match in re.finditer(
-        r"\| [^|]*(?:password|Seed phrase|private key)[^|]* \| `([^`]+)`", contents)]
+        r"^\s*\|[^|\r\n]*(?:password|seed phrase|private key)[^|\r\n]*\|\s*`([^`\r\n]+)`",
+        contents, re.IGNORECASE | re.MULTILINE)]
     return password.group(1), secrets
 
 
-def redact(text, secrets):
+def redact(value, secrets):
+    variants = set()
     for secret in secrets:
-        text = text.replace(secret, "<redacted>")
-    return text
+        if not secret:
+            continue
+        variants.add(secret)
+        for ascii_only in (False, True):
+            variants.add(json.dumps(secret, ensure_ascii=ascii_only)[1:-1])
+    patterns = sorted(variants, key=len, reverse=True)
+
+    def replace(item):
+        if isinstance(item, str):
+            for pattern in patterns:
+                item = item.replace(pattern, "<redacted>")
+            return item
+        if isinstance(item, dict):
+            return {replace(key): replace(entry) for key, entry in item.items()}
+        if isinstance(item, (list, tuple)):
+            return [replace(entry) for entry in item]
+        return item
+
+    return replace(value)
 
 
 def output_dir(raw):
@@ -245,7 +268,7 @@ class Recorder:
                           else "rpc_error" if row.get("rpc_errors") else "ok")
         with self.lock:
             with self.path.open("a", encoding="utf-8") as stream:
-                stream.write(redact(json.dumps(row), self.secrets) + "\n")
+                stream.write(json.dumps(redact(row, self.secrets)) + "\n")
             self.outcomes[row["flow"], row["outcome"]] += 1
         return status, body, row
 
@@ -361,7 +384,8 @@ def capture(args):
                      "degraded" if any(item["status"] == "degraded" for item in flows) else "ok"
             write_json(out / "run.json", {"tag": args.tag, "flows": flows, "status": status,
                 "private_state": "reset" if args.reset_private_state else "copied",
-                "tor": False, "broadcast": False, "user_agent": USER_AGENT,
+                "tor": False, "proxy_blocks_submission": True,
+                "other_cli_outbound": "not audited or restricted", "user_agent": USER_AGENT,
                 "transport": "HTTP/1.1 persistent connections per proxy worker"})
             print(json.dumps(result), flush=True)
     return int(any(flow["status"] != "ok" for flow in flows))
@@ -399,6 +423,33 @@ def self_test():
     import unittest
 
     class ProxyTests(unittest.TestCase):
+        def test_runbook_labels_and_escaped_secret_redaction(self):
+            synthetic = 'test-password-"\\path/\u00e9\u2603'
+            seed = "synthetic seed phrase"
+            key = "synthetic-private-key"
+            base = output_dir(ROOT / "artifacts" / "rpc-wallet-self-test")
+            with tempfile.TemporaryDirectory(dir=base) as directory:
+                path = Path(directory) / "runbook.md"
+                path.write_text(f"| wAlLeT pAsSwOrD | `{synthetic}` |\n"
+                                f"| SEED PHRASE | `{seed}` |\n"
+                                f"| PRIVATE KEY | `{key}` |\n", encoding="utf-8")
+                password, secrets = secrets_from_runbook(path)
+            self.assertEqual(password, synthetic)
+            self.assertEqual(set(secrets), {synthetic, seed, key})
+            for ascii_only in (False, True):
+                with self.subTest(ascii_only=ascii_only):
+                    escaped = json.dumps(synthetic, ensure_ascii=ascii_only)[1:-1]
+                    value = {"request": {"params": [synthetic, escaped]},
+                             "response": {"error": {"message": seed + ":" + key}}, "ok": True}
+                    saved = json.dumps(redact(value, secrets), ensure_ascii=ascii_only)
+                    decoded = json.loads(saved)
+                    self.assertEqual(decoded["request"]["params"], ["<redacted>", "<redacted>"])
+                    self.assertEqual(decoded["response"]["error"]["message"], "<redacted>:<redacted>")
+                    self.assertTrue(decoded["ok"])
+                    self.assertNotIn(synthetic, saved)
+                    self.assertNotIn(escaped, saved)
+                    self.assertEqual(redact("prefix " + escaped + " suffix", secrets), "prefix <redacted> suffix")
+
         def test_capture_replay_errors_and_send_guard(self):
             received = []
             client_ports = []
@@ -567,6 +618,9 @@ def self_test():
                 raw = json.loads((folder / "captured" / "rpc.jsonl").read_text())
                 self.assertEqual(result, 1)
                 self.assertEqual(summary["status"], "degraded")
+                self.assertNotIn("broadcast", summary)
+                self.assertTrue(summary["proxy_blocks_submission"])
+                self.assertEqual(summary["other_cli_outbound"], "not audited or restricted")
                 self.assertEqual(flow["exit_code"], 0)
                 self.assertEqual(flow["status"], "degraded")
                 self.assertEqual(flow["rpc_outcomes"], {"rpc_error": 1})
@@ -598,9 +652,9 @@ def self_test():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    capture_parser = commands.add_parser("capture", help="Run real wallet dry runs through a recording proxy")
+    capture_parser = commands.add_parser("capture", help="Run disposable testnet wallet commands through a guarded recording proxy")
     replay_parser = commands.add_parser("replay", help="Replay a capture without running the wallet")
-    commands.add_parser("self-test", help="Verify proxy, replay, RPC/HTTP/transport errors and broadcast guard locally")
+    commands.add_parser("self-test", help="Verify proxy, replay, RPC/HTTP/transport errors and proxy submission guard locally")
     for command in (capture_parser, replay_parser):
         command.add_argument("--upstream", required=True)
         command.add_argument("--output", required=True, type=Path)

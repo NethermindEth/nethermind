@@ -49,9 +49,15 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     private readonly TimeProvider _time;
     private readonly CancellationTokenSource _stop = new();
     private Task? _peerLoop;
+    private bool _needsCommitteeSupplier = true;
 
     internal int PeerCount => _peers.PeerCount;
     internal Task GossipCompletion => _gossip.Completion;
+    internal bool NeedsCommitteeSupplier
+    {
+        get => Volatile.Read(ref _needsCommitteeSupplier);
+        set => Volatile.Write(ref _needsCommitteeSupplier, value);
+    }
 
     internal BeaconPeerTransport(BeaconChainSpec spec, ILogManager logManager, IColumnsDb<BeaconChainDbColumns> db,
         INetworkStorage? peerStorage = null, int p2pPort = 9050, int discoveryPort = 9050,
@@ -68,7 +74,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         bool quicSupported = QuicListener.IsSupported && QuicConnection.IsSupported;
         if (!quicSupported && quicPort > 0 && _logger.IsWarn)
             _logger.Warn("QUIC is unavailable on this platform; beacon P2P will use TCP. Install the platform's MsQuic runtime to enable QUIC.");
-        BeaconChainConfig config = new()
+        LightClientBeaconConfig config = new()
         {
             P2PPort = p2pPort,
             Discv5Port = discoveryPort,
@@ -76,6 +82,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             MinPeerCount = 4,
             TargetPeerCount = 16,
             MaxPeerCount = 32,
+            CustodyGroupCount = 0,
         };
         BeaconChainStore store = new(db, spec);
         ITimestamper clock = Timestamper.Default;
@@ -86,9 +93,9 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             CurrentStatus = new StatusMessageV2 { FinalizedRoot = Hash256.Zero, HeadRoot = Hash256.Zero },
         };
         _ipResolver = new IPResolver(new NetworkConfig(), logManager);
-        _p2p = new BeaconP2P(config, spec, store, _status, new LocalMetadataSource(),
+        _p2p = new BeaconP2P(config, spec, store, _status, new LocalMetadataSource(config, store),
             new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), logManager,
-            peerPool: new Lazy<IBeaconSyncPeerPool>(() => _peers!), configureGossip: _gossip.Configure);
+            peerPool: new Lazy<IBeaconSyncPeerPool>(() => _peers!), configureGossip: _gossip.Configure, lightClientRequests: true);
         _discovery = new BeaconDiscovery(config, spec, store, _ipResolver, clock, logManager, peerStorage);
         _peers = new BeaconPeerManager(_p2p, config, _status, logManager, _discovery, clock);
         _gossip.ValidatedUpdate = (source, slot) =>
@@ -106,6 +113,12 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                 _providers.Admit(peer, record.Direction);
             else if (_logger.IsDebug) _logger.Debug($"Admitted beacon peer {peer.Id} no longer has a connected peer-directory record");
         };
+    }
+
+    /// <summary>Advertises no data custody while preserving the full-node configuration's minimum custody requirement.</summary>
+    private sealed class LightClientBeaconConfig : BeaconChainConfig, IBeaconChainConfig
+    {
+        public new ulong CustodyGroupCount { get; set; }
     }
 
     internal void PublishVerifiedHeads(LightClientHeader finalized, LightClientHeader optimistic, Hash256 bootstrapRoot)
@@ -156,9 +169,20 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         await _p2p.StartAsync(cancellationToken);
         if (_logger.IsInfo) _logger.Info($"Beacon P2P identity: {_p2p.LocalPeerId}");
         await _discovery.Start(cancellationToken);
-        _peerLoop = Task.WhenAll(_peers.Run(_stop.Token),
-            _peers.DialDiscoveredPeersAsync(_discovery.DiscoverPeers(_stop.Token), _stop.Token),
-            MaintainProvidersAsync(_stop.Token));
+        _peerLoop = Task.WhenAll(ObservePeerLoopAsync("maintenance", _peers.Run(_stop.Token)),
+            ObservePeerLoopAsync("dialing", _peers.DialDiscoveredPeersAsync(_discovery.DiscoverPeers(_stop.Token), _stop.Token)),
+            ObservePeerLoopAsync("supplier search", MaintainProvidersAsync(_stop.Token)));
+    }
+
+    private async Task ObservePeerLoopAsync(string name, Task loop)
+    {
+        try { await loop; }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (Exception exception)
+        {
+            if (_logger.IsError) _logger.Error($"Beacon {name} stopped unexpectedly.", exception);
+            throw;
+        }
     }
 
     private async Task MaintainProvidersAsync(CancellationToken cancellationToken)
@@ -167,10 +191,9 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         do
         {
             cancellationToken.ThrowIfCancellationRequested();
-            _providers.FlushHints();
             try
             {
-                (IBeaconSyncPeer? recycle, string? reconnect) = _providers.Maintain(_peers.Peers);
+                (IBeaconSyncPeer? recycle, string? reconnect) = _providers.Maintain(_peers.Peers, NeedsCommitteeSupplier);
                 if (recycle is not null)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Seeking another light-client supplier instead of beacon peer {recycle.Id}");
@@ -182,11 +205,12 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                     bool admitted = await _peers.TryAddPeerAsync(reconnect, cancellationToken, allowAboveTarget: true);
                     if (_logger.IsDebug) _logger.Debug($"Remembered light-client supplier redial {reconnect}: admitted {admitted}");
                 }
+                _providers.FlushHints();
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception exception)
             {
-                if (_logger.IsDebug) _logger.Debug($"Light-client supplier search failed: {exception.Message}");
+                if (_logger.IsWarn) _logger.Warn($"Light-client supplier search failed: {exception.Message}");
             }
         } while (await timer.WaitForNextTickAsync(cancellationToken));
     }
@@ -247,6 +271,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     {
         private readonly Nethermind.Logging.ILogger _logger = logger ?? NullLogger.Instance;
         private readonly int _concurrency = Math.Clamp(concurrency, 1, 4);
+        private readonly Dictionary<IBeaconSyncPeer, int> _localRejections = new(ReferenceEqualityComparer.Instance);
         private string? _lastAttemptedPeerId;
 
         internal async Task<T?> PollAsync<T>(Func<IReadOnlyList<IBeaconSyncPeer>> getPeers,
@@ -272,9 +297,11 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                 if (peers[i].Id == _lastAttemptedPeerId) start = (i + 1) % peers.Count;
             }
             int preferred = providers?.Preferred<T>(peers, start) ?? -1;
+            int fanOut = providers?.FanOut<T>(_concurrency) ?? _concurrency;
             bool sawInapplicable = false;
             int offset = preferred >= 0 ? -1 : 0;
-            List<Task<(IBeaconSyncPeer Peer, T? Response, Exception? Failure, bool TimedOut)>> pending = new(_concurrency);
+            int attempted = 0, unavailableCount = 0, failedCount = 0, inapplicableCount = 0, accepted = 0;
+            List<Task<(IBeaconSyncPeer Peer, T? Response, Exception? Failure, bool TimedOut)>> pending = new(fanOut);
             using CancellationTokenSource owner = CancellationTokenSource.CreateLinkedTokenSource(token);
             try
             {
@@ -283,12 +310,13 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                     token.ThrowIfCancellationRequested();
                     bool completed = false;
                     foreach (Task attempt in pending) completed |= attempt.IsCompleted;
-                    while (!completed && pending.Count < _concurrency && offset < peers.Count)
+                    while (!completed && pending.Count < fanOut && offset < peers.Count)
                     {
                         int index = offset < 0 ? preferred : (start + offset) % peers.Count;
                         bool skip = offset++ >= 0 && index == preferred;
                         if (skip) continue;
                         IBeaconSyncPeer next = peers[index];
+                        attempted++;
                         _lastAttemptedPeerId = next.Id;
                         Task<(IBeaconSyncPeer, T?, Exception?, bool)> fetching = FetchAsync(next, request, owner.Token);
                         pending.Add(fetching);
@@ -302,11 +330,13 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                     if (failure is not null)
                     {
                         providers?.Failed<T>(peer);
+                        failedCount++;
                         if (timedOut)
                             peer.ReportFailure(PeerFailureReason.RequestFailed, "Light-client request timed out.");
                         else if (failure is Eth2ReqRespException { ResponseCode: ReqRespFraming.ResponseCode.ResourceUnavailable } ||
                             failure is AggregateException aggregate && aggregate.Flatten().InnerExceptions is [Eth2ReqRespException { ResponseCode: ReqRespFraming.ResponseCode.ResourceUnavailable }])
                         {
+                            unavailableCount++;
                             if (_logger.IsDebug) _logger.Debug($"Beacon peer {peer.Id} has no {typeof(T).Name} available");
                             if (unavailable is not null) await unavailable(peer, token);
                         }
@@ -333,10 +363,12 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                     {
                         bool advanced = await validate(response, token);
                         token.ThrowIfCancellationRequested();
+                        _localRejections.Remove(peer);
                         providers?.RecordValidated(peer, response);
                         if (!advanced)
                         {
                             sawInapplicable = true;
+                            inapplicableCount++;
                             if (_logger.IsDebug) _logger.Debug($"Beacon {typeof(T).Name} from {peer.Id} did not advance its requested head");
                             continue;
                         }
@@ -345,21 +377,34 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                     {
                         if (_logger.IsDebug) _logger.Debug($"Beacon {typeof(T).Name} from {peer.Id} is outside the current sync period: {exception.Message}");
                         sawInapplicable = true;
+                        inapplicableCount++;
                         continue;
                     }
                     catch (LightClientLocalStateException exception)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Beacon {typeof(T).Name} from {peer.Id} cannot yet be applied: {exception.Message}");
                         sawInapplicable = true;
+                        inapplicableCount++;
+                        if (!_localRejections.TryGetValue(peer, out int rejections) && _localRejections.Count == 32)
+                            _localRejections.Clear();
+                        if (rejections == 2)
+                        {
+                            _localRejections.Remove(peer);
+                            providers?.Failed<T>(peer);
+                            peer.ReportFailure(PeerFailureReason.RequestFailed, "Repeated locally inapplicable light-client updates.");
+                        }
+                        else _localRejections[peer] = rejections + 1;
                         continue;
                     }
                     catch (InvalidDataException exception)
                     {
+                        failedCount++;
                         providers?.Failed<T>(peer);
                         if (_logger.IsDebug) _logger.Debug($"Beacon {typeof(T).Name} from {peer.Id} failed verification: {exception.Message}");
                         peer.ReportFailure(PeerFailureReason.ProtocolViolation, exception.Message);
                         continue;
                     }
+                    accepted = 1;
                     return (response, false);
                 }
                 return (null, sawInapplicable);
@@ -368,6 +413,8 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             {
                 await owner.CancelAsync();
                 await Task.WhenAll(pending);
+                if (_logger.IsInfo && attempted > 0 && !token.IsCancellationRequested)
+                    _logger.Info($"Beacon {typeof(T).Name} round: asked {attempted}, accepted {accepted}, unavailable {unavailableCount}, failed {failedCount - unavailableCount}, inapplicable {inapplicableCount}, unused {pending.Count}");
             }
         }
 
@@ -528,7 +575,22 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             }
         }
 
-        internal (IBeaconSyncPeer? Recycle, string? Reconnect) Maintain(IReadOnlyList<PeerRecord> peers)
+        internal int FanOut<T>(int normal)
+        {
+            if (normal == 1 || typeof(T) == typeof(LightClientBootstrap)) return normal;
+            lock (_lock)
+            {
+                foreach (Supplier supplier in _sessions.Values)
+                {
+                    ulong? slot = typeof(T) == typeof(LightClientOptimisticUpdate) ? supplier.OptimisticSlot
+                        : typeof(T) == typeof(LightClientFinalityUpdate) ? supplier.FinalitySlot : supplier.UpdateSlot;
+                    if (IsFresh(slot)) return normal;
+                }
+            }
+            return Math.Min(normal * 2, 8);
+        }
+
+        internal (IBeaconSyncPeer? Recycle, string? Reconnect) Maintain(IReadOnlyList<PeerRecord> peers, bool needsCommitteeSupplier = false)
         {
             int connectedCount, occupiedCount, trackedCount, fresh, rememberedCount;
             List<string>? retiredSessions = null;
@@ -556,17 +618,26 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                 if (retired.Count > 0) _hintGeneration++;
 
                 fresh = 0;
+                int updateSuppliers = 0;
                 Supplier? replacement = null;
                 foreach (Supplier supplier in _sessions.Values)
                 {
                     if (!admitted.Contains(Identity(supplier.Peer.Id))) continue;
-                    if (IsFresh(supplier)) { fresh++; continue; }
-                    if (time.GetElapsedTime(supplier.Admitted, now) < AdmissionGrace) continue;
-                    if (replacement is null || IsCandidate(replacement) && !IsCandidate(supplier) ||
-                        IsCandidate(replacement) == IsCandidate(supplier) && supplier.Admitted < replacement.Admitted)
+                    if (IsFresh(supplier.UpdateSlot)) updateSuppliers++;
+                    if (IsFresh(supplier)) fresh++;
+                    bool missingCommittee = needsCommitteeSupplier && !IsFresh(supplier.UpdateSlot);
+                    bool unavailable = supplier.FailedProtocols?.Contains(typeof(LightClientUpdate)) == true ||
+                        supplier.FailedProtocols?.Contains(typeof(LightClientOptimisticUpdate)) == true ||
+                        supplier.FailedProtocols?.Contains(typeof(LightClientFinalityUpdate)) == true;
+                    if (IsFresh(supplier) && !missingCommittee) continue;
+                    if (!unavailable && time.GetElapsedTime(supplier.Admitted, now) < AdmissionGrace) continue;
+                    bool previousUnavailable = replacement?.FailedProtocols?.Count > 0;
+                    if (replacement is null || unavailable && !previousUnavailable || unavailable == previousUnavailable &&
+                        (IsCandidate(replacement) && !IsCandidate(supplier) ||
+                         IsCandidate(replacement) == IsCandidate(supplier) && supplier.Admitted < replacement.Admitted))
                         replacement = supplier;
                 }
-                if (fresh < MinFreshSuppliers)
+                if (fresh < MinFreshSuppliers || needsCommitteeSupplier && updateSuppliers == 0)
                 {
                     Remembered? reconnect = null;
                     foreach ((string id, Remembered remembered) in _remembered)
@@ -578,7 +649,9 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                             reconnect = remembered;
                     }
                     if (reconnect is not null) reconnect.LastDial = now;
-                    recycle = connected.Count >= TargetPeers ? replacement?.Peer : null;
+                    bool unavailableReplacement = replacement?.FailedProtocols?.Count > 0;
+                    recycle = connected.Count >= TargetPeers || unavailableReplacement &&
+                        (fresh == 0 || needsCommitteeSupplier && updateSuppliers == 0) ? replacement?.Peer : null;
                     redialAddress = reconnect?.Address;
                 }
                 connectedCount = admitted.Count;

@@ -157,7 +157,7 @@ public class Eth69ProtocolHandler(
             NetworkId = SyncServer.NetworkId,
             GenesisHash = SyncServer.Genesis.Hash!,
             ForkId = _forkInfo.GetForkId(head.Number, head.Timestamp),
-            EarliestBlock = SyncServer.LowestBlock,
+            EarliestBlock = Math.Min(SyncServer.LowestBlock, head.Number),
             LatestBlock = head.Number,
             LatestBlockHash = head.Hash!
         };

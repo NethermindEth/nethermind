@@ -225,14 +225,14 @@ public class LightClientGossipTests
     }
 
     [Test]
-    public async Task Early_message_is_ignored_before_signature_rejection([Values] bool valid)
+    public async Task Early_message_is_ignored_only_after_authentication([Values] bool valid)
     {
         await using Fixture fixture = new();
         LightClientOptimisticUpdate update = Optimistic(ConsensusTests.Update(2, 3, 4, 1));
         fixture.Clock.SetSlot(4, 0);
         if (!valid) update.SyncAggregate!.SyncCommitteeSignature = new BlsSignature(new byte[96]);
 
-        Assert.That(await fixture.Handle(update), Is.EqualTo(MessageValidity.Ignored));
+        Assert.That(await fixture.Handle(update), Is.EqualTo(valid ? MessageValidity.Ignored : MessageValidity.Rejected));
         Assert.That(fixture.Store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(valid ? 3 : 1));
     }
 

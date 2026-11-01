@@ -83,7 +83,8 @@ is 120 seconds and the `finalized.fresh` policy is one hour. A hosted account's
 state root; check latest freshness separately. History coverage is independent
 of these flags and grows on demand.
 
-During initialization, `eth_chainId` is available and `eth_syncing` returns the
+During initialization, `eth_chainId`, `net_version`, `web3_clientVersion` and
+`eth_accounts` are available locally, `net_listening` returns false, and `eth_syncing` returns the
 standard `startingBlock`, `currentBlock`, `highestBlock` quantity object. Its
 zero heights mean execution progress is unknown; `/status` supplies the startup
 stage. Other HTTP reads wait for RPC initialization within the original
@@ -133,7 +134,9 @@ request does not postpone optimistic recovery. Up to three suppliers are queried
 concurrently; consensus updates still pass through the same serialized
 verification and persistence path. Beacon handshakes advertise the authenticated
 head and finalized checkpoint after durable publication; this does not claim full
-execution validation or retained sidecars. Execution discovery starts alongside beacon
+execution validation or retained sidecars. Its metadata and ENR advertise zero
+PeerDAS custody, and its earliest-available slot is beyond the advertised head,
+so it claims no retained block-serving history. Execution discovery starts alongside beacon
 bootstrap. The client targets 16 beacon peers (maximum 32) and allows 32 execution
 peers, replenishing SNAP capacity when fewer than eight usable suppliers remain.
 
@@ -171,7 +174,7 @@ Set `--beacon-quic-port 0` to disable QUIC.
 QUIC uses mutually authenticated TLS 1.3 and its own stream multiplexing. Signed beacon
 ENRs advertise the separate QUIC port; discovered QUIC addresses are tried
 before TCP, with TCP fallback when QUIC cannot connect. All libp2p components
-use version 1.1.0.
+use version 1.1.0. TCP uses Noise and yamux; mplex is not negotiated.
 Outbound connections to public beacon and execution peers must be
 permitted. The console prints live beacon, execution and SNAP peer counts every 12 seconds and logs each
 local JSON-RPC request with its result and elapsed time. If no SNAP peer can
@@ -263,8 +266,9 @@ before publication. It still rebuilds that local trie; BALs reduce network
 transfers rather than eliminating work proportional to hosted storage size.
 
 Catch-up is limited to 256 forward blocks, 30 seconds per account attempt and
-16 MiB per encoded BAL. Only the latest fetched BAL is retained for reuse across
-accounts. Unsupported forks or peers, reorgs, larger gaps, timeouts, missing or
+16 MiB per encoded BAL. Verified BALs share a separate 32 MiB retained-weight
+cache keyed by block hash, and concurrent requests share one download. Unsupported
+forks or peers, reorgs, larger gaps, timeouts, missing or
 invalid data and root mismatches fall back to the complete SNAP download. If
 that also fails, the previous verified snapshot stays available at its original
 root. Merely relabeling old state with a new root is never safe.
@@ -274,6 +278,8 @@ root. Merely relabeling old state with a new root is never safe.
 | Method | Result source |
 | --- | --- |
 | `eth_chainId` | Locally selected network |
+| `net_version`, `web3_clientVersion` | Local network ID and client version |
+| `eth_accounts`, `net_listening` | Empty local signing-account list and active P2P listener status |
 | `eth_blockNumber` | Last authenticated optimistic execution height, including while synchronizing |
 | `eth_syncing` | Consensus freshness: `false` for a fresh authenticated optimistic head; otherwise standard progress quantities |
 | `eth_getBalance` | Account RLP authenticated against the execution state root |
@@ -290,9 +296,10 @@ root. Merely relabeling old state with a new root is never safe.
 | `eth_getBlockReceipts`, `eth_getLogs` | Receipt trie and bloom authenticated by the block header; log results are complete within the accepted range |
 | `eth_feeHistory` | Authenticated headers and complete verified receipts for gas-weighted effective tips |
 | `eth_gasPrice`, `eth_maxPriorityFeePerGas` | Local fee suggestion from the authenticated latest block; gas price adds the derived next-block base fee |
+| `eth_blobBaseFee` | Blob base fee derived from the authenticated latest execution header and its fork |
 | `eth_sendRawTransaction` | Local envelope, signature, fork and authenticated state checks, followed by execution P2P relay; blob sidecars are KZG verified |
 
-State methods accept an explicit `"finalized"` or `"latest"` selector,
+State methods default to `"latest"` when their block parameter is omitted. They accept an explicit `"finalized"` or `"latest"` selector,
 an authenticated block number, or an EIP-1898 object naming its hash/number.
 Wallets and dapps can use `"latest"` for the recent sync-committee-authenticated
 head. Gossip advances it between recovery polls; it is not restricted to the
@@ -300,7 +307,7 @@ older finalized block. Use `"finalized"` explicitly when finality is required.
 `"latest"` state, block, log, fee and transaction-preparation requests require
 an authenticated head within ten beacon slots (120 seconds on supported networks)
 of the current slot. While it is unavailable or stale, these requests trigger
-coalesced recovery and wait within the existing RPC deadline; stale data is never
+coalesced recovery and wait up to two seconds before returning `-32001`; stale data is never
 served as `latest`. Explicit block
 numbers and hashes are outside these time-based freshness gates and retain their
 separate authenticated-history bounds. Explicit `"finalized"` selectors require
@@ -319,11 +326,18 @@ Historical state selectors are limited to 32 ancestors of either the finalized
 head or the authenticated optimistic head. A wallet's pinned prior
 optimistic hash remains usable when the native head advances, provided it is
 still an ancestor in that window; orphan hashes fail canonical validation.
-availability within that range still depends on a SNAP peer retaining the state root.
+Only authenticated canonical state is served, including when EIP-1898
+`requireCanonical` is false or omitted. Unknown block hashes return `-32001`;
+known non-canonical hashes return `-32000` when `requireCanonical` is true and
+`-32001` otherwise, because their state is unavailable to this client. State availability within that range
+still depends on a SNAP peer retaining the state root.
 At most two historical state requests run concurrently; excess requests fail promptly,
 leaving SNAP and HTTP capacity for current-head reads.
 Block and receipt selectors retain a separate 256-ancestor window anchored to
-either head. Log queries accept at most 512 inclusive blocks, including ranges
+either head. Block queries return `null` for an unknown or unauthenticated hash or a number above
+the authenticated tip; an older block outside this retained window returns an
+explicit unavailable error. `eth_getBlockReceipts` also accepts an EIP-1898
+hash/number object. Log queries accept at most 512 inclusive blocks, including ranges
 crossing finality on one pinned authenticated chain. Omitted bounds select
 authenticated `"latest"`; crossing finality verifies the finalized block hash
 on the selected chain. Optimistic ancestry is transient and bounded to 512
@@ -340,6 +354,9 @@ a caller does not cancel other callers' download. Log queries prefetch up to fou
 bloom-positive blocks while preserving canonical result order. Bodies, receipts
 and BAL requests share at most three of the four execution request slots, leaving
 capacity for headers; SNAP state requests use a separate request budget.
+These shared downloads have their own concurrency limits, transport permits and
+deadlines. RPC admission bounds callers; a canceled caller does not free shared
+peer work that another caller may still need.
 Complete finalized numeric-range log results have a separate 32 MiB weighted
 in-memory cache, including verified empty results. Entries bind the normalized
 filter, exact range and authenticated end-block hash. Every lookup still checks
@@ -368,13 +385,18 @@ whereas the finalized head is stable. Each state or block request pins its selec
 including during a concurrent consensus update. Returned account and storage values are not
 trusted until their ranges reconstruct the selected state/storage root. Authenticated account/storage absence
 returns zero or empty code; an incomplete proof fails.
+This includes `eth_getTransactionCount(..., "pending")`: the relay is a bounded
+cache of local submissions, not an authenticated pending-state view. Wallets
+can use the confirmed `"latest"` nonce and track their own signed submissions.
 
 `eth_call` and `eth_estimateGas` accept a transaction object and an optional authenticated selector.
 Omitting the selector uses the authenticated optimistic `"latest"` head, which must be available.
 They fetch the selected execution header by its authenticated hash, then run
 Nethermind's EVM against the corresponding state root. Accounts, storage slots
 and bytecode are fetched from execution peers on demand and verified before a
-clean execution attempt is resumed. A bounded 32 MiB cache retains demanded state.
+clean execution attempt is resumed. A cache with a 32 MiB retained-weight budget
+keeps demanded state, including conservative per-slot/key/object overhead; this
+is an estimate rather than a hard process-memory ceiling.
 Accounts are authenticated separately at each world-state root; verified code is
 reused by code hash and storage values by authenticated storage root, account and
 slot. Four calls may execute concurrently. Calls have a 10 million gas cap,
@@ -391,15 +413,19 @@ the fixed frame gas reservation. State overrides and pending state are unavailab
 `eth_getProof` accepts at most 64 storage keys. The returned account/storage
 witnesses can be verified independently against the selected header's state root;
 SNAP range witnesses are not returned as if they were path proofs.
-`eth_feeHistory` accepts 1–16 blocks and at most 100 monotonically increasing
+`eth_feeHistory` accepts a positive block count, returns at most 16 available
+blocks, and accepts at most 100 monotonically increasing
 percentiles in `[0,100]`. Empty percentiles require only authenticated headers;
 nonempty percentiles use verified receipt gas consumption, never a gas-limit
 approximation. Fee suggestions use the gas-weighted 60th percentile of the
 authenticated latest block's effective tips. They are local estimates, not
-claims about a global pending transaction pool.
+claims about a global pending transaction pool; an empty latest block suggests
+a zero priority fee. This deliberately avoids cold downloads of 16 blocks for
+every fee suggestion and does not reproduce a full node's historical oracle.
 
-Transaction hash lookup scans the last 16 authenticated optimistic blocks and
-16 finalized blocks, and consults a bounded observed index containing at most
+Transaction hash lookup scans contiguously from authenticated latest through
+15 blocks before finalized, up to 256 ancestors, and checks the last 16 finalized
+blocks when finality is farther away. It consults a bounded observed index containing at most
 32,768 transactions with a 20-minute idle expiry. Index entries are rechecked
 against current authenticated ancestry before use, so an orphaned optimistic
 transaction is not returned after a reorganization. A `null` response means
@@ -417,6 +443,9 @@ there is no usable execution peer. The returned hash confirms local validation
 and relay queueing; ETH has no admission acknowledgement, and inclusion must be
 observed through an authenticated block or receipt. The client stores no signing
 keys and does not sign transactions.
+Relayed submissions are offered to connected execution peers. Because this
+client does not relay general mempool traffic, peers may infer that this node
+originated a submission; the relay provides no transaction-privacy guarantee.
 
 Example `eth_call` reading WETH `totalSupply()`:
 
@@ -424,24 +453,30 @@ Example `eth_call` reading WETH `totalSupply()`:
 Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/json -Body '{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{"to":"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2","data":"0x18160ddd"},"finalized"]}'
 ```
 
-JSON-RPC 2.0 batches (up to 32 requests) and notifications are supported.
+JSON-RPC 2.0 batches and notifications are supported. A batch executes at most
+32 items; additional requests retain their IDs and receive `-32005` errors.
 No request is forwarded without verification. Receipt/log queries fail when
 any block body or receipt set is unavailable; log ranges are capped at 512
 inclusive blocks and 10,000 matches.
 Verified block, transaction, receipt, log, fee-history and proof results have an
 8 MiB UTF-8 JSON limit. At most four execution-data requests may fetch and render
-at once; excess work receives `-32005` immediately. HTTP batches have a 16 MiB
+at once; freshness waits do not retain those permits, and the serialized
+subscription publisher has separate capacity. Excess work receives `-32005` immediately. HTTP batches have a 16 MiB
 response budget, including a 512 KiB reserve for error envelopes. Earlier
 responses are retained when the budget is reached; remaining requests receive
 `-32005` without executing. Notifications still produce no response, and invalid
 envelopes retain their standard errors. Oversized results fail explicitly rather
 than returning incomplete data.
 Normal HTTP requests, batches and WebSocket messages have a 64 KiB body limit.
-A single HTTP `eth_sendRawTransaction` request may use up to 4 MiB plus 64 KiB
-of JSON text for a raw envelope/sidecar of at most 2 MiB; at most four such large
+A single HTTP `eth_sendRawTransaction`, `eth_call` or `eth_estimateGas` request may
+use up to 4 MiB plus 64 KiB of JSON text, so permitted contract-initcode inputs
+fit. Submitted raw envelopes/sidecars are limited to 2 MiB; at most four such large
 requests run concurrently. Peer responses and proof nodes have separate size limits.
 The listener admits at most 64 active requests and has no authentication; keep
 it on loopback or place an authenticated gateway in front of it.
+Response budgets are per request: 64 simultaneous 16 MiB batch output buffers
+alone can retain up to 1 GiB, in addition to result objects, encoding scratch
+buffers, caches and network memory. Admission is not a global byte budget.
 Each admitted request, including an entire batch, has a 90-second deadline;
 the listener returns HTTP 504 if that deadline expires before a response starts.
 The console shows each JSON-RPC method, its result, and its handling time. Batch
@@ -473,11 +508,15 @@ and a 10-second deadline to admit responses or a verified head's notifications.
 Healthy bursts wait for the sender to drain the bounded queue; a stalled client
 is disconnected independently of other clients. Verified reorganization history
 is capped at 32 blocks and 16 MiB of encoded headers/logs. If that history cannot
-repair a gap, execution data is unavailable, or a configured bound is exceeded,
+repair a gap, authenticated headers are unavailable, or a configured bound is exceeded,
 the connection closes so it cannot silently continue an incomplete stream.
 Reconnect, recover the affected range with `eth_getLogs`, then resubscribe.
-WebSocket requests retain the 64 KiB input and 32-item batch limits; submit
-large blob sidecars through HTTP.
+Only logs matching the union of active filters enter retained history. A log
+data/history failure closes the clients that requested logs; independent
+`newHeads` clients continue. An individual request deadline or oversized result
+returns a JSON-RPC error without discarding the connection's subscriptions.
+WebSocket requests retain the 64 KiB input and 32-item execution limits; submit
+large calls, results and blob sidecars through HTTP.
 
 ## Direct P2P transport
 
@@ -520,7 +559,7 @@ using the existing discovery storage and revalidated on restart. The cache keeps
 at most 512 records; an oversized cache is preserved separately and discovery
 continues with fresh seeds. A peer that fails to provide valid selected-state
 data receives a bounded cooldown, while successful SNAP peers are tried first.
-When connection capacity is full and fewer than four usable SNAP peers remain,
+When connection capacity is full and fewer than eight usable SNAP peers remain,
 the client rotates one non-SNAP or failed SNAP connection to admit new candidates.
 Incoming peer requests use two workers and a queue of at most 32 requests.
 
@@ -533,15 +572,22 @@ It verifies bootstrap root and committee membership, execution inclusion,
 finality and next-committee branches, participant public-key subgroups, aggregate
 BLS signature and signing domain, slot order and committee-period continuity.
 It refuses committee conflicts and skips. Signed optimistic updates can move
-`latest`; timeout recovery can advance the sync committee, but never promotes
+`latest` after exceeding the spec's adaptive participation threshold. Both
+participation maxima start at zero after bootstrap, so the first valid update
+can advance optimistic latest with one signer; this is not a supermajority or
+finality guarantee. Select `"finalized"` when that stronger condition is needed.
+Timeout recovery can advance the sync committee, but only moves RPC latest when
+its candidate also exceeds the existing adaptive threshold, and never promotes
 an unfinalized execution state to finalized RPC. Later finality is signed by
 the committee that recovery selected, so it carries that recovery's weaker
 trust; each forced advance is logged as a warning.
 
 The client implements Electra, Fulu and Gloas wire formats with built-in
 mainnet, Hoodi and Sepolia schedules. Gloas authenticates an execution block
-hash through the payload bid; the client then retrieves the matching execution
-header by hash before serving its state. Gloas has synthetic fork-boundary
+hash through the payload bid's parent-block hash; the client then retrieves the matching execution
+header by hash before serving its state. Consequently the newest authenticated
+Gloas execution head inherently trails its attested beacon head by one slot.
+Gloas has synthetic fork-boundary
 tests and has authenticated native Sepolia bootstrap and subsequent optimistic
 updates from connected peers.
 Pre-Electra is refused. Future network schedules must be maintained locally

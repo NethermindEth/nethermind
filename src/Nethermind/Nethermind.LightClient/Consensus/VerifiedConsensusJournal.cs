@@ -239,7 +239,7 @@ internal sealed class VerifiedConsensusJournal
     {
         if (RequiresChainRecord(store))
         {
-            await AppendChainAsync(1, LightClientWireCodec.EncodeUpdate(update, _spec), cancellationToken);
+            await AppendChainAsync(1, LightClientWireCodec.EncodeUpdate(update, _spec), store, cancellationToken);
         }
         else if (store.FinalizedHeader.Beacon!.Slot > _slot)
         {
@@ -257,7 +257,7 @@ internal sealed class VerifiedConsensusJournal
     {
         if (RequiresChainRecord(store))
         {
-            await AppendChainAsync(2, LightClientWireCodec.EncodeFinality(update, _spec), cancellationToken);
+            await AppendChainAsync(2, LightClientWireCodec.EncodeFinality(update, _spec), store, cancellationToken);
         }
         else if (store.FinalizedHeader.Beacon!.Slot > _slot)
         {
@@ -274,7 +274,7 @@ internal sealed class VerifiedConsensusJournal
     internal async Task AppendAsync(LightClientOptimisticUpdate update, LightClientStore store, CancellationToken cancellationToken)
     {
         if (RequiresChainRecord(store))
-            await AppendChainAsync(4, LightClientWireCodec.EncodeOptimistic(update, _spec), cancellationToken);
+            await AppendChainAsync(4, LightClientWireCodec.EncodeOptimistic(update, _spec), store, cancellationToken);
         else if (store.OptimisticHeader.Beacon!.Slot > _optimisticSlot)
             await SaveOptimisticAsync(4, LightClientWireCodec.EncodeOptimistic(update, _spec), cancellationToken);
         await SaveBestAsync(store, cancellationToken);
@@ -319,7 +319,7 @@ internal sealed class VerifiedConsensusJournal
         CancellationToken cancellationToken)
     {
         byte[] record = BuildForcedRecord(bestUpdate, forceSlot);
-        await AppendChainAsync(3, record, cancellationToken);
+        await AppendChainAsync(3, record, store, cancellationToken);
         await SaveBestAsync(store, cancellationToken);
         RecordState(store);
     }
@@ -328,17 +328,16 @@ internal sealed class VerifiedConsensusJournal
         store.Period != _period || store.NextSyncCommitteeKnown != _nextKnown ||
         store.PreviousMaxParticipants != _previousMaxParticipants || store.CurrentMaxParticipants > _currentMaxParticipants;
 
-    private async Task AppendChainAsync(byte kind, byte[] encoded, CancellationToken cancellationToken)
+    private async Task AppendChainAsync(byte kind, byte[] encoded, LightClientStore store, CancellationToken cancellationToken)
     {
         byte[] bootstrap = _bootstrap ?? throw new InvalidOperationException("The consensus journal is not initialized.");
-        int additional = 1 + (_latestHead is null ? 0 : 1) + (_latestOptimistic is null ? 0 : 1) + (_latestBest is null ? 0 : 1);
-        if (_updates.Count + additional > MaxUpdates)
-            throw new InvalidDataException("Saved committee chain reached its update limit; supply a newer trusted checkpoint.");
         List<(byte Kind, byte[] Data)> updates = [.. _updates];
-        if (_latestHead is { } head) updates.Add(head);
-        if (_latestOptimistic is { } optimistic) updates.Add(optimistic);
-        if (_latestBest is { } best) updates.Add(best);
+        if (_latestHead is { } head && (head.Kind != kind || !head.Data.AsSpan().SequenceEqual(encoded))) updates.Add(head);
+        if (_latestOptimistic is { } optimistic && (optimistic.Kind != kind || !optimistic.Data.AsSpan().SequenceEqual(encoded))) updates.Add(optimistic);
         updates.Add((kind, encoded));
+        if (store.Period != _period || updates.Count > MaxUpdates) updates = Compact(bootstrap, updates, store, cancellationToken);
+        if (updates.Count > MaxUpdates)
+            throw new InvalidDataException("Saved committee chain reached its update limit; supply a newer trusted checkpoint.");
         byte[] chain = BuildChain(bootstrap, updates);
         await WriteAtomicAsync(_chainPath, chain, cancellationToken);
         _updates.Clear();
@@ -352,6 +351,70 @@ internal sealed class VerifiedConsensusJournal
         DeleteSupersededHead(_headPath);
         DeleteSupersededHead(_optimisticPath);
     }
+
+    private List<(byte Kind, byte[] Data)> Compact(byte[] bootstrap, List<(byte Kind, byte[] Data)> updates,
+        LightClientStore expected, CancellationToken cancellationToken)
+    {
+        LightClientBootstrap anchor = LightClientWireCodec.DecodeBootstrap(bootstrap, _spec);
+        ulong slot = anchor.Header!.Beacon!.Slot;
+        LightClientStore replay = new(_spec, _checkpoint, anchor, slot);
+        bool[] keep = new bool[updates.Count];
+        Dictionary<ulong, (int Maximum, int Index)> maxima = [];
+        int finalized = -1, optimistic = -1, clearedCandidate = -1;
+        for (int i = 0; i < updates.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            (byte kind, byte[] data) = updates[i];
+            slot = Math.Max(slot, RecordSlot(kind, data));
+            ulong period = replay.Period;
+            bool knewNext = replay.NextSyncCommitteeKnown;
+            ulong oldFinalized = replay.FinalizedHeader.Beacon!.Slot, oldOptimistic = replay.OptimisticHeader.Beacon!.Slot;
+            ProcessRecord(replay, kind, data, slot);
+            if (replay.Period != period || replay.NextSyncCommitteeKnown != knewNext || kind == 3) keep[i] = true;
+            if (kind == 3 && clearedCandidate >= 0) keep[clearedCandidate] = true;
+            if (!replay.HasBestUpdate) clearedCandidate = i;
+            if (replay.FinalizedHeader.Beacon!.Slot > oldFinalized) finalized = i;
+            if (replay.OptimisticHeader.Beacon!.Slot > oldOptimistic) optimistic = i;
+            int maximum = replay.Period == period ? replay.CurrentMaxParticipants : replay.PreviousMaxParticipants;
+            if (!maxima.TryGetValue(period, out (int Maximum, int Index) previous) || maximum > previous.Maximum)
+                maxima[period] = (maximum, i);
+        }
+        if (!replay.HasSameAuthenticatedState(expected))
+            throw new InvalidDataException("Saved consensus records do not reproduce the authenticated state.");
+        foreach ((int _, int index) in maxima.Values) keep[index] = true;
+        if (finalized >= 0) keep[finalized] = true;
+        if (optimistic >= 0) keep[optimistic] = true;
+        List<(byte Kind, byte[] Data)> compacted = [];
+        for (int i = 0; i < updates.Count; i++)
+            if (keep[i]) compacted.Add(updates[i]);
+        if (compacted.Count == updates.Count) return updates;
+
+        LightClientStore reduced = new(_spec, _checkpoint, anchor, anchor.Header.Beacon.Slot);
+        try
+        {
+            foreach ((byte kind, byte[] data) in compacted)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ProcessRecord(reduced, kind, data, slot);
+            }
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException)
+        {
+            _logger.LogWarning(exception, "Retaining full consensus records because the compacted replay could not be authenticated");
+            return updates;
+        }
+        if (!reduced.HasSameAuthenticatedState(expected)) return updates;
+        return compacted;
+    }
+
+    private ulong RecordSlot(byte kind, byte[] encoded) => kind switch
+    {
+        1 => LightClientWireCodec.DecodeUpdate(encoded, _spec).SignatureSlot,
+        2 => LightClientWireCodec.DecodeFinality(encoded, _spec).SignatureSlot,
+        4 => LightClientWireCodec.DecodeOptimistic(encoded, _spec).SignatureSlot,
+        3 when encoded.Length >= 10 => BinaryPrimitives.ReadUInt64LittleEndian(encoded),
+        _ => throw new InvalidDataException("Saved consensus data has an unknown or truncated update type."),
+    };
 
     private void RecordState(LightClientStore store)
     {

@@ -146,7 +146,7 @@
           <div class="panel head-card"><div class="metric orange" style="font-size:41px">LATEST</div><div><h3>Authenticated optimistic head</h3><p class="small">Adaptive participation threshold.<br>Timely for wallets; can reorganize.</p></div></div>
         </div>
         <p class="assumption"><strong>Trust-minimized:</strong> checkpoint + honest committee participation remain assumptions. Full block validity rests on Ethereum consensus. Timeout committee recovery has weaker assumptions.</p>
-        <footer><div class="sources"><a href="https://ethereum.github.io/consensus-specs/specs/altair/light-client/sync-protocol/" target="_blank" rel="noopener">Consensus specification</a><a href="https://github.com/NethermindEth/nethermind/blob/13c20f6f2c264750301d28db7f67ed302b355889/src/Nethermind/Nethermind.LightClient/Consensus/LightClientStore.cs" target="_blank" rel="noopener">Verifier implementation</a></div><span class="page">01 / 05</span></footer>
+        <footer><div class="sources"><a href="https://ethereum.github.io/consensus-specs/specs/altair/light-client/sync-protocol/" target="_blank" rel="noopener">Consensus specification</a><a href="https://github.com/NethermindEth/nethermind/blob/light-client-verified-p2p/src/Nethermind/Nethermind.LightClient/Consensus/LightClientStore.cs" target="_blank" rel="noopener">Verifier implementation</a></div><span class="page">01 / 05</span></footer>
       </section>
 
       <section class="slide" data-slide="2" aria-label="2. Data retrieved from peers">
@@ -171,19 +171,19 @@
           <div class="panel"><h3>Find peers, then authenticate data</h3><p class="small">Both stacks use discv5. EL also uses signed DNS discovery at<br><code>snap.&lt;network&gt;.ethdisco.net</code>. Gossip follows heads; polling repairs gaps.</p></div>
           <div class="panel"><h3>Availability remains a peer dependency</h3><p class="small">Peers can withhold data or stall a request. Invalid signatures, proofs or hashes are rejected against the authenticated commitments.</p></div>
         </div>
-        <footer><div class="sources"><a href="https://github.com/ethereum/devp2p/blob/master/caps/snap.md" target="_blank" rel="noopener">SNAP protocol</a><a href="https://ethereum.github.io/consensus-specs/specs/altair/light-client/p2p-interface/" target="_blank" rel="noopener">Light-client P2P</a><a href="https://github.com/NethermindEth/nethermind/blob/13c20f6f2c264750301d28db7f67ed302b355889/src/Nethermind/Nethermind.LightClient/ExecutionPeerTransport.cs" target="_blank" rel="noopener">Execution transport</a></div><span class="page">02 / 05</span></footer>
+        <footer><div class="sources"><a href="https://github.com/ethereum/devp2p/blob/master/caps/snap.md" target="_blank" rel="noopener">SNAP protocol</a><a href="https://ethereum.github.io/consensus-specs/specs/altair/light-client/p2p-interface/" target="_blank" rel="noopener">Light-client P2P</a><a href="https://github.com/NethermindEth/nethermind/blob/light-client-verified-p2p/src/Nethermind/Nethermind.LightClient/ExecutionPeerTransport.cs" target="_blank" rel="noopener">Execution transport</a></div><span class="page">02 / 05</span></footer>
       </section>
 
       <section class="slide" data-slide="3" aria-label="3. Supported RPC API">
         <header><div class="logo"><span class="nm">NM</span><span class="lc">LC</span><span class="brand-name">NETHERMIND LIGHT CLIENT</span></div><span class="eyebrow">03 / Supported API</span></header>
         <h2>Wallet-ready RPC, <span class="blue">executed locally.</span></h2>
-        <div class="api-lead"><p class="lead">23 ordinary methods over HTTP and WebSocket · 2 additional WebSocket methods</p><span class="pill">JSON-RPC 2.0 · port 8545</span></div>
+        <div class="api-lead"><p class="lead">29 ordinary methods over HTTP and WebSocket · 2 additional WebSocket methods</p><span class="pill">JSON-RPC 2.0 · port 8545</span></div>
         <div class="api-grid">
-          <div class="panel api-card"><h3>Identity &amp; verified state <span>7 METHODS</span></h3><div class="methods">
-            <code data-rpc-method="eth_chainId">eth_chainId</code><code data-rpc-method="eth_blockNumber">eth_blockNumber</code><code data-rpc-method="eth_getBalance">eth_getBalance</code><code data-rpc-method="eth_getTransactionCount">eth_getTransactionCount</code><code data-rpc-method="eth_getStorageAt">eth_getStorageAt</code><code data-rpc-method="eth_getCode">eth_getCode</code><code data-rpc-method="eth_getProof">eth_getProof</code>
+          <div class="panel api-card"><h3>Identity &amp; verified state <span>12 METHODS</span></h3><div class="methods">
+            <code data-rpc-method="eth_chainId">eth_chainId</code><code data-rpc-method="eth_syncing">eth_syncing</code><code data-rpc-method="net_version">net_version</code><code data-rpc-method="web3_clientVersion">web3_clientVersion</code><code data-rpc-method="eth_accounts">eth_accounts</code><code data-rpc-method="net_listening">net_listening</code><code data-rpc-method="eth_blockNumber">eth_blockNumber</code><code data-rpc-method="eth_getBalance">eth_getBalance</code><code data-rpc-method="eth_getTransactionCount">eth_getTransactionCount</code><code data-rpc-method="eth_getStorageAt">eth_getStorageAt</code><code data-rpc-method="eth_getCode">eth_getCode</code><code data-rpc-method="eth_getProof">eth_getProof</code>
           </div></div>
-          <div class="panel api-card"><h3>Simulation &amp; fees <span>5 METHODS</span></h3><div class="methods">
-            <code data-rpc-method="eth_call">eth_call</code><code data-rpc-method="eth_estimateGas">eth_estimateGas</code><code data-rpc-method="eth_feeHistory">eth_feeHistory</code><code data-rpc-method="eth_gasPrice">eth_gasPrice</code><code data-rpc-method="eth_maxPriorityFeePerGas">eth_maxPriorityFeePerGas</code>
+          <div class="panel api-card"><h3>Simulation &amp; fees <span>6 METHODS</span></h3><div class="methods">
+            <code data-rpc-method="eth_call">eth_call</code><code data-rpc-method="eth_estimateGas">eth_estimateGas</code><code data-rpc-method="eth_feeHistory">eth_feeHistory</code><code data-rpc-method="eth_gasPrice">eth_gasPrice</code><code data-rpc-method="eth_blobBaseFee">eth_blobBaseFee</code><code data-rpc-method="eth_maxPriorityFeePerGas">eth_maxPriorityFeePerGas</code>
           </div><p class="small">Nethermind EVM simulation.<br>Fee suggestions use verified headers and receipts.</p></div>
           <div class="panel api-card"><h3>Blocks &amp; counts <span>4 METHODS</span></h3><div class="methods">
             <code data-rpc-method="eth_getBlockByNumber">eth_getBlockByNumber</code><code data-rpc-method="eth_getBlockByHash">eth_getBlockByHash</code><code data-rpc-method="eth_getBlockTransactionCountByNumber">eth_getBlockTransactionCountByNumber</code><code data-rpc-method="eth_getBlockTransactionCountByHash">eth_getBlockTransactionCountByHash</code>
@@ -199,7 +199,7 @@
           </div><p class="small"><strong class="blue">newHeads</strong> — authenticated execution tips<br><strong class="blue">logs</strong> — verified events, with reorg removal notifications</p><p class="small"><code>ws://127.0.0.1:8545/ws</code></p></div>
         </div>
         <div class="api-foot"><span><strong>latest</strong> = optimistic, reorgable</span><span><strong>finalized</strong> = proven finalized state</span><span>History and lookup are explicitly bounded.</span></div>
-        <footer><div class="sources"><a href="https://github.com/NethermindEth/nethermind/blob/13c20f6f2c264750301d28db7f67ed302b355889/src/Nethermind/Nethermind.LightClient/README.md#verified-rpc-contract" target="_blank" rel="noopener">Run guide &amp; RPC contract</a><a href="https://github.com/NethermindEth/nethermind/blob/13c20f6f2c264750301d28db7f67ed302b355889/src/Nethermind/Nethermind.LightClient/VerifiedRpc.cs" target="_blank" rel="noopener">RPC implementation</a></div><span class="page">03 / 05</span></footer>
+        <footer><div class="sources"><a href="https://github.com/NethermindEth/nethermind/blob/light-client-verified-p2p/src/Nethermind/Nethermind.LightClient/README.md#verified-rpc-contract" target="_blank" rel="noopener">Run guide &amp; RPC contract</a><a href="https://github.com/NethermindEth/nethermind/blob/light-client-verified-p2p/src/Nethermind/Nethermind.LightClient/VerifiedRpc.cs" target="_blank" rel="noopener">RPC implementation</a></div><span class="page">03 / 05</span></footer>
       </section>
 
       <section class="slide" data-slide="4" aria-label="4. Extending the client for heads and reorgs">
@@ -224,7 +224,7 @@
         </div>
         <div class="rules"><span class="pill">Durable consumer cursor</span><span class="pill">Gap recovery</span><span class="pill">Idempotent rollback</span><span class="pill warm">Finality for irreversible actions</span></div>
         <p class="hook-note">Heads are sampled once per second and can skip intermediate tips. Subscription repair covers 32 blocks; reconnect and recover when the stream cannot repair a gap.</p>
-        <footer><div class="sources"><a href="https://github.com/NethermindEth/nethermind/blob/13c20f6f2c264750301d28db7f67ed302b355889/src/Nethermind/Nethermind.LightClient/Program.cs#L310" target="_blank" rel="noopener">Head publication point</a><a href="https://github.com/NethermindEth/nethermind/blob/13c20f6f2c264750301d28db7f67ed302b355889/src/Nethermind/Nethermind.LightClient/VerifiedSubscriptions.cs#L203" target="_blank" rel="noopener">Reorg reconstruction</a></div><span class="page">04 / 05</span></footer>
+        <footer><div class="sources"><a href="https://github.com/NethermindEth/nethermind/blob/light-client-verified-p2p/src/Nethermind/Nethermind.LightClient/Program.cs" target="_blank" rel="noopener">Head publication point</a><a href="https://github.com/NethermindEth/nethermind/blob/light-client-verified-p2p/src/Nethermind/Nethermind.LightClient/VerifiedSubscriptions.cs" target="_blank" rel="noopener">Reorg reconstruction</a></div><span class="page">04 / 05</span></footer>
       </section>
 
       <section class="slide" data-slide="5" aria-label="5. Running the client and remaining gaps">
@@ -235,14 +235,14 @@
           <div class="panel blue-edge run-panel"><h3>Start from the repository root</h3><pre><code>dotnet run --project src/Nethermind/Nethermind.LightClient -c release -p:SaveDiskSpace=true -- --checkpoint-url https://mainnet.checkpoint.sigp.io</code></pre>
             <p class="small">Example uses Sigma Prime's checkpoint service as the trust anchor. Alternatively provide <code>--checkpoint &lt;trusted-root&gt;</code>.</p>
             <div class="endpoint"><span><span class="blue">HTTP</span> <code>http://127.0.0.1:8545</code></span><span><span class="blue">WS</span> <code>ws://127.0.0.1:8545/ws</code></span></div>
-            <div class="bound-list"><div class="bound"><b>32</b><span>state ancestors</span></div><div class="bound"><b>256</b><span>block / receipt ancestors</span></div><div class="bound"><b>16</b><span>finalized blocks / log range</span></div></div>
+            <div class="bound-list"><div class="bound"><b>32</b><span>state ancestors</span></div><div class="bound"><b>256</b><span>block / receipt ancestors</span></div><div class="bound"><b>512</b><span>blocks / log range</span></div></div>
           </div>
           <div class="panel orange-edge gaps-panel"><h3>Scope to communicate clearly</h3><ul class="gaps-list"><li><code>pending</code>, <code>safe</code> and <code>earliest</code> selectors are unavailable.</li><li>Transaction lookup is bounded. <code>null</code> means unknown in scope, not global absence.</li><li>Recent Electra-or-later checkpoints; this is light-client verification, not full-chain replay.</li></ul>
-            <div class="gap-divider"></div><h3>Remaining engineering work</h3><ul class="gaps-list"><li>Peer diversity, CL capability selection and wider interoperability.</li><li>QUIC/TLS conformance and lifecycle follow-up; native handler cursors/recovery.</li><li>Browser/mobile ports and BAL-based cache advancement remain future work.</li></ul>
+            <div class="gap-divider"></div><h3>Remaining engineering work</h3><ul class="gaps-list"><li>Peer/operator diversity and wider public-network interoperability.</li><li>QUIC/TLS conformance and lifecycle follow-up; native handler cursors/recovery.</li><li>Browser/mobile ports remain future work; BAL-based hosted-state updates are fork-gated.</li></ul>
           </div>
         </div>
         <div class="summary-bar"><span><strong>Local wallets work by default.</strong> Browser extension origins are allowed.</span><span>Public RPC needs an authenticated gateway.</span></div>
-        <footer><div class="sources"><a href="https://github.com/NethermindEth/nethermind/pull/14457" target="_blank" rel="noopener">Draft PR #14457</a><a href="https://github.com/NethermindEth/nethermind/blob/13c20f6f2c264750301d28db7f67ed302b355889/src/Nethermind/Nethermind.LightClient/README.md" target="_blank" rel="noopener">Run guide &amp; limits</a></div><span>Implementation snapshot 13c20f6f2c · 14 Oct 2026</span><span class="page">05 / 05</span></footer>
+        <footer><div class="sources"><a href="https://github.com/NethermindEth/nethermind/pull/14457" target="_blank" rel="noopener">PR #14457</a><a href="https://github.com/NethermindEth/nethermind/blob/light-client-verified-p2p/src/Nethermind/Nethermind.LightClient/README.md" target="_blank" rel="noopener">Run guide &amp; limits</a></div><span>Implementation branch · 1 Nov 2026</span><span class="page">05 / 05</span></footer>
       </section>
     </div>
   </main>

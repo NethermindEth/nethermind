@@ -40,3 +40,5 @@ internal interface IExecutionStateSource
 
 internal sealed record ExecutionAccountProof(Account Account, byte[][] AccountProof, ExecutionStorageProof[] StorageProofs);
 internal sealed record ExecutionStorageProof(UInt256 Key, UInt256 Value, byte[][] Proof);
+
+internal sealed class ExecutionDataUnavailableException(string message) : IOException(message);

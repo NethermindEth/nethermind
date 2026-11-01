@@ -228,6 +228,66 @@ public class VerifiedHeaderHistoryTests
     }
 
     [Test]
+    public async Task History_identity_binds_the_network_capacity_and_format([Values("network", "capacity", "format")] string change)
+    {
+        Chain chain = new(700);
+        MemDb db = new();
+        await using (VerifiedHeaderHistory original = Create(chain, db))
+            await original.GetHeadersAsync(chain.Head(600), 100, 598, CancellationToken.None);
+        if (change == "format")
+        {
+            byte[] identity = db.Get([0xff])!.ToArray();
+            identity[0] ^= 1;
+            db.Set([0xff], identity);
+        }
+        Assert.That(() => new VerifiedHeaderHistory(db,
+            change == "network" ? Keccak.Zero : chain.Headers[0].Hash!, MainnetSpecProvider.Instance,
+            chain.GetHeaderAsync, chain.FetchPageAsync, LimboLogs.Instance.GetClassLogger<VerifiedHeaderHistory>(),
+            capacity: change == "capacity" ? 512 : 1024), Throws.TypeOf<InvalidDataException>());
+    }
+
+    [Test]
+    public async Task Conflicting_finality_at_the_same_height_does_not_replace_the_verified_anchor()
+    {
+        Chain chain = new(700);
+        await using VerifiedHeaderHistory history = Create(chain, new MemDb());
+        await history.GetHeadersAsync(chain.Head(600), 100, 598, CancellationToken.None);
+        int requests = chain.AnchorRequests;
+        Assert.That(async () => await history.GetHeadersAsync(chain.Head(600) with { BlockHash = Keccak.Zero },
+            100, 598, CancellationToken.None), Throws.TypeOf<InvalidDataException>());
+        AssertHeaders(await history.GetHeadersAsync(chain.Head(600), 100, 598, CancellationToken.None), chain, 100, 598);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.AnchorRequests, Is.EqualTo(requests));
+            Assert.That(history.Progress.LastVerifiedBlock, Is.EqualTo(600));
+        }
+    }
+
+    [Test]
+    public async Task Older_pinned_finality_does_not_move_the_backfill_anchor_backwards()
+    {
+        Chain chain = new(700);
+        await using VerifiedHeaderHistory history = Create(chain, new MemDb());
+        await history.GetHeadersAsync(chain.Head(700), 300, 699, CancellationToken.None);
+        AssertHeaders(await history.GetHeadersAsync(chain.Head(600), 100, 598, CancellationToken.None), chain, 100, 598);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.AnchorRequests, Is.EqualTo(1));
+            Assert.That(history.Progress.LastVerifiedBlock, Is.EqualTo(700));
+        }
+    }
+
+    [Test]
+    public async Task Anchor_state_root_must_match_the_authenticated_checkpoint()
+    {
+        Chain chain = new(700);
+        await using VerifiedHeaderHistory history = Create(chain, new MemDb());
+        Assert.That(async () => await history.GetHeadersAsync(chain.Head(600) with { StateRoot = Keccak.Zero },
+            100, 598, CancellationToken.None), Throws.TypeOf<RpcException>());
+        Assert.That(history.Progress.LastVerifiedBlock, Is.Null);
+    }
+
+    [Test]
     public async Task Persisted_headers_reattach_to_current_finality_and_detect_corruption(
         [Values("none", "header", "missing")] string corruption, [Values] bool relativePath)
     {
@@ -389,6 +449,7 @@ public class VerifiedHeaderHistoryTests
 
         Task<BlockHeader[]> request = ExecutionPeerTransport.ReadLogHeaderPageAsync(peer, cursor, 128, stop.Token);
         if (failure == "cancel") Assert.That(async () => await request, Throws.InstanceOf<OperationCanceledException>());
+        else if (failure is "null" or "empty") Assert.That(async () => await request, Throws.TypeOf<ExecutionDataUnavailableException>());
         else Assert.That(async () => await request, Throws.TypeOf<InvalidDataException>());
 
         Assert.That(requests.Count, Is.GreaterThanOrEqualTo(afterPrefix ? 2 : 1));
@@ -478,6 +539,45 @@ public class VerifiedHeaderHistoryTests
     }
 
     [Test]
+    public async Task Prefetch_still_runs_when_persisted_ring_slots_hold_older_block_numbers([Values] bool restart)
+    {
+        Chain chain = new(1200);
+        MemDb db = new();
+        List<ulong> prefetched = [];
+        VerifiedHeaderHistory.PageRequest[] Prefetch(ulong number, int count, CancellationToken token) =>
+            CreatePages(number, count, (pageNumber, pageCount) =>
+            {
+                token.ThrowIfCancellationRequested();
+                prefetched.Add(pageNumber);
+                BlockHeader[] page = chain.Headers.Skip(checked((int)(pageNumber - (ulong)pageCount))).Take(pageCount).ToArray();
+                return new(Task.CompletedTask, (_, cancellation) =>
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    return Task.FromResult(page);
+                });
+            });
+        VerifiedHeaderHistory history = Create(chain, db, capacity: 512, prefetch: Prefetch);
+        try
+        {
+            await history.GetHeadersAsync(chain.Head(600), 89, 600, CancellationToken.None);
+            if (restart)
+            {
+                await history.DisposeAsync();
+                history = Create(chain, db, capacity: 512, prefetch: Prefetch);
+            }
+            prefetched.Clear();
+            int serial = chain.PageRequests;
+            AssertHeaders(await history.GetHeadersAsync(chain.Head(1200), 689, 1200, CancellationToken.None), chain, 689, 1200);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(prefetched, Is.EqualTo(new[] { 1072UL, 944UL, 816UL }));
+                Assert.That(chain.PageRequests - serial, Is.EqualTo(1));
+            }
+        }
+        finally { await history.DisposeAsync(); }
+    }
+
+    [Test]
     public async Task Prefetch_presence_does_not_authenticate_cached_records([Values] bool corrupt)
     {
         Chain chain = new(700);
@@ -502,7 +602,9 @@ public class VerifiedHeaderHistoryTests
         {
             byte[] key = new byte[4];
             BinaryPrimitives.WriteInt32BigEndian(key, number);
-            db.Set(key, corrupt && number == 400 ? [0xc0] : decoder.EncodeAsBytes(chain.Headers[number]));
+            BlockHeader header = chain.Headers[number].Clone();
+            if (corrupt && number == 400) header.ExtraData = [0xee];
+            db.Set(key, decoder.EncodeAsBytes(header));
         }
         AssertHeaders(await history.GetHeadersAsync(chain.Head(600), 100, 598, CancellationToken.None), chain, 100, 598);
         using (Assert.EnterMultipleScope())

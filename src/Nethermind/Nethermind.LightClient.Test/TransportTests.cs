@@ -22,9 +22,11 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Config;
@@ -56,6 +58,7 @@ using Nethermind.State.SnapServer;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Stats.Model;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using NSubstitute;
 using NSubstitute.Extensions;
@@ -586,12 +589,9 @@ public class TransportTests
 
     [Test]
     [CancelAfter(30_000)]
-    public async Task History_short_prefixes_complete_within_the_production_peer_budget(
-        [Values(0, 400)] int responseDelayMs, CancellationToken token)
+    public async Task History_short_prefixes_complete_without_discarding_progress(CancellationToken token)
     {
         await using ExecutionPeers peers = new(1);
-        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
-        using CancellationTokenSource reading = CancellationTokenSource.CreateLinkedTokenSource(token);
         BlockHeader[] chain = HistoryChain(700);
         BlockHeader anchor = chain[600];
         ExecutionPeer peer = peers.Ordered[0];
@@ -599,81 +599,95 @@ public class TransportTests
         peer.SyncPeer.HeadHash = anchor.Hash!;
         peer.SyncPeer.Configure().GetHeadBlockHeader(Arg.Is<Hash256?>(hash => hash == anchor.Hash), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<BlockHeader?>(anchor));
-        Channel<long> responseDelays = Channel.CreateUnbounded<long>();
-        Lock advancing = new();
-        TaskCompletionSource interrupted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TimeSpan responseDelay = TimeSpan.FromMilliseconds(responseDelayMs);
         int pageRequests = 0;
+        peer.SyncPeer.Configure().GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                ulong number = call.ArgAt<ulong>(0);
+                int count = Math.Min(17, call.ArgAt<int>(1));
+                Interlocked.Increment(ref pageRequests);
+                BlockHeader[] headers = chain.AsSpan(checked((int)number), count).ToArray();
+                return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new TrackedResponse<BlockHeader>(headers,
+                    () => Interlocked.Increment(ref peer.ResponsesDisposed)));
+            });
+        VerifiedHead finalized = new(600, anchor.Number, anchor.Hash!, anchor.StateRoot!);
+        BlockHeader[] result = await peers.Transport.GetLogHeadersAsync(finalized, finalized, 100, 598, token);
+        HistoryProgress progress = peers.Transport.LogHistoryProgress;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Has.Length.EqualTo(499));
+            Assert.That(result.Select(header => (header.Number, header.Hash, header.ParentHash, header.StateRoot)),
+                Is.EqualTo(chain.Skip(100).Take(499)
+                    .Select(header => (header.Number, header.Hash, header.ParentHash, header.StateRoot))));
+            Assert.That(pageRequests, Is.GreaterThan(0));
+            Assert.That(peer.ResponsesDisposed, Is.EqualTo(pageRequests));
+            Assert.That(progress.FirstVerifiedBlock, Is.EqualTo(100));
+            Assert.That(progress.LastVerifiedBlock, Is.EqualTo(600));
+            Assert.That(progress.Error, Is.Null);
+            Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+            Assert.That(peers.Pool.AllPeers.Select(info => info.SleepingContexts), Is.EqualTo(new[] { AllocationContexts.None }));
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_history_page_consumes_legal_prefixes_within_its_production_deadline(
+        [Values(0, 400, 1300)] int responseDelayMs, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10), peers.Clock);
+        using CancellationTokenSource request = CancellationTokenSource.CreateLinkedTokenSource(token, timeout.Token);
+        using CancellationTokenSource reading = CancellationTokenSource.CreateLinkedTokenSource(token);
+        BlockHeader[] chain = HistoryChain(600);
+        ExecutionPeer peer = peers.Ordered[0];
+        Channel<long> responseDelays = Channel.CreateUnbounded<long>();
+        int responses = 0;
         peer.SyncPeer.Configure().GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(async call =>
             {
                 ulong number = call.ArgAt<ulong>(0);
                 int count = Math.Min(17, call.ArgAt<int>(1));
-                CancellationToken cancellation = call.ArgAt<CancellationToken>(3);
-                Interlocked.Increment(ref pageRequests);
-                Task delay;
-                lock (advancing)
-                {
-                    long due = peers.Clock.GetTimestamp() + responseDelay.Ticks;
-                    delay = Task.Delay(responseDelay, peers.Clock, cancellation);
-                    responseDelays.Writer.TryWrite(due);
-                }
-                try { await delay; }
-                catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-                {
-                    interrupted.TrySetResult();
-                    throw;
-                }
-                BlockHeader[] headers = chain.AsSpan(checked((int)number), count).ToArray();
-                return (IOwnedReadOnlyList<BlockHeader>?)new TrackedResponse<BlockHeader>(headers,
-                    () => Interlocked.Increment(ref peer.ResponsesDisposed));
+                TimeSpan responseDelay = TimeSpan.FromMilliseconds(responseDelayMs);
+                long due = peers.Clock.GetTimestamp() + responseDelay.Ticks;
+                Task delay = Task.Delay(responseDelay, peers.Clock, call.ArgAt<CancellationToken>(3));
+                responseDelays.Writer.TryWrite(due);
+                await delay;
+                Interlocked.Increment(ref responses);
+                return (IOwnedReadOnlyList<BlockHeader>?)new TrackedResponse<BlockHeader>(
+                    chain.AsSpan(checked((int)number), count).ToArray(), () => Interlocked.Increment(ref peer.ResponsesDisposed));
             });
-        VerifiedHead finalized = new(600, anchor.Number, anchor.Hash!, anchor.StateRoot!);
-        Task<BlockHeader[]> query = peers.Transport.GetLogHeadersAsync(finalized, finalized, 100, 598, caller.Token);
-        Task<long>? pendingRead = null;
+        Task<BlockHeader[]> query = ExecutionPeerTransport.ReadLogHeaderPageAsync(peer.SyncPeer, chain[599], 128, request.Token);
+        Task<long>? pending = null;
         try
         {
-            while (true)
+            while (!query.IsCompleted)
             {
-                pendingRead = responseDelays.Reader.ReadAsync(reading.Token).AsTask();
-                Task completed = await Task.WhenAny(query, pendingRead, interrupted.Task);
-                Assert.That(interrupted.Task.IsCompleted, Is.False,
-                    $"The production 10-second peer deadline interrupted an active legal prefix response before the history page completed; firstVerified={peers.Transport.LogHistoryProgress.FirstVerifiedBlock}.");
-                if (ReferenceEquals(completed, query)) break;
-                long due = await pendingRead;
-                pendingRead = null;
-                lock (advancing)
-                {
-                    long remaining = due - peers.Clock.GetTimestamp();
-                    if (remaining > 0) peers.Clock.Advance(TimeSpan.FromTicks(remaining));
-                }
+                pending = responseDelays.Reader.ReadAsync(reading.Token).AsTask();
+                if (ReferenceEquals(await Task.WhenAny(query, pending), query)) break;
+                long due = await pending;
+                pending = null;
+                long remaining = due - peers.Clock.GetTimestamp();
+                if (remaining > 0) peers.Clock.Advance(TimeSpan.FromTicks(remaining));
             }
-            BlockHeader[] headers = await query;
-            HistoryProgress progress = peers.Transport.LogHistoryProgress;
-            MemoryCache cooldowns = (MemoryCache)typeof(ExecutionPeerTransport)
-                .GetField("_peerCooldowns", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(peers.Transport)!;
-            using (Assert.EnterMultipleScope())
+            if (responseDelayMs == 1300)
             {
-                Assert.That(headers, Has.Length.EqualTo(499));
-                Assert.That(headers.Select(header => (header.Number, header.Hash, header.ParentHash, header.StateRoot)),
-                    Is.EqualTo(chain.Skip(100).Take(499)
-                        .Select(header => (header.Number, header.Hash, header.ParentHash, header.StateRoot))));
-                Assert.That(pageRequests, Is.GreaterThan(0));
-                Assert.That(peer.ResponsesDisposed, Is.EqualTo(pageRequests));
-                Assert.That(progress.FirstVerifiedBlock, Is.EqualTo(100));
-                Assert.That(progress.LastVerifiedBlock, Is.EqualTo(600));
-                Assert.That(progress.Error, Is.Null);
-                Assert.That(cooldowns.Count, Is.Zero);
-                Assert.That(peers.Pool.AllPeers.Select(info => info.SleepingContexts), Is.EqualTo(new[] { AllocationContexts.None }));
+                await Assert.ThrowsAsync<TaskCanceledException>(async () => await query);
+                Assert.That(timeout.IsCancellationRequested, Is.True);
             }
+            else
+            {
+                Assert.That((await query).Select(header => header.Hash),
+                    Is.EqualTo(chain.Skip(471).Take(128).Select(header => header.Hash)));
+                Assert.That(peers.Clock.GetTimestamp(), Is.EqualTo(TimeSpan.FromMilliseconds(responseDelayMs * 8).Ticks));
+                Assert.That(timeout.IsCancellationRequested, Is.False);
+            }
+            Assert.That(peer.ResponsesDisposed, Is.EqualTo(responses));
         }
         finally
         {
             reading.Cancel();
-            caller.Cancel();
-            if (pendingRead is not null)
-                await ((Task)pendingRead).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-            await peers.DisposeAsync();
+            request.Cancel();
+            if (pending is not null) await ((Task)pending).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             await ((Task)query).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
     }
@@ -1241,6 +1255,266 @@ public class TransportTests
 
     [Test]
     [CancelAfter(30_000)]
+    public async Task An_omitted_existing_account_cannot_poison_the_state_cache_or_hosted_snapshot(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap1: true);
+        Account expected = new(7, 123);
+        ValueHash256 requested = ValueKeccak.Compute(ExecutionPeers.SnapAddress.Bytes);
+        ValueHash256 returned = requested.IncrementPath().IncrementPath();
+        (Hash256 root, byte[][] proof) = SnapProofTests.OmittedKeyProof(requested, returned,
+            AccountDecoder.Instance.EncodeAsBytes(expected), existing: true);
+        peers.Header.StateRoot = root;
+        peers.Header.Hash = peers.Header.CalculateHash();
+        VerifiedHead head = peers.SnapHead;
+        int[] requests = new int[2];
+        for (int i = 0; i < peers.Ordered.Length; i++)
+        {
+            int supplier = i;
+            peers.Ordered[i].SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap);
+            snap!.GetAccountRange(Arg.Any<AccountRange>(), Arg.Any<CancellationToken>()).Returns(_ =>
+            {
+                Interlocked.Increment(ref requests[supplier]);
+                return Task.FromResult(new AccountsAndProofs
+                {
+                    PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(supplier == 0 ? returned : requested, expected) },
+                    Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof)),
+                });
+            });
+        }
+        using VerifiedRpc rpc = new(peers.Transport, () => head, 11155111);
+        JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { ExecutionPeers.SnapAddress.ToString(), "finalized" });
+        object first = await rpc.InvokeAsync("eth_getBalance", parameters, token);
+        int fetched = requests.Sum();
+        object second = await rpc.InvokeAsync("eth_getBalance", parameters, token);
+        HostedAccountState hosted = new([ExecutionPeers.SnapAddress], peers.Transport,
+            (_, _, _, _) => throw new AssertionException("This account has no storage to download."),
+            Nethermind.Logging.NullLogManager.Instance.GetClassLogger<HostedAccountState>());
+        await hosted.RefreshAsync(head, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo("0x7b"));
+            Assert.That(second, Is.EqualTo(first));
+            Assert.That(requests, Is.EqualTo(new[] { 1, 1 }));
+            Assert.That(requests.Sum(), Is.EqualTo(fetched));
+            Assert.That(hosted.TryGetAccount(head, ExecutionPeers.SnapAddress, out Account retained), Is.True);
+            Assert.That(retained, Is.EqualTo(expected));
+            Assert.That(hosted.GetProgress(head).Single().Stage, Is.EqualTo("complete"));
+        }
+        peers.Ordered[0].SyncPeer.Received().Disconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+        peers.Ordered[1].SyncPeer.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task An_omitted_existing_slot_is_retried_and_only_the_authenticated_value_is_cached(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap1: true);
+        UInt256 key = 1;
+        ValueHash256 requested = ValueKeccak.Compute(key.ToBigEndian());
+        ValueHash256 returned = requested.IncrementPath().IncrementPath();
+        byte[] value = Rlp.Encode((UInt256)42).Bytes;
+        (Hash256 storageRoot, byte[][] proof) = SnapProofTests.OmittedKeyProof(requested, returned, value, existing: true);
+        Account account = peers.SnapAccount.WithChangedStorageRoot(storageRoot);
+        byte[] accountLeaf = ExecutionProofFixtures.Leaf(Keccak.Compute(ExecutionPeers.SnapAddress.Bytes), AccountDecoder.Instance.EncodeAsBytes(account));
+        peers.Header.StateRoot = Keccak.Compute(accountLeaf);
+        peers.Header.Hash = peers.Header.CalculateHash();
+        VerifiedHead head = peers.SnapHead;
+        int[] requests = new int[2];
+        foreach (ExecutionPeer peer in peers.Ordered)
+        {
+            peer.SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap);
+            snap!.GetAccountRange(Arg.Any<AccountRange>(), Arg.Any<CancellationToken>()).Returns(_ => Task.FromResult(new AccountsAndProofs
+            {
+                PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(ValueKeccak.Compute(ExecutionPeers.SnapAddress.Bytes), account) },
+                Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>([accountLeaf])),
+            }));
+        }
+        for (int i = 0; i < peers.Ordered.Length; i++)
+        {
+            int supplier = i;
+            peers.Ordered[i].SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap);
+            snap!.GetStorageRange(Arg.Any<StorageRange>(), Arg.Any<CancellationToken>()).Returns(_ =>
+            {
+                Interlocked.Increment(ref requests[supplier]);
+                return Task.FromResult(new SlotsAndProofs
+                {
+                    PathsAndSlots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
+                    { new ArrayPoolList<PathWithStorageSlot>(1) { new(supplier == 0 ? returned : requested, value) } },
+                    Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof)),
+                });
+            });
+        }
+        using VerifiedRpc rpc = new(peers.Transport, () => head, 11155111);
+        JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { ExecutionPeers.SnapAddress.ToString(), "0x1", "finalized" });
+        object first = await rpc.InvokeAsync("eth_getStorageAt", parameters, token);
+        int fetched = requests.Sum();
+        object second = await rpc.InvokeAsync("eth_getStorageAt", parameters, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo("0x" + new string('0', 62) + "2a"));
+            Assert.That(second, Is.EqualTo(first));
+            Assert.That(requests, Is.EqualTo(new[] { 1, 1 }));
+            Assert.That(requests.Sum(), Is.EqualTo(fetched));
+        }
+        peers.Ordered[0].SyncPeer.Received().Disconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+        peers.Ordered[1].SyncPeer.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_hosted_download_root_failure_cools_the_actual_supplier_and_retries_an_honest_peer(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap1: true);
+        int[] requests = new int[2];
+        bool honestReady = false;
+        ValueHash256 path = ValueKeccak.Compute(((UInt256)1).ToBigEndian());
+        SlotsAndProofs Response(bool honest) => new()
+        {
+            PathsAndSlots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
+            { new ArrayPoolList<PathWithStorageSlot>(honest ? [new(path, Rlp.Encode(peers.SnapValue).Bytes)] : []) },
+            Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>([peers.StorageLeaf])),
+        };
+        using (SlotsAndProofs incomplete = Response(false))
+        {
+            HostedStorageDownload.Page page = HostedStorageDownload.VerifyPage(
+                new(ValueKeccak.Compute(ExecutionPeers.SnapAddress.Bytes), peers.SnapAccount), ValueKeccak.Zero,
+                incomplete, Nethermind.Logging.NullLogManager.Instance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(page.Slots, Is.Empty);
+                Assert.That(page.More, Is.False);
+            }
+        }
+        for (int i = 0; i < peers.Ordered.Length; i++)
+        {
+            int supplier = i;
+            peers.Ordered[i].SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap);
+            snap!.GetStorageRange(Arg.Any<StorageRange>(), Arg.Any<CancellationToken>()).Returns(async call =>
+            {
+                Interlocked.Increment(ref requests[supplier]);
+                if (supplier == 1 && !honestReady) await Task.Delay(Timeout.Infinite, call.ArgAt<CancellationToken>(1));
+                return Response(supplier == 1);
+            });
+        }
+        PeerInfo forged = peers.Pool.GetPeer(peers.Ordered[0].SyncPeer.Node)!;
+        PeerInfo honest = peers.Pool.GetPeer(peers.Ordered[1].SyncPeer.Node)!;
+        MethodInfo download = typeof(ExecutionPeerTransport).GetMethod("DownloadStorageAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Task<IReadOnlyDictionary<ValueHash256, UInt256>> Download() =>
+            (Task<IReadOnlyDictionary<ValueHash256, UInt256>>)download.Invoke(peers.Transport,
+                [peers.SnapHead, ExecutionPeers.SnapAddress, peers.SnapAccount, token])!;
+        await Assert.ThrowsAsync<InvalidDataException>(async () => await Download());
+        MethodInfo isCooling = typeof(ExecutionPeerTransport).GetMethod("IsCooling", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isCooling.Invoke(peers.Transport, [forged, AllocationContexts.Snap]), Is.True);
+            Assert.That(isCooling.Invoke(peers.Transport, [honest, AllocationContexts.Snap]), Is.False);
+        }
+        honestReady = true;
+        IReadOnlyDictionary<ValueHash256, UInt256> storage = await Download();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage, Has.Count.EqualTo(1));
+            Assert.That(storage[path], Is.EqualTo(peers.SnapValue));
+            Assert.That(requests[0], Is.EqualTo(1));
+            Assert.That(requests[1], Is.GreaterThanOrEqualTo(1));
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_hosted_download_does_not_retain_disconnected_suppliers(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap1: true);
+        PatriciaTree tree = new();
+        ValueHash256[] paths = new ValueHash256[3];
+        for (int i = 0; i < paths.Length; i++)
+        {
+            byte[] bytes = new byte[32];
+            bytes[0] = (byte)((i + 1) << 4);
+            ValueHash256 path = paths[i] = new(bytes);
+            tree.Set(path.Bytes, Rlp.Encode((UInt256)(uint)(i + 1)).Bytes);
+        }
+        tree.UpdateRootHash();
+        Account account = peers.SnapAccount.WithChangedStorageRoot(tree.RootHash);
+        peers.Header.StateRoot = Keccak.Compute(ExecutionProofFixtures.Leaf(Keccak.Compute(ExecutionPeers.SnapAddress.Bytes),
+            AccountDecoder.Instance.EncodeAsBytes(account)));
+        peers.Header.Hash = peers.Header.CalculateHash();
+        for (int i = 0; i < paths.Length; i++)
+        {
+            using SlotsAndProofs response = Response(i);
+            HostedStorageDownload.Page page = HostedStorageDownload.VerifyPage(
+                new(ValueKeccak.Compute(ExecutionPeers.SnapAddress.Bytes), account),
+                i == 0 ? ValueKeccak.Zero : paths[i - 1].IncrementPath(), response, Nethermind.Logging.NullLogManager.Instance);
+            Assert.That(page.More, Is.EqualTo(i != paths.Length - 1), $"Page {i} must advance to the next real proof.");
+        }
+        TaskCompletionSource thirdPage = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource finish = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        WeakReference<PeerInfo> retired = TrackRetiredPeer(peers);
+        peers.Ordered[0].SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? first);
+        first!.GetStorageRange(Arg.Any<StorageRange>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            if (call.ArgAt<StorageRange>(0).StartingHash == ValueKeccak.Zero) return Task.FromResult(Response(0));
+            peers.Pool.RemovePeer(peers.Ordered[0].SyncPeer);
+            return Task.FromException<SlotsAndProofs>(new ExecutionDataUnavailableException("This supplier no longer has the remaining range."));
+        });
+        peers.Ordered[1].SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? next);
+        next!.GetStorageRange(Arg.Any<StorageRange>(), Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            ValueHash256 start = call.ArgAt<StorageRange>(0).StartingHash!.Value;
+            int index = start <= paths[1] ? 1 : 2;
+            if (index == 2)
+            {
+                thirdPage.TrySetResult();
+                await finish.Task.WaitAsync(call.ArgAt<CancellationToken>(1));
+            }
+            return Response(index);
+        });
+        MethodInfo method = typeof(ExecutionPeerTransport).GetMethod("DownloadStorageAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Task<IReadOnlyDictionary<ValueHash256, UInt256>> download =
+            (Task<IReadOnlyDictionary<ValueHash256, UInt256>>)method.Invoke(peers.Transport,
+                [peers.SnapHead, ExecutionPeers.SnapAddress, account, token])!;
+        try
+        {
+            await thirdPage.Task.WaitAsync(token);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+            Assert.That(retired.TryGetTarget(out _), Is.False,
+                "A download must release suppliers that can no longer receive final-root failure attribution.");
+            finish.TrySetResult();
+            IReadOnlyDictionary<ValueHash256, UInt256> storage = await download;
+            Assert.That(paths.Select(key => storage[key]), Is.EqualTo(new UInt256[] { 1, 2, 3 }));
+        }
+        finally
+        {
+            finish.TrySetResult();
+            await ((Task)download).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+
+        SlotsAndProofs Response(int index)
+        {
+            ValueHash256 start = index == 0 ? ValueKeccak.Zero : paths[index - 1].IncrementPath();
+            ProofCollector left = new(start.Bytes.ToArray());
+            ProofCollector right = new(paths[index].Bytes.ToArray());
+            tree.Accept(left, tree.RootHash);
+            tree.Accept(right, tree.RootHash);
+            byte[][] proofs = left.BuildResult().Concat(right.BuildResult()).DistinctBy(Keccak.Compute).ToArray();
+            return new()
+            {
+                PathsAndSlots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
+                { new ArrayPoolList<PathWithStorageSlot>(1) { new(paths[index], Rlp.Encode((UInt256)(uint)(index + 1)).Bytes) } },
+                Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proofs)),
+            };
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        static WeakReference<PeerInfo> TrackRetiredPeer(ExecutionPeers peers) => new(peers.Pool.GetPeer(peers.Ordered[0].SyncPeer.Node)!);
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
     public async Task State_cache_keys_include_the_account_address_and_storage_slot([Values] bool storage, CancellationToken token)
     {
         await using ExecutionPeers peers = new(1, snap1: true);
@@ -1758,7 +2032,7 @@ public class TransportTests
         int connected = await RunSnapCapacityTickAsync(peers, 8, token);
 
         Assert.That(connected, Is.EqualTo(8), "cooldown changes availability, not connected SNAP capability");
-        AssertSnapCapacityVictim(peers, expired ? -1 : 0);
+        AssertSnapCapacityVictim(peers, expired ? -1 : 8);
     }
 
     private static async Task<int> RunSnapCapacityTickAsync(ExecutionPeers peers, int snapPeers, CancellationToken token)
@@ -1843,6 +2117,216 @@ public class TransportTests
         await recovered;
 
         Assert.That(peers.Counts(AllocationContexts.Snap), Is.EqualTo(new[] { 2, 1 }));
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Unknown_header_hash_does_not_cool_other_header_requests(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(3);
+        Hash256 unknown = Keccak.Compute("unknown block");
+        foreach (ExecutionPeer peer in peers.Ordered)
+            peer.SyncPeer.GetHeadBlockHeader(unknown, Arg.Any<CancellationToken>()).Returns((BlockHeader?)null);
+
+        Task<BlockHeader> missing = peers.Transport.GetHeaderByHashAsync(unknown, token);
+        peers.Clock.Advance(TimeSpan.FromSeconds(31));
+        Assert.That(async () => await missing, Throws.TypeOf<ExecutionDataUnavailableException>());
+        Task<BlockHeader> known = peers.Transport.GetHeaderByHashAsync(peers.Header.Hash!, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(known.IsCompletedSuccessfully, Is.True);
+            Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        }
+        Assert.That((await known).Hash, Is.EqualTo(peers.Header.Hash));
+        foreach (ExecutionPeer peer in peers.Ordered) peer.SyncPeer.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Unavailable_state_does_not_cool_peers_for_current_state_reads([Values] bool storage, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap1: true);
+        Hash256 unavailable = Keccak.Compute("old unavailable state");
+        VerifiedHead old = peers.SnapHead with { StateRoot = unavailable };
+        foreach (ExecutionPeer peer in peers.Ordered)
+        {
+            peer.SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap);
+            snap!.GetAccountRange(Arg.Is<AccountRange>(range => range.RootHash == unavailable), Arg.Any<CancellationToken>())
+                .Returns(_ => Task.FromResult(new AccountsAndProofs()));
+            snap.GetStorageRange(Arg.Is<StorageRange>(range => range.RootHash == unavailable), Arg.Any<CancellationToken>())
+                .Returns(_ => Task.FromResult(new SlotsAndProofs()));
+        }
+        Task absent = storage ? peers.Transport.GetStorageAsync(old, ExecutionPeers.SnapAddress, peers.SnapAccount, 1, token)
+            : peers.Transport.GetAccountAsync(old, ExecutionPeers.SnapAddress, token);
+        peers.Clock.Advance(TimeSpan.FromSeconds(31));
+        Assert.That(async () => await absent, Throws.TypeOf<ExecutionDataUnavailableException>());
+
+        await peers.RequestSnap(storage ? 1 : 0, token);
+
+        Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        foreach (ExecutionPeer peer in peers.Ordered) peer.SyncPeer.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Ancestor_pages_must_end_at_the_authenticated_head_even_when_parent_links_are_consistent(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2);
+        peers.Ordered[0].DivergentAncestors = true;
+
+        Hash256[] hashes = await peers.Transport.GetAncestorHashesAsync(peers.Head, 0, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hashes, Is.EqualTo(peers.Chain.Select(header => header.Hash)));
+            Assert.That(peers.Counts(AllocationContexts.Headers), Is.EqualTo(new[] { 1, 1 }));
+        }
+        peers.Ordered[0].SyncPeer.Received().Disconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Ancestor_page_counts_distinguish_unavailable_data_from_excess_headers(
+        [Values(-1, 0, 1)] int countOffset, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2);
+        peers.Ordered[0].AncestorCountOffset = countOffset;
+
+        Hash256[] hashes = await peers.Transport.GetAncestorHashesAsync(peers.Head, 0, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hashes, Is.EqualTo(peers.Chain.Select(header => header.Hash)));
+            Assert.That(peers.Counts(AllocationContexts.Headers), Is.EqualTo(new[] { 1, countOffset == 0 ? 0 : 1 }));
+            Assert.That(peers.Ordered[0].ResponsesDisposed, Is.EqualTo(1));
+            Assert.That(HistoryCooldowns(peers).Count, Is.EqualTo(countOffset > 0 ? 1 : 0));
+        }
+        if (countOffset > 0)
+            peers.Ordered[0].SyncPeer.Received().Disconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+        else
+            peers.Ordered[0].SyncPeer.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Snap2_unavailable_BAL_placeholder_preserves_the_supplier_and_retries_available_data(
+        [Values] bool fallback, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(fallback ? 2 : 1, snap2: true, ethVersion: 69);
+        ExecutionPeer unavailable = peers.Ordered[0];
+        unavailable.SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap);
+        snap!.Configure().GetBlockAccessLists(Arg.Any<IReadOnlyList<ValueHash256>>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                unavailable.Calls.AddOrUpdate(AllocationContexts.BlockAccessLists, 1, static (_, count) => count + 1);
+                IByteBuffer wire = Unpooled.WrappedBuffer(new byte[] { 0xc3, 42, 0xc1, 0x80 });
+                try
+                {
+                    BlockAccessListsMessage response = new BlockAccessListsMessageSerializer().Deserialize(wire);
+                    Assert.That(response.BlockAccessLists.Count, Is.EqualTo(1));
+                    Assert.That(response.BlockAccessLists[0].IsEmpty, Is.True);
+                    return Task.FromResult(response.BlockAccessLists);
+                }
+                finally { wire.Release(); }
+            });
+
+        Task<ReadOnlyBlockAccessList> request = peers.Transport.GetBlockAccessListAsync(peers.Header, token);
+        if (fallback)
+        {
+            Assert.That((await request).WireHash, Is.EqualTo(peers.Header.BlockAccessListHash));
+            await peers.Transport.GetBlockAccessListAsync(peers.Header, token);
+        }
+        else Assert.That(async () => await request, Throws.TypeOf<ExecutionDataUnavailableException>());
+        await peers.RequestSnap(0, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peers.Counts(AllocationContexts.BlockAccessLists), Is.EqualTo(fallback ? new[] { 1, 1 } : new[] { 1 }));
+            Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        }
+        unavailable.SyncPeer.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Concurrent_BAL_requests_share_one_download_and_caller_cancellation(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        foreach (ExecutionPeer peer in peers.Ordered)
+            peer.BeforeResponse = (_, stopping) => release.Task.WaitAsync(stopping);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<ReadOnlyBlockAccessList> canceled = peers.Transport.GetBlockAccessListAsync(peers.Header, caller.Token);
+        Task<ReadOnlyBlockAccessList>[] remaining = Enumerable.Range(0, 3)
+            .Select(_ => peers.Transport.GetBlockAccessListAsync(peers.Header, token)).ToArray();
+        try
+        {
+            await peers.Started.Reader.ReadAsync(token);
+            await peers.Started.Reader.ReadAsync(token);
+            await caller.CancelAsync();
+            Assert.That(async () => await canceled, Throws.InstanceOf<OperationCanceledException>());
+            release.SetResult();
+            ReadOnlyBlockAccessList[] lists = await Task.WhenAll(remaining);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(lists, Has.All.Property(nameof(ReadOnlyBlockAccessList.WireHash)).EqualTo(peers.Header.BlockAccessListHash));
+                Assert.That(peers.Counts(AllocationContexts.BlockAccessLists).Sum(), Is.EqualTo(2));
+            }
+        }
+        finally
+        {
+            release.TrySetResult();
+            await ((Task)Task.WhenAll(remaining)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_repeatedly_silent_preferred_peer_is_demoted_without_penalizing_one_healthy_hedge(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap1: true);
+        await peers.RequestSnap(0, token);
+        Assert.That(PreferredHistoryPeers(peers)[AllocationContexts.Snap].SyncPeer, Is.SameAs(peers.Ordered[0].SyncPeer));
+        peers.Ordered[0].BeforeResponse = static (_, stopping) => Task.Delay(Timeout.Infinite, stopping);
+        for (int i = 0; i < 4; i++) await peers.RequestSnap(3, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peers.Counts(AllocationContexts.Snap)[0], Is.LessThanOrEqualTo(4));
+            Assert.That(PreferredHistoryPeers(peers)[AllocationContexts.Snap].SyncPeer, Is.SameAs(peers.Ordered[1].SyncPeer));
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Slow_valid_peers_are_rotated_out_at_capacity(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(32, snap1: true);
+        foreach (ExecutionPeer peer in peers.Ordered)
+            peer.BeforeResponse = (_, stopping) => Task.Delay(TimeSpan.FromSeconds(9.5), peers.Clock, stopping);
+        Task request = peers.RequestSnap(0, token);
+        peers.Clock.Advance(TimeSpan.FromSeconds(9.5));
+        await request;
+
+        await RunSnapCapacityTickAsync(peers, 32, token);
+
+        Assert.That(peers.Ordered.Sum(peer => peer.SyncPeer.ReceivedCalls().Count(call =>
+            call.GetMethodInfo().Name == nameof(ISyncPeer.Disconnect))), Is.GreaterThanOrEqualTo(1));
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Bytecode_above_one_mebibyte_is_not_admitted_even_when_its_hash_matches(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap1: true);
+        peers.SetSnapState(42, 123, new byte[1024 * 1024 + 1]);
+
+        Task<byte[]> code = peers.Transport.GetCodeAsync(peers.SnapAccount, token);
+        peers.Clock.Advance(TimeSpan.FromSeconds(31));
+
+        Assert.That(async () => await code, Throws.TypeOf<RpcException>());
+        foreach (ExecutionPeer peer in peers.Ordered) peer.SyncPeer.Received().Disconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
     }
 
     [Test]
@@ -3000,7 +3484,10 @@ public class TransportTests
             header.Bloom = new Bloom(receipts.SelectMany(receipt => receipt.Logs!).ToArray());
             header.TxRoot = TxTrie.CalculateRoot(Enumerable.Range(1, receiptCount).Select(index => new Transaction
             {
-                Nonce = (ulong)index, To = Address.Zero, GasLimit = 30_000, GasPrice = 1,
+                Nonce = (ulong)index,
+                To = Address.Zero,
+                GasLimit = 30_000,
+                GasPrice = 1,
             }).ToArray());
             header.ReceiptsRoot = ReceiptTrie.CalculateRoot(Transport.SpecProvider.GetSpec(header), receipts, new ReceiptMessageDecoder());
             header.Hash = header.CalculateHash();
@@ -3112,8 +3599,11 @@ public class TransportTests
             {
                 using StatusMessage69 status = new()
                 {
-                    ProtocolVersion = (byte)version, NetworkId = owner.Server.NetworkId, GenesisHash = owner.Server.Genesis.Hash!,
-                    LatestBlock = initial.Number, LatestBlockHash = initial.Hash!,
+                    ProtocolVersion = (byte)version,
+                    NetworkId = owner.Server.NetworkId,
+                    GenesisHash = owner.Server.Genesis.Hash!,
+                    LatestBlock = initial.Number,
+                    LatestBlockHash = initial.Hash!,
                     ForkId = services.Resolve<IForkInfo>().GetForkId(initial.Number, initial.Timestamp),
                 };
                 Deliver(status);
@@ -3122,8 +3612,11 @@ public class TransportTests
             {
                 using Eth62Messages.StatusMessage status = new()
                 {
-                    ProtocolVersion = (byte)version, NetworkId = owner.Server.NetworkId,
-                    GenesisHash = owner.Server.Genesis.Hash!, BestHash = initial.Hash!, TotalDifficulty = 1,
+                    ProtocolVersion = (byte)version,
+                    NetworkId = owner.Server.NetworkId,
+                    GenesisHash = owner.Server.Genesis.Hash!,
+                    BestHash = initial.Hash!,
+                    TotalDifficulty = 1,
                     ForkId = services.Resolve<IForkInfo>().GetForkId(initial.Number, initial.Timestamp),
                 };
                 Deliver(status);
@@ -3669,6 +4162,81 @@ public class TransportTests
             Assert.Throws<InvalidDataException>(() => ExecutionPeerTransport.VerifyReceipts(header, [], MainnetSpecProvider.Instance));
         else
             Assert.DoesNotThrow(() => ExecutionPeerTransport.VerifyReceipts(header, [], MainnetSpecProvider.Instance));
+    }
+
+    [Test]
+    public void Block_body_uncles_are_bound_to_the_authenticated_header([Values] bool tamper)
+    {
+        BlockHeader header = EmptyHeader();
+        BlockHeader uncle = EmptyHeader();
+        uncle.Hash = uncle.CalculateHash();
+        BlockBody body = new([], [uncle], []);
+        header.UnclesHash = UnclesHash.Calculate(body.Uncles);
+        if (tamper) body.Uncles[0] = EmptyHeader();
+        if (tamper) body.Uncles[0].ExtraData = [0xff];
+
+        if (tamper) Assert.That(() => ExecutionPeerTransport.VerifyBlockBody(header, body), Throws.TypeOf<InvalidDataException>());
+        else Assert.That(() => ExecutionPeerTransport.VerifyBlockBody(header, body), Throws.Nothing);
+    }
+
+    [Test]
+    public void Receipt_post_state_is_bound_to_its_fork([Values(4_369_999UL, 4_370_000UL)] ulong number, [Values] bool forged)
+    {
+        BlockHeader header = EmptyHeader();
+        header.Number = number;
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(header);
+        TxReceipt receipt = new()
+        {
+            StatusCode = 0,
+            PostTransactionState = spec.IsEip658Enabled ? null : Keccak.Compute("authenticated post state"),
+            GasUsedTotal = 21_000,
+            Logs = [],
+            Bloom = Bloom.Empty,
+        };
+        header.ReceiptsRoot = ReceiptTrie.CalculateRoot(spec, [receipt], new ReceiptMessageDecoder());
+        if (forged) receipt.PostTransactionState = Keccak.Compute("unauthenticated post state");
+        if (forged)
+            Assert.That(() => ExecutionPeerTransport.VerifyReceipts(header, [receipt], MainnetSpecProvider.Instance),
+                Throws.TypeOf<InvalidDataException>());
+        else Assert.That(() => ExecutionPeerTransport.VerifyReceipts(header, [receipt], MainnetSpecProvider.Instance), Throws.Nothing);
+    }
+
+    [Test]
+    public void Receipt_bloom_is_derived_from_authenticated_logs_when_omitted_from_the_trie([Values] bool tamper)
+    {
+        TestSpecProvider provider = new(new ReleaseSpec { IsEip658Enabled = true, IsEip7668Enabled = true });
+        BlockHeader header = EmptyHeader();
+        LogEntry[] logs = [new(Address.Zero, [1, 2, 3], [Keccak.Compute("topic")])];
+        TxReceipt receipt = new() { StatusCode = 0, GasUsedTotal = 21_000, Logs = logs, Bloom = tamper ? Bloom.Empty : new Bloom(logs) };
+        header.ReceiptsRoot = ReceiptTrie.CalculateRoot(provider.GetSpec(header), [receipt], new ReceiptMessageDecoder());
+
+        ExecutionPeerTransport.VerifyReceipts(header, [receipt], provider);
+
+        Assert.That(receipt.Bloom, Is.EqualTo(new Bloom(logs)));
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Failed_receipt_status_cannot_be_replaced_or_cached_as_a_post_state_root(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2);
+        peers.Receipts[0].StatusCode = 0;
+        peers.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(peers.Transport.SpecProvider.GetSpec(peers.Header), peers.Receipts, new ReceiptMessageDecoder());
+        peers.Header.Hash = peers.Header.CalculateHash();
+        peers.Ordered[0].ReceiptTransform = receipts => [new(receipts[0]) { PostTransactionState = Keccak.Compute("forged root") }];
+
+        TxReceipt[] first = await peers.Transport.GetReceiptsAsync(peers.Header, token);
+        TxReceipt[] cached = await peers.Transport.GetReceiptsAsync(peers.Header, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first[0].StatusCode, Is.Zero);
+            Assert.That(first[0].PostTransactionState, Is.Null);
+            Assert.That(cached[0].StatusCode, Is.Zero);
+            Assert.That(cached[0].PostTransactionState, Is.Null);
+            Assert.That(peers.Counts(AllocationContexts.Receipts), Is.EqualTo(new[] { 1, 1 }));
+        }
+        peers.Ordered[0].SyncPeer.Received().Disconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
     }
 
     private static BlockHeader EmptyHeader() => new(Keccak.Zero, UnclesHash.Calculate([]), Address.Zero,
@@ -4223,6 +4791,7 @@ public class TransportTests
             Activity attempt = captured!;
             Activity logical = attempt.Parent!;
             double elapsed = peerIndex == 1 ? 3 : 5;
+            string outcome = peerIndex == 1 ? "completed" : "interrupted";
             string response = entries.Single(entry => entry.Contains($"id={attempt.Id} phase=response-await"));
             string verification = entries.Single(entry => entry.Contains($"id={attempt.Id} phase=verification"));
             string completedAttempt = entries.Single(entry => entry.Contains($"id={attempt.Id} parent={logical.Id} phase=peer-attempt"));
@@ -4237,7 +4806,7 @@ public class TransportTests
                 Assert.That(verification,
                     Does.Contain("outcome=verified").And.Contain($"elapsedMs={0d:F3}"));
                 Assert.That(completedAttempt,
-                    Does.Contain($"peer={peers.Ordered[peerIndex].SyncPeer.Node:c}").And.Contain("outcome=completed").And.Contain($"inclusiveMs={elapsed:F3}"));
+                    Does.Contain($"peer={peers.Ordered[peerIndex].SyncPeer.Node:c}").And.Contain($"outcome={outcome}").And.Contain($"inclusiveMs={elapsed:F3}"));
                 Assert.That(selection,
                     Does.Contain($"peer={peers.Ordered[1].SyncPeer.Node:c} outcome=selected"));
             }
@@ -4418,8 +4987,11 @@ public class TransportTests
         internal int ResponsesDisposed;
         internal bool InvalidData;
         internal bool InvalidAncestors;
+        internal bool DivergentAncestors;
         internal bool MissingAncestors;
+        internal int AncestorCountOffset;
         internal bool MissingReceipts;
+        internal Func<TxReceipt[], TxReceipt[]>? ReceiptTransform;
         internal Func<Hash256, BlockHeader, BlockHeader>? HeaderTransform;
         internal ReadOnlyMemory<int> LastReceiptCounts;
         internal ReadOnlyMemory<int>? LastReceiptLimits;
@@ -4450,7 +5022,21 @@ public class TransportTests
             {
                 await Read(AllocationContexts.Headers, call.ArgAt<CancellationToken>(3));
                 BlockHeader[] result = owner.Chain.Skip((int)call.ArgAt<ulong>(0)).Take(call.ArgAt<int>(1)).ToArray();
+                if (AncestorCountOffset < 0) result = result[..^1];
+                else if (AncestorCountOffset > 0) result = [.. result, result[^1]];
                 if (MissingAncestors) result = [];
+                if (DivergentAncestors)
+                {
+                    Hash256 parent = result[0].ParentHash!;
+                    for (int i = 0; i < result.Length; i++)
+                    {
+                        BlockHeader different = result[i].Clone();
+                        different.ExtraData = [0xff];
+                        different.ParentHash = parent;
+                        different.Hash = parent = different.CalculateHash();
+                        result[i] = different;
+                    }
+                }
                 if (InvalidAncestors)
                 {
                     BlockHeader broken = EmptyHeader();
@@ -4471,7 +5057,7 @@ public class TransportTests
                 LastReceiptCounts = call.ArgAt<ReadOnlyMemory<int>>(1);
                 LastReceiptLimits = call.ArgAt<ReadOnlyMemory<int>?>(3);
                 await Read(AllocationContexts.Receipts, call.ArgAt<CancellationToken>(2));
-                return (IOwnedReadOnlyList<TxReceipt[]?>)new TrackedResponse<TxReceipt[]?>(MissingReceipts ? [] : [InvalidData ? [] : owner.Receipts], Disposed);
+                return (IOwnedReadOnlyList<TxReceipt[]?>)new TrackedResponse<TxReceipt[]?>(MissingReceipts ? [] : [InvalidData ? [] : ReceiptTransform?.Invoke(owner.Receipts) ?? owner.Receipts], Disposed);
             });
             SyncPeer.GetBlockAccessLists(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>()).Returns(async call =>
             {

@@ -5,10 +5,14 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
+using Nethermind.State.Proofs;
+using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie;
 using static Nethermind.LightClient.Test.ExecutionProofFixtures;
 
 namespace Nethermind.LightClient.Test;
@@ -36,12 +40,12 @@ public class SnapProofTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(() => ExecutionPeerTransport.VerifyAccountRange(head.StateRoot, Address, response, NullLogManager.Instance), Throws.TypeOf<InvalidDataException>());
-                Assert.That(() => ExecutionPeerTransport.ExportAccountProof(head, Address, response, NullLogManager.Instance), Throws.TypeOf<InvalidDataException>());
+                Assert.That(() => ExecutionPeerTransport.ExportAccountProof(head.StateRoot, Address, response, NullLogManager.Instance), Throws.TypeOf<InvalidDataException>());
             }
         }
         else
         {
-            (Account exported, byte[][] witness) = ExecutionPeerTransport.ExportAccountProof(head, Address, response, NullLogManager.Instance);
+            (Account exported, byte[][] witness) = ExecutionPeerTransport.ExportAccountProof(head.StateRoot, Address, response, NullLogManager.Instance);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(exported, Is.EqualTo(account));
@@ -64,7 +68,7 @@ public class SnapProofTests
         VerifiedHead head = new(0, 0, Hash256.Zero, Keccak.Compute(leaf));
         if (includeProof)
         {
-            (Account exported, byte[][] witness) = ExecutionPeerTransport.ExportAccountProof(head, Address.Zero, response, NullLogManager.Instance);
+            (Account exported, byte[][] witness) = ExecutionPeerTransport.ExportAccountProof(head.StateRoot, Address.Zero, response, NullLogManager.Instance);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ExecutionPeerTransport.VerifyAccountRange(head.StateRoot, Address.Zero, response, NullLogManager.Instance), Is.EqualTo(Account.TotallyEmpty));
@@ -76,8 +80,8 @@ public class SnapProofTests
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(() => ExecutionPeerTransport.VerifyAccountRange(head.StateRoot, Address.Zero, response, NullLogManager.Instance), Throws.TypeOf<InvalidDataException>());
-                Assert.That(() => ExecutionPeerTransport.ExportAccountProof(head, Address.Zero, response, NullLogManager.Instance), Throws.TypeOf<InvalidDataException>());
+                Assert.That(() => ExecutionPeerTransport.VerifyAccountRange(head.StateRoot, Address.Zero, response, NullLogManager.Instance), Throws.TypeOf<ExecutionDataUnavailableException>());
+                Assert.That(() => ExecutionPeerTransport.ExportAccountProof(head.StateRoot, Address.Zero, response, NullLogManager.Instance), Throws.TypeOf<ExecutionDataUnavailableException>());
             }
         }
     }
@@ -156,10 +160,10 @@ public class SnapProofTests
         {
             if (truncateProof)
             {
-                Assert.That(() => ExecutionPeerTransport.ExportAccountProof(head, Address, response, NullLogManager.Instance), Throws.TypeOf<InvalidDataException>());
+                Assert.That(() => ExecutionPeerTransport.ExportAccountProof(head.StateRoot, Address, response, NullLogManager.Instance), Throws.TypeOf<InvalidDataException>());
                 return;
             }
-            (Account exported, witness) = ExecutionPeerTransport.ExportAccountProof(head, Address, response, NullLogManager.Instance);
+            (Account exported, witness) = ExecutionPeerTransport.ExportAccountProof(head.StateRoot, Address, response, NullLogManager.Instance);
             Assert.That(exported, Is.EqualTo(account));
         }
         branch[0] ^= 1;
@@ -225,7 +229,7 @@ public class SnapProofTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(() => ExecutionPeerTransport.VerifyAccountRange(head.StateRoot, Address, response, NullLogManager.Instance), Throws.TypeOf<InvalidDataException>());
-            Assert.That(() => ExecutionPeerTransport.ExportAccountProof(head, Address, response, NullLogManager.Instance), Throws.TypeOf<InvalidDataException>());
+            Assert.That(() => ExecutionPeerTransport.ExportAccountProof(head.StateRoot, Address, response, NullLogManager.Instance), Throws.TypeOf<InvalidDataException>());
         }
     }
 
@@ -253,19 +257,35 @@ public class SnapProofTests
     }
 
     [Test]
-    public void A_returned_account_after_the_requested_limit_proves_absence()
+    public void A_returned_account_after_the_requested_limit_cannot_hide_an_existing_key([Values] bool existing)
     {
-        ValueHash256 path = ValueKeccak.Compute(Address.Bytes).IncrementPath().IncrementPath();
+        ValueHash256 requested = ValueKeccak.Compute(Address.Bytes);
+        ValueHash256 path = requested.IncrementPath().IncrementPath();
         Account account = new(7, 123);
-        byte[] leaf = Leaf(path.ToCommitment(), AccountDecoder.Instance.EncodeAsBytes(account));
+        (Hash256 root, byte[][] proof) = OmittedKeyProof(requested, path, AccountDecoder.Instance.EncodeAsBytes(account), existing);
         using AccountsAndProofs response = new()
         {
             PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(path, account) },
-            Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { leaf }),
+            Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof)),
         };
-        VerifiedHead head = new(0, 0, Hash256.Zero, Keccak.Compute(leaf));
+        VerifiedHead head = new(0, 0, Hash256.Zero, root);
 
-        (Account exported, byte[][] witness) = ExecutionPeerTransport.ExportAccountProof(head, Address, response, NullLogManager.Instance);
+        using (MemDb db = new())
+        {
+            PatriciaSnapTrieFactory factory = new(new NodeStorage(db), NullDb.Instance, NullLogManager.Instance);
+            Assert.That(SnapProviderHelper.VerifyAccountRange(factory, root, requested, requested.IncrementPath(),
+                response.PathAndAccounts, response.Proofs), Is.EqualTo(existing ? AddRangeResult.DifferentRootHash : AddRangeResult.OK));
+        }
+        Assert.That(ExecutionProofVerifier.VerifyAccount(root, Address, proof), Is.EqualTo(existing ? account : Account.TotallyEmpty));
+
+        if (existing)
+        {
+            Assert.That(() => ExecutionPeerTransport.VerifyAccountRange(root, Address, response, NullLogManager.Instance),
+                Throws.TypeOf<InvalidDataException>());
+            return;
+        }
+
+        (Account exported, byte[][] witness) = ExecutionPeerTransport.ExportAccountProof(head.StateRoot, Address, response, NullLogManager.Instance);
 
         using (Assert.EnterMultipleScope())
         {
@@ -276,21 +296,38 @@ public class SnapProofTests
     }
 
     [Test]
-    public void A_returned_slot_after_the_requested_limit_proves_absence()
+    public void A_returned_slot_after_the_requested_limit_cannot_hide_an_existing_key([Values] bool existing)
     {
         UInt256 key = 1;
-        ValueHash256 path = ValueKeccak.Compute(key.ToBigEndian()).IncrementPath().IncrementPath();
+        ValueHash256 requested = ValueKeccak.Compute(key.ToBigEndian());
+        ValueHash256 path = requested.IncrementPath().IncrementPath();
         byte[] slotRlp = Rlp.Encode((UInt256)42).Bytes;
-        byte[] leaf = Leaf(path.ToCommitment(), slotRlp);
-        Account account = new(7, 123, Keccak.Compute(leaf), Keccak.OfAnEmptyString);
+        (Hash256 root, byte[][] proof) = OmittedKeyProof(requested, path, slotRlp, existing);
+        Account account = new(7, 123, root, Keccak.OfAnEmptyString);
         using SlotsAndProofs response = new()
         {
             PathsAndSlots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
             {
                 new ArrayPoolList<PathWithStorageSlot>(1) { new(path, slotRlp) }
             },
-            Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { leaf }),
+            Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof)),
         };
+
+        using (MemDb db = new())
+        {
+            PatriciaSnapTrieFactory factory = new(new NodeStorage(db), NullDb.Instance, NullLogManager.Instance);
+            Assert.That(SnapProviderHelper.AddStorageRange(factory, new(ValueKeccak.Compute(Address.Bytes), account),
+                response.PathsAndSlots[0], requested, requested.IncrementPath(), response.Proofs).result,
+                Is.EqualTo(AddRangeResult.OK), "The single-key range check alone accepts this response.");
+        }
+        Assert.That(ExecutionProofVerifier.VerifyStorage(root, key, proof), Is.EqualTo(existing ? (UInt256)42 : UInt256.Zero));
+
+        if (existing)
+        {
+            Assert.That(() => ExecutionPeerTransport.VerifyStorageRange(account, ValueKeccak.Compute(Address.Bytes), key, response, NullLogManager.Instance),
+                Throws.TypeOf<InvalidDataException>());
+            return;
+        }
 
         ExecutionStorageProof exported = ExecutionPeerTransport.ExportStorageProof(account, ValueKeccak.Compute(Address.Bytes), key, response, NullLogManager.Instance);
 
@@ -300,6 +337,98 @@ public class SnapProofTests
             Assert.That(ExecutionPeerTransport.VerifyStorageRange(account, ValueKeccak.Compute(Address.Bytes), key, response, NullLogManager.Instance), Is.EqualTo(UInt256.Zero));
             Assert.That(ExecutionProofVerifier.VerifyStorage(account.StorageRoot, key, exported.Proof), Is.EqualTo(UInt256.Zero));
         }
+    }
+
+    [Test]
+    public void Single_key_account_ranges_bound_otherwise_valid_entries([Values(4, 5)] int count)
+    {
+        PatriciaTree tree = new();
+        ValueHash256 path = ValueKeccak.Compute(Address.Bytes);
+        ArrayPoolList<PathWithAccount> entries = new(count);
+        for (int i = 0; i < count; i++)
+        {
+            Account account = new((UInt256)(uint)(i + 1));
+            entries.Add(new(path, account));
+            tree.Set(path.Bytes, AccountDecoder.Instance.EncodeAsBytes(account));
+            path = path.IncrementPath();
+        }
+        tree.UpdateRootHash();
+        ProofCollector collector = new(ValueKeccak.Compute(Address.Bytes).Bytes.ToArray());
+        tree.Accept(collector, tree.RootHash);
+        using AccountsAndProofs response = new()
+        {
+            PathAndAccounts = entries,
+            Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(collector.BuildResult())),
+        };
+        if (count > 4)
+            Assert.That(() => ExecutionPeerTransport.VerifyAccountRange(tree.RootHash, Address, response, NullLogManager.Instance),
+                Throws.TypeOf<InvalidDataException>().With.Message.Contains("too many accounts"));
+        else
+            Assert.That(ExecutionPeerTransport.VerifyAccountRange(tree.RootHash, Address, response, NullLogManager.Instance),
+                Is.EqualTo(entries[0].Account));
+    }
+
+    [Test]
+    public void Empty_storage_range_requires_a_proof_of_the_requested_key([Values] bool includeProof, [Values] bool existing)
+    {
+        UInt256 key = 1;
+        byte[] leaf = Leaf(Keccak.Compute(key.ToBigEndian()), Rlp.Encode((UInt256)42).Bytes);
+        Account account = new(0, 0, Keccak.Compute(leaf), Keccak.OfAnEmptyString);
+        using SlotsAndProofs response = new()
+        {
+            Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(includeProof ? [leaf] : [])),
+        };
+        UInt256 requested = existing ? key : (UInt256)2;
+        if (!includeProof)
+            Assert.That(() => ExecutionPeerTransport.VerifyStorageRange(account, ValueKeccak.Zero, requested, response, NullLogManager.Instance),
+                Throws.TypeOf<ExecutionDataUnavailableException>());
+        else if (existing)
+            Assert.That(() => ExecutionPeerTransport.VerifyStorageRange(account, ValueKeccak.Zero, requested, response, NullLogManager.Instance),
+                Throws.TypeOf<InvalidDataException>());
+        else Assert.That(ExecutionPeerTransport.VerifyStorageRange(account, ValueKeccak.Zero, requested, response, NullLogManager.Instance), Is.EqualTo(UInt256.Zero));
+    }
+
+    [TestCase(1, 4, false)]
+    [TestCase(1, 5, true)]
+    [TestCase(2, 1, true)]
+    public void Single_key_storage_ranges_bound_groups_and_otherwise_valid_slots(int groups, int count, bool reject)
+    {
+        PatriciaTree tree = new();
+        ValueHash256 path = ValueKeccak.Compute(((UInt256)1).ToBigEndian());
+        ArrayPoolList<PathWithStorageSlot> entries = new(count);
+        for (int i = 0; i < count; i++)
+        {
+            byte[] value = Rlp.Encode((UInt256)(uint)(i + 1)).Bytes;
+            entries.Add(new(path, value));
+            tree.Set(path.Bytes, value);
+            path = path.IncrementPath();
+        }
+        tree.UpdateRootHash();
+        Account account = new(0, 0, tree.RootHash, Keccak.OfAnEmptyString);
+        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> lists = new(groups) { entries };
+        if (groups > 1) lists.Add(new ArrayPoolList<PathWithStorageSlot>(entries.AsSpan()));
+        ProofCollector collector = new(ValueKeccak.Compute(((UInt256)1).ToBigEndian()).Bytes.ToArray());
+        tree.Accept(collector, tree.RootHash);
+        using SlotsAndProofs response = new()
+        {
+            PathsAndSlots = lists,
+            Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(collector.BuildResult())),
+        };
+        if (reject)
+            Assert.That(() => ExecutionPeerTransport.VerifyStorageRange(account, ValueKeccak.Zero, 1, response, NullLogManager.Instance),
+                Throws.TypeOf<InvalidDataException>().With.Message.Contains("range size"));
+        else Assert.That(ExecutionPeerTransport.VerifyStorageRange(account, ValueKeccak.Zero, 1, response, NullLogManager.Instance), Is.EqualTo(UInt256.One));
+    }
+
+    internal static (Hash256 Root, byte[][] Proof) OmittedKeyProof(ValueHash256 requested, ValueHash256 returned, byte[] value, bool existing)
+    {
+        PatriciaTree tree = new();
+        tree.Set(returned.Bytes, value);
+        if (existing) tree.Set(requested.Bytes, value);
+        tree.UpdateRootHash();
+        ProofCollector collector = new(requested.Bytes.ToArray());
+        tree.Accept(collector, tree.RootHash);
+        return (tree.RootHash, collector.BuildResult());
     }
 
     private static (byte[] Branch, byte[] Leaf) BranchProof(ValueHash256 path, byte[] value)

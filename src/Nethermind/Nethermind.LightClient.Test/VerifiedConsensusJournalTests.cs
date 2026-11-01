@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Security.Cryptography;
+using System.Buffers.Binary;
+using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
@@ -27,6 +29,117 @@ public class VerifiedConsensusJournalTests
 
     [TearDown]
     public void TearDown() => Directory.Delete(_directory, recursive: true);
+
+    [Test]
+    public async Task A_full_replayable_journal_compacts_before_append_and_remains_usable_after_restart()
+    {
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
+        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
+        await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
+        LightClientOptimisticUpdate first = AsOptimistic(ConsensusTests.Update(1, 2, 3, 1, participants: 1));
+        store.Process(first, 3);
+        await journal.AppendAsync(first, store, CancellationToken.None);
+        List<(byte Kind, byte[] Data)> records = (List<(byte, byte[])>)typeof(VerifiedConsensusJournal)
+            .GetField("_updates", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(journal)!;
+        while (records.Count < 4096) records.Add(records[0]);
+        LightClientOptimisticUpdate second = AsOptimistic(ConsensusTests.Update(1, 3, 4, 1, participants: 2));
+        store.Process(second, 4);
+
+        await journal.AppendAsync(second, store, CancellationToken.None);
+        LightClientStore resumed = (await Journal(ConsensusTests.Spec, checkpoint).LoadAsync(4, CancellationToken.None))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resumed.HasSameAuthenticatedState(store), Is.True);
+            Assert.That(records.Count, Is.LessThan(8));
+            Assert.That(resumed.CurrentMaxParticipants, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public async Task Participation_increases_compact_on_rotation_without_replacing_the_trusted_checkpoint()
+    {
+        BeaconChainSpec spec = ConsensusTests.Spec with { GloasForkEpoch = ulong.MaxValue };
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
+        LightClientStore store = new(spec, checkpoint, bootstrap, 1);
+        VerifiedConsensusJournal journal = Journal(spec, checkpoint);
+        await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
+        for (byte period = 0; period < 4; period++)
+        {
+            ulong start = period == 0 ? 1 : (ulong)period * 8192;
+            byte key = (byte)(period + 1);
+            LightClientUpdate learning = ConsensusTests.Update(start, start + 1, start + 2, key, nextKey: (byte)(key + 1));
+            store.Process(learning, start + 2);
+            await journal.AppendAsync(learning, store, CancellationToken.None);
+            foreach (int participants in new[] { 350, 400, 450, 512 })
+            {
+                ulong attested = start + (ulong)(participants - 340);
+                LightClientOptimisticUpdate peak = AsOptimistic(ConsensusTests.Update(start, attested, attested + 1, key, participants));
+                store.Process(peak, attested + 1);
+                await journal.AppendAsync(peak, store, CancellationToken.None);
+            }
+            ulong boundary = (ulong)(period + 1) * 8192;
+            LightClientFinalityUpdate rotation = AsFinality(ConsensusTests.Update(boundary, boundary + 1, boundary + 2, (byte)(key + 1)));
+            store.Process(rotation, boundary + 2);
+            await journal.AppendAsync(rotation, store, CancellationToken.None);
+            journal = Journal(spec, checkpoint);
+            LightClientStore resumed = (await journal.LoadAsync(boundary + 2, CancellationToken.None))!;
+            Assert.That(resumed.HasSameAuthenticatedState(store), Is.True);
+            store = resumed;
+        }
+        byte[] chain = await File.ReadAllBytesAsync(Directory.GetFiles(_directory, "*.chain").Single());
+        int bootstrapLength = BinaryPrimitives.ReadInt32LittleEndian(chain.AsSpan(39));
+        int count = BinaryPrimitives.ReadInt32LittleEndian(chain.AsSpan(43 + bootstrapLength));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.AsSpan(7, Hash256.Size).ToArray(), Is.EqualTo(checkpoint.Bytes.ToArray()));
+            Assert.That(count, Is.LessThanOrEqualTo(16));
+            Assert.That(store.PreviousMaxParticipants, Is.EqualTo(512));
+            Assert.That(store.CurrentMaxParticipants, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task A_saved_forced_update_cannot_claim_a_future_timeout()
+    {
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
+        LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
+        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
+        LightClientUpdate update = ConsensusTests.Update(2, 3, 4, 1, participants: 341);
+        store.Process(update, 4);
+        await journal.AppendAsync(update, store, CancellationToken.None);
+        LightClientUpdate candidate = store.BestUpdate!;
+        Assert.That(store.ForceUpdate(8194), Is.True);
+        await journal.AppendForcedAsync(candidate, 8194, store, CancellationToken.None);
+        string path = Directory.GetFiles(_directory, "*.chain").Single();
+        byte[] chain = await File.ReadAllBytesAsync(path);
+        int offset = 43 + BinaryPrimitives.ReadInt32LittleEndian(chain.AsSpan(39));
+        int count = BinaryPrimitives.ReadInt32LittleEndian(chain.AsSpan(offset));
+        offset += sizeof(int);
+        bool modified = false;
+        for (int i = 0; i < count; i++)
+        {
+            byte kind = chain[offset++];
+            int length = BinaryPrimitives.ReadInt32LittleEndian(chain.AsSpan(offset));
+            offset += sizeof(int);
+            if (kind == 3)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(chain.AsSpan(offset), 8195);
+                modified = true;
+            }
+            offset += length;
+        }
+        Assert.That(modified, Is.True);
+        SHA256.HashData(chain.AsSpan(0, chain.Length - 32), chain.AsSpan(chain.Length - 32));
+        await File.WriteAllBytesAsync(path, chain);
+        Assert.That(async () => await Journal(ConsensusTests.Spec, checkpoint).LoadAsync(8194, CancellationToken.None),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains("future"));
+    }
 
     [Test]
     public async Task Replays_committee_rotation_and_latest_finality_from_the_trusted_checkpoint()

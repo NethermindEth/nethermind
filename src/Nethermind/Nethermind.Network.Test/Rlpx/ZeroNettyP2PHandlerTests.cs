@@ -77,7 +77,9 @@ public class ZeroNettyP2PHandlerTests
                 Rlp.Encode(TestItem.KeccakA), Rlp.Encode(TestItem.KeccakB), forkId).Bytes
             : Rlp.Encode(Rlp.Encode(version), Rlp.Encode(1UL), Rlp.Encode(TestItem.KeccakB),
                 forkId, Rlp.OfEmptyByteArray, Rlp.Encode(1UL), Rlp.Encode(TestItem.KeccakA)).Bytes;
-        DisconnectReason expectedReason = version == 68 && !scalarIsList ? DisconnectReason.MessageLimitsBreached : DisconnectReason.BreachOfProtocol;
+        bool limit = version == 68 && !scalarIsList;
+        bool disconnect = limit || privilege == PeerPrivilege.None;
+        DisconnectReason expectedReason = limit ? DisconnectReason.MessageLimitsBreached : DisconnectReason.Exception;
         ZeroPacket packet = snappy
             ? CreateCompressedPacket(detector.Allocator, payload, 0x10)
             : new ZeroPacket(detector.Allocator.Buffer().WriteBytes(payload)) { PacketType = 0x10 };
@@ -89,13 +91,14 @@ public class ZeroNettyP2PHandlerTests
             {
                 Assert.That(initialized, Is.False);
                 Assert.That(protocol.HeadHash, Is.Null);
-                Assert.That(disconnected, Has.Count.EqualTo(1));
-                Assert.That(disconnected.Select(static args => args.DisconnectReason), Is.EqualTo(new[] { expectedReason }));
-                Assert.That(disconnected.Select(static args => args.DisconnectType), Is.EqualTo(new[] { DisconnectType.Local }));
+                Assert.That(disconnected, Has.Count.EqualTo(disconnect ? 1 : 0));
+                Assert.That(disconnected.Select(static args => args.DisconnectReason), Is.EqualTo(disconnect ? [expectedReason] : Array.Empty<DisconnectReason>()));
+                Assert.That(disconnected.Select(static args => args.DisconnectType), Is.EqualTo(disconnect ? [DisconnectType.Local] : Array.Empty<DisconnectType>()));
                 Assert.That(logger.LogList, Has.Some.Contains("Failed to deserialize message StatusMessage"));
                 Assert.That(packet.ReferenceCount, Is.Zero);
             }
-            context.DidNotReceive().FireExceptionCaught(Arg.Any<Exception>());
+            if (disconnect) context.DidNotReceive().FireExceptionCaught(Arg.Any<Exception>());
+            else context.Received(1).FireExceptionCaught(Arg.Any<RlpException>());
         }
         finally
         {

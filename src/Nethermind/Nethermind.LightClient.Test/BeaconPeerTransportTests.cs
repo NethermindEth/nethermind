@@ -6,10 +6,12 @@ using System.Reflection;
 using System.Text;
 using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.BeaconChain;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
@@ -26,6 +28,242 @@ namespace Nethermind.LightClient.Test;
 public class BeaconPeerTransportTests
 {
     [Test]
+    public async Task Peer_loop_failures_are_logged_before_transport_shutdown()
+    {
+        InterfaceLogger sink = Substitute.For<InterfaceLogger>();
+        sink.IsError.Returns(true);
+        Nethermind.Logging.ILogger logger = new(sink);
+        ILogManager logs = Substitute.For<ILogManager>();
+        logs.GetClassLogger<BeaconPeerTransport>().Returns(logger);
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        await using BeaconPeerTransport transport = new(ConsensusTests.Spec, logs, db, quicPort: 0);
+        TaskCompletionSource loop = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        MethodInfo observe = typeof(BeaconPeerTransport).GetMethod("ObservePeerLoopAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Task observed = (Task)observe.Invoke(transport, ["test", loop.Task])!;
+        IOException failure = new("Injected peer worker failure.");
+        loop.SetException(failure);
+        await observed.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        Assert.That(observed.Exception!.InnerException, Is.SameAs(failure));
+        sink.Received().Error("Beacon test stopped unexpectedly.", failure);
+    }
+
+    [Test]
+    public async Task Only_the_light_client_host_registers_light_client_request_protocols([Values] bool lightClient)
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStatusHolder status = new(ConsensusTests.Spec, Timestamper.Default);
+        await using BeaconP2P host = new(new BeaconChainConfig(), ConsensusTests.Spec, new BeaconChainStore(db), status,
+            new LocalMetadataSource(), new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance,
+            lightClientRequests: lightClient);
+        IServiceProvider services = (IServiceProvider)typeof(BeaconP2P).GetField("_serviceProvider", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
+        services.GetRequiredService<IPeerFactory>();
+        IProtocolStackSettings stack = services.GetRequiredService<IProtocolStackSettings>();
+        string[] protocols = stack.Protocols!.Keys.Concat(stack.Protocols.Values.SelectMany(static choices => choices))
+            .Select(static value => value.Protocol.Id).ToArray();
+        string[] ids = [new LightClientBootstrapProtocol(ConsensusTests.Spec).Id, new LightClientUpdatesByRangeProtocol(ConsensusTests.Spec).Id,
+            new LightClientFinalityUpdateProtocol(ConsensusTests.Spec).Id, new LightClientOptimisticUpdateProtocol(ConsensusTests.Spec).Id];
+        foreach (string id in ids)
+            Assert.That(protocols.Contains(id), Is.EqualTo(lightClient), id);
+    }
+
+    [TestCase(-1, false)]
+    [TestCase(65536, false)]
+    [TestCase(9060, false)]
+    [TestCase(0, true)]
+    [TestCase(65535, true)]
+    public async Task Quic_ports_are_validated_before_network_startup(int quicPort, bool valid)
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStatusHolder status = new(ConsensusTests.Spec, Timestamper.Default);
+        BeaconP2P Create() => new(new BeaconChainConfig { QuicPort = quicPort }, ConsensusTests.Spec, new BeaconChainStore(db), status,
+            new LocalMetadataSource(), new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
+        if (valid)
+        {
+            await using BeaconP2P host = Create();
+        }
+        else Assert.That(Create, Throws.InstanceOf<ArgumentException>());
+    }
+
+    public enum LightClientWireFailure { None, WrongContext, ExtraChunk, Empty }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Light_client_protocols_validate_fork_context_and_response_count([Range(0, 3)] int kind,
+        [Values] LightClientWireFailure failure, CancellationToken token)
+    {
+        Nethermind.Libp2p.Core.Channel channel = new();
+        IChannel remote = channel.Reverse;
+        LightClientUpdate update = ConsensusTests.Update(2, 3, 4, 1);
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        byte[] payload = kind switch
+        {
+            0 => LightClientWireCodec.EncodeBootstrap(bootstrap, ConsensusTests.Spec),
+            1 => LightClientWireCodec.EncodeUpdate(update, ConsensusTests.Spec),
+            2 => LightClientWireCodec.EncodeFinality(new()
+            {
+                AttestedHeader = update.AttestedHeader,
+                FinalizedHeader = update.FinalizedHeader,
+                FinalityBranch = update.FinalityBranch,
+                SyncAggregate = update.SyncAggregate,
+                SignatureSlot = update.SignatureSlot,
+            }, ConsensusTests.Spec),
+            _ => LightClientWireCodec.EncodeOptimistic(new()
+            {
+                AttestedHeader = update.AttestedHeader,
+                SyncAggregate = update.SyncAggregate,
+                SignatureSlot = update.SignatureSlot,
+            }, ConsensusTests.Spec),
+        };
+        Task serving = ServeAsync();
+        Task response = DialAsync();
+        try
+        {
+            if (failure == LightClientWireFailure.None) await response;
+            else
+            {
+                byte code = failure == LightClientWireFailure.Empty && kind == 1
+                    ? ReqRespFraming.ResponseCode.ResourceUnavailable : ReqRespFraming.ResponseCode.InvalidRequest;
+                Assert.That(async () => await response, Throws.TypeOf<Eth2ReqRespException>().With.Property(nameof(Eth2ReqRespException.ResponseCode)).EqualTo(code));
+            }
+        }
+        finally
+        {
+            await channel.AbortAsync();
+            await serving.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            await response.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+
+        async Task ServeAsync()
+        {
+            using ChannelStream stream = new(remote, leaveOpen: true);
+            if (kind < 2)
+            {
+                byte[] request = await ReqRespFraming.ReadRequestAsync(stream, kind == 0 ? 32 : 16, token);
+                Assert.That(request, Has.Length.EqualTo(kind == 0 ? 32 : 16));
+            }
+            else Assert.That(await stream.ReadAsync(new byte[1], token), Is.Zero);
+            if (failure != LightClientWireFailure.Empty)
+            {
+                byte[] context = ForkDigest.Compute(ConsensusTests.Spec, 0);
+                if (failure == LightClientWireFailure.WrongContext) context[0] ^= 1;
+                await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, context, payload, token);
+                if (failure == LightClientWireFailure.ExtraChunk)
+                    await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, context, payload, token);
+            }
+            await remote.WriteEofAsync(token).OrThrow();
+        }
+
+        async Task DialAsync()
+        {
+            ISessionContext context = Substitute.For<ISessionContext>();
+            switch (kind)
+            {
+                case 0: await new LightClientBootstrapProtocol(ConsensusTests.Spec).DialAsync(channel, context, Hash256.Zero); break;
+                case 1: await new LightClientUpdatesByRangeProtocol(ConsensusTests.Spec).DialAsync(channel, context, 0); break;
+                case 2: await new LightClientFinalityUpdateProtocol(ConsensusTests.Spec).DialAsync(channel, context, 0); break;
+                default: await new LightClientOptimisticUpdateProtocol(ConsensusTests.Spec).DialAsync(channel, context, 0); break;
+            }
+        }
+    }
+
+    [Test]
+    public async Task Committee_catch_up_tries_a_learning_supplier_after_a_faster_valid_non_learning_update()
+    {
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(8190, 1);
+        LightClientStore store = new(ConsensusTests.Spec, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, 8190);
+        store.Process(ConsensusTests.Update(8190, 8190, 8191, 1, nextKey: 2), 8202);
+        store.Process(ConsensusTests.Update(8192, 8193, 8194, 2), 8202);
+        BootstrapPeer fast = new(bootstrap, "non-learning");
+        BootstrapPeer honest = new(bootstrap, "learning");
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(8202);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        providers.Admit(fast, PeerDirection.Outbound);
+        providers.Admit(honest, PeerDirection.Outbound);
+        BeaconPeerTransport.PeerRequests requests = new(clock, providers: providers, concurrency: 3);
+        LightClientUpdate nonLearning = ConsensusTests.Update(8191, 8200, 8201, 2, nextKey: 3);
+        LightClientUpdate learning = ConsensusTests.Update(8192, 8200, 8201, 2, nextKey: 3);
+        List<IBeaconSyncPeer> attempted = [];
+
+        await ConsensusSync.CatchUpAsync(store, ConsensusTests.Spec, async (period, validate, token) =>
+        {
+            Assert.That(period, Is.EqualTo(1));
+            (LightClientUpdate? response, _) = await requests.RequestAsync<LightClientUpdate>([fast, honest],
+                (peer, _) =>
+                {
+                    attempted.Add(peer);
+                    return Task.FromResult(ReferenceEquals(peer, fast) ? nonLearning : learning);
+                }, async (value, validationToken) => { await validate(value, validationToken); return true; }, token);
+            return response!;
+        }, () => 8202, (value, _) => { store.Process(value, 8202); return Task.CompletedTask; }, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.NextSyncCommitteeKnown, Is.True);
+            Assert.That(attempted, Is.EqualTo(new[] { fast, honest }));
+            Assert.That(providers.Preferred<LightClientUpdate>([fast, honest], 0), Is.EqualTo(1));
+            Assert.That(fast.Failures, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task An_unsigned_future_update_from_a_known_committee_is_a_protocol_violation()
+    {
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        LightClientStore store = new(ConsensusTests.Spec, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, 1);
+        BootstrapPeer peer = new(bootstrap);
+        LightClientUpdate update = ConsensusTests.Update(1, 2, 12, 1);
+        update.SyncAggregate!.SyncCommitteeSignature = default;
+
+        await new BeaconPeerTransport.PeerRequests().RequestAsync([peer], (_, _) => Task.FromResult(update),
+            Validate<LightClientUpdate>(value => store.Process(value, 11)), CancellationToken.None);
+
+        Assert.That(peer.Failures, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
+        Assert.That(store.CurrentMaxParticipants, Is.Zero);
+    }
+
+    [Test]
+    public async Task Repeated_inapplicable_updates_are_penalized_after_allowing_transient_clock_skew([Values] bool knownCommittee)
+    {
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        LightClientStore store = new(ConsensusTests.Spec, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, 1);
+        BootstrapPeer peer = new(bootstrap);
+        LightClientUpdate update = ConsensusTests.Update(1, 2, knownCommittee ? 12UL : 1_000_000UL, 1);
+        if (!knownCommittee) update.SyncAggregate!.SyncCommitteeSignature = default;
+        BeaconPeerTransport.PeerRequests requests = new();
+
+        for (int i = 0; i < 2; i++)
+            await requests.RequestAsync([peer], (_, _) => Task.FromResult(update), Validate<LightClientUpdate>(value => store.Process(value, 11)), CancellationToken.None);
+        Assert.That(peer.Failures, Is.Empty);
+        await requests.RequestAsync([peer], (_, _) => Task.FromResult(update), Validate<LightClientUpdate>(value => store.Process(value, 11)), CancellationToken.None);
+        Assert.That(peer.Failures, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
+    }
+
+    [Test]
+    public void Gossip_suppliers_do_not_stop_the_search_for_a_needed_committee_supplier([Values(3, 4)] int gossipSuppliers,
+        [Values(8, 16)] int connectedCount)
+    {
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(1);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        BootstrapPeer[] peers = ProviderPeers(connectedCount);
+        foreach (BootstrapPeer peer in peers) providers.Admit(peer, PeerDirection.Outbound);
+        clock.SetSlot(14);
+        for (int i = 0; i < gossipSuppliers; i++) providers.RecordGossip(new PeerId(BeaconPeerTransport.PeerProviders.Identity(peers[i].Id)), 13);
+        providers.Failed<LightClientUpdate>(peers[^1]);
+
+        (IBeaconSyncPeer? recycle, _) = providers.Maintain(Connected(peers), needsCommitteeSupplier: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recycle, Is.SameAs(peers[^1]));
+            Assert.That(providers.FanOut<LightClientUpdate>(3), Is.EqualTo(6));
+        }
+        providers.RecordValidated(peers[^1], ConsensusTests.Update(1, 13, 14, 1, nextKey: 2));
+        Assert.That(providers.FanOut<LightClientUpdate>(3), Is.EqualTo(3));
+    }
+
+    [Test]
     public async Task Beacon_status_starts_without_claiming_verified_or_servable_data()
     {
         using MemColumnsDb<BeaconChainDbColumns> db = new();
@@ -35,6 +273,9 @@ public class BeaconPeerTransportTests
         IBeaconChainStatusSource source = StatusSource(transport);
 
         StatusMessageV2 status = source.CurrentStatus;
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        BeaconP2P host = (BeaconP2P)typeof(BeaconPeerTransport).GetField("_p2p", flags)!.GetValue(transport)!;
+        LocalMetadataSource metadata = (LocalMetadataSource)typeof(BeaconP2P).GetField("_metadataSource", flags)!.GetValue(host)!;
 
         using IDisposable scope = Assert.EnterMultipleScope();
         Assert.That(status.HeadRoot, Is.EqualTo(Hash256.Zero));
@@ -44,6 +285,7 @@ public class BeaconPeerTransportTests
         Assert.That(status.EarliestAvailableSlot, Is.EqualTo(121));
         Assert.That(source.ExecutionInSync, Is.False);
         Assert.That(source.CurrentHead.FullHeadRoot, Is.Null);
+        Assert.That(metadata.Current.CustodyGroupCount, Is.Zero);
     }
 
     [TestCase(0UL, 0UL, true)]

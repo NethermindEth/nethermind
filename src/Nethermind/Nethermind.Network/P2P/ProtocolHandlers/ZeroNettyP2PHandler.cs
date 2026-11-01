@@ -117,7 +117,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
             {
                 outputPacket.Protocol = null;
                 outputPacket.PacketType = input.PacketType;
-                ReceiveMessage(outputPacket);
+                ReceiveMessage(ctx, outputPacket);
             }
             finally
             {
@@ -132,11 +132,11 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
         else
         {
-            ReceiveMessage(input);
+            ReceiveMessage(ctx, input);
         }
     }
 
-    private void ReceiveMessage(ZeroPacket packet)
+    private void ReceiveMessage(IChannelHandlerContext context, ZeroPacket packet)
     {
         try
         {
@@ -144,13 +144,15 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
         catch (RlpException exception) when (exception is not IInternalNethermindException)
         {
-            if (_logger.IsTrace) TraceCommunicationError(exception);
             if (!_session.IsClosing)
             {
-                DisconnectReason reason = exception is RlpLimitException
-                    ? DisconnectReason.MessageLimitsBreached
-                    : DisconnectReason.BreachOfProtocol;
-                _session.InitiateDisconnect(reason, $"Error in communication with {GetClientId(_session)} ({exception.GetType().Name}): {exception.Message}");
+                if (exception is RlpLimitException)
+                {
+                    if (_logger.IsTrace) TraceCommunicationError(exception);
+                    _session.InitiateDisconnect(DisconnectReason.MessageLimitsBreached,
+                        $"Error in communication with {GetClientId(_session)} ({exception.GetType().Name}): {exception.Message}");
+                }
+                else ExceptionCaught(context, exception);
             }
         }
     }

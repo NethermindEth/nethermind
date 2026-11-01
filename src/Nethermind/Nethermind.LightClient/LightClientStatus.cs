@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Globalization;
 using System.Text.Json;
 using Nethermind.Core;
 
@@ -73,13 +72,13 @@ internal sealed class LightClientStatus(ulong chainId, Address[] accounts,
         StartupStage stage = (StartupStage)Volatile.Read(ref _stage);
         if (stage is not (StartupStage.Stopping or StartupStage.Failed) && Volatile.Read(ref _runtime) is Runtime runtime)
             return runtime.Invoke(method, parameters, cancellationToken);
-        if (method is "eth_chainId" or "eth_syncing")
+        if (VerifiedRpc.TryReadLocalMetadata(method, parameters, chainId, listening: false, out object metadata))
+            return Task.FromResult(metadata);
+        if (method == "eth_syncing")
         {
             if (parameters.ValueKind != JsonValueKind.Undefined &&
                 (parameters.ValueKind != JsonValueKind.Array || parameters.GetArrayLength() != 0))
                 throw new RpcException(-32602, "Invalid parameters.");
-            if (method == "eth_chainId")
-                return Task.FromResult<object>("0x" + chainId.ToString("x", CultureInfo.InvariantCulture));
             return Task.FromResult<object>(new { startingBlock = "0x0", currentBlock = "0x0", highestBlock = "0x0" });
         }
         if (stage is StartupStage.Stopping or StartupStage.Failed || method == "eth_sendRawTransaction")

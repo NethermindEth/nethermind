@@ -108,7 +108,8 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
     }
 
     internal async Task<JsonElement> GetLogsAsync(BlockHeader[] headers, HashSet<Address>? addresses,
-        IReadOnlyList<HashSet<Hash256>?> topics, CancellationToken cancellationToken)
+        IReadOnlyList<HashSet<Hash256>?> topics, CancellationToken cancellationToken,
+        Func<Address, Hash256[], bool>? includeLog = null)
     {
         List<LogEntryForRpc> result = [];
         long payloadBytes = 2;
@@ -222,7 +223,8 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
             }
         }
 
-        bool Matches(LogEntry log) => (addresses is null || addresses.Contains(log.Address)) && MatchesTopics(log.Topics, topics);
+        bool Matches(LogEntry log) => (addresses is null || addresses.Contains(log.Address)) && MatchesTopics(log.Topics, topics)
+            && (includeLog is null || includeLog(log.Address, log.Topics));
     }
 
     internal bool TryLocateTransaction(Hash256 hash, out BlockHeader? header) =>
@@ -318,7 +320,8 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
             await source.BroadcastTransactionAsync(transaction, cancellationToken);
             return transaction.Hash!.ToString();
         }
-        RecoverSender(transaction);
+        try { RecoverSender(transaction); }
+        catch (InvalidDataException) { throw new RpcException(-32003, "Invalid transaction signature: the sender cannot be recovered."); }
         Account sender = await source.GetAccountAsync(head, transaction.SenderAddress!, cancellationToken);
         if (transaction.Nonce < sender.Nonce) throw new RpcException(-32003, "Transaction nonce is below authenticated state.");
         if (UInt256.MultiplyOverflow(feeCap, transaction.GasLimit, out UInt256 gasCost)

@@ -19,7 +19,7 @@ using Nethermind.Libp2p.Protocols.Pubsub;
 
 namespace Nethermind.Network.Libp2p;
 
-/// <summary>The libp2p stack the node's hosts run on: TCP/Noise with Yamux or Mplex, optional QUIC, identify, ping and optional gossipsub.</summary>
+/// <summary>The libp2p stack the node's hosts run on: TCP/Noise with Yamux, optional QUIC, identify, ping and optional gossipsub.</summary>
 /// <remarks>Uses component packages without the meta package's WebRTC, WebSocket and circuit-relay dependencies.</remarks>
 public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
     : PeerFactoryBuilderBase<Libp2pStackBuilder, Libp2pStackPeerFactory>(serviceProvider)
@@ -44,14 +44,13 @@ public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(IpTcpProtocol))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(NoiseProtocol))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(YamuxProtocol))]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(MplexProtocol))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(MultistreamProtocol))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(QuicProtocol))]
     protected override ProtocolRef[] BuildStack(IEnumerable<ProtocolRef> additionalProtocols)
     {
         ProtocolRef tcp = Get<IpTcpProtocol>();
         ProtocolRef[] appSelector = [Get<MultistreamProtocol>()];
-        ProtocolRef[] multiplexers = [Get<YamuxProtocol>(), Get<MplexProtocol>()];
+        ProtocolRef[] multiplexers = [Get<YamuxProtocol>()];
         Connect([tcp], [Get<MultistreamProtocol>()], [Get<NoiseProtocol>()], [Get<MultistreamProtocol>()], multiplexers, appSelector);
 
         List<ProtocolRef> apps = [Get<IdentifyProtocol>(), Get<IdentifyPushProtocol>(), Get<PingProtocol>(), .. additionalProtocols];

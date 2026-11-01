@@ -182,6 +182,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             bool resumed;
             (store, resumed) = await ConsensusSync.BootstrapAsync(spec, checkpoint, journal,
                 beacon.BootstrapAsync, clock, startupStop.Token);
+            beacon.NeedsCommitteeSupplier = !store.NextSyncCommitteeKnown;
             beacon.PublishVerifiedHeads(store.FinalizedHeader, store.OptimisticHeader, checkpoint);
             if (resumed)
                 logger.LogInformation("Replayed verified light-client state from {Directory}", dataDirectory);
@@ -263,19 +264,28 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             token => publisher.WaitForFreshLatestAsync(latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds),
                 () => optimisticRequests.Writer.TryWrite(true), token));
         VerifiedSubscriptions subscriptions = new(execution, rpc, logger);
+        bool rpcInitialized = false;
         try
         {
             beacon.StartGossip(ProcessFinalityAsync, ProcessOptimisticAsync, app.Lifetime.ApplicationStopping);
-            status.Initialize(rpc.InvokeAsync, subscriptions.HandleAsync, GetLatestHead, () => publisher.Heads.Finalized,
-                execution.GetHostedAccountProgress, () => execution.LogHistoryProgress);
+            InitializeRpc();
             await SyncAsync(app.Lifetime.ApplicationStopping);
         }
+
         finally
         {
             status.SetStage(StartupStage.Stopping);
             app.Lifetime.StopApplication();
             try { await subscriptions.DisposeAsync(); }
             finally { await app.StopAsync(CancellationToken.None); }
+        }
+
+        void InitializeRpc()
+        {
+            if (rpcInitialized || publisher.Heads.Finalized is null) return;
+            status.Initialize(rpc.InvokeAsync, subscriptions.HandleAsync, GetLatestHead, () => publisher.Heads.Finalized,
+                execution.GetHostedAccountProgress, () => execution.LogHistoryProgress);
+            rpcInitialized = true;
         }
 
         Task ProcessUpdateAsync(LightClientUpdate update, CancellationToken token) =>
@@ -325,6 +335,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             Volatile.Write(ref persistedFinalized, finalized);
             Volatile.Write(ref persistedOptimistic, optimistic);
             beacon.PublishVerifiedHeads(finalized, optimistic, checkpoint);
+            beacon.NeedsCommitteeSupplier = !store.NextSyncCommitteeKnown;
         }
 
         async Task PersistAsync(Task write, CancellationToken token)
@@ -368,6 +379,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
 
             void Observe(ConsensusPublisher.PublishedHeads snapshot)
             {
+                InitializeRpc();
                 if (snapshot.Finalized is { } finalized && finalized != loggedFinalized)
                 {
                     logger.LogInformation("Finalized execution block {BlockNumber} verified", finalized.Number);

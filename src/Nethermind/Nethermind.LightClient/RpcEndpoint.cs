@@ -12,6 +12,7 @@ internal static class RpcEndpoint
     internal const int MaxRequestBodySize = 4 * 1024 * 1024 + StandardRequestBodySize;
     internal const int BatchResponseLimit = 16 * 1024 * 1024;
     internal const int BatchErrorReserve = 512 * 1024;
+    internal const int MaxBatchCount = 32;
     private const int MaxActiveRequests = 64;
     private static readonly TimeSpan RequestDeadline = TimeSpan.FromSeconds(90);
     private static readonly SemaphoreSlim ActiveRequests = new(MaxActiveRequests);
@@ -65,7 +66,7 @@ internal static class RpcEndpoint
                         if (!LargeRequests.Wait(0))
                         {
                             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-                            logger.LogWarning("RPC body rejected because four large transaction submissions are already active");
+                            logger.LogWarning("RPC body rejected because four large requests are already active");
                             return;
                         }
                         large = true;
@@ -91,7 +92,8 @@ internal static class RpcEndpoint
             {
                 JsonElement request = document.RootElement;
                 if (large && (request.ValueKind != JsonValueKind.Object || !request.TryGetProperty("method", out JsonElement largeMethod)
-                    || largeMethod.ValueKind != JsonValueKind.String || largeMethod.GetString() != "eth_sendRawTransaction"))
+                    || largeMethod.ValueKind != JsonValueKind.String || !largeMethod.ValueEquals("eth_sendRawTransaction")
+                    && !largeMethod.ValueEquals("eth_call") && !largeMethod.ValueEquals("eth_estimateGas")))
                 {
                     context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
                     logger.LogInformation("RPC request -> body too large in {ElapsedMs:F1} ms", Stopwatch.GetElapsedTime(started).TotalMilliseconds);
@@ -100,10 +102,10 @@ internal static class RpcEndpoint
                 if (request.ValueKind == JsonValueKind.Array)
                 {
                     int count = request.GetArrayLength();
-                    if (count is 0 or > 32)
+                    if (count == 0)
                     {
                         logger.LogInformation("RPC batch -> invalid size in {ElapsedMs:F1} ms", Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-                        await context.Response.WriteAsJsonAsync(Error(null, -32600, "Batch must contain between 1 and 32 requests"), cancellationToken);
+                        await context.Response.WriteAsJsonAsync(Error(null, -32600, "Batch must contain at least one request"), cancellationToken);
                         return;
                     }
                     await WriteBatchAsync(context, request, invoke, logger, cancellationToken);
@@ -127,11 +129,13 @@ internal static class RpcEndpoint
         output.GetSpan(1)[0] = (byte)'[';
         output.Advance(1);
         int responses = 0;
+        int admitted = 0;
         bool exhausted = false;
         foreach (JsonElement item in requests.EnumerateArray())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await InvokeAsync(item, exhausted ? RejectBatchItem : invoke, logger, cancellationToken, Append);
+            await InvokeAsync(item, exhausted ? RejectBatchItem : admitted++ >= MaxBatchCount ? RejectExcessBatchItem : invoke,
+                logger, cancellationToken, Append);
 
             bool Append(object response, bool success)
             {
@@ -188,6 +192,8 @@ internal static class RpcEndpoint
     private static RpcException BatchTooLarge() => new(-32005, BatchLimitMessage);
     private static Task<object> RejectBatchItem(string method, JsonElement parameters, CancellationToken cancellationToken) =>
         Task.FromException<object>(BatchTooLarge());
+    internal static Task<object> RejectExcessBatchItem(string method, JsonElement parameters, CancellationToken cancellationToken) =>
+        Task.FromException<object>(new RpcException(-32005, "A batch may execute at most 32 requests; submit remaining requests separately."));
 
     internal static async Task<object?> InvokeAsync(JsonElement request,
         Func<string, JsonElement, CancellationToken, Task<object>> invoke, ILogger logger, CancellationToken cancellationToken,
@@ -199,17 +205,19 @@ internal static class RpcEndpoint
         try
         {
             if (request.ValueKind != JsonValueKind.Object ||
-                !request.TryGetProperty("jsonrpc", out JsonElement version) || version.ValueKind != JsonValueKind.String || version.GetString() != "2.0" ||
+                !request.TryGetProperty("jsonrpc", out JsonElement version) || version.ValueKind != JsonValueKind.String || !version.ValueEquals("2.0") ||
                 !request.TryGetProperty("method", out JsonElement method) || method.ValueKind != JsonValueKind.String)
                 return Respond(Error(null, -32600, "Invalid Request"), false);
             methodName = method.GetString()!;
             bool hasId = request.TryGetProperty("id", out JsonElement id);
             if (hasId && id.ValueKind is not (JsonValueKind.Null or JsonValueKind.Number or JsonValueKind.String))
                 return Respond(Error(null, -32600, "Invalid Request"), false);
+            if (hasId && id.ValueKind == JsonValueKind.String) _ = id.GetString();
             object? responseId = hasId ? id : null;
             try
             {
                 request.TryGetProperty("params", out JsonElement parameters);
+                cancellationToken.ThrowIfCancellationRequested();
                 object result = await invoke(methodName, parameters, cancellationToken);
                 outcome = hasId ? "ok" : "notification";
                 return hasId ? Respond(new { jsonrpc = "2.0", id = responseId, result }, true) : null;
@@ -219,12 +227,22 @@ internal static class RpcEndpoint
                 outcome = $"error {exception.Code}";
                 return hasId ? Respond(Error(responseId, exception.Code, exception.Message, exception.RevertData), false) : null;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                outcome = "error -32002";
+                return hasId ? Respond(Error(responseId, -32002, "RPC request timed out."), false) : null;
+            }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
                 outcome = "error -32000";
                 logger.LogWarning(exception, "Unable to produce a verified RPC response");
                 return hasId ? Respond(Error(responseId, -32000, "Unable to verify peer data"), false) : null;
             }
+        }
+        catch (InvalidOperationException)
+        {
+            outcome = "error -32600";
+            return Respond(Error(null, -32600, "Invalid Request"), false);
         }
         finally
         {
@@ -244,7 +262,7 @@ internal static class RpcEndpoint
         }
     }
 
-    private static object Error(object? id, int code, string message) => new { jsonrpc = "2.0", id, error = new { code, message } };
+    internal static object Error(object? id, int code, string message) => new { jsonrpc = "2.0", id, error = new { code, message } };
     private static object Error(object? id, int code, string message, string? data) => data is null
         ? Error(id, code, message)
         : new { jsonrpc = "2.0", id, error = new { code, message, data } };

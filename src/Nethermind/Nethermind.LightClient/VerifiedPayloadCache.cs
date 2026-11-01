@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Microsoft.Extensions.Caching.Memory;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
@@ -10,9 +9,9 @@ namespace Nethermind.LightClient;
 /// <summary>Retains verified payloads and shares bounded downloads independently of caller cancellation.</summary>
 internal sealed class VerifiedPayloadCache<T>(Func<T, long> size, CancellationToken stoppingToken) : IAsyncDisposable
 {
-    internal const long Capacity = 32 * 1024 * 1024;
+    internal const long Capacity = VerifiedMemoryCache.Capacity;
     internal const int MaxDownloads = 4;
-    private readonly MemoryCache _cache = new(new MemoryCacheOptions { SizeLimit = Capacity });
+    private readonly VerifiedMemoryCache _cache = new();
     private readonly CancellationTokenSource _stop = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
     private readonly Lock _gate = new();
     private readonly Dictionary<Hash256, TaskCompletionSource<T>> _downloads = [];
@@ -123,7 +122,7 @@ internal sealed class VerifiedPayloadCache<T>(Func<T, long> size, CancellationTo
             long weight = Math.Max(1024, size(result));
             lock (_gate)
             {
-                if (!_stopping && weight <= Capacity) _cache.Set(hash, result, new MemoryCacheEntryOptions { Size = weight });
+                if (!_stopping) _cache.Set(hash, result, weight);
             }
         }
         catch (Exception exception)

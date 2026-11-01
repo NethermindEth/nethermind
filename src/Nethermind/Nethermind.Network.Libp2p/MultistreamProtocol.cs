@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -33,7 +34,7 @@ internal class MultistreamProtocol(ILoggerFactory? loggerFactory = null) : IConn
             if (!await DialSelectedProtocolOptimistically(channel, selectedProtocol))
             {
                 _logger?.LogDebug("Negotiation failed");
-                context.UpgradeOptions?.CompletionSource?.TrySetException(new ChannelClosedException());
+                context.UpgradeOptions?.CompletionSource?.TrySetException(new EndOfStreamException("The peer refused the requested stream protocol."));
                 return;
             }
 

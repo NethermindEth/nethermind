@@ -28,7 +28,7 @@ public interface IBeaconChainConfig : IConfig
     [ConfigItem(Description = "The UDP port for the beacon chain discv5 discovery.", DefaultValue = "9060")]
     int Discv5Port { get; set; }
 
-    [ConfigItem(Description = "The UDP port for beacon chain libp2p QUIC. Zero disables QUIC and its ENR advertisement.", DefaultValue = "0")]
+    [ConfigItem(Description = "The UDP port for beacon chain libp2p QUIC, from 0 to 65535 and different from Discv5Port. Zero disables QUIC and its ENR advertisement.", DefaultValue = "0")]
     int QuicPort { get; set; }
 
     [ConfigItem(Description = "Number of PeerDAS custody groups, from 4 to 128. Use at least 64 to reconstruct blobs for the Beacon API, or 128 to serve all columns. Default: 4 groups.", DefaultValue = "4")]

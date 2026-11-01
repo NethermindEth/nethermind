@@ -21,6 +21,7 @@ public abstract class LightClientProtocol<TRequest, TResponse>(BeaconChainSpec s
     protected abstract TResponse DecodeResponse(byte[] ssz);
     protected abstract ulong ResponseSlot(TResponse response);
     protected virtual bool HasRequestBody => true;
+    protected virtual bool AllowsEmptyResponse => false;
 
     public async Task<TResponse> DialAsync(IChannel downChannel, ISessionContext context, TRequest request)
     {
@@ -36,7 +37,8 @@ public abstract class LightClientProtocol<TRequest, TResponse>(BeaconChainSpec s
         }
 
         ResponseChunk chunk = await ReqRespFraming.ReadResponseChunkAsync(stream, ReqRespFraming.ForkContextLength, MaxResponseSize, timeout.Token)
-            ?? throw new Eth2ReqRespException("Peer closed without a light-client response");
+            ?? throw new Eth2ReqRespException("Peer closed without a light-client response",
+                AllowsEmptyResponse ? ReqRespFraming.ResponseCode.ResourceUnavailable : ReqRespFraming.ResponseCode.InvalidRequest);
         if (chunk.Result != ReqRespFraming.ResponseCode.Success) throw ErrorChunkToException(chunk);
 
         TResponse response;
@@ -111,6 +113,7 @@ public sealed class LightClientUpdatesByRangeProtocol(BeaconChainSpec spec) : Li
 {
     public override string Id => "/eth2/beacon_chain/req/light_client_updates_by_range/1/ssz_snappy";
     protected override int MaxRequestSize => 16;
+    protected override bool AllowsEmptyResponse => true;
     protected override byte[] EncodeRequest(ulong period)
     {
         byte[] ssz = new byte[16];

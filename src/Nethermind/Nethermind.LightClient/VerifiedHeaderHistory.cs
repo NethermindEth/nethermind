@@ -175,7 +175,10 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
         }
         Volatile.Write(ref _progress, _progress with
         {
-            TargetFirstBlock = _targetFirst, TargetLastBlock = _target.Number, IsBackfilling = true, Error = null,
+            TargetFirstBlock = _targetFirst,
+            TargetLastBlock = _target.Number,
+            IsBackfilling = true,
+            Error = null,
         });
     }
 
@@ -236,8 +239,6 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
         {
             previous = _anchor;
             if (previous?.BlockHash == target.BlockHash && previous.Number == target.Number) return;
-            if (previous is not null && previous.Number > target.Number)
-                throw new InvalidDataException("Log history anchor cannot move backwards.");
             if (previous is not null)
             {
                 _first = Math.Max(_first, Floor(target.Number));
@@ -383,11 +384,10 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
         await _access.WaitAsync(cancellationToken);
         try
         {
-            Span<byte> key = stackalloc byte[4];
             for (int i = 0; i < count; i++)
             {
-                BinaryPrimitives.WriteInt32BigEndian(key, Slot(number - (ulong)count + (ulong)i));
-                if (!_db.KeyExists(key)) return false;
+                ulong expected = number - (ulong)count + (ulong)i;
+                if (ReadHeader(expected, null) is null) return false;
             }
             return true;
         }
@@ -476,18 +476,18 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
         return result;
     }
 
-    private BlockHeader? ReadHeader(ulong number, Hash256 hash)
+    private BlockHeader? ReadHeader(ulong number, Hash256? hash)
     {
         Span<byte> key = stackalloc byte[4];
         BinaryPrimitives.WriteInt32BigEndian(key, Slot(number));
         Span<byte> bytes = _db.GetSpan(key);
         try
         {
-            if (bytes.Length is 0 or > MaxHeaderBytes || Keccak.Compute(bytes) != hash) return null;
+            if (bytes.Length is 0 or > MaxHeaderBytes || hash is not null && Keccak.Compute(bytes) != hash) return null;
             try
             {
                 BlockHeader header = _decoder.DecodeCompleteNotNull(bytes);
-                return header.Number == number && header.Hash == hash ? header : null;
+                return header.Number == number && (hash is null || header.Hash == hash) ? header : null;
             }
             catch (RlpException) { return null; }
         }

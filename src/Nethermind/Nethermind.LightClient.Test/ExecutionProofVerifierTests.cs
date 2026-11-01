@@ -139,8 +139,14 @@ public class ExecutionProofVerifierTests
         => Assert.That(() => ExecutionProofVerifier.VerifyStorage(Keccak.EmptyTreeHash, 1, [new byte[length]]), Throws.TypeOf<InvalidDataException>());
 
     [Test]
-    public void Too_many_proof_nodes_are_rejected()
-        => Assert.That(() => ExecutionProofVerifier.VerifyStorage(Keccak.EmptyTreeHash, 1, new byte[66][]), Throws.TypeOf<InvalidDataException>());
+    public void Proof_node_count_is_bounded_even_when_every_node_is_valid([Values(65, 66)] int count)
+    {
+        byte[] leaf = Leaf(StorageKey(1), Rlp.Encode((UInt256)42).Bytes);
+        byte[][] proof = Enumerable.Repeat(leaf, count).ToArray();
+        if (count > 65)
+            Assert.That(() => ExecutionProofVerifier.VerifyStorage(Keccak.Compute(leaf), 1, proof), Throws.TypeOf<InvalidDataException>());
+        else Assert.That(ExecutionProofVerifier.VerifyStorage(Keccak.Compute(leaf), 1, proof), Is.EqualTo((UInt256)42));
+    }
 
     [Test]
     public void Code_must_match_the_authenticated_hash([Values] bool tamper)

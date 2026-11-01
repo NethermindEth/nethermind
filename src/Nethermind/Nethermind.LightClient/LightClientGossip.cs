@@ -233,7 +233,7 @@ internal sealed class LightClientGossip(BeaconChainSpec spec, ILogManager logs, 
         }
         catch (IrrelevantLightClientUpdateException exception) { return Finish(MessageValidity.Ignored, exception.Message); }
         catch (LightClientLocalStateException exception) { return Finish(forwardingIgnored ? MessageValidity.Ignored : MessageValidity.Throttled, exception.Message); }
-        catch (InvalidDataException exception) { return Finish(forwardingIgnored ? MessageValidity.Ignored : MessageValidity.Rejected, exception.Message); }
+        catch (InvalidDataException exception) { return Finish(MessageValidity.Rejected, exception.Message); }
         finally
         {
             _validation.Release();

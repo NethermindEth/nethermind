@@ -29,6 +29,10 @@ public class StatusFallbackTests
         ExchangeFailureAsTheSessionDeliversIt,
         Unanswered,
         Rejected,
+        StreamEnded,
+        StreamEndedAsTheSessionDeliversIt,
+        StreamEndedAsCallerCancels,
+        StreamEndedAsSessionCloses,
         RejectedAsCallerCancels,
         ExchangeFailureAsCallerCancels,
         SessionClosed,
@@ -41,6 +45,10 @@ public class StatusFallbackTests
     [TestCase(V2Failure.ExchangeFailureAsTheSessionDeliversIt, true)]
     [TestCase(V2Failure.Unanswered, true)]
     [TestCase(V2Failure.Rejected, true)]
+    [TestCase(V2Failure.StreamEnded, true)]
+    [TestCase(V2Failure.StreamEndedAsTheSessionDeliversIt, true)]
+    [TestCase(V2Failure.StreamEndedAsCallerCancels, false)]
+    [TestCase(V2Failure.StreamEndedAsSessionCloses, false)]
     [TestCase(V2Failure.RejectedAsCallerCancels, false)]
     [TestCase(V2Failure.ExchangeFailureAsCallerCancels, false)]
     [TestCase(V2Failure.SessionClosed, false)]
@@ -57,6 +65,8 @@ public class StatusFallbackTests
             V2Failure.ExchangeFailureAsTheSessionDeliversIt => new AggregateException(new Eth2ReqRespException("Peer responded with error code 2")),
             V2Failure.Unanswered or V2Failure.CallerCancelled => new TaskCanceledException(),
             V2Failure.Rejected or V2Failure.RejectedAsCallerCancels or V2Failure.SessionClosed => new ChannelClosedException(),
+            V2Failure.StreamEnded or V2Failure.StreamEndedAsCallerCancels or V2Failure.StreamEndedAsSessionCloses => new EndOfStreamException(),
+            V2Failure.StreamEndedAsTheSessionDeliversIt => new AggregateException(new EndOfStreamException()),
             V2Failure.LocalFault => new IOException("Failed to half-close the request stream"),
             V2Failure.LocalFaultAsTheSessionDeliversIt => new AggregateException(new IOException("Failed to half-close the request stream")),
             _ => throw new ArgumentOutOfRangeException(nameof(failure)),
@@ -68,8 +78,8 @@ public class StatusFallbackTests
 
         Action? beforeFailure = failure switch
         {
-            V2Failure.RejectedAsCallerCancels or V2Failure.ExchangeFailureAsCallerCancels => caller.Cancel,
-            V2Failure.SessionClosed => closed.Cancel,
+            V2Failure.RejectedAsCallerCancels or V2Failure.ExchangeFailureAsCallerCancels or V2Failure.StreamEndedAsCallerCancels => caller.Cancel,
+            V2Failure.SessionClosed or V2Failure.StreamEndedAsSessionCloses => closed.Cancel,
             _ => null,
         };
         (Exception? thrown, StatusMessageV2? answer, ISession session) = await RequestStatusAsync(v2Error, caller.Token, beforeFailure, closed.Token);
@@ -78,7 +88,7 @@ public class StatusFallbackTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(v1Dials, Is.EqualTo(fallsBack ? 1 : 0), "v1 dials");
         Assert.That(answer?.HeadSlot, Is.EqualTo(fallsBack ? V1Answer.HeadSlot : null), "the v1 answer is returned when v1 is tried");
-        if (failure == V2Failure.SessionClosed)
+        if (failure is V2Failure.SessionClosed or V2Failure.StreamEndedAsSessionCloses)
         {
             Assert.That(thrown, Is.TypeOf<PeerSessionClosedException>());
             Assert.That(thrown?.InnerException, Is.SameAs(v2Error), "a disconnected session retains its actual cause");

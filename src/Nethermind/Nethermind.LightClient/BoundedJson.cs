@@ -69,10 +69,9 @@ internal static class BoundedJson
     }
 }
 
-/// <summary>Bounds committed UTF-8 output while allowing the JSON writer's final buffer reservation.</summary>
-internal sealed class BoundedJsonBuffer(int limit) : IBufferWriter<byte>, IDisposable
+/// <summary>Bounds committed UTF-8 output while allowing temporary JSON-writer reservations.</summary>
+internal sealed class BoundedJsonBuffer(int limit, int reservationSlack = 4096) : IBufferWriter<byte>, IDisposable
 {
-    private const int ReservationSlack = 4096;
     private byte[] _buffer = [];
     private int _written;
     private bool _disposed;
@@ -87,19 +86,19 @@ internal sealed class BoundedJsonBuffer(int limit) : IBufferWriter<byte>, IDispo
     public Memory<byte> GetMemory(int sizeHint = 0)
     {
         EnsureCapacity(sizeHint);
-        return _buffer.AsMemory(_written, Math.Min(_buffer.Length, limit + ReservationSlack) - _written);
+        return _buffer.AsMemory(_written, Math.Min(_buffer.Length, limit + reservationSlack) - _written);
     }
 
     public Span<byte> GetSpan(int sizeHint = 0)
     {
         EnsureCapacity(sizeHint);
-        return _buffer.AsSpan(_written, Math.Min(_buffer.Length, limit + ReservationSlack) - _written);
+        return _buffer.AsSpan(_written, Math.Min(_buffer.Length, limit + reservationSlack) - _written);
     }
 
     private void EnsureCapacity(int sizeHint)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        int maximum = limit + ReservationSlack;
+        int maximum = limit + reservationSlack;
         if (sizeHint < 0 || sizeHint > maximum - _written) throw BoundedJson.TooLarge();
         int needed = _written + Math.Max(1, sizeHint);
         if (needed <= _buffer.Length) return;

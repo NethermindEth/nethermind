@@ -149,19 +149,26 @@ public class VerifiedCallTests
     }
 
     [Test]
-    public async Task Blob_call_and_estimate_run_in_the_local_evm([Values("eth_call", "eth_estimateGas")] string method)
+    public async Task Blob_call_and_estimate_run_in_the_local_evm([Values("eth_call", "eth_estimateGas")] string method,
+        [Values(null, "0x0", "0x2")] string? blobFee)
     {
         // BLOBHASH(0), MSTORE(0), RETURN(0,32).
         FakeSource source = new([0x60, 0x00, 0x49, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3], contractBalance: 1_000_000_000);
         using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
         using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
         string versionedHash = "0x01" + new string('0', 62);
-        JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { new
+        Dictionary<string, object> transaction = new()
         {
-            type = "0x3", from = Contract.ToString(), to = Contract.ToString(), gas = "0x186a0",
-            maxFeePerGas = "0x2", maxPriorityFeePerGas = "0x1", maxFeePerBlobGas = "0x2",
-            blobVersionedHashes = new[] { versionedHash },
-        }, "finalized" });
+            ["type"] = "0x3",
+            ["from"] = Contract.ToString(),
+            ["to"] = Contract.ToString(),
+            ["gas"] = "0x186a0",
+            ["maxFeePerGas"] = "0x2",
+            ["maxPriorityFeePerGas"] = "0x1",
+            ["blobVersionedHashes"] = new[] { versionedHash },
+        };
+        if (blobFee is not null) transaction["maxFeePerBlobGas"] = blobFee;
+        JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { transaction, "finalized" });
         object result = await rpc.InvokeAsync(method, parameters, CancellationToken.None);
         if (method == "eth_call") Assert.That(result, Is.EqualTo(versionedHash));
         else Assert.That(Convert.ToUInt64(((string)result)[2..], 16), Is.InRange(21_000, 100_000));
@@ -442,17 +449,34 @@ public class VerifiedCallTests
     }
 
     [Test]
-    public async Task Revert_is_an_error_with_return_data([Values("eth_call", "eth_estimateGas")] string method)
+    public async Task Revert_is_an_error_with_return_data([Values("eth_call", "eth_estimateGas")] string method,
+        [Values("empty", "reason", "raw")] string payload)
     {
-        FakeSource source = new([0x60, 0x00, 0x60, 0x00, 0xfd]);
+        byte[] code = payload switch
+        {
+            "reason" => Convert.FromHexString("6308c379a060e01b60005260206004526001602452607860f81b60445260646000fd"),
+            "raw" => [0x60, 0x42, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xfd],
+            _ => [0x60, 0x00, 0x60, 0x00, 0xfd],
+        };
+        FakeSource source = new(code);
         using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
         using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
 
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method,
             JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, "finalized" }), CancellationToken.None));
 
-        Assert.That(error!.Code, Is.EqualTo(3));
-        Assert.That(error.RevertData, Is.EqualTo("0x"));
+        string data = payload switch
+        {
+            "reason" => "0x08c379a0" + new string('0', 62) + "20" + new string('0', 63) + "1" + "78" + new string('0', 62),
+            "raw" => "0x42",
+            _ => "0x",
+        };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error!.Code, Is.EqualTo(3));
+            Assert.That(error.Message, Is.EqualTo(payload == "reason" ? "execution reverted: x" : "execution reverted"));
+            Assert.That(error.RevertData, Is.EqualTo(data));
+        }
     }
 
     [Test]
@@ -484,9 +508,264 @@ public class VerifiedCallTests
     }
 
     [Test]
-    public async Task Header_must_match_the_finalized_state_root()
+    public async Task Blockhash_reads_reuse_one_complete_ancestor_window([Values] bool newestFirst)
     {
-        FakeSource source = new([0x00]) { WrongHeaderRoot = true };
+        byte[] code = Convert.FromHexString(newestFirst
+            ? "600060015b8043034090911890600101806100c9116004575060005260206000f3"
+            : "600060c85b804303409091189060019003806004575060005260206000f3");
+        FakeSource source = new(code);
+        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        byte[] expected = new byte[32];
+        for (ulong depth = 1; depth <= 200; depth++)
+        {
+            ReadOnlySpan<byte> hash = FakeSource.HashAt(source.Head, source.Head.Number - depth).Bytes;
+            for (int i = 0; i < expected.Length; i++) expected[i] ^= hash[i];
+        }
+
+        string result = await call.ExecuteAsync(source.Head,
+            JsonSerializer.SerializeToElement(new { to = Contract.ToString() }), false, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(new Hash256(expected).ToString()));
+            Assert.That(source.AncestorFetches, Is.EqualTo(1));
+            Assert.That(source.FirstAncestorNumber, Is.LessThanOrEqualTo(source.Head.Number - 200));
+        }
+    }
+
+    [Test]
+    public async Task Blockhash_bounds_and_parent_shortcut_are_preserved([Values(1, 256, 257)] int depth)
+    {
+        FakeSource source = new([0x43, 0x61, (byte)(depth >> 8), (byte)depth, 0x90, 0x03, 0x40,
+            0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
+        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+
+        string result = await call.ExecuteAsync(source.Head,
+            JsonSerializer.SerializeToElement(new { to = Contract.ToString() }), false, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(depth > 256 ? Hash256.Zero.ToString()
+                : FakeSource.HashAt(source.Head, source.Head.Number - (ulong)depth).ToString()));
+            Assert.That(source.AncestorFetches, Is.EqualTo(depth == 256 ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public async Task Blockhash_cache_is_bound_to_the_authenticated_branch()
+    {
+        FakeSource source = new([0x43, 0x60, 0x02, 0x90, 0x03, 0x40, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
+        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        JsonElement transaction = JsonSerializer.SerializeToElement(new { to = Contract.ToString() });
+        VerifiedHead first = source.Head;
+        string original = await call.ExecuteAsync(first, transaction, false, CancellationToken.None);
+        source.Head = source.Head with { BlockHash = Keccak.Compute("alternate block"), StateRoot = Keccak.Compute("alternate state") };
+        string alternate = await call.ExecuteAsync(source.Head, transaction, false, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(original, Is.EqualTo(FakeSource.HashAt(first, first.Number - 2).ToString()));
+            Assert.That(alternate, Is.EqualTo(FakeSource.HashAt(source.Head, source.Head.Number - 2).ToString()));
+            Assert.That(alternate, Is.Not.EqualTo(original));
+            Assert.That(source.AncestorFetches, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public async Task Second_contract_executes_its_own_authenticated_code()
+    {
+        Address second = new("0x2234567890123456789012345678901234567890");
+        FakeSource source = new([0x60, 0x20, 0x60, 0x00, 0x60, 0x00, 0x60, 0x00, 0x73, .. second.Bytes,
+            0x5a, 0xfa, 0x50, 0x60, 0x20, 0x60, 0x00, 0xf3]);
+        source.ExtraContracts.Add(second, [0x60, 0x2a, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
+        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+
+        string result = await call.ExecuteAsync(source.Head,
+            JsonSerializer.SerializeToElement(new { to = Contract.ToString() }), false, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo("0x" + new string('0', 62) + "2a"));
+            Assert.That(source.CodeFetches, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public async Task Execution_gas_is_capped_even_when_the_request_asks_for_more()
+    {
+        FakeSource source = new([0x5a, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
+        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        string result = await call.ExecuteAsync(source.Head,
+            JsonSerializer.SerializeToElement(new { to = Contract.ToString(), gas = "0xe4e1c0" }), false, CancellationToken.None);
+        Assert.That(UInt256.Parse(result), Is.InRange((UInt256)9_900_000, (UInt256)10_000_000));
+    }
+
+    [Test]
+    public async Task Execution_bounds_distinct_state_fill_rounds([Values(123, 130)] int accounts)
+    {
+        byte[] code = new byte[accounts * 5 + 1];
+        for (int i = 0; i < accounts; i++)
+        {
+            code[i * 5] = 0x61;
+            code[i * 5 + 2] = (byte)(i + 1);
+            code[i * 5 + 3] = 0x31;
+            code[i * 5 + 4] = 0x50;
+        }
+        FakeSource source = new(code);
+        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        JsonElement transaction = JsonSerializer.SerializeToElement(new { to = Contract.ToString() });
+        if (accounts == 123)
+            Assert.That(await call.ExecuteAsync(source.Head, transaction, false, CancellationToken.None), Is.EqualTo("0x"));
+        else
+        {
+            RpcException? error = await Assert.ThrowsAsync<RpcException>(async () =>
+                await call.ExecuteAsync(source.Head, transaction, false, CancellationToken.None));
+            Assert.That(error!.Message, Does.Contain("too many distinct state items"));
+        }
+    }
+
+    [Test]
+    public void Verified_cache_admits_large_entries_after_warming_and_evicts_least_recently_used()
+    {
+        using VerifiedMemoryCache cache = new();
+        for (int i = 0; i < 32; i++) cache.Set(i, i, VerifiedMemoryCache.Capacity / 32);
+        Assert.That(cache.TryGetValue(0, out int first), Is.True);
+        Assert.That(first, Is.Zero);
+        cache.Set("large", 42, VerifiedMemoryCache.Capacity / 2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryGetValue(0, out int retained), Is.True);
+            Assert.That(retained, Is.Zero);
+            Assert.That(cache.TryGetValue(1, out int _), Is.False);
+            Assert.That(cache.TryGetValue("large", out int large), Is.True);
+            Assert.That(large, Is.EqualTo(42));
+        }
+        cache.Set("large", 43, VerifiedMemoryCache.Capacity);
+        cache.Set("oversized", 99, VerifiedMemoryCache.Capacity + 1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryGetValue(0, out int _), Is.False);
+            Assert.That(cache.TryGetValue("large", out int replaced), Is.True);
+            Assert.That(replaced, Is.EqualTo(43));
+            Assert.That(cache.TryGetValue("oversized", out int _), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Network_fills_do_not_hold_execution_permits_or_starve_a_cached_call()
+    {
+        FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
+        Address warm = new("0x3234567890123456789012345678901234567890");
+        source.ExtraContracts.Add(warm, [0x60, 0x2a, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
+        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        JsonElement warmRequest = JsonSerializer.SerializeToElement(new { to = warm.ToString() });
+        string expected = await call.ExecuteAsync(source.Head, warmRequest, false, CancellationToken.None);
+        TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int fills = 0;
+        source.StorageResponse = async (_, token) =>
+        {
+            if (Interlocked.Increment(ref fills) == 4) waiting.TrySetResult();
+            await release.Task.WaitAsync(token);
+            return (UInt256)42;
+        };
+        JsonElement coldRequest = JsonSerializer.SerializeToElement(new { to = Contract.ToString() });
+        Task<string>[] slow = Enumerable.Range(0, 4)
+            .Select(_ => call.ExecuteAsync(source.Head, coldRequest, false, CancellationToken.None)).ToArray();
+        Task<string>? cached = null;
+        try
+        {
+            await waiting.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            cached = call.ExecuteAsync(source.Head, warmRequest, false, CancellationToken.None);
+            Assert.That(await cached.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(expected));
+            Assert.That(slow, Has.All.Property(nameof(Task.IsCompleted)).EqualTo(false));
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(slow);
+            if (cached is not null) await cached;
+        }
+    }
+
+    [Test]
+    public async Task Execution_admission_and_network_wait_have_a_local_deadline(
+        [Values("admission", "fill")] string stage, [Values] bool callerCancels)
+    {
+        FakeSource source = new(stage == "fill" ? [0x60, 0x00, 0x54, 0x00] : [0x00]);
+        source.StorageResponse = async (_, token) =>
+        {
+            await Task.Delay(Timeout.Infinite, token);
+            return UInt256.Zero;
+        };
+        CallClock clock = new();
+        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance, clock);
+        SemaphoreSlim slots = (SemaphoreSlim)typeof(VerifiedCall).GetField("_slots", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(call)!;
+        using CancellationTokenSource caller = new();
+        int held = 0;
+        Task<string>? request = null;
+        try
+        {
+            if (stage == "admission")
+            {
+                for (; held < 4; held++) Assert.That(slots.Wait(0), Is.True);
+                Assert.That(slots.Wait(0), Is.False);
+            }
+            request = call.ExecuteAsync(source.Head,
+                JsonSerializer.SerializeToElement(new { to = Contract.ToString() }), false, caller.Token);
+            Assert.That(request.IsCompleted, Is.False);
+            if (stage == "fill") Assert.That(source.StorageFetches, Is.EqualTo(1));
+            Assert.That(clock.DueTime, Is.EqualTo(TimeSpan.FromSeconds(60)));
+            if (callerCancels)
+            {
+                caller.Cancel();
+                Assert.That(async () => await request, Throws.InstanceOf<OperationCanceledException>());
+            }
+            else
+            {
+                clock.Expire();
+                RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await request);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(error!.Code, Is.EqualTo(-32002));
+                    Assert.That(error.Message, Is.EqualTo("Execution request timed out."));
+                }
+            }
+        }
+        finally
+        {
+            caller.Cancel();
+            if (request is not null) await ((Task)request).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            if (held != 0) slots.Release(held);
+        }
+        Assert.That(slots.CurrentCount, Is.EqualTo(4));
+    }
+
+    private sealed class CallClock : TimeProvider
+    {
+        private TimerCallback? _callback;
+        private object? _state;
+        internal TimeSpan DueTime { get; private set; }
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            _callback = callback;
+            _state = state;
+            DueTime = dueTime;
+            return new Timer();
+        }
+        internal void Expire() => _callback!(_state);
+        private sealed class Timer : ITimer
+        {
+            public bool Change(TimeSpan dueTime, TimeSpan period) => true;
+            public void Dispose() { }
+            public ValueTask DisposeAsync() => default;
+        }
+    }
+
+    [Test]
+    public async Task Header_must_match_the_authenticated_snapshot([Values("hash", "number", "state")] string corruption)
+    {
+        FakeSource source = new([0x00]) { HeaderCorruption = corruption };
         using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
         using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
 
@@ -554,7 +833,7 @@ public class VerifiedCallTests
         source.CanonicalHistoricalHead = new(source.Head.Slot, source.Head.Number, Keccak.Compute("replacement optimistic ancestor"), source.Head.StateRoot);
         RpcException? orphan = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method,
             JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, new { blockHash = source.Head.BlockHash.ToString(), requireCanonical = true } }), CancellationToken.None));
-        Assert.That(orphan!.Code, Is.EqualTo(-32001));
+        Assert.That(orphan!.Code, Is.EqualTo(-32000));
     }
 
     [Test]
@@ -757,7 +1036,9 @@ public class VerifiedCallTests
         public int StorageFetches { get; private set; }
         public int AncestorFetches { get; private set; }
         public int ContractAccountFetches { get; private set; }
-        public bool WrongHeaderRoot { get; init; }
+        public string? HeaderCorruption { get; init; }
+        public Dictionary<Address, byte[]> ExtraContracts { get; } = [];
+        public ulong? FirstAncestorNumber { get; private set; }
         public UInt256 BaseFee { get; init; } = 1;
         public BlockHeader? LastHeader { get; private set; }
         public ulong BlockGasLimit { get; set; } = 30_000_000;
@@ -778,11 +1059,11 @@ public class VerifiedCallTests
         public Task<BlockHeader> GetHeaderAsync(VerifiedHead head, CancellationToken cancellationToken)
         {
             Fetches++;
-            BlockHeader header = new(Keccak.Compute("parent"), Keccak.OfAnEmptySequenceRlp, Address.Zero, UInt256.Zero,
-                head.Number, BlockGasLimit, 1_790_000_000, [])
+            BlockHeader header = new(HashAt(head, head.Number - 1), Keccak.OfAnEmptySequenceRlp, Address.Zero, UInt256.Zero,
+                head.Number + (HeaderCorruption == "number" ? 1UL : 0), BlockGasLimit, 1_790_000_000, [])
             {
-                Hash = head.BlockHash,
-                StateRoot = WrongHeaderRoot ? Keccak.Compute("wrong state") : head.StateRoot,
+                Hash = HeaderCorruption == "hash" ? Keccak.Compute("wrong block") : head.BlockHash,
+                StateRoot = HeaderCorruption == "state" ? Keccak.Compute("wrong state") : head.StateRoot,
                 BaseFeePerGas = BaseFee,
                 MixHash = Keccak.Compute("random"),
                 BlobGasUsed = 0,
@@ -797,6 +1078,8 @@ public class VerifiedCallTests
         {
             Fetches++;
             LastQueriedHead = head;
+            if (ExtraContracts.TryGetValue(address, out byte[]? extra))
+                return Task.FromResult(new Account(1, 0, Keccak.EmptyTreeHash, Keccak.Compute(extra)));
             if (contractBalance != UInt256.Zero && address == Eip8250Constants.NonceManagerAddress)
                 return Task.FromResult(new Account(1, 0, Keccak.Compute("nonce root"), Keccak.OfAnEmptyString));
             if (address == Eip2935Constants.BlockHashHistoryAddress)
@@ -819,15 +1102,25 @@ public class VerifiedCallTests
         {
             Fetches++;
             CodeFetches++;
+            foreach (byte[] extra in ExtraContracts.Values)
+                if (account.CodeHash == Keccak.Compute(extra)) return Task.FromResult(extra);
+            Assert.That(account.CodeHash, Is.EqualTo(Keccak.Compute(ContractCode)), "Code must be fetched using its authenticated owner.");
             return Task.FromResult(ContractCode);
         }
 
         public Task<Hash256[]> GetAncestorHashesAsync(VerifiedHead head, ulong firstNumber, CancellationToken cancellationToken)
         {
             AncestorFetches++;
-            if (firstNumber != head.Number - 2) throw new AssertionException("Unexpected ancestor request.");
-            return Task.FromResult(new[] { Keccak.Compute("grandparent"), Keccak.Compute("parent"), head.BlockHash });
+            FirstAncestorNumber = firstNumber;
+            Assert.That(head.Number - firstNumber, Is.LessThanOrEqualTo(256));
+            return Task.FromResult(Enumerable.Range(0, checked((int)(head.Number - firstNumber + 1)))
+                .Select(index => HashAt(head, firstNumber + (ulong)index)).ToArray());
         }
+
+        internal static Hash256 HashAt(VerifiedHead head, ulong number) => number == head.Number ? head.BlockHash
+            : head.BlockHash == Keccak.Compute("block") && number == head.Number - 1 ? Keccak.Compute("parent")
+            : head.BlockHash == Keccak.Compute("block") && number == head.Number - 2 ? Keccak.Compute("grandparent")
+            : Keccak.Compute($"ancestor:{head.BlockHash}:{number}");
 
         public Task<BlockHeader> GetHeaderByHashAsync(Hash256 hash, CancellationToken cancellationToken) =>
             hash == Head.BlockHash ? GetHeaderAsync(Head, cancellationToken) : throw new NotSupportedException();
