@@ -97,7 +97,8 @@ public sealed class FrameTxValidationTracer(
 
     public ulong MaxVerifyGas => maxVerifyGas;
 
-    /// <summary>EIP-8298 targets the prefix relied on whose code could change through DELEGATECALL or CALLCODE.</summary>
+    /// <summary>Accounts the prefix relied on whose code could change: EIP-8298 targets reachable through DELEGATECALL or
+    /// CALLCODE, and accounts EIP-8151 ecRecover recovered.</summary>
     public IReadOnlyList<FrameTxCodeDependency> CodeDependencies => _codeDependencies ?? (IReadOnlyList<FrameTxCodeDependency>)[];
 
     private List<FrameTxCodeDependency>? _codeDependencies;
@@ -287,6 +288,21 @@ public sealed class FrameTxValidationTracer(
         // The carve-out covers code installed at tx.sender only; a contract deployed anywhere else is a
         // state write whose result the prefix would silently depend on.
         if (!Violated && to != sender) Violate("CREATE outside tx.sender");
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>EIP-8151 ecRecover returns the recovered account only while its code is empty or an EIP-7702 delegation,
+    /// so the prefix depends on that account's code. Under EIP-8298 the account can change its own code by executing
+    /// SETCODEFROM in its own context (an EOA through a 7702 delegation), so it is recorded in <see cref="CodeDependencies"/>
+    /// whether or not ecRecover withheld it, and the pool revalidates the transaction when a block touches the account.
+    /// Without EIP-8298 nothing can flip the result: a key-controlled address cannot be a CREATE, CREATE2 or TCREATE target,
+    /// so it only ever holds empty code or a delegation, both of which EIP-8151 passes, and regular code is permanent under
+    /// EIP-6780. Trade-off: the per-account cap (FrameTxMaxPendingPerDelegatingCode) bounds re-simulation amplification but
+    /// now applies to signing keys, so anyone holding one signature of a key can fill that key's slots, and a key shared by
+    /// many pending transactions is limited to that many per node. tx.sender is exempt, its code hash being tracked already.</remarks>
+    public override void ReportPrecompileAccountRead(Address address)
+    {
+        if (!Violated && spec.IsEip8298Enabled && address != sender) AddCodeDependency(address, state.GetCodeHash(address));
     }
 
     void IFrameTxReceiptTracer.ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
