@@ -341,38 +341,19 @@ namespace Nethermind.Blockchain.Receipts
                 return pendingHash;
             }
 
-            Span<byte> buffer = stackalloc byte[Hash256.Size];
-            int length;
+            Span<byte> blockHashData = _transactionDb.GetSpan(txHash);
             try
             {
-                length = _transactionDb.Get(txHash.Bytes, buffer);
+                if (blockHashData.IsNull()) return FindReceiptObsolete(txHash)?.BlockHash;
+                if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
+
+                ulong blockNum = new RlpReader(blockHashData).DecodeULong();
+                return _blockTree.FindBlockHash(blockNum);
             }
-            catch (ArgumentException)
+            finally
             {
-                // Oversized values must retain the original decoding and exception behavior.
-                return FindBlockHashFromIndex(txHash);
+                _transactionDb.DangerousReleaseMemory(blockHashData);
             }
-            catch (NotSupportedException)
-            {
-                return FindBlockHashFromIndex(txHash);
-            }
-
-            // A zero-length buffer read cannot distinguish a missing key from a stored empty value.
-            return length == 0 ? FindBlockHashFromIndex(txHash) : ResolveIndexedBlockHash(buffer[..length]);
-        }
-
-        private Hash256 FindBlockHashFromIndex(Hash256 txHash)
-        {
-            byte[] blockHashData = _transactionDb.Get(txHash);
-            return blockHashData is null ? FindReceiptObsolete(txHash)?.BlockHash : ResolveIndexedBlockHash(blockHashData);
-        }
-
-        private Hash256 ResolveIndexedBlockHash(ReadOnlySpan<byte> blockHashData)
-        {
-            if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
-
-            ulong blockNum = new RlpReader(blockHashData).DecodeULong();
-            return _blockTree.FindBlockHash(blockNum);
         }
 
         /// <summary>

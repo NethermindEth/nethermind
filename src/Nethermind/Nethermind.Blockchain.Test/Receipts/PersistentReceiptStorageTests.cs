@@ -17,8 +17,11 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
+using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -390,7 +393,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test]
-    public void FindBlockHash_buffer_read_resolves_the_current_canonical_number([Values(0UL, 1UL, ulong.MaxValue)] ulong number)
+    public void FindBlockHash_span_read_resolves_the_current_canonical_number([Values(0UL, 1UL, ulong.MaxValue)] ulong number)
     {
         IndexReadDb index = new();
         index.Set(TestItem.KeccakA, Rlp.Encode(number).Bytes);
@@ -403,13 +406,14 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(storage.FindBlockHash(TestItem.KeccakA), Is.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(index.BufferReads, Is.EqualTo(3));
+            Assert.That(index.SpanReads, Is.EqualTo(3));
+            Assert.That(index.Releases, Is.EqualTo(3));
             Assert.That(index.ArrayReads, Is.Zero);
         }
     }
 
     [Test]
-    public void FindBlockHash_buffer_read_preserves_a_legacy_hash()
+    public void FindBlockHash_span_read_preserves_a_legacy_hash()
     {
         IndexReadDb index = new();
         index.Set(TestItem.KeccakA, TestItem.KeccakB.BytesToArray());
@@ -417,7 +421,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(storage.FindBlockHash(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(index.BufferReads, Is.EqualTo(1));
+            Assert.That(index.SpanReads, Is.EqualTo(1));
+            Assert.That(index.Releases, Is.EqualTo(1));
             Assert.That(index.ArrayReads, Is.Zero);
         }
     }
@@ -436,8 +441,9 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(storage.FindBlockHash(TestItem.KeccakA), Is.EqualTo(legacyReceipt ? TestItem.KeccakB : null));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(index.BufferReads, Is.EqualTo(1));
-            Assert.That(index.ArrayReads, Is.EqualTo(1));
+            Assert.That(index.SpanReads, Is.EqualTo(1));
+            Assert.That(index.Releases, Is.EqualTo(1));
+            Assert.That(index.ArrayReads, Is.Zero);
         }
     }
 
@@ -460,65 +466,80 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(() => storage.FindBlockHash(TestItem.KeccakA), Throws.TypeOf(original!.GetType()));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(index.BufferReads, Is.EqualTo(1));
-            Assert.That(index.ArrayReads, Is.EqualTo(value.Length == 0 || value.Length > Hash256.Size ? 1 : 0));
+            Assert.That(index.SpanReads, Is.EqualTo(1));
+            Assert.That(index.Releases, Is.EqualTo(1));
+            Assert.That(index.ArrayReads, Is.Zero);
         }
     }
 
     [Test]
-    public void FindBlockHash_preserves_oversized_values_with_a_valid_rlp_prefix()
+    public void FindBlockHash_preserves_oversized_values_with_a_valid_rlp_prefix([Values] bool rocksDb)
     {
-        IndexReadDb index = new();
+        using TempPath path = TempPath.GetTempDirectory();
+        DbConfig config = new();
+        RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+        using ColumnsDb<ReceiptsColumns>? columns = rocksDb
+            ? new(path.Path, new DbSettings("Receipts", "receipts"), config, configFactory, LimboLogs.Instance, [ReceiptsColumns.Transactions])
+            : null;
+        IndexReadDb trackedIndex = new();
+        IDb index = columns?.GetColumnDb(ReceiptsColumns.Transactions) ?? trackedIndex;
         byte[] value = new byte[Hash256.Size + 1];
         value[0] = 1;
         index.Set(TestItem.KeccakA, value);
         PersistentReceiptStorage storage = CreateStorageWithIndex(index);
         _blockTree.FindBlockHash(1UL).Returns(TestItem.KeccakB);
-        Assert.That(storage.FindBlockHash(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB));
-        Assert.That(index.ArrayReads, Is.EqualTo(1));
-    }
-
-    [Test]
-    public void FindBlockHash_falls_back_when_the_buffer_read_is_rejected([Values] bool unsupported)
-    {
-        IndexReadDb index = new()
-        {
-            BufferFailure = unsupported ? new NotSupportedException("caller buffer") : new ArgumentException("capacity")
-        };
-        index.Set(TestItem.KeccakA, Rlp.Encode(1UL).Bytes);
-        PersistentReceiptStorage storage = CreateStorageWithIndex(index);
-        _blockTree.FindBlockHash(1UL).Returns(TestItem.KeccakB);
-        Assert.That(storage.FindBlockHash(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB));
+        Hash256? result = storage.FindBlockHash(TestItem.KeccakA);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(index.BufferReads, Is.EqualTo(1));
-            Assert.That(index.ArrayReads, Is.EqualTo(1));
+            Assert.That(result, Is.EqualTo(TestItem.KeccakB));
+            Assert.That(trackedIndex.SpanReads, Is.EqualTo(rocksDb ? 0 : 1));
+            Assert.That(trackedIndex.Releases, Is.EqualTo(rocksDb ? 0 : 1));
+            Assert.That(trackedIndex.ArrayReads, Is.Zero);
         }
     }
 
     [Test]
-    public void FindBlockHash_propagates_io_errors_without_retrying([Values] bool failFallback)
+    public void FindBlockHash_releases_the_index_when_canonical_resolution_throws()
+    {
+        IndexReadDb index = new();
+        index.Set(TestItem.KeccakA, Rlp.Encode(1UL).Bytes);
+        PersistentReceiptStorage storage = CreateStorageWithIndex(index);
+        IOException failure = new("canonical lookup failure");
+        _blockTree.FindBlockHash(1UL).Returns(_ => throw failure);
+        Exception? thrown = Assert.Catch(() => storage.FindBlockHash(TestItem.KeccakA));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown, Is.SameAs(failure));
+            Assert.That(index.SpanReads, Is.EqualTo(1));
+            Assert.That(index.Releases, Is.EqualTo(1));
+            Assert.That(index.ArrayReads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void FindBlockHash_propagates_io_errors_without_retrying()
     {
         IOException failure = new("index read failure");
         IndexReadDb index = new()
         {
-            BufferFailure = failFallback ? new ArgumentException("capacity") : failure,
-            ArrayFailure = failFallback ? failure : null
+            SpanFailure = failure
         };
         PersistentReceiptStorage storage = CreateStorageWithIndex(index);
         Exception? thrown = Assert.Catch(() => storage.FindBlockHash(TestItem.KeccakA));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(thrown, Is.SameAs(failure));
-            Assert.That(index.ArrayReads, Is.EqualTo(failFallback ? 1 : 0));
+            Assert.That(index.SpanReads, Is.EqualTo(1));
+            Assert.That(index.Releases, Is.Zero);
+            Assert.That(index.ArrayReads, Is.Zero);
         }
     }
 
     [Test]
-    public async Task FindBlockHash_pending_index_precedes_both_db_read_paths([Values] bool compactIndex)
+    public async Task FindBlockHash_pending_index_precedes_the_db_read([Values] bool compactIndex)
     {
         _receiptConfig.CompactTxIndex = compactIndex;
-        IndexReadDb index = new() { BufferFailure = new IOException("must not read the index") };
+        IndexReadDb index = new() { SpanFailure = new IOException("must not read the index") };
         StatePersistenceBarrier barrier = new();
         await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter(barrier);
         PersistentReceiptStorage storage = CreateStorageWithIndex(index, writer, barrier);
@@ -530,7 +551,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(storage.FindBlockHash(hash), Is.EqualTo(compactIndex ? TestItem.KeccakC : block.Hash));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(index.BufferReads, Is.Zero);
+            Assert.That(index.SpanReads, Is.Zero);
+            Assert.That(index.Releases, Is.Zero);
             Assert.That(index.ArrayReads, Is.Zero);
         }
     }
@@ -547,26 +569,32 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
 
     private sealed class IndexReadDb : TestMemDb, IReadOnlyKeyValueStore
     {
-        public int BufferReads { get; private set; }
+        private byte[]? _borrowed;
+        public int SpanReads { get; private set; }
+        public int Releases { get; private set; }
         public int ArrayReads { get; private set; }
-        public Exception? BufferFailure { get; init; }
-        public Exception? ArrayFailure { get; init; }
+        public Exception? SpanFailure { get; init; }
 
         public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             ArrayReads++;
-            if (ArrayFailure is not null) throw ArrayFailure;
             return base.Get(key, flags);
         }
 
-        int IReadOnlyKeyValueStore.Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags)
+        Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags)
         {
-            BufferReads++;
-            if (BufferFailure is not null) throw BufferFailure;
-            byte[]? bytes = base.Get(key, flags);
-            if (bytes is null) return 0;
-            bytes.AsSpan().CopyTo(output);
-            return bytes.Length;
+            SpanReads++;
+            if (SpanFailure is not null) throw SpanFailure;
+            _borrowed = base.Get(key, flags)?.ToArray();
+            return _borrowed.AsSpan();
+        }
+
+        void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> span)
+        {
+            Assert.That(span.IsNull(), Is.EqualTo(_borrowed is null));
+            Releases++;
+            if (_borrowed is not null) _borrowed.AsSpan().Fill(0xff);
+            _borrowed = null;
         }
     }
 
