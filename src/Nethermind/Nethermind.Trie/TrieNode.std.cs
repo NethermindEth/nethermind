@@ -281,5 +281,11 @@ namespace Nethermind.Trie
         /// <summary>Climbs <paramref name="path"/> back out of the child <see cref="EnterChildPath"/> entered.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void LeaveChildPath(ref TreePath path) => path.TruncateOne();
+
+        /// <remarks>Only to a resolver that observes such nodes, a node inlined in its parent being visited without a load.</remarks>
+        partial void OnEmbeddedNodeResolving(ITrieNodeResolver tree, in TreePath path, CappedArray<byte> rlp)
+        {
+            if (tree is IEmbeddedNodeObserver observer) observer.OnEmbeddedNodeResolving(path, rlp.AsSpan());
+        }
     }
 }
