@@ -23,11 +23,15 @@ public sealed class SequentialRetryReport(IBlockAccessListExecutionReport report
 {
     private readonly IBlockAccessListExecutionReport _report = report;
     private Block? _retrying;
+    private volatile bool _stopped;
 
     public void OnExecutionPathChosen(Block block, string? sequentialReason)
     {
-        if (!ReferenceEquals(block, _retrying)) _report.OnExecutionPathChosen(block, sequentialReason);
+        if (!_stopped && !ReferenceEquals(block, _retrying)) _report.OnExecutionPathChosen(block, sequentialReason);
     }
+
+    /// <summary>Ends the report once the fixture's blocks are imported, so a block re-executed to regenerate its witness is not reported twice.</summary>
+    public void Stop() => _stopped = true;
 
     public IBlockProcessor Decorate(IBlockProcessor processor) => new RetryWatchingBlockProcessor(processor, this);
 
@@ -43,6 +47,8 @@ public sealed class SequentialRetryReport(IBlockAccessListExecutionReport report
 
         public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
         {
+            if (owner._stopped) return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+
             (Block Block, Exception Error)? lastFailure = _parallelFailure;
             _parallelFailure = null;
             if (!options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList))

@@ -217,16 +217,18 @@ public abstract class BlockchainTestBase
 
         // Why each block that had a list in the fixture was given none; filled before any block is suggested.
         Dictionary<Hash256, string> undeliveredAccessLists = [];
+        SequentialRetryReport? retryReport = null;
         if (BlockAccessListExecutionObserver is { } executionReport)
         {
-            SequentialRetryReport retryReport = new(new UndeliveredAccessListObserver(executionReport, undeliveredAccessLists));
+            SequentialRetryReport report = new(new UndeliveredAccessListObserver(executionReport, undeliveredAccessLists));
+            retryReport = report;
             containerBuilder
                 .AddDecorator<IBlockAccessListManager>((_, manager) =>
                 {
-                    if (manager is BlockAccessListManager blockAccessListManager) blockAccessListManager.ExecutionObserver = retryReport;
+                    if (manager is BlockAccessListManager blockAccessListManager) blockAccessListManager.ExecutionObserver = report;
                     return manager;
                 })
-                .AddDecorator<IBlockProcessor>((_, processor) => retryReport.Decorate(processor));
+                .AddDecorator<IBlockProcessor>((_, processor) => report.Decorate(processor));
         }
 
         // Seed the optional test tracer into the main processor via the BlockchainProcessor constructor.
@@ -366,6 +368,7 @@ public abstract class BlockchainTestBase
             {
                 IWitnessGeneratingBlockProcessingEnvFactory witnessFactory =
                     container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>();
+                retryReport?.Stop();
                 VerifyWitnesses(test, blockTree, witnessFactory, differences);
             }
 
