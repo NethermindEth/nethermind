@@ -113,13 +113,14 @@ jobs:
           outcome_base=success
           outcome_head=success
           # Fixed counts keep the job's length proportional to the rounds; the rounds supply the repetitions.
+          # Keeping the generated benchmark project lets later rounds build it incrementally instead of from scratch.
           for ((round = 1; round <= ROUNDS; round++)); do
             # Alternating the order cancels drift that grows over the job.
             if ((round % 2)); then sides=(base head); else sides=(head base); fi
             for side in "${sides[@]}"; do
               (cd "${side}/src/Nethermind/Nethermind.Benchmark.Runner" &&
                 dotnet run -c Release -- --filter "${patterns[@]}" --join --buildTimeout 900 \
-                  --launchCount 1 --warmupCount 5 --iterationCount 10 \
+                  --launchCount 1 --warmupCount 5 --iterationCount 10 --keepFiles \
                   --artifacts "${RUNNER_TEMP}/bdn-${side}/round-${round}") ||
                 printf -v "outcome_${side}" failure
             done
