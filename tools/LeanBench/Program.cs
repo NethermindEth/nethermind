@@ -227,6 +227,7 @@ public static partial class Program
                 int identity = dep.Scheme == Eip8288Constants.LeanSphincsScheme ? index * scenario.SphincsCount + (scenario.SharedSignature ? 0 : i) : index;
                 transactions.Add(Transaction(chain, dep, identity, scenario.SharedSignature ? i : identity % 16, index * 16 + i));
             }
+            transactions.Sort((a, b) => a.Hash!.CompareTo(b.Hash));
             long proveStarted = Stopwatch.GetTimestamp();
             double proveCpu = MeasuredVerifier.CpuMilliseconds();
             byte[] proof = NativeLeanProofVerifier.Instance.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input);
@@ -234,7 +235,7 @@ public static partial class Program
             double proveCpuMs = MeasuredVerifier.CpuMilliseconds() - proveCpu;
             MempoolWrapper wrapper = new()
             {
-                Transactions = transactions.Select(t => new WrapperTransaction(t)).ToArray(),
+                Transactions = transactions,
                 Mode = MempoolWrapper.ModeRecursive,
                 Deps = Eip8288Dependencies.Canonicalize(input.Deps),
                 RecursiveStark = new(proof, new Hash256(hash))

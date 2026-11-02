@@ -32,7 +32,7 @@ public static partial class Program
             || modes.Distinct().Count() != modes.Length || modes.Any(m => m is not ("direct" or "recursive")))
             throw new ArgumentException("Invalid devnet case or wrapper bounds");
         BenchCase[] scenarios = cases.Select(ParseCase).ToArray();
-        if (scenarios.Any(c => c.SharedSignature || c.SphincsCount > Eip8288Constants.MaxLeanSigDepsPerDirectWrapper || c.StarkCount > Eip8288Constants.MaxLeanStarkDepsPerDirectWrapper)
+        if (scenarios.Any(c => c.SharedSignature || c.SphincsCount > Eip8288Constants.MaxLeanSigDepsPerWrapper || c.StarkCount > Eip8288Constants.MaxLeanStarkDepsPerWrapper)
             || checked(rounds * scenarios.Length * modes.Length) > 128)
             throw new ArgumentException("Devnet requests exceed mempool wrapper limits");
         if (sharedDependency && scenarios.Any(c => c.SphincsCount != 1 || c.StarkCount != 0))
@@ -111,7 +111,7 @@ public static partial class Program
                     }
                     MempoolWrapper wrapper = new()
                     {
-                        Transactions = [new WrapperTransaction(tx)],
+                        Transactions = [tx],
                         Deps = deps,
                         Mode = mode == "direct" ? MempoolWrapper.ModeDirect : MempoolWrapper.ModeRecursive,
                         Proofs = direct,
@@ -134,7 +134,7 @@ public static partial class Program
                     }
                     MempoolWrapper invalid = new()
                     {
-                        Transactions = [new WrapperTransaction(tx)],
+                        Transactions = [tx],
                         Deps = deps,
                         Mode = wrapper.Mode,
                         Proofs = tamperedDirect,
@@ -214,7 +214,7 @@ public static partial class Program
             string prefix = mixed ? "mixed" : "sphincs";
             if (!value.StartsWith(prefix, StringComparison.Ordinal)
                 || !int.TryParse(value.AsSpan(prefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out int signatures)
-                || signatures < 1 || signatures > Eip8288Constants.MaxLeanSigDepsPerDirectWrapper)
+                || signatures < 1 || signatures > Eip8288Constants.MaxLeanSigDepsPerWrapper)
                 throw new ArgumentException("Devnet cases must be sphincs1..16, stark1, or mixed1..16");
             return new(value, signatures, mixed ? 1 : 0);
         }

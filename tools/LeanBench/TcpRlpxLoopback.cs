@@ -60,9 +60,9 @@ public sealed class TcpRlpxLoopback : IDisposable
         {
             ZeroPacket packet = call.Arg<ZeroPacket>();
             if (packet.PacketType != Eth73MessageCode.ProofWrappers) throw new InvalidDataException("Unexpected proof packet type");
-            byte[][] wrappers = _serializer.Deserialize(packet.Content).Wrappers;
-            if (wrappers.Length != 1) throw new InvalidDataException("Expected one wrapper per ProofWrappers message");
-            _received!.TrySetResult(wrappers[0]);
+            ProofWrapperEntry[] entries = _serializer.Deserialize(packet.Content).Entries;
+            if (entries.Length != 1) throw new InvalidDataException("Expected one wrapper per ProofWrappers message");
+            _received!.TrySetResult(entries[0].Wrapper);
         });
         session.When(s => s.InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>())).Do(call =>
         {
@@ -97,7 +97,7 @@ public sealed class TcpRlpxLoopback : IDisposable
             IByteBuffer? input = Unpooled.Buffer(wrapper.Length + 1);
             try
             {
-                ProofWrappersMessage message = new(0, [wrapper]);
+                ProofWrappersMessage message = new(0, [new(ValueKeccak.Compute(wrapper), wrapper)]);
                 input.WriteByte(message.PacketType);
                 _serializer.Serialize(input, message);
                 IByteBuffer encoded = input;
