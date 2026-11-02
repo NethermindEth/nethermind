@@ -107,14 +107,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// <summary>Whether the paired table holds each handler's address in 32 bits rather than 64.</summary>
     /// <remarks>
     /// Where <see cref="FirstTouchMemoryFlag"/> is on, the zkVM charges for each word of the table that the fill touches. The
-    /// guest's code lies below 4 GiB, so half the words hold every address, and a 32-bit load costs the same as a 64-bit one.
+    /// guest's code lies below 4 GiB, so on a 64-bit guest half the words hold every address, and a 32-bit load costs the
+    /// same as a 64-bit one.
     /// It also needs <see cref="StrictAlignmentFlag"/>: there <see cref="RawCalliHelper.DispatchTable"/> gives the table's
     /// address in entries, so the dispatch scales an index by the entry size and not by <see langword="sizeof"/>(<see langword="nint"/>).
     /// </remarks>
     internal static bool CompactsHandlers
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => FirstTouchMemoryFlag.IsActive && StrictAlignmentFlag.IsActive;
+        get => sizeof(nint) == sizeof(ulong) && FirstTouchMemoryFlag.IsActive && StrictAlignmentFlag.IsActive;
     }
 
     /// <summary>Writes <paramref name="handler"/> to entry <paramref name="index"/> of <paramref name="paired"/>, in the form
