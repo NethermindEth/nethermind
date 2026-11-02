@@ -19,6 +19,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 using LogsFilter = Nethermind.JsonRpc.Modules.Eth.Filter;
@@ -118,8 +119,11 @@ public class ReceiptsEventPayloadCacheTests
         (CollectingClient client, _) = fixture.SubscribeToLogs(TestItem.AddressC, 1);
 
         fixture.Monitor.Raise(e);
-        Assert.That(client.Received.Wait(DeliveryTimeout), Is.True);
-        Assert.That(anyTopic.Received.Wait(DeliveryTimeout), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(client.Received.Wait(DeliveryTimeout), Is.True);
+            Assert.That(anyTopic.Received.Wait(DeliveryTimeout), Is.True);
+        }
 
         using ReceiptsEventPayloadCache<LogsFilter>.Membership unfiltered = fixture.LogPayloads.Join(null);
         EventPayloads payloads = unfiltered.ForEvent(e);
@@ -143,7 +147,9 @@ public class ReceiptsEventPayloadCacheTests
         for (int i = 0; i < filters.Length; i++)
         {
             (CollectingClient client, Subscription subscription) = subscribers[i];
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
             Assert.That(client.Received.Wait(DeliveryTimeout), Is.True, "every log the filter accepts is published");
+#pragma warning restore NUnit2045
             Assert.That(client.Messages, Is.EqualTo(ExpectedLogMessages(e, subscription.Id, filters[i])), "byte for byte what a subscriber serializing its own logs sends");
         }
     }
@@ -157,7 +163,7 @@ public class ReceiptsEventPayloadCacheTests
         // Two unfiltered subscribers share every receipt; the filtered ones overlap them.
         Hash256[]?[] filters = [null, null, [TestItem.KeccakD], [TestItem.KeccakD, TestItem.KeccakC], []];
         (CollectingClient Client, Subscription Subscription)[] subscribers = [.. filters.Select(hashes =>
-            fixture.SubscribeToReceipts(hashes, ExpectedReceipts(e, hashes).Count))];
+            fixture.SubscribeToReceipts(hashes, ExpectedReceipts(e, hashes).Count > 0 ? 1 : 0))];
 
         fixture.Monitor.Raise(e);
 
@@ -179,8 +185,8 @@ public class ReceiptsEventPayloadCacheTests
     {
         ReceiptsEventArgs e = CreateEvent(removed: false, logIndexPerReceipt: false);
         using Fixture fixture = new();
-        // Address A and C's logs are at positions 0, 2 and 3; transactions C and D are both receipts.
-        int expected = logs ? 3 : 2;
+        // Address A and C's logs are at positions 0, 2 and 3; the receipts of transactions C and D are one notification.
+        int expected = logs ? 3 : 1;
         (CollectingClient client, _) = logs
             ? fixture.SubscribeToLogs([TestItem.AddressA, TestItem.AddressC], expected)
             : fixture.SubscribeToReceipts([TestItem.KeccakC, TestItem.KeccakD], expected);
@@ -309,8 +315,11 @@ public class ReceiptsEventPayloadCacheTests
     private static IEnumerable<string> ExpectedLogMessages(ReceiptsEventArgs e, string subscriptionId, Address? address) =>
         ExpectedLogs(e, address).Select(log => Message(log, subscriptionId));
 
-    private static IEnumerable<string> ExpectedReceiptMessages(ReceiptsEventArgs e, string subscriptionId, Hash256[]? hashes) =>
-        ExpectedReceipts(e, hashes).Select(receipt => Message(receipt, subscriptionId));
+    private static IEnumerable<string> ExpectedReceiptMessages(ReceiptsEventArgs e, string subscriptionId, Hash256[]? hashes)
+    {
+        ReceiptForRpc[] receipts = [.. ExpectedReceipts(e, hashes)];
+        return receipts.Length == 0 ? [] : [Message(receipts, subscriptionId)];
+    }
 
     private static string Message<T>(T result, string subscriptionId) => RpcTest.SerializeResponse(new JsonRpcSubscriptionResponse<T>
     {
@@ -347,7 +356,7 @@ public class ReceiptsEventPayloadCacheTests
         {
             CollectingClient client = new(expectedMessages);
             TransactionHashesFilter? filter = hashes is null ? null : new() { TransactionHashes = [.. hashes.Select(static h => h.ValueHash256)] };
-            return Track(client, new TransactionReceiptsSubscription(client, Monitor, _blockTree, NullLogManager.Instance, ReceiptPayloads, filter));
+            return Track(client, new TransactionReceiptsSubscription(client, Monitor, _blockTree, MainnetSpecProvider.Instance, NullLogManager.Instance, ReceiptPayloads, filter));
         }
 
         private (CollectingClient, Subscription) Track(CollectingClient client, Subscription subscription)

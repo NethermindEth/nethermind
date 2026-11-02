@@ -40,9 +40,12 @@ public class BeaconPivotTests
     public void Beacon_pivot_defaults_to_block_tree_values_when_there_is_no_pivot()
     {
         IBeaconPivot pivot = new BeaconPivot(_syncConfig, new MemDb(), _blockTree, AlwaysPoS.Instance, LimboLogs.Instance);
-        Assert.That(pivot.PivotHash, Is.EqualTo(_blockTree.SyncPivot.BlockHash));
-        Assert.That(pivot.PivotNumber, Is.EqualTo(_blockTree.SyncPivot.BlockNumber));
-        Assert.That(pivot.PivotDestinationNumber, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pivot.PivotHash, Is.EqualTo(_blockTree.SyncPivot.BlockHash));
+            Assert.That(pivot.PivotNumber, Is.EqualTo(_blockTree.SyncPivot.BlockNumber));
+            Assert.That(pivot.PivotDestinationNumber, Is.EqualTo(0));
+        }
     }
 
     [TestCase(0, 1001)]
@@ -57,8 +60,11 @@ public class BeaconPivotTests
 
         BlockHeader pivotHeader = blockTree.FindHeader(10, BlockTreeLookupOptions.AllowInvalid)!;
         pivot.EnsurePivot(pivotHeader);
-        Assert.That(pivot.PivotHash, Is.EqualTo(pivotHeader.GetOrCalculateHash()));
-        Assert.That(pivot.PivotNumber, Is.EqualTo(pivotHeader.Number));
-        Assert.That(pivot.PivotDestinationNumber, Is.EqualTo(expectedPivotDestinationNumber));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pivot.PivotHash, Is.EqualTo(pivotHeader.GetOrCalculateHash()));
+            Assert.That(pivot.PivotNumber, Is.EqualTo(pivotHeader.Number));
+            Assert.That(pivot.PivotDestinationNumber, Is.EqualTo(expectedPivotDestinationNumber));
+        }
     }
 }

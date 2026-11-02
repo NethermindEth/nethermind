@@ -52,9 +52,12 @@ public class AddressFilterTests
     {
         AddressFilter filter = AddressFilter.AnyAddress;
 
-        Assert.That(filter.Accepts(TestItem.AddressA), Is.True);
-        Assert.That(filter.Accepts(TestItem.AddressB), Is.True);
-        Assert.That(filter.Accepts(TestItem.AddressC), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Accepts(TestItem.AddressA), Is.True);
+            Assert.That(filter.Accepts(TestItem.AddressB), Is.True);
+            Assert.That(filter.Accepts(TestItem.AddressC), Is.True);
+        }
     }
 
     [Test]
@@ -65,9 +68,12 @@ public class AddressFilterTests
         AddressStructRef addressARef = TestItem.AddressA.ToStructRef();
         AddressStructRef addressBRef = TestItem.AddressB.ToStructRef();
         AddressStructRef addressCRef = TestItem.AddressC.ToStructRef();
-        Assert.That(filter.Accepts(ref addressARef), Is.True);
-        Assert.That(filter.Accepts(ref addressBRef), Is.True);
-        Assert.That(filter.Accepts(ref addressCRef), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Accepts(ref addressARef), Is.True);
+            Assert.That(filter.Accepts(ref addressBRef), Is.True);
+            Assert.That(filter.Accepts(ref addressCRef), Is.True);
+        }
     }
 
     [Test]
@@ -76,9 +82,12 @@ public class AddressFilterTests
         HashSet<AddressAsKey> addresses = [];
         AddressFilter filter = new(addresses);
 
-        Assert.That(filter.Accepts(TestItem.AddressA), Is.True);
-        Assert.That(filter.Accepts(TestItem.AddressB), Is.True);
-        Assert.That(filter.Accepts(TestItem.AddressC), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Accepts(TestItem.AddressA), Is.True);
+            Assert.That(filter.Accepts(TestItem.AddressB), Is.True);
+            Assert.That(filter.Accepts(TestItem.AddressC), Is.True);
+        }
     }
 
     [Test]
@@ -90,9 +99,12 @@ public class AddressFilterTests
         AddressStructRef addressARef = TestItem.AddressA.ToStructRef();
         AddressStructRef addressBRef = TestItem.AddressB.ToStructRef();
         AddressStructRef addressCRef = TestItem.AddressC.ToStructRef();
-        Assert.That(filter.Accepts(ref addressARef), Is.True);
-        Assert.That(filter.Accepts(ref addressBRef), Is.True);
-        Assert.That(filter.Accepts(ref addressCRef), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Accepts(ref addressARef), Is.True);
+            Assert.That(filter.Accepts(ref addressBRef), Is.True);
+            Assert.That(filter.Accepts(ref addressCRef), Is.True);
+        }
     }
 
     [Test]
@@ -101,9 +113,12 @@ public class AddressFilterTests
         HashSet<AddressAsKey> addresses = [TestItem.AddressA, TestItem.AddressC];
         AddressFilter filter = new(addresses);
 
-        Assert.That(filter.Accepts(TestItem.AddressA), Is.True);
-        Assert.That(filter.Accepts(TestItem.AddressB), Is.False);
-        Assert.That(filter.Accepts(TestItem.AddressC), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Accepts(TestItem.AddressA), Is.True);
+            Assert.That(filter.Accepts(TestItem.AddressB), Is.False);
+            Assert.That(filter.Accepts(TestItem.AddressC), Is.True);
+        }
     }
 
     [Test]
@@ -115,9 +130,12 @@ public class AddressFilterTests
         AddressStructRef addressARef = TestItem.AddressA.ToStructRef();
         AddressStructRef addressBRef = TestItem.AddressB.ToStructRef();
         AddressStructRef addressCRef = TestItem.AddressC.ToStructRef();
-        Assert.That(filter.Accepts(ref addressARef), Is.True);
-        Assert.That(filter.Accepts(ref addressBRef), Is.False);
-        Assert.That(filter.Accepts(ref addressCRef), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Accepts(ref addressARef), Is.True);
+            Assert.That(filter.Accepts(ref addressBRef), Is.False);
+            Assert.That(filter.Accepts(ref addressCRef), Is.True);
+        }
     }
 
     [Test]
@@ -160,9 +178,12 @@ public class AddressFilterTests
     {
         AddressFilter filter = AddressFilter.AnyAddress;
 
-        Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressA)), Is.True);
-        Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressB)), Is.True);
-        Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressC)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressA)), Is.True);
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressB)), Is.True);
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressC)), Is.True);
+        }
     }
 
     [Test]
@@ -173,9 +194,12 @@ public class AddressFilterTests
         BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();
         BloomStructRef bloomBRef = BloomFromAddress(TestItem.AddressB).ToStructRef();
         BloomStructRef bloomCRef = BloomFromAddress(TestItem.AddressC).ToStructRef();
-        Assert.That(filter.Matches(ref bloomARef), Is.True);
-        Assert.That(filter.Matches(ref bloomBRef), Is.True);
-        Assert.That(filter.Matches(ref bloomCRef), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Matches(ref bloomARef), Is.True);
+            Assert.That(filter.Matches(ref bloomBRef), Is.True);
+            Assert.That(filter.Matches(ref bloomCRef), Is.True);
+        }
     }
 
     [Test]
@@ -184,9 +208,12 @@ public class AddressFilterTests
         HashSet<AddressAsKey> addresses = [];
         AddressFilter filter = new(addresses);
 
-        Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressA)), Is.True);
-        Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressB)), Is.True);
-        Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressC)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressA)), Is.True);
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressB)), Is.True);
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressC)), Is.True);
+        }
     }
 
     [Test]
@@ -198,9 +225,12 @@ public class AddressFilterTests
         BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();
         BloomStructRef bloomBRef = BloomFromAddress(TestItem.AddressB).ToStructRef();
         BloomStructRef bloomCRef = BloomFromAddress(TestItem.AddressC).ToStructRef();
-        Assert.That(filter.Matches(ref bloomARef), Is.True);
-        Assert.That(filter.Matches(ref bloomBRef), Is.True);
-        Assert.That(filter.Matches(ref bloomCRef), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Matches(ref bloomARef), Is.True);
+            Assert.That(filter.Matches(ref bloomBRef), Is.True);
+            Assert.That(filter.Matches(ref bloomCRef), Is.True);
+        }
     }
 
     [Test]
@@ -208,9 +238,12 @@ public class AddressFilterTests
     {
         AddressFilter filter = new([]);
 
-        Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressA)), Is.True);
-        Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressB)), Is.True);
-        Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressC)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressA)), Is.True);
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressB)), Is.True);
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressC)), Is.True);
+        }
     }
 
     [Test]
@@ -221,9 +254,12 @@ public class AddressFilterTests
         BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();
         BloomStructRef bloomBRef = BloomFromAddress(TestItem.AddressB).ToStructRef();
         BloomStructRef bloomCRef = BloomFromAddress(TestItem.AddressC).ToStructRef();
-        Assert.That(filter.Matches(ref bloomARef), Is.True);
-        Assert.That(filter.Matches(ref bloomBRef), Is.True);
-        Assert.That(filter.Matches(ref bloomCRef), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Matches(ref bloomARef), Is.True);
+            Assert.That(filter.Matches(ref bloomBRef), Is.True);
+            Assert.That(filter.Matches(ref bloomCRef), Is.True);
+        }
     }
 
     [Test]
@@ -232,9 +268,12 @@ public class AddressFilterTests
         HashSet<AddressAsKey> addresses = [TestItem.AddressA, TestItem.AddressC];
         AddressFilter filter = new(addresses);
 
-        Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressA)), Is.True);
-        Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressB)), Is.False);
-        Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressC)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressA)), Is.True);
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressB)), Is.False);
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressC)), Is.True);
+        }
     }
 
     [Test]
@@ -246,9 +285,12 @@ public class AddressFilterTests
         BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();
         BloomStructRef bloomBRef = BloomFromAddress(TestItem.AddressB).ToStructRef();
         BloomStructRef bloomCRef = BloomFromAddress(TestItem.AddressC).ToStructRef();
-        Assert.That(filter.Matches(ref bloomARef), Is.True);
-        Assert.That(filter.Matches(ref bloomBRef), Is.False);
-        Assert.That(filter.Matches(ref bloomCRef), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Matches(ref bloomARef), Is.True);
+            Assert.That(filter.Matches(ref bloomBRef), Is.False);
+            Assert.That(filter.Matches(ref bloomCRef), Is.True);
+        }
     }
 
     private static Core.Bloom BloomFromAddress(Address address)

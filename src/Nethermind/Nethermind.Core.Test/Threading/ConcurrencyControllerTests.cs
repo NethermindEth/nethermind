@@ -14,7 +14,9 @@ public class ConcurrencyControllerTests
         ConcurrencyController limiter = new(3);
 
         Assert.That(limiter.TryTakeSlot(out _), Is.EqualTo(true));
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(limiter.TryTakeSlot(out _), Is.EqualTo(true));
+#pragma warning restore NUnit2045
         Assert.That(limiter.TryTakeSlot(out ConcurrencyController.Slot returner), Is.EqualTo(false));
 
         returner.Dispose();

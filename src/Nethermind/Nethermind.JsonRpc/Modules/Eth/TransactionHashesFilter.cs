@@ -14,11 +14,13 @@ public class TransactionHashesFilter : IJsonRpcParam
 
     public void ReadJson(JsonElement jsonValue, JsonSerializerOptions options)
     {
+        // An empty list leaves the filter unset so every receipt is delivered, the same as a missing list.
         if (jsonValue.TryGetProperty("transactionHashes", out JsonElement hashesElement) &&
-            hashesElement.ValueKind == JsonValueKind.Array)
+            hashesElement.ValueKind == JsonValueKind.Array &&
+            hashesElement.GetArrayLength() is int hashCount and > 0)
         {
             // Validate max 200 hashes BEFORE allocating anything
-            if (hashesElement.GetArrayLength() > 200)
+            if (hashCount > 200)
             {
                 throw new ArgumentException("Cannot subscribe to more than 200 transaction hashes at once.");
             }

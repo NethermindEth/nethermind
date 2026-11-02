@@ -146,8 +146,11 @@ namespace Nethermind.Synchronization.Test
             ISyncPeer peer = SetupSyncPeer(versionString);
 
             Version? version = peer.GetOpenEthereumVersion(out int releaseCandidate);
-            Assert.That(version, Is.EqualTo(expectedVersion));
-            Assert.That(releaseCandidate, Is.EqualTo(expectedReleaseCandidate));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(version, Is.EqualTo(expectedVersion));
+                Assert.That(releaseCandidate, Is.EqualTo(expectedReleaseCandidate));
+            }
         }
 
         private static ArrayPoolList<BlockHeader> BuildHeaders(int start, int end)

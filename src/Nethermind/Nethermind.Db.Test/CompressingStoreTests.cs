@@ -19,8 +19,11 @@ public class CompressingStoreTests
 
         ctx.Compressed[Key] = null;
 
-        Assert.That(ctx.Compressed[Key], Is.Null);
-        Assert.That(ctx.Wrapped[Key], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Compressed[Key], Is.Null);
+            Assert.That(ctx.Wrapped[Key], Is.Null);
+        }
     }
 
     [Test]
@@ -57,8 +60,11 @@ public class CompressingStoreTests
         Rlp encoded = Rlp.Encode(new Account(1));
         ctx.Compressed[Key] = encoded.Bytes;
 
-        Assert.That(encoded.Bytes, Is.EqualTo(ctx.Compressed[Key]).AsCollection);
-        Assert.That(ctx.Wrapped[Key]!.Length, Is.EqualTo(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded.Bytes, Is.EqualTo(ctx.Compressed[Key]).AsCollection);
+            Assert.That(ctx.Wrapped[Key]!.Length, Is.EqualTo(5));
+        }
     }
 
     [Test]
@@ -103,9 +109,12 @@ public class CompressingStoreTests
             writeBatch[Key] = EOABytes;
         }
 
-        Assert.That(EOABytes, Is.EqualTo(ctx.Compressed[Key]).AsCollection);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EOABytes, Is.EqualTo(ctx.Compressed[Key]).AsCollection);
 
-        Assert.That(ctx.Wrapped[Key]!.Length, Is.EqualTo(5));
+            Assert.That(ctx.Wrapped[Key]!.Length, Is.EqualTo(5));
+        }
     }
 
     [Test]

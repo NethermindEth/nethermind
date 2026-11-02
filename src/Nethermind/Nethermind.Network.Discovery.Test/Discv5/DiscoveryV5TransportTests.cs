@@ -43,7 +43,9 @@ public class DiscoveryV5TransportTests
 
         await _transport.SendAsync(data, to, CancellationToken.None);
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(_sent.TryDequeue(out (byte[] Data, IPEndPoint Destination) sent), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(sent.Data, Is.EqualTo(data));
         Assert.That(sent.Destination, Is.EqualTo(to));
     }
@@ -101,8 +103,11 @@ public class DiscoveryV5TransportTests
 
         try
         {
-            Assert.That(forwardedPacket.Buffer, Is.SequenceEqualTo(data));
-            Assert.That(forwardedPacket.RemoteEndPoint, Is.EqualTo(from));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(forwardedPacket.Buffer, Is.SequenceEqualTo(data));
+                Assert.That(forwardedPacket.RemoteEndPoint, Is.EqualTo(from));
+            }
         }
         finally
         {
@@ -120,8 +125,11 @@ public class DiscoveryV5TransportTests
 
         await _transport.SendAsync(sentData, to, CancellationToken.None);
 
-        Assert.That(_sent, Has.Count.EqualTo(1));
-        Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesSent) - bytesSentBefore, Is.EqualTo(sentData.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_sent, Has.Count.EqualTo(1));
+            Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesSent) - bytesSentBefore, Is.EqualTo(sentData.Length));
+        }
     }
 
     [Test]

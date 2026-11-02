@@ -99,8 +99,11 @@ public class LayoutMetadataTests
 
         BasePersistence.RecordLayoutOnFirstBatch(metadata, ref flag, layout);
 
-        Assert.That(flag, Is.EqualTo(1));
-        Assert.That(BasePersistence.ReadLayout(metadata), Is.EqualTo(layout));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flag, Is.EqualTo(1));
+            Assert.That(BasePersistence.ReadLayout(metadata), Is.EqualTo(layout));
+        }
     }
 
     [Test]
@@ -112,7 +115,10 @@ public class LayoutMetadataTests
 
         BasePersistence.RecordLayoutOnFirstBatch(metadata, ref flag, FlatLayout.FlatInTrie);
 
-        Assert.That(flag, Is.EqualTo(1));
-        Assert.That(BasePersistence.ReadLayout(metadata), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flag, Is.EqualTo(1));
+            Assert.That(BasePersistence.ReadLayout(metadata), Is.Null);
+        }
     }
 }

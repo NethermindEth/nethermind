@@ -55,7 +55,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia.Handlers
 
             Assert.That(_handler.Handle(msg), Is.True);
             Assert.That(_handler.Handle(msg), Is.True);
+#pragma warning disable NUnit2045 // Message handling changes completion state used by subsequent assertions or messages.
             Assert.That(_handler.Handle(msg), Is.False);
+#pragma warning restore NUnit2045
             Assert.That(_handler.TaskCompletionSource.Task.IsCompleted, Is.True);
         }
 
@@ -65,7 +67,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia.Handlers
             NeighborsMsg first = new(_farAddress, _expirationTime, CreateNodes(10));
             NeighborsMsg second = new(_farAddress, _expirationTime, CreateNodes(10, startIndex: 10));
 
+#pragma warning disable NUnit2045 // Message handling changes completion state used by subsequent assertions or messages.
             Assert.That(_handler.Handle(first), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(_handler.Handle(second), Is.True);
             Assert.That(_handler.TaskCompletionSource.Task.IsCompleted, Is.True);
 
@@ -91,14 +95,19 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia.Handlers
             NeighborsMsg mixedMsg = new(_farAddress, _expirationTime, new ArraySegment<Node>(mixedNodes));
             NeighborsMsg ipv6Msg = new(_farAddress, _expirationTime, CreateNodes(8, "2001:db8:1::"));
 
+#pragma warning disable NUnit2045 // Message handling changes completion state used by subsequent assertions or messages.
             Assert.That(handler.Handle(mixedMsg), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(handler.TaskCompletionSource.Task.IsCompleted, Is.False);
             Assert.That(handler.Handle(ipv6Msg), Is.True);
 
             Node[] response = (await handler.TaskCompletionSource.Task).Value;
-            Assert.That(response, Has.Length.EqualTo(K));
-            Assert.That(Array.TrueForAll(response, node =>
-                node.DiscoveryAddress.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response, Has.Length.EqualTo(K));
+                Assert.That(Array.TrueForAll(response, node =>
+                    node.DiscoveryAddress.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6), Is.True);
+            }
         }
 
         private static IEnumerable<TestCaseData> TimeoutCases()

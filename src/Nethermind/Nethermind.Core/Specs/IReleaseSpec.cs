@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Frozen;
+using System.Collections.Generic;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -518,6 +519,9 @@ namespace Nethermind.Core.Specs
         /// pre-execution system call, so a later CREATE/CREATE2 to it fails the EIP-684 nonce check.
         /// </remarks>
         public bool IsEip8253Enabled { get; }
+
+        /// <summary>The accounts the EIP-8253 transition sets to nonce 1, from the chain configuration; empty while EIP-8253 is disabled and when none are listed.</summary>
+        IReadOnlyList<Address> Eip8253Accounts { get; }
 
         /// <summary>
         /// EIP-2780: Reduce intrinsic transaction gas (TX_BASE_COST) and reprice value-transfer

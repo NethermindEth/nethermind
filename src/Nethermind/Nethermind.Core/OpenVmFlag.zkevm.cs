@@ -7,7 +7,8 @@ namespace Nethermind.Core;
 /// <remarks>
 /// <see langword="false"/> as written; the OpenVM guest's <c>substitutions.xml</c> stubs <see cref="IsActive"/> to
 /// <see langword="true"/> at link time and ILC folds every check on it, so the other guests never reference the
-/// symbols only OpenVM's runtime exports.
+/// symbols only OpenVM's runtime exports. The direct <c>memmove</c> calls it enables pass unpinned pointers into
+/// managed memory, which is sound only in the single-threaded guest.
 /// </remarks>
 public readonly struct OpenVmFlag : IFlag
 {

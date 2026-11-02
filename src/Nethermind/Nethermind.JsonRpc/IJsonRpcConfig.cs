@@ -132,6 +132,11 @@ public interface IJsonRpcConfig : IConfig
     public int MaxLogsPerResponse { get; set; }
 
     [ConfigItem(
+        Description = "The max number of blocks the `overlay_getLogs` JSON-RPC method re-executes in one call. `0` to lift the limit.",
+        DefaultValue = "1000")]
+    int OverlayMaxBlockRange { get; set; }
+
+    [ConfigItem(
         Description = "Whether to stream `debug_trace*` and `trace_*` responses as the EVM executes (lower TTFB and bounded memory). For `debug_trace*` can be overridden per-call via `GethTraceOptions.StreamMode`.",
         DefaultValue = "true")]
     public bool EnableTracingStreamMode { get; set; }

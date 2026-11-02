@@ -118,8 +118,11 @@ public class KeyStoreTests
         try
         {
             (PrivateKey key, Result result) = test.Store.GetKey(new Address(item.Address), securePassword);
-            Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), item.Address + " " + result.Error);
-            Assert.That(item.Address, Is.EqualTo(key.Address.ToString(false, false)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), item.Address + " " + result.Error);
+                Assert.That(item.Address, Is.EqualTo(key.Address.ToString(false, false)));
+            }
         }
         finally
         {
@@ -184,10 +187,13 @@ public class KeyStoreTests
             Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), "generate key 2");
 
             (IReadOnlyCollection<Address> addresses, Result getAllResult) = test.Store.GetKeyAddresses();
-            Assert.That(getAllResult.ResultType, Is.EqualTo(ResultType.Success), "get key");
-            Assert.That(addresses.Count >= 2, Is.True);
-            Assert.That(addresses.FirstOrDefault(x => x.Equals(key1.Address)), Is.Not.Null, "key 1 not null");
-            Assert.That(addresses.FirstOrDefault(x => x.Equals(key2.Address)), Is.Not.Null, "key 2 not null");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(getAllResult.ResultType, Is.EqualTo(ResultType.Success), "get key");
+                Assert.That(addresses.Count >= 2, Is.True);
+                Assert.That(addresses.FirstOrDefault(x => x.Equals(key1.Address)), Is.Not.Null, "key 1 not null");
+                Assert.That(addresses.FirstOrDefault(x => x.Equals(key2.Address)), Is.Not.Null, "key 2 not null");
+            }
 
             result = test.Store.DeleteKey(key1.Address);
             Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), "delete key 1");
@@ -209,8 +215,11 @@ public class KeyStoreTests
         Assert.That(key.Item2.ResultType, Is.EqualTo(ResultType.Success));
 
         (PrivateKey, Result) persistedKey = test.Store.GetKey(key.Item1.Address, test.TestPasswordSecured);
-        Assert.That(persistedKey.Item2.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(Bytes.AreEqual(key.Item1.KeyBytes, persistedKey.Item1.KeyBytes), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedKey.Item2.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(Bytes.AreEqual(key.Item1.KeyBytes, persistedKey.Item1.KeyBytes), Is.True);
+        }
 
         Result result = test.Store.DeleteKey(key.Item1.Address);
         Assert.That(result.ResultType, Is.EqualTo(ResultType.Success));
@@ -238,8 +247,11 @@ public class KeyStoreTests
         test.Store.StoreKey(key.Address, keyData);
 
         (_, Result loadResult) = test.Store.GetKey(key.Address, test.TestPasswordSecured);
-        Assert.That(loadResult.ResultType, Is.EqualTo(ResultType.Failure), "bad load result");
-        Assert.That(loadResult.Error, Is.EqualTo("KeyStore version mismatch"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loadResult.ResultType, Is.EqualTo(ResultType.Failure), "bad load result");
+            Assert.That(loadResult.Error, Is.EqualTo("KeyStore version mismatch"));
+        }
 
         test.Store.DeleteKey(key.Address);
     }
@@ -252,12 +264,18 @@ public class KeyStoreTests
         Assert.That(generateResult.ResultType, Is.EqualTo(ResultType.Success));
 
         (PrivateKey keyRestored, Result getResult) = test.Store.GetKey(key.Address, test.TestPasswordSecured);
-        Assert.That(getResult.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(Bytes.AreEqual(key.KeyBytes, keyRestored.KeyBytes), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(getResult.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(Bytes.AreEqual(key.KeyBytes, keyRestored.KeyBytes), Is.True);
+        }
 
         (PrivateKey _, Result wrongResult) = test.Store.GetKey(key.Address, test.WrongPasswordSecured);
-        Assert.That(wrongResult.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(wrongResult.Error, Is.EqualTo("Incorrect MAC"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrongResult.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(wrongResult.Error, Is.EqualTo("Incorrect MAC"));
+        }
 
         Result deleteResult = test.Store.DeleteKey(key.Address);
         Assert.That(deleteResult.ResultType, Is.EqualTo(ResultType.Success));

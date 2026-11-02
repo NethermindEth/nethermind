@@ -20,8 +20,11 @@ public class HealthHintServiceTests
         IHealthHintService healthHintService = new HealthHintService(test.ChainSpec);
         ulong? actualProcessing = healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
         ulong? actualProducing = healthHintService.MaxSecondsIntervalForProducingBlocksHint();
-        Assert.That(actualProcessing, Is.EqualTo(test.ExpectedProcessingHint));
-        Assert.That(actualProducing, Is.EqualTo(test.ExpectedProducingHint));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actualProcessing, Is.EqualTo(test.ExpectedProcessingHint));
+            Assert.That(actualProducing, Is.EqualTo(test.ExpectedProducingHint));
+        }
     }
 
     public class BlockProcessorIntervalHint

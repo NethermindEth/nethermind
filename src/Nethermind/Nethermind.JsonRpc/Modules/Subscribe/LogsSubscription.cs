@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 if (_logger.IsTrace) _logger.Trace($"Logs Subscription {Id}: Argument \"filter\" was null and created LogFilter with arguments: FromBlock: BlockParameter.Latest, ToBlock: BlockParameter.Latest");
             }
 
-            _isBlockHashFilter = _filter.FromBlock.Equals(_filter.ToBlock);
+            _isBlockHashFilter = _filter.IsBlockHashFilter;
             _payloads = payloads.Join(GetFilterKey(filter));
             _receiptCanonicalityMonitor.ReceiptsInserted += OnReceiptsInserted;
             if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will track ReceiptsInserted.");

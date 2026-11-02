@@ -119,14 +119,13 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         }
 
         // ImproveBlock tasks run in the background and may not have completed yet
-        // when GetPayload returns (it only waits 50ms), so poll until all increments land.
+        // when GetPayload returns (it does not wait for them), so poll until all increments land.
         Assert.That(() => Metrics.ShutterKeysMissed - missedBefore, Is.EqualTo((ulong)5).After(5000, 50));
     }
 
     /// <summary>Builds the next block on <paramref name="parent"/> once the Shutter transactions are in it.</summary>
     /// <remarks>
-    /// <c>getPayload</c> gives a pending improvement only a short grace period before returning the empty block, which
-    /// a slow runner can miss, so the improvement is awaited first.
+    /// <c>getPayload</c> does not wait for a pending improvement before returning the empty block, so the improvement is awaited first.
     /// </remarks>
     private static async Task<Block> BuildBlockWithShutterTxs(IEngineRpcModule rpc, ShutterTestBlockchain chain, ExecutionPayload parent)
     {

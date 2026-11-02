@@ -8,7 +8,9 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Shutter.Contracts;
 
-public class KeyBroadcastContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : CallableContract(transactionProcessor, abiEncoder, contractAddress), IKeyBroadcastContract
+public class KeyBroadcastContract(ITransactionProcessor transactionProcessor, Address contractAddress) : CallableContract(transactionProcessor, contractAddress), IKeyBroadcastContract
 {
-    public byte[] GetEonKey(BlockHeader blockHeader, in ulong eon) => (byte[])Call(blockHeader, nameof(GetEonKey), Address.Zero, [eon])[0];
+    internal static readonly ContractFunction<ulong, byte[]> GetEonKeyFunction = new AbiSignature("getEonKey").With(AbiType.UInt64).Returns(AbiType.Bytes);
+
+    public byte[] GetEonKey(BlockHeader blockHeader, in ulong eon) => Call(blockHeader, GetEonKeyFunction, Address.Zero, eon);
 }

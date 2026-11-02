@@ -123,8 +123,11 @@ public class NLogConfiguratorTests
         JsonElement version = doc.RootElement.GetProperty("@version");
 
         // Spec violation guard: logstash-logback-encoder defines @version as integer 1, not "1".
-        Assert.That(version.ValueKind, Is.EqualTo(JsonValueKind.Number));
-        Assert.That(version.GetInt32(), Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(version.ValueKind, Is.EqualTo(JsonValueKind.Number));
+            Assert.That(version.GetInt32(), Is.EqualTo(1));
+        }
     }
 
     [TestCase("ecs", "@timestamp")]
@@ -171,9 +174,12 @@ public class NLogConfiguratorTests
         LogManager.GetLogger("t").Info("plain");
 
         using JsonDocument doc = JsonDocument.Parse(memory.Logs[0]);
-        Assert.That(doc.RootElement.TryGetProperty("error.type", out _), Is.False);
-        Assert.That(doc.RootElement.TryGetProperty("error.message", out _), Is.False);
-        Assert.That(doc.RootElement.TryGetProperty("error.stack_trace", out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(doc.RootElement.TryGetProperty("error.type", out _), Is.False);
+            Assert.That(doc.RootElement.TryGetProperty("error.message", out _), Is.False);
+            Assert.That(doc.RootElement.TryGetProperty("error.stack_trace", out _), Is.False);
+        }
     }
 
     [Test]
@@ -214,8 +220,11 @@ public class NLogConfiguratorTests
 
         NLogConfigurator.ConfigureConsoleFormat("ecs");
 
-        Assert.That(fileTarget.Layout, Is.SameAs(fileLayoutBefore));
-        Assert.That(consoleTarget.Layout, Is.Not.SameAs(fileLayoutBefore));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fileTarget.Layout, Is.SameAs(fileLayoutBefore));
+            Assert.That(consoleTarget.Layout, Is.Not.SameAs(fileLayoutBefore));
+        }
     }
 
     [Test]

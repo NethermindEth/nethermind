@@ -8,8 +8,8 @@ BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
 
 GUEST_LIBC := zisk
-# The only target whose bindings library is not named after its libc.
-GUEST_EXTLIB := libziskos
+# The runtime package of ZisK; build.mk gives its .nupkg to bflat.
+GUEST_PACKAGE := Nethermind.ZiskOS.Runtime
 
 # RUST_EVM=1 runs the EVM's frames on nethermind-rust's interpreter: the guest is built with the
 # binding compiled in and linked against libnmffi (ziskos plus nm-ffi in one static library, built
@@ -46,7 +46,7 @@ OPT_FLAGS += \
 	--codegenopt JitOptRepeatCount=2 \
 	--codegenopt JitEnableHeadTailMerge=0
 
-ZISK_IMAGE ?= nethermindeth/zisk:1.3.2-alpha@sha256:31a0c7f9de175765e7e81da719bdc2409060de8d23ec8683672d7ee22b798a3f
+ZISK_IMAGE ?= nethermindeth/zisk:1.4.0-alpha@sha256:76bc753857e1807b724979a119ba919af0d857b3ea5deda982fd84b1be2cb930
 
 run:
 	@$(REQUIRE_INPUT)

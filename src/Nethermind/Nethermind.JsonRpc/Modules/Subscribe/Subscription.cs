@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Security.Cryptography;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Logging;
@@ -16,7 +17,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         /// <param name="maxQueuedMessages">Queued sends after which a lagging client is disconnected.</param>
         protected Subscription(IJsonRpcDuplexClient jsonRpcDuplexClient, int maxQueuedMessages)
         {
-            Id = string.Concat("0x", Guid.NewGuid().ToString("N"));
+            Span<byte> id = stackalloc byte[16];
+            RandomNumberGenerator.Fill(id);
+            // A non-zero top nibble keeps the id a uint quantity, which has no leading zeros, at a fixed length.
+            id[0] |= 0x10;
+            Id = string.Concat("0x", Convert.ToHexStringLower(id));
             JsonRpcDuplexClient = jsonRpcDuplexClient;
             _maxQueuedMessages = maxQueuedMessages;
             SendChannel = Channel.CreateBounded<QueuedSend>(new BoundedChannelOptions(maxQueuedMessages) { SingleReader = true });
