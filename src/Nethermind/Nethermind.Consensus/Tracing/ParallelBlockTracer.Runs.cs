@@ -37,31 +37,38 @@ public sealed partial class ParallelBlockTracer
     /// value, so posting allocates nothing once the queue has grown to the most jobs ever waiting.</summary>
     private sealed class Workers(int count) : IDisposable
     {
+        /// <summary>Jobs per thread the queue keeps room for once it has drained; a burst beyond that, as when
+        /// abandoned helpers pile up behind a response that is not read, is trimmed away again.</summary>
+        private const int KeptPerThread = 4;
+
         private readonly object _gate = new();
-        private readonly Queue<(IParallelTraceJob Job, long Ticket)> _jobs = new();
+        private readonly Queue<(IParallelTraceJob Job, long Ticket)> _jobs = new(count * KeptPerThread);
         private Thread[]? _threads;
+        private bool _grown;
         private bool _completed;
 
         public void Post(IParallelTraceJob job, long ticket)
         {
             lock (_gate)
             {
-                _threads ??= Start();
+                if (_threads is null) Start();
                 _jobs.Enqueue((job, ticket));
+                _grown |= _jobs.Count > count * KeptPerThread;
                 Monitor.Pulse(_gate);
             }
         }
 
-        private Thread[] Start()
+        /// <summary>Starts the threads; the set is recorded before any starts, so a thread that fails to start does
+        /// not leave the started ones unknown to <see cref="Dispose"/>.</summary>
+        private void Start()
         {
             Thread[] threads = new Thread[count];
+            _threads = threads;
             for (int i = 0; i < threads.Length; i++)
             {
                 threads[i] = new Thread(Work) { IsBackground = true, Name = $"{nameof(ParallelBlockTracer)} {i}" };
                 threads[i].Start();
             }
-
-            return threads;
         }
 
         private void Work()
@@ -78,6 +85,11 @@ public sealed partial class ParallelBlockTracer
                     }
 
                     next = _jobs.Dequeue();
+                    if (_grown && _jobs.Count == 0)
+                    {
+                        _jobs.TrimExcess(count * KeptPerThread);
+                        _grown = false;
+                    }
                 }
 
                 next.Job.Execute(next.Ticket);
@@ -96,7 +108,10 @@ public sealed partial class ParallelBlockTracer
             }
 
             if (threads is null) return;
-            foreach (Thread thread in threads) thread.Join();
+            foreach (Thread? thread in threads)
+            {
+                if (thread is not null && thread.ThreadState != ThreadState.Unstarted) thread.Join();
+            }
         }
     }
 
@@ -212,7 +227,8 @@ public sealed partial class ParallelBlockTracer
             if (stream.SerializeAheadOptions is { } options)
             {
                 _serializing ??= new SerializingTraceEmitter<TTrace>();
-                _serializing.Start(stream, options, tracer._serialized, transactions, window, tracer.StreamedBudgetBytes);
+                long budget = Math.Max(tracer.StreamedBudgetBytes, workers * StreamedBudgetBytesPerWorker);
+                _serializing.Start(stream, options, tracer._serialized, transactions, window, budget);
                 return _results = _serializing;
             }
 
@@ -242,9 +258,13 @@ public sealed partial class ParallelBlockTracer
                 failure = ExceptionDispatchInfo.Capture(exception);
                 _stop.Cancel();
             }
+            finally
+            {
+                // Whatever the caller ran into, nothing the helpers use may be released while one still runs.
+                AbandonUnstarted();
+                WaitForHelpers();
+            }
 
-            AbandonUnstarted();
-            WaitForHelpers();
             ThrowFailure(failure, _helperFailure);
             return true;
         }

@@ -337,30 +337,33 @@ public class OrderedTraceEmitterTests
     }
 
     [Test]
-    public void SerializedTracesPool_KeepsEveryInstance_ButChunkBytesOnlyUpToItsCap()
+    public void SerializedTracesPool_KeepsChunksOnlyUpToItsCap_AndReusesThem()
     {
-        SerializedTraces.Pool pool = new(capacity: 2, retainedBytes: SerializedTraces.ChunkSize);
-        SerializedTraces first = Filled(pool);
-        SerializedTraces second = Filled(pool);
-        SerializedTraces third = Filled(pool);
+        SerializedTraces.Pool pool = new(capacity: 2, retainedBytes: 2 * SerializedTraces.ChunkSize);
+        SerializedTraces large = Filled(pool, 5 * SerializedTraces.ChunkSize);
+        large.Seal();
+        int chunks = 0;
+        foreach (ReadOnlyMemory<byte> _ in large.Written) chunks++;
+        pool.Return(large);
+        int stored = pool.StoredChunks;
 
-        pool.Return(first);
-        pool.Return(second);
-        pool.Return(third);
+        SerializedTraces small = Filled(pool, 100);
+        int afterReuse = pool.StoredChunks;
+        pool.Return(small);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(first.RetainedBytes, Is.EqualTo(SerializedTraces.ChunkSize), "the first instance keeps its chunk");
-            Assert.That(second.RetainedBytes, Is.Zero, "the cap on kept bytes is reached, so the second keeps none");
-            Assert.That(pool.Rent(Options), Is.SameAs(second).Or.SameAs(first), "both are kept for reuse");
-            Assert.That(third.RetainedBytes, Is.Zero, "an instance past the capacity is dropped with nothing kept");
+            Assert.That(chunks, Is.GreaterThan(2), "precondition: the trace used more chunks than the cap keeps");
+            Assert.That(stored, Is.EqualTo(2), "only the capped bytes of chunks stay after the request");
+            Assert.That(afterReuse, Is.EqualTo(1), "the next trace takes a kept chunk instead of renting one");
+            Assert.That(pool.StoredChunks, Is.EqualTo(2));
         }
 
-        static SerializedTraces Filled(SerializedTraces.Pool pool)
+        static SerializedTraces Filled(SerializedTraces.Pool pool, int bytes)
         {
             SerializedTraces serialized = pool.Rent(Options);
             Utf8JsonWriter writer = serialized.Start(Options);
-            writer.WriteNumberValue(1);
+            for (int written = 0; written < bytes; written += 6) writer.WriteNumberValue(99_999);
             writer.Flush();
             return serialized;
         }
@@ -369,7 +372,7 @@ public class OrderedTraceEmitterTests
     [Test]
     public void SerializedTracesPool_RentsTheInstanceWhoseWriterHasTheOptions()
     {
-        SerializedTraces.Pool pool = new(capacity: 2, retainedBytes: 0);
+        SerializedTraces.Pool pool = new(capacity: 2, retainedBytes: SerializedTraces.ChunkSize);
         JsonWriterOptions deeper = new() { SkipValidation = true, MaxDepth = 32 };
         SerializedTraces shallow = pool.Rent(Options);
         Utf8JsonWriter shallowWriter = shallow.Start(Options);

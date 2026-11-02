@@ -9,9 +9,8 @@ using System.Threading;
 namespace Nethermind.Consensus.Tracing;
 
 /// <summary>The JSON of one transaction's traces, serialized by the worker that traced it and waiting for its turn in
-/// the response. The bytes live in a chain of chunks rented from <see cref="ArrayPool{T}.Shared"/>, so a large trace
-/// never needs one contiguous buffer of its whole size, and the instance with its chunks and its JSON writer is reused
-/// from <see cref="Pool"/>.</summary>
+/// the response. The bytes live in a chain of chunks, so a large trace never needs one contiguous buffer of its whole
+/// size; the chunks come from the store of its <see cref="Pool"/>, and the instance with its JSON writer is reused.</summary>
 internal sealed class SerializedTraces : IBufferWriter<byte>
 {
     /// <summary>The size of a chunk. A chunk is larger only when the writer asks for one contiguous span that does not
@@ -22,14 +21,18 @@ internal sealed class SerializedTraces : IBufferWriter<byte>
     /// request instead of being kept in the shared array pool for the life of the process.</summary>
     internal const int MaxRentedChunkSize = 1024 * 1024;
 
+    /// <summary>Chunk links an idle instance keeps; after a larger trace the rest are dropped, so the links of the
+    /// largest trace ever seen are not kept by every instance.</summary>
+    private const int KeptChunkLinks = 8;
+
+    private readonly Pool _pool;
     private Chunk?[] _chunks = [];
     private int _chunkCount;
-    private int _length;
+    private long _length;
     private Utf8JsonWriter? _writer;
     private JsonWriterOptions _options;
 
-    /// <summary>Bytes of chunk memory the instance keeps while idle in the pool.</summary>
-    internal int RetainedBytes { get; private set; }
+    private SerializedTraces(Pool pool) => _pool = pool;
 
     /// <summary>The number of bytes written.</summary>
     public long Length => _length;
@@ -100,66 +103,44 @@ internal sealed class SerializedTraces : IBufferWriter<byte>
             if (current.Free >= required) return current;
         }
 
-        if (_chunkCount == _chunks.Length) Array.Resize(ref _chunks, Math.Max(4, 2 * _chunks.Length));
+        if (_chunkCount == _chunks.Length) Array.Resize(ref _chunks, Math.Max(KeptChunkLinks, 2 * _chunks.Length));
         Chunk next = _chunks[_chunkCount] ??= new Chunk();
-        next.Start(Math.Max(ChunkSize, required));
+        next.Start(_pool, Math.Max(ChunkSize, required));
         _chunkCount++;
         return next;
     }
 
-    /// <summary>Empties the instance; keeps its first chunk when <paramref name="retain"/> allows and the chunk has the
-    /// regular size.</summary>
-    /// <returns>The chunk bytes still held.</returns>
-    private int Clear(bool retain)
+    /// <summary>Gives every chunk back and empties the instance.</summary>
+    private void Empty()
     {
         // A serialization that failed leaves bytes pending in the writer, over memory released below.
         _writer?.Reset();
-        int kept = 0;
-        for (int i = 0; i < _chunks.Length; i++)
-        {
-            Chunk? chunk = _chunks[i];
-            if (chunk is null) break;
-
-            if (i == 0 && retain && chunk.Capacity == ChunkSize)
-            {
-                chunk.Rewind();
-                kept = ChunkSize;
-            }
-            else
-            {
-                chunk.Release();
-            }
-        }
-
+        for (int i = 0; i < _chunkCount; i++) _chunks[i]!.Release(_pool);
+        if (_chunks.Length > KeptChunkLinks) Array.Resize(ref _chunks, KeptChunkLinks);
         _chunkCount = 0;
         _length = 0;
-        return kept;
     }
 
-    /// <summary>One link of the chain: a rented array and how much of it is written.</summary>
+    /// <summary>One link of the chain: an array and how much of it is written.</summary>
     private sealed class Chunk : ReadOnlySequenceSegment<byte>
     {
         private byte[] _array = [];
         private int _written;
 
-        public int Capacity => _array.Length;
         public int Written => _written;
         public int Free => _array.Length - _written;
         public Memory<byte> FreeMemory => _array.AsMemory(_written);
 
         /// <summary>Makes the chunk empty with room for at least <paramref name="size"/> bytes.</summary>
-        public void Start(int size)
+        public void Start(Pool pool, int size)
         {
             _written = 0;
-            if (_array.Length >= size) return;
-
-            Release();
-            _array = size <= MaxRentedChunkSize ? ArrayPool<byte>.Shared.Rent(size) : GC.AllocateUninitializedArray<byte>(size);
+            _array = size == ChunkSize
+                ? pool.RentChunk()
+                : size <= MaxRentedChunkSize ? ArrayPool<byte>.Shared.Rent(size) : GC.AllocateUninitializedArray<byte>(size);
         }
 
         public void Advance(int count) => _written += count;
-
-        public void Rewind() => _written = 0;
 
         public void Link(Chunk? next, long runningIndex)
         {
@@ -168,9 +149,10 @@ internal sealed class SerializedTraces : IBufferWriter<byte>
             RunningIndex = runningIndex;
         }
 
-        public void Release()
+        public void Release(Pool pool)
         {
-            if (_array.Length is > 0 and <= MaxRentedChunkSize) ArrayPool<byte>.Shared.Return(_array);
+            if (_array.Length == ChunkSize) pool.ReturnChunk(_array);
+            else if (_array.Length is > 0 and <= MaxRentedChunkSize) ArrayPool<byte>.Shared.Return(_array);
             _array = [];
             _written = 0;
             Memory = default;
@@ -178,21 +160,32 @@ internal sealed class SerializedTraces : IBufferWriter<byte>
         }
     }
 
-    /// <summary>Instances kept for the next transactions. Every instance is kept, up to a count that covers the widest
-    /// window, but only up to a total of retained chunk bytes; an instance kept past that keeps no chunk.</summary>
+    /// <summary>Instances and chunks kept for the next transactions. Every instance is kept, up to a count that covers
+    /// the widest windows; chunks are kept in a store of their own up to a total of bytes, so the chunks of a backlog
+    /// do not depend on what the shared array pool happens to keep, and memory kept after the requests stays capped.</summary>
+    /// <param name="capacity">The idle instances kept.</param>
+    /// <param name="retainedBytes">The bytes of idle chunks kept; more go back to the shared array pool.</param>
     internal sealed class Pool(int capacity, long retainedBytes)
     {
         private readonly Lock _lock = new();
         private readonly SerializedTraces?[] _idle = new SerializedTraces?[capacity];
         private int _count;
-        private long _retained;
+        private readonly Lock _chunkLock = new();
+        private readonly byte[]?[] _chunks = new byte[]?[(int)(retainedBytes / ChunkSize)];
+        private int _chunkCount;
+
+        /// <summary>The chunks kept for reuse.</summary>
+        internal int StoredChunks
+        {
+            get { lock (_chunkLock) return _chunkCount; }
+        }
 
         /// <summary>An idle instance, preferably one whose writer already has <paramref name="options"/>.</summary>
         public SerializedTraces Rent(JsonWriterOptions options)
         {
             lock (_lock)
             {
-                if (_count == 0) return new SerializedTraces();
+                if (_count == 0) return new SerializedTraces(this);
 
                 int pick = _count - 1;
                 for (int i = _count - 1; i >= 0; i--)
@@ -207,27 +200,52 @@ internal sealed class SerializedTraces : IBufferWriter<byte>
                 SerializedTraces serialized = _idle[pick]!;
                 _idle[pick] = _idle[--_count];
                 _idle[_count] = null;
-                _retained -= serialized.RetainedBytes;
                 return serialized;
             }
         }
 
         public void Return(SerializedTraces serialized)
         {
+            serialized.Empty();
             lock (_lock)
             {
-                bool keep = _count < _idle.Length;
-                int kept = serialized.Clear(retain: keep && _retained + ChunkSize <= retainedBytes);
-                serialized.RetainedBytes = kept;
-                if (!keep)
+                if (_count < _idle.Length)
                 {
-                    serialized._writer?.Dispose();
+                    _idle[_count++] = serialized;
                     return;
                 }
-
-                _retained += kept;
-                _idle[_count++] = serialized;
             }
+
+            serialized._writer?.Dispose();
+        }
+
+        internal byte[] RentChunk()
+        {
+            lock (_chunkLock)
+            {
+                if (_chunkCount != 0)
+                {
+                    byte[] chunk = _chunks[--_chunkCount]!;
+                    _chunks[_chunkCount] = null;
+                    return chunk;
+                }
+            }
+
+            return ArrayPool<byte>.Shared.Rent(ChunkSize);
+        }
+
+        internal void ReturnChunk(byte[] chunk)
+        {
+            lock (_chunkLock)
+            {
+                if (_chunkCount < _chunks.Length)
+                {
+                    _chunks[_chunkCount++] = chunk;
+                    return;
+                }
+            }
+
+            ArrayPool<byte>.Shared.Return(chunk);
         }
     }
 }

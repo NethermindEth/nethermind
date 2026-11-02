@@ -477,10 +477,11 @@ public class GethStyleTracer(
         if (allowIndexed && (writer is null || streamsNative) && options.TxHash is null && options.StateOverrides is null && parallelTracer is not null && !IsJavaScriptTracer(options)
             && TryGetParallelLogIndex(block, wantsLogIndex, out Func<Block, Transaction, BlockLogIndex>? parallelLogIndex))
         {
-            Func<IWorldState, Hash256, IBlockTracer<GethLikeTxTrace>> forTransaction =
-                (state, txHash) => GethLikeBlockDeadlineTracer.Wrap(
-                    CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider, parallelLogIndex),
-                    options with { TxHash = txHash }, cancellationToken);
+            Func<IWorldState, Hash256, IBlockTracer<GethLikeTxTrace>> forTransaction = (state, txHash) =>
+            {
+                GethTraceOptions forTx = options with { TxHash = txHash };
+                return GethLikeBlockDeadlineTracer.Wrap(CreateOptionsTracer(block.Header, forTx, state, specProvider, parallelLogIndex), forTx, cancellationToken);
+            };
             if (writer is null)
             {
                 if (parallelTracer.TryTrace(block, FindParent(block), forTransaction, afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))

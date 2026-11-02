@@ -917,12 +917,12 @@ public partial class BlockProcessorTests
         InvalidOperationException helper = new("state read failed");
         Exception? actual = Assert.Throws<InvalidOperationException>(() =>
             ParallelBlockTracer.ThrowFailure(ExceptionDispatchInfo.Capture(new OperationCanceledException()), ExceptionDispatchInfo.Capture(helper)));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(actual, Is.SameAs(helper), "the caller stopped because a helper failed, and the helper's failure is the cause");
-            Assert.DoesNotThrow(() => ParallelBlockTracer.ThrowFailure(null, null), "a run in which nothing failed completes");
-        }
+        Assert.That(actual, Is.SameAs(helper), "the caller stopped because a helper failed, and the helper's failure is the cause");
     }
+
+    [Test]
+    public void ParallelBlockTracer_WhenNothingFailed_Completes() =>
+        Assert.DoesNotThrow(() => ParallelBlockTracer.ThrowFailure(null, null));
 
     [Test]
     public async Task ParallelBlockTracer_ChainsConsecutiveBlocks_AndStillTracesWhatTheReplayTraces()

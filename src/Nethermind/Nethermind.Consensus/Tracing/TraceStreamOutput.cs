@@ -17,14 +17,24 @@ namespace Nethermind.Consensus.Tracing;
 /// <param name="output">The pipe <paramref name="writer"/> writes into, or null when the response is not flushed.</param>
 /// <param name="cancellationToken">Stops the writes; it carries the request's timeout.</param>
 /// <param name="flushThresholdBytes">The bytes written between two flushes of <paramref name="output"/>.</param>
-public struct TraceStreamOutput(Utf8JsonWriter writer, PipeWriter? output, CancellationToken cancellationToken, int flushThresholdBytes)
+internal struct TraceStreamOutput(Utf8JsonWriter writer, PipeWriter? output, CancellationToken cancellationToken, int flushThresholdBytes)
 {
     /// <summary>The most bytes of an element that go through the writer; the rest reaches the pipe in its own
     /// segments, never as one contiguous span the size of the whole trace.</summary>
     internal const int ContiguousLimitBytes = 16 * 1024;
 
+    /// <summary>Bytes of one long element written between two flushes inside it: a flush per chunk would send the
+    /// element in many small pieces, while none would hold all of it in the pipe.</summary>
+    internal const int InElementFlushBytes = 256 * 1024;
+
     private long _flushed = writer.BytesCommitted;
     private long _bypassed;
+
+    public readonly Utf8JsonWriter Writer => writer;
+
+    public readonly PipeWriter? Output => output;
+
+    public readonly CancellationToken CancellationToken => cancellationToken;
 
     /// <summary>Appends elements serialized ahead, with the separator the writer would put before them.</summary>
     /// <remarks>With a pipe, only the first bytes go through the writer, which adds the separator and records that an
@@ -51,7 +61,7 @@ public struct TraceStreamOutput(Utf8JsonWriter writer, PipeWriter? output, Cance
             {
                 output.Write(segment.Span);
                 _bypassed += segment.Length;
-                FlushIfDue();
+                FlushIfDue(Math.Max(flushThresholdBytes, InElementFlushBytes));
             }
         }
 
@@ -59,9 +69,11 @@ public struct TraceStreamOutput(Utf8JsonWriter writer, PipeWriter? output, Cance
     }
 
     /// <summary>Flushes the pipe once the bytes written since the last flush reach the threshold.</summary>
-    public void FlushIfDue()
+    public void FlushIfDue() => FlushIfDue(flushThresholdBytes);
+
+    private void FlushIfDue(int threshold)
     {
-        if (output is null || writer.BytesCommitted + writer.BytesPending + _bypassed - _flushed < flushThresholdBytes) return;
+        if (output is null || writer.BytesCommitted + writer.BytesPending + _bypassed - _flushed < threshold) return;
 
         writer.Flush();
         output.FlushAsync(cancellationToken).SafeWait();

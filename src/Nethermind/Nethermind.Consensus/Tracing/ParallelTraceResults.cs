@@ -52,6 +52,8 @@ internal sealed class CollectedTraceResults<TTrace> : ParallelTraceResults<TTrac
     public void Start(int count)
     {
         _results = ArrayPool<IReadOnlyCollection<TTrace>?>.Shared.Rent(count);
+        // A non-null entry means a finished transaction, so nothing another renter left may remain.
+        Array.Clear(_results, 0, count);
         _count = count;
     }
 
@@ -119,6 +121,8 @@ internal abstract class OrderedTraceEmitter<TTrace, TSlot> : ParallelTraceResult
         _transactions = transactions;
         _length = transactions + 1;
         _slots = ArrayPool<TSlot?>.Shared.Rent(_length);
+        // A non-null slot means a transaction ready to write, so nothing another renter left may remain.
+        Array.Clear(_slots, 0, _length);
         _next = 0;
         _failed = false;
 

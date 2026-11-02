@@ -25,9 +25,6 @@ internal sealed class GethLikeTraceStream : IParallelTraceStream<GethLikeTxTrace
 
     [ThreadStatic] private static GethLikeTraceStream? _idle;
 
-    private Utf8JsonWriter? _writer;
-    private PipeWriter? _pipeWriter;
-    private CancellationToken _cancellationToken;
     private TraceStreamOutput _output;
 
     /// <summary>A stream into <paramref name="writer"/>; give it back with <see cref="Return"/>.</summary>
@@ -35,9 +32,6 @@ internal sealed class GethLikeTraceStream : IParallelTraceStream<GethLikeTxTrace
     {
         GethLikeTraceStream stream = _idle ?? new GethLikeTraceStream();
         _idle = null;
-        stream._writer = writer;
-        stream._pipeWriter = pipeWriter;
-        stream._cancellationToken = cancellationToken;
         stream._output = new TraceStreamOutput(writer, pipeWriter, cancellationToken, FlushThresholdBytes);
         return stream;
     }
@@ -45,15 +39,12 @@ internal sealed class GethLikeTraceStream : IParallelTraceStream<GethLikeTxTrace
     /// <summary>Lets go of the response and keeps the instance for the next request on this thread.</summary>
     public void Return()
     {
-        _writer = null;
-        _pipeWriter = null;
-        _cancellationToken = default;
         _output = default;
         _idle = this;
     }
 
     /// <inheritdoc />
-    public JsonWriterOptions? SerializeAheadOptions => ParallelTraceStream.SerializeAheadOptions(_writer!);
+    public JsonWriterOptions? SerializeAheadOptions => ParallelTraceStream.SerializeAheadOptions(_output.Writer);
 
     /// <inheritdoc />
     public void Serialize(IReadOnlyCollection<GethLikeTxTrace> traces, Utf8JsonWriter output)
@@ -91,18 +82,29 @@ internal sealed class GethLikeTraceStream : IParallelTraceStream<GethLikeTxTrace
         int started = 0;
         try
         {
-            foreach (GethLikeTxTrace trace in traces)
+            if (traces is IReadOnlyList<GethLikeTxTrace> list)
             {
-                started++;
-                GethLikeBlockNativeStreamingTracer.Write(_writer!, _pipeWriter, trace, _cancellationToken);
+                for (; started < list.Count; started++) WriteInTurn(list[started]);
+            }
+            else
+            {
+                foreach (GethLikeTxTrace trace in traces)
+                {
+                    WriteInTurn(trace);
+                    started++;
+                }
             }
         }
         catch
         {
-            DisposeAfter(traces, started);
+            // The trace that failed disposed itself.
+            DisposeAfter(traces, started + 1);
             throw;
         }
     }
+
+    private void WriteInTurn(GethLikeTxTrace trace) =>
+        GethLikeBlockNativeStreamingTracer.Write(_output.Writer, _output.Output, trace, _output.CancellationToken);
 
     private static void WriteEntry(Utf8JsonWriter output, GethLikeTxTrace trace)
     {

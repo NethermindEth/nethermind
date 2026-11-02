@@ -50,8 +50,12 @@ public sealed partial class ParallelBlockTracer : IParallelBlockTracer, IDisposa
     /// sets <see cref="StreamedPerWorker"/>.</summary>
     private const int DefaultStreamedPerWorker = 32;
 
+    /// <summary>Bytes of one streamed block that may be serialized and not yet written, unless a test sets
+    /// <see cref="StreamedBudgetBytes"/>.</summary>
+    private const long DefaultStreamedBudgetBytes = 32 * 1024 * 1024;
+
     /// <summary>Chunk bytes the idle serialized traces keep for the next blocks, across all of them.</summary>
-    private const long RetainedSerializedBytes = 4 * 1024 * 1024;
+    private const long RetainedSerializedBytes = 8 * 1024 * 1024;
 
     private bool _disposed;
     private int _inFlight;
@@ -62,10 +66,14 @@ public sealed partial class ParallelBlockTracer : IParallelBlockTracer, IDisposa
     /// stay bounded. The value is a heuristic.</summary>
     internal int StreamedPerWorker { get; init; } = DefaultStreamedPerWorker;
 
-    /// <summary>Bytes of one streamed block that may be serialized and not yet written. With the window it bounds the
-    /// memory a request holds when its client reads slowly; a worker that finds it spent waits before it takes
-    /// another transaction.</summary>
-    internal long StreamedBudgetBytes { get; init; } = 32 * 1024 * 1024;
+    /// <summary>Bytes of one streamed block that may be serialized and not yet written, at least
+    /// <see cref="StreamedBudgetBytesPerWorker"/> per worker. With the window it bounds the memory a request holds when
+    /// its client reads slowly; a worker that finds it spent waits before it takes another transaction. The default
+    /// is 32 MiB.</summary>
+    internal long StreamedBudgetBytes { get; init; } = DefaultStreamedBudgetBytes;
+
+    /// <summary>The budget each worker adds, so that large traces still leave every worker room to trace ahead.</summary>
+    internal const long StreamedBudgetBytesPerWorker = 4 * 1024 * 1024;
 
     internal bool IsDisposing
     {

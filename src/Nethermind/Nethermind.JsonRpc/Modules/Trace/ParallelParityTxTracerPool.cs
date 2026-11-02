@@ -122,7 +122,8 @@ internal sealed class ParallelParityTxTracerPool(Utf8JsonWriter writer, Cancella
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
         /// <summary>Returns the transaction tracer to the pool, one that did not finish its trace is released instead,
-        /// and then this result itself; a second call does nothing.</summary>
+        /// and then this result itself. A second call before the result is rented again does nothing; its owner
+        /// disposes it once, as every result is.</summary>
         public void Dispose()
         {
             if (_txHash is null) return;
