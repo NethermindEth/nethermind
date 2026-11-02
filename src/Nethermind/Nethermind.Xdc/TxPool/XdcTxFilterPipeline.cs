@@ -19,4 +19,12 @@ internal class XdcTxFilterPipeline(ITxFilterPipeline inner) : ITxFilterPipeline
 
         return inner.Execute(tx, parentHeader, currentSpec);
     }
+
+    public bool Execute(Transaction tx, in TxFilterContext context)
+    {
+        if (context.Spec is IXdcReleaseSpec xdcSpec && tx.IsSpecialTransaction(xdcSpec))
+            return true;
+
+        return inner.Execute(tx, in context);
+    }
 }

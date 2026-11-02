@@ -30,5 +30,20 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
             return AcceptTxResult.Accepted;
         }
+
+        public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context)
+        {
+            AcceptTxResult isAllowed = _minGasPriceFilter.IsAllowed(tx, in context);
+            if (!isAllowed)
+            {
+                return isAllowed;
+            }
+            else if (_minGasPrices.TryGetValue(context.Parent, tx, out TxPriorityContract.Destination @override))
+            {
+                return _minGasPriceFilter.IsAllowed(tx, in context, @override.Value);
+            }
+
+            return AcceptTxResult.Accepted;
+        }
     }
 }

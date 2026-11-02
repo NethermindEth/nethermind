@@ -5,14 +5,18 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Config;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -23,9 +27,9 @@ using NUnit.Framework;
 namespace Nethermind.Consensus.Test.Transactions;
 
 /// <summary>
-/// <see cref="BaseFeeTxFilter"/> and <see cref="MinGasPriceTxFilter"/> compute the parent's base fee once per parent
-/// and spec. A filter that is reused across parents, specs and threads must decide, and word its rejection, exactly as
-/// a filter that computes the base fee for every transaction.
+/// <see cref="BaseFeeTxFilter"/> and <see cref="MinGasPriceTxFilter"/> read the next block's base fee from the
+/// <see cref="TxFilterContext"/> they are given. They must decide, and word their rejections, exactly as when they
+/// compute it themselves from the parent and spec.
 /// </summary>
 [Parallelizable(ParallelScope.All)]
 public class StandardTxFilterBaseFeeTests
@@ -42,14 +46,16 @@ public class StandardTxFilterBaseFeeTests
     // boundary: here a 3 gwei floor.
     private static readonly ReleaseSpec ForkWithFloor = new() { IsEip1559Enabled = true, Eip1559BaseFeeMinValue = 3.GWei };
 
+    private static readonly ReleaseSpec BeforeLondon = new() { IsEip1559Enabled = false };
+
     private static readonly (BlockHeader Parent, IReleaseSpec Spec)[] Steps =
     [
         (ParentAt1Gwei, London),
         (ParentAt2Gwei, London),
-        (ParentAt1Gwei, London),
         (ParentAt1Gwei, ForkWithFloor),
         (ParentAt2Gwei, ForkWithFloor),
-        (ParentAt1Gwei, London),
+        (ParentAt1Gwei, BeforeLondon),
+        (ParentAt2Gwei, BeforeLondon),
     ];
 
     private static readonly Transaction[] Transactions =
@@ -59,6 +65,8 @@ public class StandardTxFilterBaseFeeTests
         Tx(maxFee: 4.GWei, priorityFee: (UInt256)500_000_000),
         Tx(maxFee: 10.GWei, priorityFee: 10.GWei),
         Build.A.Transaction.WithGasPrice(2.GWei).TestObject,
+        Build.A.Transaction.WithGasPrice((UInt256)500_000_000).TestObject,
+        Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(1).WithMaxPriorityFeePerGas(1).WithIsServiceTransaction(true).TestObject,
     ];
 
     public static IEnumerable<TestCaseData> Filters()
@@ -68,50 +76,72 @@ public class StandardTxFilterBaseFeeTests
             .SetArgDisplayNames("MinGasPrice");
         yield return new TestCaseData((Func<ITxFilter>)(static () => new MinGasPriceTxFilter(new BlocksConfig { MinGasPrice = 1.GWei }) { IncludeRejectionMessage = false }))
             .SetArgDisplayNames("MinGasPriceWithoutMessage");
-        yield return new TestCaseData((Func<ITxFilter>)(static () => new CustomFloorFilter(new MinGasPriceTxFilter(new BlocksConfig()), (UInt256)500_000_000)))
+        yield return new TestCaseData((Func<ITxFilter>)(static () => new CustomFloorFilter(new MinGasPriceTxFilter(new BlocksConfig()), (UInt256)600_000_000)))
             .SetArgDisplayNames("MinGasPriceCustomFloor");
+        yield return new TestCaseData((Func<ITxFilter>)(static () => new CompositeTxFilter(new MinGasPriceTxFilter(new BlocksConfig { MinGasPrice = 1.GWei }), new BaseFeeTxFilter())))
+            .SetArgDisplayNames("Composite");
     }
 
     [TestCaseSource(nameof(Filters))]
-    public void Reused_filter_decides_as_a_fresh_filter_across_parents_and_specs(Func<ITxFilter> create)
+    public void Context_decides_and_words_rejections_as_the_parent_and_spec_do(Func<ITxFilter> create)
     {
-        ITxFilter shared = create();
+        ITxFilter filter = create();
 
         foreach ((BlockHeader parent, IReleaseSpec spec) in Steps)
         {
             foreach (Transaction tx in Transactions)
             {
-                AcceptTxResult expected = create().IsAllowed(tx, parent, spec);
-                AcceptTxResult actual = shared.IsAllowed(tx, parent, spec);
-                Assert.That(actual.ToString(), Is.EqualTo(expected.ToString()), $"parent {parent.Number}, spec floor {spec.Eip1559BaseFeeMinValue}");
+                string[] results = Decide(filter, tx, parent, spec);
+                Assert.That(results, Is.All.EqualTo(results[0]), $"parent {parent.Number}, spec floor {spec.Eip1559BaseFeeMinValue}, 1559 {spec.IsEip1559Enabled}");
             }
         }
     }
 
     [Test]
-    public void Different_parent_computes_the_base_fee_again()
+    public void Context_through_the_standard_pipeline_decides_as_the_parent_and_spec_do()
+    {
+        ITxFilterPipeline pipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(NullLogManager.Instance, new BlocksConfig { MinGasPrice = 1.GWei });
+
+        foreach ((BlockHeader parent, IReleaseSpec spec) in Steps)
+        {
+            foreach (Transaction tx in Transactions)
+            {
+                bool expected = pipeline.Execute(tx, parent, spec);
+                TxFilterContext computed = new(parent, spec);
+                TxFilterContext given = new(parent, spec, BaseFeeCalculator.Calculate(parent, spec));
+                Assert.That(new[] { pipeline.Execute(tx, in computed), pipeline.Execute(tx, in given) }, Is.All.EqualTo(expected),
+                    $"parent {parent.Number}, spec floor {spec.Eip1559BaseFeeMinValue}, 1559 {spec.IsEip1559Enabled}");
+            }
+        }
+    }
+
+    [Test]
+    public void Different_parent_gives_its_own_base_fee()
     {
         BaseFeeTxFilter baseFeeFilter = new();
         MinGasPriceTxFilter minGasPriceFilter = new(new BlocksConfig { MinGasPrice = 1.GWei });
+        CustomFloorFilter customFloorFilter = new(new MinGasPriceTxFilter(new BlocksConfig()), (UInt256)600_000_000);
         Transaction tx = Tx(maxFee: (UInt256)2_500_000_000, priorityFee: 2.GWei);
         Transaction lowMaxFeeTx = Tx(maxFee: (UInt256)1_500_000_000, priorityFee: 1.GWei);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((bool)baseFeeFilter.IsAllowed(lowMaxFeeTx, ParentAt1Gwei, London), Is.True);
-            Assert.That(baseFeeFilter.IsAllowed(lowMaxFeeTx, ParentAt2Gwei, London).ToString(), Is.EqualTo(
+            Assert.That(Decide(baseFeeFilter, lowMaxFeeTx, ParentAt1Gwei, London), Is.All.EqualTo(Accepted));
+            Assert.That(Decide(baseFeeFilter, lowMaxFeeTx, ParentAt2Gwei, London), Is.All.EqualTo(
                 $"{AcceptTxResult.FeeTooLow}, MaxFeePerGas too low. MaxFeePerGas: 1500000000, BaseFee: 2000000000, MaxPriorityFeePerGas:1000000000, Block number: 12"));
-            Assert.That((bool)baseFeeFilter.IsAllowed(lowMaxFeeTx, ParentAt1Gwei, London), Is.True);
 
-            Assert.That((bool)minGasPriceFilter.IsAllowed(tx, ParentAt1Gwei, London), Is.True);
-            Assert.That(minGasPriceFilter.IsAllowed(tx, ParentAt2Gwei, London).ToString(), Is.EqualTo(
+            Assert.That(Decide(minGasPriceFilter, tx, ParentAt1Gwei, London), Is.All.EqualTo(Accepted));
+            Assert.That(Decide(minGasPriceFilter, tx, ParentAt2Gwei, London), Is.All.EqualTo(
                 $"{AcceptTxResult.FeeTooLow}, EffectivePriorityFeePerGas too low 500000000 < 1000000000, BaseFee: 2000000000"));
-            Assert.That((bool)minGasPriceFilter.IsAllowed(tx, ParentAt1Gwei, London), Is.True);
+
+            Assert.That(Decide(customFloorFilter, tx, ParentAt1Gwei, London), Is.All.EqualTo(Accepted));
+            Assert.That(Decide(customFloorFilter, tx, ParentAt2Gwei, London), Is.All.EqualTo(
+                $"{AcceptTxResult.FeeTooLow}, EffectivePriorityFeePerGas too low 500000000 < 600000000, BaseFee: 2000000000"));
         }
     }
 
     [Test]
-    public void Spec_change_at_a_fork_boundary_computes_the_base_fee_again()
+    public void Spec_of_the_next_block_gives_the_base_fee_at_a_fork_boundary()
     {
         BaseFeeTxFilter baseFeeFilter = new();
         MinGasPriceTxFilter minGasPriceFilter = new(new BlocksConfig { MinGasPrice = 1.GWei });
@@ -119,56 +149,156 @@ public class StandardTxFilterBaseFeeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((bool)baseFeeFilter.IsAllowed(tx, ParentAt1Gwei, London), Is.True);
-            Assert.That(baseFeeFilter.IsAllowed(tx, ParentAt1Gwei, ForkWithFloor).ToString(), Is.EqualTo(
+            Assert.That(Decide(baseFeeFilter, tx, ParentAt1Gwei, London), Is.All.EqualTo(Accepted));
+            Assert.That(Decide(baseFeeFilter, tx, ParentAt1Gwei, ForkWithFloor), Is.All.EqualTo(
                 $"{AcceptTxResult.FeeTooLow}, MaxFeePerGas too low. MaxFeePerGas: 2500000000, BaseFee: 3000000000, MaxPriorityFeePerGas:2000000000, Block number: 11"));
 
-            Assert.That((bool)minGasPriceFilter.IsAllowed(tx, ParentAt1Gwei, London), Is.True);
-            Assert.That(minGasPriceFilter.IsAllowed(tx, ParentAt1Gwei, ForkWithFloor).ToString(), Is.EqualTo(
+            Assert.That(Decide(minGasPriceFilter, tx, ParentAt1Gwei, London), Is.All.EqualTo(Accepted));
+            Assert.That(Decide(minGasPriceFilter, tx, ParentAt1Gwei, ForkWithFloor), Is.All.EqualTo(
                 $"{AcceptTxResult.FeeTooLow}, EffectivePriorityFeePerGas too low 0 < 1000000000, BaseFee: 3000000000"));
-            Assert.That((bool)minGasPriceFilter.IsAllowed(tx, ParentAt1Gwei, London), Is.True);
         }
     }
 
     [Test]
-    public void Base_fee_is_computed_once_per_parent_and_spec()
+    public void Spec_without_EIP1559_ignores_the_base_fee_and_does_not_compute_it()
     {
         CountingBaseFeeCalculator calculator = new();
-        ReleaseSpec spec = new() { IsEip1559Enabled = true, BaseFeeCalculator = calculator };
-        ReleaseSpec nextSpec = new() { IsEip1559Enabled = true, BaseFeeCalculator = calculator };
-        ITxFilterPipeline pipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(NullLogManager.Instance, new BlocksConfig());
-        Transaction tx = Tx(maxFee: 10.GWei, priorityFee: 1.GWei);
+        ReleaseSpec spec = new() { IsEip1559Enabled = false, BaseFeeCalculator = calculator };
+        MinGasPriceTxFilter minGasPriceFilter = new(new BlocksConfig { MinGasPrice = 1.GWei });
+        Transaction tx = Build.A.Transaction.WithGasPrice((UInt256)500_000_000).TestObject;
+        Transaction lowMaxFeeTx = Tx(maxFee: 1, priorityFee: 1);
 
-        for (int i = 0; i < 100; i++) pipeline.Execute(tx, ParentAt1Gwei, spec);
-        int afterOneParent = calculator.Calls;
-        for (int i = 0; i < 100; i++) pipeline.Execute(tx, ParentAt2Gwei, spec);
-        int afterTwoParents = calculator.Calls;
-        for (int i = 0; i < 100; i++) pipeline.Execute(tx, ParentAt2Gwei, nextSpec);
+        TxFilterContext computed = new(ParentAt1Gwei, spec);
+        // Block building passes what the calculator returns for any spec: the parent's base fee here, 1 gwei.
+        TxFilterContext given = new(ParentAt1Gwei, spec, ParentAt1Gwei.BaseFeePerGas);
 
         using (Assert.EnterMultipleScope())
         {
-            // One computation per filter: the min gas price filter and the base fee filter.
-            Assert.That(afterOneParent, Is.EqualTo(2));
-            Assert.That(afterTwoParents, Is.EqualTo(4));
-            Assert.That(calculator.Calls, Is.EqualTo(6));
+            Assert.That(computed.BaseFee, Is.EqualTo(UInt256.Zero));
+            Assert.That(calculator.Calls, Is.Zero, "a context does not compute a base fee without EIP-1559");
+            string rejection = $"{AcceptTxResult.FeeTooLow}, EffectivePriorityFeePerGas too low 500000000 < 1000000000, BaseFee: 0";
+            Assert.That(minGasPriceFilter.IsAllowed(tx, ParentAt1Gwei, spec).ToString(), Is.EqualTo(rejection));
+            Assert.That(minGasPriceFilter.IsAllowed(tx, in computed).ToString(), Is.EqualTo(rejection));
+            Assert.That(minGasPriceFilter.IsAllowed(tx, in given).ToString(), Is.EqualTo(rejection));
+            Assert.That(new BaseFeeTxFilter().IsAllowed(lowMaxFeeTx, in given).ToString(), Is.EqualTo(Accepted));
+            Assert.That(new BaseFeeTxFilter().IsAllowed(lowMaxFeeTx, ParentAt1Gwei, spec).ToString(), Is.EqualTo(Accepted));
+            Assert.That(calculator.Calls, Is.Zero, "the filters do not compute a base fee without EIP-1559");
         }
     }
 
     [Test]
-    public void A_null_parent_is_computed_on_every_call()
+    public void Null_parent_is_handled_as_before()
+    {
+        CountingBaseFeeCalculator calculator = new();
+        ReleaseSpec countingLondon = new() { IsEip1559Enabled = true, BaseFeeCalculator = calculator };
+        Transaction tx = Tx(maxFee: 10.GWei, priorityFee: 1.GWei);
+        Transaction serviceTx = Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(1).WithMaxPriorityFeePerGas(1).WithIsServiceTransaction(true).TestObject;
+        BaseFeeTxFilter baseFeeFilter = new();
+        MinGasPriceTxFilter minGasPriceFilter = new(new BlocksConfig { MinGasPrice = 1.GWei });
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The calculator is asked about a null parent, as the filters asked it for each transaction.
+            TxFilterContext context = new(null!, countingLondon);
+            Assert.That(calculator.Calls, Is.EqualTo(1));
+            Assert.That((bool)baseFeeFilter.IsAllowed(tx, in context), Is.True);
+            Assert.That((bool)baseFeeFilter.IsAllowed(tx, null!, countingLondon), Is.True);
+            Assert.That((bool)minGasPriceFilter.IsAllowed(tx, null!, countingLondon), Is.True);
+            Assert.That((bool)minGasPriceFilter.IsAllowed(tx, null, 1.GWei, countingLondon), Is.True);
+            Assert.That(calculator.Calls, Is.EqualTo(4));
+
+            // The default calculator cannot compute from a null parent; the filters threw as they do now.
+            Assert.Throws<NullReferenceException>(() => baseFeeFilter.IsAllowed(tx, null!, London));
+            Assert.Throws<NullReferenceException>(() => minGasPriceFilter.IsAllowed(tx, null!, London));
+            Assert.Throws<NullReferenceException>(() => _ = new TxFilterContext(null!, London));
+            // A service transaction never needed the base fee.
+            Assert.That((bool)baseFeeFilter.IsAllowed(serviceTx, null!, London), Is.True);
+            // Nor does a spec without EIP-1559.
+            Assert.That((bool)minGasPriceFilter.IsAllowed(Build.A.Transaction.WithGasPrice(1.GWei).TestObject, null!, BeforeLondon), Is.True);
+            Assert.That(new TxFilterContext(null!, BeforeLondon).BaseFee, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public void Filters_read_the_base_fee_from_the_context()
     {
         CountingBaseFeeCalculator calculator = new();
         ReleaseSpec spec = new() { IsEip1559Enabled = true, BaseFeeCalculator = calculator };
-        Transaction tx = Tx(maxFee: 10.GWei, priorityFee: 1.GWei);
-        ITxFilter[] filters = [new BaseFeeTxFilter(), new MinGasPriceTxFilter(new BlocksConfig { MinGasPrice = 1.GWei })];
+        // A base fee no calculator would give for this parent, so a filter that computed its own would decide otherwise.
+        TxFilterContext context = new(ParentAt1Gwei, spec, 7.GWei);
+        Transaction tx = Tx(maxFee: 5.GWei, priorityFee: 1.GWei);
+        ITxFilter composite = new CompositeTxFilter(new MinGasPriceTxFilter(new BlocksConfig { MinGasPrice = 0 }), new BaseFeeTxFilter());
+        ITxFilterPipeline pipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(NullLogManager.Instance, new BlocksConfig { MinGasPrice = 0 });
+        string rejection = $"{AcceptTxResult.FeeTooLow}, MaxFeePerGas too low. MaxFeePerGas: 5000000000, BaseFee: 7000000000, MaxPriorityFeePerGas:1000000000, Block number: 11";
 
-        foreach (ITxFilter filter in filters)
+        using (Assert.EnterMultipleScope())
         {
-            filter.IsAllowed(tx, null, spec);
-            filter.IsAllowed(tx, null, spec);
-        }
+            Assert.That(new BaseFeeTxFilter().IsAllowed(tx, in context).ToString(), Is.EqualTo(rejection));
+            Assert.That(composite.IsAllowed(tx, in context).ToString(), Is.EqualTo(rejection));
+            Assert.That(new MinGasPriceTxFilter(new BlocksConfig { MinGasPrice = 1 }).IsAllowed(tx, in context).ToString(), Is.EqualTo(
+                $"{AcceptTxResult.FeeTooLow}, EffectivePriorityFeePerGas too low 0 < 1, BaseFee: 7000000000"));
+            Assert.That(pipeline.Execute(tx, in context), Is.False);
+            for (int i = 0; i < 100; i++)
+            {
+                pipeline.Execute(tx, in context);
+                composite.IsAllowed(tx, in context);
+            }
 
-        Assert.That(calculator.Calls, Is.EqualTo(4), "a null parent is never cached");
+            Assert.That(calculator.Calls, Is.Zero);
+
+            // Without a context, each filter computes the base fee itself, as before.
+            Assert.That((bool)composite.IsAllowed(tx, ParentAt1Gwei, spec), Is.True);
+            Assert.That(calculator.Calls, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void Block_building_computes_the_base_fee_once_per_build()
+    {
+        CountingBaseFeeCalculator calculator = new();
+        ReleaseSpec london = new() { IsEip1559Enabled = true, BaseFeeCalculator = calculator };
+        ReleaseSpec forkWithFloor = new() { IsEip1559Enabled = true, Eip1559BaseFeeMinValue = 3.GWei, BaseFeeCalculator = calculator };
+        // Block 12 is the first block of a fork with a 3 gwei base-fee floor.
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(call => call.Arg<ForkActivation>().BlockNumber >= 12 ? forkWithFloor : london);
+
+        // The parent of block 11 used its whole gas limit, so the base fee rises from 1 to 1.125 gwei.
+        BlockHeader fullParent = Build.A.BlockHeader.WithNumber(10).WithGasLimit(GasLimit).WithGasUsed(GasLimit).WithBaseFee(1.GWei).TestObject;
+        UInt256 minGasPrice = 50_000_000;
+        Transaction[] a = Chain(TestItem.PrivateKeyA, 1, maxFee: 1_100_000_000, priorityFee: 1.GWei);   // max fee below 1.125 gwei
+        Transaction[] b = Chain(TestItem.PrivateKeyB, 4, maxFee: 1_200_000_000, priorityFee: 100_000_000); // premium 0.075 gwei
+        Transaction[] c = Chain(TestItem.PrivateKeyC, 1, maxFee: 1_160_000_000, priorityFee: 1.GWei);   // premium 0.035 gwei
+        Transaction[] d = Chain(TestItem.PrivateKeyD, 4, maxFee: 10.GWei, priorityFee: 1.GWei);
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.GetPendingForProduction(Arg.Any<BlockHeader>(), Arg.Any<bool>(), Arg.Any<UInt256>())
+            .Returns(new PendingTransactionsView(
+                new Dictionary<AddressAsKey, Transaction[]>
+                {
+                    [a[0].SenderAddress!] = a,
+                    [b[0].SenderAddress!] = b,
+                    [c[0].SenderAddress!] = c,
+                    [d[0].SenderAddress!] = d,
+                },
+                new Dictionary<AddressAsKey, Transaction[]>(),
+                isRevalidated: true));
+        BlocksConfig blocksConfig = new() { MinGasPrice = minGasPrice };
+        TxPoolTxSource txSource = new(txPool, specProvider, new TransactionComparerProvider(specProvider, Substitute.For<IBlockFinder>()),
+            LimboLogs.Instance, TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, blocksConfig), blocksConfig,
+            new SpecChangeTxValidator(specProvider.ChainId));
+
+        Transaction[] firstBuild = txSource.GetTransactions(fullParent, Target(fullParent), GasLimit).ToArray();
+        int afterFirstBuild = calculator.Calls;
+        // The parent of block 12 used its gas target at 1 gwei, but block 12's spec raises the base fee to 3 gwei.
+        BlockHeader targetParent = Parent(11, 1.GWei);
+        Transaction[] secondBuild = txSource.GetTransactions(targetParent, Target(targetParent), GasLimit).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstBuild, Is.EquivalentTo(b.Concat(d)));
+            Assert.That(afterFirstBuild, Is.EqualTo(1), "once by the tx source, never by the filters");
+            Assert.That(secondBuild, Is.EquivalentTo(d));
+            Assert.That(calculator.Calls, Is.EqualTo(2));
+        }
     }
 
     [Test]
@@ -189,34 +319,26 @@ public class StandardTxFilterBaseFeeTests
             {
                 TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), London);
                 AcceptTxResult actual = adapter.Accept(tx, ref state, TxHandlingOptions.None);
-                AcceptTxResult expected = new MinGasPriceTxFilter(new BlocksConfig { MinGasPrice = 1.GWei }).IsAllowed(tx, head.Header, London);
-                Assert.That(actual.ToString(), Is.EqualTo(expected.ToString()), $"head {head.Number}");
+                TxFilterContext context = new(head.Header, London);
+                Assert.That(actual.ToString(), Is.EqualTo(shared.IsAllowed(tx, in context).ToString()), $"head {head.Number}");
             }
         }
     }
 
-    [TestCaseSource(nameof(Filters))]
-    public void Concurrent_callers_with_different_parents_and_specs_get_their_own_base_fee(Func<ITxFilter> create)
+    private const string Accepted = nameof(AcceptTxResult.Accepted);
+
+    /// <summary>The result of the parent-and-spec overload, then of a context that computes the base fee, then of a
+    /// context given the base fee as block building computes it, for any spec.</summary>
+    private static string[] Decide(ITxFilter filter, Transaction tx, BlockHeader parent, IReleaseSpec spec)
     {
-        ITxFilter shared = create();
-        string[][] expected = Steps.Select(step => Transactions.Select(tx => create().IsAllowed(tx, step.Parent, step.Spec).ToString()).ToArray()).ToArray();
-        int mismatches = 0;
-
-        Parallel.For(0, 4, new ParallelOptions { MaxDegreeOfParallelism = 4 }, worker =>
-        {
-            for (int i = 0; i < 20_000; i++)
-            {
-                int step = (i + worker) % Steps.Length;
-                int txIndex = (i / Steps.Length + worker) % Transactions.Length;
-                (BlockHeader parent, IReleaseSpec spec) = Steps[step];
-                if (shared.IsAllowed(Transactions[txIndex], parent, spec).ToString() != expected[step][txIndex])
-                {
-                    Interlocked.Increment(ref mismatches);
-                }
-            }
-        });
-
-        Assert.That(mismatches, Is.Zero);
+        TxFilterContext computed = new(parent, spec);
+        TxFilterContext given = new(parent, spec, BaseFeeCalculator.Calculate(parent, spec));
+        return
+        [
+            filter.IsAllowed(tx, parent, spec).ToString(),
+            filter.IsAllowed(tx, in computed).ToString(),
+            filter.IsAllowed(tx, in given).ToString(),
+        ];
     }
 
     private static BlockHeader Parent(ulong number, UInt256 baseFee) => Build.A.BlockHeader
@@ -226,16 +348,35 @@ public class StandardTxFilterBaseFeeTests
         .WithBaseFee(baseFee)
         .TestObject;
 
+    private static BlockHeader Target(BlockHeader parent) => Build.A.BlockHeader
+        .WithParentHash(parent.Hash!)
+        .WithNumber(parent.Number + 1)
+        .WithGasLimit(GasLimit)
+        .TestObject;
+
     private static Transaction Tx(UInt256 maxFee, UInt256 priorityFee) => Build.A.Transaction
         .WithType(TxType.EIP1559)
         .WithMaxFeePerGas(maxFee)
         .WithMaxPriorityFeePerGas(priorityFee)
         .TestObject;
 
+    private static Transaction[] Chain(PrivateKey sender, int count, UInt256 maxFee, UInt256 priorityFee) =>
+        Enumerable.Range(0, count).Select(nonce => Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithNonce((ulong)nonce)
+            .WithMaxFeePerGas(maxFee)
+            .WithMaxPriorityFeePerGas(priorityFee)
+            .WithGasLimit(21_000)
+            .SignedAndResolved(sender)
+            .TestObject).ToArray();
+
     private sealed class CustomFloorFilter(MinGasPriceTxFilter inner, UInt256 floor) : ITxFilter
     {
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec) =>
             inner.IsAllowed(tx, parentHeader, floor, spec);
+
+        public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context) =>
+            inner.IsAllowed(tx, in context, floor);
     }
 
     private sealed class CountingBaseFeeCalculator : IBaseFeeCalculator

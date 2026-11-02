@@ -16,5 +16,10 @@ namespace Nethermind.Consensus.Transactions
          */
 
         AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, in UInt256 minGasPriceFloor, IReleaseSpec currentSpec);
+
+        /// <summary>Checks <paramref name="tx"/> against a custom min gas price floor for the block
+        /// <paramref name="context"/> describes.</summary>
+        AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context, in UInt256 minGasPriceFloor) =>
+            IsAllowed(tx, context.Parent, minGasPriceFloor, context.Spec);
     }
 }

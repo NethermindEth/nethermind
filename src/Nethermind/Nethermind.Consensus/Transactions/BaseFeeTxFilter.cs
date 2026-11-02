@@ -11,23 +11,25 @@ namespace Nethermind.Consensus.Transactions
     /// <summary>Filtering transactions that have lower MaxFeePerGas than BaseFee</summary>
     public class BaseFeeTxFilter : ITxFilter
     {
-        private readonly ParentBaseFeeCache _baseFee = new();
+        // A service transaction is accepted without the base fee, so it is not computed for one.
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec) =>
+            tx.IsServiceTransaction ? AcceptTxResult.Accepted : IsAllowed(tx, new TxFilterContext(parentHeader, spec));
 
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
+        public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context)
         {
-            bool isEip1559Enabled = spec.IsEip1559Enabled;
+            bool isEip1559Enabled = context.Spec.IsEip1559Enabled;
 
             if (!isEip1559Enabled || tx.IsServiceTransaction)
             {
                 return AcceptTxResult.Accepted;
             }
 
-            UInt256 baseFee = _baseFee.Get(parentHeader, spec);
+            UInt256 baseFee = context.BaseFee;
             bool allowed = tx.MaxFeePerGas >= baseFee;
             return allowed
                 ? AcceptTxResult.Accepted
                 : AcceptTxResult.FeeTooLow.WithMessage(
-                    $"MaxFeePerGas too low. MaxFeePerGas: {tx.MaxFeePerGas}, BaseFee: {baseFee}, MaxPriorityFeePerGas:{tx.MaxPriorityFeePerGas}, Block number: {parentHeader.Number + 1}");
+                    $"MaxFeePerGas too low. MaxFeePerGas: {tx.MaxFeePerGas}, BaseFee: {baseFee}, MaxPriorityFeePerGas:{tx.MaxPriorityFeePerGas}, Block number: {context.Parent.Number + 1}");
         }
     }
 }

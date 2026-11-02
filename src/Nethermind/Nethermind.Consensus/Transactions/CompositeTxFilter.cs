@@ -22,4 +22,18 @@ public class CompositeTxFilter(params ITxFilter[] txFilters) : ITxFilter
 
         return AcceptTxResult.Accepted;
     }
+
+    public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context)
+    {
+        for (int i = 0; i < txFilters.Length; i++)
+        {
+            AcceptTxResult isAllowed = txFilters[i].IsAllowed(tx, in context);
+            if (!isAllowed)
+            {
+                return isAllowed;
+            }
+        }
+
+        return AcceptTxResult.Accepted;
+    }
 }

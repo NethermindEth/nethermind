@@ -19,5 +19,10 @@ namespace Nethermind.Merge.AuRa
             _poSSwitcher.IsPostMerge(parentHeader)
                 ? _postMergeTxFilter.IsAllowed(tx, parentHeader, currentSpec)
                 : _preMergeTxFilter.IsAllowed(tx, parentHeader, currentSpec);
+
+        public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context) =>
+            _poSSwitcher.IsPostMerge(context.Parent)
+                ? _postMergeTxFilter.IsAllowed(tx, in context)
+                : _preMergeTxFilter.IsAllowed(tx, in context);
     }
 }
