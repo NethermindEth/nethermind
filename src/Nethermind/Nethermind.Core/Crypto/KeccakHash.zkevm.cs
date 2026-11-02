@@ -953,9 +953,9 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void AbsorbBlock(ref ulong lane, byte* data, bool intoZeroState)
     {
-        // SP1 has no DMA: there the copy is a call into memcpy, dearer than the seventeen lane writes; so is Airbender's
-        // for a word-aligned block, which the lanes read with plain loads.
-        if (intoZeroState && !Sp1Flag.IsActive && !(AirbenderFlag.IsActive && ((nuint)data & 3) == 0))
+        // SP1 and OpenVM have no DMA: there the copy is a call into memcpy, dearer than the seventeen lane writes; so is
+        // Airbender's for a word-aligned block, which the lanes read with plain loads.
+        if (intoZeroState && !Sp1Flag.IsActive && !OpenVmFlag.IsActive && !(AirbenderFlag.IsActive && ((nuint)data & 3) == 0))
         {
             // A whole rate block written into zero lanes is a plain 136-byte copy: past the inline copy
             // threshold the guest's Memmove is the ZisK DMA idiom (a few executed instructions), where
@@ -1153,7 +1153,7 @@ public sealed partial class KeccakHash
             return;
         }
 
-        if (Sp1Flag.IsActive)
+        if (Sp1Flag.IsActive || OpenVmFlag.IsActive)
         {
             fixed (byte* data = block)
             {
