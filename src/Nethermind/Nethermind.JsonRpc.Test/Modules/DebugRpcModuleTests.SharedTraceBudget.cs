@@ -148,8 +148,8 @@ public partial class DebugRpcModuleTests
             return completed;
         }
         public bool TryStream<TTrace>(Block block, BlockHeader parent, Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction,
-            Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions, Action<IReadOnlyCollection<TTrace>> emit, CancellationToken token) =>
-            inner.TryStream(block, parent, forTransaction, afterTransactions, emit, token);
+            Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions, IParallelTraceStream<TTrace> stream, CancellationToken token) =>
+            inner.TryStream(block, parent, forTransaction, afterTransactions, stream, token);
     }
 
     private sealed class DeadlineAdapter(ITransactionProcessorAdapter inner, DeadlineExecution clock) : ITransactionProcessorAdapter

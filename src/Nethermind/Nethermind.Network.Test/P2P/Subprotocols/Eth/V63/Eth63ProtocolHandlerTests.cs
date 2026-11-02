@@ -271,7 +271,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                         GenesisHash = Keccak.Zero
                     };
                     Packet statusPacket =
-                        new("eth", Eth62MessageCode.Status, _statusMessageSerializer.Serialize(statusMessage));
+                        new("eth", Eth62MessageCode.Status, _statusMessageSerializer.SerializeToArray(statusMessage));
                     _protocolHandler.HandleMessage(statusPacket);
 
                     return _protocolHandler;
