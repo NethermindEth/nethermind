@@ -54,12 +54,9 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         int cellsLength = GetCellsContentLength(message.Cells);
         writer.StartSequence(cellsLength);
 
-        int cellIndexCount = message.CellMask.Length == BlobCellMask.FixedByteLength
-            ? BlobCellMask.FromBytes(message.CellMask).Count
-            : 0;
         foreach (byte[][] cells in message.Cells)
         {
-            EncodeCellGroup(ref writer, cells, cellIndexCount);
+            EncodeCellGroup(ref writer, cells);
         }
 
         writer.Encode(message.CellMask);
@@ -106,7 +103,7 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         int cellIndexCount = BlobCellMask.FromBytes(cellMask).Count;
         for (int i = 0; i < cellsByTx.Length; i++)
         {
-            cellsByTx[i] = ToBlobMajor(cellsByTx[i], cellIndexCount);
+            ValidateCellGroup(cellsByTx[i], cellIndexCount);
         }
 
         return new CellsMessage72(requestId, hashes.AsSpan().ToArray(), cellsByTx, cellMask);
@@ -135,63 +132,33 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         return contentLength;
     }
 
-    private static void EncodeCellGroup(ref ByteBufferRlpWriter writer, byte[][] blobMajorCells, int cellIndexCount)
+    private static void EncodeCellGroup(ref ByteBufferRlpWriter writer, byte[][] cells)
     {
         int contentLength = 0;
-        for (int i = 0; i < blobMajorCells.Length; i++)
+        for (int i = 0; i < cells.Length; i++)
         {
-            contentLength += Rlp.LengthOf(blobMajorCells[i]);
+            contentLength += Rlp.LengthOf(cells[i]);
         }
 
         writer.StartSequence(contentLength);
-        if (cellIndexCount == 0 || blobMajorCells.Length % cellIndexCount != 0)
+        for (int i = 0; i < cells.Length; i++)
         {
-            for (int i = 0; i < blobMajorCells.Length; i++)
-            {
-                writer.Encode(blobMajorCells[i]);
-            }
-
-            return;
-        }
-
-        int blobCount = blobMajorCells.Length / cellIndexCount;
-        for (int cellIndex = 0; cellIndex < cellIndexCount; cellIndex++)
-        {
-            for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
-            {
-                writer.Encode(blobMajorCells[blobIndex * cellIndexCount + cellIndex]);
-            }
+            writer.Encode(cells[i]);
         }
     }
 
-    private byte[][] ToBlobMajor(byte[][] indexMajorCells, int cellIndexCount)
+    private void ValidateCellGroup(byte[][] cells, int cellIndexCount)
     {
-        if (cellIndexCount == 0 || indexMajorCells.Length == 0 || indexMajorCells.Length % cellIndexCount != 0)
+        if (cellIndexCount == 0 || cells.Length == 0 || cells.Length % cellIndexCount != 0)
         {
             throw new RlpException($"Cell group in {nameof(CellsMessage72)} is inconsistent with its cell mask.");
         }
 
-        int blobCount = indexMajorCells.Length / cellIndexCount;
+        int blobCount = cells.Length / cellIndexCount;
         if (blobCount > _maxBlobsPerTransaction)
         {
             throw new RlpLimitException($"Too many blobs in {nameof(CellsMessage72)} cell group: {blobCount}.");
         }
-
-        if (blobCount == 1 || cellIndexCount == 1)
-        {
-            return indexMajorCells;
-        }
-
-        byte[][] blobMajorCells = new byte[indexMajorCells.Length][];
-        for (int cellIndex = 0; cellIndex < cellIndexCount; cellIndex++)
-        {
-            for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
-            {
-                blobMajorCells[blobIndex * cellIndexCount + cellIndex] = indexMajorCells[cellIndex * blobCount + blobIndex];
-            }
-        }
-
-        return blobMajorCells;
     }
 
     private static int GetMaxCellsPerTransaction(ISpecProvider specProvider)
