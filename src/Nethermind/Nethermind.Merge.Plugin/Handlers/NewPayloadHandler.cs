@@ -335,9 +335,15 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // The parent may have been answered VALID a moment ago and still be committing: its processed flag and its
         // state land when it leaves the processing queue. Judged before that, this block would be taken for one whose
         // parent we do not have, inserted for beacon sync and answered SYNCING. Nothing in flight returns at once.
-        if (!await WriteReceivedIfWaiting(receivedLine, WaitForParentCommitAsync(parentHeader, deadline))) return NewPayloadV1Result.Syncing;
+        Hash256 parentHash = parentHeader.GetOrCalculateHash();
+        BlockInfo? parentBlockInfo = _blockTree.GetInfo(parentHeader.Number, parentHash).Info;
+        if (parentBlockInfo is { WasProcessed: false })
+        {
+            if (!await WriteReceivedIfWaiting(receivedLine, WaitForParentCommitAsync(parentHeader, parentHash, deadline))) return NewPayloadV1Result.Syncing;
+            parentBlockInfo = _blockTree.GetInfo(parentHeader.Number, parentHash).Info;
+        }
 
-        if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
+        if (!ShouldProcessBlock(block, parentHeader, parentBlockInfo, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
             // Inserting a canonical block as a beacon block would arm the beacon pivot behind the head, and
             // validating it first could record a failure that marks every descendant, the head included, INVALID.
@@ -658,11 +664,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     ///
     /// Scenario 2 proved to be quite common on testnets which produced multiple transition blocks.
     /// </remarks>
-    private bool ShouldProcessBlock(Block block, BlockHeader parent, out ProcessingOptions processingOptions)
+    private bool ShouldProcessBlock(Block block, BlockHeader parent, BlockInfo? parentBlockInfo, out ProcessingOptions processingOptions)
     {
         processingOptions = _defaultProcessingOptions;
 
-        BlockInfo? parentBlockInfo = _blockTree.GetInfo(parent.Number, parent.GetOrCalculateHash()).Info;
         bool parentProcessed = parentBlockInfo is { WasProcessed: true } && _stateReader.HasStateForBlock(parent);
 
         // During the transition we can have a case of NP built over a transition block that wasn't processed.
@@ -723,11 +728,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// Waits, within the request's budget, for a parent that is still in the processing queue; <c>false</c> when it
     /// did not leave in time, which is answered SYNCING as an unprocessed parent always was.
     /// </summary>
-    private async Task<bool> WaitForParentCommitAsync(BlockHeader parent, long deadline)
+    private async Task<bool> WaitForParentCommitAsync(BlockHeader parent, Hash256 parentHash, long deadline)
     {
-        Hash256 parentHash = parent.GetOrCalculateHash();
-        if (_blockTree.GetInfo(parent.Number, parentHash).Info is not { WasProcessed: false }) return true;
-
         bool inTime = await _processingQueue.WaitForExecutedCopyAsync(parentHash, RemainingBudget(deadline), _timeProvider);
         if (!inTime && _logger.IsDebug) _logger.Debug($"Parent {parent.ToString(BlockHeader.Format.Short)} did not leave the processing queue within the request's budget. Assume Syncing.");
         return inTime;
