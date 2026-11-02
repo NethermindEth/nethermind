@@ -68,6 +68,7 @@ jobs:
         working-directory: d
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+          APP_USER: ${{ steps.gh-app.outputs.app-slug }}[bot]
           # Passed through the environment so that a dispatch input cannot be
           # interpolated into the script of a step holding the app token
           VERSION: ${{ github.event_name == 'release' && format('v{0}', github.event.release.tag_name) || inputs.ref }}
@@ -81,8 +82,9 @@ jobs:
           fi
 
           head_branch=docs/auto-update-${{ github.run_number }}-${{ github.run_attempt }}
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          app_user_id=$(gh api "/users/$APP_USER" --jq .id)
+          git config user.name "$APP_USER"
+          git config user.email "$app_user_id+$APP_USER@users.noreply.github.com"
           git checkout -b $head_branch
           git commit -m "docs: generated from $VERSION"
           git push origin $head_branch
