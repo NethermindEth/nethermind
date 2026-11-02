@@ -80,14 +80,13 @@ public class TransactionsMessageSerializerTests
         Transaction transaction = Build.A.Transaction.WithType(type).WithAuthorizationCodeIfAuthorizationListTx().SignedAndResolved().TestObject;
         using TransactionsMessage message = new(new ArrayPoolList<Transaction>(2) { transaction, transaction });
 
-        int length = serializer.GetLength(message, out int contentLength);
+        int length = serializer.GetLength(message);
         IByteBuffer buffer = Unpooled.Buffer();
         serializer.Serialize(buffer, message);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(contentLength, Is.EqualTo(2 * TxDecoder.Instance.GetLength(transaction, RlpBehaviors.InMempoolForm)));
-            Assert.That(length, Is.EqualTo(Rlp.LengthOfSequence(contentLength)));
+            Assert.That(length, Is.EqualTo(Rlp.LengthOfSequence(2 * TxDecoder.Instance.GetLength(transaction, RlpBehaviors.InMempoolForm))));
             Assert.That(buffer.ReadableBytes, Is.EqualTo(length));
         }
     }
@@ -110,7 +109,7 @@ public class TransactionsMessageSerializerTests
         transaction.SenderAddress = null;
 
         using TransactionsMessage message = new(new ArrayPoolList<Transaction>(2) { transaction, transaction });
-        SerializerTester.TestZero(serializer, message, "e2d08203e8640a80822710830405061b0102d08203e8640a80822710830405061b0102");
+        SerializerTester.Test(serializer, message, "e2d08203e8640a80822710830405061b0102d08203e8640a80822710830405061b0102");
     }
 
     [Test]
@@ -131,7 +130,7 @@ public class TransactionsMessageSerializerTests
         transaction.SenderAddress = null;
 
         using TransactionsMessage message = new(new ArrayPoolList<Transaction>(2) { transaction, transaction });
-        SerializerTester.TestZero(serializer, message, "f84ae48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102e48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102");
+        SerializerTester.Test(serializer, message, "f84ae48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102e48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102");
     }
 
     [Test]
@@ -140,7 +139,7 @@ public class TransactionsMessageSerializerTests
         TransactionsMessageSerializer serializer = new();
         using TransactionsMessage message = new(ArrayPoolList<Transaction>.Empty());
 
-        SerializerTester.TestZero(serializer, message, EthSerializerGoldens.EmptyListRlp);
+        SerializerTester.Test(serializer, message, EthSerializerGoldens.EmptyListRlp);
     }
 
     [Test]
@@ -159,7 +158,7 @@ public class TransactionsMessageSerializerTests
     [TestCaseSource(nameof(GetTransactionMessages))]
     public void Should_pass_roundtrip(TransactionsMessage transactionsMessage)
     {
-        SerializerTester.TestZero(
+        SerializerTester.Test(
             new TransactionsMessageSerializer(),
             transactionsMessage);
         transactionsMessage.Dispose();

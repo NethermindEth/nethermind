@@ -1053,7 +1053,8 @@ public partial class ForwardHeaderProviderTests
             }
 
             using BlockBodiesMessage message = new(headers);
-            byte[] messageSerialized = _bodiesSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_bodiesSerializer.GetLength(message)];
+            _bodiesSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
         }
 
@@ -1074,7 +1075,8 @@ public partial class ForwardHeaderProviderTests
             }
 
             using BlockHeadersMessage message = new(headers.ToPooledList());
-            byte[] messageSerialized = _headersSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_headersSerializer.GetLength(message)];
+            _headersSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
         }
 
@@ -1090,7 +1092,8 @@ public partial class ForwardHeaderProviderTests
             }
 
             using ReceiptsMessage message = new(receipts.ToPooledList());
-            byte[] messageSerialized = _receiptsSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_receiptsSerializer.GetLength(message)];
+            _receiptsSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
         }
 
@@ -1202,7 +1205,8 @@ public partial class ForwardHeaderProviderTests
             }
 
             using BlockHeadersMessage message = new(headers.ToPooledList());
-            byte[] messageSerialized = _headersSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_headersSerializer.GetLength(message)];
+            _headersSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
         }
 
@@ -1275,7 +1279,8 @@ public partial class ForwardHeaderProviderTests
             }
 
             using BlockBodiesMessage message = new(blockBodies);
-            byte[] messageSerialized = _bodiesSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_bodiesSerializer.GetLength(message)];
+            _bodiesSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
         }
     }
