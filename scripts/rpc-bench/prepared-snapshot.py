@@ -665,7 +665,7 @@ def prepare(args):
                     'allowed_images': [BASELINE, CANDIDATE], 'compatibility_status': 'baseline-preparation-only; both-image children still required',
                     'flags': FLAGS, 'options': OPTIONS, 'mount': mount, 'source_tripwire': source_after,
                     'prepared_tripwire': fingerprint(root / 'merged'), 'tripwire_scope': 'metadata plus CURRENT/IDENTITY/MANIFEST/OPTIONS hashes; NOT full content hash',
-                    'oracle_sha256': digest(Path(args.oracle).read_bytes()), 'evidence_sha256': {p.name: digest(p.read_bytes()) for p in output.iterdir() if p.is_file()},
+                    'oracle_sha256': digest(Path(args.oracle).read_bytes()),
                     'completion': 'fresh positive ordered log markers; pinned completion write precedes success log; clean exit0 or configured SIGINT exit130; All DBs closed and Nethermind is shut down; noOOM/error',
                     'retention': 'user-authorized persistent fixture; manual retirement only; do not auto-delete at deadline'}
         if persistence:
@@ -677,6 +677,7 @@ def prepare(args):
         monitoring.set()
         watcher.join(timeout=30)
         pressure()
+        manifest['evidence_sha256'] = {p.name: digest(p.read_bytes()) for p in output.iterdir() if p.is_file()}
         shutil.copytree(output, root / ('recovery-evidence-' + os.environ['GITHUB_RUN_ID'] if recovering else 'evidence'))
         atomic(root / 'ready.json', manifest)
         atomic(output / 'READY.json', {'root': str(root), 'manifest_sha256': digest((root / 'ready.json').read_bytes()), 'manifest': manifest})

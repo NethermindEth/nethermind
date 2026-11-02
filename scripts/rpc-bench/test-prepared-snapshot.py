@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
+from contextlib import ExitStack
 import importlib.util
 import json
 import os
@@ -110,6 +111,54 @@ class PreparedTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text()), {'status': 'ready'})
             self.assertFalse(path.with_suffix('.tmp').exists())
             self.assertEqual(len(p.digest(path.read_bytes())), 64)
+
+    def test_seal_hashes_final_disk_sample_after_watchdog_stops(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, GITHUB_RUN_ID='123', GITHUB_SHA='sha'):
+            parent = Path(directory).resolve()
+            source = parent / 'source'
+            source.mkdir()
+            retained = parent / 'retained'
+            retained.mkdir()
+            output = parent / 'output'
+            args = SimpleNamespace(action='prepare', finish='2026-11-02T23:57:04Z', output=str(output),
+                                   oracle=Path(__file__).with_name('prepared-snapshot-oracle.json'))
+            text = ('Adding transaction hashes to stored receipts, blocks 1 to 20.\n'
+                    'Transaction hashes added to stored receipts of 20 blocks, 40 bytes added.\n'
+                    'All DBs closed\nNethermind is shut down')
+            def overlay(lower, root):
+                for name in ('upper', 'work', 'merged'):
+                    (root / name).mkdir()
+            def command(*arguments, **kwargs):
+                return '1 upper' if arguments[0] == 'du' else ''
+            watcher = SimpleNamespace(join=lambda **kwargs: None)
+            monitoring = SimpleNamespace(set=lambda: None)
+            with ExitStack() as stack:
+                for context in [
+                    patch.object(p, 'SOURCE', source), patch.object(p, 'PARENT', parent / 'old'),
+                    patch.object(p, 'RETAINED_PARENT', retained), patch.object(p.time, 'time', return_value=0),
+                    patch.object(p, 'verify_persistence', return_value={'synthetic': True}),
+                    patch.object(p, 'space', return_value={'available_bytes': 1024 * 2**30}),
+                    patch.object(p.os, 'statvfs', return_value=SimpleNamespace(f_bavail=1024 * 2**30, f_frsize=1)),
+                    patch.object(p, 'run', side_effect=command), patch.object(p, 'toy', return_value={}),
+                    patch.object(p, 'overlay', side_effect=overlay),
+                    patch.object(p, 'fingerprint', return_value=p.EXPECTED_SOURCE_TRIPWIRE),
+                    patch.object(p, 'start_watchdog', return_value=(monitoring, watcher)),
+                    patch.object(p, 'inspect', return_value={'Config': {'Image': p.BASELINE, 'Cmd': p.FLAGS, 'StopSignal': 'SIGINT'}, 'State': {'Running': True}}),
+                    patch.object(p, 'logs', return_value=text), patch.object(p, 'rpc', return_value='0x1'),
+                    patch.object(p, 'identity', return_value={'synthetic': True}), patch.object(p, 'validate_responses'),
+                    patch.object(p, 'stop', return_value=text), patch.object(p, 'mounted', return_value={'options': 'ro'}),
+                ]:
+                    stack.enter_context(context)
+                p.prepare(args)
+            publication = json.loads((output / 'READY.json').read_text())
+            manifest = publication['manifest']
+            root = Path(manifest['root'])
+            self.assertEqual(publication['manifest_sha256'], p.digest((root / 'ready.json').read_bytes()))
+            self.assertEqual(len(json.loads((output / 'disk.json').read_text())), 2)
+            for name, expected in manifest['evidence_sha256'].items():
+                with self.subTest(name=name):
+                    self.assertEqual(p.digest((output / name).read_bytes()), expected)
+                    self.assertEqual(p.digest((root / 'evidence' / name).read_bytes()), expected)
 
     def test_guard_rejects_foreign_paths_and_symlink(self):
         for path in (Path('/'), Path('/mnt/sda/nethermind-flat-25490000'), p.PARENT / 'foreign', p.PARENT / '../getlogs-2'):
