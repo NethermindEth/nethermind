@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Settings shared by every zkVM guest (zisk, sp1, openvm); each guest's Makefile
+# Settings shared by every zkVM guest (zisk, sp1, openvm, airbender); each guest's Makefile
 # adds only what differs: the libc, the runtime package, the harness and the
 # exit protocol. Shared rather than copied because they have to agree - cycle
 # counts are comparable across targets only if the same closure is built by the
@@ -37,7 +37,7 @@ COMMA := ,
 # the nine stateless-tests blocks, and gives ~6.5% smaller binaries.
 BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:dd05dd8af0a14065a9974492007dd5e568acfecc@sha256:34235a4a8050b171dd03562a875752c08db5b6fdb33bb505be1eeeb7c4ea19be
 
-# Every target decodes rv64im only and reads the whole .text up front, so even
+# Every rv64 target decodes rv64im only and reads the whole .text up front, so even
 # unreachable F/D/C/A instructions reject the guest - fail at build time instead.
 # Floating point in the IL is not an error: the guest is soft-float (lp64), and
 # --error-on-float-binary checks that no F/D instruction is in the image.
@@ -69,7 +69,7 @@ BFLAT ?= bflat
 BFLAT_DOCKER_ARGS ?=
 
 # Main, the ZkvmThrow export and the failure protocol are one file shared by all
-# three guests; each guest's Program.cs supplies only WriteOutput. bflat compiles
+# guests; each guest's Program.cs supplies only WriteOutput. bflat compiles
 # sources, not the managed assembly, so the shared file has to be mounted and
 # named on its command line - the csproj <Compile Include> only covers the
 # solution build.

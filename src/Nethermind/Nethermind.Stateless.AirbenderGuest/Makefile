@@ -39,7 +39,7 @@ ISA_GATES :=
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 
-build: require-toolchain
+dotnet-build: require-toolchain
 
 require-toolchain:
 	@[ -n "$(BFLAT_DIR)" ] && [ -x "$(BFLAT_DIR)/bflat" ] || { echo "error: BFLAT_DIR must name a bflat build with the Airbender layout - see README.md" >&2; exit 1; }
