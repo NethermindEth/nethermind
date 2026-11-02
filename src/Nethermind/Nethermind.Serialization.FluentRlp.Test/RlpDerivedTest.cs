@@ -299,11 +299,11 @@ public class RlpDerivedTest
     public void LengthConverterWithWrongFixedLength()
         => Assert.That(static () => Rlp.Write<FixedEntryRlpConverter, FixedEntry>(new FixedEntry(new byte[19], [])), Throws.InvalidOperationException);
 
-    // The integer converter would strip the leading zeros of a small key.
+    // The integer converter would strip the leading zeros of a small key. Different limbs check their order.
     [Test]
-    public void FixedLengthUInt256()
+    public void FixedLengthUInt256([Values] bool differentLimbs)
     {
-        StorageSlot slot = new(UInt256.One, UInt256.One);
+        StorageSlot slot = new(differentLimbs ? new UInt256(1, 2, 3, 4) : UInt256.One, UInt256.One);
         byte[] rlp = Rlp.Write<StorageSlotRlpConverter, StorageSlot>(slot);
 
         using (Assert.EnterMultipleScope())
@@ -353,15 +353,26 @@ public class RlpDerivedTest
         Assert.That(() => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadFixedEntry()), Throws.TypeOf<RlpReaderException>());
     }
 
+    // A fixed-length UInt256 reads through ReadBytes(int), which checks prefix and length with one compare.
+    [TestCase("e29f111111111111111111111111111111111111111111111111111111111111110102", TestName = "Fixed-length key one byte short")]
+    [TestCase("e4a11111111111111111111111111111111111111111111111111111111111111111110102", TestName = "Fixed-length key one byte long")]
+    public void StorageSlotRejectsOtherKeyLengths(string hex)
+    {
+        byte[] rlp = Convert.FromHexString(hex);
+
+        Assert.That(() => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadStorageSlot()), Throws.TypeOf<RlpReaderException>());
+    }
+
     [TestCase("public record Account(int Nonce) { public int Balance { get; init; } }", "RLP0002", TestName = "Settable property in the body")]
     [TestCase("public record Account(int Nonce) { public int Balance; }", "RLP0002", TestName = "Field in the body")]
+    [TestCase("public record Account(int Nonce) { public int Balance { get; } public Account(int nonce, int balance) : this(nonce) => Balance = balance; }", "RLP0002", TestName = "Get-only property set in another constructor")]
     [TestCase("public record Account { public int Balance { get; init; } }", "RLP0003", TestName = "No primary constructor")]
     [TestCase("public record Wrapper<T>(T Value);", "RLP0003", TestName = "Generic record")]
     [TestCase("public record Outer(int A) { [RlpSerializable] public record Inner(int B); }", "RLP0003", TestName = "Nested record")]
     [TestCase("[RlpSerializable(RlpRepresentation.Newtype)] public record Pair(int A, int B);", "RLP0001", TestName = "Newtype with two parameters")]
     [TestCase("[RlpSerializable(length: 20)] public record Number(int A);", "RLP0005", TestName = "Length without a byte array")]
     [TestCase("public record Triple((int, int, int) A);", "RLP0004", TestName = "Tuple of three")]
-    [TestCase("public record Account(int Nonce) { public int Twice => Nonce * 2; public const int Size = 1; public int Nonce { get; init; } = Nonce; }", null, TestName = "Derived and redeclared members")]
+    [TestCase("public record Account(int Nonce) { public int Twice => Nonce * 2; public int Cached { get; } = Nonce * 2; public const int Size = 1; public int Nonce { get; init; } = Nonce; }", null, TestName = "Derived and redeclared members")]
     [TestCase("public partial record Account(int Nonce); public partial record Account { public int Balance { get; init; } }", "RLP0002", TestName = "Settable property in another part")]
     [TestCase("public record Account(int Nonce) { public int Nonce { get; init; } = Nonce * 2; }", "RLP0002", TestName = "Redeclared parameter property with another value")]
     [TestCase("public record Base { public int Balance { get; init; } } [RlpSerializable] public record Account(int Nonce) : Base;", "RLP0003", TestName = "Derived record")]
@@ -392,7 +403,11 @@ public class RlpDerivedTest
 
         if (expectedId is null)
         {
-            Assert.That(compilation.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ids, Is.Empty);
+                Assert.That(compilation.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+            }
         }
         else
         {

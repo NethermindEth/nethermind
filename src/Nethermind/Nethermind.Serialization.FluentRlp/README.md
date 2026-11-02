@@ -44,7 +44,7 @@ cannot encode without data loss:
 | Rule    | Shape                                                                     |
 |---------|---------------------------------------------------------------------------|
 | RLP0001 | `Newtype` representation with other than one parameter                   |
-| RLP0002 | Settable property or instance field that is not a constructor parameter   |
+| RLP0002 | Settable or uninitialized auto-property, or instance field, that is not a constructor parameter |
 | RLP0003 | Generic, nested or derived record, or a record without primary constructor|
 | RLP0004 | Unsupported parameter type, for example a tuple of three                  |
 | RLP0005 | `length` on a record that is not a `Newtype` over a byte array            |
