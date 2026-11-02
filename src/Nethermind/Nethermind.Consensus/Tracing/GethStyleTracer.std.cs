@@ -275,14 +275,19 @@ public class GethStyleTracer(
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
-        Block? block = blockParameter is { Type: BlockParameterType.BlockHash }
-            ? blockTree.Head is { } head && head.Hash == blockParameter.BlockHash
-                ? head
-                : blockTree.FindBlock(blockParameter.BlockHash!,
-                    BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing
-                    | (blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None))
-            : blockTree.FindBlock(blockParameter);
+        Block? block = FindBlockForTrace(blockParameter);
         return TraceBlockImpl(block, options, cancellationToken, writer, pipeWriter);
+    }
+
+    private Block? FindBlockForTrace(BlockParameter selector)
+    {
+        if (selector.Type != BlockParameterType.BlockHash) return blockTree.FindBlock(selector);
+        if (blockTree.Head is { } head && head.Hash == selector.BlockHash) return head;
+
+        const BlockTreeLookupOptions ReadOnlyLookupOptions = BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
+        BlockTreeLookupOptions lookupOptions = ReadOnlyLookupOptions;
+        if (selector.RequireCanonical) lookupOptions |= BlockTreeLookupOptions.RequireCanonical;
+        return blockTree.FindBlock(selector.BlockHash!, lookupOptions);
     }
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>

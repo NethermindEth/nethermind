@@ -1924,13 +1924,9 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase("head", false)]
-    [TestCase("head", true)]
-    [TestCase("canonical", false)]
-    [TestCase("canonical", true)]
-    [TestCase("orphan", false)]
-    [TestCase("orphan", true)]
-    public async Task Debug_traceBlockByHash_shared_lookup_preserves_canonical_and_head_selection(string targetKind, bool requireCanonical)
+    [Test]
+    public async Task Debug_traceBlockByHash_shared_lookup_preserves_canonical_and_head_selection(
+        [Values("head", "canonical", "orphan")] string targetKind, [Values] bool requireCanonical)
     {
         IGethStyleTracer? tracer = null;
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
