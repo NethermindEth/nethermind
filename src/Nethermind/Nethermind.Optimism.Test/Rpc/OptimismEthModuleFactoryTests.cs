@@ -35,8 +35,10 @@ public class OptimismEthModuleFactoryTests
         TaskCompletionSource firstArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource secondArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource releaseFirst = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseSecond = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int sends = 0;
 
+        // Each send is held before it reaches the pool until the test releases it.
         async ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)> Hold()
         {
             if (Interlocked.Increment(ref sends) == 1)
@@ -47,6 +49,7 @@ public class OptimismEthModuleFactoryTests
             else
             {
                 secondArrived.TrySetResult();
+                await releaseSecond.Task;
             }
 
             return (TestItem.KeccakA, AcceptTxResult.Accepted);
@@ -88,8 +91,8 @@ public class OptimismEthModuleFactoryTests
         Task<ResultWrapper<Hash256>> first = firstModule.eth_sendTransaction(Request());
         await firstArrived.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Task<ResultWrapper<Hash256>> second = factory.Create().eth_sendTransaction(Request());
-        bool secondWaited = OptimismEthRpcModuleTest.SecondSendWaitsForTheFirst(firstModule.NonceTracker, TestItem.AddressC, secondArrived.Task);
-        releaseFirst.SetResult();
+        (bool secondWaited, bool secondHeldTheLock) = await OptimismEthRpcModuleTest.ReleaseTwoSendsInTurn(firstModule.NonceTracker,
+            TestItem.AddressC, releaseFirst, first, secondArrived.Task, releaseSecond);
         ResultWrapper<Hash256> firstResult = await first.WaitAsync(TimeSpan.FromSeconds(30));
         ResultWrapper<Hash256> secondResult = await second.WaitAsync(TimeSpan.FromSeconds(30));
 
@@ -98,6 +101,7 @@ public class OptimismEthModuleFactoryTests
             Assert.That(firstResult.Result.ResultType, Is.EqualTo(ResultType.Success), firstResult.Result.Error);
             Assert.That(secondResult.Result.ResultType, Is.EqualTo(ResultType.Success), secondResult.Result.Error);
             Assert.That(secondWaited, Is.True, "instances of one factory must share the lock of an account");
+            Assert.That(secondHeldTheLock, Is.True, "the second send must hold the shared lock when it is sent");
         }
     }
 }

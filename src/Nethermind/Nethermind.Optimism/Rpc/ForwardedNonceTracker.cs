@@ -51,11 +51,13 @@ public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader
         }
     }
 
-    // Sends from the account that hold its lock or wait on it.
-    internal int SenderLockUsers(Address sender)
+    // Sends from the account that hold its lock or wait on it, and whether one of them holds it.
+    internal (int Users, bool Held) SenderLockState(Address sender)
     {
         lock (_gate)
-            return _senderLocks.TryGetValue(sender, out SenderLock? senderLock) ? senderLock.Users : 0;
+            return _senderLocks.TryGetValue(sender, out SenderLock? senderLock)
+                ? (senderLock.Users, senderLock.Semaphore.CurrentCount == 0)
+                : (0, false);
     }
 
     /// <summary>

@@ -350,14 +350,27 @@ public class OptimismEthRpcModuleTest
     }
 
     /// <summary>
-    /// Waits until a second send from <paramref name="sender"/> waits on the lock of the account behind the first, which the
-    /// test holds at the pool or the sequencer, or until it gets there itself, as it does when the sends are not serialised.
-    /// The timeout only keeps a broken implementation from hanging the test.
+    /// Releases two sends from <paramref name="sender"/> that the test holds at the pool or the sequencer: the first, which
+    /// is held there when this is called, and then the second. The timeouts only keep a broken implementation from hanging
+    /// the test.
     /// </summary>
-    /// <returns>Whether the second send waits on the lock.</returns>
-    internal static bool SecondSendWaitsForTheFirst(ForwardedNonceTracker nonceTracker, Address sender, Task secondArrived) =>
-        SpinWait.SpinUntil(() => nonceTracker.SenderLockUsers(sender) == 2 || secondArrived.IsCompleted, TimeSpan.FromSeconds(10))
-        && !secondArrived.IsCompleted;
+    /// <returns>
+    /// Whether the account's lock counted the second send as a user while the first still held the lock, before the second
+    /// reached the pool or the sequencer; and whether the second held the lock when it got there, after the first was done.
+    /// </returns>
+    internal static async Task<(bool Waited, bool HeldTheLock)> ReleaseTwoSendsInTurn(ForwardedNonceTracker nonceTracker,
+        Address sender, TaskCompletionSource releaseFirst, Task first, Task secondArrived, TaskCompletionSource releaseSecond)
+    {
+        bool countedWhileFirstHeld = SpinWait.SpinUntil(
+            () => nonceTracker.SenderLockState(sender) == (2, true) || secondArrived.IsCompleted, TimeSpan.FromSeconds(10));
+        bool waited = countedWhileFirstHeld && !secondArrived.IsCompleted;
+        releaseFirst.SetResult();
+        await first.WaitAsync(TimeSpan.FromSeconds(30));
+        await secondArrived.WaitAsync(TimeSpan.FromSeconds(30));
+        bool heldTheLock = nonceTracker.SenderLockState(sender) == (1, true);
+        releaseSecond.SetResult();
+        return (waited, heldTheLock);
+    }
 
     private static async Task<TestRpcBlockchain> BuildSendRpc(IJsonRpcClient? sequencer, ITxSender? txSender = null, HeadState? headState = null)
     {
@@ -669,15 +682,17 @@ public class OptimismEthRpcModuleTest
         TaskCompletionSource firstArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource secondArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource releaseFirst = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseSecond = new(TaskCreationOptions.RunContinuationsAsynchronously);
         List<ulong> sentToPool = [];
         TestRpcBlockchain? rpcBlockchain = null;
 
-        // The first send is held at the sequencer, or before it reaches the pool, until the test releases it.
+        // Each send is held at the sequencer, or before it reaches the pool, until the test releases it.
         async Task Hold(int index)
         {
             if (index > 0)
             {
                 secondArrived.TrySetResult();
+                await releaseSecond.Task;
                 return;
             }
 
@@ -714,8 +729,8 @@ public class OptimismEthRpcModuleTest
         await firstArrived.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Task<string> second = SendFromC(rpcBlockchain);
         // Unless the sends are serialised, the second one is filled and sent while the first is still on its way.
-        bool secondWaited = SecondSendWaitsForTheFirst(((OptimismEthRpcModule)rpcBlockchain.EthRpcModule).NonceTracker, TestItem.AddressC, secondArrived.Task);
-        releaseFirst.SetResult();
+        (bool secondWaited, bool secondHeldTheLock) = await ReleaseTwoSendsInTurn(((OptimismEthRpcModule)rpcBlockchain.EthRpcModule).NonceTracker,
+            TestItem.AddressC, releaseFirst, first, secondArrived.Task, releaseSecond);
         AssertSucceeded(await first);
         AssertSucceeded(await second);
 
@@ -725,6 +740,7 @@ public class OptimismEthRpcModuleTest
         using (Assert.EnterMultipleScope())
         {
             Assert.That(secondWaited, Is.True, "the second send must wait for the first");
+            Assert.That(secondHeldTheLock, Is.True, "the second send must hold the lock when it is sent");
             Assert.That(sent, Is.EqualTo(new ulong[] { 1, 2 }), "concurrent sends must not share a nonce");
         }
     }
