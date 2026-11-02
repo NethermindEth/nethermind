@@ -28,11 +28,13 @@ if (args.Length != 2)
 var baseRounds = LoadRounds(args[0]);
 var headRounds = LoadRounds(args[1]);
 var rounds = Math.Min(baseRounds.Count, headRounds.Count);
+// A round a side did not finish, as when the job is cancelled, has no results to pair.
+var pairedRounds = Enumerable.Range(0, rounds).Count(round => baseRounds[round].Count > 0 && headRounds[round].Count > 0);
 
 Console.WriteLine("## Network benchmarks");
 Console.WriteLine();
 Console.WriteLine($"Runner `{Env("RUNNER_NAME")}`, base `{Short(Env("BASE_SHA"))}` ({Env("BASE_OUTCOME")}), " +
-    $"head `{Short(Env("HEAD_SHA"))}` ({Env("HEAD_OUTCOME")}), {rounds} round{(rounds == 1 ? "" : "s")}.");
+    $"head `{Short(Env("HEAD_SHA"))}` ({Env("HEAD_OUTCOME")}), {pairedRounds} paired round{(pairedRounds == 1 ? "" : "s")}.");
 Console.WriteLine();
 Console.WriteLine("Each round runs the base and the head next to each other. Δ is the mean of the rounds' changes in median time, " +
     $"with its 99% confidence interval from a paired t-test across the rounds, which needs at least two. A change is significant (✓) " +
