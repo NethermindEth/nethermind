@@ -225,7 +225,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary><paramref name="table"/> in the form the dispatch chain carries it.</summary>
         /// <remarks>
-        /// Where <see cref="StrictAlignmentFlag"/> is on, the chain carries the table's address in words. The address formed back from it
+        /// Where <see cref="StrictAlignmentFlag"/> is on, the chain carries the table's address in entries. The address formed back from it
         /// is a shift by <see cref="TableWordShift"/>, which the JIT proves aligned, so each handler load needs neither an alignment test nor an <c>andi</c> to
         /// prove it, as a table pointer would. Read the table only through <see cref="HandlerAt"/> and <see cref="FollowerHandlerAt"/>,
         /// or as SP1's <c>mul.S</c> does.
@@ -237,7 +237,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return StrictAlignmentFlag.IsActive ? (nint*)((nuint)table >> TableWordShift) : table;
         }
 
-        /// <summary>The log2 of the size of a table entry, which converts between its address in bytes and in words.</summary>
+        /// <summary>The log2 of the size of a table entry, which converts between its address in bytes and in entries.</summary>
         private static int TableWordShift
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
