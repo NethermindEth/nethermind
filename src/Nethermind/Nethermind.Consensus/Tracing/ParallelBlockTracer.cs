@@ -417,6 +417,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         private sealed class QueuedJob
         {
             private readonly TaskCompletionSource _done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            private readonly long _request = ExternalRequest.Current;
             private readonly CancellationTokenRegistration _registration;
             private Action? _action;
             private int _state;
@@ -445,6 +446,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                 }
                 try
                 {
+                    using ExternalRequest.Scope request = ExternalRequest.Enter(_request);
                     Interlocked.Exchange(ref _action, null)!();
                     _done.SetResult();
                 }

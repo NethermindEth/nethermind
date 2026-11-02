@@ -166,7 +166,7 @@ public class FrameCodeRunnerTests : VirtualMachineTestsBase
     /// <summary>Reads the frame through the public accessors on every offer, adds opcodes, and declines.</summary>
     private sealed class AccessorRunner(int addedOpCodes) : FrameCodeRunner<EthereumGasPolicy>
     {
-        public readonly List<(nint ProgramCounter, nint Head, byte[] BottomWord, byte[] Input)> Seen = [];
+        public readonly List<(nint ProgramCounter, nint Head, byte[] BottomWord, byte[] Input, long Request)> Seen = [];
 
         protected internal override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
             scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
@@ -176,7 +176,7 @@ public class FrameCodeRunnerTests : VirtualMachineTestsBase
                 : [];
             byte[] input = MemoryMarshal.CreateReadOnlySpan(
                 ref Unsafe.AsRef(in stack.InputDataStart), (int)stack.InputDataSize).ToArray();
-            Seen.Add((programCounter, stack.Head, bottom, input));
+            Seen.Add((programCounter, stack.Head, bottom, input, RequestId));
             vm.AddOpCodes(addedOpCodes);
             return Declined;
         }
@@ -190,12 +190,16 @@ public class FrameCodeRunnerTests : VirtualMachineTestsBase
         Outcome interpreted = Run(code, input: input, bare: true);
         AccessorRunner accessor = new(addedOpCodes: 5);
         _runner.Inner = accessor;
+        long request = ExternalRequest.NewId();
 
-        Outcome outcome = Run(code, input: input);
+        Outcome outcome;
+        using (ExternalRequest.Enter(request))
+            outcome = Run(code, input: input);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(FrameCodeRunner<EthereumGasPolicy>.ContractVersion, Is.EqualTo(1));
+            Assert.That(FrameCodeRunner<EthereumGasPolicy>.ContractVersion, Is.EqualTo(2));
+            Assert.That(accessor.Seen.Select(static seen => seen.Request), Is.All.EqualTo(request), "every frame of the request reads its id");
             Assert.That(accessor.Seen.Count, Is.EqualTo(3), "the caller's entry, the callee's entry, and the caller's resume");
             Assert.That(accessor.Seen[0].Input, Is.EqualTo(input), "the top-level frame's input is the call data");
             Assert.That(accessor.Seen[1].Input, Is.Empty, "the callee was called with no input");

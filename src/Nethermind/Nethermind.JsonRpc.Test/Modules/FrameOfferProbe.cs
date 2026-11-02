@@ -22,8 +22,8 @@ public sealed class FrameOfferProbe : FrameCodeRunner<EthereumGasPolicy>
     private int _loads;
 
     /// <summary>One offer: the account the frame executes as - the called account, or the calling frame's own under
-    /// DELEGATECALL and CALLCODE - and the machine that offered it.</summary>
-    public readonly record struct Offer(Address Account, object Machine);
+    /// DELEGATECALL and CALLCODE - the machine that offered it, and the external request it ran for.</summary>
+    public readonly record struct Offer(Address Account, object Machine, long Request);
 
     public int Offers => _offers.Count;
 
@@ -35,6 +35,9 @@ public sealed class FrameOfferProbe : FrameCodeRunner<EthereumGasPolicy>
     /// <summary>The machines that made the offers recorded so far.</summary>
     public HashSet<object> Machines() => _offers.Select(static offer => offer.Machine).ToHashSet(ReferenceEqualityComparer.Instance);
 
+    /// <summary>The external requests the offers recorded so far ran for, each once.</summary>
+    public long[] Requests() => _offers.Select(static offer => offer.Request).Distinct().ToArray();
+
     public void Clear() => _offers.Clear();
 
     /// <summary>A query module that attaches this probe to the machines of the environments of <paramref name="appliesTo"/>.</summary>
@@ -43,7 +46,7 @@ public sealed class FrameOfferProbe : FrameCodeRunner<EthereumGasPolicy>
     protected override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
         scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
     {
-        _offers.Enqueue(new Offer(vm.VmState.Env.ExecutingAccount, vm));
+        _offers.Enqueue(new Offer(vm.VmState.Env.ExecutingAccount, vm, RequestId));
         return Declined;
     }
 
