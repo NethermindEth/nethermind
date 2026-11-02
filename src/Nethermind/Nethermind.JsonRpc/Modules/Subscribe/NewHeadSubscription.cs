@@ -18,7 +18,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IBlockTree _blockTree;
         private readonly bool _includeTransactions;
         private readonly NewHeadPayloadCache _payloads;
-        private readonly Func<object?, Task> _send;
+        private readonly Func<Block, Task> _send;
 
         [ConstructorWithSideEffect]
         public NewHeadSubscription(
@@ -53,9 +53,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e) => ScheduleAction(_send, e.Block);
 
-        private async Task Send(object? block)
+        private async Task Send(Block block)
         {
-            using JsonRpcResult result = CreateSubscriptionMessage(_payloads.Get((Block)block!, _includeTransactions));
+            using JsonRpcResult result = CreateSubscriptionMessage(_payloads.Get(block, _includeTransactions));
             await JsonRpcDuplexClient.SendJsonRpcResult(result);
             if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
         }

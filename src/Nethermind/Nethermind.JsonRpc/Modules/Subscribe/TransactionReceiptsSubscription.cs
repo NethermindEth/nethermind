@@ -24,7 +24,7 @@ public class TransactionReceiptsSubscription : Subscription
     private readonly ISpecProvider _specProvider;
     private readonly HashSet<ValueHash256>? _filterHashes;
     private readonly ReceiptsEventPayloadCache<HashSet<ValueHash256>>.Membership _payloads;
-    private readonly Func<object?, Task> _send;
+    private readonly Func<ReceiptsEventArgs, Task> _send;
 
     public TransactionReceiptsSubscription(
         IJsonRpcDuplexClient jsonRpcDuplexClient,
@@ -77,10 +77,8 @@ public class TransactionReceiptsSubscription : Subscription
 
     private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e) => ScheduleAction(_send, e);
 
-    private async Task TryPublishReceipts(object? receiptsEvent)
+    private async Task TryPublishReceipts(ReceiptsEventArgs e)
     {
-        ReceiptsEventArgs e = (ReceiptsEventArgs)receiptsEvent!;
-
         // Skip if this is a reorg (receipts being removed)
         if (e.WasRemoved)
         {
