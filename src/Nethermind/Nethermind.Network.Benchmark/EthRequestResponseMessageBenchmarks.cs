@@ -142,7 +142,26 @@ public class EthRequestResponseMessageBenchmarks
     {
         _body.SetReaderIndex(0);
         using P2PMessage message = _deserialize(_body);
+        ReturnTransactions(message);
         return message.PacketType;
+    }
+
+    // As the handlers do with the transactions they do not submit: disposing the message returns only their list.
+    private static void ReturnTransactions(P2PMessage message)
+    {
+        IOwnedReadOnlyList<Transaction> transactions = message switch
+        {
+            Eth62.TransactionsMessage transactionsMessage => transactionsMessage.Transactions,
+            Eth66.PooledTransactionsMessage pooledTransactionsMessage => pooledTransactionsMessage.EthMessage.Transactions,
+            _ => null
+        };
+        if (transactions is null) return;
+
+        foreach (Transaction transaction in transactions.AsSpan())
+        {
+            transaction.ClearPreHash();
+            TxDecoder.TxObjectPool.Return(transaction);
+        }
     }
 
     private void SetUp<T>(IMessageSerializationService service, T message) where T : P2PMessage
