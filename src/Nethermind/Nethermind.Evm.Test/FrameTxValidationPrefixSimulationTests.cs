@@ -982,6 +982,10 @@ public class FrameTxValidationPrefixSimulationTests
         yield return new TestCaseData((object)new[] { (byte)Instruction.POP }).SetName("Simulate_DeployFrameWithExhaustedFactoryNonce_RecordsViolation");
         yield return new TestCaseData((object)Prepare.EvmCode.PushData(1).Op(Instruction.ADD).Op(Instruction.POP).Op(Instruction.JUMPDEST).Op(Instruction.STOP).Done)
             .SetName("Simulate_DeployFrameWithExhaustedFactoryNonceThenUninspectedOpcodes_RecordsViolation");
+        yield return new TestCaseData((object)Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done)
+            .SetName("Simulate_DeployFrameWithExhaustedFactoryNonceThenRevert_RecordsViolation");
+        yield return new TestCaseData((object)Prepare.EvmCode.PushData(0xff).Op(Instruction.JUMP).Done)
+            .SetName("Simulate_DeployFrameWithExhaustedFactoryNonceThenFault_RecordsViolation");
     }
 
     [TestCaseSource(nameof(UninspectedEpilogues))]
