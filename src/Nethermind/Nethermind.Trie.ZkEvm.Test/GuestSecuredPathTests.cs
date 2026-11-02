@@ -25,15 +25,16 @@ public class GuestSecuredPathTests
         Assert.That(() => ReadOrWrite(tree, write), extraNibbles == 0 ? Throws.Nothing : Throws.TypeOf<TrieException>());
     }
 
-    /// <remarks>An extension reaching the key's length, or a branch below it, leaves no nibble for the leaf.</remarks>
+    /// <remarks>An extension reaching the key's length, or a branch below it, leaves no nibble for the leaf. An empty
+    /// extension is invalid at any depth.</remarks>
     [Test]
-    public void Visited_extension_and_branch_must_stay_short_of_the_key([Values(KeyNibbles - 2, KeyNibbles - 1, KeyNibbles)] int extensionNibbles, [Values] bool write)
+    public void Visited_extension_and_branch_must_stay_short_of_the_key([Values(0, KeyNibbles - 2, KeyNibbles - 1, KeyNibbles)] int extensionNibbles, [Values] bool write)
     {
         TrieNode leaf = DecodedLeaf(KeyPath[Math.Min(extensionNibbles + 1, KeyNibbles)..]);
         TrieNode extension = TrieNodeFactory.CreateExtension(KeyPath[..extensionNibbles], Branch((KeyPath[Math.Min(extensionNibbles, KeyNibbles - 1)], leaf)));
         PatriciaTree tree = new() { RootRef = extension };
 
-        Assert.That(() => ReadOrWrite(tree, write), extensionNibbles < KeyNibbles ? Throws.Nothing : Throws.TypeOf<TrieException>());
+        Assert.That(() => ReadOrWrite(tree, write), extensionNibbles is > 0 and < KeyNibbles ? Throws.Nothing : Throws.TypeOf<TrieException>());
     }
 
     [Test]
@@ -54,6 +55,17 @@ public class GuestSecuredPathTests
         };
 
         Assert.That(() => tree.Set(Key, Array.Empty<byte>()), extraNibbles == 0 ? Throws.Nothing : Throws.TypeOf<TrieException>());
+    }
+
+    /// <remarks>An empty extension sibling merges with the branch's nibble into a valid extension of one nibble.</remarks>
+    [Test]
+    public void Empty_extension_sibling_is_checked_once_a_delete_collapses_into_it([Values(0, 1)] int siblingNibbles)
+    {
+        byte[] leafPath = new byte[KeyNibbles - 2 - siblingNibbles];
+        TrieNode sibling = TrieNodeFactory.CreateExtension(new byte[siblingNibbles], Branch((0, DecodedLeaf(leafPath)), (1, DecodedLeaf(leafPath))));
+        PatriciaTree tree = new() { RootRef = Branch((KeyPath[0], DecodedLeaf(LeafPath(0))), (KeyPath[0] ^ 1, sibling)) };
+
+        Assert.That(() => tree.Set(Key, Array.Empty<byte>()), siblingNibbles == 0 ? Throws.TypeOf<TrieException>() : Throws.Nothing);
     }
 
     /// <remarks>The sibling's depth counts the parent extension's nibbles; one more of them pushes each kind of sibling past the key.</remarks>

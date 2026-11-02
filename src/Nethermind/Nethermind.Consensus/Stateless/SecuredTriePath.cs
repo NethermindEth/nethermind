@@ -47,12 +47,12 @@ internal static class SecuredTriePath
     }
 
     /// <summary>Rejects a node that cannot sit <paramref name="depth"/> nibbles below a root: a leaf whose path does not end at
-    /// the key, an extension whose path reaches it, or any other node at the key's length.</summary>
+    /// the key, an extension whose path is empty or reaches it, or any other node at the key's length.</summary>
     /// <exception cref="TrieException">The node's path does not end at the key.</exception>
     public static void ValidateAtDepth(ReadOnlySpan<byte> rlp, int depth)
     {
         int remaining = KeyNibbles - depth;
-        if (TryGetPath(rlp, out int nibbles, out bool isLeaf) ? isLeaf ? nibbles != remaining : nibbles >= remaining : remaining <= 0)
+        if (TryGetPath(rlp, out int nibbles, out bool isLeaf) ? isLeaf ? nibbles != remaining : nibbles == 0 || nibbles >= remaining : remaining <= 0)
             ThrowPathExceedsKey();
     }
 
