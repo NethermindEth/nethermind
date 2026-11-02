@@ -303,8 +303,7 @@ public class BlockProductionTransactionPickerTests
     {
         // The args object: AddingTxEventArgs is 56 B on 64-bit and the deferred reason's kind and two numbers add up to
         // 24 B more, 80 B. The shortest of these reasons, "Invalid nonce - expected 3" (26 chars), is an 80 B string and
-        // the gas ones are 136-144 B, so formatting any of them during the call would break this bound. Master's skip
-        // allocates its 56 B args plus that string.
+        // the gas ones are 136-144 B, so formatting any of them during the call would break this bound.
         const long argsBound = 96;
         using FundedSender sender = new(1.Ether);
         Block block = BlockWithoutBaseFee();
