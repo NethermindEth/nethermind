@@ -385,11 +385,9 @@ public partial class DebugRpcModuleTests
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
-    [TestCase(false, null)]
-    [TestCase(true, null)]
-    [TestCase(false, NativeCallTracer.CallTracer)]
-    [TestCase(true, NativeCallTracer.CallTracer)]
-    public async Task Debug_traceTransaction_opcode_logger_limit_counts_steps_and_preserves_named_output(bool streamMode, string? tracer)
+    [Test]
+    public async Task Debug_traceTransaction_opcode_logger_limit_counts_steps_and_preserves_named_output(
+        [Values] bool streamMode, [Values(null, NativeCallTracer.CallTracer)] string? tracer)
     {
         using Context context = await Context.Create();
         byte[] code = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE)
