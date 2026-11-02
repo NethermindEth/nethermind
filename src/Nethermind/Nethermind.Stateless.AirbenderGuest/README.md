@@ -7,20 +7,19 @@ The full result is printed on the UART.
 
 ## Toolchain
 
-No published bflat image carries the riscv32 compiler yet, so `make build` takes
-three local builds:
-
-- `BFLAT_DIR`: the output directory of a bflat build with the Airbender layout,
-  that is, bflat built with `LocalCompilerDir` (a riscv32 ILCompiler and JIT) and
-  `AirbenderLibsDir` (see bflat's `BUILDING.md`).
-- `AIRBENDER_LIB_DIR`: a libairbender build
-  ([NethermindEth/bflat-airbender](https://github.com/NethermindEth/bflat-airbender)),
-  which holds the precompiles, the input and output, and the exit protocol.
-- `bflat-riscv64`: the bflat build image, from bflat's `Dockerfile.build`.
+`make build` compiles the guest in the bflat image with the riscv32 target
+(`BFLAT_IMAGE`), against the Airbender platform and libairbender of a
+[bflat-airbender](https://github.com/NethermindEth/bflat-airbender) release
+(`AIRBENDER_VERSION`), which it downloads to `obj/`. libairbender holds the
+precompiles, the input and output, and the exit protocol. `AIRBENDER_LIB_DIR`
+names another libairbender build (its `output/airbender`) instead.
 
 ```bash
-make build BFLAT_DIR=<bflat>/src/bflat/bin/Release/net11.0 AIRBENDER_LIB_DIR=<libairbender>/output/airbender
+make build
 ```
+
+bflat fails the build on an F, D, C or A instruction in the image, as
+Airbender decodes RV32IM only, and on an image that does not fit the ROM.
 
 The build writes `bin/nethermind` (ELF), `bin/nethermind.bin` (the ROM image) and
 `bin/nethermind.text` (the instructions).

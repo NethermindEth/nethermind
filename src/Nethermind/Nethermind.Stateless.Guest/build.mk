@@ -59,10 +59,10 @@ TRIM_FLAGS ?= --no-stacktrace-data --ldflags=--strip-all
 # assembled from the .S of the same name in the guest's directory.
 GUEST_OBJECTS ?=
 
-# What a guest whose toolchain is not the published image overrides: the target
+# What a guest whose toolchain is not the default image overrides: the target
 # architecture, its bindings, the bflat command and the docker arguments that bring
-# a local bflat and its bindings into the image (the Airbender guest, which has no
-# runtime package and so leaves GUEST_PACKAGE unset).
+# its bindings into the image (the Airbender guest, which has no runtime package
+# and so leaves GUEST_PACKAGE unset).
 GUEST_ARCH ?= riscv64
 GUEST_EXTLIB ?= $(PACKAGE_DIR)/$(GUEST_NUPKG)
 BFLAT ?= bflat

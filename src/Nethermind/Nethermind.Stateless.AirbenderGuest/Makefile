@@ -10,21 +10,14 @@ SRC_DIR := /nethermind/src
 GUEST_LIBC := airbender
 GUEST_ARCH := riscv32
 
-# No published bflat image carries the riscv32 compiler and the Airbender layout
-# yet, so the guest is built by a local bflat build (BFLAT_DIR, its output
-# directory) inside the bflat build image (BFLAT_IMAGE, from the bflat repository's
-# Dockerfile.build), against a local libairbender build (AIRBENDER_LIB_DIR). The
-# image's own ld.lld and llvm-objcopy stand in for the bundled ones, which need an
-# ICU it does not have. See README.md.
-BFLAT_DIR ?=
-AIRBENDER_LIB_DIR ?=
-BFLAT_IMAGE := bflat-riscv64
-BFLAT := /bflat/bflat
-BFLAT_DOCKER_ARGS = \
-	--mount type=bind,source="$(BFLAT_DIR)",target=/bflat \
-	--mount type=bind,source="$(AIRBENDER_LIB_DIR)",target=/airbender,readonly \
-	-e BFLAT_LD=/usr/bin/ld.lld \
-	-e BFLAT_OBJCOPY=/usr/bin/llvm-objcopy
+# The bflat image with the riscv32 target, and the Airbender platform and
+# libairbender of a bflat-airbender release, which bflat checks against its
+# signature. AIRBENDER_LIB_DIR names another libairbender build instead.
+BFLAT_IMAGE := nethermindeth/bflat-riscv64-11-riscv32:57fdc49684ff6518892b3ef45d362ca32ebb5c91@sha256:9b5d3d745e391380217dce47aa97864b55990976b9773df3081f9664091c9275
+AIRBENDER_VERSION := v1.0.2
+AIRBENDER_SHA256 := 73e55decb782f9b29b4a77d5ccda81009d1751caaae4d2f96a1b6c27892dd554
+AIRBENDER_LIB_DIR ?= $(GUEST_DIR)/obj/libairbender-$(AIRBENDER_VERSION)
+BFLAT_DOCKER_ARGS = --mount type=bind,source="$(AIRBENDER_LIB_DIR)",target=/airbender,readonly
 GUEST_EXTLIB := /airbender/libairbender.bflat.manifest
 
 # Airbender's ROM is 4 MiB: favour size, and leave the reflection data out (about
@@ -32,18 +25,16 @@ GUEST_EXTLIB := /airbender/libairbender.bflat.manifest
 OPT_FLAGS := -Os
 TRIM_FLAGS := --no-stacktrace-data --no-reflection
 
-# The bflat ISA gates read ELF64 only. Airbender decodes the whole .text when it
-# loads the image and marks what it cannot run, which the run below then reports.
-ISA_GATES :=
-
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 
-dotnet-build: require-toolchain
+dotnet-build: $(AIRBENDER_LIB_DIR)/libairbender.bflat.manifest
 
-require-toolchain:
-	@[ -n "$(BFLAT_DIR)" ] && [ -x "$(BFLAT_DIR)/bflat" ] || { echo "error: BFLAT_DIR must name a bflat build with the Airbender layout - see README.md" >&2; exit 1; }
-	@[ -f "$(AIRBENDER_LIB_DIR)/libairbender.bflat.manifest" ] || { echo "error: AIRBENDER_LIB_DIR must name a libairbender build - see README.md" >&2; exit 1; }
+$(GUEST_DIR)/obj/libairbender-$(AIRBENDER_VERSION)/libairbender.bflat.manifest:
+	mkdir -p $(@D)
+	curl -fsSL -o $(@D)/libairbender-riscv32.tar.gz https://github.com/NethermindEth/bflat-airbender/releases/download/$(AIRBENDER_VERSION)/libairbender-riscv32.tar.gz
+	echo "$(AIRBENDER_SHA256)  $(@D)/libairbender-riscv32.tar.gz" | sha256sum -c --quiet
+	tar -xzf $(@D)/libairbender-riscv32.tar.gz -C $(@D)
 
 # Execution harness: the Airbender CLI's transpiler VM, built from the zksync-airbender
 # revision whose 4 MiB ROM and unsigned RV32M machine the image targets.
@@ -68,4 +59,4 @@ verify:
 $(GUEST_DIR)/bin/%.hex: $(GUEST_DIR)/bin/%.raw
 	python3 -c "import struct,sys; d=open(sys.argv[1],'rb').read(); n=len(d); d+=bytes(-n % 4); w=[n, *struct.unpack(f'<{len(d)//4}I', d)]; open(sys.argv[2],'w').write(''.join(f'{x:08x}' for x in w))" $< $@
 
-.PHONY: require-toolchain verify
+.PHONY: verify
