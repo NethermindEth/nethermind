@@ -1646,7 +1646,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     private static readonly object?[] ScriptScalars = ["x", 1, 3000000000L, 0.1, 1.5f, true, new System.Numerics.BigInteger(-5), null];
     private static readonly object?[] ScriptScalarsWithoutBigInteger = ["x", 1, 3000000000L, 0.1, 1.5f, true, null];
 
-    // The expected bytes below are those the converter wrote before it walked script values itself.
+    // The expected bytes are those the serializer writes for a scalar inside an IList<object> (array items) and as a
+    // value serialized on its own (property values).
     [TestCase(JsonNumberHandling.Strict, false,
         """["x",1,3000000000,0.1,1.5,true,"-5",null]""", """{"a":"x","b":1,"c":3000000000,"d":0.1,"e":1.5,"f":true,"g":"-5","h":null}""")]
     [TestCase(JsonNumberHandling.AllowReadingFromString, false,
@@ -1681,8 +1682,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     public void Javascript_result_named_floats_render_under_each_number_handling(JsonNumberHandling handling, string inArray, string asProperties) =>
         AssertScalarsRender(ReflectionOptions(handling), [float.NaN, float.NegativeInfinity], inArray, asProperties);
 
-    // Number handling set on a type applies to a property value, which the serializer used to write with a call of its
-    // own, but not to an array item, which it wrote as part of the array.
+    // Number handling set on a type applies to a property value, which the serializer writes with a call of its own,
+    // but not to an array item, which it writes as part of the list.
     [TestCase(typeof(float), false,
         """["x",1,3000000000,0.1,1.5,true,"-5",null]""", """{"a":"x","b":1,"c":3000000000,"d":0.1,"e":"1.5","f":true,"g":"-5","h":null}""")]
     [TestCase(typeof(double), true,

@@ -31,7 +31,7 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
     /// <remarks>
     /// Nesting is limited to the options' maximum depth, counted in open JSON objects and arrays as the serializer
     /// does; a cycle the walk follows reaches that limit too. Script scalars are written by their converters directly
-    /// when the serializer would apply nothing around them; any other value is passed to the serializer, as before.
+    /// when the serializer would apply nothing around them; any other value is passed to the serializer.
     /// </remarks>
     /// <exception cref="JavaScriptResultDepthException">The value nests deeper than the maximum depth.</exception>
     public override void Write(Utf8JsonWriter writer, IJavaScriptObject o, JsonSerializerOptions options)
@@ -198,10 +198,11 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
 
     /// <remarks>
     /// The serializer adapts a converter declared for a base type of <typeparamref name="T"/>, so only a converter for
-    /// <typeparamref name="T"/> itself is called here. A property value used to be written by a serializer call of its
-    /// own, which applies number handling set on the value's type; an array item was written as part of its array,
-    /// which applies the list contract's number handling, falling back to the options'. This keeps that distinction
-    /// under strict options when the list contract sets no number handling of its own.
+    /// <typeparamref name="T"/> itself is called here. Number handling set on a value's type applies when the
+    /// serializer writes the value with a call of its own, as for a property value, but not to an item it writes as
+    /// part of a list, which gets the list contract's number handling, falling back to the options'. So the type's own
+    /// handling is checked for property values only; under strict options this matches the serializer when the list
+    /// contract sets no number handling of its own.
     /// </remarks>
     private static bool TryWriteWithOwnConverter<T>(Utf8JsonWriter writer, T value, JsonSerializerOptions options, bool isProperty)
     {
