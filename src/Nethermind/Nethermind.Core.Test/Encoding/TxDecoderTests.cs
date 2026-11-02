@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding
@@ -303,6 +304,17 @@ namespace Nethermind.Core.Test.Encoding
             }
 
             Assert.That(DecodeContext, Throws.InstanceOf(exceptionType).With.Message.Contains(error).IgnoreCase);
+        }
+
+        [Test]
+        public void Rejects_all_zero_r_and_s()
+        {
+            byte[] zero = new byte[32];
+
+            Assert.That(
+                () => SignatureBuilder.FromBytes(Signature.VOffset, zero, zero, RlpBehaviors.None),
+                Throws.TypeOf<RlpException>().With.Message.EqualTo("VRS starting with 0"));
+            Assert.That(SignatureBuilder.FromBytes(Signature.VOffset, zero, zero, RlpBehaviors.AllowUnsigned), Is.Null);
         }
 
         [Test]
