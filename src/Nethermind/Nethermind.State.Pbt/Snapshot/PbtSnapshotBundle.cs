@@ -38,19 +38,21 @@ public sealed class PbtSnapshotBundle(
     private IDisposable? _rootLookupPin;
     private readonly PbtPartitionBatchesBuilder _leafChanges = new(
         resourcePool.GetWriteBatch(usage), resourcePool.GetWriteBatch(usage), resourcePool.GetStorageWriteBatch(usage));
+    // The concurrent collections of a bundle are created on first write: most bundles only read, and a concurrent
+    // dictionary allocates a lock object per core.
     // Accounts set before their code arrived; they reach the write buffer once the code converts them to their stem.
-    private readonly ConcurrentDictionary<ValueHash256, Account> _accountsAwaitingCode = new();
+    private ConcurrentDictionary<ValueHash256, Account>? _accountsAwaitingCode;
     // Read-through memo of bytecode served by the read-only base; never snapshot content, so it is not persisted.
-    private readonly ConcurrentDictionary<ValueHash256, CodeInfo> _codeMemo = new();
+    private ConcurrentDictionary<ValueHash256, CodeInfo>? _codeMemo;
     // Accounts the layer above read past this bundle for the block in the write buffer, so a write never re-reads them.
-    private readonly ConcurrentDictionary<ValueHash256, Account?> _hintedAccounts = new();
+    private ConcurrentDictionary<ValueHash256, Account?>? _hintedAccounts;
     private PbtTransientResource _transientResource = resourcePool.GetCachedResource(usage);
     // Created over the first transient resource on first use, as a field initializer cannot read _transientResource.
     private PbtWarmedGroupRecordBuffer? _cacheableGroupRecordBuffer;
     // Storage commits may write one run from several threads, so a write replaces its run by compare-and-swap.
     // A replaced run is held here until the write buffer is sealed: returned earlier, it could be re-rented and
     // stored back under the same key, and a writer still comparing against it would overwrite a newer run (ABA).
-    private readonly ConcurrentQueue<PackedSlotRun> _replacedRuns = new();
+    private ConcurrentQueue<PackedSlotRun>? _replacedRuns;
     private bool _isDisposed;
     // A base that can never have a filter would only pay RentRunFiltered's extra checks on every read.
     private readonly bool _filterInMemorySlotReads = filterInMemorySlotReads && readOnlyBundle.MayFilterSlots;
@@ -109,12 +111,15 @@ public sealed class PbtSnapshotBundle(
     public PbtPartitionBatches PrepareLeafChanges()
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        foreach ((ValueHash256 addressHash, Account awaiting) in _accountsAwaitingCode)
+        if (_accountsAwaitingCode is { } accountsAwaitingCode)
         {
-            CodeInfo code = GetCode(awaiting.CodeHash.ValueHash256) ?? throw new InvalidDataException($"Missing PBT bytecode for {awaiting.CodeHash}.");
-            StoreAccount(addressHash, PbtAccount.From(awaiting, code), code);
+            foreach ((ValueHash256 addressHash, Account awaiting) in accountsAwaitingCode)
+            {
+                CodeInfo code = GetCode(awaiting.CodeHash.ValueHash256) ?? throw new InvalidDataException($"Missing PBT bytecode for {awaiting.CodeHash}.");
+                StoreAccount(addressHash, PbtAccount.From(awaiting, code), code);
+            }
+            accountsAwaitingCode.Clear();
         }
-        _accountsAwaitingCode.Clear();
         return _leafChanges.Build();
     }
 
@@ -194,7 +199,7 @@ public sealed class PbtSnapshotBundle(
 
         try
         {
-            PbtBufferWarmUp.WarmUp<TKey, TPath>(CreateCacheableGroupRecordBuffer(transientResource), transientResource.WarmedGroupBuffer, readOnlyBundle, (TreeRoot, RootGroupPointer), key);
+            PbtBufferWarmUp.WarmUp<TKey, TPath>(groupRecordBuffer, transientResource.WarmedGroupBuffer, readOnlyBundle, (TreeRoot, RootGroupPointer), key);
         }
         finally
         {
@@ -210,9 +215,9 @@ public sealed class PbtSnapshotBundle(
 
     public Account? ReadAccount(in ValueHash256 addressHash, bool promote)
     {
-        if (_accountsAwaitingCode.TryGetValue(addressHash, out Account? awaiting)) return awaiting;
+        if (_accountsAwaitingCode?.TryGetValue(addressHash, out Account? awaiting) == true) return awaiting;
         if (WriteBuffer.Accounts.TryGetValue(addressHash, out PbtAccount? buffered)) return buffered?.ToAccount();
-        if (_hintedAccounts.TryGetValue(addressHash, out Account? hinted)) return hinted;
+        if (_hintedAccounts?.TryGetValue(addressHash, out Account? hinted) == true) return hinted;
         PbtAccount? account = GetLayeredAccount(addressHash);
         if (promote) PromoteAccount(addressHash, account);
         return account?.ToAccount();
@@ -226,7 +231,7 @@ public sealed class PbtSnapshotBundle(
     }
 
     /// <summary>Records an account the layer above read past this bundle; a value already written or hinted here wins, and the memo is dropped with the write buffer at snapshot collection.</summary>
-    public void HintAccount(Address address, Account? account) => _hintedAccounts.TryAdd(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), account);
+    public void HintAccount(Address address, Account? account) => LazyInitializer.EnsureInitialized(ref _hintedAccounts).TryAdd(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), account);
 
     private void PromoteAccount(in ValueHash256 addressHash, PbtAccount? account)
     {
@@ -264,8 +269,9 @@ public sealed class PbtSnapshotBundle(
         ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes);
         // The previous value is known as a stem, or as an account when it awaits its code or was hinted.
         PbtAccount? previous = null;
-        if (!_accountsAwaitingCode.TryRemove(addressHash, out Account? prior) && !WriteBuffer.Accounts.TryGetValue(addressHash, out previous) &&
-            !_hintedAccounts.TryGetValue(addressHash, out prior))
+        Account? prior = null;
+        if (_accountsAwaitingCode?.TryRemove(addressHash, out prior) != true && !WriteBuffer.Accounts.TryGetValue(addressHash, out previous) &&
+            _hintedAccounts?.TryGetValue(addressHash, out prior) != true)
             previous = GetLayeredAccount(addressHash);
         // Code chunk leaves are shared per code hash without a reference count, so a non-delegation code hash
         // can never be replaced or removed once set (EIP-6780 and EIP-161 guarantee this in protocol execution).
@@ -285,7 +291,7 @@ public sealed class PbtSnapshotBundle(
         else
         {
             CodeInfo? code = account.HasCode ? GetCode(account.CodeHash.ValueHash256) : null;
-            if (account.HasCode && code is null) _accountsAwaitingCode[addressHash] = account;
+            if (account.HasCode && code is null) LazyInitializer.EnsureInitialized(ref _accountsAwaitingCode)[addressHash] = account;
             else StoreAccount(addressHash, PbtAccount.From(account, code), previousCodeHash is null ? code : null);
         }
     }
@@ -351,7 +357,7 @@ public sealed class PbtSnapshotBundle(
             PackedSlotRun next = current.With(runWrites);
             if (writeBuffer.TryReplaceRun(runKey, next, current))
             {
-                _replacedRuns.Enqueue(current);
+                LazyInitializer.EnsureInitialized(ref _replacedRuns).Enqueue(current);
                 return;
             }
             SlotRun.Return(next);
@@ -379,10 +385,11 @@ public sealed class PbtSnapshotBundle(
     public void SetCode(in ValueHash256 codeHash, CodeInfo code)
     {
         WriteBuffer.Codes[codeHash] = code;
+        if (_accountsAwaitingCode is not { } accountsAwaitingCode) return;
         // An account registered after this scan is resolved by PrepareLeafChanges. Removing by address and code hash
         // claims the entry, so an account re-set to other code meanwhile keeps waiting for that code.
-        foreach ((ValueHash256 addressHash, Account awaiting) in _accountsAwaitingCode)
-            if (awaiting.CodeHash.ValueHash256 == codeHash && _accountsAwaitingCode.TryRemove(new KeyValuePair<ValueHash256, Account>(addressHash, awaiting)))
+        foreach ((ValueHash256 addressHash, Account awaiting) in accountsAwaitingCode)
+            if (awaiting.CodeHash.ValueHash256 == codeHash && accountsAwaitingCode.TryRemove(new KeyValuePair<ValueHash256, Account>(addressHash, awaiting)))
                 StoreAccount(addressHash, PbtAccount.From(awaiting, code), code);
     }
 
@@ -398,9 +405,9 @@ public sealed class PbtSnapshotBundle(
         if (WriteBuffer.Codes.TryGetValue(codeHash, out CodeInfo? code)) return code;
         for (int index = snapshots.Count - 1; index >= 0; index--)
             if (snapshots[index].TryGetCode(codeHash, out code)) return code;
-        if (_codeMemo.TryGetValue(codeHash, out code)) return code;
+        if (_codeMemo?.TryGetValue(codeHash, out code) == true) return code;
         code = readOnlyBundle.GetCode(codeHash);
-        if (code is not null) _codeMemo[codeHash] = code;
+        if (code is not null) LazyInitializer.EnsureInitialized(ref _codeMemo)[codeHash] = code;
         return code;
     }
 
@@ -409,7 +416,7 @@ public sealed class PbtSnapshotBundle(
     /// <returns>The snapshot with its initial lease, and the retired transient resource, whose lease the caller releases once it added the snapshot.</returns>
     public (PbtSnapshot Snapshot, PbtTransientResource TransientResource) CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
     {
-        if (_accountsAwaitingCode.Count != 0 || PendingMutationCount != 0)
+        if (_accountsAwaitingCode?.Count > 0 || PendingMutationCount != 0)
             throw new InvalidOperationException("Pending leaf changes must be folded before collecting a snapshot.");
         if (WriteBuffer.RootGroupPointer == 0 && treeRoot != default)
         {
@@ -419,7 +426,7 @@ public sealed class PbtSnapshotBundle(
         PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, null, resourcePool, usage);
         snapshot.TryLease();
         snapshots.Add(snapshot);
-        _hintedAccounts.Clear();
+        _hintedAccounts?.Clear();
         ReturnReplacedRuns();
         PbtTransientResource transientResource = _transientResource;
         SwapTransientResource();
@@ -443,15 +450,15 @@ public sealed class PbtSnapshotBundle(
 
     private void ReturnReplacedRuns()
     {
-        while (_replacedRuns.TryDequeue(out PackedSlotRun? run)) SlotRun.Return(run);
+        while (_replacedRuns?.TryDequeue(out PackedSlotRun? run) == true) SlotRun.Return(run);
     }
 
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _isDisposed, true)) return;
-        _accountsAwaitingCode.Clear();
-        _codeMemo.Clear();
-        _hintedAccounts.Clear();
+        _accountsAwaitingCode?.Clear();
+        _codeMemo?.Clear();
+        _hintedAccounts?.Clear();
         ReturnReplacedRuns();
         _transientResource.ReleaseLease();
         Interlocked.Exchange(ref _rootLookupPin, null)?.Dispose();

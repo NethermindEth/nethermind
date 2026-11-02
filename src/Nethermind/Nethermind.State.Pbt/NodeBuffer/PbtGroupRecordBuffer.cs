@@ -74,6 +74,8 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
     private Generation? _standby;
     private bool _preparingStandby;
     private bool _compacting;
+    // Reused by compaction, of which one pass runs at a time.
+    private readonly Dictionary<ulong, int> _lastOffsetByPathKeyHash = [];
 
     private const int RootSlots = 1024;
 
@@ -493,7 +495,8 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
         // Reservations that did not fit leave Used past the end.
         long end = Math.Min(Volatile.Read(ref generation.Used), data.Length);
         using ArrayPoolList<int> kept = new(InitialKeptCapacity);
-        Dictionary<ulong, int> lastOffsetByPathKeyHash = [];
+        Dictionary<ulong, int> lastOffsetByPathKeyHash = _lastOffsetByPathKeyHash;
+        lastOffsetByPathKeyHash.Clear();
         for (int offset = 0; offset + PbtGroupRecordCodec.HeaderLength <= end;)
         {
             ReadOnlySpan<byte> record = data.AsSpan(offset);

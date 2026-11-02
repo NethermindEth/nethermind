@@ -17,7 +17,13 @@ public static class PbtBufferWarmUp
     // Fits a path of about forty large groups, past any tree a hash-keyed path builds.
     private const int RecordsLength = 64 * 1024;
 
-    private static readonly ReadOnlySpanAction<byte, ArrayPoolList<byte>> CopyPayload = static (payload, scratch) => scratch.AddRange(payload);
+    private static readonly ReadOnlySpanAction<byte, RecordTarget> WriteRecord = static (payload, target) =>
+    {
+        int length = PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(payload.Length));
+        if (length > target.Destination.Length) return;
+        payload.CopyTo(PbtGroupRecordCodec.WriteGroup(target.Destination, target.Path, default, payload.Length));
+        target.Length = length;
+    };
 
     /// <summary>Reads a pre-block path, then publishes its newly fetched records in one write batch.</summary>
     /// <remarks>
@@ -25,7 +31,7 @@ public static class PbtBufferWarmUp
     /// and indexes their paths only once all are written. Stops silently where the path ends or <paramref name="reader"/>
     /// misses, retaining its verified prefix.
     /// </remarks>
-    /// <param name="buffer">The buffer holding the pre-block tree, which also resolves the pointers of <paramref name="warmed"/>.</param>
+    /// <param name="buffer">The buffer holding the pre-block tree.</param>
     /// <param name="reader">Reads the groups neither <paramref name="buffer"/> nor <paramref name="warmed"/> holds.</param>
     /// <param name="root">The tree's root before the block and its group's pointer, or 0 when the buffer does not hold it.</param>
     public static void WarmUp<TKey, TPath>(IPbtGroupRecordBuffer buffer, PbtWarmedGroupBuffer warmed, PbtReadOnlySnapshotBundle reader,
@@ -34,15 +40,14 @@ public static class PbtBufferWarmUp
         where TPath : struct, IPbtNodePath<TPath>
     {
         if (root.Hash == default) return;
-        using ArrayPoolList<Frame> frames = new(PbtStorageNodePath.MaxBitDepth / PbtThreeLevelGroupGeometry.LevelsPerGroup + 1);
-        using ArrayPoolList<byte> scratch = new(1024);
-        using ArrayPoolList<byte> records = new(SafeArrayPool<byte>.Shared, RecordsLength, RecordsLength, clearFirst: false);
+        using ArrayPoolListRef<Frame> frames = new(PbtStorageNodePath.MaxBitDepth / PbtThreeLevelGroupGeometry.LevelsPerGroup + 1);
+        using ArrayPoolSpan<byte> records = new(RecordsLength);
         int recordsLength = 0;
 
         PbtStorageNodePath path = default;
         ulong pointer = root.Pointer;
         TrieUpdater<TKey, TPath>.BoundaryNode input = default;
-        while (TryRead(buffer, warmed, reader, path, pointer, scratch, records, ref recordsLength, out Frame frame))
+        while (TryRead(buffer, warmed, reader, path, pointer, records, ref recordsLength, out Frame frame))
         {
             if (path.BitDepth == 0) input = new GroupFrameReader<TKey, TPath>(frame.Record).TakeRoot(root.Hash);
             bool descends = TrieUpdater<TKey, TPath>.TryFindChildGroup(frame.Record, input, key, out int slot, out TrieUpdater<TKey, TPath>.BoundaryNode child, out int childDepth);
@@ -59,7 +64,7 @@ public static class PbtBufferWarmUp
         using (IPbtGroupRecordWriteBatch batch = warmed.StartWriteBatch(recordsLength))
         {
             Span<byte> written = batch.Bytes;
-            records.AsSpan()[..recordsLength].CopyTo(written);
+            records.Slice(0, recordsLength).CopyTo(written);
             ulong childPointer = 0;
             for (int i = frames.Count - 1; i >= 0; i--)
             {
@@ -86,22 +91,20 @@ public static class PbtBufferWarmUp
     /// <param name="recordsLength">The bytes of <paramref name="records"/> in use, advanced past a written record and its alignment padding.</param>
     /// <returns>False when the reader misses, or the record does not fit <paramref name="records"/>.</returns>
     private static bool TryRead(IPbtGroupRecordBuffer buffer, PbtWarmedGroupBuffer warmed, PbtReadOnlySnapshotBundle reader,
-        in PbtStorageNodePath path, ulong pointer, ArrayPoolList<byte> scratch, ArrayPoolList<byte> records, ref int recordsLength, out Frame frame)
+        in PbtStorageNodePath path, ulong pointer, ArrayPoolSpan<byte> records, ref int recordsLength, out Frame frame)
     {
         frame = new Frame { Path = path, RecordOffset = -1, ChildSlot = -1 };
-        if (buffer.TryLocate(pointer, out PbtGroupRecord record) || warmed.TryGet(path, out record, out pointer))
+        bool located = PbtGroupRecordCodec.IsTransient(pointer) ? warmed.TryLocate(pointer, out PbtGroupRecord record) : buffer.TryLocate(pointer, out record);
+        if (located || warmed.TryGet(path, out record, out pointer))
         {
             frame.Record = record;
             frame.Pointer = pointer;
             return true;
         }
 
-        scratch.Clear();
-        if (!reader.TryLoadPersistedNodeGroup(path, CopyPayload, scratch)) return false;
-
-        int length = PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(scratch.Count));
-        if (length > records.Count - recordsLength) return false;
-        scratch.AsSpan().CopyTo(PbtGroupRecordCodec.WriteGroup(records.AsSpan()[recordsLength..], path, default, scratch.Count));
+        int length = 0;
+        RecordTarget target = new(records.Slice(recordsLength, records.Length - recordsLength), in path, ref length);
+        if (!reader.TryLoadPersistedNodeGroup(path, WriteRecord, target) || length == 0) return false;
         frame.Record = new PbtGroupRecord(records.AsReadOnlyMemory(), recordsLength);
         frame.RecordOffset = recordsLength;
         recordsLength += length;
@@ -128,5 +131,20 @@ public static class PbtBufferWarmUp
         public int RecordOffset;
         // The boundary slot of the group below on the path, or -1 where the path ends.
         public int ChildSlot;
+    }
+
+    /// <summary>Where <see cref="WriteRecord"/> writes the record of a loaded group, setting <see cref="Length"/> to its aligned length only when it fits.</summary>
+    private readonly ref struct RecordTarget
+    {
+        public readonly Span<byte> Destination;
+        public readonly ref readonly PbtStorageNodePath Path;
+        public readonly ref int Length;
+
+        public RecordTarget(Span<byte> destination, ref readonly PbtStorageNodePath path, ref int length)
+        {
+            Destination = destination;
+            Path = ref path;
+            Length = ref length;
+        }
     }
 }
