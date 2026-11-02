@@ -9,7 +9,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
-using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -24,6 +23,7 @@ using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Persistence;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -399,7 +399,8 @@ internal static class PbtStoreTestExtensions
     {
         DbConfig dbConfig = new();
         PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, config, Substitute.For<IDisposableStack>(), LimboLogs.Instance);
-        return new ColumnsDb<PbtColumns>(path, new DbSettings(nameof(DbNames.Pbt), DbNames.Pbt), dbConfig, adjuster, LimboLogs.Instance, FastEnum.GetValues<PbtColumns>());
+        return (ColumnsDb<PbtColumns>)new RocksDbFactory(adjuster, dbConfig, new HyperClockCacheWrapper(), new RealFileSystem(), LimboLogs.Instance, path)
+            .CreateColumnsDb<PbtColumns>(new DbSettings(nameof(DbNames.Pbt), DbNames.Pbt));
     }
 
     /// <summary>Zero-pads a zone prefix to the fixed <see cref="PbtStoragePath"/> or <see cref="PbtPath"/> length the partition fold requires.</summary>
