@@ -24,6 +24,8 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
     private readonly List<Type> _pluginTypes = [];
     private readonly IFileSystem _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
     private readonly string _pluginsDirectory = pluginPath ?? throw new ArgumentNullException(nameof(pluginPath));
+    private (string Directory, int? AssemblyCount)? _pendingDiagnostics;
+    private readonly List<(string Plugin, Exception Error)> _loadErrors = [];
 
     public IEnumerable<Type> PluginTypes => _pluginTypes;
 
@@ -38,17 +40,14 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
         string baseDir = string.Empty.GetApplicationResourcePath();
         string pluginAssembliesDir = _pluginsDirectory.GetApplicationResourcePath();
+        _pendingDiagnostics = (pluginAssembliesDir, null);
         if (!_fileSystem.Directory.Exists(pluginAssembliesDir))
         {
-            if (logger.IsWarn) logger.Warn($"Plugin assemblies folder {pluginAssembliesDir:hide} was not found. Skipping.");
             return;
         }
 
         string[] assemblies = _fileSystem.Directory.GetFiles(pluginAssembliesDir, "*.dll");
-        if (assemblies.Length > 0)
-        {
-            if (logger.IsInfo) logger.Info($"Loading {assemblies.Length} plugin assemblies from {pluginAssembliesDir:hide}");
-        }
+        _pendingDiagnostics = (pluginAssembliesDir, assemblies.Length);
 
         foreach (string assemblyName in assemblies)
         {
@@ -85,9 +84,32 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             }
             catch (Exception e)
             {
-                logger.Error($"Failed to load plugin {pluginAssembly}: {e.GetType().Name}", SensitiveLogMasking.Enabled ? null : e);
+                _loadErrors.Add((pluginAssembly, e));
             }
         }
+    }
+
+    /// <summary>Logs pending discovery diagnostics using the current masking setting.</summary>
+    /// <remarks>Discovery precedes configuration. Flush after applying the configured masking policy, or with startup masking if configuration fails.</remarks>
+    public void LogDiagnostics()
+    {
+        if (_pendingDiagnostics is not { } diagnostics) return;
+        _pendingDiagnostics = null;
+
+        if (diagnostics.AssemblyCount is null)
+        {
+            if (logger.IsWarn) logger.Warn($"Plugin assemblies folder {diagnostics.Directory:hide} was not found. Skipping.");
+        }
+        else if (diagnostics.AssemblyCount > 0)
+        {
+            if (logger.IsInfo) logger.Info($"Loading {diagnostics.AssemblyCount} plugin assemblies from {diagnostics.Directory:hide}");
+        }
+
+        foreach ((string plugin, Exception error) in _loadErrors)
+        {
+            logger.Error($"Failed to load plugin {plugin}: {error.GetType().Name}", SensitiveLogMasking.Enabled ? null : error);
+        }
+        _loadErrors.Clear();
     }
 
     public void OrderPlugins(IPluginConfig pluginConfig)

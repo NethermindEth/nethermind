@@ -21,13 +21,13 @@ public class NethermindNodeTests
     private IContainer _nethermindContainer;
 
     private async Task StartContainerAsync(string[] commandOverride = null, bool waitForInit = true, bool suppressStartFailures = false,
-        (string Path, string Contents)? configFile = null)
+        (string Path, string Contents)? resourceFile = null)
     {
         string[] defaultCommand = new[] { "--config", "sepolia", "--JsonRpc.Enabled", "true", "--JsonRpc.Host", "0.0.0.0", "--JsonRpc.Port", "8545", "--JsonRpc.EnginePort", "8551", "--JsonRpc.EngineHost", "0.0.0.0", "--JsonRpc.JwtSecretFile", "jwt.hex" };
         string[] command = commandOverride ?? defaultCommand;
 
         ContainerBuilder builder = await Utils.BuildNethermindContainerAsync(command, waitForInit);
-        if (configFile is { } file)
+        if (resourceFile is { } file)
             builder = builder.WithResourceMapping(Encoding.UTF8.GetBytes(file.Contents), file.Path);
 
         _nethermindContainer = builder.Build();
@@ -107,14 +107,34 @@ public class NethermindNodeTests
         const string path = "/private-config-test.json";
         const string contents = "{\n  \"Init\": \"private-config-value\",\n  !\n}";
         await StartContainerAsync(["--config", path, "--Init.MaskSensitiveData", maskSensitiveData.ToString()],
-            waitForInit: false, suppressStartFailures: true, configFile: (path, contents));
+            waitForInit: false, suppressStartFailures: true, resourceFile: (path, contents));
 
         string combinedLogs = await GetExitedContainerLogsAsync();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(combinedLogs, Does.Contain("Invalid JSON at line 2, byte position 2."));
+            Assert.That(combinedLogs, Does.Contain("Invalid JSON at line 3, byte position 3."));
             Assert.That(combinedLogs, Does.Not.Contain(path).And.Not.Contain("private-config-value"));
+        }
+    }
+
+    [Test]
+    public async Task Plugin_failure_diagnostics_follow_loaded_masking_config([Values] bool maskSensitiveData)
+    {
+        const string pluginDirectory = "/private-plugin-directory-74031";
+        const string assemblyPath = pluginDirectory + "/brokenplugin.dll";
+        await StartContainerAsync(["--config", "sepolia", "--Init.MaskSensitiveData", maskSensitiveData.ToString(),
+                "--plugins-dir", pluginDirectory, "--Init.ChainSpecPath", "/private-chain-spec-74031/missing.json"],
+            waitForInit: false, suppressStartFailures: true, resourceFile: (assemblyPath, "invalid assembly"));
+
+        string combinedLogs = await GetExitedContainerLogsAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(combinedLogs, Does.Contain("Failed to load plugin brokenplugin: BadImageFormatException"));
+            Assert.That(combinedLogs, Does.Contain($"Loading 1 plugin assemblies from {(maskSensitiveData ? "[redacted]" : pluginDirectory)}"));
+            Assert.That(combinedLogs.Contains(assemblyPath), Is.EqualTo(!maskSensitiveData));
+            Assert.That(combinedLogs.Contains("/private-chain-spec-74031"), Is.EqualTo(!maskSensitiveData));
         }
     }
 

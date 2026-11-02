@@ -906,7 +906,7 @@ namespace Nethermind.Synchronization.Blocks
                     peer.SyncPeer.HeadHash = header.Hash;
                 }
             }
-            string DescribePeer() => SensitiveLogMasking.Enabled ? "[redacted]" : peerInfo.ToString();
+            string DescribePeer() => SensitiveLogMasking.Enabled ? "[redacted]" : peerInfo?.ToString() ?? string.Empty;
             switch (addResult)
             {
                 // this generally should not happen as there is a consistency check before

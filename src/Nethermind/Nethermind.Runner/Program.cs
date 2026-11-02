@@ -104,7 +104,7 @@ void LogCriticalException(ILogger criticalLogger, string message, Exception ex)
         {
             ConfigurationFileNotFoundException => ex.Message,
             System.Configuration.ConfigurationErrorsException { InnerException: JsonException jsonError } =>
-                $"Invalid JSON at line {jsonError.LineNumber}, byte position {jsonError.BytePositionInLine}.",
+                $"Invalid JSON at line {jsonError.LineNumber + 1}, byte position {jsonError.BytePositionInLine + 1}.",
             _ => $"Exception: {ex.GetType().Name}"
         };
         criticalLogger.Error($"{message} {detail}");
@@ -147,28 +147,29 @@ async Task<int> ConfigureAsync(string[] args)
     );
     pluginLoader.Load();
 
-    CheckForDeprecatedOptions(parseResult);
-
-    // leaving here as an example of adding Debug plugin
-    // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
-    // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
-
-    TypeDiscovery.Initialize(typeof(INethermindPlugin));
-
-    AddConfigurationOptions(rootCommand);
-
-    rootCommand.SetAction((result, token) => RunAsync(result, pluginLoader, token));
-
-    parseResult = rootCommand.Parse(args);
-    parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
-    parseResult.InvocationConfiguration.ProcessTerminationTimeout = Timeout.InfiniteTimeSpan;
-
     try
     {
+        CheckForDeprecatedOptions(parseResult);
+
+        // leaving here as an example of adding Debug plugin
+        // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
+        // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
+
+        TypeDiscovery.Initialize(typeof(INethermindPlugin));
+
+        AddConfigurationOptions(rootCommand);
+
+        rootCommand.SetAction((result, token) => RunAsync(result, pluginLoader, token));
+
+        parseResult = rootCommand.Parse(args);
+        parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
+        parseResult.InvocationConfiguration.ProcessTerminationTimeout = Timeout.InfiniteTimeSpan;
+
         return await parseResult.InvokeAsync();
     }
     finally
     {
+        pluginLoader.LogDiagnostics();
         exit.Wait();
     }
 }
@@ -179,6 +180,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
     SensitiveLogMasking.Enabled = initConfig.MaskSensitiveData;
     Volatile.Write(ref maskingConfigLoaded, 1);
+    pluginLoader.LogDiagnostics();
     if (configFile is not null) logger.Info($"Loading configuration from {configFile:hide}");
     IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
     ISnapshotConfig snapshotConfig = configProvider.GetConfig<ISnapshotConfig>();

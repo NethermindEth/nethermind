@@ -25,14 +25,14 @@ namespace Nethermind.Api.Test;
 
 public class PluginLoaderTests
 {
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Assembly_load_failure_retains_exception_only_without_masking(bool maskSensitiveData)
+    [Test]
+    [NonParallelizable]
+    public void Assembly_load_failure_retains_exception_only_without_masking([Values] bool maskSensitiveData)
     {
         bool previous = SensitiveLogMasking.Enabled;
         try
         {
-            SensitiveLogMasking.Enabled = maskSensitiveData;
+            SensitiveLogMasking.Enabled = true;
             string assemblyPath = Path.Combine(Path.GetTempPath(), $"missing-plugin-{Guid.NewGuid():N}.dll");
             IFileSystem fileSystem = Substitute.For<IFileSystem>();
             fileSystem.Directory.Exists(Arg.Any<string>()).Returns(true);
@@ -40,10 +40,17 @@ public class PluginLoaderTests
             fileSystem.Path.GetFileNameWithoutExtension(assemblyPath).Returns("missing-plugin");
             TestErrorLogManager logs = new();
 
-            new PluginLoader(string.Empty, fileSystem, logs.GetClassLogger<PluginLoaderTests>()).Load();
+            PluginLoader loader = new(string.Empty, fileSystem, logs.GetClassLogger<PluginLoaderTests>());
+            loader.Load();
+
+            Assert.That(logs.Errors, Is.Empty);
+            SensitiveLogMasking.Enabled = maskSensitiveData;
+            loader.LogDiagnostics();
 
             TestErrorLogManager.Error error = logs.Errors.Single();
             Assert.That(error.Exception is not null, Is.EqualTo(!maskSensitiveData));
+            loader.LogDiagnostics();
+            Assert.That(logs.Errors, Has.Count.EqualTo(1));
         }
         finally
         {
