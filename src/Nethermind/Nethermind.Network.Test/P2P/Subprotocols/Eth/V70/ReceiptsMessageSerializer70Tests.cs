@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;

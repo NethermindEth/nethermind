@@ -11,7 +11,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Transactions;
 

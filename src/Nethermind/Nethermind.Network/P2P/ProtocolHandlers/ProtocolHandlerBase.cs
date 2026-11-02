@@ -17,7 +17,6 @@ using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 

@@ -11,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie

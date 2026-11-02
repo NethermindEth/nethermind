@@ -44,7 +44,6 @@ using Nethermind.State;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 

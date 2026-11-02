@@ -6,7 +6,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.State.Flat.History.Walk;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.History.Proofs;

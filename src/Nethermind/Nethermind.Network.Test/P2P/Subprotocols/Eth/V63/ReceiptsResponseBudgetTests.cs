@@ -14,7 +14,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NUnit.Framework;
 using ReceiptsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage;

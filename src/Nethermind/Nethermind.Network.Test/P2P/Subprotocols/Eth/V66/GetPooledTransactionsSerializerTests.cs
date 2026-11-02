@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 using InnerMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.GetPooledTransactionsMessage;

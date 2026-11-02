@@ -7,7 +7,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;

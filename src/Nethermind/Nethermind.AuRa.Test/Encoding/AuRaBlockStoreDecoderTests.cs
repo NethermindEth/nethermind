@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Encoding;

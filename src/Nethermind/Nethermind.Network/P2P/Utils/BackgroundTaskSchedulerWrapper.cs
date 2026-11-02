@@ -9,7 +9,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 

@@ -15,7 +15,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Facade.Find

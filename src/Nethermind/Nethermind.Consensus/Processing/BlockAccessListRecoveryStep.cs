@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Processing;
 

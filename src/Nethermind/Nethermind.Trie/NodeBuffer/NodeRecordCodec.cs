@@ -8,7 +8,6 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie.NodeBuffer;
 

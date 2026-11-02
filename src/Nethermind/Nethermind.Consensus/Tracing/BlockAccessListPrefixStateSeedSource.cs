@@ -14,7 +14,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Tracing;
 
