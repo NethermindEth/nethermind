@@ -28,10 +28,9 @@ namespace Nethermind.Consensus.Processing
 
             private string _reason = string.Empty;
 
-            public Block Block { get; private protected set; } = block;
-            public IReadOnlyCollection<Transaction> TransactionsInBlock { get; private protected set; } = transactionsInBlock;
+            public Block Block { get; } = block;
+            public IReadOnlyCollection<Transaction> TransactionsInBlock { get; } = transactionsInBlock;
             public TxAction Action { get; private set; } = TxAction.Add;
-
             public string Reason => ReferenceEquals(_reason, DeferredReason) ? _reason = FormatDeferredReason() : _reason;
 
             public AddingTxEventArgs Set(TxAction action, string reason)
@@ -41,8 +40,8 @@ namespace Nethermind.Consensus.Processing
                 return this;
             }
 
-            /// <summary>Sets <paramref name="action"/> with a reason <see cref="FormatDeferredReason"/> builds on first read.</summary>
-            private protected AddingTxEventArgs SetDeferred(TxAction action) => Set(action, DeferredReason);
+            /// <summary>Sets <paramref name="action"/> with a reason <see cref="FormatDeferredReason"/> builds on the first read of <see cref="Reason"/>.</summary>
+            private protected void SetDeferred(TxAction action) => Set(action, DeferredReason);
 
             private protected virtual string FormatDeferredReason() => throw new InvalidOperationException("No deferred reason to format.");
         }
