@@ -312,6 +312,26 @@ public class MetricsTests
     }
 
     [Test]
+    public void UpdateAllMetrics_updates_gauges_only_when_metrics_enabled([Values] bool metricsEnabled)
+    {
+        MetricsController metricsController = new(new MetricsConfig { Enabled = metricsEnabled });
+        metricsController.RegisterMetrics(typeof(TestMetrics));
+        bool callbackRan = false;
+        metricsController.AddMetricsUpdateAction(() => callbackRan = true);
+        Prometheus.Gauge gauge = ((MetricsController.GaugeMetricUpdater)metricsController._individualUpdater[$"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThree)}"]).Gauge;
+        double before = gauge.Value;
+        TestMetrics.OneTwoThree = (long)before + 1;
+
+        metricsController.UpdateAllMetrics();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callbackRan, Is.True);
+            Assert.That(gauge.Value, Is.EqualTo(metricsEnabled ? before + 1 : before));
+        }
+    }
+
+    [Test]
     [NonParallelizable]
     public async Task Load_CarryForwardDetailedMetrics()
     {

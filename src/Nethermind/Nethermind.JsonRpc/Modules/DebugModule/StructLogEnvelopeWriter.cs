@@ -23,14 +23,14 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 /// </summary>
 internal static class StructLogEnvelopeWriter
 {
-    public static void EmitTraceObject(
+    internal static void EmitTraceObject(
         Utf8JsonWriter writer,
         PipeWriter? pipeWriter,
         CancellationToken cancellationToken,
         Func<Utf8JsonWriter, PipeWriter?, CancellationToken, GethLikeTxTrace?> runTrace,
         ILogger logger,
         ulong fallbackGas = 0UL,
-        bool propagateDurationErrors = false)
+        bool isSingleResult = false)
     {
         GethLikeTxTrace? trace = null;
         Exception? failure = null;
@@ -43,7 +43,7 @@ internal static class StructLogEnvelopeWriter
         {
             trace = runTrace(writer, pipeWriter, cancellationToken);
         }
-        catch (Exception ex) when ((!propagateDurationErrors || ex is not TraceDurationFormatException) && !cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when ((!isSingleResult || ex is not (TraceDurationFormatException or DebugRpcModule.TransactionTraceNotFoundException)) && !cancellationToken.IsCancellationRequested)
         {
             failure = ex;
         }

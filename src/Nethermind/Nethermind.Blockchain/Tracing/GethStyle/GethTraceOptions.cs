@@ -28,6 +28,10 @@ public record GethTraceOptions
 
     internal bool CaptureJavaScriptErrors { get; init; }
 
+    internal bool EnforceExecutionDeadline { get; init; }
+
+    internal TimeProvider? DeadlineClock { get; init; }
+
     public bool DisableStack { get; init; }
 
     /// <summary>

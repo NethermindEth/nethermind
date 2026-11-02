@@ -130,9 +130,12 @@ public class L1StaticCallPrecompileTests
         PrecompileExtras extras = new(remainingGas: TestRemainingGas);
         Result<(byte[] returnValue, ulong gasConsumed)> result = _precompile.Run(input, _spec, in extras);
 
-        Assert.That(result.IsSuccess, Is.True);
-        Assert.That(result.Data.returnValue, Is.EqualTo(expectedReturn));
-        Assert.That(result.Data.gasConsumed, Is.EqualTo(MockGasUsed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.Data.returnValue, Is.EqualTo(expectedReturn));
+            Assert.That(result.Data.gasConsumed, Is.EqualTo(MockGasUsed));
+        }
     }
 
     [Test]
@@ -144,8 +147,11 @@ public class L1StaticCallPrecompileTests
         PrecompileExtras extras = new(remainingGas: TestRemainingGas);
         Result<(byte[] returnValue, ulong gasConsumed)> result = _precompile.Run(input, _spec, in extras);
 
-        Assert.That(result.IsSuccess, Is.False);
-        Assert.That(result.Data.gasConsumed, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.False);
+            Assert.That(result.Data.gasConsumed, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -158,8 +164,11 @@ public class L1StaticCallPrecompileTests
         PrecompileExtras extras = new(remainingGas: TestRemainingGas);
         Result<(byte[] returnValue, ulong gasConsumed)> result = _precompile.Run(input, _spec, in extras);
 
-        Assert.That(result.IsSuccess, Is.False);
-        Assert.That(result.Data.gasConsumed, Is.EqualTo(l1GasUsed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.False);
+            Assert.That(result.Data.gasConsumed, Is.EqualTo(l1GasUsed));
+        }
     }
 
     [Test]
@@ -188,8 +197,11 @@ public class L1StaticCallPrecompileTests
         PrecompileExtras extras = new(remainingGas: TestRemainingGas);
         Result<(byte[] returnValue, ulong gasConsumed)> result = _precompile.Run(input, _spec, in extras);
 
-        Assert.That(result.IsSuccess, Is.EqualTo(expectedSuccess));
-        Assert.That(result.Data.gasConsumed, Is.EqualTo(MockGasUsed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.EqualTo(expectedSuccess));
+            Assert.That(result.Data.gasConsumed, Is.EqualTo(MockGasUsed));
+        }
         if (expectedSuccess)
             Assert.That(result.Data.returnValue.Length, Is.EqualTo(returnSize));
     }
@@ -213,9 +225,12 @@ public class L1StaticCallPrecompileTests
         // Run returns result + actual L1 gas consumed
         PrecompileExtras extras = new(remainingGas: TestRemainingGas);
         Result<(byte[] returnValue, ulong gasConsumed)> result = _precompile.Run(input, _spec, in extras);
-        Assert.That(result.IsSuccess, Is.True);
-        Assert.That(result.Data.returnValue, Is.EqualTo(expectedReturn));
-        Assert.That(result.Data.gasConsumed, Is.EqualTo(mockGas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.Data.returnValue, Is.EqualTo(expectedReturn));
+            Assert.That(result.Data.gasConsumed, Is.EqualTo(mockGas));
+        }
     }
 
     // --- IPrecompile.Run fallback ---
@@ -231,8 +246,11 @@ public class L1StaticCallPrecompileTests
         IPrecompile precompile = _precompile;
         Result<byte[]> result = precompile.Run(input, _spec);
 
-        Assert.That(result.IsSuccess, Is.True);
-        Assert.That(result.Data, Is.EqualTo(expectedReturn));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.Data, Is.EqualTo(expectedReturn));
+        }
     }
 
     // --- Spec flag ---
@@ -245,11 +263,14 @@ public class L1StaticCallPrecompileTests
 
         Address precompileAddress = L1StaticCallPrecompile.Address;
 
-        Assert.That(enabledSpec.IsPrecompile(precompileAddress), Is.True,
-            "L1StaticCallPrecompile address should be identified as precompile when L1StaticCall is enabled");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(enabledSpec.IsPrecompile(precompileAddress), Is.True,
+                "L1StaticCallPrecompile address should be identified as precompile when L1StaticCall is enabled");
 
-        Assert.That(disabledSpec.IsPrecompile(precompileAddress), Is.False,
-            "L1StaticCallPrecompile address should not be identified as precompile when L1StaticCall is disabled");
+            Assert.That(disabledSpec.IsPrecompile(precompileAddress), Is.False,
+                "L1StaticCallPrecompile address should not be identified as precompile when L1StaticCall is disabled");
+        }
     }
 
     // --- Block-range validation (l1Origin passed via PrecompileExtras) ---

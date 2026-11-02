@@ -204,8 +204,11 @@ public class PersistInMemoryTailForShutdownTests
             IBlockTree tree = restarted.Resolve<IBlockTree>();
             IStateReader reader = restarted.Resolve<IStateReader>();
             ulong kept = interruptConversion ? 1UL : 3UL;
-            Assert.That(tree.Head!.Number, Is.Zero, "RocksDB's base must not move to the unfinalized head");
-            Assert.That(KeptStateResumer.Resume(tree, reader, LimboLogs.Instance), Is.EqualTo(kept));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tree.Head!.Number, Is.Zero, "RocksDB's base must not move to the unfinalized head");
+                Assert.That(KeptStateResumer.Resume(tree, reader, LimboLogs.Instance), Is.EqualTo(kept));
+            }
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(tree.Head!.Hash, Is.EqualTo(blocks[kept].Hash));

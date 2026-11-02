@@ -31,25 +31,34 @@ public class NormalizingIpAddressComparerTests
     [TestCaseSource(nameof(EqualCases))]
     public void Equal_addresses_compare_equal_and_share_hash(IPAddress a, IPAddress b)
     {
-        Assert.That(Comparer.Equals(a, b), Is.True);
-        Assert.That(Comparer.Equals(b, a), Is.True);
-        Assert.That(Comparer.GetHashCode(a), Is.EqualTo(Comparer.GetHashCode(b)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Comparer.Equals(a, b), Is.True);
+            Assert.That(Comparer.Equals(b, a), Is.True);
+            Assert.That(Comparer.GetHashCode(a), Is.EqualTo(Comparer.GetHashCode(b)));
+        }
     }
 
     [TestCaseSource(nameof(NotEqualCases))]
     public void Different_addresses_do_not_compare_equal(IPAddress a, IPAddress b)
     {
-        Assert.That(Comparer.Equals(a, b), Is.False);
-        Assert.That(Comparer.Equals(b, a), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Comparer.Equals(a, b), Is.False);
+            Assert.That(Comparer.Equals(b, a), Is.False);
+        }
     }
 
     [Test]
     public void Handles_null_and_reference_equality()
     {
         IPAddress ip = IPAddress.Parse("1.2.3.4");
-        Assert.That(Comparer.Equals(null, null), Is.True);
-        Assert.That(Comparer.Equals(ip, null), Is.False);
-        Assert.That(Comparer.Equals(null, ip), Is.False);
-        Assert.That(Comparer.Equals(ip, ip), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Comparer.Equals(null, null), Is.True);
+            Assert.That(Comparer.Equals(ip, null), Is.False);
+            Assert.That(Comparer.Equals(null, ip), Is.False);
+            Assert.That(Comparer.Equals(ip, ip), Is.True);
+        }
     }
 }

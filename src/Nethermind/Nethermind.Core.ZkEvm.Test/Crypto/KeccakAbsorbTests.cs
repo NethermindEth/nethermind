@@ -35,4 +35,17 @@ public class KeccakAbsorbTests
 
         Assert.That(MemoryMarshal.AsBytes(lanes.AsSpan()).ToArray(), Is.EqualTo(expected));
     }
+
+    [Test]
+    public void Partial_lane_zero_extends_only_its_bytes([Range(0, 7)] int partial)
+    {
+        byte[] lane = new byte[sizeof(ulong)];
+        new Random(partial).NextBytes(lane);
+        byte[] expected = new byte[sizeof(ulong)];
+        lane.AsSpan(0, partial).CopyTo(expected);
+
+        ulong actual = KeccakHash.PartialLane(ref lane[0], (nuint)partial);
+
+        Assert.That(actual, Is.EqualTo(BitConverter.ToUInt64(expected)));
+    }
 }

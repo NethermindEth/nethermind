@@ -82,12 +82,13 @@ jobs:
         uses: actions/checkout@v6
         with:
           sparse-checkout: |
+            .github/actions/setup-dotnet
             scripts/config
             scripts/sync
           ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
 
       - name: Set up .NET for CI scripts
-        uses: actions/setup-dotnet@v6
+        uses: ./.github/actions/setup-dotnet
         with:
           dotnet-version: 10.0.402
 
@@ -208,7 +209,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          sparse-checkout: scripts/sync-metrics
+          sparse-checkout: |
+            .github/actions/setup-dotnet
+            scripts/sync-metrics
           ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
 
       - name: Check for metrics data branch
@@ -244,7 +247,7 @@ jobs:
           merge-multiple: true
 
       - name: Set up .NET for CI scripts
-        uses: actions/setup-dotnet@v6
+        uses: ./.github/actions/setup-dotnet
         with:
           dotnet-version: 10.0.402
 

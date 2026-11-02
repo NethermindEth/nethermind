@@ -45,7 +45,9 @@ namespace Nethermind.Core.Test.Caching
         {
             LruKeyCache<Address> cache = new(Capacity, "test");
             Assert.That(cache.Set(_addresses[0]), Is.True);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(cache.Set(_addresses[0]), Is.False);
+#pragma warning restore NUnit2045
             Assert.That(cache.Get(_addresses[0]), Is.True);
         }
 
@@ -62,7 +64,9 @@ namespace Nethermind.Core.Test.Caching
             LruKeyCache<Address> cache = new(Capacity, "test");
             Assert.That(cache.Set(_addresses[0]), Is.True);
             cache.Clear();
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(cache.Get(_addresses[0]), Is.False);
+#pragma warning restore NUnit2045
             Assert.That(cache.Set(_addresses[0]), Is.True);
             Assert.That(cache.Get(_addresses[0]), Is.True);
         }
@@ -119,7 +123,9 @@ namespace Nethermind.Core.Test.Caching
                     {
                         // Fuzz the order of the addresses
                         int index = random.Next(i - 1, i - 1 + Capacity);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
                         Assert.That(cache.Delete(_addresses[index]), Is.True);
+#pragma warning restore NUnit2045
                         Assert.That(cache.Set(_addresses[index]), Is.True);
                     }
                     for (int ii = i - 1; ii < i - 1 + Capacity; ii++)

@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
+using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
@@ -16,13 +19,21 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
     public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
         ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (allowEmptySignature)
+        int start = decoderContext.Position;
+        try
         {
-            DecodeTransaction<EmptySignatureAllowedPayload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+            if (allowEmptySignature)
+            {
+                DecodeTransaction<EmptySignatureAllowedPayload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+            }
+            else
+            {
+                DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+            }
         }
-        else
+        catch (RlpException e) when (TryGetWideVError(decoderContext.Data, start, decoderContext.Position, out string? error))
         {
-            DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+            throw new RlpException(error, e);
         }
     }
 
@@ -80,6 +91,64 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
         transaction.Signature = allowEmptySignature && v == 0 && rBytes.IsEmpty && sBytes.IsEmpty
             ? null
             : SignatureBuilder.FromBytes(v, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
+    }
+
+    /// <summary>
+    /// Names the error of the transaction at <paramref name="start"/> when its decoding failed at <paramref name="failedAt"/>
+    /// on a <c>v</c> too wide for a <see cref="ulong"/>.
+    /// </summary>
+    /// <remarks>
+    /// Only a <c>v</c> in its own slot counts: the seventh item, followed by <c>r</c> and <c>s</c> that end the transaction.
+    /// EIP-155 sets <c>v = 35 + 2 * chainId + parity</c>, so such a <c>v</c> can still hold a 64-bit chain id, which is
+    /// only one no supported network has. A chain id wider than 64 bits makes <c>v</c> itself invalid.
+    /// </remarks>
+    private static bool TryGetWideVError(ReadOnlySpan<byte> data, int start, int failedAt, [NotNullWhen(true)] out string? error)
+    {
+        error = null;
+        (int prefixLength, int contentLength) = RlpHelpers.PeekPrefixAndContentLength(data, start);
+        int end = start + prefixLength + contentLength;
+        if (end > data.Length)
+        {
+            return false;
+        }
+
+        int position = start + prefixLength;
+        for (int i = 0; i < 6 && position < failedAt; i++)
+        {
+            position += RlpHelpers.PeekNextRlpLength(data, position);
+        }
+
+        if (position != failedAt
+            || !TrySkipSignatureItem(data, ref position, end, out int vLength)
+            || vLength <= sizeof(ulong)
+            || data[position - vLength] == 0
+            || !TrySkipSignatureItem(data, ref position, end, out _)
+            || !TrySkipSignatureItem(data, ref position, end, out _)
+            || position != end)
+        {
+            return false;
+        }
+
+        RlpHelpers.DecodeUInt256(data, failedAt, out UInt256 v);
+        UInt256 chainId = (v + v % 2 - 36) / 2;
+        error = chainId <= ulong.MaxValue
+            ? $"InvalidTxChainId: Chain id {chainId} in v is not supported."
+            : $"{TxErrorMessages.InvalidTxSignature} Chain id in v exceeds uint64.";
+        return true;
+    }
+
+    /// <summary>Moves past the byte string of at most 32 bytes at <paramref name="position"/> that ends by <paramref name="end"/>.</summary>
+    private static bool TrySkipSignatureItem(ReadOnlySpan<byte> data, ref int position, int end, out int contentLength)
+    {
+        contentLength = 0;
+        if (position >= end || data[position] >= Rlp.EmptyListByte)
+        {
+            return false;
+        }
+
+        (int prefixLength, contentLength) = RlpHelpers.PeekPrefixAndContentLength(data, position);
+        position += prefixLength + contentLength;
+        return contentLength <= 32 && position <= end;
     }
 
     private readonly struct Payload : ITxPayloadDecoder

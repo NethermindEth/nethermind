@@ -44,9 +44,12 @@ public class XdcProtocolVersionTests
     {
         using Peer peer = Peer.Create(version);
 
-        Assert.That(peer.Handler.ProtocolVersion, Is.EqualTo(version));
-        Assert.That(peer.Handler.Name, Is.EqualTo(name));
-        Assert.That(peer.Handler.MessageIdSpaceSize, Is.EqualTo(messageIdSpaceSize));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.Handler.ProtocolVersion, Is.EqualTo(version));
+            Assert.That(peer.Handler.Name, Is.EqualTo(name));
+            Assert.That(peer.Handler.MessageIdSpaceSize, Is.EqualTo(messageIdSpaceSize));
+        }
     }
 
     [Test]

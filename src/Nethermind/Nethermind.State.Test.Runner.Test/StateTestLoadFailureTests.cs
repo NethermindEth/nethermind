@@ -53,8 +53,11 @@ public class StateTestLoadFailureTests
         List<GeneralStateTest> tests = [.. new TestsSourceLoader(new LoadGeneralStateTestFileStrategy(), file).LoadTests<GeneralStateTest>()];
 
         Assert.That(tests, Has.Count.EqualTo(1));
-        Assert.That(tests[0].Name, Is.EqualTo(file));
-        Assert.That(tests[0].LoadFailure, Does.Contain(expectedException));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tests[0].Name, Is.EqualTo(file));
+            Assert.That(tests[0].LoadFailure, Does.Contain(expectedException));
+        }
     }
 
     // frontier/validation/transaction/bad_v_r_s pins an explicit v/r/s, so it carries no secretKey the

@@ -72,12 +72,15 @@ public class SnapshotManagerTests
         Block genesis = CliqueTests.GetGenesis();
         Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
         Assert.That(snapshot, Is.Not.Null);
-        Assert.That(snapshot.Hash, Is.EqualTo(genesis.Hash));
-        Assert.That(snapshot.Number, Is.EqualTo(genesis.Number));
-        // Check signers
-        Assert.That(snapshot.Signers.ContainsKey(_signer1), Is.True);
-        Assert.That(snapshot.Signers.ContainsKey(_signer2), Is.True);
-        Assert.That(snapshot.Signers.ContainsKey(_signer3), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.Hash, Is.EqualTo(genesis.Hash));
+            Assert.That(snapshot.Number, Is.EqualTo(genesis.Number));
+            // Check signers
+            Assert.That(snapshot.Signers.ContainsKey(_signer1), Is.True);
+            Assert.That(snapshot.Signers.ContainsKey(_signer2), Is.True);
+            Assert.That(snapshot.Signers.ContainsKey(_signer3), Is.True);
+        }
     }
 
     [Test]
@@ -99,17 +102,20 @@ public class SnapshotManagerTests
         // Here we use a random chain id, should be test independent.
         SnapshotManager manager = new(CliqueConfig.Default, _snapshotDb, _blockTree, new EthereumEcdsa(BlockchainIds.GenericNonRealNetwork), LimboLogs.Instance);
         // Block 1
-        Assert.That(manager.IsInTurn(snapshot, 1, _signer1), Is.True);
-        Assert.That(manager.IsInTurn(snapshot, 1, _signer2), Is.False);
-        Assert.That(manager.IsInTurn(snapshot, 1, _signer3), Is.False);
-        // Block 2
-        Assert.That(manager.IsInTurn(snapshot, 2, _signer1), Is.False);
-        Assert.That(manager.IsInTurn(snapshot, 2, _signer2), Is.True);
-        Assert.That(manager.IsInTurn(snapshot, 2, _signer3), Is.False);
-        // Block 3
-        Assert.That(manager.IsInTurn(snapshot, 3, _signer1), Is.False);
-        Assert.That(manager.IsInTurn(snapshot, 3, _signer2), Is.False);
-        Assert.That(manager.IsInTurn(snapshot, 3, _signer3), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.IsInTurn(snapshot, 1, _signer1), Is.True);
+            Assert.That(manager.IsInTurn(snapshot, 1, _signer2), Is.False);
+            Assert.That(manager.IsInTurn(snapshot, 1, _signer3), Is.False);
+            // Block 2
+            Assert.That(manager.IsInTurn(snapshot, 2, _signer1), Is.False);
+            Assert.That(manager.IsInTurn(snapshot, 2, _signer2), Is.True);
+            Assert.That(manager.IsInTurn(snapshot, 2, _signer3), Is.False);
+            // Block 3
+            Assert.That(manager.IsInTurn(snapshot, 3, _signer1), Is.False);
+            Assert.That(manager.IsInTurn(snapshot, 3, _signer2), Is.False);
+            Assert.That(manager.IsInTurn(snapshot, 3, _signer3), Is.True);
+        }
     }
 
     private static BlockHeader BuildCliqueBlock()

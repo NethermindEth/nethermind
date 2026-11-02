@@ -191,11 +191,14 @@ public class ReceiptMessageDecoder69Tests
 
         TxReceipt decoded = Decode(decoder, Encode(decoder, receipt));
 
-        Assert.That(decoded.TxType, Is.EqualTo(TxType.FrameTx));
-        Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
-        Assert.That(decoded.Payer, Is.EqualTo(receipt.Payer));
-        Assert.That(decoded.StatusCode, Is.EqualTo(TxFrameReceipt.StatusFailure),
-            "the payload carries no transaction status, so it must be derived from the frame statuses");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.TxType, Is.EqualTo(TxType.FrameTx));
+            Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
+            Assert.That(decoded.Payer, Is.EqualTo(receipt.Payer));
+            Assert.That(decoded.StatusCode, Is.EqualTo(TxFrameReceipt.StatusFailure),
+                "the payload carries no transaction status, so it must be derived from the frame statuses");
+        }
         AssertFrameReceiptsEqual(decoded.FrameReceipts!, receipt.FrameReceipts!);
         AssertLogsEqual(decoded.Logs!, TxFrameReceipt.ConcatLogs(receipt.FrameReceipts!));
     }
@@ -250,10 +253,13 @@ public class ReceiptMessageDecoder69Tests
 
         int headerIndex = locator.Position;
         int framesContentLength = locator.ReadSequenceLength();
-        Assert.That(locator.Position + framesContentLength, Is.EqualTo(payloadEnd),
-            "the frames list is not the last item of the payload");
-        Assert.That(encoded[headerIndex], Is.EqualTo((byte)(ShortSequenceHeaderBase + framesContentLength)),
-            "the frames list header is not a single byte");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(locator.Position + framesContentLength, Is.EqualTo(payloadEnd),
+                "the frames list is not the last item of the payload");
+            Assert.That(encoded[headerIndex], Is.EqualTo((byte)(ShortSequenceHeaderBase + framesContentLength)),
+                "the frames list header is not a single byte");
+        }
         return headerIndex;
     }
 
@@ -293,9 +299,12 @@ public class ReceiptMessageDecoder69Tests
         Assert.That(actual, Has.Length.EqualTo(expected.Length));
         for (int i = 0; i < expected.Length; i++)
         {
-            Assert.That(actual[i].Status, Is.EqualTo(expected[i].Status), $"frame receipt {i} status");
-            Assert.That(actual[i].ExecutionGasUsed, Is.EqualTo(expected[i].ExecutionGasUsed), $"frame receipt {i} execution gas used");
-            Assert.That(actual[i].StateGasUsed, Is.EqualTo(expected[i].StateGasUsed), $"frame receipt {i} state gas used");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual[i].Status, Is.EqualTo(expected[i].Status), $"frame receipt {i} status");
+                Assert.That(actual[i].ExecutionGasUsed, Is.EqualTo(expected[i].ExecutionGasUsed), $"frame receipt {i} execution gas used");
+                Assert.That(actual[i].StateGasUsed, Is.EqualTo(expected[i].StateGasUsed), $"frame receipt {i} state gas used");
+            }
             AssertLogsEqual(actual[i].Logs, expected[i].Logs);
         }
     }
@@ -306,9 +315,12 @@ public class ReceiptMessageDecoder69Tests
         Assert.That(actual, Has.Length.EqualTo(expected.Length));
         for (int i = 0; i < expected.Length; i++)
         {
-            Assert.That(actual[i].Address, Is.EqualTo(expected[i].Address), $"log {i} address");
-            Assert.That(actual[i].Data, Is.EqualTo(expected[i].Data), $"log {i} data");
-            Assert.That(actual[i].Topics, Is.EqualTo(expected[i].Topics), $"log {i} topics");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual[i].Address, Is.EqualTo(expected[i].Address), $"log {i} address");
+                Assert.That(actual[i].Data, Is.EqualTo(expected[i].Data), $"log {i} data");
+                Assert.That(actual[i].Topics, Is.EqualTo(expected[i].Topics), $"log {i} topics");
+            }
         }
     }
 

@@ -1154,6 +1154,8 @@ namespace Nethermind.Blockchain
 
             ulong lastNumber = headers[^1].Number;
             ulong previousHeadNumber = Head?.Number ?? 0UL;
+            Hash256? previousHeadHash = Head?.Hash;
+            bool previousHeadRemovedFromMain = false;
 
             using ArrayPoolListRef<DeferredHeaderEvent> pending = new(headers.Count);
             using ArrayPoolListRef<(ulong Number, Hash256 Hash)> removedFromMain = new(0);
@@ -1175,6 +1177,7 @@ namespace Nethermind.Blockchain
                                 removedFromMain.Add((levelNumber, removedHash));
                             }
 
+                            if (levelNumber == previousHeadNumber && level.HasBlockOnMainChain) previousHeadRemovedFromMain = true;
                             level.HasBlockOnMainChain = false;
                             _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
                         }
@@ -1197,6 +1200,8 @@ namespace Nethermind.Blockchain
                     if (ShouldCache(header.Number)) _headerStore.Cache(header);
 
                     Hash256? previousMainHash = MoveHeaderToMain(header, batch, wereProcessed);
+                    if (header.Number == previousHeadNumber && previousHeadHash is not null && previousMainHash == previousHeadHash && header.Hash != previousHeadHash)
+                        previousHeadRemovedFromMain = true;
 
                     // we only force update head block for the last header in the branch
                     bool forceThisHead = forceUpdateHeadBlock && i == headers.Count - 1;
@@ -1218,6 +1223,8 @@ namespace Nethermind.Blockchain
                     pending.Add(new DeferredHeaderEvent(header, previousMainHash, isNewHead));
                 }
             }
+
+            if (previousHeadRemovedFromMain && Head?.Hash != previousHeadHash) Metrics.Reorganizations++;
 
             TryUpdateSyncPivot();
 
@@ -2103,12 +2110,17 @@ namespace Nethermind.Blockchain
         /// persisting and publishing <see cref="FinalizedHash"/>/<see cref="SafeHash"/> happen under one lock, so calls
         /// take effect in the order they acquire it and the published pair is never ahead of disk. Events are raised
         /// outside the lock with this call's own hashes.
+        /// A <see cref="Keccak.Zero"/> hash means the caller does not know that block, so the previously known
+        /// <see cref="FinalizedHash"/>/<see cref="SafeHash"/> is kept rather than cleared, matching other execution clients.
         /// </remarks>
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
             BlockHeader? finalizedHeader;
             using (_forkChoiceLock.EnterScope())
             {
+                if (finalizedBlockHash == Keccak.Zero) finalizedBlockHash = FinalizedHash ?? finalizedBlockHash;
+                if (safeBlockHash == Keccak.Zero) safeBlockHash = SafeHash ?? safeBlockHash;
+
                 bool finalizedAdvanced = finalizedBlockHash is not null
                     && finalizedBlockHash != Keccak.Zero
                     && finalizedBlockHash != FinalizedHash;

@@ -122,8 +122,11 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Default_size_limits_match_eth_protocol_limits()
     {
-        Assert.That(SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit, Is.EqualTo(2UL.MiB));
-        Assert.That(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit, Is.EqualTo(10UL.MiB));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit, Is.EqualTo(2UL.MiB));
+            Assert.That(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit, Is.EqualTo(10UL.MiB));
+        }
     }
 
     [Test]
@@ -953,8 +956,11 @@ public class Eth70ProtocolHandlerTests
 
         // Handler should make only 1 request - not loop trying to get remaining 3 blocks
         // When peer returns fewer than requested with incomplete=false, it means peer can't/won't provide more
-        Assert.That(requestCount, Is.EqualTo(1), "handler should not loop requesting more when peer returned fewer with incomplete=false");
-        Assert.That(result, Has.Count.EqualTo(7), "should return what peer gave us without looping");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requestCount, Is.EqualTo(1), "handler should not loop requesting more when peer returned fewer with incomplete=false");
+            Assert.That(result, Has.Count.EqualTo(7), "should return what peer gave us without looping");
+        }
     }
 
     [Test]
@@ -1057,8 +1063,11 @@ public class Eth70ProtocolHandlerTests
 
         ReceiptsMessage70 response = RequestReceipts(Keccak.Zero, TestItem.KeccakA);
 
-        Assert.That(response.TxReceipts, Is.Empty);
-        Assert.That(response.LastBlockIncomplete, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.TxReceipts, Is.Empty);
+            Assert.That(response.LastBlockIncomplete, Is.False);
+        }
     }
 
     [Test]

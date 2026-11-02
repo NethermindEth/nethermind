@@ -115,11 +115,6 @@
     "hash": "sha256-wr4I1mj1qrXjD2Z3dca70OBe14zZNGagDLW9/8xQtCU="
   },
   {
-    "pname": "FSharp.Core",
-    "version": "6.0.2",
-    "hash": "sha256-JV4aCTlEgzWndr6H2Fr1XzVmh+/fSW6VWWjwbWIYn2A="
-  },
-  {
     "pname": "Google.Protobuf",
     "version": "3.36.2",
     "hash": "sha256-EYJZDbF1+QV3B4V6HfSLIXIm0HMnFs01P6SqRoPTjcs="
@@ -178,16 +173,6 @@
     "pname": "Makaretu.Dns.Multicast",
     "version": "0.27.0",
     "hash": "sha256-B/9YIUNmmbjjyeqQdE2qWlr/KCaacFgZKrhvSwEER5Q="
-  },
-  {
-    "pname": "MathNet.Numerics",
-    "version": "5.0.0",
-    "hash": "sha256-RHJCVM6OxquJF7n5Mbe/oNbucBbkge6ULcbAczOgmVo="
-  },
-  {
-    "pname": "MathNet.Numerics.FSharp",
-    "version": "5.0.0",
-    "hash": "sha256-pPbh8JdmMjBgEu84c/qV4YJ+LLr4+c31C6t++u29qBs="
   },
   {
     "pname": "Microsoft.AspNetCore.Cryptography.Internal",
@@ -696,8 +681,8 @@
   },
   {
     "pname": "Nethermind.Crypto.SecP256r1",
-    "version": "1.2.0",
-    "hash": "sha256-QTFIwriwDfbXAWl5dJ6tOARzqzejkJb4jmEkce4z2C0="
+    "version": "1.2.1",
+    "hash": "sha256-WCDknNLkND/Bh/w8yKF7YeH3TgeK+InVUpgRrYQTAK8="
   },
   {
     "pname": "Nethermind.DotNetty.Buffers",
@@ -831,8 +816,8 @@
   },
   {
     "pname": "Nethermind.RocksDbBindings",
-    "version": "11.8.1.183",
-    "hash": "sha256-lSFzU2M+LkX2O29BbM6OEcVdBLE5U/CmiAFVH8hGLVo="
+    "version": "11.12.0.197",
+    "hash": "sha256-xlA+iH1oBDVmtlDR1iXPWmUJ2EHH3DKEGwB0mtg5Gs4="
   },
   {
     "pname": "Nethermind.TurboPForBindings",

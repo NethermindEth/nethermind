@@ -105,8 +105,11 @@ public class CompositeBlockTracerTests
         nested.Add(first);
 
         IBlockTracer firstResult = parent.GetParallelSafeTracer();
-        Assert.That(firstResult, Is.SameAs(first));
-        Assert.That(parent.GetParallelSafeTracer(), Is.SameAs(firstResult));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstResult, Is.SameAs(first));
+            Assert.That(parent.GetParallelSafeTracer(), Is.SameAs(firstResult));
+        }
 
         nested.Add(new ParallelSafeTestBlockTracer());
 

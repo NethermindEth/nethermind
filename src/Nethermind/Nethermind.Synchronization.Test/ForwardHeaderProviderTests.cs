@@ -72,8 +72,11 @@ public partial class ForwardHeaderProviderTests
         int maxNHeader = Math.Min(maxHeader, peerInfo!.MaxHeadersPerRequest());
 
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders((ulong)skipLastN, (ulong)maxNHeader, CancellationToken.None);
-        Assert.That(headers?[0]?.Number, Is.EqualTo(expectedStartNumber));
-        Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedEndNumber));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers?[0]?.Number, Is.EqualTo(expectedStartNumber));
+            Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedEndNumber));
+        }
     }
 
     [Test]
@@ -102,8 +105,11 @@ public partial class ForwardHeaderProviderTests
         }
 
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        Assert.That(headers?[0]?.Number, Is.EqualTo(1019));
-        Assert.That(headers?[^1]?.Number, Is.EqualTo(1146));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers?[0]?.Number, Is.EqualTo(1019));
+            Assert.That(headers?[^1]?.Number, Is.EqualTo(1146));
+        }
     }
 
     [Test]
@@ -167,8 +173,11 @@ public partial class ForwardHeaderProviderTests
         ctx.ConfigureBestPeer(peerInfo);
 
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        Assert.That(headers?[0]?.Number, Is.EqualTo(0));
-        Assert.That(headers?[^1]?.Number, Is.EqualTo(headNumber));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers?[0]?.Number, Is.EqualTo(0));
+            Assert.That(headers?[^1]?.Number, Is.EqualTo(headNumber));
+        }
     }
 
     [Test]
@@ -546,8 +555,11 @@ public partial class ForwardHeaderProviderTests
         {
             Assert.That(bounded, Is.Not.Null);
             Assert.That(bounded, Has.Count.EqualTo(2));
-            Assert.That(bounded![0]!.Number, Is.EqualTo(setup.Initial[1]!.Number));
-            Assert.That(bounded[^1]!.Number, Is.EqualTo(setup.Initial[1]!.Number + 1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bounded![0]!.Number, Is.EqualTo(setup.Initial[1]!.Number));
+                Assert.That(bounded[^1]!.Number, Is.EqualTo(setup.Initial[1]!.Number + 1));
+            }
         }
 
         UInt256 conflictDifficultyWide = setup.Initial[1]!.TotalDifficulty.GetValueOrDefault() + UInt256.One;
@@ -582,7 +594,9 @@ public partial class ForwardHeaderProviderTests
 
         using IOwnedReadOnlyList<BlockHeader?>? cached = await setup.ForwardHeader.GetBlockHeaders(0, 2, CancellationToken.None);
         Assert.That(cached, Is.Not.Null);
+#pragma warning disable NUnit2045 // Each parent block must be accepted before suggesting its child.
         Assert.That(cached, Has.Count.EqualTo(2));
+#pragma warning restore NUnit2045
         Assert.That(ctx.BlockTree.SuggestBlock(new Block(setup.Initial[2]!), BlockTreeSuggestOptions.None), Is.Not.EqualTo(AddBlockResult.UnknownParent));
         Assert.That(ctx.BlockTree.SuggestBlock(new Block(setup.Initial[3]!), BlockTreeSuggestOptions.None), Is.Not.EqualTo(AddBlockResult.UnknownParent));
         setup.ForwardHeader.OnSuggestBlock(BlockTreeSuggestOptions.ShouldProcess, new Block(setup.Initial[2]!), AddBlockResult.Added);
@@ -616,8 +630,11 @@ public partial class ForwardHeaderProviderTests
                 .WithHash(TestItem.KeccakB)
                 .TestObject;
             conflicting.TotalDifficulty = conflictDifficultyWide;
-            Assert.That(ctx.BlockTree.SuggestBlock(new Block(conflicting), BlockTreeSuggestOptions.None), Is.Not.EqualTo(AddBlockResult.UnknownParent));
-            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(conflicting.Hash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.BlockTree.SuggestBlock(new Block(conflicting), BlockTreeSuggestOptions.None), Is.Not.EqualTo(AddBlockResult.UnknownParent));
+                Assert.That(ctx.BlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(conflicting.Hash));
+            }
         }
         else
         {

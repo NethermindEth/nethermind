@@ -24,8 +24,11 @@ public class ProtectedPrivateKeyTests
 
         ProtectedPrivateKey key = new(TestItem.PrivateKeyA, keyStoreDir);
 
-        Assert.That(Directory.EnumerateFiles(Path.Combine(keyStoreDir, "protection_keys")).Count(), Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Directory.EnumerateFiles(Path.Combine(keyStoreDir, "protection_keys")).Count(), Is.EqualTo(1));
 
-        Assert.That(key.Unprotect(), Is.EqualTo(TestItem.PrivateKeyA));
+            Assert.That(key.Unprotect(), Is.EqualTo(TestItem.PrivateKeyA));
+        }
     }
 }

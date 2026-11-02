@@ -31,7 +31,10 @@ public class TaikoVirtualMachineRegistrationTests
         IVirtualMachine nonGeneric = scope.Resolve<IVirtualMachine>();
         IVirtualMachine<EthereumGasPolicy> generic = scope.Resolve<IVirtualMachine<EthereumGasPolicy>>();
 
-        Assert.That(nonGeneric, Is.InstanceOf<TaikoEthereumVirtualMachine>());
-        Assert.That(generic, Is.SameAs(nonGeneric));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nonGeneric, Is.InstanceOf<TaikoEthereumVirtualMachine>());
+            Assert.That(generic, Is.SameAs(nonGeneric));
+        }
     }
 }

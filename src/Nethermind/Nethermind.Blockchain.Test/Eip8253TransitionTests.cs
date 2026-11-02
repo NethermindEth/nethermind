@@ -108,8 +108,11 @@ public class Eip8253TransitionTests
         Action process = () => chain.BlockProcessor.ProcessOne(
             suggested, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, chain.SpecProvider.GetSpec(fork.Header), CancellationToken.None);
 
-        Assert.That(process, dropBump ? Throws.InstanceOf<InvalidBlockException>().With.Message.Contains("InvalidBlockLevelAccessList") : Throws.Nothing);
-        Assert.That(balManager.ParallelExecutionEnabled, Is.EqualTo(parallelExecution), "the suggested BAL drives the requested execution path");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(process, dropBump ? Throws.InstanceOf<InvalidBlockException>().With.Message.Contains("InvalidBlockLevelAccessList") : Throws.Nothing);
+            Assert.That(balManager.ParallelExecutionEnabled, Is.EqualTo(parallelExecution), "the suggested BAL drives the requested execution path");
+        }
     }
 
     [Test]
@@ -260,21 +263,27 @@ public class Eip8253TransitionTests
 
     private static void AssertAccount(BasicTestBlockchain chain, Block block, Address address, ulong nonce, UInt256 balance, UInt256 slotOne)
     {
-        Assert.That(chain.StateReader.TryGetAccount(block.Header, address, out AccountStruct account), Is.True, $"{address} exists at block {block.Number}");
-        Assert.That(account.Nonce, Is.EqualTo(nonce), $"{address} nonce at block {block.Number}");
-        Assert.That(account.Balance, Is.EqualTo(balance), $"{address} balance at block {block.Number}");
-        Assert.That(account.IsContract, Is.False, $"{address} code at block {block.Number}");
-        Assert.That(GetStorage(chain, block, address, UInt256.One), Is.EqualTo(slotOne), $"{address} storage at block {block.Number}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.StateReader.TryGetAccount(block.Header, address, out AccountStruct account), Is.True, $"{address} exists at block {block.Number}");
+            Assert.That(account.Nonce, Is.EqualTo(nonce), $"{address} nonce at block {block.Number}");
+            Assert.That(account.Balance, Is.EqualTo(balance), $"{address} balance at block {block.Number}");
+            Assert.That(account.IsContract, Is.False, $"{address} code at block {block.Number}");
+            Assert.That(GetStorage(chain, block, address, UInt256.One), Is.EqualTo(slotOne), $"{address} storage at block {block.Number}");
+        }
     }
 
     private static void AssertOnlyBump(ReadOnlyAccountChanges? changes, uint? balanceChangeIndex)
     {
         Assert.That(changes, Is.Not.Null);
-        Assert.That(changes!.NonceChanges, Is.EqualTo(new[] { new NonceChange(0, 1) }));
-        Assert.That(changes.BalanceChanges.Select(static c => c.Index), Is.EqualTo(balanceChangeIndex is uint index ? new[] { index } : []));
-        Assert.That(changes.CodeChanges, Is.Empty);
-        Assert.That(changes.StorageChanges, Is.Empty);
-        Assert.That(changes.StorageReads, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changes!.NonceChanges, Is.EqualTo(new[] { new NonceChange(0, 1) }));
+            Assert.That(changes.BalanceChanges.Select(static c => c.Index), Is.EqualTo(balanceChangeIndex is uint index ? new[] { index } : []));
+            Assert.That(changes.CodeChanges, Is.Empty);
+            Assert.That(changes.StorageChanges, Is.Empty);
+            Assert.That(changes.StorageReads, Is.Empty);
+        }
     }
 
     private sealed class CountingHeaderFinder(IHeaderFinder inner) : IHeaderFinder

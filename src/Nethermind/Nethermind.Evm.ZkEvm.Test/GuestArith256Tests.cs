@@ -97,7 +97,9 @@ public class GuestArith256Tests
             ? EvmInstructions.InstructionMath3Param<EthereumGasPolicy, EvmInstructions.OpAddMod, OffFlag>(ref stack, ref gas, null!)
             : EvmInstructions.InstructionMath3Param<EthereumGasPolicy, EvmInstructions.OpMulMod, OffFlag>(ref stack, ref gas, null!);
 
+#pragma warning disable NUnit2045 // The operation must succeed before reading its stack result.
         Assert.That(status, Is.EqualTo(EvmExceptionType.None));
+#pragma warning restore NUnit2045
         Assert.That(stack.PopUInt256(out UInt256 result), Is.True);
         return result;
     }
@@ -115,7 +117,9 @@ public class GuestArith256Tests
             ? EvmInstructions.InstructionMath2Param<EthereumGasPolicy, EvmInstructions.OpDiv, OffFlag>(ref stack, ref gas)
             : EvmInstructions.InstructionMath2Param<EthereumGasPolicy, EvmInstructions.OpMod, OffFlag>(ref stack, ref gas);
 
+#pragma warning disable NUnit2045 // The operation must succeed before reading its stack result.
         Assert.That(status, Is.EqualTo(EvmExceptionType.None));
+#pragma warning restore NUnit2045
         Assert.That(stack.PopUInt256(out UInt256 result), Is.True);
         return result;
     }

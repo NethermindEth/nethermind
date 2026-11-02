@@ -25,7 +25,7 @@ BFLAT_DOCKER_ARGS = \
 	--mount type=bind,source="$(AIRBENDER_LIB_DIR)",target=/airbender,readonly \
 	-e BFLAT_LD=/usr/bin/ld.lld \
 	-e BFLAT_OBJCOPY=/usr/bin/llvm-objcopy
-GUEST_EXTLIB_MANIFEST := /airbender/libairbender.bflat.manifest
+GUEST_EXTLIB := /airbender/libairbender.bflat.manifest
 
 # Airbender's ROM is 4 MiB: favour size, and leave the reflection data out (about
 # 0.9 MB). The symbols stay: bflat's post-link patch reads them.

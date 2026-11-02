@@ -10,7 +10,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Collections;
-using Nethermind.Trie;
+using Nethermind.State.Flat.NodeBuffer;
 
 namespace Nethermind.State.Flat;
 
@@ -32,6 +32,7 @@ public class SnapshotCompactor(
         if (_snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryBase, out Snapshot? snapshot))
         {
             using Snapshot _ = snapshot;
+            snapshot.PopulateBloom();
 
             long sw = Stopwatch.GetTimestamp();
             using SnapshotPooledList snapshots = GetSnapshotsToCompact(snapshot);
@@ -121,11 +122,10 @@ public class SnapshotCompactor(
         ResourcePool.Usage usage = ResourcePool.CompactUsage(compactSize);
         int count = snapshots.Count;
 
-        // A slot/node written before the highest snapshot index that clears its address is dropped by the merge
+        // A slot written before the highest snapshot index that clears its address is dropped by the merge
         // rather than added then removed.
         using PooledDictionary<HashedKey<Address>, bool> selfDestructMerged = new();
         using PooledDictionary<Address, int> slotClearBoundary = new();
-        using PooledDictionary<Hash256, int> nodeClearBoundary = new();
         for (int i = 0; i < count; i++)
         {
             foreach ((HashedKey<Address> address, bool isNewAccount) in snapshots[i].SelfDestructedStorageAddresses)
@@ -139,7 +139,6 @@ public class SnapshotCompactor(
                 {
                     selfDestructMerged[address] = false;
                     slotClearBoundary[address.Key] = i;
-                    nodeClearBoundary[address.Key.ToAccountPath.ToCommitment()] = i;
                 }
             }
         }
@@ -147,7 +146,7 @@ public class SnapshotCompactor(
         SortedSnapshotContent content = _resourcePool.GetSortedSnapshotContent(usage);
         try
         {
-            using ArrayPoolListRef<Task> compactTask = new(4);
+            using ArrayPoolListRef<Task> compactTask = new(2);
             try
             {
                 compactTask.Add(Task.Run(() => MergeInto(
@@ -155,12 +154,7 @@ public class SnapshotCompactor(
                 compactTask.Add(Task.Run(() => MergeInto(
                     content.SortedStorages, snapshots, default(StorageKeyComparer), static m => m.SortedStorages, static c => c.Storages,
                     new StorageBoundaryKeep<Address, UInt256>(slotClearBoundary))));
-                compactTask.Add(Task.Run(() => MergeInto(
-                    content.SortedStateNodes, snapshots, default(StateNodeKeyComparer), static m => m.SortedStateNodes, static c => c.StateNodes)));
-                compactTask.Add(Task.Run(() => MergeInto(
-                    content.SortedStorageNodes, snapshots, default(StorageNodeKeyComparer), static m => m.SortedStorageNodes, static c => c.StorageNodes,
-                    new StorageBoundaryKeep<Hash256, TreePath>(nodeClearBoundary))));
-
+                MergeRoots(content, snapshots);
                 content.SortedSelfDestructs.BuildFromUnsorted(selfDestructMerged, default(AddressKeyComparer));
             }
             finally
@@ -174,7 +168,33 @@ public class SnapshotCompactor(
             throw;
         }
 
-        return new Snapshot(from, to, content, _resourcePool, usage);
+        // The oldest pin covers every merged snapshot, whose pins may be released before the compacted snapshot.
+        return new Snapshot(from, to, content, _resourcePool, usage, OldestBufferPin(snapshots)?.Copy());
+    }
+
+    private static void MergeRoots(SortedSnapshotContent content, SnapshotPooledList snapshots)
+    {
+        Snapshot final = snapshots[^1];
+        content.StateRootPointer = final.StateRootPointer;
+
+        foreach (Snapshot source in snapshots)
+        {
+            foreach ((HashedKey<Address> address, _) in source.SelfDestructedStorageAddresses)
+                content.StorageRoots[address.Key.ToAccountPath.ToCommitment()] = 0;
+            foreach ((Hash256 address, ulong root) in source.StorageRoots)
+                content.StorageRoots[address] = root;
+        }
+    }
+
+    private static INodeRecordBufferPin? OldestBufferPin(SnapshotPooledList snapshots)
+    {
+        INodeRecordBufferPin? oldest = null;
+        for (int i = 0; i < snapshots.Count; i++)
+        {
+            if (snapshots[i].BufferPin is { } pin && (oldest is null || pin.WriteBoundary < oldest.WriteBoundary)) oldest = pin;
+        }
+
+        return oldest;
     }
 
     private static void MergeInto<TKey, TValue, TComparer>(

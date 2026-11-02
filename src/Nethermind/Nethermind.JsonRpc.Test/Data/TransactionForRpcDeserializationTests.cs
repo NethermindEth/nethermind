@@ -295,9 +295,12 @@ public class TransactionForRpcDeserializationTests
 
         Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, spec: Cancun.Instance);
 
-        Assert.That(result.IsError, Is.True);
-        Assert.That(
-            result.Error,
-            Is.EqualTo(BlockErrorMessages.BlobGasUsedAboveBlockLimit(Cancun.Instance.GasCosts.MaxBlobGasPerBlock, 7, 7 * Eip4844Constants.GasPerBlob)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.True);
+            Assert.That(
+                result.Error,
+                Is.EqualTo(BlockErrorMessages.BlobGasUsedAboveBlockLimit(Cancun.Instance.GasCosts.MaxBlobGasPerBlock, 7, 7 * Eip4844Constants.GasPerBlob)));
+        }
     }
 }

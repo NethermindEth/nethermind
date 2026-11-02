@@ -18,8 +18,11 @@ public class BatchWriteTests
         (BatchWrite batch, _, object writeLock, Exception failure) = CreateFailingBatch();
 
         Exception thrown = Assert.Throws<Exception>(() => batch.Dispose())!;
-        Assert.That(thrown, Is.SameAs(failure), "the original commit failure must propagate");
-        Assert.That(batch.Disposed, Is.True, "a failed commit must still mark the batch disposed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown, Is.SameAs(failure), "the original commit failure must propagate");
+            Assert.That(batch.Disposed, Is.True, "a failed commit must still mark the batch disposed");
+        }
 
         Assert.That(() => Monitor.Exit(writeLock), Throws.TypeOf<SynchronizationLockException>(),
             "the write lock must be released, so this thread no longer owns it after a failed commit");

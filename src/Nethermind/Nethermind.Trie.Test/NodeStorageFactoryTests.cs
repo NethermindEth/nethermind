@@ -59,8 +59,11 @@ public class NodeStorageFactoryTests
         NodeStorageFactory nodeStorageFactory = new(preferredKeyScheme, LimboLogs.Instance);
         nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
         INodeStorage nodeStorage = nodeStorageFactory.WrapKeyValueStore(memDb, forceUsePreferredKeyScheme: true);
-        Assert.That(nodeStorage.Scheme, Is.EqualTo(expectedScheme));
-        Assert.That(nodeStorage.RequirePath, Is.EqualTo(requirePath));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeStorage.Scheme, Is.EqualTo(expectedScheme));
+            Assert.That(nodeStorage.RequirePath, Is.EqualTo(requirePath));
+        }
     }
 
     private MemDb PrepareMemDbWithKeyScheme(INodeStorage.KeyScheme? scheme)

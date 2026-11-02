@@ -40,9 +40,12 @@ public class XdcPooledTransactionMessagesTests
         using NewPooledTransactionHashesMessage upstream = new(Hashes.ToPooledList());
         NewPooledTransactionHashesMessageSerializer serializer = new();
 
-        Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.NewPooledTransactionHashes));
-        Assert.That(Hex(buffer => serializer.Serialize(buffer, message)),
-            Is.EqualTo(Hex(buffer => serializer.Serialize(buffer, upstream))));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.NewPooledTransactionHashes));
+            Assert.That(Hex(buffer => serializer.Serialize(buffer, message)),
+                Is.EqualTo(Hex(buffer => serializer.Serialize(buffer, upstream))));
+        }
     }
 
     [Test]
@@ -51,9 +54,12 @@ public class XdcPooledTransactionMessagesTests
         using XdcGetPooledTransactionsMessage message = new(ValueHashes.ToPooledList());
         using GetPooledTransactionsMessage upstream = new(ValueHashes.ToPooledList());
 
-        Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.GetPooledTransactions));
-        Assert.That(Hex(buffer => new XdcGetPooledTransactionsMessageSerializer().Serialize(buffer, message)),
-            Is.EqualTo(Hex(buffer => new GetPooledTransactionsMessageSerializer().Serialize(buffer, upstream))));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.GetPooledTransactions));
+            Assert.That(Hex(buffer => new XdcGetPooledTransactionsMessageSerializer().Serialize(buffer, message)),
+                Is.EqualTo(Hex(buffer => new GetPooledTransactionsMessageSerializer().Serialize(buffer, upstream))));
+        }
     }
 
     [Test]
@@ -63,9 +69,12 @@ public class XdcPooledTransactionMessagesTests
         using PooledTransactionsMessage upstream = new(Transactions());
         PooledTransactionsMessageSerializer serializer = new();
 
-        Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.PooledTransactions));
-        Assert.That(Hex(buffer => serializer.Serialize(buffer, message)),
-            Is.EqualTo(Hex(buffer => serializer.Serialize(buffer, upstream))));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.PooledTransactions));
+            Assert.That(Hex(buffer => serializer.Serialize(buffer, message)),
+                Is.EqualTo(Hex(buffer => serializer.Serialize(buffer, upstream))));
+        }
     }
 
     [Test]
