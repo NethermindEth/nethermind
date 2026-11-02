@@ -248,6 +248,40 @@ try
                 Environment.SetEnvironmentVariable("SWEEP_CAPTURE", previousCapture);
             }
         });
+    foreach (var failure in new[] { "gate", "gate2" })
+        tests.Case("prepared qualifier diagnostics survive failed oracle " + failure, () =>
+        {
+            var configuration = PreparedConfiguration();
+            var trace = Path.Combine(tests.DirectoryPath, "prepared-diagnostics-" + failure);
+            configuration.Values["STATE_ROOT"] = trace + "-state";
+            configuration.Values["OUT_DIR"] = trace + "-out";
+            configuration.Values["NODE_IO_DIAGNOSTICS"] = "true";
+            var previousCapture = Environment.GetEnvironmentVariable("SWEEP_CAPTURE");
+            Environment.SetEnvironmentVariable("SWEEP_CAPTURE", trace + "-starts");
+            Environment.SetEnvironmentVariable("PREPARED_CAPTURE", trace);
+            Environment.SetEnvironmentVariable("FAIL_PREPARED_ACTION", failure);
+            try
+            {
+                try
+                {
+                    new SweepRunner(configuration).RunAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    throw new InvalidOperationException("failed qualifier reached timing");
+                }
+                catch (IOException exception) when (exception.Message.Contains("prepared fixture gate failed", StringComparison.Ordinal))
+                {
+                    var count = failure == "gate" ? 1 : 2;
+                    var diagnostics = Directory.GetFiles(configuration["STATE_ROOT"], "io-security.txt", SearchOption.AllDirectories);
+                    RpcScriptTests.Assert(diagnostics.Length == count && diagnostics.All(path => File.ReadAllText(path).Contains("$ docker inspect", StringComparison.Ordinal)), "qualifier diagnostics were skipped or lost");
+                    RpcScriptTests.Assert(Directory.GetFiles(configuration["STATE_ROOT"], "node.log", SearchOption.AllDirectories).Length == count && !File.ReadAllText(trace).Contains("cell", StringComparison.Ordinal), "failed qualifier skipped teardown or timed requests");
+                }
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("PREPARED_CAPTURE", null);
+                Environment.SetEnvironmentVariable("FAIL_PREPARED_ACTION", null);
+                Environment.SetEnvironmentVariable("SWEEP_CAPTURE", previousCapture);
+            }
+        });
     tests.Case("prepared startup failure stops the persisted owned child before aborting", () =>
     {
         var configuration = PreparedConfiguration();

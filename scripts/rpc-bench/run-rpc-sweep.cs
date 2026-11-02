@@ -378,15 +378,15 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         if (!qualifyOnly) _labels.Add(label);
         try
         {
+            if (configuration.Prepared) _preparedContainer = container;
+            if (Get("NODE_IO_DIAGNOSTICS") == "true")
+                await NodeIoDiagnostics.CaptureAsync(container, Path.Combine(state, "io-security.txt"), cancellationToken);
             if (configuration.Prepared)
             {
-                _preparedContainer = container;
                 await PreparedCheck(qualifyOnly ? "gate" : "running", arm, state, container, cancellationToken);
                 if (qualifyOnly) return;
             }
             CheckMigrationBudget(false, true);
-            if (Get("NODE_IO_DIAGNOSTICS") == "true")
-                await NodeIoDiagnostics.CaptureAsync(container, Path.Combine(state, "io-security.txt"), cancellationToken);
             if (configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") > 0)
                 await ReceiptMigrationGate.WaitAsync(token => ReceiptMigrationGate.SnapshotAsync(container, Get("SCRATCH_ROOT"), token),
                     Path.Combine(state, "receipt-migration.log"), TimeSpan.FromSeconds(configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT")), cancellationToken);

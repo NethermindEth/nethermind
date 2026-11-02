@@ -96,5 +96,58 @@ if (OperatingSystem.IsLinux())
             });
     }
     finally { Environment.SetEnvironmentVariable("PATH", originalPath); }
+
+    foreach (var diagnosticExit in new[] { 0, 23 })
+        tests.Case("native diagnostics retain mapped and installed evidence or command failure " + diagnosticExit, () =>
+        {
+            var payload = Path.Combine(tests.DirectoryPath, "payload");
+            var proc = Path.Combine(tests.DirectoryPath, "proc");
+            var data = Path.Combine(tests.DirectoryPath, "data");
+            foreach (var directory in new[] { payload, proc, data }) Directory.CreateDirectory(directory);
+            var native = Path.Combine(payload, "librocksdb.so");
+            var managed = Path.Combine(payload, "Nethermind.RocksDbBindings.dll");
+            var unused = Path.Combine(payload, "UnusedRocksdb.dll");
+            var missing = Path.Combine(payload, "missing-rocksdb.so");
+            var database = Path.Combine(data, "rocksdb-data.sst");
+            File.WriteAllText(database, "database fixture must not be hashed");
+            File.WriteAllText(native, "native fixture");
+            File.WriteAllText(managed, "managed fixture");
+            File.WriteAllText(unused, "installed only fixture");
+            File.WriteAllText(Path.Combine(proc, "status"), "Name:\tnethermind\nSeccomp:\t2\nNoNewPrivs:\t0\n");
+            File.WriteAllText(Path.Combine(proc, "maps"), $"001-002 r-xp 0 00:00 1 {native}\n002-003 r--p 0 00:00 1 {native}\n003-004 r--p 0 00:00 2 {managed}\n004-005 r--p 0 00:00 3 {missing} (deleted)\n005-006 r--p 0 00:00 4 {database}\n");
+            File.WriteAllText(Path.Combine(data, "OPTIONS-1"), "  read_io_executor_threads=2\n  async_io=true\n");
+            var docker = Path.Combine(tests.DirectoryPath, "docker");
+            File.WriteAllText(docker, diagnosticExit == 0 ? $$"""
+                #!/bin/bash
+                if [ "$1" = exec ]; then
+                    script="$5"
+                    script="${script//\/proc\/1/{{proc}}}"
+                    script="${script//\/nethermind/{{payload}}}"
+                    script="${script//\/execution-data/{{data}}}"
+                    exec sh -c "$script"
+                fi
+                echo diagnostic-fixture
+                """ : "#!/bin/sh\necho diagnostic-failure >&2\nexit 23\n");
+            if (OperatingSystem.IsLinux()) File.SetUnixFileMode(docker, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            try
+            {
+                Environment.SetEnvironmentVariable("PATH", tests.DirectoryPath + Path.PathSeparator + originalPath);
+                var output = Path.Combine(tests.DirectoryPath, "io-security-" + diagnosticExit + ".txt");
+                NodeIoDiagnostics.CaptureAsync("fixture-container", output, CancellationToken.None).GetAwaiter().GetResult();
+                var evidence = File.ReadAllText(output);
+                if (diagnosticExit != 0)
+                {
+                    RpcScriptTests.Assert(evidence.Contains("exit=23", StringComparison.Ordinal) && evidence.Contains("diagnostic-failure", StringComparison.Ordinal), "diagnostic command failure hidden");
+                    return;
+                }
+                string Hash(string path) => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path)));
+                RpcScriptTests.Assert(evidence.Split(Hash(native)).Length == 3 && evidence.Split(Hash(managed)).Length == 3, "native/managed installed and deduplicated mapped-path hashes missing");
+                RpcScriptTests.Assert(evidence.Split(Hash(unused)).Length == 2, "installed-only payload misrepresented as mapped");
+                RpcScriptTests.Assert(!evidence.Contains(Hash(database), StringComparison.Ordinal), "mapped database contents were hashed");
+                RpcScriptTests.Assert(evidence.Contains("unavailable mapped path: " + missing, StringComparison.Ordinal) && evidence.Contains("(deleted)", StringComparison.Ordinal), "missing/deleted mapping evidence lost");
+                RpcScriptTests.Assert(evidence.Contains("read_io_executor_threads=2", StringComparison.Ordinal) && evidence.Contains("Seccomp:\t2", StringComparison.Ordinal), "options or process policy missing");
+            }
+            finally { Environment.SetEnvironmentVariable("PATH", originalPath); }
+        });
 }
 tests.Complete();

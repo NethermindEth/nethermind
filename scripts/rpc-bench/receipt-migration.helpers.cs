@@ -131,7 +131,23 @@ internal static class NodeIoDiagnostics
         await Capture("uname", ["-a"]);
         await Capture("docker", ["info", "--format", "{{json .SecurityOptions}}"]);
         await Capture("docker", ["inspect", "--format", "image={{.Image}} pid={{.State.Pid}} security={{json .HostConfig.SecurityOpt}} privileged={{.HostConfig.Privileged}} capadd={{json .HostConfig.CapAdd}} capdrop={{json .HostConfig.CapDrop}} apparmor={{.AppArmorProfile}} cpuset={{.HostConfig.CpusetCpus}} memory={{.HostConfig.Memory}}", container]);
-        await Capture("docker", ["exec", container, "sh", "-c", "grep -E '^(Name|Seccomp|Seccomp_filters|NoNewPrivs|CapEff|CapBnd):' /proc/1/status; for p in /proc/sys/kernel/io_uring_disabled /proc/sys/kernel/io_uring_group; do if test -r \"$p\"; then printf '%s=' \"$p\"; cat \"$p\"; fi; done; find /nethermind -maxdepth 2 -name '*rocksdb*.so' -exec sha256sum '{}' ';'; find /execution-data -maxdepth 6 -name 'OPTIONS-*' -type f -exec grep -HE '^[[:space:]]*(read_io_executor_threads|use_direct_reads|use_direct_io_for_flush_and_compaction|allow_mmap_reads|allow_mmap_writes|async_io)[[:space:]]*=' '{}' ';'"]);
+        await Capture("docker", ["exec", container, "sh", "-c", """
+            printf '\n=== process security and policy ===\n'
+            grep -E '^(Name|Seccomp|Seccomp_filters|NoNewPrivs|CapEff|CapBnd):' /proc/1/status
+            for p in /proc/sys/kernel/io_uring_disabled /proc/sys/kernel/io_uring_group; do
+                if test -r "$p"; then printf '%s=' "$p"; cat "$p"; fi
+            done
+            printf '\n=== installed RocksDB payloads (not proof of loading) ===\n'
+            find /nethermind -maxdepth 2 -type f \( -iname '*rocksdb*.so' -o -iname '*rocksdb*.dll' \) -exec sha256sum '{}' ';'
+            printf '\n=== process 1 RocksDB mappings ===\n'
+            grep -i rocksdb /proc/1/maps
+            printf '\n=== current files at mapped paths (not mapped-memory hashes) ===\n'
+            awk 'tolower($6) ~ /rocksdb[^\/]*\.(so(\.[0-9]+)*|dll)$/ && $6 ~ /^\// {print $6}' /proc/1/maps | sort -u | while IFS= read -r p; do
+                if test -r "$p"; then sha256sum "$p"; else printf 'unavailable mapped path: %s\n' "$p"; fi
+            done
+            printf '\n=== persisted RocksDB options (not proof of every effective option) ===\n'
+            find /execution-data -maxdepth 6 -name 'OPTIONS-*' -type f -exec grep -HE '^[[:space:]]*(read_io_executor_threads|use_direct_reads|use_direct_io_for_flush_and_compaction|allow_mmap_reads|allow_mmap_writes|async_io)[[:space:]]*=' '{}' ';'
+            """]);
 
         async Task Capture(string command, string[] arguments)
         {
