@@ -236,7 +236,7 @@ public partial struct SszWitnessState
 
 /// <summary>A state node from the witness, kept in the input when decoded where <see cref="PlaceInInput"/> lets it.</summary>
 /// <remarks>Must keep <see cref="Bytes"/> as its only field: the witness reads an array of these as one of byte arrays.</remarks>
-public readonly struct WitnessNode
+public readonly partial struct WitnessNode
 {
     /// <summary>Holds <paramref name="node"/>, decoded from the input, in the input or else as a copy.</summary>
     public WitnessNode(ReadOnlySpan<byte> node) => Bytes = Hold(node);
@@ -246,6 +246,9 @@ public readonly struct WitnessNode
     public byte[] Bytes { get; }
 
     public ReadOnlySpan<byte> AsSpan() => Bytes;
+
+    /// <summary>Whether a decoded node may stay in the input; see <see cref="PlaceInInput"/>.</summary>
+    private static partial bool CanPlaceInInput { get; }
 
     /// <summary>The bytes before the data of a 64-bit array: the object header, the method table and the length, padded
     /// to a word.</summary>
@@ -296,6 +299,9 @@ public readonly struct WitnessNode
 
     private static unsafe byte[] Hold(ReadOnlySpan<byte> node)
     {
+        if (!CanPlaceInInput)
+            return node.ToArray();
+
         byte* source = Address(node);
         if (source < Placement.StateList || source >= Placement.InputEnd)
             return node.ToArray();
