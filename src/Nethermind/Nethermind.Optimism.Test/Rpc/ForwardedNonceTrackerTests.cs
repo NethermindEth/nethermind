@@ -90,8 +90,8 @@ public class ForwardedNonceTrackerTests
         int locksWhileHeld = tracker.SenderLockCount;
         // A correct lock never lets the second send in while the first holds it, so this window cannot fail one. It catches a
         // lock that lets the second in on its own within 2 s, above the 1 s of the bypasses it was written against (a timed
-        // wait whose result is ignored, a wait that is not awaited); one that lets it in only later passes. Checked at once,
-        // as such a lock cannot be released cleanly below.
+        // wait whose result is ignored, a wait that is not awaited); one that lets it in only later can pass. Asserted before
+        // the cleanup below, so that an over-release error there cannot hide the acquisition failure.
         await Task.WhenAny(sameAccount, Task.Delay(TimeSpan.FromSeconds(2)));
         Assert.That(sameAccount.IsCompleted, Is.False, "a second send from the account waits for the first");
 

@@ -324,14 +324,16 @@ public class OptimismEthRpcModuleTest
     {
         private readonly List<Transaction> _received = [];
 
-        public ulong[] ReceivedNonces
+        public Transaction[] Received
         {
             get
             {
                 lock (_received)
-                    return _received.Select(static tx => tx.Nonce).ToArray();
+                    return _received.ToArray();
             }
         }
+
+        public ulong[] ReceivedNonces => Received.Select(static tx => tx.Nonce).ToArray();
 
         public async Task<string?> Post(string method, params object?[] parameters)
         {
@@ -597,15 +599,31 @@ public class OptimismEthRpcModuleTest
         Assert.That(sequencer.ReceivedNonces, Is.EqualTo(sent));
     }
 
-    [Test]
-    public async Task Forwarding_node_does_not_count_a_transaction_signed_by_another_account()
+    public enum NotSignedByNode { SignedByAnotherAccount, Frame }
+
+    [TestCase(NotSignedByNode.SignedByAnotherAccount, TestName = "Forwarding_node_does_not_count_a_transaction_signed_by_another_account")]
+    [TestCase(NotSignedByNode.Frame, TestName = "Forwarding_node_does_not_count_a_frame_transaction_it_leaves_unsigned")]
+    public async Task Forwarding_node_does_not_count_a_transaction_it_did_not_sign(NotSignedByNode kind)
     {
         RecordingSequencer sequencer = new();
         TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer);
-        // Signed by A and sent with C as its from: the node forwards the signature it was given, so C has sent nothing.
-        Transaction signedByA = Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressB).WithGasPrice(1.GWei)
-            .WithChainId(rpcBlockchain.SpecProvider.ChainId).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        LegacyTransactionForRpc request = new(signedByA, default) { From = TestItem.AddressC };
+        SignableTransactionForRpc request = kind switch
+        {
+            // Signed by A and sent with C as its from: the node forwards the signature it was given, so C has sent nothing.
+            NotSignedByNode.SignedByAnotherAccount => new LegacyTransactionForRpc(Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressB)
+                .WithGasPrice(1.GWei).WithChainId(rpcBlockchain.SpecProvider.ChainId).SignedAndResolved(TestItem.PrivateKeyA).TestObject, default)
+            { From = TestItem.AddressC },
+            // A frame transaction has no outer signature, so the sealer leaves it unsigned and still succeeds.
+            _ => new FrameTransactionForRpc
+            {
+                From = TestItem.AddressC,
+                Gas = 50_000,
+                MaxFee = 1.GWei,
+                MaxPriorityFeePerGas = 1,
+                Frames = [new FrameForRpc { Target = TestItem.AddressB, ExecutionGas = 50_000, StateGas = 0 }],
+                Signatures = [],
+            },
+        };
 
         AssertSucceeded(await rpcBlockchain.TestEthRpc("eth_sendTransaction", request).WaitAsync(TimeSpan.FromSeconds(30)));
         AssertSucceeded(await SendFromC(rpcBlockchain));
@@ -742,6 +760,64 @@ public class OptimismEthRpcModuleTest
             Assert.That(secondWaited, Is.True, "the second send must wait for the first");
             Assert.That(secondHeldTheLock, Is.True, "the second send must hold the lock when it is sent");
             Assert.That(sent, Is.EqualTo(new ulong[] { 1, 2 }), "concurrent sends must not share a nonce");
+        }
+    }
+
+    public enum SecondSend { ExplicitNonce, OwnSignatureWithoutNonce }
+
+    // A send that already has its nonce or its signature still waits: the nonce it is compared with, or the one filled for
+    // it, must follow the send before it.
+    [TestCase(SecondSend.ExplicitNonce, new ulong[] { 0, 1, 2 }, TestName = "Forwarding_node_holds_a_send_with_an_explicit_nonce_until_the_previous_one_is_done")]
+    // Signed by C for nonce 1, with the nonce left out of the request. A signature the request brings is not counted, so
+    // the next filled send repeats its nonce.
+    [TestCase(SecondSend.OwnSignatureWithoutNonce, new ulong[] { 0, 1, 1 }, TestName = "Forwarding_node_holds_a_send_with_its_own_signature_until_the_previous_one_is_done")]
+    public async Task Forwarding_node_holds_a_send_until_the_previous_one_is_done(SecondSend kind, ulong[] sent)
+    {
+        TaskCompletionSource firstArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource secondArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseFirst = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseSecond = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The first two forwards are held at the sequencer until the test releases them.
+        RecordingSequencer sequencer = new(async index =>
+        {
+            if (index == 0)
+            {
+                firstArrived.SetResult();
+                await releaseFirst.Task;
+            }
+            else if (index == 1)
+            {
+                secondArrived.SetResult();
+                await releaseSecond.Task;
+            }
+
+            return AcceptedByTheSequencer;
+        });
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer);
+
+        Transaction signedByC = Build.A.Transaction.WithNonce(1).WithTo(TestItem.AddressB).WithGasPrice(1.GWei)
+            .WithChainId(rpcBlockchain.SpecProvider.ChainId).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+
+        Task<string> first = SendFromC(rpcBlockchain);
+        await firstArrived.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Task<string> second = kind == SecondSend.ExplicitNonce
+            ? SendFromC(rpcBlockchain, ",\"nonce\":\"0x1\"")
+            : rpcBlockchain.TestEthRpc("eth_sendTransaction", new LegacyTransactionForRpc(signedByC, default) { From = TestItem.AddressC, Nonce = null })
+                .WaitAsync(TimeSpan.FromSeconds(30));
+        (bool secondWaited, bool secondHeldTheLock) = await ReleaseTwoSendsInTurn(((OptimismEthRpcModule)rpcBlockchain.EthRpcModule).NonceTracker,
+            TestItem.AddressC, releaseFirst, first, secondArrived.Task, releaseSecond);
+        AssertSucceeded(await first);
+        AssertSucceeded(await second);
+        AssertSucceeded(await SendFromC(rpcBlockchain));
+
+        EthereumEcdsa ecdsa = new(rpcBlockchain.SpecProvider.ChainId);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondWaited, Is.True, "the second send must wait for the first");
+            Assert.That(secondHeldTheLock, Is.True, "the second send must hold the lock when it is sent");
+            Assert.That(sequencer.ReceivedNonces, Is.EqualTo(sent));
+            Assert.That(sequencer.Received.Select(tx => ecdsa.RecoverAddress(tx)), Is.All.EqualTo(TestItem.AddressC),
+                "every forward must carry a signature of C over what is sent");
         }
     }
 
