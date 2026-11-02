@@ -8,7 +8,9 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -95,6 +97,61 @@ public partial class DebugRpcModuleTests
             }
             Assert.That(JToken.DeepEquals(seeded, replayed), Is.True, $"{seeded}{Environment.NewLine}{replayed}");
         }
+    }
+
+    /// <remarks>The replay recovers every sender from its signature and is the reference for the seeded workers, which
+    /// take the senders the stored receipts record instead.</remarks>
+    [TestCase("debug_traceBlockByHash", NativeCallTracer.CallTracer)]
+    [TestCase("debug_traceBlockByHash", NativePrestateTracer.PrestateTracer)]
+    [TestCase("trace_block", null)]
+    [TestCase("trace_replayBlockTransactions", null)]
+    public async Task Parallel_block_trace_takes_senders_from_stored_receipts(string method, string? tracer)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        using ParallelTraceBudget budget = new(2);
+        RecoveryCount recoveries = new();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(new ChangesetPrefixStateSeedSource(index))
+                .AddSingleton(budget)
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
+                .AddDecorator<IEthereumEcdsa>((_, inner) => new RecoveryCountingEcdsa(inner, recoveries)));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await chain.AddBlock(LegacyTransfers(chain, SenderTestTransactions));
+        Assert.That(block.Transactions, Has.Length.EqualTo(SenderTestTransactions), "precondition: every transaction is included");
+
+        ClearSenders(chain, block);
+        JToken replayed = await TraceWholeBlock(chain, method, tracer, block);
+        IndexThroughTheCapture(chain, index, block, parent);
+        Transaction[] traced = ClearSenders(chain, block);
+        recoveries.Reset();
+        JToken parallel = await TraceWholeBlock(chain, method, tracer, block);
+        int recovered = recoveries.Count;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recovered, Is.Zero, "every worker finds its sender in the stored receipts");
+            for (int i = 0; i < traced.Length; i++)
+            {
+                Assert.That(traced[i].SenderAddress, Is.EqualTo(TestItem.AddressB), $"sender of transaction {i}");
+            }
+            Assert.That(JToken.DeepEquals(parallel, replayed), Is.True, $"{parallel}{Environment.NewLine}{replayed}");
+        }
+    }
+
+    private static async Task<JToken> TraceWholeBlock(TestRpcBlockchain chain, string method, string? tracer, Block block)
+    {
+        string response = method switch
+        {
+            "trace_block" => await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, block.Number),
+            "trace_replayBlockTransactions" => await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, block.Number, new[] { "trace", "vmTrace", "stateDiff" }),
+            _ => await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, block.Hash!, new GethTraceOptions { Tracer = tracer! }),
+        };
+        JToken result = JToken.Parse(response)["result"]!;
+        Assert.That(result.Type, Is.EqualTo(JTokenType.Array), response);
+        return result;
     }
 
     /// <remarks>

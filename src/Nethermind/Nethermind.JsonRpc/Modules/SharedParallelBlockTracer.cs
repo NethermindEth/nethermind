@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using Autofac;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
@@ -51,7 +52,8 @@ public sealed class SharedParallelBlockTracer(
         {
             if (_tracer is null)
             {
-                _tracer = new ParallelBlockTracer(BuildEnvironment, prefixSeeds, budgets, logManager);
+                // The unkeyed finder serves stored receipts only; it never executes a block to produce them.
+                _tracer = new ParallelBlockTracer(BuildEnvironment, prefixSeeds, budgets, logManager, rootLifetimeScope.ResolveOptional<IReceiptFinder>());
                 rootLifetimeScope.Disposer.AddInstanceForDisposal(_tracer);
             }
 

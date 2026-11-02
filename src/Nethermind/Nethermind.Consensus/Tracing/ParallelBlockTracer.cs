@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using Autofac;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
@@ -39,6 +40,7 @@ public sealed partial class ParallelBlockTracer : IParallelBlockTracer, IDisposa
 {
     private readonly ShareableOverridableEnvSource<Components> _environments;
     private readonly IPrefixStateSeedSource _seeds;
+    private readonly IReceiptFinder? _storedReceipts;
     private readonly ParallelTraceBudgets _budgets;
     private readonly Workers _workers;
     private readonly SerializedTraces.Pool _serialized;
@@ -78,7 +80,10 @@ public sealed partial class ParallelBlockTracer : IParallelBlockTracer, IDisposa
     }
 
     /// <summary>Owns the supplied environments, but borrows the budgets. Dispose the tracer before the budgets.</summary>
-    public ParallelBlockTracer(Func<IOverridableEnv<Components>> buildEnvironment, IPrefixStateSeedSource seeds, ParallelTraceBudgets budgets, ILogManager logManager)
+    /// <param name="storedReceipts">Stored receipts only, never a finder that regenerates them: the senders they record
+    /// stand in for recovering each sender on its worker.</param>
+    public ParallelBlockTracer(Func<IOverridableEnv<Components>> buildEnvironment, IPrefixStateSeedSource seeds, ParallelTraceBudgets budgets, ILogManager logManager,
+        IReceiptFinder? storedReceipts = null)
     {
         _degree = budgets.Degree;
         _environments = new ShareableOverridableEnvSource<Components>(buildEnvironment, _degree);
@@ -89,6 +94,7 @@ public sealed partial class ParallelBlockTracer : IParallelBlockTracer, IDisposa
         int widestWindows = 2 * _degree * DefaultStreamedPerWorker;
         _serialized = new SerializedTraces.Pool(widestWindows, Math.Max(widestWindows, (int)(RetainedSerializedBytes / SerializedTraces.ChunkSize)));
         _seeds = seeds;
+        _storedReceipts = storedReceipts;
         _logger = logManager.GetClassLogger<ParallelBlockTracer>();
     }
 
@@ -134,6 +140,8 @@ public sealed partial class ParallelBlockTracer : IParallelBlockTracer, IDisposa
         {
             if (!_seeds.TryOpenBlock(block, out ICoveredBlock? covered)) return false;
             using ICoveredBlock coverage = covered;
+            // The seeds cover this block by its hash, as its stored receipts are found, so both describe the same body.
+            _storedReceipts?.SetSendersFromStoredReceipts(block);
 
             Transaction[] transactions = block.Transactions;
             int workers = Math.Max(1, Math.Min(slots.Degree, transactions.Length - 1));
