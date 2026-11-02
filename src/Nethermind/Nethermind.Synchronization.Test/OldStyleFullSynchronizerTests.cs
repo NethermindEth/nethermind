@@ -319,6 +319,15 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
+        public void Node_values_response_stops_after_the_byte_limit()
+        {
+            _stateDb.Set(TestItem.KeccakA, new byte[Synchronization.SyncServer.NodeDataSoftResponseByteLimit / 2 + 1]);
+            using IByteArrayList data = SyncServer.GetNodeData([TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakA], CancellationToken.None);
+
+            Assert.That(data.Count, Is.EqualTo(2));
+        }
+
+        [Test]
         public void Can_retrieve_empty_receipts()
         {
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(2).TestObject;
