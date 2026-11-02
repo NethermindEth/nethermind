@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -430,17 +434,23 @@ public static partial class TrustedInput
         return ((int)offset + ListPrefixLength, (int)count);
     }
 
+    /// <remarks>In 32-bit arithmetic, which a 32-bit guest does in one compare where a 64-bit one takes several: the
+    /// input is at least <see cref="HeaderLength"/> long, so neither difference below can wrap.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ItemLength(ReadOnlySpan<byte> data, int position, int padding)
     {
-        if ((ulong)(uint)position + ItemPrefixLength > (ulong)data.Length)
-            throw new ArgumentException("Item out of bounds", nameof(data));
+        if ((uint)position > (uint)(data.Length - ItemPrefixLength)) ThrowItemOutOfBounds();
 
-        uint length = BinaryPrimitives.ReadUInt32LittleEndian(data[position..]);
-        if ((ulong)(uint)position + (ulong)ItemPrefixLength + length + (ulong)padding > (ulong)data.Length)
-            throw new ArgumentException("Item out of bounds", nameof(data));
+        uint length = BinaryPrimitives.ReadUInt32LittleEndian(
+            MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(data), position), sizeof(uint)));
+        uint room = (uint)(data.Length - position - ItemPrefixLength);
+        if (length > room || room - length < (uint)padding) ThrowItemOutOfBounds();
 
         return (int)length;
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowItemOutOfBounds() => throw new ArgumentException("Item out of bounds", "data");
 
     private static int ItemStride(int length, int padding) => ItemPrefixLength + Align(length + padding);
 
