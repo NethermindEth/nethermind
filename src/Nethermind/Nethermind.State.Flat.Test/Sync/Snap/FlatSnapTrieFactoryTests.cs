@@ -386,10 +386,8 @@ public class FlatSnapTrieFactoryTests
     [Test]
     public void SaveCheckpoint_KeepsTheLastCheckpoint_WhenTheWritesItCoversFailToFlush()
     {
-        MemColumnsDb<FlatDbColumns> columns = new();
         FlushFailingDb accounts = new();
-        IColumnsDb<FlatDbColumns> db = Substitute.For<IColumnsDb<FlatDbColumns>>();
-        db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(c => c.Arg<FlatDbColumns>() == FlatDbColumns.Account ? accounts : columns.GetColumnDb(c.Arg<FlatDbColumns>()));
+        IColumnsDb<FlatDbColumns> db = CreateColumnsDbWithAccounts(accounts);
         FlatSnapTrieFactory factory = CreateResumingFactory(Substitute.For<IPersistence>(), db);
         factory.SaveCheckpoint(CreateCheckpoint());
 
@@ -397,6 +395,15 @@ public class FlatSnapTrieFactoryTests
 
         Assert.Throws<InvalidOperationException>(() => factory.SaveCheckpoint(CreateCheckpoint(anchorHash: TestItem.KeccakB)));
         Assert.That(factory.LoadCheckpoint()?.AnchorHash, Is.EqualTo(TestItem.KeccakA));
+    }
+
+    [Test]
+    public void WriteSnapCheckpoint_WritesNoCheckpoint_WhenItsSentinelFailsToFlush()
+    {
+        IColumnsDb<FlatDbColumns> db = CreateColumnsDbWithAccounts(new FlushFailingDb { FailFlush = true });
+
+        Assert.Throws<InvalidOperationException>(() => BasePersistence.WriteSnapCheckpoint(db, [1, 2, 3]));
+        Assert.That(BasePersistence.ReadSnapCheckpoint(db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
     }
 
     // RocksDB commits a batch without the WAL every few hundred writes, which bounds the memory a large discard takes.
@@ -480,6 +487,14 @@ public class FlatSnapTrieFactoryTests
     private static FlatSnapTrieFactory CreateResumingFactory(IPersistence persistence, IColumnsDb<FlatDbColumns> db, int partitionCount = 2, bool snapResume = true) =>
         new(persistence, Substitute.For<IPersistenceManager>(), db, new MemDb(),
             new SyncConfig { SnapResume = snapResume, SnapSyncAccountRangePartitionCount = partitionCount }, LimboLogs.Instance);
+
+    private static IColumnsDb<FlatDbColumns> CreateColumnsDbWithAccounts(IDb accounts)
+    {
+        MemColumnsDb<FlatDbColumns> columns = new();
+        IColumnsDb<FlatDbColumns> db = Substitute.For<IColumnsDb<FlatDbColumns>>();
+        db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(c => c.Arg<FlatDbColumns>() == FlatDbColumns.Account ? accounts : columns.GetColumnDb(c.Arg<FlatDbColumns>()));
+        return db;
+    }
 
     /// <summary>Two account partitions: the first finished, the second downloaded up to <see cref="LastAccount"/>.</summary>
     private static SnapCheckpoint CreateCheckpoint(
