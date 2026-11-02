@@ -35,7 +35,7 @@ public class FlatBalHealing(
     // EIP-8298: hashes of adopted code the code database lacked when the chunk adopting it was applied.
     private readonly HashSet<ValueHash256> _missingCode = [];
 
-    private const int BalsChunkSize = 16;
+    internal const int BalsChunkSize = 16;
     private const int MaxInitialCapacity = 1024;
 
     public bool IsAvailable => true;
@@ -178,11 +178,10 @@ public class FlatBalHealing(
             deltas.Add(bal, getAccount);
         }
 
+        // Not cancellable from here on: the batch commits as it goes, so a cancellation would leave part of the chunk written.
         Span<byte> slotValue = stackalloc byte[EvmWord.Count];
         foreach ((AddressAsKey key, BlockAccessListDelta.AccountDelta delta) in deltas.Accounts)
         {
-            token.ThrowIfCancellationRequested();
-
             Address address = key.Value;
 
             if (delta.Code is { } codeChange)

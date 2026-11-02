@@ -119,6 +119,9 @@ public class OptimismEthRpcModule(
         if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
             return sendError;
 
+        if (rpcTx is LegacyTransactionForRpc { From: { } from } legacy)
+            legacy.Nonce ??= _txPool.GetLatestPendingNonce(from);
+
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction? tx, out string? error))
         {

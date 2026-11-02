@@ -1336,6 +1336,36 @@ public partial class BlockProcessorTests
                 blockTracer.IsTracingRewards == rewards ? new RecordingPrefixTracer(blockTracer) : blockTracer, spec, token);
     }
 
+    /// <remarks>Only the scope that installs the trace executor may leave the senders of a bounded replay to it.</remarks>
+    [Test]
+    public async Task BlockchainProcessorFacade_DefersBoundedReplaySendersOnlyWithTheTraceModule([Values] bool traceModule)
+    {
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        foreach (Transaction tx in block.Transactions) tx.SenderAddress = null;
+
+        IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
+        IOverridableEnv env = chain.Container.Resolve<ITraceEnvFactory>().CreateForTracing();
+        using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder =>
+        {
+            builder.AddModule(validation);
+            if (traceModule) builder.AddModule(new TransactionTraceModule(validation));
+            builder.AddModule(env);
+        });
+        BlockchainProcessorFacade processor = scope.Resolve<BlockchainProcessorFacade>();
+        using IDisposable pinned = env.BuildAndOverride(parent);
+        IBlockTracer<GethLikeTxTrace> tracer = GethStyleTracer.CreateOptionsTracer(block.Header, new GethTraceOptions(), scope.Resolve<IWorldState>(), chain.SpecProvider);
+        processor.Process(block, TraceProcessingOptions.ReadOnlyReplay, TransactionTraceBoundary.Wrap(tracer, block.Transactions[0].Hash!), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions[0].SenderAddress, Is.EqualTo(TestItem.AddressB), "the target runs, so its sender is recovered");
+            Assert.That(block.Transactions[2].SenderAddress, traceModule ? Is.Null : Is.EqualTo(TestItem.AddressB),
+                "a scope without the trace executor recovers every sender up front");
+        }
+    }
+
     private static IReadOnlyCollection<TTrace> TraceWholeBlockThroughTraceEnvironment<TTrace>(BasicTestBlockchain chain, BlockHeader parent, Block block, Func<IWorldState, IBlockTracer<TTrace>> tracerFor)
     {
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
