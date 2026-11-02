@@ -7,7 +7,7 @@ using Microsoft.ClearScript;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
-internal sealed class JavaScriptTraceFailure(Exception inner, string? message = null) : Exception(message ?? inner.Message, inner)
+internal sealed class JavaScriptTraceFailure(Exception inner, string? message = null) : GethTraceException(message ?? inner.Message, inner)
 {
     internal static bool IsInputFailure(Exception exception, JavaScriptInputException expected) =>
         IsInterruption(exception, expected);

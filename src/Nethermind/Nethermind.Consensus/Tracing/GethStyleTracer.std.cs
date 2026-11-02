@@ -442,7 +442,9 @@ public class GethStyleTracer(
         options switch
         {
             { Tracer: GethLikeBlockMuxTracer.TracerName } => new GethLikeBlockMuxTracer(options,
-                child => CreateOptionsTracer(block, child, worldState, specProvider, logIndex)),
+                child => child.Tracer != GethLikeBlockMuxTracer.TracerName && IsJavaScriptTracer(child)
+                    ? new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), child)
+                    : CreateOptionsTracer(block, child, worldState, specProvider, logIndex)),
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, CreateNativeTracerFactory(options, worldState, specProvider, logIndex)),
             { Tracer.Length: > 0, CaptureJavaScriptErrors: true } => new RecoveringJavaScriptBlockTracer(
                 () => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options), options.TxHash, options.DeadlineScope),
@@ -459,8 +461,7 @@ public class GethStyleTracer(
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        // As in geth, a block trace reports a JavaScript tracer's error on the failing transaction's entry, while a
-        // single-transaction trace fails the call. Unlike geth, this also covers a JavaScript child of muxTracer.
+        // Standalone JavaScript block traces report per-transaction errors; mux child failures abort the RPC.
         options = options with
         {
             CaptureJavaScriptErrors = options.CaptureJavaScriptErrors || options.Tracer is { Length: > 0 },
