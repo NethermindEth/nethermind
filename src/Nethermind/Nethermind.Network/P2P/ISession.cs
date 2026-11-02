@@ -24,6 +24,11 @@ namespace Nethermind.Network.P2P
         /// </summary>
         bool IsChannelClosed => false;
 
+        /// <summary>
+        /// Gets whether the outgoing buffer of the transport channel is above its high watermark, so new messages are not sent.
+        /// </summary>
+        bool IsOutboundBufferFull => false;
+
         PublicKey RemoteNodeId { get; }
         PublicKey ObsoleteRemoteNodeId { get; }
         string RemoteHost { get; set; }

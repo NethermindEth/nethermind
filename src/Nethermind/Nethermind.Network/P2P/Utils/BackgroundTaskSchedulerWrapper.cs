@@ -129,6 +129,18 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
 
     private void ReleaseSyncServe() => Interlocked.Decrement(ref _syncServeRequestsInFlight);
 
+    /// <summary>Disposes the request when the outbound buffer of the peer is full.</summary>
+    /// <remarks>The session drops a message when the buffer is full, so making the response would only waste work.</remarks>
+    /// <returns><see langword="true"/> when the request was disposed and must not be served.</returns>
+    private static bool SkipIfResponseCannotBeSent<TReq>(ProtocolHandlerBase handler, TReq request)
+    {
+        if (!handler.Session.IsOutboundBufferFull) return false;
+
+        request.TryDispose();
+        if (handler.Logger.IsTrace) handler.Logger.Trace($"Skipping {typeof(TReq).Name} on session {handler.Session}, outbound buffer is full");
+        return true;
+    }
+
     private static void HandleBackgroundTaskFailure(ProtocolHandlerBase handler, Exception e)
     {
         DisconnectReason disconnectReason = e switch
@@ -156,6 +168,8 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         {
             try
             {
+                if (SkipIfResponseCannotBeSent(handler, request)) return;
+
                 TRes response = await fulfillFunc(request, cancellationToken);
                 handler.Send(response);
             }
@@ -189,6 +203,8 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         {
             try
             {
+                if (SkipIfResponseCannotBeSent(handler, request)) return;
+
                 TRes response = await TRequestHandler.Execute(handler, request, cancellationToken);
                 handler.Send(response);
             }
@@ -221,6 +237,8 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         {
             try
             {
+                if (SkipIfResponseCannotBeSent(handler, request)) return;
+
                 TRes response = await fulfillFunc(request, cancellationToken);
                 handler.Send(response);
             }

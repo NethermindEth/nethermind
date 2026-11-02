@@ -146,6 +146,13 @@ public class ProtocolHandlerBaseTests
     {
         public override int PacketType => 1;
         public override string Protocol => "test";
+        public bool IsDisposed { get; private set; }
+
+        public override void Dispose()
+        {
+            IsDisposed = true;
+            base.Dispose();
+        }
     }
 
     public enum SchedulingPath
@@ -245,6 +252,24 @@ public class ProtocolHandlerBaseTests
 
         Schedule(handler, SchedulingPath.BackgroundTask, new TestRequestMessage());
         Assert.That(scheduler.Count, Is.EqualTo(limit + 1), "Other background tasks are not limited");
+    }
+
+    [Test]
+    public async Task Sync_serve_request_is_skipped_when_the_outbound_buffer_is_full(
+        [Values(SchedulingPath.SyncServeTask, SchedulingPath.SyncServeValueTask, SchedulingPath.HandlerSyncServe)] SchedulingPath path,
+        [Values] bool bufferFull)
+    {
+        ISession session = Substitute.For<ISession>();
+        session.IsOutboundBufferFull.Returns(bufferFull);
+        ImmediateBackgroundTaskScheduler scheduler = new(CancellationToken.None);
+        TestProtocolHandler handler = new(session, TimeSpan.FromSeconds(1), scheduler);
+        TestRequestMessage request = new();
+
+        Schedule(handler, path, request);
+        await scheduler.ScheduledTask;
+
+        session.Received(bufferFull ? 0 : 1).DeliverMessage(Arg.Any<TestResponseMessage>());
+        Assert.That(request.IsDisposed, Is.EqualTo(bufferFull));
     }
 
     [Test]
