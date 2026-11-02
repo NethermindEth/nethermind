@@ -23,6 +23,9 @@ public class TxCertifierFilter(ICertifierContract certifierContract, ITxFilter n
     public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec) =>
         IsCertified(tx, parentHeader, currentSpec) ? AcceptTxResult.Accepted : notCertifiedFilter.IsAllowed(tx, parentHeader, currentSpec);
 
+    public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context) =>
+        IsCertified(tx, context.Parent, context.Spec) ? AcceptTxResult.Accepted : notCertifiedFilter.IsAllowed(tx, in context);
+
     private bool IsCertified(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
     {
         Address sender = tx.SenderAddress;

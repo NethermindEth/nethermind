@@ -302,6 +302,41 @@ public class StandardTxFilterBaseFeeTests
     }
 
     [Test]
+    public void Block_building_checks_with_the_spec_of_the_block_at_EIP1559_activation()
+    {
+        // EIP-1559 activates at block 11: the parent's spec does not have it, the block being built starts at 1 gwei.
+        ReleaseSpec beforeLondon = new() { IsEip1559Enabled = false };
+        ReleaseSpec activation = new() { IsEip1559Enabled = true, Eip1559TransitionBlock = 11 };
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(call => call.Arg<ForkActivation>().BlockNumber >= 11 ? activation : beforeLondon);
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithGasLimit(GasLimit).WithGasUsed(GasLimit / 2).TestObject;
+        Transaction[] belowBaseFee = LegacyChain(TestItem.PrivateKeyA, 2, gasPrice: 500_000_000);
+        Transaction[] aboveBaseFee = LegacyChain(TestItem.PrivateKeyB, 2, gasPrice: 2.GWei);
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.GetPendingForProduction(Arg.Any<BlockHeader>(), Arg.Any<bool>(), Arg.Any<UInt256>())
+            .Returns(new PendingTransactionsView(
+                new Dictionary<AddressAsKey, Transaction[]>
+                {
+                    [belowBaseFee[0].SenderAddress!] = belowBaseFee,
+                    [aboveBaseFee[0].SenderAddress!] = aboveBaseFee,
+                },
+                new Dictionary<AddressAsKey, Transaction[]>(),
+                isRevalidated: true));
+        BlocksConfig blocksConfig = new();
+        TxPoolTxSource txSource = new(txPool, specProvider, new TransactionComparerProvider(specProvider, Substitute.For<IBlockFinder>()),
+            LimboLogs.Instance, TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, blocksConfig), blocksConfig,
+            new SpecChangeTxValidator(specProvider.ChainId));
+
+        Transaction[] selected = txSource.GetTransactions(parent, Target(parent), GasLimit).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BaseFeeCalculator.Calculate(parent, activation), Is.EqualTo(1.GWei));
+            Assert.That(selected, Is.EquivalentTo(aboveBaseFee));
+        }
+    }
+
+    [Test]
     public void Tx_pool_admission_follows_the_new_head()
     {
         MinGasPriceTxFilter shared = new(new BlocksConfig { MinGasPrice = 1.GWei });
@@ -366,6 +401,14 @@ public class StandardTxFilterBaseFeeTests
             .WithNonce((ulong)nonce)
             .WithMaxFeePerGas(maxFee)
             .WithMaxPriorityFeePerGas(priorityFee)
+            .WithGasLimit(21_000)
+            .SignedAndResolved(sender)
+            .TestObject).ToArray();
+
+    private static Transaction[] LegacyChain(PrivateKey sender, int count, UInt256 gasPrice) =>
+        Enumerable.Range(0, count).Select(nonce => Build.A.Transaction
+            .WithNonce((ulong)nonce)
+            .WithGasPrice(gasPrice)
             .WithGasLimit(21_000)
             .SignedAndResolved(sender)
             .TestObject).ToArray();
