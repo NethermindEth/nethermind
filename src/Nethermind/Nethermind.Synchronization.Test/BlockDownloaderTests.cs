@@ -23,7 +23,6 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Evm;
-using Nethermind.Network;
 using Nethermind.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.Stats.Model;

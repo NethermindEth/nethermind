@@ -19,7 +19,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Network;
 using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
