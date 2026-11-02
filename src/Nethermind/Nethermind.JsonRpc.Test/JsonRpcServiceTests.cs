@@ -1268,7 +1268,7 @@ public class JsonRpcServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(logger.LogList.Any(line => line.Contains("Incorrect JSON RPC parameters when calling eth_getBalance")), Is.True);
-            Assert.That(logger.LogList.Any(line => line.Contains("Executing JSON RPC call eth_getBalance")), Is.True);
+            Assert.That(logger.LogList, Does.Contain("Executing JSON RPC call eth_getBalance (params omitted)"));
             Assert.That(logger.LogList, Has.None.Contains(secret));
         }
     }

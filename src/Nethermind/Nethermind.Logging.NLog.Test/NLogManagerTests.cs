@@ -72,6 +72,7 @@ namespace Nethermind.Logging.NLog.Test
 
             string endpoint = "192.0.2.42:30303";
             logger.Trace($"Peer {endpoint:hide}");
+            logger.Warn($"Peer {endpoint:hide} " + $"port {42:D5} " + $"protocol {"eth"}");
             logger.Debug($"Peer {endpoint:hide}");
             logger.Warn($"Peer {endpoint,24:hide}");
             Guid peerId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
@@ -87,6 +88,7 @@ namespace Nethermind.Logging.NLog.Test
             Assert.That(target.Logs, Is.EqualTo(new[]
             {
                 $"Trace|Peer {displayedEndpoint}",
+                $"Warn|Peer {displayedEndpoint} port 00042 protocol eth",
                 $"Debug|Peer {displayedEndpoint}",
                 $"Warn|Peer {displayedEndpoint,24}",
                 $"Warn|Peer ID {(maskSensitiveData ? "[redacted]" : peerId.ToString())}",

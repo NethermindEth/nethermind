@@ -305,7 +305,7 @@ namespace Nethermind.Network
 
                     _syncPool.AddPeer(handler);
                     if (handler.IncludeInTxPool) _txPool.AddPeer(handler);
-                    if (_logger.IsTrace) _logger.Trace($"{handler.ClientId} sync peer {session:hide} created.");
+                    if (_logger.IsTrace) _logger.Trace($"{handler.ClientId:hide} sync peer {session:hide} created.");
                 }
                 else
                 {

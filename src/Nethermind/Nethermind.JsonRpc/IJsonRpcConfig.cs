@@ -195,7 +195,7 @@ public interface IJsonRpcConfig : IConfig
     public bool UnsecureDevNoRpcAuthentication { get; set; }
 
     [ConfigItem(
-        Description = "The max number of characters of a JSON-RPC request parameter printing to the log.",
+        Description = "Deprecated. JSON-RPC request parameters are omitted from logs.",
         DefaultValue = "null")]
     int? MaxLoggedRequestParametersCharacters { get; set; }
 

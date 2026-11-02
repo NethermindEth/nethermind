@@ -903,11 +903,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     }
 
     private static string DescribeErrorResponse(JsonRpcRequest request, Error responseError) =>
-        $"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {responseError.Message}";
+        $"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {(SensitiveLogMasking.Enabled ? "[redacted]" : responseError.Message)}";
 
     /// <remarks>Debug lines only: the forwarded header is caller-controlled, so it must not reach default-level output.</remarks>
     private static string DescribeRemoteAddress(JsonRpcContext context) =>
         context.RemoteAddress is not { } remoteAddress ? string.Empty
+        : SensitiveLogMasking.Enabled ? " from [redacted]"
         : context.ForwardedFor.Count > 0 ? $" from {remoteAddress} (X-Forwarded-For: {context.ForwardedFor})"
         : $" from {remoteAddress}";
 

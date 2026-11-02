@@ -2,6 +2,7 @@ using System;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
@@ -119,11 +120,9 @@ public class NethermindNodeTests
 
     private async Task<string> GetExitedContainerLogsAsync()
     {
-        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (DateTime.UtcNow < deadline && _nethermindContainer.State != TestcontainersStates.Exited)
-            await Task.Delay(200);
-
-        Assert.That(_nethermindContainer.State, Is.EqualTo(TestcontainersStates.Exited));
+        using CancellationTokenSource exitTimeout = new(TimeSpan.FromSeconds(30));
+        long exitCode = await _nethermindContainer.GetExitCodeAsync(exitTimeout.Token).WaitAsync(exitTimeout.Token);
+        Assert.That(exitCode, Is.Not.Zero);
         return await _nethermindContainer.GetCleanStdoutAsync() + await _nethermindContainer.GetCleanStderrAsync();
     }
 

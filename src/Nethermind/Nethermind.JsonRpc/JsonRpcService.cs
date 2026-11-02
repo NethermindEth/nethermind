@@ -37,7 +37,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
     private readonly HashSet<string> _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
-    private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
 
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
@@ -269,7 +268,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         bool useUtf8Parameters = CanDeserializeParametersFromUtf8(request, expectedParameters);
         JsonElement providedParameters = useUtf8Parameters ? default : request.Params;
 
-        LogRequest(methodName, useUtf8Parameters, providedParametersUtf8, providedParameters);
+        LogRequest(methodName);
 
         return expectedParameters.Length == 0
             ? PrepareNoParameters(
@@ -497,24 +496,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return missingParamsCount;
     }
 
-    private void LogRequest(
-        string methodName,
-        bool useUtf8Parameters,
-        ReadOnlyMemory<byte> providedParametersUtf8,
-        JsonElement providedParameters)
+    private void LogRequest(string methodName)
     {
-        if (!_logger.IsTrace)
+        if (_logger.IsTrace && !_methodsLoggingFiltering.Contains(methodName))
         {
-            return;
-        }
-
-        if (useUtf8Parameters)
-        {
-            LogRequest(methodName, providedParametersUtf8);
-        }
-        else
-        {
-            LogRequest(methodName, providedParameters);
+            _logger.Trace($"Executing JSON RPC call {methodName} (params omitted)");
         }
     }
 
@@ -746,73 +732,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
 
         return text.ToString();
-    }
-
-    private void LogRequest(string methodName, JsonElement providedParameters)
-    {
-        if (_methodsLoggingFiltering.Contains(methodName))
-        {
-            return;
-        }
-
-        StringBuilder builder = new($"Executing JSON RPC call {methodName} with params [");
-        int paramsLength = 0;
-        int paramsCount = 0;
-
-        if (providedParameters.ValueKind == JsonValueKind.Array)
-        {
-            foreach (JsonElement _ in providedParameters.EnumerateArray())
-            {
-                if (!AppendLogParameter(builder, "{redacted}", ref paramsLength, paramsCount)) break;
-                paramsCount++;
-            }
-        }
-
-        _logger.Trace(builder.Append(']').ToString());
-    }
-
-    private void LogRequest(string methodName, ReadOnlyMemory<byte> providedParameters)
-    {
-        if (_methodsLoggingFiltering.Contains(methodName))
-        {
-            return;
-        }
-
-        StringBuilder builder = new($"Executing JSON RPC call {methodName} with params [");
-        int paramsLength = 0;
-        int paramsCount = 0;
-        JsonReaderState readerState = default;
-        int offset = 0;
-        bool started = false;
-        while (JsonRpcArrayReader.TryReadNextItemRange(providedParameters, ref offset, ref readerState, ref started, out _, out _))
-        {
-            if (!AppendLogParameter(builder, "{redacted}", ref paramsLength, paramsCount)) break;
-            paramsCount++;
-        }
-
-        _logger.Trace(builder.Append(']').ToString());
-    }
-
-    private bool AppendLogParameter(StringBuilder builder, string? parameter, ref int paramsLength, int paramsCount)
-    {
-        const string separator = ", ";
-        if (paramsLength > _maxLoggedRequestParametersCharacters)
-        {
-            int toRemove = paramsLength - _maxLoggedRequestParametersCharacters;
-            builder.Remove(builder.Length - toRemove, toRemove);
-            builder.Append("...");
-            return false;
-        }
-
-        if (paramsCount != 0)
-        {
-            builder.Append(separator);
-            paramsLength += separator.Length;
-        }
-
-        builder.Append(parameter);
-        paramsLength += parameter?.Length ?? 0;
-        return true;
     }
 
     private static object? DeserializeParameter(JsonElement providedParameter, ExpectedParameter expectedParameter, ReadOnlyMemory<byte> providedParameterUtf8)
