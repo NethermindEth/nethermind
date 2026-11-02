@@ -87,12 +87,12 @@ public class PbtMetricsTests
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent content = new();
         content.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(new byte[1024]);
-        PbtSnapshot first = new(StateId.PreGenesis, new StateId(0, default), default, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        PbtSnapshot first = new(StateId.PreGenesis, new StateId(0, default), default, content, null, pool, PbtResourcePool.Usage.MainBlockProcessing);
         long firstBytes = first.PayloadSize.Leaf + first.PayloadSize.Node;
         repository.TryAdd(first);
         PbtSnapshotContent secondContent = new();
         secondContent.Codes[TestItem.KeccakB.ValueHash256] = new CodeInfo(new byte[512]);
-        PbtSnapshot second = new(StateId.PreGenesis, new StateId(0, default), default, secondContent, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        PbtSnapshot second = new(StateId.PreGenesis, new StateId(0, default), default, secondContent, null, pool, PbtResourcePool.Usage.MainBlockProcessing);
         long secondBytes = second.PayloadSize.Leaf + second.PayloadSize.Node;
         repository.TryAddCompacted(second);
         Assert.That(repository.InMemorySnapshotBytes, Is.EqualTo(firstBytes + secondBytes));
@@ -184,7 +184,7 @@ public class PbtMetricsTests
         IPbtResourcePool pool = Substitute.For<IPbtResourcePool>();
         // An unchanged block inherits its parent's tree.
         using PbtSnapshotContent emptyContent = new();
-        emptyContent.BeginNodeGroupWrites(content.GroupRecordBuffer ?? PbtSnapshotTestExtensions.DefaultGroupRecordBuffer);
+        emptyContent.BeginNodeGroupWrites(content.NodeGroupPin?.Buffer ?? PbtSnapshotTestExtensions.DefaultGroupRecordBuffer);
         emptyContent.RootGroupPointer = content.RootGroupPointer;
         using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content, emptyContent), reader.LoadingGroupsFrom(path => scenario != "missing" && path.Equals(groupKey.ToPath<PbtStorageNodePath>()) ? payload : null), detailedMetrics, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0);
 
@@ -230,7 +230,7 @@ public class PbtMetricsTests
             state = new StateId(0, default);
             PbtSnapshotContent content = ctx.ResourcePool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
             content.Accounts[Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes)] = new Account(1, 100).ToPbtAccount();
-            ctx.Repository.TryAdd(new PbtSnapshot(StateId.PreGenesis, state, default, content, ctx.ResourcePool, PbtResourcePool.Usage.MainBlockProcessing));
+            ctx.Repository.TryAdd(new PbtSnapshot(StateId.PreGenesis, state, default, content, null, ctx.ResourcePool, PbtResourcePool.Usage.MainBlockProcessing));
         }
         using PbtReadOnlySnapshotBundle bundle = ctx.Manager.GatherReadOnlyBundle(state);
         bundle.GetAccount(TestItem.AddressA);

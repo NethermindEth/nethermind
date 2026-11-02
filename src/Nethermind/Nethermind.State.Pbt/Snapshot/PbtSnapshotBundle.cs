@@ -221,7 +221,7 @@ public sealed class PbtSnapshotBundle(
     private PbtAccount? GetLayeredAccount(in ValueHash256 addressHash)
     {
         for (int index = snapshots.Count - 1; index >= 0; index--)
-            if (snapshots[index].Content.Accounts.TryGetValue(addressHash, out PbtAccount? account)) return account;
+            if (snapshots[index].TryGetAccount(addressHash, out PbtAccount? account)) return account;
         return readOnlyBundle.GetAccount(addressHash);
     }
 
@@ -364,9 +364,9 @@ public sealed class PbtSnapshotBundle(
         if (WriteBuffer.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return SlotRun.Empty;
         for (int layer = snapshots.Count - 1; layer >= 0; layer--)
         {
-            PbtSnapshotContent content = snapshots[layer].Content;
-            if (content.TryGetSlotRun(runKey, out PackedSlotRun? run)) return run;
-            if (content.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return SlotRun.Empty;
+            PbtSnapshot snapshot = snapshots[layer];
+            if (snapshot.TryGetSlotRun(runKey, out PackedSlotRun? run)) return run;
+            if (snapshot.HasSelfDestruct(addressHash)) return SlotRun.Empty;
         }
         return null;
     }
@@ -397,7 +397,7 @@ public sealed class PbtSnapshotBundle(
         if (codeHash == ValueKeccak.OfAnEmptyString) return CodeInfo.Empty;
         if (WriteBuffer.Codes.TryGetValue(codeHash, out CodeInfo? code)) return code;
         for (int index = snapshots.Count - 1; index >= 0; index--)
-            if (snapshots[index].Content.Codes.TryGetValue(codeHash, out code)) return code;
+            if (snapshots[index].TryGetCode(codeHash, out code)) return code;
         if (_codeMemo.TryGetValue(codeHash, out code)) return code;
         code = readOnlyBundle.GetCode(codeHash);
         if (code is not null) _codeMemo[codeHash] = code;
@@ -416,7 +416,7 @@ public sealed class PbtSnapshotBundle(
             if (treeRoot != TreeRoot) throw new InvalidOperationException("The tree root changed without a published root group.");
             WriteBuffer.RootGroupPointer = RootGroupPointer;
         }
-        PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage);
+        PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, null, resourcePool, usage);
         snapshot.TryLease();
         snapshots.Add(snapshot);
         _hintedAccounts.Clear();

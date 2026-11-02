@@ -26,10 +26,9 @@ public static class PbtPersistedSnapshotBuilder
 
     public static long EstimateSize(PbtSnapshot snapshot)
     {
-        PbtSnapshotContent c = snapshot.Content;
         long nodeGroupBytes = EstimateTotalNodeGroupBytes(snapshot);
-        long entries = c.Accounts.Count + c.HeaderStorages.Count + c.Storages.Count + c.Codes.Count
-            + c.SelfDestructedStorageAddresses.Count + nodeGroupBytes / MinGroupRecordLength + 1;
+        long entries = snapshot.Accounts.Count + snapshot.HeaderStorages.Count + snapshot.Storages.Count + snapshot.Codes.Count
+            + snapshot.SelfDestructedStorageAddresses.Count + nodeGroupBytes / MinGroupRecordLength + 1;
         // Each inline record has at most 255 value bytes and 72 key bytes. Account for block/restart
         // overhead and ownership/chunk records conservatively rather than under-mapping the arena.
         long bytes = snapshot.PayloadSize.Leaf + nodeGroupBytes;
@@ -41,8 +40,8 @@ public static class PbtPersistedSnapshotBuilder
         // Page padding can at most double a short payload; large chunks have no page padding.
         // Include per-entity RLP headers even when payload sizing counted only logical bytes.
         long nodeGroupBytes = EstimateTotalNodeGroupBytes(snapshot);
-        long entries = (long)snapshot.Content.HeaderStorages.Count + snapshot.Content.Storages.Count
-            + snapshot.Content.Codes.Count + nodeGroupBytes / MinGroupRecordLength + 1;
+        long entries = (long)snapshot.HeaderStorages.Count + snapshot.Storages.Count
+            + snapshot.Codes.Count + nodeGroupBytes / MinGroupRecordLength + 1;
         return checked(4096 + 2 * (snapshot.PayloadSize.Leaf + nodeGroupBytes) + entries * 16);
     }
 
@@ -54,10 +53,10 @@ public static class PbtPersistedSnapshotBuilder
     /// </remarks>
     public static long EstimateTotalNodeGroupBytes(PbtSnapshot snapshot)
     {
-        if (snapshot.To.BlockNumber - snapshot.From.BlockNumber == 1) return snapshot.Content.EstimatePinnedNodeBytes() + 4096;
+        if (snapshot.To.BlockNumber - snapshot.From.BlockNumber == 1) return snapshot.EstimatePinnedNodeBytes() + 4096;
 
         long size = 0;
-        foreach (PbtGroupRecord group in snapshot.Content.EnumerateNodeGroups()) size += PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(group.Payload.Length));
+        foreach (PbtGroupRecord group in snapshot.EnumerateNodeGroups()) size += PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(group.Payload.Length));
         return size;
     }
 
@@ -65,17 +64,16 @@ public static class PbtPersistedSnapshotBuilder
         where TWriter : IByteBufferWriter
     {
         List<Entry> entries = [];
-        PbtSnapshotContent c = snapshot.Content;
-        foreach ((ValueHash256 key, PbtAccount? value) in c.Accounts) entries.Add(new(PbtPersistedKey.AddressEntity(key, PbtPersistedKey.Account), value));
-        foreach ((HashedKey<PbtPath> key, PackedSlotRun value) in c.HeaderStorages) entries.Add(new(PbtPersistedKey.Run(key.Key), value));
-        foreach ((HashedKey<PbtStoragePath> key, PackedSlotRun value) in c.Storages) entries.Add(new(PbtPersistedKey.Run(key.Key), value));
-        foreach ((ValueHash256 key, CodeInfo value) in c.Codes) entries.Add(new(PbtPersistedKey.CodeEntity(key), value));
-        foreach ((ValueHash256 key, bool value) in c.SelfDestructedStorageAddresses) entries.Add(new(PbtPersistedKey.AddressEntity(key, PbtPersistedKey.Clear), value));
+        foreach ((ValueHash256 key, PbtAccount? value) in snapshot.Accounts) entries.Add(new(PbtPersistedKey.AddressEntity(key, PbtPersistedKey.Account), value));
+        foreach ((HashedKey<PbtPath> key, PackedSlotRun value) in snapshot.HeaderStorages) entries.Add(new(PbtPersistedKey.Run(key.Key), value));
+        foreach ((HashedKey<PbtStoragePath> key, PackedSlotRun value) in snapshot.Storages) entries.Add(new(PbtPersistedKey.Run(key.Key), value));
+        foreach ((ValueHash256 key, CodeInfo value) in snapshot.Codes) entries.Add(new(PbtPersistedKey.CodeEntity(key), value));
+        foreach ((ValueHash256 key, bool value) in snapshot.SelfDestructedStorageAddresses) entries.Add(new(PbtPersistedKey.AddressEntity(key, PbtPersistedKey.Clear), value));
         entries.Sort(static (a, b) => a.Key.AsSpan().SequenceCompareTo(b.Key));
         // Group families sort after every other entity, and the tree walk emits each family in key order.
         List<Entry>[] groupFamilies = new List<Entry>[PbtPersistedKey.StorageGroup - PbtPersistedKey.RootGroup + 1];
         for (int family = 0; family < groupFamilies.Length; family++) groupFamilies[family] = [];
-        foreach (PbtGroupRecord group in c.EnumerateNodeGroups())
+        foreach (PbtGroupRecord group in snapshot.EnumerateNodeGroups())
         {
             byte[] key = PbtPersistedKey.Group(group.Path);
             groupFamilies[key[0] - PbtPersistedKey.RootGroup].Add(new(key, group.Payload.ToArray()));

@@ -48,8 +48,12 @@ internal static class SlotRunTestExtensions
     public static void SetSlot<TKey>(this PbtSnapshotContent content, in TKey slotKey, in UInt256 value) where TKey : struct, IPbtKey<TKey>
     {
         HashedKey<TKey> runKey = SlotRun.RunKey(slotKey);
-        PackedSlotRun current = content.TryGetSlotRun(runKey, out PackedSlotRun? held) ? held : SlotRun.Empty;
-        content.SetRun(runKey, current.With(SlotRun.IndexOf(slotKey), value));
+        if (content.TryGetSlotRun(runKey, out PackedSlotRun? held))
+        {
+            content.TryReplaceRun(runKey, held.With(SlotRun.IndexOf(slotKey), value), held);
+            SlotRun.Return(held);
+        }
+        else content.TryAddRun(runKey, SlotRun.Empty.With(SlotRun.IndexOf(slotKey), value));
     }
 
     /// <summary>Stages a run holding only <paramref name="slotKey"/>, of whichever zone its slot lies in.</summary>
@@ -81,6 +85,19 @@ internal static class SlotRunTestExtensions
     public static PackedSlotRun GetRun(this PbtSnapshotContent content, in PbtVariableTreeKey slotKey) => IsHeaderSlot(slotKey)
         ? content.HeaderStorages[SlotRun.RunKey((PbtPath)slotKey)]
         : content.Storages[SlotRun.RunKey((PbtStoragePath)slotKey)];
+
+    /// <summary>The run the snapshot holds for the slot of <paramref name="slotKey"/>, or null when it holds none.</summary>
+    public static PackedSlotRun? GetRun(this PbtSnapshot snapshot, in PbtVariableTreeKey slotKey)
+    {
+        PackedSlotRun? run;
+        if (IsHeaderSlot(slotKey)) snapshot.TryGetSlotRun<PbtPath>(SlotRun.RunKey((PbtPath)slotKey), out run);
+        else snapshot.TryGetSlotRun<PbtStoragePath>(SlotRun.RunKey((PbtStoragePath)slotKey), out run);
+        return run;
+    }
+
+    /// <summary>The slot as the snapshot holds it; zero for a held but absent slot or when the snapshot holds no run of it.</summary>
+    public static UInt256 GetSlot(this PbtSnapshot snapshot, in PbtVariableTreeKey slotKey) =>
+        snapshot.GetRun(slotKey)?.Get(SlotRun.IndexOf(slotKey)) ?? default;
 
     private static bool IsHeaderSlot(in PbtVariableTreeKey slotKey) => slotKey.Length == PbtPath.KeyLength;
 

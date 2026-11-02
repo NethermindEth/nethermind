@@ -40,6 +40,10 @@ public class PbtResourcePool : IPbtResourcePool
 
     public void ReturnSnapshotContent(Usage usage, PbtSnapshotContent content) => _categories[usage].ReturnSnapshotContent(content);
 
+    public PbtSortedSnapshotContent GetSortedSnapshotContent(Usage usage) => _categories[usage].GetSortedSnapshotContent();
+
+    public void ReturnSortedSnapshotContent(Usage usage, PbtSortedSnapshotContent sortedContent) => _categories[usage].ReturnSortedSnapshotContent(sortedContent);
+
     /// <inheritdoc/>
     public PbtWriteBatchBuilder<PbtPath> GetWriteBatch(Usage usage) => _categories[usage].GetWriteBatch();
 
@@ -105,6 +109,7 @@ public class PbtResourcePool : IPbtResourcePool
     private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int writableBundlePoolSize)
     {
         private readonly ResourcePool.ConcurrentStackPool<PbtSnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
+        private readonly ResourcePool.ConcurrentStackPool<PbtSortedSnapshotContent> _sortedPool = new(snapshotContentPoolSize);
         // Each writable bundle holds three partition batches.
         private readonly ResourcePool.ConcurrentStackPool<PbtWriteBatchBuilder<PbtPath>> _writeBatchPool = new(writableBundlePoolSize * 2);
         private readonly ResourcePool.ConcurrentStackPool<PbtWriteBatchBuilder<PbtStoragePath>> _storageWriteBatchPool = new(writableBundlePoolSize);
@@ -114,11 +119,17 @@ public class PbtResourcePool : IPbtResourcePool
         private readonly PooledResourceMetrics _writeBatchMetrics = new(usage, "PbtWriteBatchBuilder");
         private readonly PooledResourceMetrics _storageWriteBatchMetrics = new(usage, "PbtStorageWriteBatchBuilder");
         private readonly PooledResourceMetrics _snapshotMetrics = new(usage, nameof(PbtSnapshotContent));
+        private readonly PooledResourceMetrics _sortedMetrics = new(usage, nameof(PbtSortedSnapshotContent));
 
         public PbtSnapshotContent GetSnapshotContent() =>
             TryRent(_snapshotPool, _snapshotMetrics, out PbtSnapshotContent? content) ? content : new PbtSnapshotContent();
 
         public void ReturnSnapshotContent(PbtSnapshotContent content) => Return(_snapshotPool, _snapshotMetrics, content);
+
+        public PbtSortedSnapshotContent GetSortedSnapshotContent() =>
+            TryRent(_sortedPool, _sortedMetrics, out PbtSortedSnapshotContent? sortedContent) ? sortedContent : new PbtSortedSnapshotContent();
+
+        public void ReturnSortedSnapshotContent(PbtSortedSnapshotContent sortedContent) => Return(_sortedPool, _sortedMetrics, sortedContent);
 
         public PbtWriteBatchBuilder<PbtPath> GetWriteBatch() =>
             TryRent(_writeBatchPool, _writeBatchMetrics, out PbtWriteBatchBuilder<PbtPath>? batch) ? batch : new PbtWriteBatchBuilder<PbtPath>();

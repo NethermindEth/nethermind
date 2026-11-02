@@ -15,22 +15,21 @@ public static class PbtPersistedSnapshotValidation
     public static void Validate(PbtSnapshot source, PbtPersistedSnapshot persisted)
     {
         if (source.From != persisted.From || source.To != persisted.To || source.TreeRoot != persisted.TreeRoot) throw Mismatch();
-        PbtSnapshotContent content = source.Content;
-        PbtGroupRecord[] groups = [.. content.EnumerateNodeGroups()];
+        PbtGroupRecord[] groups = [.. source.EnumerateNodeGroups()];
         long count = 0;
         using (PbtPersistedScanner scanner = persisted.Scan())
             while (scanner.MoveNext())
                 if (PbtPersistedKey.IsEntity(scanner.Key)) count++;
-        if (count != (long)content.Accounts.Count + content.HeaderStorages.Count + content.Storages.Count
-            + content.Codes.Count + content.SelfDestructedStorageAddresses.Count + groups.Length) throw Mismatch();
-        foreach ((ValueHash256 address, PbtAccount? account) in content.Accounts)
+        if (count != (long)source.Accounts.Count + source.HeaderStorages.Count + source.Storages.Count
+            + source.Codes.Count + source.SelfDestructedStorageAddresses.Count + groups.Length) throw Mismatch();
+        foreach ((ValueHash256 address, PbtAccount? account) in source.Accounts)
             if (!persisted.TryGetAccount(address, out PbtAccount? actual) || actual != account) throw Mismatch();
-        foreach ((ValueHash256 address, _) in content.SelfDestructedStorageAddresses)
+        foreach ((ValueHash256 address, _) in source.SelfDestructedStorageAddresses)
             if (!persisted.TryGetStorageClear(address)) throw Mismatch();
-        foreach ((ValueHash256 hash, Evm.CodeAnalysis.CodeInfo code) in content.Codes)
+        foreach ((ValueHash256 hash, Evm.CodeAnalysis.CodeInfo code) in source.Codes)
             if (!persisted.TryGetCode(hash, out Evm.CodeAnalysis.CodeInfo? actual) || !actual!.CodeSpan.SequenceEqual(code.CodeSpan)) throw Mismatch();
-        foreach ((HashedKey<PbtPath> key, PackedSlotRun run) in content.HeaderStorages) ValidateRun(persisted, key.Key, run);
-        foreach ((HashedKey<PbtStoragePath> key, PackedSlotRun run) in content.Storages) ValidateRun(persisted, key.Key, run);
+        foreach ((HashedKey<PbtPath> key, PackedSlotRun run) in source.HeaderStorages) ValidateRun(persisted, key.Key, run);
+        foreach ((HashedKey<PbtStoragePath> key, PackedSlotRun run) in source.Storages) ValidateRun(persisted, key.Key, run);
         foreach (PbtGroupRecord group in groups) ValidateGroup(persisted, group.Path, group.Payload);
     }
 

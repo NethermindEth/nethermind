@@ -278,7 +278,7 @@ public class PbtRocksDbPersistenceTests
                     PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
                     content.Accounts[addressHash] = new Account(number, number + 10).ToPbtAccount();
                     content.SetPhysicalTree(tree.PhysicalPayloads);
-                    repository.TryAdd(new PbtSnapshot(last, next, tree.RootHash, content, pool, PbtResourcePool.Usage.MainBlockProcessing));
+                    repository.TryAdd(new PbtSnapshot(last, next, tree.RootHash, content, null, pool, PbtResourcePool.Usage.MainBlockProcessing));
                     compactor.DoCompactSnapshot(next);
                     last = next;
                 }

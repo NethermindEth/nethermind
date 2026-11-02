@@ -80,7 +80,7 @@ public class PbtSnapshotRepositoryTests
         buffer.PinHead().Returns(pin);
         PbtSnapshotContent content = new();
         content.BeginNodeGroupWrites(buffer);
-        PbtSnapshot snapshot = new(State(0), State(1), default, content, _pool, PbtResourcePool.Usage.MainBlockProcessing);
+        PbtSnapshot snapshot = new(State(0), State(1), default, content, null, _pool, PbtResourcePool.Usage.MainBlockProcessing);
         Assert.That(compacted ? _repository.TryAddCompacted(snapshot) : _repository.TryAdd(snapshot), Is.True);
 
         _repository.Dispose();
@@ -598,7 +598,7 @@ public class PbtSnapshotRepositoryTests
 
     private PbtPersistedSnapshot Persisted(PbtPersistedTestStore store, StateId from, StateId to, SnapshotTier tier, PbtSnapshotContent content)
     {
-        using PbtSnapshot memory = new(from, to, default, content, _pool, PbtResourcePool.Usage.MainBlockProcessing);
+        using PbtSnapshot memory = new(from, to, default, content, null, _pool, PbtResourcePool.Usage.MainBlockProcessing);
         using PbtPersistedSnapshot built = store.Build(memory);
         return new(new(from, to, built.Location, tier), built.Reservation, store.Blobs, built.BloomRef);
     }
@@ -612,7 +612,7 @@ public class PbtSnapshotRepositoryTests
     private static StateId State(int block) => block < 0 ? StateId.PreGenesis : new((ulong)block, default);
 
     private PbtSnapshot Snapshot(StateId from, StateId to) =>
-        new(from, to, default, new PbtSnapshotContent(), _pool, PbtResourcePool.Usage.MainBlockProcessing);
+        new(from, to, default, new PbtSnapshotContent(), null, _pool, PbtResourcePool.Usage.MainBlockProcessing);
 
     private void Add(StateId from, StateId to, bool compacted = false)
     {

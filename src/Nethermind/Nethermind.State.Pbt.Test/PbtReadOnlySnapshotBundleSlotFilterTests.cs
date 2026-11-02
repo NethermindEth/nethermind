@@ -99,13 +99,13 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
         using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         PbtResourcePool pool = new(new PbtConfig());
         ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
-        using PbtSnapshot source = new(StateId.PreGenesis, new StateId(0, default), default, LayerWriting(TestItem.AddressA, 1000, 7), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        using PbtSnapshot source = new(StateId.PreGenesis, new StateId(0, default), default, LayerWriting(TestItem.AddressA, 1000, 7), null, pool, PbtResourcePool.Usage.MainBlockProcessing);
         using PbtPersistedSnapshot persisted = store.Build(source);
         repository.TryAddPersisted(persisted);
         PbtSnapshotContent clearing = LayerWriting(TestItem.AddressB, 1000, 1);
         if (clearInMemory) clearing.ClearStorage(addressHash);
-        repository.TryAdd(new PbtSnapshot(new StateId(0, default), new StateId(1, default), default, clearing, pool, PbtResourcePool.Usage.MainBlockProcessing));
-        repository.TryAdd(new PbtSnapshot(new StateId(1, default), new StateId(2, default), default, LayerWriting(TestItem.AddressC, 1000, 2), pool, PbtResourcePool.Usage.MainBlockProcessing));
+        repository.TryAdd(new PbtSnapshot(new StateId(0, default), new StateId(1, default), default, clearing, null, pool, PbtResourcePool.Usage.MainBlockProcessing));
+        repository.TryAdd(new PbtSnapshot(new StateId(1, default), new StateId(2, default), default, LayerWriting(TestItem.AddressC, 1000, 2), null, pool, PbtResourcePool.Usage.MainBlockProcessing));
 
         long builds = Flat.Metrics.InMemorySlotFilterBuilds;
         using PbtReadOnlySnapshotBundle bundle = PbtSnapshotBundleTestExtensions.ReadOnlyBundle(repository.TryLeaseReadChain(new StateId(2, default), StateId.PreGenesis),

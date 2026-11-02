@@ -92,8 +92,8 @@ internal static class PbtSnapshotBundleTestExtensions
         if (content.RootGroupPointer != 0)
         {
             treeRoot = ValueKeccak.Compute(BitConverter.GetBytes(content.RootGroupPointer));
-            content.GroupRecordBuffer!.SetRoot(treeRoot, content.RootGroupPointer);
+            content.NodeGroupPin!.Buffer.SetRoot(treeRoot, content.RootGroupPointer);
         }
-        return new(index == 0 ? StateId.PreGenesis : new StateId((ulong)index, default), new StateId((ulong)index + 1, default), treeRoot, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        return new(index == 0 ? StateId.PreGenesis : new StateId((ulong)index, default), new StateId((ulong)index + 1, default), treeRoot, content, null, pool, PbtResourcePool.Usage.MainBlockProcessing);
     }
 }

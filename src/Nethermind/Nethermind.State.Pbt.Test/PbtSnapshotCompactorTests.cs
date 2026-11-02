@@ -56,11 +56,12 @@ public class PbtSnapshotCompactorTests
         newer.SetTree((default, emptied ? null : expected));
         using PbtSnapshot compacted = Compact(older, newer);
         PbtGroupRecord record = default;
-        bool found = compacted.Content.GroupRecordBuffer?.TryFindGroup(compacted.RootGroupPointer, default, out record) == true;
+        bool found = compacted.NodeGroupPin?.Buffer.TryFindGroup(compacted.RootGroupPointer, default, out record) == true;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(compacted.Content.GetSlot(key), Is.EqualTo(new UInt256(TestItem.KeccakB.Bytes, isBigEndian: true)));
-            Assert.That(compacted.Content.NodeGroups().Length, Is.EqualTo(emptied ? 0 : 1), "only the newest tree's groups remain");
+            Assert.That(compacted.IsSorted, Is.True);
+            Assert.That(compacted.GetSlot(key), Is.EqualTo(new UInt256(TestItem.KeccakB.Bytes, isBigEndian: true)));
+            Assert.That(compacted.NodeGroups().Length, Is.EqualTo(emptied ? 0 : 1), "only the newest tree's groups remain");
             Assert.That(found, Is.EqualTo(!emptied));
             Assert.That(found ? record.Payload.ToArray() : null, Is.EqualTo(emptied ? null : expected));
         }
@@ -86,7 +87,7 @@ public class PbtSnapshotCompactorTests
         ulong inherited = buffer.Append(inheritedPath, [1], default);
         PbtSnapshotContent content = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         content.BeginNodeGroupWrites(buffer);
-        ulong from = content.NodeGroupWriteBoundary!.Value;
+        ulong from = content.NodeGroupPin!.WriteBoundary;
         while (buffer.WriteFrontier() >> 32 == from >> 32) buffer.Append(new PbtStorageNodePath([0x80], PbtThreeLevelGroupGeometry.LevelsPerGroup), new byte[1000], default);
         ulong written = buffer.Append(writtenPath, [2], default);
         PbtGroupLinks links = default;
@@ -98,7 +99,7 @@ public class PbtSnapshotCompactorTests
         ICompactionSchedule schedule = Substitute.For<ICompactionSchedule>();
         schedule.GetCompactSize(head.BlockNumber).Returns(1UL);
         using PbtSnapshotRepository repository = new(new Nethermind.Api.Monitoring.MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
-        PbtSnapshot snapshot = new(StateId.PreGenesis, head, default, content, _pool, PbtResourcePool.Usage.MainBlockProcessing);
+        PbtSnapshot snapshot = new(StateId.PreGenesis, head, default, content, null, _pool, PbtResourcePool.Usage.MainBlockProcessing);
         repository.TryAdd(snapshot);
         PbtSnapshotCompactor compactor = new(_pool, schedule, repository, Config, LimboLogs.Instance);
         compactor.DoCompactSnapshot(head);
@@ -108,9 +109,9 @@ public class PbtSnapshotCompactorTests
             Assert.That(written >> 32, Is.EqualTo(content.RootGroupPointer >> 32).And.GreaterThan(from >> 32), "the layer's tree is written past a generation boundary");
             Assert.That(buffer.BloomCount(content.RootGroupPointer), Is.EqualTo(2), "only the reachable writes, once");
             Assert.That(buffer.BloomCount(inherited), Is.Zero, "nothing below the pin");
-            Assert.That(content.EstimatePinnedNodeBytes(), Is.EqualTo(PbtGroupRecordBuffer.DefaultGenerationBytes + (uint)content.RootGroupPointer - (uint)from),
+            Assert.That(snapshot.EstimatePinnedNodeBytes(), Is.EqualTo(PbtGroupRecordBuffer.DefaultGenerationBytes + (uint)content.RootGroupPointer - (uint)from),
                 "from the pin to the root group, across a generation");
-            Assert.That(repository.InMemorySnapshotBytes, Is.EqualTo(snapshot.PayloadSize.Leaf + content.EstimatePinnedNodeBytes()));
+            Assert.That(repository.InMemorySnapshotBytes, Is.EqualTo(snapshot.PayloadSize.Leaf + snapshot.EstimatePinnedNodeBytes()));
         }
     }
 
@@ -144,7 +145,7 @@ public class PbtSnapshotCompactorTests
         older.RootGroupPointer = original[default];
         // An unchanged block inherits its parent's root.
         newer.RootGroupPointer = original[default];
-        using PbtSnapshot compacted = Compact(pool, older, newer);
+        using PbtSnapshot compacted = Compact(pool, false, older, newer);
         Assert.That(buffer.TryLocate(compacted.RootGroupPointer, out PbtGroupRecord root), Is.True);
         ulong childPointer = root.GetLink(0);
         using (Assert.EnterMultipleScope())
@@ -155,12 +156,12 @@ public class PbtSnapshotCompactorTests
             Assert.That(buffer.TryLocate(childPointer, out PbtGroupRecord child), Is.True);
             Assert.That(child.Path, Is.EqualTo(childPath));
         }
-        Assert.That(compacted.Content.NodeGroups().Select(static record => record.Path), Is.EquivalentTo(new[] { default, childPath }),
+        Assert.That(compacted.NodeGroups().Select(static record => record.Path), Is.EquivalentTo(new[] { default, childPath }),
             "the compacted snapshot persists its newest tree's groups");
     }
 
     [Test]
-    public void Compact_preserves_clear_ordering_and_whole_typed_values([Values(7u, 1000u)] uint slot, [Values] bool clearLast)
+    public void Compact_preserves_clear_ordering_and_whole_typed_values([Values(7u, 1000u)] uint slot, [Values] bool clearLast, [Values] bool nested)
     {
         ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         PbtVariableTreeKey key = PbtTestLeaves.SlotKey(TestItem.AddressA, slot);
@@ -182,18 +183,20 @@ public class PbtSnapshotCompactorTests
         PackedSlotRun writtenRun = writing.GetRun(key);
         writing.Accounts[addressHash] = PbtAccount.From(account, code);
         writing.Codes[account.CodeHash.ValueHash256] = code;
-        using (PbtSnapshot compacted = Compact(older, clearLast ? writing : clearing, clearLast ? clearing : writing))
+        using (PbtSnapshot compacted = Compact(_pool, nested, older, clearLast ? writing : clearing, clearLast ? clearing : writing))
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(compacted.Content.Accounts[addressHash], Is.EqualTo(PbtAccount.From(account, code)));
-            Assert.That(compacted.Content.Codes[account.CodeHash.ValueHash256], Is.SameAs(code));
-            Assert.That(compacted.Content.SelfDestructedStorageAddresses.ContainsKey(addressHash), Is.True);
-            Assert.That(compacted.Content.TryGetSlot(key, out _), Is.EqualTo(!clearLast));
-            if (!clearLast) Assert.That(compacted.Content.GetSlot(key), Is.EqualTo(replacement));
-            if (!clearLast) Assert.That(compacted.Content.GetRun(key), Is.Not.SameAs(writtenRun), "compaction copies runs, the source layer keeps its own");
+            Assert.That(compacted.TryGetAccount(addressHash, out PbtAccount? mergedAccount), Is.True);
+            Assert.That(mergedAccount, Is.EqualTo(PbtAccount.From(account, code)));
+            Assert.That(compacted.TryGetCode(account.CodeHash.ValueHash256, out CodeInfo? mergedCode), Is.True);
+            Assert.That(mergedCode, Is.SameAs(code));
+            Assert.That(compacted.HasSelfDestruct(addressHash), Is.True);
+            Assert.That(compacted.GetRun(key) is not null, Is.EqualTo(!clearLast));
+            if (!clearLast) Assert.That(compacted.GetSlot(key), Is.EqualTo(replacement));
+            if (!clearLast) Assert.That(compacted.GetRun(key), Is.Not.SameAs(writtenRun), "compaction copies runs, the source layer keeps its own");
             // The rewritten run is whole, so the older layer's neighbouring slot does not survive the rewrite.
-            Assert.That(compacted.Content.GetSlot(otherSlot), Is.EqualTo(UInt256.Zero));
-            Assert.That(compacted.Content.GetSlot(otherAddress), Is.EqualTo(original));
+            Assert.That(compacted.GetSlot(otherSlot), Is.EqualTo(UInt256.Zero));
+            Assert.That(compacted.GetSlot(otherAddress), Is.EqualTo(original));
         }
     }
 
@@ -571,7 +574,7 @@ public class PbtSnapshotCompactorTests
     private PbtSnapshot NewSnapshot(PbtSnapshotContent content, int index) => new(
         index == 0 ? StateId.PreGenesis : new StateId((ulong)index, TestItem.KeccakA.ValueHash256),
         new StateId((ulong)index + 1, TestItem.KeccakA.ValueHash256), TestItem.KeccakB.ValueHash256,
-        content, _pool, PbtResourcePool.Usage.MainBlockProcessing);
+        content, null, _pool, PbtResourcePool.Usage.MainBlockProcessing);
 
     private PbtPersistedSnapshot[] BuildPersisted(PbtPersistedTestStore store, PbtSnapshotContent[] contents)
     {
@@ -897,7 +900,7 @@ public class PbtSnapshotCompactorTests
                     if (block == 2) content.ClearStorage(address);
                     content.Codes[TestItem.KeccakC.ValueHash256] = new(new byte[65537]);
                     PbtSnapshot snapshot = new(CompactionState(block - 1), CompactionState(block), TestItem.KeccakB.ValueHash256,
-                        content, pool, PbtResourcePool.Usage.MainBlockProcessing);
+                        content, null, pool, PbtResourcePool.Usage.MainBlockProcessing);
                     snapshot.TryLease(); repository.TryAdd(snapshot);
                     using (snapshot) Assert.That(loader.ConvertAndRegister(snapshot), Is.True);
                 }
@@ -970,7 +973,7 @@ public class PbtSnapshotCompactorTests
                 code.AsSpan().Fill((byte)block);
                 content.Codes[TestItem.KeccakC.ValueHash256] = new(code);
                 PbtSnapshot snapshot = new(block == 0 ? StateId.PreGenesis : CompactionState(block - 1), CompactionState(block),
-                    TestItem.KeccakB.ValueHash256, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
+                    TestItem.KeccakB.ValueHash256, content, null, pool, PbtResourcePool.Usage.MainBlockProcessing);
                 snapshot.TryLease();
                 Repository.TryAdd(snapshot);
                 using (snapshot) Assert.That(Loader.ConvertAndRegister(snapshot), Is.True);
@@ -984,20 +987,23 @@ public class PbtSnapshotCompactorTests
         }
     }
 
-    private PbtSnapshot Compact(params PbtSnapshotContent[] layersOldestFirst) => Compact(_pool, layersOldestFirst);
+    private PbtSnapshot Compact(params PbtSnapshotContent[] layersOldestFirst) => Compact(_pool, false, layersOldestFirst);
 
-    private static PbtSnapshot Compact(IPbtResourcePool pool, params PbtSnapshotContent[] layersOldestFirst)
+    /// <param name="nested">Whether all layers but the newest are compacted first, so the final merge takes a sorted source.</param>
+    private static PbtSnapshot Compact(IPbtResourcePool pool, bool nested, params PbtSnapshotContent[] layersOldestFirst)
     {
         StateId head = new((ulong)layersOldestFirst.Length, default);
         ICompactionSchedule schedule = Substitute.For<ICompactionSchedule>();
-        schedule.GetCompactSize(head.BlockNumber).Returns(head.BlockNumber);
+        schedule.GetCompactSize(Arg.Any<ulong>()).Returns(static call => call.Arg<ulong>());
         using PbtSnapshotRepository repository = new(new Nethermind.Api.Monitoring.MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         for (int i = 0; i < layersOldestFirst.Length; i++)
-            repository.TryAdd(new PbtSnapshot(new StateId((ulong)i, default), new StateId((ulong)i + 1, default), default, layersOldestFirst[i], pool, PbtResourcePool.Usage.MainBlockProcessing));
+            repository.TryAdd(new PbtSnapshot(new StateId((ulong)i, default), new StateId((ulong)i + 1, default), default, layersOldestFirst[i], null, pool, PbtResourcePool.Usage.MainBlockProcessing));
+        PbtSnapshotCompactor compactor = new(pool, schedule, repository, Config, LimboLogs.Instance);
         PbtSnapshot? compacted;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new PbtSnapshotCompactor(pool, schedule, repository, Config, LimboLogs.Instance).DoCompactSnapshot(head), Is.True);
+            if (nested) Assert.That(compactor.DoCompactSnapshot(new StateId(head.BlockNumber - 1, default)), Is.True);
+            Assert.That(compactor.DoCompactSnapshot(head), Is.True);
             Assert.That(repository.TryLeaseMemoryState(head, SnapshotTier.InMemoryCompacted, out compacted), Is.True);
         }
         return compacted!;
