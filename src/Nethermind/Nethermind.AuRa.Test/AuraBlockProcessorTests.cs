@@ -59,7 +59,7 @@ namespace Nethermind.AuRa.Test
         {
             ITxFilter txFilter = Substitute.For<ITxFilter>();
             txFilter
-                .IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
+                .IsAllowed(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>())
                 .Returns(AcceptTxResult.Accepted);
             (BranchProcessor processor, _, _, TestStateHeaderProvider stateHeaderProvider) = CreateProcessor(txFilter);
 
@@ -72,7 +72,39 @@ namespace Nethermind.AuRa.Test
                 new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance);
-            txFilter.Received().IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>());
+            txFilter.Received().IsAllowed(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>());
+        }
+
+        [Test]
+        public void Tx_filter_checks_with_the_spec_of_the_block_being_processed()
+        {
+            TxFilterContext received = default;
+            ITxFilter txFilter = Substitute.For<ITxFilter>();
+            txFilter
+                .IsAllowed(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>())
+                .Returns(call =>
+                {
+                    received = call.ArgAt<TxFilterContext>(1);
+                    return AcceptTxResult.Accepted;
+                });
+            (BranchProcessor processor, _, _, TestStateHeaderProvider stateHeaderProvider) = CreateProcessor(txFilter);
+            // The block is the first of Gnosis's London fork, so its spec differs from its parent's.
+            BlockHeader parent = Build.A.BlockHeader.WithNumber(GnosisSpecProvider.LondonBlockNumber - 1)
+                .WithStateRoot(stateHeaderProvider.Parent!.StateRoot!).TestObject;
+            stateHeaderProvider.Parent = parent;
+
+            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithParent(parent).TestObject;
+            Transaction tx = Nethermind.Core.Test.Builders.Build.A.Transaction.WithData(new byte[] { 0, 1 })
+                .SignedAndResolved().WithChainId(105).WithGasPrice(0).WithValue(0).TestObject;
+            Block block = Build.A.Block.WithHeader(header).WithTransactions(new Transaction[] { tx }).TestObject;
+            _ = processor.Process(parent, new List<Block> { block }, ProcessingOptions.None, NullBlockTracer.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(received.Spec, Is.SameAs(GnosisSpecProvider.Instance.GetSpec(header)));
+                Assert.That(received.Spec.IsEip1559Enabled, Is.True);
+                Assert.That(GnosisSpecProvider.Instance.GetSpec(parent).IsEip1559Enabled, Is.False);
+            }
         }
 
         [Test]

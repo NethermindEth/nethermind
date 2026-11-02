@@ -2,19 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Transactions
 {
     /// <summary>Filtering transactions that have lower MaxFeePerGas than BaseFee</summary>
-    public sealed class BaseFeeTxFilter : ITxFilter
+    public class BaseFeeTxFilter : ITxFilter
     {
-        // A service transaction is accepted without the base fee, so it is not computed for one.
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec) =>
-            tx.IsServiceTransaction ? AcceptTxResult.Accepted : IsAllowed(tx, new TxFilterContext(parentHeader, spec));
-
         public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context)
         {
             bool isEip1559Enabled = context.Spec.IsEip1559Enabled;

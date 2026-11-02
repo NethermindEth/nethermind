@@ -37,7 +37,7 @@ namespace Nethermind.AuRa.Test.Transactions
             MinGasPriceContractTxFilter txFilter = CreateFilter();
             Transaction tx = Build.A.Transaction.WithTo(address).WithGasPrice(gasLimit).WithData(null).TestObject;
 
-            return txFilter.IsAllowed(tx, Build.A.BlockHeader.TestObject, ReleaseSpecSubstitute.Create());
+            return txFilter.IsAllowed(tx, new TxFilterContext(Build.A.BlockHeader.TestObject, ReleaseSpecSubstitute.Create()));
         }
 
         [TestCaseSource(nameof(IsAllowedWithAContextTestCases))]
@@ -64,7 +64,7 @@ namespace Nethermind.AuRa.Test.Transactions
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That((bool)txFilter.IsAllowed(tx, parent, london), Is.True);
+                Assert.That((bool)txFilter.IsAllowed(tx, new TxFilterContext(parent, london)), Is.True);
                 Assert.That(txFilter.IsAllowed(tx, in context).ToString(), Is.EqualTo(
                     $"{AcceptTxResult.FeeTooLow}, EffectivePriorityFeePerGas too low 4 < 5, BaseFee: 6"));
             }
@@ -85,7 +85,7 @@ namespace Nethermind.AuRa.Test.Transactions
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That((bool)txFilter.IsAllowed(tx, parent, london), Is.True);
+                Assert.That((bool)txFilter.IsAllowed(tx, new TxFilterContext(parent, london)), Is.True);
                 Assert.That(txFilter.IsAllowed(tx, in context).ToString(), Is.EqualTo(
                     $"{AcceptTxResult.FeeTooLow}, EffectivePriorityFeePerGas too low 4 < 5, BaseFee: 6"));
             }

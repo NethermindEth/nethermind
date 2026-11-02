@@ -34,7 +34,7 @@ public class AuRaMergeTxFilterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(filter.IsAllowed(tx, parent, london).ToString(), Is.EqualTo(postMerge
+            Assert.That(filter.IsAllowed(tx, new TxFilterContext(parent, london)).ToString(), Is.EqualTo(postMerge
                 ? nameof(AcceptTxResult.Accepted)
                 : $"{AcceptTxResult.FeeTooLow}, EffectivePriorityFeePerGas too low 1000000000 < 100000000000, BaseFee: 1000000000"));
             Assert.That(filter.IsAllowed(tx, in context).ToString(), Is.EqualTo($"{AcceptTxResult.FeeTooLow}, {rejection}"));

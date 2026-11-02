@@ -28,8 +28,8 @@ namespace Nethermind.Consensus.Test.Transactions;
 
 /// <summary>
 /// <see cref="BaseFeeTxFilter"/> and <see cref="MinGasPriceTxFilter"/> read the next block's base fee from the
-/// <see cref="TxFilterContext"/> they are given. They must decide, and word their rejections, exactly as when they
-/// compute it themselves from the parent and spec.
+/// <see cref="TxFilterContext"/> they are given. With a base fee supplied, as block building supplies it, they must
+/// decide, and word their rejections, exactly as with one the context computes from the parent and spec.
 /// </summary>
 [Parallelizable(ParallelScope.All)]
 public class StandardTxFilterBaseFeeTests
@@ -83,7 +83,7 @@ public class StandardTxFilterBaseFeeTests
     }
 
     [TestCaseSource(nameof(Filters))]
-    public void Context_decides_and_words_rejections_as_the_parent_and_spec_do(Func<ITxFilter> create)
+    public void Supplied_base_fee_decides_and_words_rejections_as_a_computed_one(Func<ITxFilter> create)
     {
         ITxFilter filter = create();
 
@@ -98,7 +98,7 @@ public class StandardTxFilterBaseFeeTests
     }
 
     [Test]
-    public void Context_through_the_standard_pipeline_decides_as_the_parent_and_spec_do()
+    public void Supplied_base_fee_through_the_standard_pipeline_decides_as_a_computed_one()
     {
         ITxFilterPipeline pipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(NullLogManager.Instance, new BlocksConfig { MinGasPrice = 1.GWei });
 
@@ -106,10 +106,9 @@ public class StandardTxFilterBaseFeeTests
         {
             foreach (Transaction tx in Transactions)
             {
-                bool expected = pipeline.Execute(tx, parent, spec);
                 TxFilterContext computed = new(parent, spec);
                 TxFilterContext given = new(parent, spec, BaseFeeCalculator.Calculate(parent, spec));
-                Assert.That(new[] { pipeline.Execute(tx, in computed), pipeline.Execute(tx, in given) }, Is.All.EqualTo(expected),
+                Assert.That(pipeline.Execute(tx, in given), Is.EqualTo(pipeline.Execute(tx, in computed)),
                     $"parent {parent.Number}, spec floor {spec.Eip1559BaseFeeMinValue}, 1559 {spec.IsEip1559Enabled}");
             }
         }
@@ -169,20 +168,17 @@ public class StandardTxFilterBaseFeeTests
         Transaction lowMaxFeeTx = Tx(maxFee: 1, priorityFee: 1);
 
         TxFilterContext computed = new(ParentAt1Gwei, spec);
-        // Block building passes what the calculator returns for any spec: the parent's base fee here, 1 gwei.
+        // Block building supplies what the calculator returns for any spec: the parent's base fee here, 1 gwei.
         TxFilterContext given = new(ParentAt1Gwei, spec, ParentAt1Gwei.BaseFeePerGas);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(computed.BaseFee, Is.EqualTo(UInt256.Zero));
-            Assert.That(calculator.Calls, Is.Zero, "a context does not compute a base fee without EIP-1559");
             string rejection = $"{AcceptTxResult.FeeTooLow}, EffectivePriorityFeePerGas too low 500000000 < 1000000000, BaseFee: 0";
-            Assert.That(minGasPriceFilter.IsAllowed(tx, ParentAt1Gwei, spec).ToString(), Is.EqualTo(rejection));
             Assert.That(minGasPriceFilter.IsAllowed(tx, in computed).ToString(), Is.EqualTo(rejection));
             Assert.That(minGasPriceFilter.IsAllowed(tx, in given).ToString(), Is.EqualTo(rejection));
             Assert.That(new BaseFeeTxFilter().IsAllowed(lowMaxFeeTx, in given).ToString(), Is.EqualTo(Accepted));
-            Assert.That(new BaseFeeTxFilter().IsAllowed(lowMaxFeeTx, ParentAt1Gwei, spec).ToString(), Is.EqualTo(Accepted));
-            Assert.That(calculator.Calls, Is.Zero, "the filters do not compute a base fee without EIP-1559");
+            Assert.That(new BaseFeeTxFilter().IsAllowed(lowMaxFeeTx, in computed).ToString(), Is.EqualTo(Accepted));
+            Assert.That(calculator.Calls, Is.Zero, "the filters do not read the base fee without EIP-1559");
         }
     }
 
@@ -198,25 +194,46 @@ public class StandardTxFilterBaseFeeTests
 
         using (Assert.EnterMultipleScope())
         {
-            // The calculator is asked about a null parent, as the filters asked it for each transaction.
+            // The calculator is asked about a null parent on every read, as the filters asked it for each transaction.
             TxFilterContext context = new(null!, countingLondon);
-            Assert.That(calculator.Calls, Is.EqualTo(1));
+            Assert.That(calculator.Calls, Is.Zero, "building a context computes nothing");
             Assert.That((bool)baseFeeFilter.IsAllowed(tx, in context), Is.True);
-            Assert.That((bool)baseFeeFilter.IsAllowed(tx, null!, countingLondon), Is.True);
-            Assert.That((bool)minGasPriceFilter.IsAllowed(tx, null!, countingLondon), Is.True);
-            Assert.That((bool)minGasPriceFilter.IsAllowed(tx, null, 1.GWei, countingLondon), Is.True);
-            Assert.That(calculator.Calls, Is.EqualTo(4));
+            Assert.That((bool)minGasPriceFilter.IsAllowed(tx, in context), Is.True);
+            Assert.That((bool)minGasPriceFilter.IsAllowed(tx, in context, 1.GWei), Is.True);
+            Assert.That(calculator.Calls, Is.EqualTo(3));
 
-            // The default calculator cannot compute from a null parent; the filters threw as they do now.
-            Assert.Throws<NullReferenceException>(() => baseFeeFilter.IsAllowed(tx, null!, London));
-            Assert.Throws<NullReferenceException>(() => minGasPriceFilter.IsAllowed(tx, null!, London));
-            Assert.Throws<NullReferenceException>(() => _ = new TxFilterContext(null!, London));
+            // The default calculator cannot compute from a null parent; the filters throw as they did.
+            TxFilterContext london = new(null!, London);
+            Assert.Throws<NullReferenceException>(() => baseFeeFilter.IsAllowed(tx, new TxFilterContext(null!, London)));
+            Assert.Throws<NullReferenceException>(() => minGasPriceFilter.IsAllowed(tx, new TxFilterContext(null!, London)));
             // A service transaction never needed the base fee.
-            Assert.That((bool)baseFeeFilter.IsAllowed(serviceTx, null!, London), Is.True);
+            Assert.That((bool)baseFeeFilter.IsAllowed(serviceTx, in london), Is.True);
             // Nor does a spec without EIP-1559.
-            Assert.That((bool)minGasPriceFilter.IsAllowed(Build.A.Transaction.WithGasPrice(1.GWei).TestObject, null!, BeforeLondon), Is.True);
-            Assert.That(new TxFilterContext(null!, BeforeLondon).BaseFee, Is.EqualTo(UInt256.Zero));
+            Assert.That((bool)minGasPriceFilter.IsAllowed(Build.A.Transaction.WithGasPrice(1.GWei).TestObject, new TxFilterContext(null!, BeforeLondon)), Is.True);
         }
+    }
+
+    [Test]
+    public void Context_computes_nothing_when_no_filter_reads_the_base_fee()
+    {
+        CountingBaseFeeCalculator calculator = new();
+        ReleaseSpec spec = new() { IsEip1559Enabled = true, BaseFeeCalculator = calculator };
+        ITxFilterPipeline pipeline = new TxFilterPipelineBuilder(NullLogManager.Instance)
+            .WithNullTxFilter()
+            .WithHeadTxFilter()
+            .WithCustomTxFilter(new CompositeTxFilter(NullTxFilter.Instance))
+            .Build;
+        Transaction tx = Tx(maxFee: 10.GWei, priorityFee: 1.GWei);
+        Transaction serviceTx = Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(1).WithMaxPriorityFeePerGas(1).WithIsServiceTransaction(true).TestObject;
+
+        for (int i = 0; i < 10; i++)
+        {
+            TxFilterContext context = new(ParentAt1Gwei, spec);
+            pipeline.Execute(tx, in context);
+            new BaseFeeTxFilter().IsAllowed(serviceTx, in context);
+        }
+
+        Assert.That(calculator.Calls, Is.Zero);
     }
 
     [Test]
@@ -246,8 +263,8 @@ public class StandardTxFilterBaseFeeTests
 
             Assert.That(calculator.Calls, Is.Zero);
 
-            // Without a context, each filter computes the base fee itself, as before.
-            Assert.That((bool)composite.IsAllowed(tx, ParentAt1Gwei, spec), Is.True);
+            // Without a supplied base fee, each filter that reads it computes it, as before.
+            Assert.That((bool)composite.IsAllowed(tx, new TxFilterContext(ParentAt1Gwei, spec)), Is.True);
             Assert.That(calculator.Calls, Is.EqualTo(2));
         }
     }
@@ -360,17 +377,32 @@ public class StandardTxFilterBaseFeeTests
         }
     }
 
+    [Test]
+    public void Tx_pool_admission_checks_with_the_spec_of_the_head()
+    {
+        // EIP-1559 activates at block 11 and the head is block 10, so admission checks with the head's spec, as before.
+        ReleaseSpec beforeLondon = new() { IsEip1559Enabled = false };
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(call => call.Arg<ForkActivation>().BlockNumber >= 11 ? London : beforeLondon);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithHeader(ParentAt1Gwei).TestObject);
+        TxFilterAdapter adapter = new(blockTree, new BaseFeeTxFilter(), LimboLogs.Instance, specProvider);
+        Transaction tx = Tx(maxFee: (UInt256)500_000_000, priorityFee: 1);
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), beforeLondon);
+
+        Assert.That(adapter.Accept(tx, ref state, TxHandlingOptions.None).ToString(), Is.EqualTo(Accepted));
+    }
+
     private const string Accepted = nameof(AcceptTxResult.Accepted);
 
-    /// <summary>The result of the parent-and-spec overload, then of a context that computes the base fee, then of a
-    /// context given the base fee as block building computes it, for any spec.</summary>
+    /// <summary>The result with a context that computes the base fee, then with one given the base fee as block
+    /// building computes it, for any spec.</summary>
     private static string[] Decide(ITxFilter filter, Transaction tx, BlockHeader parent, IReleaseSpec spec)
     {
         TxFilterContext computed = new(parent, spec);
         TxFilterContext given = new(parent, spec, BaseFeeCalculator.Calculate(parent, spec));
         return
         [
-            filter.IsAllowed(tx, parent, spec).ToString(),
             filter.IsAllowed(tx, in computed).ToString(),
             filter.IsAllowed(tx, in given).ToString(),
         ];
@@ -415,9 +447,6 @@ public class StandardTxFilterBaseFeeTests
 
     private sealed class CustomFloorFilter(MinGasPriceTxFilter inner, UInt256 floor) : ITxFilter
     {
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec) =>
-            inner.IsAllowed(tx, parentHeader, floor, spec);
-
         public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context) =>
             inner.IsAllowed(tx, in context, floor);
     }

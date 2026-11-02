@@ -9,24 +9,27 @@ namespace Nethermind.Consensus.Transactions;
 
 /// <summary>
 /// The block a transaction is checked for: its parent, its spec and its base fee, passed with every
-/// <see cref="ITxFilter"/> call so that filters read the base fee instead of computing it for each transaction.
+/// <see cref="ITxFilter"/> call.
 /// </summary>
 /// <remarks>
-/// Block building checks every candidate against the same parent and spec, so it builds one context per block with
-/// the base fee it has already computed. A caller that checks a single transaction builds one with
-/// <see cref="TxFilterContext(BlockHeader, IReleaseSpec)"/>.
+/// Block building checks every candidate against the same parent and spec, so it supplies the base fee it has already
+/// computed with <see cref="TxFilterContext(BlockHeader, IReleaseSpec, in UInt256)"/>. A caller that checks a single
+/// transaction uses <see cref="TxFilterContext(BlockHeader, IReleaseSpec)"/>, which computes the base fee only when a
+/// filter reads it.
 /// </remarks>
 /// <param name="parent">The parent of the block the transaction is checked for.</param>
 /// <param name="spec">The spec of the block the transaction is checked for.</param>
-/// <param name="baseFee">The base fee the caller has already computed with <see cref="BaseFeeCalculator.Calculate"/>
-/// for <paramref name="parent"/> and <paramref name="spec"/>.</param>
-public readonly struct TxFilterContext(BlockHeader parent, IReleaseSpec spec, in UInt256 baseFee)
+public readonly struct TxFilterContext(BlockHeader parent, IReleaseSpec spec)
 {
-    /// <summary>Computes the next block's base fee from <paramref name="parent"/> when <paramref name="spec"/> has
-    /// EIP-1559, as the filters did for each transaction.</summary>
-    public TxFilterContext(BlockHeader parent, IReleaseSpec spec)
-        : this(parent, spec, spec.IsEip1559Enabled ? BaseFeeCalculator.Calculate(parent, spec) : UInt256.Zero)
+    private readonly UInt256 _baseFee;
+    private readonly bool _hasBaseFee;
+
+    /// <summary>Uses a base fee the caller has already computed with <see cref="BaseFeeCalculator.Calculate"/> for
+    /// <paramref name="parent"/> and <paramref name="spec"/>.</summary>
+    public TxFilterContext(BlockHeader parent, IReleaseSpec spec, in UInt256 baseFee) : this(parent, spec)
     {
+        _baseFee = baseFee;
+        _hasBaseFee = true;
     }
 
     /// <summary>The parent of the block the transaction is checked for.</summary>
@@ -36,6 +39,11 @@ public readonly struct TxFilterContext(BlockHeader parent, IReleaseSpec spec, in
     public IReleaseSpec Spec { get; } = spec;
 
     /// <summary>The base fee of the block the transaction is checked for.</summary>
-    /// <remarks>Meaningful only when <see cref="Spec"/> has EIP-1559; filters do not read it otherwise.</remarks>
-    public UInt256 BaseFee { get; } = baseFee;
+    /// <remarks>
+    /// Filters read it only when <see cref="Spec"/> has EIP-1559, at most once per call. Unless the caller supplied it,
+    /// every read computes it with <see cref="BaseFeeCalculator.Calculate"/> from <see cref="Parent"/> and
+    /// <see cref="Spec"/>, so a context nobody reads it from costs nothing, and a null parent fails where the calculator
+    /// fails.
+    /// </remarks>
+    public UInt256 BaseFee => _hasBaseFee ? _baseFee : BaseFeeCalculator.Calculate(Parent, Spec);
 }

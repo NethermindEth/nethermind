@@ -4,7 +4,6 @@
 using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
@@ -13,21 +12,15 @@ namespace Nethermind.Consensus.Transactions;
 /// <summary>The filter for transactions below minimum gas price threshold. It is the minimal value for gas that the miner/validator would receive.
 /// Before 1559: EffectivePriorityFeePerGas = transaction.GasPrice.
 /// After 1559: EffectivePriorityFeePerGas = transaction.EffectiveGasPrice - BaseFee.</summary>
-public sealed class MinGasPriceTxFilter(IBlocksConfig blocksConfig) : IMinGasPriceTxFilter
+public class MinGasPriceTxFilter(IBlocksConfig blocksConfig) : IMinGasPriceTxFilter
 {
     /// <summary>Whether rejected results include detailed gas-price information.</summary>
     /// <remarks>Disabled by the standard selection pipeline, which discards the message.
     /// Enabled by default to preserve tx-pool admission diagnostics returned to RPC callers.</remarks>
     internal bool IncludeRejectionMessage { get; init; } = true;
 
-    public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
-        => IsAllowed(tx, new TxFilterContext(parentHeader, currentSpec), blocksConfig.MinGasPrice);
-
     public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context)
         => IsAllowed(tx, in context, blocksConfig.MinGasPrice);
-
-    public AcceptTxResult IsAllowed(Transaction tx, BlockHeader? parentHeader, in UInt256 minGasPriceFloor, IReleaseSpec spec)
-        => IsAllowed(tx, new TxFilterContext(parentHeader!, spec), minGasPriceFloor);
 
     public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context, in UInt256 minGasPriceFloor)
     {

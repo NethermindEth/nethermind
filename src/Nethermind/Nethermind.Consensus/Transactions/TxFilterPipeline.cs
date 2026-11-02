@@ -4,37 +4,16 @@
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Transactions;
 
-public sealed class TxFilterPipeline(ILogManager logManager) : ITxFilterPipeline
+public class TxFilterPipeline(ILogManager logManager) : ITxFilterPipeline
 {
     private readonly List<ITxFilter> _filters = [];
     private readonly ILogger _logger = logManager.GetClassLogger<TxFilterPipeline>();
 
     public void AddTxFilter(ITxFilter txFilter) => _filters.Add(txFilter);
-
-    public bool Execute(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
-    {
-        if (_filters.Count == 0)
-        {
-            return true;
-        }
-
-        foreach (ITxFilter filter in _filters)
-        {
-            bool isAllowed = filter.IsAllowed(tx, parentHeader, currentSpec);
-            if (!isAllowed)
-            {
-                if (_logger.IsTrace) TraceRejection(tx, isAllowed);
-                return isAllowed;
-            }
-        }
-
-        return true;
-    }
 
     public bool Execute(Transaction tx, in TxFilterContext context)
     {

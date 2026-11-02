@@ -39,7 +39,7 @@ public class TxCertifierFilterTests
         _notCertifiedFilter = Substitute.For<ITxFilter>();
         _specProvider = Substitute.For<ISpecProvider>();
 
-        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
+        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>())
             .Returns(AcceptTxResult.Invalid);
 
         _certifierContract.Certified(Arg.Any<BlockHeader>(),
@@ -77,7 +77,7 @@ public class TxCertifierFilterTests
     [Test]
     public void should_default_to_inner_contract_on_non_zero_transactions([Values] bool expected)
     {
-        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
+        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>())
             .Returns(expected ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
 
         ShouldAllowAddress(TestItem.Addresses.First(), 1ul, expected);
@@ -98,7 +98,7 @@ public class TxCertifierFilterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((bool)filter.IsAllowed(tx, parent, london), Is.True);
+            Assert.That((bool)filter.IsAllowed(tx, new TxFilterContext(parent, london)), Is.True);
             Assert.That(filter.IsAllowed(tx, in context).ToString(), Is.EqualTo(
                 $"{AcceptTxResult.FeeTooLow}, MaxFeePerGas too low. MaxFeePerGas: 5000000000, BaseFee: 7000000000, MaxPriorityFeePerGas:1000000000, Block number: 11"));
             Assert.That(filter.IsAllowed(certified, in context).ToString(), Is.EqualTo(nameof(AcceptTxResult.Accepted)));
@@ -109,7 +109,7 @@ public class TxCertifierFilterTests
     private void ShouldAllowAddress(Address? address, ulong gasPrice = 0ul, bool expected = true) =>
         Assert.That(_filter.IsAllowed(
             Build.A.Transaction.WithGasPrice(gasPrice).WithSenderAddress(address).TestObject,
-            Build.A.BlockHeader.TestObject, ReleaseSpecSubstitute.Create()).Equals(AcceptTxResult.Accepted), Is.EqualTo(expected));
+            new TxFilterContext(Build.A.BlockHeader.TestObject, ReleaseSpecSubstitute.Create())).Equals(AcceptTxResult.Accepted), Is.EqualTo(expected));
 
     [Test]
     public async Task should_only_allow_addresses_from_contract_on_chain()
