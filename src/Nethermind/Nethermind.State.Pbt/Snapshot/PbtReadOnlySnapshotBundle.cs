@@ -317,13 +317,13 @@ public sealed class PbtReadOnlySnapshotBundle(
             // must not fail because an optional filter did not fit.
             filter?.Dispose();
             Volatile.Write(ref _slotFilterState, SlotFilterSkipped);
-            Metrics.RecordPbtInMemorySlotFilterBuildFailed();
+            Flat.Metrics.RecordInMemorySlotFilterBuildFailed();
             return null;
         }
 
         Volatile.Write(ref _slotFilter, filter);
         Volatile.Write(ref _slotFilterState, SlotFilterReady);
-        Metrics.RecordPbtInMemorySlotFilterBuilt(filter.DataBytes, Stopwatch.GetTimestamp() - start);
+        Flat.Metrics.RecordInMemorySlotFilterBuilt(filter.DataBytes, Stopwatch.GetTimestamp() - start);
         return filter;
     }
 
@@ -338,7 +338,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         BloomFilter? filter = Interlocked.Exchange(ref _slotFilter, null);
         if (filter is null) return;
 
-        Metrics.RecordPbtInMemorySlotFilterReleased(filter.DataBytes);
+        Flat.Metrics.RecordInMemorySlotFilterReleased(filter.DataBytes);
         filter.Dispose();
     }
 

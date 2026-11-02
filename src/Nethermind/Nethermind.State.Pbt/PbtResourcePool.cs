@@ -110,7 +110,7 @@ public class PbtResourcePool : IPbtResourcePool
         private readonly ResourcePool.ConcurrentStackPool<PbtWriteBatchBuilder<PbtStoragePath>> _storageWriteBatchPool = new(writableBundlePoolSize);
         private readonly ResourcePool.ConcurrentStackPool<PbtTransientResource> _cachedResourcePool = new(writableBundlePoolSize);
         private PbtTransientResource.Size _lastCachedResourceSize = new(1024);
-        private readonly PooledResourceMetrics _cachedResourceMetrics = new(usage, "CachedResource");
+        private readonly PooledResourceMetrics _cachedResourceMetrics = new(usage, nameof(PbtTransientResource));
         private readonly PooledResourceMetrics _writeBatchMetrics = new(usage, "PbtWriteBatchBuilder");
         private readonly PooledResourceMetrics _storageWriteBatchMetrics = new(usage, "PbtStorageWriteBatchBuilder");
         private readonly PooledResourceMetrics _snapshotMetrics = new(usage, nameof(PbtSnapshotContent));
@@ -189,12 +189,12 @@ public class PbtResourcePool : IPbtResourcePool
 
         private void Publish(double pooledCount)
         {
-            if (!Metrics.DetailedMetricsEnabled) return;
+            if (!Flat.Metrics.DetailedMetricsEnabled) return;
 
             // Racing publishers may leave a gauge one operation stale until the next rent or return.
-            Metrics.PbtActivePooledResource[_label] = Volatile.Read(ref _active);
-            Metrics.PbtCreatedPooledResource[_label] = Volatile.Read(ref _created);
-            Metrics.PbtCachedPooledResource[_label] = (long)pooledCount;
+            Flat.Metrics.ActivePooledResource[_label] = Volatile.Read(ref _active);
+            Flat.Metrics.CreatedPooledResource[_label] = Volatile.Read(ref _created);
+            Flat.Metrics.CachedPooledResource[_label] = (long)pooledCount;
         }
     }
 }

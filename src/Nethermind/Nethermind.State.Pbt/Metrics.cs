@@ -6,7 +6,6 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Metric;
 using Nethermind.Pbt;
-using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Snapshot;
 using NonBlocking;
 
@@ -88,25 +87,6 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["partition", "result"])]
     public static IMetricObserver PbtTrieUpdaterNodeGroupReadTimes { get; set; } = new NoopMetricObserver();
 
-    [DetailedMetricOnFlag]
-    public static bool DetailedMetricsEnabled { get; set; }
-
-    [DetailedMetric]
-    [Description("Pbt pooled resources currently rented, by category and type")]
-    [KeyIsLabel("category", "resource_type")]
-    public static ConcurrentDictionary<ResourcePool.PooledResourceLabel, long> PbtActivePooledResource { get; } = new();
-
-    [DetailedMetric]
-    [Description("Pbt pooled resources held in the pool, by category and type")]
-    [KeyIsLabel("category", "resource_type")]
-    public static ConcurrentDictionary<ResourcePool.PooledResourceLabel, long> PbtCachedPooledResource { get; } = new();
-
-    /// <remarks>Plateaus once the pool is warm; a category sized too small climbs forever instead.</remarks>
-    [DetailedMetric]
-    [Description("Pbt pooled resources allocated because the pool was empty, by category and type")]
-    [KeyIsLabel("category", "resource_type")]
-    public static ConcurrentDictionary<ResourcePool.PooledResourceLabel, long> PbtCreatedPooledResource { get; } = new();
-
     /// <remarks>
     /// One observation per point read of an account, storage slot, node group, or code.
     /// Snapshot hits include tombstones and cleared storage, except node-group tombstones which report as <c>_snapshot_null</c>.
@@ -133,40 +113,6 @@ public static class Metrics
         ["node_group_code_persistence"] = 0,
         ["node_group_storage_persistence"] = 0,
     };
-
-    private static long _pbtInMemorySlotFilterMemory;
-
-    [GaugeMetric]
-    [Description("Memory held by the negative filters over the pbt in-memory snapshots' slot runs in bytes; one filter per read-only snapshot bundle that served a read-only execution slot read")]
-    public static long PbtInMemorySlotFilterMemory => Volatile.Read(ref _pbtInMemorySlotFilterMemory);
-
-    private static long _pbtInMemorySlotFilterBuilds;
-
-    [CounterMetric]
-    [Description("Negative filters built over the pbt in-memory snapshots' slot runs")]
-    public static long PbtInMemorySlotFilterBuilds => Volatile.Read(ref _pbtInMemorySlotFilterBuilds);
-
-    private static long _pbtInMemorySlotFilterBuildFailures;
-
-    [CounterMetric]
-    [Description("Negative filters over the pbt in-memory snapshots' slot runs that failed to build; their bundles read slots without a filter")]
-    public static long PbtInMemorySlotFilterBuildFailures => Volatile.Read(ref _pbtInMemorySlotFilterBuildFailures);
-
-    [DetailedMetric]
-    [Description("Time to build the negative filter over the pbt in-memory snapshots' slot runs (Stopwatch ticks)")]
-    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 40)]
-    public static IMetricObserver PbtInMemorySlotFilterBuildTime { get; set; } = new NoopMetricObserver();
-
-    public static void RecordPbtInMemorySlotFilterBuilt(long bytes, long elapsedTicks)
-    {
-        Interlocked.Add(ref _pbtInMemorySlotFilterMemory, bytes);
-        Interlocked.Increment(ref _pbtInMemorySlotFilterBuilds);
-        PbtInMemorySlotFilterBuildTime.Observe(elapsedTicks);
-    }
-
-    public static void RecordPbtInMemorySlotFilterBuildFailed() => Interlocked.Increment(ref _pbtInMemorySlotFilterBuildFailures);
-
-    public static void RecordPbtInMemorySlotFilterReleased(long bytes) => Interlocked.Add(ref _pbtInMemorySlotFilterMemory, -bytes);
 
     [GaugeMetric]
     [DetailedMetric]
