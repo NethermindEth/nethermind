@@ -39,7 +39,7 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
     protected override bool WithholdBlockAccessLists => _withholdBlockAccessLists;
     protected override PreWarmMode? PreWarmingOverride => _preWarming;
     protected override IBlockAccessListExecutionReport? BlockAccessListExecutionObserver => _blockAccessListExecutionObserver;
-    // A rejection's reason is the consumer's to judge, from the client error each result reports, unless --match-exceptions asks for the old check.
+    // A rejection's reason is the consumer's to judge, from the client error each result reports, unless --match-exceptions asks for the reason check.
     protected override bool MatchExpectedExceptions => _matchExpectedExceptions;
     private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
     private readonly ITestSourceLoader? _testsSource = testsSource;

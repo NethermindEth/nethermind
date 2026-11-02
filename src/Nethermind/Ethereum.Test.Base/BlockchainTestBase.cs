@@ -1253,7 +1253,7 @@ public abstract class BlockchainTestBase
     /// <c>disabled</c> included. Such a block has no list, so it never runs in parallel here.
     /// </summary>
     /// <remarks>Built per test, so a list in one fixture never relabels the same block in another.</remarks>
-    public sealed class UndeliveredAccessListObserver(IBlockAccessListExecutionReport inner, IReadOnlyDictionary<Hash256, string> undeliveredAccessLists)
+    internal sealed class UndeliveredAccessListObserver(IBlockAccessListExecutionReport inner, IReadOnlyDictionary<Hash256, string> undeliveredAccessLists)
         : IBlockAccessListExecutionReport
     {
         public void OnExecutionPathChosen(Block block, string? sequentialReason) =>
@@ -1276,6 +1276,7 @@ public abstract class BlockchainTestBase
     private sealed class RejectionRecorder(List<BlockRejection> rejections)
     {
         private readonly Dictionary<Hash256, List<int>> _indicesByHash = [];
+        private readonly Lock _lock = new();
 
         public void Register(Hash256 hash, int index)
         {
@@ -1292,7 +1293,7 @@ public abstract class BlockchainTestBase
         {
             if (!_indicesByHash.TryGetValue(hash, out List<int>? indices)) return;
 
-            lock (rejections)
+            lock (_lock)
             {
                 foreach (int index in indices)
                 {
@@ -1307,7 +1308,7 @@ public abstract class BlockchainTestBase
 
         public void Record(int index, Hash256? hash, string error)
         {
-            lock (rejections)
+            lock (_lock)
             {
                 int position = rejections.FindIndex(r => r.Index >= index);
                 if (position < 0)

@@ -101,7 +101,7 @@ internal class Program
                 .AcceptOnlyFromAmong(nameof(PreWarmMode.None), nameof(PreWarmMode.Block));
 
         public static Option<bool> MatchExceptions { get; } =
-            new("--match-exceptions") { Description = "Also fail an engine test whose payload is rejected with an error that does not match the fixture's expected exception, as nethtest did before; by default a rejected payload passes whenever a rejection was expected. [Only for Engine Test]" };
+            new("--match-exceptions") { Description = "Also fail an engine test whose payload is rejected with an error that does not match the fixture's expected exception; by default a rejected payload passes whenever a rejection was expected. [Only for Engine Test]" };
 
         public static Option<bool> BalReport { get; } =
             new("--bal-report") { Description = "Print a JSON line on stderr naming the executor (parallel or sequential) that ran each block, and one when a block the parallel executor rejected is re-run sequentially. [Only for Blockchain/Engine Test]" };
