@@ -63,6 +63,16 @@ internal sealed class HistoryStoreV3
         Span<byte> seekKey = stackalloc byte[flatKey.Length + BlockBytes];
         WriteHistoryKey(seekKey, flatKey, block + 1);
 
+        // A change at the very next block is the answer whenever it exists. A point read stops at the first level
+        // holding it and skips the others through their bloom filters, where a seek positions every level. The
+        // point read cannot tell an empty pre-value from a miss, so both take the seek.
+        int nextBlockValueLength = GetAtNextBlock(seekKey, outBuffer);
+        if (nextBlockValueLength > 0)
+        {
+            nextChangeBlock = block + 1;
+            return nextBlockValueLength;
+        }
+
         Span<byte> upperBound = stackalloc byte[flatKey.Length + BlockBytes + 1];
         flatKey.CopyTo(upperBound);
         upperBound[flatKey.Length..].Fill(0xFF);
@@ -92,6 +102,19 @@ internal sealed class HistoryStoreV3
 
         value.CopyTo(outBuffer);
         return value.Length;
+    }
+
+    private int GetAtNextBlock(ReadOnlySpan<byte> historyKey, Span<byte> outBuffer)
+    {
+        try
+        {
+            return _history.Get(historyKey, outBuffer);
+        }
+        catch (ArgumentException)
+        {
+            // Only a corrupt row is wider than the encoder maximum; the seek reports it as unavailable state.
+            return 0;
+        }
     }
 
     private static void ValidateValueLength(int valueLength, int bufferLength, ulong nextChangeBlock)

@@ -125,7 +125,7 @@ public class HistoryStoreV3Tests
 
     [Test]
     public void SnapshotRead_WithNativeHistory_HandlesMissingEmptyAndOversizedRows(
-        [Values(5ul, 20ul, 30ul, ulong.MaxValue)] ulong block,
+        [Values(5ul, 19ul, 20ul, 30ul, ulong.MaxValue)] ulong block,
         [Values(0, 1, 64)] int bufferLength, [Values] bool empty)
     {
         using TempPath directory = TempPath.GetTempDirectory();
@@ -152,9 +152,37 @@ public class HistoryStoreV3Tests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(written, Is.EqualTo(expectedLength));
-            Assert.That(observed.CeilingReads, Is.EqualTo(block == ulong.MaxValue ? 0 : 1), "the unscoped lookup uses the snapshot capability");
+            Assert.That(observed.CeilingReads, Is.EqualTo(block == ulong.MaxValue || (block == 19 && !empty) ? 0 : 1),
+                "the unscoped lookup uses the snapshot capability unless a point read finds a non-empty change at the next block");
             Assert.That(next, Is.EqualTo(block < 20 ? 20UL : block < 30 ? 30UL : 0UL));
             if (written > 0) Assert.That(output.AsSpan(0, written), Is.SequenceEqualTo(block < 20 ? new byte[] { 0xAA } : new byte[] { 0xBB, 0xCC }));
+        }
+    }
+
+    [Test]
+    public void TryGetValueBeforeNextChange_ChangeAtTheNextBlock_IsFoundWithoutAnIterator([Values] bool scoped, [Values] bool flush)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using DbOnTheRocks db = RocksHistoryTestDb.CreateDb(directory.Path);
+        using SnapshotCeilingDb observed = new(db);
+        HistoryStoreV3 store = new(observed);
+        using (IWriteBatch batch = db.StartWriteBatch())
+        {
+            store.RecordPreValue(20, KeyA, [0xAA], batch);
+            store.RecordPreValue(30, KeyA, [0xBB, 0xCC], batch);
+        }
+        if (flush) db.Flush();
+
+        using HistoryStoreV3.ReadScope scope = new();
+        byte[] output = new byte[64];
+        int written = store.TryGetValueBeforeNextChange(29, KeyA, output, out ulong next, scoped ? scope : null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(written, Is.EqualTo(2));
+            Assert.That(output.AsSpan(0, written), Is.SequenceEqualTo(new byte[] { 0xBB, 0xCC }));
+            Assert.That(next, Is.EqualTo(30UL));
+            Assert.That(observed.CeilingReads, Is.Zero, "a change at the next block is read by its exact key, so no unscoped seek runs");
         }
     }
 
@@ -192,6 +220,8 @@ public class HistoryStoreV3Tests
     private sealed class SnapshotCeilingDb(ISnapshotSortedKeyValueStore inner) : MemDb, ISnapshotSortedKeyValueStore
     {
         internal int CeilingReads { get; private set; }
+
+        int IReadOnlyKeyValueStore.Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags) => inner.Get(key, output, flags);
         public byte[]? FirstKey => throw new NotSupportedException();
         public byte[]? LastKey => throw new NotSupportedException();
         public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) =>
