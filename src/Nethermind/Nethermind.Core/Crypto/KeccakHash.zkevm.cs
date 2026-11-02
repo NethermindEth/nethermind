@@ -228,7 +228,7 @@ public sealed partial class KeccakHash
     /// this two-block floor: it compares the second block without a length check.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool IsResumable(int length) =>
-        length == Hash532InputLength || ZiskFlag.IsActive && length >= 2 * HASH_DATA_AREA;
+        length == Hash532InputLength || ZiskFlag.IsActive && !FirstTouchMemoryFlag.IsActive && length >= 2 * HASH_DATA_AREA;
 
     /// <summary>The witness nodes <see cref="ComputeHash256OfWitnessNodes"/> keyed last, and what it kept of them.</summary>
     /// <remarks>A class of its own, with no initializer, so each access is a plain load or store rather than a
@@ -489,7 +489,7 @@ public sealed partial class KeccakHash
         }
 
         ulong* states = StrictAlignmentFlag.IsActive ? AlignedDown(WitnessNodes.States) : WitnessNodes.States;
-        ref ulong retained = ref states[(FirstTouchMemoryFlag.IsActive ? WitnessNodes.Slots[index] : index) * RetainedLanes + last];
+        ref ulong retained = ref states[index * RetainedLanes + last];
         if (length != Hash532InputLength)
         {
             AbsorbRestFrom(ref lane, ref retained, data + offset, length - offset);
