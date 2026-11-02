@@ -83,6 +83,8 @@ public class OptimismEthRpcModule(
         capabilitiesProvider,
         blockForRpcFactory), IOptimismEthRpcModule
 {
+    internal ForwardedNonceTracker NonceTracker => nonceTracker;
+
     public override ResultWrapper<IEnumerable<ReceiptForRpc>?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);

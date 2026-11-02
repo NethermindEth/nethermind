@@ -7,6 +7,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -348,6 +349,16 @@ public class OptimismEthRpcModuleTest
         public Task<T?> Post<T>(string method, params object?[] parameters) => throw new NotSupportedException();
     }
 
+    /// <summary>
+    /// Waits until a second send from <paramref name="sender"/> waits on the lock of the account behind the first, which the
+    /// test holds at the pool or the sequencer, or until it gets there itself, as it does when the sends are not serialised.
+    /// The timeout only keeps a broken implementation from hanging the test.
+    /// </summary>
+    /// <returns>Whether the second send waits on the lock.</returns>
+    internal static bool SecondSendWaitsForTheFirst(ForwardedNonceTracker nonceTracker, Address sender, Task secondArrived) =>
+        SpinWait.SpinUntil(() => nonceTracker.SenderLockUsers(sender) == 2 || secondArrived.IsCompleted, TimeSpan.FromSeconds(10))
+        && !secondArrived.IsCompleted;
+
     private static async Task<TestRpcBlockchain> BuildSendRpc(IJsonRpcClient? sequencer, ITxSender? txSender = null, HeadState? headState = null)
     {
         TestSpecProvider specProvider = new(London.Instance);
@@ -661,7 +672,7 @@ public class OptimismEthRpcModuleTest
         List<ulong> sentToPool = [];
         TestRpcBlockchain? rpcBlockchain = null;
 
-        // The first send is held at the sequencer, or before it reaches the pool, until the second has had its chance.
+        // The first send is held at the sequencer, or before it reaches the pool, until the test releases it.
         async Task Hold(int index)
         {
             if (index > 0)
@@ -703,7 +714,7 @@ public class OptimismEthRpcModuleTest
         await firstArrived.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Task<string> second = SendFromC(rpcBlockchain);
         // Unless the sends are serialised, the second one is filled and sent while the first is still on its way.
-        await Task.WhenAny(secondArrived.Task, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        bool secondWaited = SecondSendWaitsForTheFirst(((OptimismEthRpcModule)rpcBlockchain.EthRpcModule).NonceTracker, TestItem.AddressC, secondArrived.Task);
         releaseFirst.SetResult();
         AssertSucceeded(await first);
         AssertSucceeded(await second);
@@ -711,7 +722,11 @@ public class OptimismEthRpcModuleTest
         ulong[] sent;
         lock (sentToPool)
             sent = forwardToSequencer ? sequencer.ReceivedNonces : sentToPool.ToArray();
-        Assert.That(sent, Is.EqualTo(new ulong[] { 1, 2 }), "concurrent sends must not share a nonce");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondWaited, Is.True, "the second send must wait for the first");
+            Assert.That(sent, Is.EqualTo(new ulong[] { 1, 2 }), "concurrent sends must not share a nonce");
+        }
     }
 
     [Test]

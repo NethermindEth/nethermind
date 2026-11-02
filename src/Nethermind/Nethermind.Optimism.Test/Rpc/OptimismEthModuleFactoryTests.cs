@@ -4,27 +4,21 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
-using Nethermind.Facade;
-using Nethermind.Facade.Eth;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
-using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Optimism.Rpc;
-using Nethermind.Serialization.Json;
-using Nethermind.State;
+using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -62,32 +56,25 @@ public class OptimismEthModuleFactoryTests
         txSender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(_ => Hold());
         IWallet wallet = Substitute.For<IWallet>();
         wallet.TrySignTransaction(Arg.Any<Transaction>(), Arg.Any<ulong>()).Returns(true);
-
-        OptimismEthModuleFactory factory = new(
-            new JsonRpcConfig(),
-            Substitute.For<IBlockchainBridgeFactory>(),
-            Substitute.For<IBlockFinder>(),
-            Substitute.For<IBlockTree>(),
-            Substitute.For<IReceiptFinder>(),
-            Substitute.For<IEthCapabilitiesProvider>(),
-            Substitute.For<IStateReader>(),
-            Substitute.For<ITxPool>(),
-            txSender,
-            wallet,
-            LimboLogs.Instance,
-            Substitute.For<ISpecProvider>(),
-            Substitute.For<IGasPriceOracle>(),
-            Substitute.For<IEthSyncingInfo>(),
-            Substitute.For<IFeeHistoryOracle>(),
-            Substitute.For<IProtocolsManager>(),
-            Substitute.For<IForkInfo>(),
-            new BlocksConfig(),
-            Substitute.For<IEthereumEcdsa>(),
-            Substitute.For<IOptimismSpecHelper>(),
-            new OptimismConfig(),
-            new EthereumJsonSerializer(),
-            Substitute.For<ITimestamper>(),
-            Substitute.For<IBlockForRpcFactory>());
+        ChainSpec chainSpec = new()
+        {
+            Genesis = Build.A.Block.Genesis.TestObject,
+            Parameters = new ChainParameters(),
+            Allocations = [],
+            EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters { BedrockBlockNumber = 0 })
+        };
+        // The node's own wiring of a sequencer node. The test brings the pool sender, the wallet and a spec provider, as the
+        // chain spec has no Optimism fork parameters.
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(chainSpec))
+            .AddModule(new OptimismModule(chainSpec, new OptimismConfig()))
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(London.Instance))
+            .AddSingleton<ITxSender>(txSender)
+            .AddSingleton<IWallet>(wallet)
+            .Build();
+        // The factory the eth_ module pool creates its instances with.
+        IRpcModuleFactory<IEthRpcModule> factory = container.Resolve<IRpcModuleFactory<IEthRpcModule>>();
+        OptimismEthRpcModule firstModule = (OptimismEthRpcModule)factory.Create();
 
         static LegacyTransactionForRpc Request() => new()
         {
@@ -98,17 +85,19 @@ public class OptimismEthModuleFactoryTests
             GasPrice = 1,
         };
 
-        Task<ResultWrapper<Hash256>> first = factory.Create().eth_sendTransaction(Request());
+        Task<ResultWrapper<Hash256>> first = firstModule.eth_sendTransaction(Request());
         await firstArrived.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Task<ResultWrapper<Hash256>> second = factory.Create().eth_sendTransaction(Request());
-        bool secondSentWhileFirstHeld = await Task.WhenAny(secondArrived.Task, Task.Delay(TimeSpan.FromMilliseconds(500))) == secondArrived.Task;
+        bool secondWaited = OptimismEthRpcModuleTest.SecondSendWaitsForTheFirst(firstModule.NonceTracker, TestItem.AddressC, secondArrived.Task);
         releaseFirst.SetResult();
+        ResultWrapper<Hash256> firstResult = await first.WaitAsync(TimeSpan.FromSeconds(30));
+        ResultWrapper<Hash256> secondResult = await second.WaitAsync(TimeSpan.FromSeconds(30));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((await first).Result.ResultType, Is.EqualTo(ResultType.Success), (await first).Result.Error);
-            Assert.That((await second).Result.ResultType, Is.EqualTo(ResultType.Success), (await second).Result.Error);
-            Assert.That(secondSentWhileFirstHeld, Is.False, "instances of one factory must share the lock of an account");
+            Assert.That(firstResult.Result.ResultType, Is.EqualTo(ResultType.Success), firstResult.Result.Error);
+            Assert.That(secondResult.Result.ResultType, Is.EqualTo(ResultType.Success), secondResult.Result.Error);
+            Assert.That(secondWaited, Is.True, "instances of one factory must share the lock of an account");
         }
     }
 }

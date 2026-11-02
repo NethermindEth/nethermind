@@ -51,6 +51,13 @@ public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader
         }
     }
 
+    // Sends from the account that hold its lock or wait on it.
+    internal int SenderLockUsers(Address sender)
+    {
+        lock (_gate)
+            return _senderLocks.TryGetValue(sender, out SenderLock? senderLock) ? senderLock.Users : 0;
+    }
+
     /// <summary>
     /// Waits until no other send from <paramref name="sender"/> runs, so that its sends get consecutive nonces.
     /// Sends from other accounts do not wait. Dispose the result once the transaction is sent.
