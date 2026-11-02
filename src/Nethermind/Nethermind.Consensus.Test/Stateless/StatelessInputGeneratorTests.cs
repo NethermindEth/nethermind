@@ -99,6 +99,9 @@ public class StatelessInputGeneratorTests
             ExecutionWitness decoded = amsterdam ? DecodeWitness<SszExecutionPayloadAmsterdam>(data) : DecodeWitness<SszExecutionPayload>(data);
 
             Assert.That(data[offset..].ToArray(), Is.EqualTo(ExecutionWitness.Encode(decoded)));
+            int stateList = offset + BinaryPrimitives.ReadInt32LittleEndian(data[offset..]);
+            int firstNode = stateList + BinaryPrimitives.ReadInt32LittleEndian(data[stateList..]);
+            Assert.That(data[firstNode..].StartsWith(decoded.State[0].Node.AsSpan()), Is.True);
         }
 
         static ExecutionWitness DecodeWitness<TPayload>(ReadOnlySpan<byte> data) where TPayload : SszExecutionPayload, ISszCodec<TPayload>, new()

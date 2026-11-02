@@ -95,8 +95,7 @@ public class WitnessTests
         }
     }
 
-    [Test]
-    public unsafe void Decoded_ssz_witness_keeps_placed_state_nodes_in_its_input([Values(0, 64, 4096)] int decodedBefore)
+    private static IEnumerable<TestCaseData> PlacedWitnessCases()
     {
         // Long nodes among short ones, so that with little input decoded before the witness some are copied.
         byte[][] nodes = new byte[40][];
@@ -106,8 +105,17 @@ public class WitnessTests
             nodes[i].AsSpan().Fill((byte)i);
         }
 
-        byte[][] codes = [[0x60, 0x01, 0x00]];
-        byte[][] headers = [[0xc0]];
+        foreach (int decodedBefore in (int[])[0, 64, 4096])
+            yield return new TestCaseData(nodes, new byte[][] { [0x60, 0x01, 0x00] }, new byte[][] { [0xc0] }, decodedBefore);
+
+        // The second node moves down by none of its bytes and ends the input off a word boundary.
+        yield return new TestCaseData(new byte[][] { new byte[28], [1, 2, 3, 4, 5] }, Array.Empty<byte[]>(), Array.Empty<byte[]>(), 0)
+            .SetName("Decoded_ssz_witness_keeps_placed_state_nodes_in_its_input(last node at the unaligned input end)");
+    }
+
+    [TestCaseSource(nameof(PlacedWitnessCases))]
+    public unsafe void Decoded_ssz_witness_keeps_placed_state_nodes_in_its_input(byte[][] nodes, byte[][] codes, byte[][] headers, int decodedBefore)
+    {
         using Witness original = new()
         {
             Headers = new ArrayPoolList<byte[]>(headers),
@@ -133,12 +141,13 @@ public class WitnessTests
             {
                 byte* data = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(node));
                 bool inInput = data >= start && data < start + length;
-                Assert.That(!inInput || data + node.Length <= start + placedLength, Is.True, "placed within the length reported");
+                Assert.That(!inInput || (data + node.Length <= start + placedLength && ((nuint)data & 7) == 0), Is.True, "placed within the length reported, on a word boundary");
                 placed += inInput ? 1 : 0;
             }
 
             using (Assert.EnterMultipleScope())
             {
+                Assert.That(placedLength, Is.InRange(0, length));
                 Assert.That(witness.State, Is.EqualTo(nodes));
                 Assert.That(witness.Codes, Is.EqualTo(codes));
                 Assert.That(witness.Headers, Is.EqualTo(headers));
@@ -147,6 +156,8 @@ public class WitnessTests
         }
         finally
         {
+            // Ends the placement a failed decode left open; after the call above it does nothing.
+            WitnessNode.EndPlacement(new ReadOnlySpan<byte>(start, length));
             NativeMemory.AlignedFree(start);
         }
     }

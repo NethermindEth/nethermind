@@ -294,17 +294,30 @@ public readonly partial struct WitnessNode
     {
         byte* free = Placement.Free;
         Placement.Free = Placement.StateList = Placement.FirstNode = Placement.InputEnd = null;
-        return free == null ? 0 : (int)(free - Address(input));
+        if (free == null) return 0;
+
+        // The alignment past the last placed node can reach beyond the end of the input.
+        byte* start = Address(input);
+        return free > start + input.Length ? input.Length : (int)(free - start);
+    }
+
+    /// <summary>Copies <paramref name="node"/> as the generated decoder copies a byte list.</summary>
+    /// <remarks>Corelib's <c>ToArray</c> copy goes through a GC-transition wrapper on ZisK; see <c>Bytes.Copy</c>.</remarks>
+    private static byte[] Copy(ReadOnlySpan<byte> node)
+    {
+        byte[] copy = GC.AllocateUninitializedArray<byte>(node.Length);
+        Core.Extensions.Bytes.Copy(node, copy);
+        return copy;
     }
 
     private static unsafe byte[] Hold(ReadOnlySpan<byte> node)
     {
         if (!CanPlaceInInput)
-            return node.ToArray();
+            return Copy(node);
 
         byte* source = Address(node);
         if (source < Placement.StateList || source >= Placement.InputEnd)
-            return node.ToArray();
+            return Copy(node);
 
         if (Placement.FirstNode == null)
             Placement.FirstNode = source;
@@ -315,7 +328,7 @@ public readonly partial struct WitnessNode
 
         // The array's data may overlap the node, which it moves down; its prefix may not.
         if (free >= Placement.FirstNode && free + ArrayPrefix > source)
-            return node.ToArray();
+            return Copy(node);
 
         Core.Extensions.Bytes.Copy(node, new Span<byte>(free + ArrayPrefix, node.Length));
         *(ulong*)free = 0;
