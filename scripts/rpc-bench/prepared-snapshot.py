@@ -21,6 +21,8 @@ BASELINE = 'nethermindeth/nethermind@sha256:a0bc08c6b62afdaf7c8494f8f8578f3cbfd3
 CANDIDATE = 'nethermindeth/nethermind@sha256:457ea6fd38f380c59d171a240ee6ea948903dd4a34c5a699dac53ffd66d87166'
 SOURCE = Path('/mnt/sda/nethermind-flat-25490000')
 PARENT = Path('/mnt/sda/expb-data/rpc-prepared')
+RETAINED_PARENT = Path('/mnt/sda/rpc-prepared-retained')
+EXPECTED_SOURCE_TRIPWIRE = '1932edeaa06533515b3fc3062e8789b16fcf57a3bd63a8cf30f2132c055b64b6'
 OPTIONS = 'redirect_dir=off,metacopy=off,index=off'
 RPC_PORT = 18545
 START = re.compile(r'Adding transaction hashes to stored receipts, blocks [0-9]+ to [0-9]+\.')
@@ -65,9 +67,9 @@ def atomic(path, value):
 
 
 def guard(root):
-    if root.is_symlink() or root.parent.resolve() != PARENT.resolve() or not re.fullmatch(r'getlogs-[0-9]+', root.name):
+    if root.is_symlink() or root.parent.resolve() not in (PARENT, RETAINED_PARENT) or not re.fullmatch(r'getlogs-[0-9]+', root.name):
         raise ValueError('fixture must be a non-symlink getlogs-<runid> child of the dedicated persistent parent')
-    if SOURCE.resolve() != SOURCE or PARENT.resolve() != PARENT:
+    if SOURCE.resolve() != SOURCE or PARENT.resolve() != PARENT or RETAINED_PARENT.resolve() != RETAINED_PARENT:
         raise ValueError('source/persistent parent cannot contain symlinks')
 
 
@@ -278,6 +280,8 @@ def verify(root, expected):
     manifest = json.loads(raw)
     if manifest['status'] != 'ready' or manifest['host'] != socket.gethostname() or manifest['root'] != str(root) or manifest['source'] != str(SOURCE) or manifest['options'] != OPTIONS or manifest['flags'] != FLAGS:
         raise RuntimeError('manifest lineage/options mismatch')
+    if 'persistence' in manifest and manifest['persistence']['identity'] != host_mount_identity():
+        raise RuntimeError('sealed fixture host boot/mount namespace changed')
     if mounted(root / 'merged', True) != manifest['mount']:
         raise RuntimeError('prepared mount options/lower identity changed')
     if fingerprint(SOURCE) != manifest['source_tripwire'] or fingerprint(root / 'merged') != manifest['prepared_tripwire']:
@@ -474,12 +478,80 @@ def inventory(args):
                                      'data_caveat': 'shallow metadata cannot establish complete migrated data or DB correctness'})
 
 
+def host_mount_identity():
+    namespace = os.readlink('/proc/self/ns/mnt')
+    if namespace != os.readlink('/proc/1/ns/mnt'):
+        raise RuntimeError('job is not in the persistent host mount namespace; refusing migration')
+    if socket.gethostname() != 'core-ethereum-mainnet-snapshots-0':
+        raise RuntimeError('unexpected preparation host')
+    return {'host': socket.gethostname(), 'boot_id': Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+            'mount_namespace': namespace}
+
+
+def persistence_probe(args):
+    budget(time.time(), dt.datetime.fromisoformat(args.finish.replace('Z', '+00:00')).timestamp())
+    identity = host_mount_identity()
+    if RETAINED_PARENT.resolve() != RETAINED_PARENT:
+        raise RuntimeError('retained parent is symlinked')
+    RETAINED_PARENT.mkdir(exist_ok=True)
+    atomic(Path(args.output) / 'preflight.json', {'identity': identity, 'scratch': space(RETAINED_PARENT),
+                                                'root': space(Path('/')), 'containers': run('docker', 'ps', '--no-trunc'),
+                                                'filesystem': run('findmnt', '-T', RETAINED_PARENT),
+                                                'source_mount': run('findmnt', '-T', SOURCE)})
+    if os.statvfs(RETAINED_PARENT).f_bavail * os.statvfs(RETAINED_PARENT).f_frsize < 512 * 2**30:
+        raise RuntimeError('preparation requires 512GiB initially free')
+    if run('docker', 'ps', '-q').strip():
+        raise RuntimeError('another container is running; refusing shared-host probe')
+    source = fingerprint(SOURCE)
+    atomic(Path(args.output) / 'source-tripwire.json', {'current': source, 'expected': EXPECTED_SOURCE_TRIPWIRE})
+    if source != EXPECTED_SOURCE_TRIPWIRE:
+        raise RuntimeError('protected source differs from independently reviewed inventory')
+    root = RETAINED_PARENT / ('persistence-' + os.environ['GITHUB_RUN_ID'])
+    root.mkdir()
+    toyroot = root / 'toy'
+    toyroot.mkdir()
+    result = toy(toyroot)
+    lower = root / 'lower'
+    lower.mkdir()
+    (lower / 'original').write_text('source')
+    base = root / 'base'
+    base.mkdir()
+    overlay(lower, base)
+    run('sh', '-c', 'printf retained > "$1"', 'sh', base / 'merged' / 'marker', root=True)
+    run('sync', '-f', base / 'merged', root=True)
+    run('mount', '-o', 'remount,ro', base / 'merged', root=True)
+    record = {'identity': identity, 'run': os.environ['GITHUB_RUN_ID'], 'job': os.environ['GITHUB_JOB'], 'source_sha': os.environ['GITHUB_SHA'],
+              'source_tripwire': source, 'mount': mounted(base / 'merged', True), 'kernel_probe': result}
+    atomic(root / 'proof.json', record)
+    atomic(Path(args.output) / 'PERSISTENCE.json', record)
+
+
+def verify_persistence():
+    root = RETAINED_PARENT / ('persistence-' + os.environ['GITHUB_RUN_ID'])
+    record = json.loads((root / 'proof.json').read_text())
+    if (record['identity'] != host_mount_identity() or record['run'] != os.environ['GITHUB_RUN_ID']
+            or record['source_sha'] != os.environ['GITHUB_SHA'] or record['job'] == os.environ['GITHUB_JOB']):
+        raise RuntimeError('cross-job persistence ownership/namespace changed')
+    base = root / 'base'
+    if mounted(base / 'merged', True) != record['mount']:
+        raise RuntimeError('cross-job persistent mount changed')
+    if (base / 'merged' / 'marker').read_text() != 'retained' or (base / 'upper' / 'marker').read_text() != 'retained':
+        raise RuntimeError('cross-job retained upper/mount proof failed')
+    if fingerprint(SOURCE) != record['source_tripwire'] or record['source_tripwire'] != EXPECTED_SOURCE_TRIPWIRE:
+        raise RuntimeError('cross-job protected source changed')
+    return record
+
+
 def prepare(args):
     recovering = args.action == 'recover'
     finish = dt.datetime.fromisoformat(args.finish.replace('Z', '+00:00')).timestamp()
     budget(time.time(), finish, gate=3600 if recovering else 10800)
-    PARENT.mkdir(exist_ok=True)
-    root = args.root if recovering else PARENT / ('getlogs-' + os.environ['GITHUB_RUN_ID'])
+    if not recovering and time.time() > dt.datetime(2026, 11, 2, 18, 30, tzinfo=dt.timezone.utc).timestamp():
+        raise RuntimeError('fresh migration latest start 2026-11-02T18:30:00Z exceeded')
+    persistence = None if recovering else verify_persistence()
+    parent = PARENT if recovering else RETAINED_PARENT
+    parent.mkdir(exist_ok=True)
+    root = args.root if recovering else parent / ('getlogs-' + os.environ['GITHUB_RUN_ID'])
     guard(root)
     if not recovering:
         root.mkdir()  # Never reopen/overwrite an existing generation.
@@ -498,7 +570,7 @@ def prepare(args):
         atomic(root / ('recovery-' + os.environ['GITHUB_RUN_ID'] + '.json'), record)
     atomic(output / 'request.json', {'root': str(root), 'image': BASELINE, 'flags': FLAGS, 'finish': args.finish})
     # Evidence is read-only before choosing/creating any dataset overlay.
-    (output / 'filesystem.txt').write_text(run('findmnt', '-T', SOURCE) + run('findmnt', '-T', PARENT) + run('uname', '-a') + run('df', '-B1', SOURCE, '/', PARENT))
+    (output / 'filesystem.txt').write_text(run('findmnt', '-T', SOURCE) + run('findmnt', '-T', parent) + run('uname', '-a') + run('df', '-B1', SOURCE, '/', parent))
     samples = []
     cutoff = min(finish - 1800, time.time() + 3600) if recovering else finish - 1800
     atomic(output / 'disk-plan.json', {'mode': 'recovery' if recovering else 'fresh', 'initial_scratch_min_gib': 128 if recovering else 512,
@@ -506,12 +578,12 @@ def prepare(args):
                                      'work_cutoff_utc': dt.datetime.fromtimestamp(cutoff, dt.timezone.utc).isoformat(),
                                      'shutdown_seconds': 180, 'reserve_seconds': 3600})
     def pressure():
-        samples.append({'utc': dt.datetime.now(dt.timezone.utc).isoformat(), 'scratch': space(PARENT), 'root': space(Path('/'))})
+        samples.append({'utc': dt.datetime.now(dt.timezone.utc).isoformat(), 'scratch': space(parent), 'root': space(Path('/'))})
         atomic(output / 'disk.json', samples)
         if time.time() > cutoff:
             raise RuntimeError('preparation cutoff reached; reserving shutdown/evidence time')
     pressure()
-    if not recovering and os.statvfs(PARENT).f_bavail * os.statvfs(PARENT).f_frsize < 512 * 2**30:
+    if not recovering and os.statvfs(parent).f_bavail * os.statvfs(parent).f_frsize < 512 * 2**30:
         raise RuntimeError('preparation requires 512GiB initially free: observed ~303GiB host growth plus 128GiB floor and margin')
     containers = run('docker', 'ps', '--no-trunc')
     (output / 'occupancy.txt').write_text(containers)
@@ -525,6 +597,8 @@ def prepare(args):
     source_before = fingerprint(SOURCE)
     atomic(output / 'source-before.json', source_before)
     if not recovering:
+        if source_before != EXPECTED_SOURCE_TRIPWIRE:
+            raise RuntimeError('protected source changed before overlay allocation')
         overlay(SOURCE, root)
     running = False
     monitoring, watcher = start_watchdog(pressure, output)
@@ -594,6 +668,8 @@ def prepare(args):
                     'oracle_sha256': digest(Path(args.oracle).read_bytes()), 'evidence_sha256': {p.name: digest(p.read_bytes()) for p in output.iterdir() if p.is_file()},
                     'completion': 'fresh positive ordered log markers; pinned completion write precedes success log; clean exit0 or configured SIGINT exit130; All DBs closed and Nethermind is shut down; noOOM/error',
                     'retention': 'user-authorized persistent fixture; manual retirement only; do not auto-delete at deadline'}
+        if persistence:
+            manifest['persistence'] = persistence
         if recovering:
             manifest['recovery'] = recovery
             manifest['completion'] = 'pinned old fresh positive completion and clean shutdown; new baseline no-migration startup, exact100case oracle and clean shutdown'
@@ -746,7 +822,7 @@ def exception_record(error):
 
 def execute_attempt(args):
     output = Path(args.output).resolve()
-    if output.is_relative_to(SOURCE) or output.is_relative_to(PARENT):
+    if output.is_relative_to(SOURCE) or output.is_relative_to(PARENT) or output.is_relative_to(RETAINED_PARENT):
         raise ValueError('attempt artifacts must be outside protected source/quarantine trees')
     output.mkdir(parents=True, exist_ok=True)
     request = {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()}
@@ -755,7 +831,9 @@ def execute_attempt(args):
                                    'started_utc': dt.datetime.now(dt.timezone.utc).isoformat()})
     started = time.monotonic()
     try:
-        if args.action == 'inventory':
+        if args.action == 'persistence-probe':
+            persistence_probe(args)
+        elif args.action == 'inventory':
             inventory(args)
         else:
             prepare(args)
@@ -766,7 +844,7 @@ def execute_attempt(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['prepare', 'recover', 'inventory', 'verify', 'qualify', 'gate', 'running', 'stopped'])
+    parser.add_argument('action', choices=['persistence-probe', 'prepare', 'recover', 'inventory', 'verify', 'qualify', 'gate', 'running', 'stopped'])
     parser.add_argument('--root', type=Path)
     parser.add_argument('--manifest-sha256')
     parser.add_argument('--image', default=BASELINE)
@@ -781,7 +859,7 @@ def main():
     global RPC_PORT
     RPC_PORT = args.rpc_port
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(RuntimeError('termination requested')))
-    if args.action in ('prepare', 'recover', 'inventory'):
+    if args.action in ('persistence-probe', 'prepare', 'recover', 'inventory'):
         execute_attempt(args)
     elif args.action == 'qualify':
         qualify(args)

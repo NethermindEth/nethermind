@@ -38,9 +38,64 @@ class PreparedTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             p.budget(latest + 0.001, finish)
         args = SimpleNamespace(action='prepare', finish='2026-10-29T11:00:00Z')
-        with patch.object(p.time, 'time', return_value=latest), patch.object(Path, 'mkdir', side_effect=RuntimeError('allocation reached')):
+        with patch.object(p.time, 'time', return_value=latest), patch.object(p, 'verify_persistence'), patch.object(Path, 'mkdir', side_effect=RuntimeError('allocation reached')):
             with self.assertRaisesRegex(RuntimeError, '^allocation reached$'):
                 p.prepare(args)
+
+    def test_host_namespace_and_host_are_required(self):
+        for observer, host_ns, hostname, accepted in [
+            ('mnt:[1]', 'mnt:[1]', 'core-ethereum-mainnet-snapshots-0', True),
+            ('mnt:[2]', 'mnt:[1]', 'core-ethereum-mainnet-snapshots-0', False),
+            ('mnt:[1]', 'mnt:[1]', 'another-host', False),
+        ]:
+            with self.subTest(observer=observer, hostname=hostname), patch.object(p.os, 'readlink', side_effect=[observer, host_ns]), patch.object(p.socket, 'gethostname', return_value=hostname), patch.object(Path, 'read_text', return_value='boot'):
+                if accepted:
+                    self.assertEqual(p.host_mount_identity()['boot_id'], 'boot')
+                else:
+                    with self.assertRaises(RuntimeError):
+                        p.host_mount_identity()
+
+    def test_cross_job_persistence_rejects_namespace_mount_upper_source_and_owner_drift(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, GITHUB_RUN_ID='123', GITHUB_SHA='sha', GITHUB_JOB='prepare-snapshot'):
+            parent = Path(directory)
+            root = parent / 'persistence-123'
+            (root / 'base' / 'merged').mkdir(parents=True)
+            (root / 'base' / 'upper').mkdir()
+            marker = root / 'base' / 'upper' / 'marker'
+            marker.write_text('retained')
+            (root / 'base' / 'merged' / 'marker').write_text('retained')
+            identity = {'host': 'host', 'boot_id': 'boot', 'mount_namespace': 'mnt:[1]'}
+            mount = {'options': 'ro,lowerdir=owned'}
+            record = {'identity': identity, 'run': '123', 'job': 'persistence-probe', 'source_sha': 'sha',
+                      'source_tripwire': p.EXPECTED_SOURCE_TRIPWIRE, 'mount': mount}
+            with patch.object(p, 'RETAINED_PARENT', parent), patch.object(p, 'host_mount_identity', return_value=identity), patch.object(p, 'mounted', return_value=mount), patch.object(p, 'fingerprint', return_value=p.EXPECTED_SOURCE_TRIPWIRE):
+                p.atomic(root / 'proof.json', record)
+                self.assertEqual(p.verify_persistence(), record)
+                for key, bad in [('identity', {}), ('run', 'other'), ('job', 'prepare-snapshot'), ('source_sha', 'other'), ('mount', {}), ('source_tripwire', 'changed')]:
+                    p.atomic(root / 'proof.json', dict(record, **{key: bad}))
+                    with self.subTest(key=key), self.assertRaises(RuntimeError):
+                        p.verify_persistence()
+                p.atomic(root / 'proof.json', record)
+                marker.unlink()
+                with self.assertRaises(FileNotFoundError):
+                    p.verify_persistence()
+                marker.write_text('wrong')
+                with self.assertRaises(RuntimeError):
+                    p.verify_persistence()
+                marker.write_text('retained')
+                with patch.object(p, 'mounted', side_effect=RuntimeError('missing exact mount')), self.assertRaises(RuntimeError):
+                    p.verify_persistence()
+
+    def test_fresh_preparation_requires_cross_job_proof_before_allocation(self):
+        args = SimpleNamespace(action='prepare', finish='2026-11-02T23:57:04Z')
+        with patch.object(p.time, 'time', return_value=0), patch.object(p, 'verify_persistence', side_effect=RuntimeError('no proof')), patch.object(Path, 'mkdir') as mkdir:
+            with self.assertRaisesRegex(RuntimeError, 'no proof'):
+                p.prepare(args)
+            mkdir.assert_not_called()
+        with patch.object(p.time, 'time', return_value=p.dt.datetime(2026, 11, 2, 18, 31, tzinfo=p.dt.timezone.utc).timestamp()), patch.object(p, 'verify_persistence') as proof:
+            with self.assertRaisesRegex(RuntimeError, 'latest start'):
+                p.prepare(args)
+            proof.assert_not_called()
 
     def test_new_migration_and_errors_rejected_on_reuse(self):
         for text in ('Adding transaction hashes to stored receipts, blocks 1 to 20.', 'Unhandled', 'Invalid Block', 'Exception'):

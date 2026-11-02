@@ -218,8 +218,29 @@ permissions:
   contents: read
 
 jobs:
+  persistence-probe:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.prepare_snapshot && fromJSON(inputs.node_config || '{}').prepared_snapshot_recover != true && fromJSON(inputs.node_config || '{}').prepared_snapshot_inventory != true }}
+    runs-on: [self-hosted, reproducible-benchmarks]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: persistence-probe-${{ github.run_id }}
+          sparse-checkout: scripts/rpc-bench
+      - name: Prove retained host namespace and storage before migration
+        run: >-
+          python3 persistence-probe-${{ github.run_id }}/scripts/rpc-bench/prepared-snapshot.py persistence-probe
+          --output "${{ runner.temp }}/persistence-results-${{ github.run_id }}"
+          --finish 2026-11-02T23:57:04Z
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: persistence-probe-${{ github.run_id }}
+          path: ${{ runner.temp }}/persistence-results-${{ github.run_id }}
+          if-no-files-found: warn
   prepare-snapshot:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.prepare_snapshot }}
+    needs: persistence-probe
+    if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.prepare_snapshot && (needs.persistence-probe.result == 'success' || fromJSON(inputs.node_config || '{}').prepared_snapshot_recover == true || fromJSON(inputs.node_config || '{}').prepared_snapshot_inventory == true) }}
     runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: ${{ fromJSON(inputs.node_config || '{}').prepared_snapshot_inventory == true && 25 || 270 }}
     permissions:
@@ -258,7 +279,7 @@ jobs:
             action=recover
             extra=(--root /mnt/sda/expb-data/rpc-prepared/getlogs-40815701914 --recovery-evidence "$OLD_EVIDENCE")
           fi
-          "${limit[@]}" python3 prepared-snapshot-${{ github.run_id }}/scripts/rpc-bench/prepared-snapshot.py "$action" "${extra[@]}" --output "$PREPARED_OUTPUT" --finish 2026-10-30T00:06:04Z
+          "${limit[@]}" python3 prepared-snapshot-${{ github.run_id }}/scripts/rpc-bench/prepared-snapshot.py "$action" "${extra[@]}" --output "$PREPARED_OUTPUT" --finish 2026-11-02T23:57:04Z
       - name: Preserve preparation evidence, including failures
         if: always()
         uses: actions/upload-artifact@v4
