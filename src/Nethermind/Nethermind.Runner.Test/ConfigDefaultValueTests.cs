@@ -24,19 +24,6 @@ public class ConfigDefaultValueTests
     static ConfigDefaultValueTests() =>
         new PluginLoader("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins).Load();
 
-    /// <summary>
-    /// Properties whose default depends on the machine or on process-wide state, so no literal
-    /// <c>DefaultValue</c> can match it in every run.
-    /// </summary>
-    private static readonly HashSet<string> NonDeterministicDefaults =
-    [
-        "ILogIndexConfig.MaxReceiptsParallelism",     // Max(ProcessorCount / 4, 1)
-        "ILogIndexConfig.MaxAggregationParallelism",  // Max(ProcessorCount / 4, 1)
-        "ILogIndexConfig.MaxCompressionParallelism",  // Max(ProcessorCount / 4, 1)
-        "ILogIndexConfig.CompressionAlgorithm",       // depends on the CPU instruction sets
-        "IBlocksConfig.GasToken",                     // backed by the static GasTokenTicker, so any config that set it earlier (e.g. XDAI) wins
-    ];
-
     /// <remarks>
     /// <c>StandardConfigTests.ValidateDefaultValues</c> only loads <c>Nethermind.JsonRpc.dll</c>, so this checks every
     /// config the node discovers at startup, resolved the same way <see cref="ConfigProvider"/> resolves them.
@@ -68,6 +55,6 @@ public class ConfigDefaultValueTests
         from config in ConfigTypes()
         from property in config.Interface.GetProperties()
         let name = $"{config.Interface.Name}.{property.Name}"
-        where !NonDeterministicDefaults.Contains(name)
+        where !StandardConfigTests.NonDeterministicDefaults.Contains(name)
         select new TestCaseData(config.Interface, config.Implementation, property.Name).SetName(name);
 }

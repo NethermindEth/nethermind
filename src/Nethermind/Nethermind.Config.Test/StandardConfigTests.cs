@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -16,7 +17,24 @@ namespace Nethermind.Config.Test
     {
         private static readonly JsonSerializerOptions _jsonOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-        public static void ValidateDefaultValues() => ForEachProperty(CheckDefault);
+        /// <summary>
+        /// Properties whose default depends on the machine or on process-wide state, so no literal
+        /// <c>DefaultValue</c> can match it in every run.
+        /// </summary>
+        public static readonly IReadOnlySet<string> NonDeterministicDefaults = new HashSet<string>
+        {
+            "IJsonRpcConfig.TraceBlockParallelism",       // ProcessorCount
+            "ILogIndexConfig.MaxReceiptsParallelism",     // Max(ProcessorCount / 4, 1)
+            "ILogIndexConfig.MaxAggregationParallelism",  // Max(ProcessorCount / 4, 1)
+            "ILogIndexConfig.MaxCompressionParallelism",  // Max(ProcessorCount / 4, 1)
+            "ILogIndexConfig.CompressionAlgorithm",       // depends on the CPU instruction sets
+            "IBlocksConfig.GasToken",                     // backed by the static GasTokenTicker, so any config that set it earlier (e.g. XDAI) wins
+        };
+
+        public static void ValidateDefaultValues() => ForEachProperty(static (property, instance) =>
+        {
+            if (!NonDeterministicDefaults.Contains($"{property.DeclaringType!.Name}.{property.Name}")) CheckDefault(property, instance);
+        });
 
         public static void ValidateDescriptions() => ForEachProperty(CheckDescribedOrHidden);
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
@@ -60,7 +61,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public long MaxBufferedTraceLogSize { get; set; } = 256.MiB;
     public int? DebugModuleConcurrentInstances { get; set; } = null;
     public int? TraceModuleConcurrentInstances { get; set; } = null;
-    public int TraceBlockParallelism { get; set; } = 4;
+    public int TraceBlockParallelism { get; set; } = Environment.ProcessorCount;
     public int? EthModuleConcurrentInstances { get; set; } = null;
     public string JwtSecretFile { get; set; } = null;
     public bool UnsecureDevNoRpcAuthentication { get; set; }

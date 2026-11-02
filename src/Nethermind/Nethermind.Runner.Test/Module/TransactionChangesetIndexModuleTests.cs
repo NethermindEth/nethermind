@@ -436,13 +436,14 @@ public class TransactionChangesetIndexModuleTests
         }
     }
 
-    [TestCase(4, TestName = "ParallelTraceBudgets_ByDefault_TraceAccessListBlocksOnFourWorkers")]
+    [TestCase(null, TestName = "ParallelTraceBudgets_ByDefault_TraceAccessListBlocksOnAWorkerPerProcessor")]
     [TestCase(1, TestName = "ParallelTraceBudgets_WhenSetToOne_TraceAccessListBlocksSequentially")]
     [TestCase(0, TestName = "ParallelTraceBudgets_WhenSetToZero_TraceAccessListBlocksSequentially")]
-    public void ParallelTraceBudgets_ForAccessListBlocks_FollowTheTraceBlockSetting(int configured)
+    public void ParallelTraceBudgets_ForAccessListBlocks_FollowTheTraceBlockSetting(int? configured)
     {
         JsonRpcConfig rpc = new();
-        if (configured != 4) rpc.TraceBlockParallelism = configured;
+        if (configured is int workers) rpc.TraceBlockParallelism = workers;
+        int expectedWorkers = configured ?? Environment.ProcessorCount;
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = false }, rpc))
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance))
@@ -453,9 +454,9 @@ public class TransactionChangesetIndexModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new JsonRpcConfig().TraceBlockParallelism, Is.EqualTo(4), "the default is four workers");
-            Assert.That(parallel, Is.EqualTo(configured >= 2 && Environment.ProcessorCount >= 2), "zero or one traces an access list block sequentially");
-            if (parallel) Assert.That(budget.Degree, Is.EqualTo(Math.Min(configured, Environment.ProcessorCount)), "the degree is the configured setting");
+            Assert.That(new JsonRpcConfig().TraceBlockParallelism, Is.EqualTo(Environment.ProcessorCount), "the default is one worker per logical processor");
+            Assert.That(parallel, Is.EqualTo(expectedWorkers >= 2 && Environment.ProcessorCount >= 2), "zero or one traces an access list block sequentially");
+            if (parallel) Assert.That(budget.Degree, Is.EqualTo(Math.Min(expectedWorkers, Math.Min(Environment.ProcessorCount, 16))), "the degree is the configured setting, capped at the processors and at sixteen");
             Assert.That(container.Resolve<ParallelTraceBudgets>().AllowsParallelTracing, Is.EqualTo(parallel), "with no changeset seeds, only access list blocks can start a parallel tracer");
         }
     }
@@ -531,15 +532,15 @@ public class TransactionChangesetIndexModuleTests
         }
     }
 
-    [TestCase(null, 4, TestName = "TraceBudget_WithTheDeprecatedKeyAtItsDefault_FollowsTheTraceBlockDefaultWithoutWarning")]
-    [TestCase(2, 2, TestName = "TraceBudget_WithTheDeprecatedKeyAtItsDefault_FollowsTheTraceBlockSettingWithoutWarning")]
-    public void TraceBudget_WithTheDeprecatedKeyAtZero_FollowsTheTraceBlockSettingWithoutWarning(int? traceBlock, int configured)
+    [TestCase(null, TestName = "TraceBudget_WithTheDeprecatedKeyAtItsDefault_FollowsTheTraceBlockDefaultWithoutWarning")]
+    [TestCase(2, TestName = "TraceBudget_WithTheDeprecatedKeyAtItsDefault_FollowsTheTraceBlockSettingWithoutWarning")]
+    public void TraceBudget_WithTheDeprecatedKeyAtZero_FollowsTheTraceBlockSettingWithoutWarning(int? traceBlock)
     {
         (ParallelTraceBudget budget, TestLogger logger, IContainer container) = ResolveTraceBudget(0, traceBlock);
         using (container)
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(budget.Degree, Is.EqualTo(Math.Min(configured, Environment.ProcessorCount)), "zero, the published default, means the deprecated key is not set");
+            Assert.That(budget.Degree, Is.EqualTo(Math.Min(traceBlock ?? Environment.ProcessorCount, Math.Min(Environment.ProcessorCount, 16))), "zero, the published default, means the deprecated key is not set");
             Assert.That(logger.LogList, Has.None.Contains("deprecated"));
         }
     }
