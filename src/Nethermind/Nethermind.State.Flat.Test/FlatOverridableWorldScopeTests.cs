@@ -19,6 +19,7 @@ using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -308,6 +309,42 @@ public class FlatOverridableWorldScopeTests
 
             // Verify no calls to main FlatDbManager
             Assert.That(ctx.FlatDbManagerAddSnapshotCalls, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void RunTreeVisitor_FollowsOverlaySnapshotRecords([Values(1, 4)] int parallelism)
+    {
+        using TestContext ctx = new();
+        FlatOverridableWorldScope overridableScope = ctx.OverridableScope;
+
+        BlockHeader CommitAccountWithSlot(BlockHeader? baseBlock, Address address)
+        {
+            using IWorldStateScopeProvider.IScope scope = overridableScope.WorldState.BeginScope(baseBlock);
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(address, Build.An.Account.WithBalance(1).TestObject);
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
+                storageBatch.Set(1, 1);
+            }
+            ulong number = (baseBlock?.Number ?? 0) + 1;
+            scope.Commit(number);
+            return Build.A.BlockHeader.WithNumber(number).WithStateRoot(scope.RootHash).TestObject;
+        }
+
+        // Block 2's root points at A's leaf from block 1, and only block 1's snapshot holds A's storage root.
+        // The bundle under the overlay is empty, so a node read from persistence instead is missing.
+        BlockHeader block2 = CommitAccountWithSlot(CommitAccountWithSlot(null, TestItem.AddressA), TestItem.AddressC);
+        TrieStatsCollector collector = new(new TestMemDb(), LimboLogs.Instance);
+
+        overridableScope.GlobalStateReader.RunTreeVisitor(collector, block2, new VisitingOptions { MaxDegreeOfParallelism = parallelism });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(collector.Stats.StateBranchCount, Is.EqualTo(1));
+            Assert.That(collector.Stats.AccountCount, Is.EqualTo(2));
+            Assert.That(collector.Stats.StorageLeafCount, Is.EqualTo(2));
+            Assert.That(collector.Stats.MissingNodes, Is.Zero);
         }
     }
 

@@ -317,6 +317,15 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
 
+    /// <summary>Runs a tree visitor over the tries of this bundle's snapshots by following trie node buffer record pointers.</summary>
+    /// <remarks>Changes not yet collected into a snapshot are not visited.</remarks>
+    internal void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 rootHash, VisitingOptions options, VisitingStats? diagnostics)
+        where TCtx : struct, INodeContext<TCtx>
+    {
+        GuardDispose();
+        new NodeRecordBufferVisitor<TCtx>(_readOnlySnapshotBundle, _snapshots, visitor, options, diagnostics).Accept(rootHash);
+    }
+
     /// <summary>Makes the final state trie readable from this bundle.</summary>
     internal void PublishBufferedStateRoot(in (ValueHash256 Hash, ulong Pointer) root)
     {

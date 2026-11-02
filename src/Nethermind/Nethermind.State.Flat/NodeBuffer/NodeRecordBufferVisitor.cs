@@ -15,12 +15,14 @@ namespace Nethermind.State.Flat.NodeBuffer;
 /// <summary>Runs a tree visitor over the tries of a <see cref="ReadOnlySnapshotBundle"/> by following trie node buffer record pointers.</summary>
 /// <remarks>
 /// Calls the visitor as <see cref="PatriciaTree.Accept{TNodeContext}"/> does. Each trie starts at the root record of the newest in-memory
-/// snapshot holding it, and each child at the record its parent points at. A node no pointer resolves, and every node below it, is loaded
-/// by path from the persisted snapshots and persistence instead.
-/// Records are borrowed under the bundle's pins, so every parallel worker joins before <see cref="Accept"/> returns.
+/// snapshot holding it, overlay snapshots first, and each child at the record its parent points at. A node no pointer resolves, and every
+/// node below it, is loaded by path from the persisted snapshots and persistence instead.
+/// Records are borrowed under the bundle's and the overlay snapshots' pins, so every parallel worker joins before <see cref="Accept"/> returns.
 /// </remarks>
+/// <param name="overlaySnapshots">Snapshots stacked on top of the bundle's, oldest first, such as an overridable world scope's.</param>
 internal sealed class NodeRecordBufferVisitor<TNodeContext>(
     ReadOnlySnapshotBundle bundle,
+    SnapshotPooledList overlaySnapshots,
     ITreeVisitor<TNodeContext> visitor,
     VisitingOptions options,
     VisitingStats? diagnostics)
@@ -39,11 +41,27 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
             return;
         }
 
-        INodeRecordBuffer? buffer = bundle.FindRoot(null, out ulong pointer);
+        INodeRecordBuffer? buffer = FindRoot(null, out ulong pointer);
         if (!TryResolve(Reference(rootHash, TreePath.Empty), pointer, buffer, null, TreePath.Empty, default, out Resolved root)) return;
 
         if (visitor.IsFullDbScan) visitor.VisitTree(default, rootHash);
         Visit(root, default, null, TreePath.Empty, long.MaxValue);
+    }
+
+    /// <summary>Finds a trie's root record pointer in the newest overlay snapshot holding that trie, otherwise as <see cref="ReadOnlySnapshotBundle.FindRoot"/> does.</summary>
+    /// <remarks>Each snapshot's records resolve in the buffer of its own pin: an overlay buffer would take a bundle snapshot's pointers newer than its own pin for private ones.</remarks>
+    private INodeRecordBuffer? FindRoot(Hash256? address, out ulong pointer)
+    {
+        for (int i = overlaySnapshots.Count - 1; i >= 0; i--)
+        {
+            Snapshot snapshot = overlaySnapshots[i];
+            if (address is null) pointer = snapshot.StateRootPointer;
+            else if (!snapshot.TryGetStorageRoot(address, out pointer)) continue;
+
+            return snapshot.BufferPin?.Buffer;
+        }
+
+        return bundle.FindRoot(address, out pointer);
     }
 
     private TrieNode Reference(Hash256 hash, in TreePath path)
@@ -151,7 +169,7 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
 
         path.AppendMut(leaf.Key!);
         Hash256 address = path.Path.ToCommitment();
-        INodeRecordBuffer? buffer = bundle.FindRoot(address, out ulong pointer);
+        INodeRecordBuffer? buffer = FindRoot(address, out ulong pointer);
         return TryResolve(Reference(account.StorageRoot.ToCommitment(), TreePath.Empty), pointer, buffer, address, TreePath.Empty, leafContext, out Resolved storageRoot)
             ? Visit(storageRoot, leafContext.AddStorage(address), address, TreePath.Empty, sizeHint)
             : 0;
