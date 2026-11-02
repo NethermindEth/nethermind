@@ -24,6 +24,7 @@ public class TransactionReceiptsSubscription : Subscription
     private readonly ISpecProvider _specProvider;
     private readonly HashSet<ValueHash256>? _filterHashes;
     private readonly ReceiptsEventPayloadCache<HashSet<ValueHash256>>.Membership _payloads;
+    private readonly Func<object?, Task> _send;
 
     public TransactionReceiptsSubscription(
         IJsonRpcDuplexClient jsonRpcDuplexClient,
@@ -65,6 +66,7 @@ public class TransactionReceiptsSubscription : Subscription
         _filterHashes = filter?.TransactionHashes;
 
         _payloads = payloads.Join(_filterHashes);
+        _send = TryPublishReceipts;
         _receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
         if (_logger.IsTrace) _logger.Trace($"TransactionReceipts subscription {Id} will track ReceiptsInserted.");
     }
@@ -73,10 +75,12 @@ public class TransactionReceiptsSubscription : Subscription
     internal static ReceiptsEventPayloadCache<HashSet<ValueHash256>> CreatePayloadCache() =>
         new(static e => e.TxReceipts.Length, HashSet<ValueHash256>.CreateSetComparer());
 
-    private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e) => ScheduleAction(() => TryPublishReceipts(e));
+    private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e) => ScheduleAction(_send, e);
 
-    private async Task TryPublishReceipts(ReceiptsEventArgs e)
+    private async Task TryPublishReceipts(object? receiptsEvent)
     {
+        ReceiptsEventArgs e = (ReceiptsEventArgs)receiptsEvent!;
+
         // Skip if this is a reorg (receipts being removed)
         if (e.WasRemoved)
         {

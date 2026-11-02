@@ -21,6 +21,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IBlockTree _blockTree;
         private readonly LogFilter _filter;
         private readonly bool _isBlockHashFilter;
+        private readonly Func<object?, Task> _send;
         private readonly ReceiptsEventPayloadCache<Filter>.Membership _payloads;
 
         public LogsSubscription(
@@ -68,6 +69,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
             _isBlockHashFilter = _filter.IsBlockHashFilter;
             _payloads = payloads.Join(GetFilterKey(filter));
+            _send = PublishLogs;
             _receiptCanonicalityMonitor.ReceiptsInserted += OnReceiptsInserted;
             if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will track ReceiptsInserted.");
         }
@@ -89,7 +91,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
             if (HasMatchingLog(blockHeader, e.TxReceipts))
             {
-                ScheduleAction(() => PublishLogs(e));
+                ScheduleAction(_send, e);
             }
         }
 
@@ -172,9 +174,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
         }
 
-        private async Task PublishLogs(ReceiptsEventArgs e)
+        private async Task PublishLogs(object? receiptsEvent)
         {
-            foreach (JsonRpcResult message in GetLogMessages(e))
+            foreach (JsonRpcResult message in GetLogMessages((ReceiptsEventArgs)receiptsEvent!))
             {
                 using JsonRpcResult result = message;
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
