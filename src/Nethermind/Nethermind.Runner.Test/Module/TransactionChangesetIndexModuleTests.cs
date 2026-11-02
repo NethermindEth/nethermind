@@ -436,6 +436,15 @@ public class TransactionChangesetIndexModuleTests
         }
     }
 
+    [TestCase(1, 4)]
+    [TestCase(4, 4)]
+    [TestCase(5, 4)]
+    [TestCase(6, 5)]
+    [TestCase(8, 7)]
+    [TestCase(32, 31)]
+    public void DefaultTraceBlockParallelism_LeavesOneProcessorAndIsAtLeastFour(int processors, int expected) =>
+        Assert.That(JsonRpcConfig.DefaultTraceBlockParallelism(processors), Is.EqualTo(expected));
+
     [TestCase(null, TestName = "ParallelTraceBudgets_ByDefault_TraceAccessListBlocksOnTheDefaultBudget")]
     [TestCase(1, TestName = "ParallelTraceBudgets_WhenSetToOne_TraceAccessListBlocksSequentially")]
     [TestCase(0, TestName = "ParallelTraceBudgets_WhenSetToZero_TraceAccessListBlocksSequentially")]
@@ -454,7 +463,6 @@ public class TransactionChangesetIndexModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new JsonRpcConfig().TraceBlockParallelism, Is.EqualTo(Math.Max(Environment.ProcessorCount - 1, 4)), "the default leaves one processor for block processing and is at least four");
             Assert.That(parallel, Is.EqualTo(expectedWorkers >= 2 && Environment.ProcessorCount >= 2), "zero or one traces an access list block sequentially");
             if (parallel) Assert.That(budget.Degree, Is.EqualTo(Math.Min(expectedWorkers, Math.Min(Environment.ProcessorCount, ParallelTraceBudget.MaxDegree))), "the degree is the configured setting, capped at the processors and at MaxDegree");
             Assert.That(container.Resolve<ParallelTraceBudgets>().AllowsParallelTracing, Is.EqualTo(parallel), "with no changeset seeds, only access list blocks can start a parallel tracer");

@@ -61,7 +61,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public long MaxBufferedTraceLogSize { get; set; } = 256.MiB;
     public int? DebugModuleConcurrentInstances { get; set; } = null;
     public int? TraceModuleConcurrentInstances { get; set; } = null;
-    public int TraceBlockParallelism { get; set; } = Math.Max(Environment.ProcessorCount - 1, 4);
+    public int TraceBlockParallelism { get; set; } = DefaultTraceBlockParallelism(Environment.ProcessorCount);
     public int? EthModuleConcurrentInstances { get; set; } = null;
     public string JwtSecretFile { get; set; } = null;
     public bool UnsecureDevNoRpcAuthentication { get; set; }
@@ -100,4 +100,6 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int RpcTxSyncMaxTimeoutMs { get; set; } = 60_000;
     public int RpcTxSyncMaxConcurrentRequests { get; set; } = 128;
     public string[] AdditionalTrustedNetworks { get; set; } = [];
+
+    internal static int DefaultTraceBlockParallelism(int processorCount) => Math.Max(processorCount - 1, 4);
 };
