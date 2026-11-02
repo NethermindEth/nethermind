@@ -513,7 +513,10 @@ namespace Nethermind.Consensus.Validators
             }
             else
             {
-                if (header.SlotNumber is not null)
+                // The EIP-8288 commitment follows SlotNumber in the header RLP, so an absent slot is encoded,
+                // and decoded back, as a zero placeholder.
+                bool proofPlaceholder = header.SlotNumber == 0 && header.RecursiveStark is not null;
+                if (header.SlotNumber is not null && !proofPlaceholder)
                 {
                     if (_logger.IsWarn) _logger.Warn("SlotNumber field should not have value.");
                     error = BlockErrorMessages.SlotNumberNotEnabled;

@@ -91,6 +91,30 @@ public class HeaderValidatorTests
     }
 
     [Test]
+    public void Decoded_recursive_proof_header_without_slot_numbers_is_valid()
+    {
+        OverridableReleaseSpec spec = new(Prague.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+        _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance);
+        BlockHeader header = Build.A.BlockHeader.WithParent(_parentBlock.Header)
+            .WithWithdrawalsRoot(Keccak.EmptyTreeHash)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithRequestsHash(ExecutionRequestExtensions.EmptyRequestsHash)
+            .TestObject;
+        header.RecursiveStark = new RecursiveStarkCommitment(Keccak.OfAnEmptyString, new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
+        header.Hash = header.CalculateHash();
+
+        BlockHeader decoded = Rlp.Decode<BlockHeader>(Rlp.Encode(header))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.CalculateHash(), Is.EqualTo(header.Hash));
+            Assert.That(_validator.ValidateOrphaned(decoded, out string? error), Is.True, error);
+        }
+    }
+
+    [Test]
     public void Active_fork_genesis_does_not_require_a_recursive_proof()
     {
         OverridableReleaseSpec spec = new(Byzantium.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
