@@ -7,7 +7,7 @@ using Nethermind.State.Flat.History.Walk;
 namespace Nethermind.State.Flat.History.Changesets;
 
 /// <summary>Computes a trie root from strictly increasing hashed keys with bounded working memory.</summary>
-internal sealed class SortedStateRoot : IDisposable
+public sealed class SortedStateRoot : IDisposable
 {
     private const int PathLength = Hash256.Size * 2;
     private readonly Frame?[] _frames = new Frame[PathLength];

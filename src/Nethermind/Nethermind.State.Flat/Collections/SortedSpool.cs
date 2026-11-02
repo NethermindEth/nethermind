@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Collections;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
@@ -27,7 +28,7 @@ namespace Nethermind.State.Flat.Collections;
 /// The merged output is never materialized, and the runs outlive it, so <see cref="Read"/> may be called
 /// repeatedly.</para>
 /// </remarks>
-internal sealed class SortedSpool : IDisposable
+public sealed class SortedSpool : IDisposable
 {
     /// <summary>The table format's key and value ceiling, and thus the merge's scratch size.</summary>
     private const int MaxRecordFieldLength = 255;
@@ -35,7 +36,7 @@ internal sealed class SortedSpool : IDisposable
     /// <summary>Most segments held by sorts rather than by producers, whatever the producer count.</summary>
     private const int MaxSpareSegments = 4;
 
-    /// <summary>Runs merged at once. Bounds the simultaneously mapped runs, not the record count.</summary>
+    /// <summary>Runs merged at once. Bounds the simultaneously open runs, not the record count.</summary>
     internal int MaxFanIn { get; init; } = 128;
 
     /// <summary>Runs of one merge level that accrue before one background round folds them into a single run of the next level.</summary>
@@ -93,10 +94,13 @@ internal sealed class SortedSpool : IDisposable
     private readonly record struct Record(int Offset, int KeyLength, int ValueLength);
 
     /// <summary>One producer's buffer segment and the records laid out in it.</summary>
-    private sealed class Segment(byte[] buffer)
+    /// <remarks>The buffer is native and the record index pooled, so neither lands on the large object heap.</remarks>
+    private sealed unsafe class Segment(int length) : IDisposable
     {
-        public byte[] Buffer => buffer;
-        public List<Record> Records { get; } = [];
+        private byte* _buffer = (byte*)NativeMemory.Alloc((nuint)length);
+
+        public Span<byte> Buffer => new(_buffer, length);
+        public ArrayPoolList<Record> Records { get; } = new(0);
         public int Buffered { get; set; }
 
         public void Reset()
@@ -104,12 +108,19 @@ internal sealed class SortedSpool : IDisposable
             Records.Clear();
             Buffered = 0;
         }
+
+        public void Dispose()
+        {
+            NativeMemory.Free(_buffer);
+            _buffer = null;
+            Records.Dispose();
+        }
     }
 
     /// <summary>A producer's handle on the spool. One per thread; a single handle is not itself thread-safe.</summary>
     /// <remarks>Disposing spills whatever the handle still holds, so every writer must be disposed before
     /// <see cref="Read"/> — records left in a live segment would silently be missing from the merge.</remarks>
-    internal sealed class Writer(SortedSpool spool) : IDisposable
+    public sealed class Writer(SortedSpool spool) : IDisposable
     {
         private Segment? _segment;
         private bool _closed;
@@ -127,8 +138,8 @@ internal sealed class SortedSpool : IDisposable
                 spool.Submit(segment);
                 segment = _segment = spool.Rent();
             }
-            key.CopyTo(segment.Buffer.AsSpan(segment.Buffered));
-            value.CopyTo(segment.Buffer.AsSpan(segment.Buffered + key.Length));
+            key.CopyTo(segment.Buffer[segment.Buffered..]);
+            value.CopyTo(segment.Buffer[(segment.Buffered + key.Length)..]);
             segment.Records.Add(new Record(segment.Buffered, key.Length, value.Length));
             segment.Buffered += key.Length + value.Length;
         }
@@ -180,13 +191,22 @@ internal sealed class SortedSpool : IDisposable
             ThrowIfFaulted();
             throw;
         }
-        return _free.TryTake(out Segment? segment) ? segment : new Segment(GC.AllocateUninitializedArray<byte>(_segmentBytes));
+        return _free.TryTake(out Segment? segment) ? segment : new Segment(_segmentBytes);
     }
 
+    /// <remarks>A segment returned after <see cref="Dispose"/> is freed instead, as nothing will reclaim it from the pool.</remarks>
     private void Return(Segment segment)
     {
-        segment.Reset();
-        _free.Add(segment);
+        lock (_lock)
+        {
+            if (_disposed)
+            {
+                segment.Dispose();
+                return;
+            }
+            segment.Reset();
+            _free.Add(segment);
+        }
         _segments.Release();
     }
 
@@ -322,9 +342,9 @@ internal sealed class SortedSpool : IDisposable
     /// <summary>Sort a segment's records by key, then stream them into a new run table, collapsing equal keys.</summary>
     private string WriteRun(Segment segment)
     {
-        byte[] buffer = segment.Buffer;
-        Span<Record> records = CollectionsMarshal.AsSpan(segment.Records);
-        records.Sort(new RecordKeyComparer(buffer));
+        ReadOnlySpan<byte> buffer = segment.Buffer;
+        Span<Record> records = segment.Records.AsSpan();
+        records.Sort(new RecordKeyComparer(segment));
 
         string path = NewRun();
         ArenaBufferWriter writer = new(File.Create(path), firstOffset: 0);
@@ -338,9 +358,9 @@ internal sealed class SortedSpool : IDisposable
                 {
                     _abort.Token.ThrowIfCancellationRequested();
                     Record record = records[index];
-                    ReadOnlySpan<byte> key = buffer.AsSpan(record.Offset, record.KeyLength);
-                    ReadOnlySpan<byte> value = buffer.AsSpan(record.Offset + record.KeyLength, record.ValueLength);
-                    if (index != 0 && key.SequenceEqual(buffer.AsSpan(previous.Offset, previous.KeyLength))) continue;
+                    ReadOnlySpan<byte> key = buffer.Slice(record.Offset, record.KeyLength);
+                    ReadOnlySpan<byte> value = buffer.Slice(record.Offset + record.KeyLength, record.ValueLength);
+                    if (index != 0 && key.SequenceEqual(buffer.Slice(previous.Offset, previous.KeyLength))) continue;
                     previous = record;
                     table.Add(key, value);
                 }
@@ -353,10 +373,10 @@ internal sealed class SortedSpool : IDisposable
     }
 
     /// <summary>Orders a segment's records by the key bytes they point at.</summary>
-    private readonly struct RecordKeyComparer(byte[] buffer) : IComparer<Record>
+    private readonly struct RecordKeyComparer(Segment segment) : IComparer<Record>
     {
         public int Compare(Record left, Record right) =>
-            buffer.AsSpan(left.Offset, left.KeyLength).SequenceCompareTo(buffer.AsSpan(right.Offset, right.KeyLength));
+            segment.Buffer.Slice(left.Offset, left.KeyLength).SequenceCompareTo(segment.Buffer.Slice(right.Offset, right.KeyLength));
     }
 
     /// <summary>Merge several runs into one new run table, collapsing equal keys.</summary>
@@ -391,12 +411,15 @@ internal sealed class SortedSpool : IDisposable
     /// writing a run file, or holding a segment, that this would otherwise delete or reclaim underneath it.</remarks>
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        lock (_lock) _completed = true;
+        lock (_lock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _completed = true;
+        }
         _abort.Cancel();
         WaitForPending();
-        _free.Clear();
+        while (_free.TryTake(out Segment? segment)) segment.Dispose();
         foreach (string run in _scratch) File.Delete(run);
         _scratch.Clear();
         _runs.Clear();
@@ -412,10 +435,10 @@ internal sealed class SortedSpool : IDisposable
     /// comparison per level, against the binary heap's two. Leaf index <c>_k</c> is the sentinel: it seeds the
     /// tree, sorting below every real head, and marks an exhausted run, sorting above every real head.
     /// </remarks>
-    internal sealed class Cursor : IDisposable
+    public sealed class Cursor : IDisposable
     {
-        private readonly MappedByteFile[] _files;
-        private readonly SortedTableEnumerator<MappedByteFile, NoOpPin>[] _sources;
+        private readonly BlockBufferedFile[] _files;
+        private readonly SortedTableEnumerator<BlockBufferedFile, NoOpPin>[] _sources;
         private readonly bool[] _exhausted;
         private readonly int[] _tree;
         private readonly int _k;
@@ -430,18 +453,17 @@ internal sealed class SortedSpool : IDisposable
         {
             _cancellationToken = cancellationToken;
             _k = runs.Count;
-            _files = new MappedByteFile[_k];
-            _sources = new SortedTableEnumerator<MappedByteFile, NoOpPin>[_k];
+            _files = new BlockBufferedFile[_k];
+            _sources = new SortedTableEnumerator<BlockBufferedFile, NoOpPin>[_k];
             _exhausted = new bool[_k];
             _tree = new int[_k];
             try
             {
                 for (int index = 0; index < _k; index++)
                 {
-                    MappedByteFile file = new(runs[index]);
+                    BlockBufferedFile file = new(runs[index]);
                     _files[index] = file;
-                    file.AdviseSequential();
-                    _sources[index] = new SortedTableEnumerator<MappedByteFile, NoOpPin>(in file, new Bound(0, file.Length));
+                    _sources[index] = new SortedTableEnumerator<BlockBufferedFile, NoOpPin>(in file, new Bound(0, file.Length));
                     // Only counted once the enumerator owns its buffer, so Dispose never frees a default one.
                     _opened = index + 1;
                     _exhausted[index] = !_sources[index].MoveNext(in file);

@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Extensions;
 using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks;
@@ -87,7 +90,50 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, readOptions);
     }
 
+    /// <inheritdoc/>
+    public MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+    {
+        Span<byte> span = GetSpan(key, flags);
+        if (span.IsNull()) return null;
+
+        if (span.IsEmpty)
+        {
+            _mainDb.DangerousReleaseMemory(span);
+            return null;
+        }
+
+        try
+        {
+            return new DbSpanMemoryManager(_mainDb, span);
+        }
+        catch
+        {
+            _mainDb.DangerousReleaseMemory(span);
+            throw;
+        }
+    }
+
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);
+
+    /// <inheritdoc/>
+    /// <remarks>Lends the value pinned as read with this reader's options, so a snapshot's reader lends its snapshot's version.</remarks>
+    public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, ReadFlags flags = ReadFlags.None)
+        where TArg : allows ref struct
+    {
+        _mainDb.UpdateReadMetrics();
+        ReadOnlySpan<byte> value = _mainDb.GetNativeSlice(key, _columnFamily, (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options, out nint handle);
+        if (value.IsNull()) return false;
+
+        try
+        {
+            action(value, arg);
+            return true;
+        }
+        finally
+        {
+            _mainDb.DangerousReleaseHandle(handle);
+        }
+    }
 
     public void Prefetch(ReadOnlySpan<byte> keys, int keyLength) => _mainDb.Prefetch(keys, keyLength, _columnFamily, _options);
 

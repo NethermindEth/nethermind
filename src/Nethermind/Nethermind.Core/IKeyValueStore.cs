@@ -58,6 +58,31 @@ namespace Nethermind.Core
             }
         }
 
+        /// <summary>
+        /// Passes the value of <paramref name="key"/> to <paramref name="action"/>, which must not keep it, without copying it
+        /// where the store can hand out its own memory.
+        /// </summary>
+        /// <param name="key">Key whose associated value should be read.</param>
+        /// <param name="action">Receives the value; not called when the key is missing.</param>
+        /// <param name="arg">The state passed to <paramref name="action"/>.</param>
+        /// <param name="flags">Read behavior flags that control how the value is retrieved.</param>
+        /// <returns>Whether the key exists.</returns>
+        bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, ReadFlags flags = ReadFlags.None)
+            where TArg : allows ref struct
+        {
+            Span<byte> span = GetSpan(key, flags);
+            try
+            {
+                if (span.IsNull()) return false;
+                action(span, arg);
+                return true;
+            }
+            finally
+            {
+                DangerousReleaseMemory(span);
+            }
+        }
+
         bool KeyExists(ReadOnlySpan<byte> key)
         {
             Span<byte> span = GetSpan(key);
