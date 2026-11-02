@@ -139,9 +139,12 @@ public class PyspecLoaderTests
             }
             """);
         TestCaseData[] cases = [.. PyspecLoader.LoadZkEvmStatelessCases(_strategy, "blockchain_tests")];
-        Assert.That(cases.Select(static test => test.TestName), Is.EqualTo(new[] { "first_stateless_block_0", "first_stateless_block_1", "second_stateless_block_0" }));
-        Assert.That(cases.Select(static test => PyspecLoader.LoadZkEvmStatelessBytes((PyspecStatelessRef)test.Arguments[0])),
-            Is.EqualTo(new[] { ("0x01", "0x02"), ("0x03", "0x04"), ("0x05", "0x06") }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cases.Select(static test => test.TestName), Is.EqualTo(new[] { "first_stateless_block_0", "first_stateless_block_1", "second_stateless_block_0" }));
+            Assert.That(cases.Select(static test => PyspecLoader.LoadZkEvmStatelessBytes((PyspecStatelessRef)test.Arguments[0])),
+                Is.EqualTo(new[] { ("0x01", "0x02"), ("0x03", "0x04"), ("0x05", "0x06") }));
+        }
     }
 
     [Test]
@@ -173,9 +176,12 @@ public class PyspecLoaderTests
             """);
 
         TestCaseData[] cases = [.. PyspecLoader.LoadCases<TransactionTest>(_strategy, "transaction_tests")];
-        Assert.That(cases.Select(static test => test.TestName), Is.EqualTo(new[] { "first::Cancun#0", "first::Prague#1", "second::Cancun#2" }));
-        Assert.That(cases.Select(static test => PyspecLoader.LoadTest<TransactionTest>((PyspecTestRef)test.Arguments[0]).ExpectedException),
-            Is.EqualTo(new[] { "first_error", "second_error", "third_error" }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cases.Select(static test => test.TestName), Is.EqualTo(new[] { "first::Cancun#0", "first::Prague#1", "second::Cancun#2" }));
+            Assert.That(cases.Select(static test => PyspecLoader.LoadTest<TransactionTest>((PyspecTestRef)test.Arguments[0]).ExpectedException),
+                Is.EqualTo(new[] { "first_error", "second_error", "third_error" }));
+        }
     }
 
     private void WriteFixtureTree()
@@ -221,7 +227,10 @@ public class PyspecLoaderTests
         }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)).ToArray();
 
         Exception[] failures = await Task.WhenAll(tasks);
-        Assert.That(failures[0], Is.TypeOf<ArgumentNullException>());
-        Assert.That(failures, Is.All.SameAs(failures[0]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failures[0], Is.TypeOf<ArgumentNullException>());
+            Assert.That(failures, Is.All.SameAs(failures[0]));
+        }
     }
 }

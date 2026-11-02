@@ -14,6 +14,8 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 
@@ -30,10 +32,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
     private readonly bool _trieless;
+    // Taken before the block's first trie write and handed to its snapshot at commit, so every node the block writes stays readable.
+    private INodeRecordBufferPin? _bufferPin;
 
-    private PatriciaTree? _warmupStateTree;
     private readonly Hash256 _initialStateRoot;
-    private StateTree? _stateTree;
+    // The state root warm-ups walk from; default in a trie-less scope.
+    private readonly (ValueHash256 Hash, ulong Pointer) _initialTrieRoot;
+    // Null in a trie-less scope.
+    private readonly NodeRecordTrie? _stateTrie;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
@@ -97,6 +103,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
+        if (!_trieless)
+        {
+            INodeRecordBuffer buffer = snapshotBundle.NodeRecordBuffer!;
+            _bufferPin = buffer.PinHead();
+            _initialTrieRoot = buffer.ResolveRoot(null, _initialStateRoot.ValueHash256);
+            _stateTrie = new NodeRecordTrie(snapshotBundle, null, _initialTrieRoot);
+        }
 
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
             && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
@@ -137,6 +150,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         CancelHintBal();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
+        ReleaseStorageTrees();
+        _bufferPin?.Dispose();
         _warmer.OnExitScope();
     }
 
@@ -204,26 +219,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (Interlocked.Decrement(ref _outstandingWarmups) == 0) Volatile.Read(ref _warmupsDrained)?.Set();
     }
 
-    private StateTree StateTree => Volatile.Read(ref _stateTree) ?? CreateStateTree();
-
-    private StateTree CreateStateTree()
-    {
-        StateTree tree = new(new StateTrieStoreAdapter(_snapshotBundle), _logManager)
-        {
-            RootHash = _initialStateRoot
-        };
-        return Interlocked.CompareExchange(ref _stateTree, tree, null) ?? tree;
-    }
-
-    public Hash256 RootHash => Volatile.Read(ref _stateTree)?.RootHash ?? _initialStateRoot;
+    public Hash256 RootHash => _stateTrie?.RootHash ?? _initialStateRoot;
 
     /// <summary>A trie-less scope never rehashes storage, so an account it wrote storage to keeps its old root.</summary>
     public bool StorageRootsAreAuthoritative => !_trieless;
 
-    public void UpdateRootHash()
-    {
-        if (!_trieless) Volatile.Read(ref _stateTree)?.UpdateRootHash();
-    }
+    /// <remarks>The root is current after every write batch.</remarks>
+    public void UpdateRootHash() { }
 
     public Account? Get(Address address)
     {
@@ -236,7 +238,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // and a historical value verified against the current trie would be wrong anyway.
         if (_configuration.VerifyWithTrie && !_trieless)
         {
-            Account? accTrie = StateTree.Get(address);
+            byte[]? accountRlp = _stateTrie!.TryGet(address.ToAccountPath);
+            Account? accTrie = accountRlp is null ? null : AccountDecoder.Instance.Decode(accountRlp);
             if (accTrie != account)
             {
                 throw new TrieException($"Incorrect account {address}, account hash {address.ToAccountPath}, trie: {accTrie} vs flat: {account}");
@@ -317,8 +320,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             _snapshotBundle,
                             _configuration,
                             storageRoot,
-                            address,
-                            _logManager);
+                            address);
 
                         foreach (ReadOnlySlotChanges slotChanges in storageChanges)
                         {
@@ -561,27 +563,18 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // push that is rejected anyway; read-only scopes run on the no-op warmer.
     internal bool WarmsTries => _warmsTries;
 
-    private PatriciaTree CreateWarmupStateTree()
-    {
-        PatriciaTree tree = new(new StateTrieStoreWarmerAdapter(_snapshotBundle), _logManager)
-        {
-            RootHash = _initialStateRoot
-        };
-        return Interlocked.CompareExchange(ref _warmupStateTree, tree, null) ?? tree;
-    }
-
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
         try
         {
-            if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
+            if (_hintSequenceId != sequenceId || _pausePrewarmer || _trieless) return false;
             if (!_snapshotBundle.TryLeaseReadOnlyBundle()) return false;
 
             try
             {
                 // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
                 // this is just for warming up
-                (Volatile.Read(ref _warmupStateTree) ?? CreateWarmupStateTree()).WarmUpPath(address.ToAccountPath.Bytes);
+                _snapshotBundle.WarmUp(null, _initialTrieRoot, address.ToAccountPath, forDelete: false);
 
                 return true;
             }
@@ -647,8 +640,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     scope._snapshotBundle,
                     scope._configuration,
                     storageRoot,
-                    key.Value,
-                    scope._logManager);
+                    key.Value);
         }, this);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -679,8 +671,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _snapshotBundle,
             _configuration,
             storageRoot,
-            address,
-            _logManager);
+            address);
 
         return storage;
     }
@@ -694,23 +685,25 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void Commit(ulong blockNumber)
     {
+        _earlyApplyClosed = true;
         _pausePrewarmer = true;
 
-        // With DeferStorageTrieCommit the write batches only hashed the storage trees, so their nodes are written here,
-        // after the block was reported valid; otherwise the batches already committed them. The nodes must be in the
+        // With DeferStorageTrieCommit the write batches wrote the storage trees' nodes but not their roots, which are published
+        // here, after the block was reported valid; otherwise the batches already published them. The roots must be in the
         // bundle before CollectAndApplySnapshot takes the block's changes. No tree means nothing was written.
         if (!_trieless)
         {
             CommitStorageTrees();
-            Volatile.Read(ref _stateTree)?.Commit();
+            _stateTrie!.Publish();
         }
 
-        _storages.Clear();
+        ReleaseStorageTrees();
         _hintWarmStorages?.Clear();
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
-        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot);
+        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, _bufferPin, shouldAddSnapshot);
+        _bufferPin = _trieless ? null : _snapshotBundle.NodeRecordBuffer!.PinHead();
 
         if (shouldAddSnapshot)
         {
@@ -745,6 +738,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
     }
 
+    private void ReleaseStorageTrees()
+    {
+        foreach (FlatStorageTree storage in _storages.Values) storage.ReleaseTrie();
+        _storages.Clear();
+    }
+
     private void CommitStorageTrees()
     {
         if (_storages.Count == 0) return;
@@ -768,7 +767,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             return;
         }
 
-        // Each address writes its own node dictionary in the bundle, so the trees commit independently.
+        // Publishing only swaps the root index entry and records the root in a concurrent dictionary, so the trees commit independently.
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         ParallelUnbalancedWork.For(0, dirty.Count, Core.Cpu.RuntimeInformation.ParallelOptionsLogicalCores,
             dirty, static (i, trees) =>
@@ -859,7 +858,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                 // The per-account flat writes above already carry intra-block state for subsequent txs; only a
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
-                if (!_scope._trieless) _scope.StateTree.WriteAccounts(_dirtyAccounts);
+                if (!_scope._trieless)
+                {
+                    using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = StateTree.CreateAccountEntries(_dirtyAccounts);
+                    _scope._stateTrie!.BulkSet(entries, canParallelize: true);
+                }
             }
             finally
             {

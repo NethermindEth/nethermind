@@ -96,6 +96,14 @@ internal static unsafe class AirbenderArithmetic
         airbender_u256_op(left, right, MultiplyLowOp);
     }
 
+    /// <summary>Replaces <paramref name="left"/> with the high 256 bits of <paramref name="left"/> times <paramref name="right"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void MultiplyHigh(void* left, void* right)
+    {
+        Debug.Assert((((nuint)left | (nuint)right) & 31) == 0);
+        airbender_u256_op(left, right, MultiplyHighOp);
+    }
+
     /// <summary>Shifts <paramref name="value"/> left by <paramref name="bits"/>, below 256.</summary>
     /// <remarks><c>value &lt;&lt; bits</c> is the low 256 bits of <c>value * 2^bits</c>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

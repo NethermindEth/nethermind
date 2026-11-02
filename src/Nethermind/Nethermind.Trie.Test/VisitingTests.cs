@@ -53,9 +53,12 @@ public class VisitingTests
 
             int index = path.AsSpan().IndexOfAnyExcept((byte)0);
 
-            Assert.That(path.AsSpan(index + 1).IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Shall not found other values than the one nibble set");
-            Assert.That(path[index], Is.EqualTo(1), "The given set should be 1 as this is the only nibble");
-            Assert.That(setNibbles.Remove(index), Is.True, "The nibble should not have been removed before");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(path.AsSpan(index + 1).IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Shall not found other values than the one nibble set");
+                Assert.That(path[index], Is.EqualTo(1), "The given set should be 1 as this is the only nibble");
+                Assert.That(setNibbles.Remove(index), Is.True, "The nibble should not have been removed before");
+            }
         }
     }
 
@@ -135,8 +138,11 @@ public class VisitingTests
         static void AssertPath(ReadOnlySpan<byte> path)
         {
             int index = path.IndexOfAnyExcept((byte)0);
-            Assert.That(path[(index + 1)..].IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Shall not found other values than the one nibble set");
-            Assert.That(path[index], Is.EqualTo(1), "The given set should be 1 as this is the only nibble");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(path[(index + 1)..].IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Shall not found other values than the one nibble set");
+                Assert.That(path[index], Is.EqualTo(1), "The given set should be 1 as this is the only nibble");
+            }
         }
     }
 

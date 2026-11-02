@@ -86,8 +86,11 @@ public partial class BlockDownloaderTests
             ulong expectedDownloadStart = notSyncedTreeStartingBlockNumber;
             ulong expectedDownloadEnd = ulong.Min(headNumber, insertedBeaconBlocks - fastSyncLag);
 
-            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(ulong.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd)));
-            Assert.That(ctx.BlockTree.BestKnownNumber, Is.EqualTo(ulong.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(ulong.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd)));
+                Assert.That(ctx.BlockTree.BestKnownNumber, Is.EqualTo(ulong.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd)));
+            }
 
             ulong receiptCount = 0;
             for (ulong i = expectedDownloadStart; i < expectedDownloadEnd; i++)
@@ -98,8 +101,11 @@ public partial class BlockDownloaderTests
                 }
             }
 
-            Assert.That(ctx.ReceiptStorage.Count, Is.EqualTo(withReceipts ? (int)receiptCount : 0));
-            Assert.That(ctx.BeaconPivot.ProcessDestination?.Number, Is.EqualTo(ulong.Max(insertedBeaconBlocks - fastSyncLag, beaconPivot)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.ReceiptStorage.Count, Is.EqualTo(withReceipts ? (int)receiptCount : 0));
+                Assert.That(ctx.BeaconPivot.ProcessDestination?.Number, Is.EqualTo(ulong.Max(insertedBeaconBlocks - fastSyncLag, beaconPivot)));
+            }
         }
 
         await ctx.FullSyncUntilNoRequest(peerInfo);
@@ -334,8 +340,11 @@ public partial class BlockDownloaderTests
 
         await ctx.FullSyncUntilNoRequest(peerInfo);
 
-        Assert.That(lastBestSuggestedBlock!.Hash, Is.EqualTo(lastHeader.Hash!));
-        Assert.That(lastBestSuggestedBlock.TotalDifficulty, Is.Not.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lastBestSuggestedBlock!.Hash, Is.EqualTo(lastHeader.Hash!));
+            Assert.That(lastBestSuggestedBlock.TotalDifficulty, Is.Not.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]

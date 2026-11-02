@@ -25,7 +25,7 @@ BFLAT_DOCKER_ARGS = \
 	--mount type=bind,source="$(AIRBENDER_LIB_DIR)",target=/airbender,readonly \
 	-e BFLAT_LD=/usr/bin/ld.lld \
 	-e BFLAT_OBJCOPY=/usr/bin/llvm-objcopy
-GUEST_EXTLIB_MANIFEST := /airbender/libairbender.bflat.manifest
+GUEST_EXTLIB := /airbender/libairbender.bflat.manifest
 
 # Airbender's ROM is 4 MiB: favour size, and leave the reflection data out (about
 # 0.9 MB). The symbols stay: bflat's post-link patch reads them.
@@ -39,7 +39,7 @@ ISA_GATES :=
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 
-build: require-toolchain
+dotnet-build: require-toolchain
 
 require-toolchain:
 	@[ -n "$(BFLAT_DIR)" ] && [ -x "$(BFLAT_DIR)/bflat" ] || { echo "error: BFLAT_DIR must name a bflat build with the Airbender layout - see README.md" >&2; exit 1; }

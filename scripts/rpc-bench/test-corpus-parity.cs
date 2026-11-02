@@ -38,16 +38,37 @@ try
         using (var file = File.Create(path)) using (var gzip = new GZipStream(file, CompressionMode.Compress)) gzip.Write([0xff, 0xfe, .. Encoding.UTF8.GetBytes(sentinel)]);
         using var parity = Create(); await Reject(() => { parity.LoadCorpus(path); return Task.CompletedTask; }, "cannot read corpus");
     });
-    await Check("truncated gzip stays private", async () =>
-    {
-        var path = Corpus(200, true); var bytes = File.ReadAllBytes(path); File.WriteAllBytes(path, bytes[..^8]);
-        using var parity = Create(); await Reject(() => { parity.LoadCorpus(path); return Task.CompletedTask; });
-    });
+    // An empty member (as written by gzip(1)) is deflate 03 00 and an all-zero trailer, so trailer bytes resemble deflate bytes.
+    foreach (var (last, cut) in new[] { ("only", 8), ("second", 4), ("second", 64), ("empty", 1) })
+        await Check($"truncated gzip stays private ({last} member, {cut} bytes cut)", async () =>
+        {
+            var path = Corpus(200, true);
+            if (last == "second") File.WriteAllBytes(path, [.. File.ReadAllBytes(Corpus(3, true)), .. File.ReadAllBytes(path)]);
+            if (last == "empty") File.WriteAllBytes(path, [.. File.ReadAllBytes(path), .. Convert.FromHexString("1F8B08000000000000FF03000000000000000000")]);
+            var bytes = File.ReadAllBytes(path); File.WriteAllBytes(path, bytes[..^cut]);
+            using var parity = Create(); await Reject(() => { parity.LoadCorpus(path); return Task.CompletedTask; });
+        });
     await Check("concatenated gzip members remain loadable", () =>
     {
         var path = Corpus(2, true); var second = Corpus(3, true);
         File.WriteAllBytes(path, [.. File.ReadAllBytes(path), .. File.ReadAllBytes(second)]);
         using var parity = Create(); Equal(parity.LoadCorpus(path).Length, 5);
+        return Task.CompletedTask;
+    });
+    await Check("large gzip member followed by an empty member remains loadable", () =>
+    {
+        var random = new Random(42);
+        var records = Enumerable.Range(0, 400).Select(_ =>
+        {
+            var data = new byte[128];
+            random.NextBytes(data);
+            return Record().Replace(sentinel, "0x" + Convert.ToHexString(data), StringComparison.Ordinal);
+        }).ToArray();
+        var path = Write(string.Join('\n', records) + "\n", true);
+        var compressed = File.ReadAllBytes(path);
+        Equal(compressed.Length > 8192 * 2, true);
+        File.WriteAllBytes(path, [.. compressed, .. Convert.FromHexString("1F8B08000000000000FF03000000000000000000")]);
+        using var parity = Create(); Equal(parity.LoadCorpus(path).Length, records.Length);
         return Task.CompletedTask;
     });
     foreach (var tracer in new[] { "callTracer", "prestateTracer", "4byteTracer", "stateGasTracer", "" }) await Check($"debug rewrite {tracer}", () =>

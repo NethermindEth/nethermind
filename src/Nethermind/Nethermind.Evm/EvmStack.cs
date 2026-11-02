@@ -1931,6 +1931,21 @@ public ref partial struct EvmStack
         return ref Unsafe.Add(ref _stack, (nint)(head * WordSize));
     }
 
+    /// <summary>
+    /// Pops <paramref name="count"/> words for callers that have already established <c>Head &gt;= count</c> with
+    /// <see cref="EnsureDepth"/>.
+    /// </summary>
+    /// <returns>Reference to the deepest popped slot; the first popped sits <c>count - 1</c> words above it.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [UnscopedRef]
+    internal ref byte PopBytesByRefUnchecked(int count)
+    {
+        Debug.Assert(Head >= count, "Caller must establish the depth before popping unchecked");
+        nuint head = (nuint)(Head - count);
+        Head = (nint)head;
+        return ref Unsafe.Add(ref _stack, (nint)(head * WordSize));
+    }
+
     /// <summary>Whether a stack slot holds zero.</summary>
     /// <remarks>
     /// Folding a whole word down to one bit is the case where a <see cref="EvmWord"/> value has to be

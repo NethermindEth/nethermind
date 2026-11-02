@@ -17,7 +17,7 @@ namespace Nethermind.Network.Test.P2P
         {
             using DisconnectMessage msg = new(EthDisconnectReason.AlreadyConnected);
             DisconnectMessageSerializer serializer = new();
-            byte[] serialized = serializer.Serialize(msg);
+            byte[] serialized = serializer.SerializeToArray(msg);
             Assert.That(serialized.ToHexString(true), Is.EqualTo("0xc105"), "bytes");
             using DisconnectMessage deserialized = serializer.Deserialize(serialized);
             Assert.That(deserialized.Reason, Is.EqualTo(msg.Reason), "reason");

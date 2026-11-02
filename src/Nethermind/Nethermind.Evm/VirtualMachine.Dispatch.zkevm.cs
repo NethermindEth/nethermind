@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using InlineIL;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -24,6 +25,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public ref TGasPolicy Gas;
 
         /// <summary>The paired table, which fills the dispatch cells.</summary>
+        /// <remarks>In the form <see cref="RawCalliHelper.DispatchTable"/> gives, so read only through the chain's table helpers.</remarks>
         public nint* OpcodeHandlers;
 
         /// <summary>What the chain dispatches through, for handlers that reload it after their body.</summary>
@@ -137,17 +139,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         nint[] handlers = GetPairedHandlers<TTracingInst>(_opcodeHandlers);
         nint[] cells = AirbenderFlag.IsActive ? stack.CodeInfo!.GetDispatchCells(handlers) : handlers;
 
-        // Safety: the paired table, the cells and the code remain pinned for the complete tail-call chain, as the cell
-        // of a byte is found from its address. Every bytecode read lands in the code or in the padding that follows
-        // CodeInfo.ExecutionCodeSpan, any two bytes are a valid table index, and every such byte has a cell.
-        fixed (nint* entries = handlers)
+        // Safety: PairHandlers allocates the table pinned, and the cells and the code remain pinned for the complete
+        // tail-call chain, as the cell of a byte is found from its address. Every bytecode read lands in the code or in
+        // the padding that follows CodeInfo.ExecutionCodeSpan, any two bytes are a valid table index, and every such byte
+        // has a cell.
         fixed (nint* firstCell = cells)
         fixed (byte* code = &stack.Code)
         {
-            nint* table = entries + FollowerHandlersLength;
-            nint* bias = AirbenderFlag.IsActive ? (nint*)((nint)firstCell - (nint)code * sizeof(nint)) : table;
+            nint* entries = (nint*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(handlers));
+            nint* table = CompactsHandlers ? (nint*)((uint*)entries + FollowerHandlersLength) : entries + FollowerHandlersLength;
+            nint* dispatched = RawCalliHelper.DispatchTable(table);
+            nint* bias = AirbenderFlag.IsActive ? (nint*)((nint)firstCell - (nint)code * sizeof(nint)) : dispatched;
             // Unscoped because a function pointer cannot declare its parameters scoped; the chain ends before this call does.
-            DispatchState state = new() { Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = table, Dispatch = bias, Vm = this, Memory = ref VmState.Memory };
+            DispatchState state = new() { Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = dispatched, Dispatch = bias, Vm = this, Memory = ref VmState.Memory };
 
             ref byte ip = ref Unsafe.Add(ref stack.Code, programCounter);
             EvmExceptionType exceptionType =
@@ -276,6 +280,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 SetExecutionGas(ref state.Gas, gas);
                 stack.Head = head;
                 exceptionType = TOpcode.Execute(ref stack, ref state.Gas, state.Vm, ref pc);
+                if (exceptionType == EvmExceptionType.Suspend && typeof(TTracingInst) == typeof(OffFlag))
+                    state.Vm.TryRunStagedFrameNested(ref stack, out exceptionType);
                 head = stack.Head;
                 gas = ChainGas(GetExecutionGas(ref state.Gas));
             }
@@ -365,7 +371,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static nint NextEntry(nint* dispatch, ref byte ip) =>
-            AirbenderFlag.IsActive ? *CellAt(dispatch, ref ip) : AlignedTable(dispatch)[PairAt(ref ip)];
+            AirbenderFlag.IsActive ? *CellAt(dispatch, ref ip) : HandlerAt(dispatch, PairAt(ref ip));
 
         /// <summary>Whether <see cref="NextEntry"/> gave a handler, rather than an empty cell to fill with <see cref="Decode"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -380,7 +386,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         private static nint* CellAt(nint* cellBias, ref byte ip)
         {
             nint cell = (nint)cellBias + Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref ip) * sizeof(nint);
-            // The rounding is a no-op that lets the JIT prove the load aligned (see AlignedTable).
+            // The rounding is a no-op that lets the JIT prove the load aligned (see HandlerAt).
             return (nint*)(StrictAlignmentFlag.IsActive ? cell & ~(nint)(sizeof(nint) - 1) : cell);
         }
 
@@ -393,7 +399,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static nint Decode(ref DispatchState state, nint* cellBias, ref byte ip)
         {
-            nint entry = Resolve(AlignedTable(state.OpcodeHandlers), ref ip);
+            nint entry = Resolve(state.OpcodeHandlers, ref ip);
             // Formed again, as a sum the JIT does not match with the dispatch's product: sharing the address would keep
             // it in a register of its own across the cell's load, a move on every filled cell.
             nint offset = Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref ip);
@@ -406,20 +412,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static nint Resolve(nint* table, ref byte ip)
         {
-            nint entry = table[PairAt(ref ip)];
+            nint entry = HandlerAt(table, PairAt(ref ip));
             // Only a PUSH1 is sent on by its follower: one test of the opcode spares the others both entry tests.
             if (ip != (byte)Instruction.PUSH1)
                 return entry;
 
             if (entry == Entry(&ExecutePush1ByFollower))
-                return table[Unsafe.Add(ref ip, 2) - FollowerHandlersLength];
+                return FollowerHandlerAt(table, Unsafe.Add(ref ip, 2));
 
             if (entry == Entry(&ExecutePush1OneByFollower))
             {
                 byte following = Unsafe.Add(ref ip, 2);
                 return following == (byte)Instruction.PUSH1 && Unsafe.Add(ref ip, 3) == 1
                     ? Entry(&ExecutePush1OneMask)
-                    : table[following - FollowerHandlersLength];
+                    : FollowerHandlerAt(table, following);
             }
 
             return entry;

@@ -164,8 +164,11 @@ public class DeferredHeaderStoreTests
         {
             BlockTree restarted = Builder(second, secondBarrier).BlockTree;
             if (durableSibling) Assert.That(restarted.BestSuggestedHeader?.Number, Is.EqualTo(block.Number), "precondition: the block is at or below the best suggested header");
-            Assert.That(restarted.SuggestBlock(block), Is.EqualTo(durableSibling ? AddBlockResult.AlreadyKnown : AddBlockResult.Added));
-            Assert.That(restarted.FindHeader(block.Hash!, BlockTreeLookupOptions.None)?.Hash, Is.EqualTo(block.Hash), "findable before the write");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(restarted.SuggestBlock(block), Is.EqualTo(durableSibling ? AddBlockResult.AlreadyKnown : AddBlockResult.Added));
+                Assert.That(restarted.FindHeader(block.Hash!, BlockTreeLookupOptions.None)?.Hash, Is.EqualTo(block.Hash), "findable before the write");
+            }
             second.Pump();
 
             using (Assert.EnterMultipleScope())

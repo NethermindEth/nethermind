@@ -36,10 +36,13 @@ public class PrivilegedIpProviderTests
 
         PrivilegedIpProvider provider = Create(staticManager, trustedManager, Enode(TestItem.PublicKeyA, ConfigStaticIp));
 
-        Assert.That(provider.IsPrivileged(ConfigStaticIp), Is.True, "config Network.StaticPeers");
-        Assert.That(provider.IsPrivileged(StaticManagerIp), Is.True, "static-nodes.json / admin_addPeer");
-        Assert.That(provider.IsPrivileged(TrustedIp), Is.True, "trusted-nodes.json / admin_addTrustedPeer");
-        Assert.That(provider.IsPrivileged(OtherIp), Is.False, "unrelated IP");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.IsPrivileged(ConfigStaticIp), Is.True, "config Network.StaticPeers");
+            Assert.That(provider.IsPrivileged(StaticManagerIp), Is.True, "static-nodes.json / admin_addPeer");
+            Assert.That(provider.IsPrivileged(TrustedIp), Is.True, "trusted-nodes.json / admin_addTrustedPeer");
+            Assert.That(provider.IsPrivileged(OtherIp), Is.False, "unrelated IP");
+        }
     }
 
     [Test]

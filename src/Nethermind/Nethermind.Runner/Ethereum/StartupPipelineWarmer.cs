@@ -234,7 +234,6 @@ internal static class StartupPipelineWarmer
                 Enabled = flatState,
                 Layout = liveConfig.GetConfig<IFlatDbConfig>().Layout,
                 BlockCacheSizeBudget = 16 * 1024 * 1024,
-                TrieCacheMemoryBudget = 16 * 1024 * 1024,
                 PersistedSnapshotArenaPageCacheBytes = 16 * 1024 * 1024,
                 ArenaFileSizeBytes = 16 * 1024 * 1024
             },

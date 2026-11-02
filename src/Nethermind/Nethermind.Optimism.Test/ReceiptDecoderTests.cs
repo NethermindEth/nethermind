@@ -157,12 +157,12 @@ public class ReceiptDecoderTests
             RlpWriter writer = new(encodedBytes);
             decoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(decodedReceipt.DepositNonce, includesNonce ? Is.Not.Null : Is.Null);
                 Assert.That(decodedReceipt.DepositReceiptVersion, includesVersion ? Is.Not.Null : Is.Null);
                 Assert.That(rlp, Is.EqualTo(encodedBytes));
-            });
+            }
 
             return decodedReceipt;
         }
@@ -178,11 +178,11 @@ public class ReceiptDecoderTests
             RlpReader reader = new(encodedRlp);
             OptimismTxReceipt decodedStorageReceipt = (OptimismTxReceipt)decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
 
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(decodedStorageReceipt.DepositNonce, includesNonce ? Is.Not.Null : Is.Null);
                 Assert.That(decodedStorageReceipt.DepositReceiptVersion, includesVersion ? Is.Not.Null : Is.Null);
-            });
+            }
 
             return decodedReceipt;
         }
@@ -198,11 +198,11 @@ public class ReceiptDecoderTests
             RlpReader trieReader = new(encodedTrieRlp);
             OptimismTxReceipt decodedTrieReceipt = (OptimismTxReceipt)trieDecoder.DecodeGuardNotNull(ref trieReader, RlpBehaviors.SkipTypedWrapping);
 
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(decodedTrieReceipt.DepositNonce, shouldIncludeNonceAndVersionForTxTrie ? Is.Not.Null : Is.Null);
                 Assert.That(decodedTrieReceipt.DepositReceiptVersion, shouldIncludeNonceAndVersionForTxTrie ? Is.Not.Null : Is.Null);
-            });
+            }
         }
 
         OptimismTxReceipt decodedReceipt = TestNetworkEncodingRoundTrip(rlp, includesNonce, includesVersion);

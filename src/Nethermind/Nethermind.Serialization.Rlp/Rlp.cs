@@ -408,7 +408,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Unsafe.Add(ref MemoryMarshal.GetReference(buffer), (nuint)position) = 160;
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), (nuint)position + 1), hash.ValueHash256);
+            WriteHash(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), (nuint)position + 1), hash);
             return newPosition;
 
             [DoesNotReturn, StackTraceHidden]

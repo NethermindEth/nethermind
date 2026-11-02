@@ -54,9 +54,12 @@ public class ValueHash256KademliaDistanceTests
     public void TestDistance(string hash1, string hash2, string xosString, int expectedDistance)
     {
         ValueHash256 xor = XorDistance(new(hash1), new(hash2));
-        Assert.That(xor.ToString(), Is.EqualTo(xosString.ToLower()));
-        Assert.That(Distance.CalculateLogDistance(new ValueHash256(hash1), new ValueHash256(hash2)), Is.EqualTo(expectedDistance));
-        Assert.That(Distance.CalculateLogDistance(new ValueHash256(hash2), new ValueHash256(hash1)), Is.EqualTo(expectedDistance));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(xor.ToString(), Is.EqualTo(xosString.ToLower()));
+            Assert.That(Distance.CalculateLogDistance(new ValueHash256(hash1), new ValueHash256(hash2)), Is.EqualTo(expectedDistance));
+            Assert.That(Distance.CalculateLogDistance(new ValueHash256(hash2), new ValueHash256(hash1)), Is.EqualTo(expectedDistance));
+        }
     }
 
     [Test]

@@ -155,8 +155,11 @@ public class DiscoveryV5AppTests
 
         bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
-        Assert.That(result, Is.False);
-        Assert.That(node, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(node, Is.Null);
+        }
     }
 
     [Test]
@@ -167,8 +170,11 @@ public class DiscoveryV5AppTests
 
         bool result = privateDiscoveryApp.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
-        Assert.That(result, Is.True);
-        Assert.That(node, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
+        }
         Assert.That(node!.Host, Is.EqualTo(IPAddress.Loopback.ToString()));
     }
 
@@ -198,8 +204,11 @@ public class DiscoveryV5AppTests
 
         bool result = discoveryApp.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
-        Assert.That(result, Is.False);
-        Assert.That(node, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(node, Is.Null);
+        }
     }
 
     [Test]
@@ -213,8 +222,11 @@ public class DiscoveryV5AppTests
 
         bool result = privateDiscoveryApp.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
-        Assert.That(result, Is.False);
-        Assert.That(node, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(node, Is.Null);
+        }
     }
 
     [Test]
@@ -224,8 +236,11 @@ public class DiscoveryV5AppTests
 
         bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
-        Assert.That(result, Is.True);
-        Assert.That(node, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
+        }
         Assert.That(node!.Host, Is.EqualTo("8.8.8.8"));
     }
 
@@ -390,10 +405,16 @@ public class DiscoveryV5AppTests
 
         bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
-        Assert.That(result, Is.True);
-        Assert.That(node, Is.Not.Null);
-        Assert.That(node!.Port, Is.EqualTo(30303));
-        Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node!.Port, Is.EqualTo(30303));
+            Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
+        }
     }
 
     [Test]
@@ -403,8 +424,11 @@ public class DiscoveryV5AppTests
 
         bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
-        Assert.That(result, Is.False);
-        Assert.That(node, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(node, Is.Null);
+        }
     }
 
     [Test]
@@ -417,11 +441,17 @@ public class DiscoveryV5AppTests
 
         bool result = discoveryApp.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
-        Assert.That(result, Is.True);
-        Assert.That(node, Is.Not.Null);
-        Assert.That(node!.Host, Is.EqualTo("2001:4860:4860::8888"));
-        Assert.That(node.Port, Is.Zero);
-        Assert.That(node.DiscoveryPort, Is.EqualTo(9001));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node!.Host, Is.EqualTo("2001:4860:4860::8888"));
+            Assert.That(node.Port, Is.Zero);
+            Assert.That(node.DiscoveryPort, Is.EqualTo(9001));
+        }
     }
 
     [Test]
@@ -432,8 +462,11 @@ public class DiscoveryV5AppTests
 
         bool result = ipv4DiscoveryApp.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
-        Assert.That(result, Is.False);
-        Assert.That(node, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(node, Is.Null);
+        }
     }
 
     [Test]
@@ -447,8 +480,11 @@ public class DiscoveryV5AppTests
 
         bool result = fallbackApp.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
-        Assert.That(result, Is.False);
-        Assert.That(node, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(node, Is.Null);
+        }
     }
 
     [Test]
@@ -668,8 +704,11 @@ public class DiscoveryV5AppTests
         PooledUdpReceiveResult received = enumerator.Current;
         try
         {
-            Assert.That(received.Buffer, Is.SequenceEqualTo(data));
-            Assert.That(received.RemoteEndPoint, Is.EqualTo(remote));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(received.Buffer, Is.SequenceEqualTo(data));
+                Assert.That(received.RemoteEndPoint, Is.EqualTo(remote));
+            }
         }
         finally
         {
