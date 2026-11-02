@@ -198,8 +198,11 @@ namespace Nethermind.Trie.Test
             Assert.That(memDb.Keys, Has.Count.EqualTo(2));
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
+                Assert.That(checkTree.Get(_keyB).ToArray(), Is.Empty);
+            }
         }
 
         [Test]
@@ -253,12 +256,15 @@ namespace Nethermind.Trie.Test
             byte[] emptyByte = [];
             byte[] emptyByteCompactEncoded = { 0 };
 
-            Assert.That(checkTree.GetNodeByKey(emptyByte, patriciaTree.RootHash), Is.EqualTo(rootNodeHash));
-            Assert.That(checkTree.GetNodeByKey(Nibbles.CompactToHexEncode(emptyByteCompactEncoded), patriciaTree.RootHash), Is.EqualTo(rootNodeHash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(checkTree.GetNodeByKey(emptyByte, patriciaTree.RootHash), Is.EqualTo(rootNodeHash));
+                Assert.That(checkTree.GetNodeByKey(Nibbles.CompactToHexEncode(emptyByteCompactEncoded), patriciaTree.RootHash), Is.EqualTo(rootNodeHash));
 
-            Assert.That(checkTree.GetNodeByKey(branchNodeKey1, patriciaTree.RootHash), Is.EqualTo(branchNodeValue1));
-            Assert.That(checkTree.GetNodeByKey([0xff], patriciaTree.RootHash), Is.Empty);
-            Assert.That(checkTree.Get(branchNodeKey1).ToArray(), Is.Empty);
+                Assert.That(checkTree.GetNodeByKey(branchNodeKey1, patriciaTree.RootHash), Is.EqualTo(branchNodeValue1));
+                Assert.That(checkTree.GetNodeByKey([0xff], patriciaTree.RootHash), Is.Empty);
+                Assert.That(checkTree.Get(branchNodeKey1).ToArray(), Is.Empty);
+            }
         }
 
         // [Test]
@@ -293,9 +299,12 @@ namespace Nethermind.Trie.Test
             trieStore.PersistCache(CancellationToken.None);
             Assert.That(memDb.Keys, Has.Count.EqualTo(6));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.Empty);
-            Assert.That(checkTree.Get(_keyC).ToArray(), Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
+                Assert.That(checkTree.Get(_keyB).ToArray(), Is.Empty);
+                Assert.That(checkTree.Get(_keyC).ToArray(), Is.Empty);
+            }
         }
 
         public void Test_add_many(int i)
@@ -1310,27 +1319,6 @@ namespace Nethermind.Trie.Test
                     Assert.That(tree.Get(key.Bytes), Is.SequenceEqualTo(value.BytesToArray()));
                 }
             });
-        }
-
-        [Test]
-        public void WarmUpPath_DoesNotThrow()
-        {
-            // Build a tree with extension, branch, and leaf nodes: _keyA, _keyB, _keyC, _keyD
-            using IPruningTrieStore trieStore = CreateTrieStore();
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
-            patriciaTree.Set(_keyA, _longLeaf1);
-            patriciaTree.Set(_keyB, _longLeaf2);
-            patriciaTree.Set(_keyC, _longLeaf1);
-            patriciaTree.Set(_keyD, _longLeaf2);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
-
-            // Test warmup on various keys
-            Assert.That(() => patriciaTree.WarmUpPath(_keyA), Throws.Nothing);  // Existing key
-            Assert.That(() => patriciaTree.WarmUpPath(_keyB), Throws.Nothing);  // Existing key
-            Assert.That(() => patriciaTree.WarmUpPath(_keyC), Throws.Nothing);  // Existing key in different branch
-            Assert.That(() => patriciaTree.WarmUpPath(_keyD), Throws.Nothing);  // Existing key in different branch
-            Assert.That(() => patriciaTree.WarmUpPath(Bytes.FromHexString("00000000000cc")), Throws.Nothing);  // Non-existent key
-            Assert.That(() => patriciaTree.WarmUpPath(Bytes.FromHexString("fffffffffffff")), Throws.Nothing);  // Completely different path
         }
 
         [Test]

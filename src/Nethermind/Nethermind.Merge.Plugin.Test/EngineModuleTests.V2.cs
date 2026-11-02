@@ -68,7 +68,9 @@ public partial class EngineModuleTests
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV2", @params);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(successResponse, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
@@ -113,7 +115,9 @@ public partial class EngineModuleTests
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV2", expectedPayloadId);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(successResponse, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
@@ -124,7 +128,9 @@ public partial class EngineModuleTests
             chain.JsonSerializer.Serialize(ExecutionPayload.Create(block)));
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(successResponse, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
@@ -147,7 +153,9 @@ public partial class EngineModuleTests
         response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV2", @params!);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(successResponse, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
@@ -193,8 +201,11 @@ public partial class EngineModuleTests
 
         Assert.That(errorResponse, Is.Not.Null);
         Assert.That(errorResponse!.Error, Is.Not.Null);
-        Assert.That(errorResponse!.Error!.Code, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
-        Assert.That(errorResponse!.Error!.Message, Is.EqualTo("PayloadAttributesV1 expected"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(errorResponse!.Error!.Code, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
+            Assert.That(errorResponse!.Error!.Message, Is.EqualTo("PayloadAttributesV1 expected"));
+        }
     }
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
@@ -232,8 +243,11 @@ public partial class EngineModuleTests
 
         Assert.That(errorResponse, Is.Not.Null);
         Assert.That(errorResponse!.Error, Is.Not.Null);
-        Assert.That(errorResponse!.Error!.Code, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
-        Assert.That(errorResponse!.Error!.Message, Is.EqualTo(string.Format(input.ErrorMessage, "PayloadAttributes")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(errorResponse!.Error!.Code, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
+            Assert.That(errorResponse!.Error!.Message, Is.EqualTo(string.Format(input.ErrorMessage, "PayloadAttributes")));
+        }
     }
 
     [Test]
@@ -257,8 +271,11 @@ public partial class EngineModuleTests
         byte[] payloadId = Bytes.FromHexString(forkchoiceResponse.Result.Data.PayloadId!);
         ResultWrapper<GetPayloadV2Result?> responseFirst = await rpc.engine_getPayloadV2(payloadId);
         Assert.That(responseFirst, Is.Not.Null);
-        Assert.That(responseFirst.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(responseFirst.Data!.BlockValue, Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responseFirst.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(responseFirst.Data!.BlockValue, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]
@@ -376,7 +393,9 @@ public partial class EngineModuleTests
         using CommitGate commit = new(chain.BranchProcessor, block.BlockHash);
         Task<ExecutionPayload> send = SendNewBlockV2(rpc, chain, withdrawals);
         await commit.VerdictGiven.WaitAsync(GateTimeout);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(chain.BlockTree.WasProcessed(block.BlockNumber, block.BlockHash), Is.False, "precondition: the block is answered but not committed yet");
+#pragma warning restore NUnit2045
         Assert.That(await Task.WhenAny(send, Task.Delay(100)), Is.Not.SameAs(send), "the helper waits while the block is committing");
 
         commit.Release();
@@ -620,8 +639,11 @@ public partial class EngineModuleTests
 
         Assert.That(errorResponse, Is.Not.Null);
         Assert.That(errorResponse!.Error, Is.Not.Null);
-        Assert.That(errorResponse!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
-        Assert.That(errorResponse!.Error!.Message, Is.EqualTo("ExecutionPayloadV1 expected"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(errorResponse!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(errorResponse!.Error!.Message, Is.EqualTo("ExecutionPayloadV1 expected"));
+        }
     }
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
@@ -665,8 +687,11 @@ public partial class EngineModuleTests
 
         Assert.That(errorResponse, Is.Not.Null);
         Assert.That(errorResponse.Error, Is.Not.Null);
-        Assert.That(errorResponse.Error!.Code, Is.EqualTo(input.ErrorCode));
-        Assert.That(errorResponse.Error!.Message, Is.EqualTo(string.Format(input.ErrorMessage, "ExecutionPayload")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(errorResponse.Error!.Code, Is.EqualTo(input.ErrorCode));
+            Assert.That(errorResponse.Error!.Message, Is.EqualTo(string.Format(input.ErrorMessage, "ExecutionPayload")));
+        }
     }
 
     protected static IEnumerable<(

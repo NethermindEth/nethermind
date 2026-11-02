@@ -81,9 +81,12 @@ public class RangeQueryVisitorTests
         Dictionary<ValueHash256, byte[]?> nodes = leafCollector.Leafs.ToDictionary(static (it) => it.Item1, static (it) => it.Item2);
         Assert.That(nodes.Count, Is.EqualTo(3));
 
-        Assert.That(nodes.ContainsKey(new Hash256("0200000000000000000000000000000000000000000000000000000000000000")), Is.True);
-        Assert.That(nodes.ContainsKey(new Hash256("0300000000000000000000000000000000000000000000000000000000000000")), Is.True);
-        Assert.That(nodes.ContainsKey(new Hash256("0400000000000000000000000000000000000000000000000000000000000000")), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodes.ContainsKey(new Hash256("0200000000000000000000000000000000000000000000000000000000000000")), Is.True);
+            Assert.That(nodes.ContainsKey(new Hash256("0300000000000000000000000000000000000000000000000000000000000000")), Is.True);
+            Assert.That(nodes.ContainsKey(new Hash256("0400000000000000000000000000000000000000000000000000000000000000")), Is.True);
+        }
     }
 
     [Test]

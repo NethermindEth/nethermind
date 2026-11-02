@@ -638,7 +638,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         #region WriteBuffer
 
-        // Note: Write buffer and write buffer num are modified by MemoryHintMan.
         lock (_dbsByPath)
         {
             ulong writeBufferSize = _writeBufferSize;

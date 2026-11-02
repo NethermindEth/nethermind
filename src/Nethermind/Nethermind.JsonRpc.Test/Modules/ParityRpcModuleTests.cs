@@ -320,7 +320,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             using JsonDocument document = JsonDocument.Parse(serialized);
             JsonElement frame = document.RootElement.GetProperty("result")[1];
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 // The explicit chain id of the signed payload, which is the only place it survives.
                 Assert.That(frame.GetProperty("chainId").GetString(), Is.EqualTo("0x1"));
@@ -331,7 +331,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Assert.That(frame.GetProperty("standardV").GetString(), Is.EqualTo("0x0"));
                 Assert.That(frame.TryGetProperty("publicKey", out _), Is.False, "no envelope key to recover");
                 Assert.That(frame.GetProperty("creates").ValueKind, Is.EqualTo(JsonValueKind.Null));
-            });
+            }
         }
 
         [Test]
@@ -355,9 +355,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSigner", TestItem.AddressA, "password");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
-            Assert.That(serialized, Is.EqualTo(expectedResult));
-            Assert.That(_signerStore.Address, Is.EqualTo(TestItem.AddressA));
-            Assert.That(_signerStore.CanSign, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Is.EqualTo(expectedResult));
+                Assert.That(_signerStore.Address, Is.EqualTo(TestItem.AddressA));
+                Assert.That(_signerStore.CanSign, Is.True);
+            }
         }
 
         [Test]
@@ -365,9 +368,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSignerSecret", TestItem.PrivateKeyA.ToString());
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
-            Assert.That(serialized, Is.EqualTo(expectedResult));
-            Assert.That(_signerStore.Address, Is.EqualTo(TestItem.AddressA));
-            Assert.That(_signerStore.CanSign, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Is.EqualTo(expectedResult));
+                Assert.That(_signerStore.Address, Is.EqualTo(TestItem.AddressA));
+                Assert.That(_signerStore.CanSign, Is.True);
+            }
         }
 
         [Test]
@@ -376,9 +382,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSigner", TestItem.AddressA, "password");
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_clearEngineSigner");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
-            Assert.That(serialized, Is.EqualTo(expectedResult));
-            Assert.That(_signerStore.Address, Is.EqualTo(Address.Zero));
-            Assert.That(_signerStore.CanSign, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Is.EqualTo(expectedResult));
+                Assert.That(_signerStore.Address, Is.EqualTo(Address.Zero));
+                Assert.That(_signerStore.CanSign, Is.False);
+            }
         }
 
         [Test]

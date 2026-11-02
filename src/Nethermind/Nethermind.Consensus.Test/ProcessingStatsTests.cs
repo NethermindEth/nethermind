@@ -5,11 +5,13 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 using BlockchainMetrics = Nethermind.Blockchain.Metrics;
@@ -68,6 +70,30 @@ public class ProcessingStatsTests
             processingStats.GenerateReportForTest(block1, baseBlock, blockCount, gasUsed: 2_000_000, transactionCount: 2, processingMicroseconds: 200_000);
 
             stateReader.Received(expectedReads).TryGetAccount(Arg.Any<BlockHeader>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>());
+            return Task.CompletedTask;
+        });
+
+    [Test]
+    public Task GenerateReport_logs_reward_read_failure_at_error_only_when_state_is_not_pruned([Values] bool statePruned) =>
+        WithRestoredBlockchainMetrics(() =>
+        {
+            IStateReader stateReader = Substitute.For<IStateReader>();
+            stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+            Exception readFailure = statePruned
+                ? new MissingTrieNodeException("missing", null, TreePath.Empty, Keccak.Zero)
+                : new InvalidOperationException();
+            stateReader.TryGetAccount(Arg.Any<BlockHeader>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(_ => throw readFailure);
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsInfo.Returns(true);
+            logger.IsError.Returns(true);
+            TestProcessingStats processingStats = new(stateReader, logger: logger);
+            (BlockHeader baseBlock, Block block1, _) = BuildBlockTrio();
+
+            processingStats.AdvanceReportWindow();
+            processingStats.GenerateReportForTest(block1, baseBlock, blockCount: 1, gasUsed: 2_000_000, transactionCount: 2, processingMicroseconds: 200_000);
+
+            logger.Received(1).Info(Arg.Is<string>(line => line.StartsWith("Processed ")));
+            logger.Received(statePruned ? 0 : 1).Error(Arg.Any<string>(), Arg.Any<Exception>());
             return Task.CompletedTask;
         });
 
@@ -156,8 +182,8 @@ public class ProcessingStatsTests
         }
     }
 
-    private sealed class TestProcessingStats(IStateReader stateReader, LogLevel logLevel = LogLevel.Warn)
-        : ProcessingStats(stateReader, new TestLogManager(logLevel))
+    private sealed class TestProcessingStats(IStateReader stateReader, LogLevel logLevel = LogLevel.Warn, InterfaceLogger logger = null)
+        : ProcessingStats(stateReader, logger is null ? new TestLogManager(logLevel) : new OneLoggerLogManager(new ILogger(logger)))
     {
         private long _reportMs;
 

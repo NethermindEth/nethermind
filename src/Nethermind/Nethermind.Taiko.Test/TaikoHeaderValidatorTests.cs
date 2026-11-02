@@ -85,8 +85,11 @@ public class TaikoHeaderValidatorTests
 
         bool valid = validator.Validate(header, parent, isUncle: false, out string? error);
 
-        Assert.That(valid, Is.False);
-        Assert.That(error, Does.Contain("BlobGasUsed"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Does.Contain("BlobGasUsed"));
+        }
     }
 
     /// <summary>Unzen headers must carry BlobGasUsed = 0; any nonzero value is rejected.</summary>
@@ -114,8 +117,11 @@ public class TaikoHeaderValidatorTests
 
         bool valid = validator.Validate(header, parent, isUncle: false, out string? error);
 
-        Assert.That(valid, Is.False);
-        Assert.That(error, Does.Contain("BlobGasUsed"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Does.Contain("BlobGasUsed"));
+        }
     }
 
     /// <summary>Unzen headers must carry ExcessBlobGas = 0; a null value is rejected.</summary>
@@ -143,8 +149,11 @@ public class TaikoHeaderValidatorTests
 
         bool valid = validator.Validate(header, parent, isUncle: false, out string? error);
 
-        Assert.That(valid, Is.False);
-        Assert.That(error, Does.Contain("ExcessBlobGas"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Does.Contain("ExcessBlobGas"));
+        }
     }
 
     /// <summary>Unzen headers must carry ExcessBlobGas = 0; any nonzero value is rejected.</summary>
@@ -172,8 +181,11 @@ public class TaikoHeaderValidatorTests
 
         bool valid = validator.Validate(header, parent, isUncle: false, out string? error);
 
-        Assert.That(valid, Is.False);
-        Assert.That(error, Does.Contain("ExcessBlobGas"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Does.Contain("ExcessBlobGas"));
+        }
     }
 
     /// <summary>Unzen header must have ParentBeaconBlockRoot set to
@@ -202,8 +214,11 @@ public class TaikoHeaderValidatorTests
 
         bool valid = validator.Validate(header, parent, isUncle: false, out string? error);
 
-        Assert.That(valid, Is.False);
-        Assert.That(error, Does.Contain("ParentBeaconBlockRoot"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Does.Contain("ParentBeaconBlockRoot"));
+        }
     }
 
     /// <summary>Unzen header must have ParentBeaconBlockRoot exactly equal to
@@ -232,8 +247,11 @@ public class TaikoHeaderValidatorTests
 
         bool valid = validator.Validate(header, parent, isUncle: false, out string? error);
 
-        Assert.That(valid, Is.False);
-        Assert.That(error, Does.Contain("ParentBeaconBlockRoot"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Does.Contain("ParentBeaconBlockRoot"));
+        }
     }
 
     // ── ValidateRequestsHash ──────────────────────────────────────────────────
@@ -268,8 +286,11 @@ public class TaikoHeaderValidatorTests
 
         bool valid = validator.Validate(header, parent, isUncle: false, out string? error);
 
-        Assert.That(valid, Is.False);
-        Assert.That(error, Does.Contain("RequestsHash"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Does.Contain("RequestsHash"));
+        }
     }
 
     /// <summary>Unzen headers whose RequestsHash differs from the canonical empty value are rejected.</summary>
@@ -297,8 +318,11 @@ public class TaikoHeaderValidatorTests
 
         bool valid = validator.Validate(header, parent, isUncle: false, out string? error);
 
-        Assert.That(valid, Is.False);
-        Assert.That(error, Does.Contain("RequestsHash"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Does.Contain("RequestsHash"));
+        }
     }
 
     /// <summary>Unzen headers whose RequestsHash equals the canonical empty value are accepted.</summary>
@@ -356,8 +380,11 @@ public class TaikoHeaderValidatorTests
 
         bool valid = validator.Validate(header, parent, isUncle: false, out string? error);
 
-        Assert.That(valid, Is.False);
-        Assert.That(error, Does.Contain("difficulty").Or.Contain("Difficulty"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Does.Contain("difficulty").Or.Contain("Difficulty"));
+        }
     }
 
     /// <summary>
@@ -417,8 +444,11 @@ public class TaikoHeaderValidatorTests
 
         bool valid = validator.Validate(header, parent, isUncle: false, out string? error);
 
-        Assert.That(valid, Is.False);
-        Assert.That(error, Does.Contain("Uncles").Or.Contain("uncles").Or.Contain("uncle"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Does.Contain("Uncles").Or.Contain("uncles").Or.Contain("uncle"));
+        }
     }
 
     /// <summary>
@@ -443,8 +473,11 @@ public class TaikoHeaderValidatorTests
 
         bool valid = validator.Validate(header, parent, isUncle: false, out string? error);
 
-        Assert.That(valid, Is.False);
-        Assert.That(error, Does.Contain("WithdrawalsRoot").Or.Contain("withdrawals"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Does.Contain("WithdrawalsRoot").Or.Contain("withdrawals"));
+        }
     }
 
     /// <summary>

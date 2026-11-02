@@ -74,12 +74,18 @@ public class VoteTests
         Vote lastVote = XdcTestHelper.BuildSignedVote(blockInfo, gap, keys.Last());
         await votesManager.HandleVote(lastVote);
         // Check new round has been set
-        Assert.That(ctx.CurrentRound, Is.EqualTo(initialRound + 1));
-        // The lockQC shall be the parent's QC round number
-        Assert.That(ctx.LockQC, Is.Not.Null);
-        Assert.That(ctx.LockQC.ProposedBlockInfo.Round, Is.EqualTo(initialRound - 1));
-        // The highestQC proposedBlockInfo shall be the same as the one from its votes
-        Assert.That(ctx.HighestQC.ProposedBlockInfo, Is.EqualTo(blockInfo).UsingXdcComparer());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.CurrentRound, Is.EqualTo(initialRound + 1));
+            // The lockQC shall be the parent's QC round number
+            Assert.That(ctx.LockQC, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.LockQC.ProposedBlockInfo.Round, Is.EqualTo(initialRound - 1));
+            // The highestQC proposedBlockInfo shall be the same as the one from its votes
+            Assert.That(ctx.HighestQC.ProposedBlockInfo, Is.EqualTo(blockInfo).UsingXdcComparer());
+        }
     }
 
     private VotesManager CreateVotesManager(XdcTestBlockchain blockchain) =>

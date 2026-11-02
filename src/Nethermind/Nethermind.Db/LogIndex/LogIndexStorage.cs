@@ -448,7 +448,9 @@ namespace Nethermind.Db.LogIndex
             _backwardWriteSemaphore.Dispose();
             _compressor?.Dispose();
             _compactor?.Dispose();
-            DBColumns?.DisposeItems();
+            // Null when the constructor failed before opening the database, e.g. on an invalid configuration
+            if (_topicDbs is not null)
+                DBColumns.DisposeItems();
             _rootDb?.Dispose();
         }
 

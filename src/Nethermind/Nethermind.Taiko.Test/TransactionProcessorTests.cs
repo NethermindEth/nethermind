@@ -81,11 +81,11 @@ public class TransactionProcessorTests
         _transactionProcessor!.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
         _transactionProcessor!.Execute(tx, NullTxTracer.Instance);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(_stateProvider!.GetBalance(_spec.FeeCollector!), Is.EqualTo(goesToTreasury));
             Assert.That(_stateProvider.GetBalance(beneficiaryAddress), Is.EqualTo(goesToBeneficiary));
-        });
+        }
     }
 
     [Test]
@@ -113,8 +113,11 @@ public class TransactionProcessorTests
 
         TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.Commit);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(_stateProvider!.GetBalance(_spec.FeeCollector!), Is.GreaterThan(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider!.GetBalance(_spec.FeeCollector!), Is.GreaterThan(UInt256.Zero));
+        }
     }
 
     public static IEnumerable FeesDistributionTests
@@ -191,8 +194,11 @@ public class TransactionProcessorTests
         UInt256 expectedTipFees = isAnchorTx ? 0 : (UInt256)gasUsed * tipFee;
         UInt256 expectedBaseFees = isAnchorTx ? 0 : (UInt256)gasUsed * baseFee;
 
-        Assert.That(receivedTipFees, Is.EqualTo(expectedTipFees), "Transaction did not receive expected tip fees");
-        Assert.That(receivedBaseFees, Is.EqualTo(expectedBaseFees), "Transaction did not receive expected base fees");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receivedTipFees, Is.EqualTo(expectedTipFees), "Transaction did not receive expected tip fees");
+            Assert.That(receivedBaseFees, Is.EqualTo(expectedBaseFees), "Transaction did not receive expected base fees");
+        }
     }
 
     [Test]
@@ -238,8 +244,11 @@ public class TransactionProcessorTests
         UInt256 finalTreasuryBalance = _stateProvider.GetBalance(_spec.FeeCollector!);
         UInt256 receivedBaseFees = finalTreasuryBalance - initialTreasuryBalance;
 
-        Assert.That(tracer.Fees, Is.EqualTo((UInt256)525213));
-        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)58357));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Fees, Is.EqualTo((UInt256)525213));
+            Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)58357));
+        }
 
         UInt256 expectedBaseFees = tracer.BurntFees;
         if (isOntakeEnabled)
@@ -247,9 +256,12 @@ public class TransactionProcessorTests
             expectedBaseFees -= expectedBaseFees * defaultBaseFeeSharingPct / 100;
         }
 
-        Assert.That(receivedBaseFees, Is.EqualTo(expectedBaseFees), "Burnt fees should be paid to treasury");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receivedBaseFees, Is.EqualTo(expectedBaseFees), "Burnt fees should be paid to treasury");
 
-        Assert.That(_stateProvider.AccountExists(SelfDestructAddress), Is.False, "SelfDestructAddress should be destroyed");
-        Assert.That(_stateProvider.GetBalance(SelfDestructAddress), Is.EqualTo(UInt256.Zero), "SelfDestructAddress balance should be 0");
+            Assert.That(_stateProvider.AccountExists(SelfDestructAddress), Is.False, "SelfDestructAddress should be destroyed");
+            Assert.That(_stateProvider.GetBalance(SelfDestructAddress), Is.EqualTo(UInt256.Zero), "SelfDestructAddress balance should be 0");
+        }
     }
 }

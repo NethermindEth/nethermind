@@ -72,7 +72,7 @@ The guests can be proved, but this repository does not yet expose supported
 |---|---|---|---|
 | ZisK | `nethermindeth/zisk`, pinned in the [Makefile](../Nethermind.Stateless.ZiskGuest/Makefile) | Framed fixture | Matching GPU worker, coordinator, and proving keys |
 | SP1 | [bflat-sp1](https://github.com/NethermindEth/bflat-sp1/tree/main/runner) | Raw payload | CUDA-enabled SP1 SDK runner and matching GPU server |
-| OpenVM | [bflat-openvm](https://github.com/NethermindEth/bflat-openvm/tree/main/runner) | Raw payload | CUDA-enabled OpenVM SDK runner and the guest's `openvm.toml` |
+| OpenVM | [bflat-openvm](https://github.com/NethermindEth/bflat-openvm/tree/main/runner) | Raw payload | CUDA-enabled OpenVM SDK runner on `SdkVmConfig::standard()` |
 
 For ZisK, use matching versions of GPU binaries and proving keys; the emulator
 image alone is not a complete GPU proving installation.
@@ -99,8 +99,9 @@ with ZisK 1.2.0-alpha, SP1 v6.5.0, and OpenVM rv64 revision
   client destruction. A blocking-client harness produced valid proofs but
   panicked during cleanup when a destructor spawned a task without a runtime.
   An async harness reloaded and verified those proofs and exited successfully.
-- Preserve OpenVM's pinned dependencies and guest `openvm.toml`. Its extension
-  configuration is part of the guest's execution environment. Compare the
+- Preserve OpenVM's pinned dependencies, and use `SdkVmConfig::standard()`. The
+  accelerators of the guest are in the order of the moduli and curves of that
+  configuration. Compare the
   verified public values against the digest above.
 - Save proofs using buffered I/O and report serialization separately when
   measuring SDK proving calls. Unbuffered writes to a Windows bind mount can

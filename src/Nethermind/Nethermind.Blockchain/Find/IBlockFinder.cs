@@ -27,6 +27,9 @@ namespace Nethermind.Blockchain.Find
 
         bool HasBlock(ulong blockNumber, Hash256 blockHash);
 
+        /// <summary>Gets the stored block metadata and chain level, if available.</summary>
+        (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(ulong number, Hash256 blockHash);
+
         /// Find a header. blockNumber is optional, but specifying it can improve performance.
         BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null);
 

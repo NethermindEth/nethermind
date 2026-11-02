@@ -11,6 +11,8 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 
 public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestateTracerAccount>
 {
+    private const int MaxNonceDecimalDigits = 78;
+
     public override void Write(Utf8JsonWriter writer, NativePrestateTracerAccount value, JsonSerializerOptions options)
     {
         NumberConversion previousValue = ForcedNumberConversion.Value;
@@ -27,7 +29,14 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
             if (value.Nonce is { } nonce)
             {
                 writer.WritePropertyName("nonce"u8);
-                writer.WriteRawValue(nonce.ToString(CultureInfo.InvariantCulture));
+                if (nonce.IsUint64)
+                    writer.WriteNumberValue(nonce.u0);
+                else
+                {
+                    Span<byte> formattedNonce = stackalloc byte[MaxNonceDecimalDigits];
+                    nonce.TryFormat(formattedNonce, out int bytesWritten, provider: CultureInfo.InvariantCulture);
+                    writer.WriteRawValue(formattedNonce[..bytesWritten]);
+                }
             }
 
             if (!value.Code.IsEmpty || value.IncludeEmptyCode)

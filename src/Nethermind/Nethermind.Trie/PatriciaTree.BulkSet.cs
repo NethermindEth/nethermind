@@ -4,9 +4,9 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 
 namespace Nethermind.Trie;
@@ -154,7 +154,7 @@ public partial class PatriciaTree
 
             TreePath childPath = path.Append(nib);
             TrieNode? child = childIterator.GetChildWithChildPath(TrieStore, ref childPath, nib);
-            jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
+            jobs[nib] = (jobEntry.OffsetIn(originalEntriesArray), jobEntry.Length, nib, childPath, child, null);
         }
 
         ParallelUnbalancedWork.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
@@ -174,14 +174,22 @@ public partial class PatriciaTree
                     ref childPath,
                     child,
                     flipCount,
-                    flags & ~Flags.DoNotParallelize); // Only parallelize at top level.
+                    flags & ~Flags.DoNotParallelize); // A nested level with enough entries under a full branch parallelizes too.
 
                 jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
 
                 return workerTraverseStack;
             },
-            ReturnTraverseStack
+            ReturnJobTraverseStack
         );
+    }
+
+    /// <summary>Returns a worker's stack to its thread empty, also when one of its jobs threw part way through a walk.</summary>
+    /// <remarks>The loop runs this after an exception too, and the next write on the thread takes the stack as it finds it.</remarks>
+    private static void ReturnJobTraverseStack(TraverseStack stack)
+    {
+        stack.Clear();
+        ReturnTraverseStack(stack);
     }
 
     /// <param name="ctx">Just to reduce the param count</param>
@@ -710,13 +718,5 @@ public partial class PatriciaTree
         }
 
         return usedMask;
-    }
-
-    private static int GetSpanOffset<T>(T[] array, Span<T> span)
-    {
-        ref T spanRef = ref MemoryMarshal.GetReference(span);
-        ref T arrRef = ref MemoryMarshal.GetArrayDataReference(array);
-
-        return (int)(Unsafe.ByteOffset(ref arrRef, ref spanRef) / Unsafe.SizeOf<T>());
     }
 }
