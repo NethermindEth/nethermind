@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Zkvm.Abstractions;
 using static Nethermind.Evm.GuestWord;
@@ -95,11 +96,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.MSTORE] = AsTableEntry(&RawCalliHelper.ExecuteMStoreInsideBacking);
         lookup[(int)Instruction.MSTORE8] = AsTableEntry(&RawCalliHelper.ExecuteMStore8InsideActiveMemory);
         lookup[(int)Instruction.CALLDATACOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopy<RawCalliHelper.CallDataSource>);
+        lookup[(int)Instruction.CODECOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopy<RawCalliHelper.CodeSource>);
         if (SpecFlags.Eip2929(spec) && !SpecFlags.Eip8038(spec))
         {
             lookup[(int)Instruction.SLOAD] = SpecFlags.Eip8360(spec)
                 ? AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>)
                 : AsTableEntry(&RawCalliHelper.ExecuteSLoad<OffFlag>);
+            if (SpecFlags.NetGasMetering(spec) && SpecFlags.Eip2200(spec) && !SpecFlags.Eip8279(spec) && !SpecFlags.Eip8360(spec))
+                lookup[(int)Instruction.SSTORE] = AsTableEntry(&RawCalliHelper.ExecuteSStore);
+        }
+        if (SpecFlags.Eip2929(spec) && SpecFlags.Eip150(spec) && SpecFlags.Eip158(spec) && !SpecFlags.Eip8279(spec) && !SpecFlags.Eip8360(spec))
+        {
+            if (SpecFlags.Eip8038(spec))
+                SetCallHandlers<OnFlag, Eip8038On>(lookup);
+            else
+                SetCallHandlers<OffFlag, Eip8038Off>(lookup);
         }
         if (spec.TransientStorageEnabled)
         {
@@ -169,6 +180,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
     }
 
+    /// <summary>Sets the guest's CALL, STATICCALL and DELEGATECALL handlers for the fork rules the shared table picks.</summary>
+    /// <typeparam name="TAmsterdam">EIP-2780, EIP-7708 and EIP-8037, which activate with EIP-8038 in the guest's fork range.</typeparam>
+    private static void SetCallHandlers<TAmsterdam, Eip8038>(
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] lookup)
+        where TAmsterdam : struct, IFlag
+        where Eip8038 : struct, IEip8038Flag
+    {
+        lookup[(int)Instruction.CALL] = AsTableEntry(&RawCalliHelper.ExecuteCall<EvmInstructions.OpCall, TAmsterdam, TAmsterdam,
+            EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, TAmsterdam, Eip8038, OffFlag, OffFlag>>);
+        lookup[(int)Instruction.STATICCALL] = AsTableEntry(&RawCalliHelper.ExecuteCall<EvmInstructions.OpStaticCall, TAmsterdam, TAmsterdam,
+            EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, TAmsterdam, Eip8038, OffFlag, OffFlag>>);
+        lookup[(int)Instruction.DELEGATECALL] = AsTableEntry(&RawCalliHelper.ExecuteCall<EvmInstructions.OpDelegateCall, TAmsterdam, TAmsterdam,
+            EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, TAmsterdam, Eip8038, OffFlag, OffFlag>>);
+    }
+
     private static partial class RawCalliHelper
     {
         private const int LimbsPerWord = EvmStack.WordSize / sizeof(ulong);
@@ -222,7 +248,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary><paramref name="table"/> in the form the dispatch chain carries it.</summary>
         /// <remarks>
-        /// Where <see cref="StrictAlignmentFlag"/> is on, the chain carries the table's address in words. The address formed back from it
+        /// Where <see cref="StrictAlignmentFlag"/> is on, the chain carries the table's address in entries. The address formed back from it
         /// is a shift by <see cref="TableWordShift"/>, which the JIT proves aligned, so each handler load needs neither an alignment test nor an <c>andi</c> to
         /// prove it, as a table pointer would. Read the table only through <see cref="HandlerAt"/> and <see cref="FollowerHandlerAt"/>,
         /// or as SP1's <c>mul.S</c> does.
@@ -230,22 +256,29 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static nint* DispatchTable(nint* table)
         {
-            Debug.Assert(((nuint)table & (nuint)(sizeof(nint) - 1)) == 0);
+            Debug.Assert(((nuint)table & (nuint)((1 << TableWordShift) - 1)) == 0);
             return StrictAlignmentFlag.IsActive ? (nint*)((nuint)table >> TableWordShift) : table;
         }
 
-        /// <summary>The log2 of the size of a table entry, which converts between its address in bytes and in words.</summary>
-        private static int TableWordShift => sizeof(nint) == sizeof(ulong) ? 3 : 2;
+        /// <summary>The log2 of the size of a table entry, which converts between its address in bytes and in entries.</summary>
+        private static int TableWordShift
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => sizeof(nint) == sizeof(ulong) && !CompactsHandlers ? 3 : 2;
+        }
 
         /// <summary>The handler at <paramref name="index"/> in <paramref name="handlers"/>, a table in the form <see cref="DispatchTable"/> gives.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static nint HandlerAt(nint* handlers, nint index) =>
-            StrictAlignmentFlag.IsActive ? *(nint*)(((nuint)handlers + (nuint)index) << TableWordShift) : handlers[index];
+            CompactsHandlers ? (nint)(*(uint*)(((nuint)handlers + (nuint)index) << TableWordShift))
+            : StrictAlignmentFlag.IsActive ? *(nint*)(((nuint)handlers + (nuint)index) << TableWordShift) : handlers[index];
 
         /// <summary>The follower handler for the opcode <paramref name="opcode"/>, which the paired table holds before <paramref name="handlers"/>.</summary>
         /// <remarks>Indexed first and offset after, so the offset folds into the load.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static nint FollowerHandlerAt(nint* handlers, nint opcode) => StrictAlignmentFlag.IsActive
+        private static nint FollowerHandlerAt(nint* handlers, nint opcode) =>
+            CompactsHandlers ? (nint)(*((uint*)(((nuint)handlers + (nuint)opcode) << TableWordShift) - FollowerHandlersLength))
+            : StrictAlignmentFlag.IsActive
             ? *((nint*)(((nuint)handlers + (nuint)opcode) << TableWordShift) - FollowerHandlersLength)
             : Unsafe.Add(ref handlers[opcode], -FollowerHandlersLength);
 
@@ -1702,6 +1735,94 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
+        /// <summary>SSTORE under EIP-2200 and EIP-2929 without EIP-8038, with the key and value read in their stack slots.</summary>
+        /// <remarks>
+        /// The shared handler copies both words off the stack and reads the fork's costs through the spec on every write.
+        /// The costs and refunds are those of <see cref="EvmInstructions.InstructionSStoreMetered{TGasPolicy, TTracingInst, TUseNetGasStipendFix, TEip8037, Eip8038, Eip2929, Eip8279}"/>
+        /// for the same flags. A static frame, a short stack, gas at or below the stipend sentry and traced refunds, storage
+        /// or accesses run the shared handler instead, which faults or reports as it does.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteSStore(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            VirtualMachine<TGasPolicy> vm = state.Vm;
+            VmState<TGasPolicy> frame = vm.VmState;
+            if (head >= 2 && gas > GasCostOf.CallStipend && !frame.IsStatic && !vm.IsTracingRefunds && !vm.IsTracingOpLevelStorage && !vm.IsTracingAccess)
+            {
+                vm.MetricsCounters.IncrementSStore();
+                ref UInt256 key = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 1));
+                ref UInt256 newValue = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 2));
+                StorageCell storageCell = new(frame.Env.ExecutingAccount, in key);
+                // Warming before the charge is unobservable: running out of gas halts the frame, whose restore drops the cell again.
+                if (frame.AccessTracker.WarmUp(in storageCell) && !TryCharge(ref gas, GasCostOf.ColdSLoad))
+                    goto OutOfGas;
+
+                IWorldState worldState = vm.WorldState;
+                worldState.Get(in storageCell, out UInt256 currentValue);
+                if (currentValue == newValue)
+                {
+                    if (!TryCharge(ref gas, vm.Spec.GasCosts.NetMeteredSStoreCost)) goto OutOfGas;
+                }
+                else
+                {
+                    SpecGasCosts costs = vm.Spec.GasCosts;
+                    long sClearRefund = (long)costs.SClearRefund;
+                    worldState.GetOriginal(in storageCell, out UInt256 originalValue);
+                    if (originalValue == currentValue)
+                    {
+                        if (currentValue.IsZero)
+                        {
+                            if (!TryCharge(ref gas, GasCostOf.SSet)) goto OutOfGas;
+                        }
+                        else
+                        {
+                            if (!TryCharge(ref gas, costs.SStoreResetCost)) goto OutOfGas;
+                            if (newValue.IsZero) frame.Refund += sClearRefund;
+                        }
+                    }
+                    else
+                    {
+                        if (!TryCharge(ref gas, costs.NetMeteredSStoreCost)) goto OutOfGas;
+                        bool originalIsZero = originalValue.IsZero;
+                        if (!originalIsZero)
+                        {
+                            if (currentValue.IsZero) frame.Refund -= sClearRefund;
+                            if (newValue.IsZero) frame.Refund += sClearRefund;
+                        }
+
+                        if (originalValue == newValue) frame.Refund += (long)costs.RefundFromReversal(originalIsZero);
+                    }
+
+                    worldState.Set(in storageCell, in newValue, in currentValue);
+                    if (newValue.IsZero) vm.MetricsCounters.IncrementStorageDeleted();
+                }
+
+                head -= 2;
+                // Reloaded rather than held across the calls, where each would take a callee-saved register.
+                handlers = state.OpcodeHandlers;
+                code = ref stack.Code;
+                sp = ref SlotAt(ref stack.Bottom, head);
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = HandlerAt(handlers, PairAt(ref ip));
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+
+            OutOfGas:
+                return ExitChain(ref state, 0, (nint)Unsafe.ByteOffset(ref code, ref ip) + 1, head - 2, EvmExceptionType.OutOfGas);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<SStoreMeteredOpcode<OffFlag, OnFlag, OffFlag, Eip8038Off, OnFlag, OffFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
         /// <summary>TLOAD, with the key read from and the value written to its stack slot.</summary>
         /// <remarks>
         /// The shared handler builds the storage cell twice and saves every callee-saved register around the world-state
@@ -1776,8 +1897,123 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
+        /// <summary>CALL without value, STATICCALL or DELEGATECALL, with the operands read in their stack slots.</summary>
+        /// <remarks>
+        /// The shared handler copies its six or seven operands off the stack and keeps them in stack slots across
+        /// its calls. The charges, the state reads and their order are those of
+        /// <see cref="EvmInstructions.InstructionCall{TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708, TSpec}"/>
+        /// without a value transfer, which charges no value or new-account cost. Running out of gas leaves the chain
+        /// here, since the target is warm by then and the shared handler would charge it as warm. A CALL with value,
+        /// a short stack and traced actions run the shared handler instead.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteCall<TOpCall, TEip8037, TEip7708, TSpec>(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+            where TOpCall : struct, EvmInstructions.IOpCall
+            where TEip8037 : struct, IFlag
+            where TEip7708 : struct, IFlag
+            where TSpec : struct, EvmInstructions.ICallSpec
+        {
+            nint inputs = TOpCall.ExecutionType == ExecutionType.CALL ? 7 : 6;
+            VirtualMachine<TGasPolicy> vm = state.Vm;
+            if (head >= inputs && !vm.IsTracingActions && !TSpec.IsEip8279Enabled
+                && (TOpCall.ExecutionType != ExecutionType.CALL || Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 3)).IsZero))
+            {
+                vm.MetricsCounters.IncrementCalls();
+                ref UInt256 gasLimit = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 1));
+                ref UInt256 dataOffset = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, inputs - 3));
+                ref UInt256 dataLength = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, inputs - 2));
+                ref UInt256 outputOffset = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, inputs - 1));
+                ref UInt256 outputLength = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, inputs));
+                Address codeSource = vm.AddressCache.GetOrCreate(in Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 2)));
+                VmState<TGasPolicy> frame = vm.VmState;
+                ExecutionEnvironment env = frame.Env;
+                IReleaseSpec spec = vm.Spec;
+                ref TGasPolicy policy = ref state.Gas;
+                SetExecutionGas(ref policy, gas);
+                ref EvmPooledMemory memory = ref AlignedMemory(ref state);
+                if (!TGasPolicy.UpdateMemoryCost(ref policy, in dataOffset, in dataLength, ref memory) ||
+                    !TGasPolicy.UpdateMemoryCost(ref policy, in outputOffset, in outputLength, ref memory) ||
+                    !TSpec.TryConsumeAccountAccessGas(ref policy, spec, in frame.AccessTracker, vm.IsTracingAccess, codeSource))
+                    goto OutOfGas;
+
+                ICodeInfoRepository codeInfoRepository = vm.CodeInfoRepository;
+                CodeInfo codeInfo = codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
+                if (delegated is not null)
+                {
+                    if (!TSpec.TryConsumeAccountAccessGas(ref policy, spec, in frame.AccessTracker, vm.IsTracingAccess, delegated))
+                        goto OutOfGas;
+
+                    vm.WorldState.AddAccountRead(delegated);
+                    codeInfo = codeInfoRepository.GetDelegatedCodeInfo(delegated, spec);
+                }
+
+                if (!TSpec.TryReserveChildGas(ref policy, in gasLimit, spec, out ulong childGas))
+                    goto OutOfGas;
+
+                UInt256 callValue = TOpCall.ExecutionType == ExecutionType.DELEGATECALL ? env.Value : default;
+                Address caller = TOpCall.ExecutionType == ExecutionType.DELEGATECALL ? env.Caller : env.ExecutingAccount;
+                Address target = TOpCall.ExecutionType == ExecutionType.DELEGATECALL ? env.ExecutingAccount : codeSource;
+                head -= inputs;
+                // The status takes the slot of the deepest operand, the output length.
+                ref ulong status = ref Unsafe.As<UInt256, ulong>(ref outputLength);
+                if (env.CallDepth >= VirtualMachineStatics.MaxCallDepth)
+                {
+                    vm.ReturnDataBuffer = default;
+                    SetWord(ref status, 0);
+                    TGasPolicy.UpdateGasUp(ref policy, childGas);
+                    head++;
+                    goto Dispatch;
+                }
+
+                if (codeInfo.IsEmpty)
+                {
+                    vm.ReturnDataBuffer = default;
+                    SetWord(ref status, 1);
+                    TGasPolicy.UpdateGasUp(ref policy, childGas);
+                    if (caller != target)
+                        vm.WorldState.AddToBalanceAndCreateIfNotEmpty(target, TOpCall.ExecutionType, in callValue, spec);
+                    vm.MetricsCounters.IncrementEmptyCalls();
+                    head++;
+                    goto Dispatch;
+                }
+
+                stack.Head = head;
+                EvmExceptionType result = EvmInstructions.CreateFullCallFrame<TGasPolicy, TOpCall, OffFlag, OffFlag>(
+                    vm, ref stack, ref policy, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller,
+                    codeSource, env, in callValue, childGas, newAccountCharged: false);
+                head = stack.Head;
+                if (result != EvmExceptionType.None)
+                    return ExitChain(ref state, GetExecutionGas(ref policy), (nint)Unsafe.ByteOffset(ref stack.Code, ref ip) + 1, head, result);
+
+            Dispatch:
+                gas = GetExecutionGas(ref policy);
+                // Reloaded rather than held across the calls, where each would take a callee-saved register.
+                handlers = state.OpcodeHandlers;
+                code = ref stack.Code;
+                sp = ref SlotAt(ref stack.Bottom, head);
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = HandlerAt(handlers, PairAt(ref ip));
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+
+            OutOfGas:
+                return ExitChain(ref state, 0, (nint)Unsafe.ByteOffset(ref stack.Code, ref ip) + 1, head - inputs, EvmExceptionType.OutOfGas);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<CallOpcode<TOpCall, OffFlag, TEip8037, TEip7708, TSpec>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
         /// <summary>
-        /// CALLDATACOPY or RETURNDATACOPY, as <typeparamref name="TSource"/> sources it, into a range that needs no new
+        /// CALLDATACOPY, CODECOPY or RETURNDATACOPY, as <typeparamref name="TSource"/> sources it, into a range that needs no new
         /// backing and leaves a gap of at most two words below it.
         /// </summary>
         /// <remarks>
@@ -1884,6 +2120,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static ReadOnlySpan<byte> Read(ref EvmStack stack, ref DispatchState state) =>
                 MemoryMarshal.CreateReadOnlySpan(in stack.InputData, (int)stack.InputDataLength);
+        }
+
+        /// <summary>CODECOPY: the running code, zero-extended.</summary>
+        internal readonly struct CodeSource : ICopySource
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<CodeCopyOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            public static bool ZeroExtends => true;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static ReadOnlySpan<byte> Read(ref EvmStack stack, ref DispatchState state) =>
+                MemoryMarshal.CreateReadOnlySpan(ref stack.Code, (int)stack.CodeLength);
         }
 
         /// <summary>RETURNDATACOPY: the last call's return data, which a read past its end faults on (EIP-211).</summary>

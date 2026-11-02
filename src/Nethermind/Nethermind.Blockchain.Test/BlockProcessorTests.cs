@@ -48,12 +48,14 @@ using NSubstitute;
 using NUnit.Framework;
 using NUnit.Framework.Constraints;
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Security;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -797,6 +799,21 @@ public partial class BlockProcessorTests
         }
     }
 
+    /// <summary>Collects the streamed traces as they are written, in block order.</summary>
+    private sealed class CollectingTraceStream<TTrace>(List<TTrace> collected) : IParallelTraceStream<TTrace>
+    {
+        public JsonWriterOptions? SerializeAheadOptions => null;
+
+        public void Serialize(IReadOnlyCollection<TTrace> traces, Utf8JsonWriter writer) => throw new NotSupportedException();
+
+        public void WriteSerialized(in ReadOnlySequence<byte> elements) => throw new NotSupportedException();
+
+        public void Write(IReadOnlyCollection<TTrace> traces)
+        {
+            lock (collected) collected.AddRange(traces);
+        }
+    }
+
     private sealed class DisposalCounter : IDisposable
     {
         private int _disposals;
@@ -867,7 +884,7 @@ public partial class BlockProcessorTests
         bool traced = stream
             ? parallel.TryStream(block, parent,
                 (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
-                _ => new ParityLikeBlockTracer(types), batch => emitted.AddRange(batch), CancellationToken.None)
+                _ => new ParityLikeBlockTracer(types), new CollectingTraceStream<ParityLikeTxTrace>(emitted), CancellationToken.None)
             : parallel.TryTrace(block, parent,
                 (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
                 _ => new ParityLikeBlockTracer(types), CancellationToken.None, out traces);
@@ -889,10 +906,23 @@ public partial class BlockProcessorTests
     public void ParallelBlockTracer_WhenWorkersCancel_PreservesThePrimaryFailure()
     {
         InvalidOperationException primary = new("state read failed");
-        Task[] tasks = [Task.FromException(new OperationCanceledException())];
-        Exception? actual = Assert.Throws<InvalidOperationException>(() => ParallelBlockTracer.Await(tasks, ExceptionDispatchInfo.Capture(primary)));
+        ExceptionDispatchInfo helper = ExceptionDispatchInfo.Capture(new OperationCanceledException());
+        Exception? actual = Assert.Throws<InvalidOperationException>(() => ParallelBlockTracer.ThrowFailure(ExceptionDispatchInfo.Capture(primary), helper));
         Assert.That(actual, Is.SameAs(primary), "worker cleanup must not replace the caller's failure");
     }
+
+    [Test]
+    public void ParallelBlockTracer_WhenOnlyTheCallerWasCancelled_ReportsTheHelpersFailure()
+    {
+        InvalidOperationException helper = new("state read failed");
+        Exception? actual = Assert.Throws<InvalidOperationException>(() =>
+            ParallelBlockTracer.ThrowFailure(ExceptionDispatchInfo.Capture(new OperationCanceledException()), ExceptionDispatchInfo.Capture(helper)));
+        Assert.That(actual, Is.SameAs(helper), "the caller stopped because a helper failed, and the helper's failure is the cause");
+    }
+
+    [Test]
+    public void ParallelBlockTracer_WhenNothingFailed_Completes() =>
+        Assert.DoesNotThrow(() => ParallelBlockTracer.ThrowFailure(null, null));
 
     [Test]
     public async Task ParallelBlockTracer_ChainsConsecutiveBlocks_AndStillTracesWhatTheReplayTraces()
@@ -1035,7 +1065,7 @@ public partial class BlockProcessorTests
                 return new CompletionTracer<ParityLikeTxTrace>(new ParityLikeBlockTracer(txHash, types),
                     () => { if (transaction == 2) thirdFinished.Set(); });
             },
-            afterTransactions: null, batch => { lock (streamed) streamed.AddRange(batch); }, CancellationToken.None));
+            afterTransactions: null, new CollectingTraceStream<ParityLikeTxTrace>(streamed), CancellationToken.None));
         bool traced;
         try
         {
@@ -1146,7 +1176,7 @@ public partial class BlockProcessorTests
         try
         {
             for (int i = 0; i < blockers.Length; i++)
-                blockers[i] = parallel.QueueWorker(() => { occupied.Signal(); releaseWorkers.Wait(); }, CancellationToken.None);
+                blockers[i] = parallel.QueueWorker(() => { occupied.Signal(); releaseWorkers.Wait(); });
             Assert.That(occupied.Wait(TimeSpan.FromSeconds(10)), Is.True);
             request = Task.Run(() =>
             {
@@ -1181,6 +1211,62 @@ public partial class BlockProcessorTests
             releaseWorkers.Set();
             await Task.WhenAll(blockers.Where(static task => task is not null));
             if (request is not null) await request;
+        }
+    }
+
+    /// <summary>Every worker thread is held by other work, so the helper the block queues cannot start: the caller
+    /// traces the whole block, abandons the helper and returns, without waiting for the held threads and without
+    /// throwing and catching anything on the way.</summary>
+    [Test]
+    public async Task ParallelBlockTracer_WhenHelpersCannotStart_FinishesOnTheCallerWithoutAnException()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance, seeds);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        IndexThroughTheCapture(chain, index, block, parent, Prague.Instance);
+        using ParallelTraceBudget budget = new(2);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
+        using CountdownEvent occupied = new(4);
+        using ManualResetEventSlim releaseWorkers = new(false);
+        Task[] blockers = new Task[4];
+        Thread? caller = null;
+        int thrown = 0;
+        EventHandler<FirstChanceExceptionEventArgs> count = (_, _) =>
+        {
+            if (Thread.CurrentThread == Volatile.Read(ref caller)) Interlocked.Increment(ref thrown);
+        };
+        try
+        {
+            for (int i = 0; i < blockers.Length; i++)
+                blockers[i] = parallel.QueueWorker(() => { occupied.Signal(); releaseWorkers.Wait(); });
+            Assert.That(occupied.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: every worker thread is held");
+
+            AppDomain.CurrentDomain.FirstChanceException += count;
+            (bool traced, int traces) = await Task.Run(() =>
+            {
+                Volatile.Write(ref caller, Thread.CurrentThread);
+                bool done = parallel.TryTrace(block, parent, (_, hash) => new ParityLikeBlockTracer(hash, ParityTraceTypes.Trace), null, CancellationToken.None,
+                    out IReadOnlyList<ParityLikeTxTrace>? result);
+                Volatile.Write(ref caller, null);
+                return (done, result?.Count ?? 0);
+            }).WaitAsync(TimeSpan.FromSeconds(10));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(traced, Is.True);
+                Assert.That(traces, Is.EqualTo(block.Transactions.Length), "the caller traced every transaction");
+                Assert.That(thrown, Is.Zero, "abandoning the helper that never started throws nothing");
+                Assert.That(releaseWorkers.IsSet, Is.False, "the block finished while the worker threads were still held");
+            }
+        }
+        finally
+        {
+            AppDomain.CurrentDomain.FirstChanceException -= count;
+            releaseWorkers.Set();
+            await Task.WhenAll(blockers.Where(static task => task is not null));
         }
     }
 
@@ -1276,7 +1362,7 @@ public partial class BlockProcessorTests
 
         bool accepted = stream
             ? parallel.TryStream(block, parent, (_, hash) => new ParityLikeBlockTracer(hash, ParityTraceTypes.Trace),
-                null, batch => emitted.AddRange(batch), CancellationToken.None)
+                null, new CollectingTraceStream<ParityLikeTxTrace>(emitted), CancellationToken.None)
             : parallel.TryTrace(block, parent, (_, hash) => new ParityLikeBlockTracer(hash, ParityTraceTypes.Trace),
                 null, CancellationToken.None, out traces);
 
@@ -1311,7 +1397,7 @@ public partial class BlockProcessorTests
         {
             if (stream)
                 parallel.TryStream(block, parent, (_, hash) => new ParityLikeBlockTracer(hash, ParityTraceTypes.Trace),
-                    afterTransactions, batch => emitted.AddRange(batch), CancellationToken.None);
+                    afterTransactions, new CollectingTraceStream<ParityLikeTxTrace>(emitted), CancellationToken.None);
             else
                 parallel.TryTrace(block, parent, (_, hash) => new ParityLikeBlockTracer(hash, ParityTraceTypes.Trace),
                     afterTransactions, CancellationToken.None, out _);
@@ -1334,6 +1420,36 @@ public partial class BlockProcessorTests
             IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default) =>
             inner.ProcessOne(suggestedBlock, options,
                 blockTracer.IsTracingRewards == rewards ? new RecordingPrefixTracer(blockTracer) : blockTracer, spec, token);
+    }
+
+    /// <remarks>Only the scope that installs the trace executor may leave the senders of a bounded replay to it.</remarks>
+    [Test]
+    public async Task BlockchainProcessorFacade_DefersBoundedReplaySendersOnlyWithTheTraceModule([Values] bool traceModule)
+    {
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        foreach (Transaction tx in block.Transactions) tx.SenderAddress = null;
+
+        IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
+        IOverridableEnv env = chain.Container.Resolve<ITraceEnvFactory>().CreateForTracing();
+        using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder =>
+        {
+            builder.AddModule(validation);
+            if (traceModule) builder.AddModule(new TransactionTraceModule(validation));
+            builder.AddModule(env);
+        });
+        BlockchainProcessorFacade processor = scope.Resolve<BlockchainProcessorFacade>();
+        using IDisposable pinned = env.BuildAndOverride(parent);
+        IBlockTracer<GethLikeTxTrace> tracer = GethStyleTracer.CreateOptionsTracer(block.Header, new GethTraceOptions(), scope.Resolve<IWorldState>(), chain.SpecProvider);
+        processor.Process(block, TraceProcessingOptions.ReadOnlyReplay, TransactionTraceBoundary.Wrap(tracer, block.Transactions[0].Hash!), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions[0].SenderAddress, Is.EqualTo(TestItem.AddressB), "the target runs, so its sender is recovered");
+            Assert.That(block.Transactions[2].SenderAddress, traceModule ? Is.Null : Is.EqualTo(TestItem.AddressB),
+                "a scope without the trace executor recovers every sender up front");
+        }
     }
 
     private static IReadOnlyCollection<TTrace> TraceWholeBlockThroughTraceEnvironment<TTrace>(BasicTestBlockchain chain, BlockHeader parent, Block block, Func<IWorldState, IBlockTracer<TTrace>> tracerFor)
