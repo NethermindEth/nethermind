@@ -56,19 +56,33 @@ namespace Nethermind.Trie
             INodeData? nodeData = _nodeData;
             if (nodeData is BranchData branch)
             {
-                branch.MarkTaken(i);
+                MarkChildChanged(i);
                 return ref branch[i];
             }
             return ref nodeData![i];
         }
 
+        /// <summary>A bit for each branch slot whose child may differ from the one the branch's RLP encodes.</summary>
+        /// <remarks>
+        /// Only where <see cref="FirstTouchMemoryFlag"/> is on. A slot is marked each time <see cref="DataItem"/> gives a
+        /// writable reference to it, which every child write does, and when a write below changes the child in place. The
+        /// hot read path resolves a child without a mark. A slot without its bit holds null or the child that the RLP
+        /// encodes, so a re-encode copies that slot from the RLP. A walk that tests the bits first skips the other slots:
+        /// SP1 charges for reading each of them the first time. A bit is never cleared, as a slot with its bit set is only
+        /// encoded again. Kept on the node rather than its <see cref="BranchData"/>, where it fits in the padding after
+        /// <c>_blockAndFlags</c>: a field on the branch data grows every branch the other guests allocate.
+        /// </remarks>
+        private ushort _takenChildren;
+
         /// <summary>Records that the child in branch slot <paramref name="i"/> may differ from the one this node's RLP encodes.</summary>
-        /// <remarks>For a write that changes the child in place rather than through <see cref="SetChild"/>; see <see cref="BranchData.Taken"/>.</remarks>
+        /// <remarks>For a write that changes the child in place rather than through <see cref="SetChild"/>; see <see cref="_takenChildren"/>.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void MarkChildChanged(int i)
         {
-            if (FirstTouchMemoryFlag.IsActive && _nodeData is BranchData branch) branch.MarkTaken(i);
+            if (FirstTouchMemoryFlag.IsActive) _takenChildren |= (ushort)(1 << i);
         }
+
+        partial void CopyTakenChildrenFrom(TrieNode node) => _takenChildren = node._takenChildren;
 
         /// <summary>Whether this node awaits its hash, dirty, with <paramref name="child"/>, also unhashed, in slot <paramref name="i"/>.</summary>
         /// <remarks>Such a node gains nothing from <see cref="SetChild"/> with that child: the slot and hash stay as they are.</remarks>
@@ -255,13 +269,13 @@ namespace Nethermind.Trie
         /// </remarks>
         private static bool KeepsRlpOfHashedBranch => FirstTouchMemoryFlag.IsActive;
 
-        /// <summary>Whether a walk over a branch's children skips the slots <see cref="BranchData.Taken"/> has no bit for.</summary>
+        /// <summary>Whether a walk over a branch's children skips the slots <see cref="_takenChildren"/> has no bit for.</summary>
         /// <remarks>Only where <see cref="FirstTouchMemoryFlag"/> is on, as the bits are only kept there.</remarks>
         private static bool TracksTakenChildren => FirstTouchMemoryFlag.IsActive;
 
-        /// <summary>The slots of <paramref name="item"/>, a branch, that may hold a child; see <see cref="BranchData.Taken"/>.</summary>
+        /// <summary>The slots of <paramref name="item"/>, a branch, that may hold a child; see <see cref="_takenChildren"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ushort TakenChildren(TrieNode item) => Unsafe.As<BranchData>(item._nodeData!).Taken;
+        private static ushort TakenChildren(TrieNode item) => item._takenChildren;
 
         /// <summary>The scratch branches are encoded into; see <see cref="KeepsRlpOfHashedBranch"/>.</summary>
         /// <remarks>A class of its own, with no initializer, so each access is a plain load rather than a class-initialization check.</remarks>

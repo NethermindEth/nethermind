@@ -24,7 +24,7 @@ interface INodeWithKey : INodeData
     public byte[]? Key { get; set; }
 }
 
-public sealed partial class BranchData : INodeData
+public sealed class BranchData : INodeData
 {
     public NodeType NodeType => NodeType.Branch;
     public int Length => TrieNode.BranchesCount;
@@ -46,15 +46,7 @@ public sealed partial class BranchData : INodeData
         get => ref _branches[index];
     }
 
-    INodeData INodeData.Clone()
-    {
-        BranchData clone = new(in _branches);
-        CopyTakenTo(clone);
-        return clone;
-    }
-
-    /// <summary>Gives <paramref name="clone"/> the slots this branch has recorded.</summary>
-    partial void CopyTakenTo(BranchData clone);
+    INodeData INodeData.Clone() => new BranchData(in _branches);
 
     [InlineArray(Length)]
     public struct BranchArray

@@ -77,7 +77,7 @@ namespace Nethermind.Trie
             /// child, +995,495 ziskemu steps a block across the four passes that do so.
             /// </remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            private static ref object? FirstBranchChild(TrieNode item) => ref Unsafe.AsRef(in Branch(item).Branches[0]);
+            private static ref object? FirstBranchChild(TrieNode item) => ref Branch(item)[0];
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             private static BranchData Branch(TrieNode item) => item._nodeData as BranchData ?? ThrowNotABranch();
@@ -1230,7 +1230,9 @@ namespace Nethermind.Trie
             /// <remarks>
             /// The header and the empty value are the previous ones too, so the whole encoding is copied: both ends of the
             /// copy then sit on word boundaries, where the children alone start three bytes in.
+            /// Inlined into <see cref="RlpEncodeBranch"/>, whose inlining budget it otherwise exceeds on the guest.
             /// </remarks>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             private static bool TryPatchFullBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item,
                 ReadOnlySpan<byte> nodeRlp, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
