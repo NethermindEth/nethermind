@@ -316,7 +316,7 @@ public class PersistInMemoryTailForShutdownTests
             inner.Add(entry);
         }
 
-        public bool Remove(in StateId to, long depth) => inner.Remove(to, depth);
+        public bool Remove(in StateId to, SnapshotTier tier) => inner.Remove(to, tier);
         public IEnumerable<CatalogEntry> Load() => inner.Load();
     }
 

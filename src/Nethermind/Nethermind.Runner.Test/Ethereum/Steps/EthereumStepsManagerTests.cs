@@ -373,6 +373,17 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
+        [CancelAfter(5000)]
+        public async Task Failing_optional_step_fails_the_run_only_when_selected([Values] bool selected, CancellationToken cancellationToken)
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                selected ? typeof(FailingOptionalStep) : null, command: null, [typeof(FailingOptionalStep)]);
+
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken),
+                selected ? Throws.TypeOf<TestException>() : Throws.Nothing);
+        }
+
+        [Test]
         public async Task Target_run_interrupted_by_shutdown_does_not_report_success()
         {
             await using IContainer container = CreateNethermindEnvironment(

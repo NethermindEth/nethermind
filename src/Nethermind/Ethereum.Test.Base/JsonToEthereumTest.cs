@@ -499,11 +499,11 @@ namespace Ethereum.Test.Base
                 string[] transitionInfo = testSpec.Network.Split("At");
                 string[] networks = transitionInfo[0].Split("To");
 
-                testSpec.EthereumNetwork = LoadSpec(networks[0], testSpec.Config?.BlobSchedule);
+                testSpec.EthereumNetwork = WithZeroNonceStorageAccounts(LoadSpec(networks[0], testSpec.Config?.BlobSchedule), testSpec.Config);
                 if (transitionInfo.Length > 1)
                 {
                     testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
-                    testSpec.EthereumNetworkAfterTransition = LoadSpec(networks[1], testSpec.Config?.BlobSchedule);
+                    testSpec.EthereumNetworkAfterTransition = WithZeroNonceStorageAccounts(LoadSpec(networks[1], testSpec.Config?.BlobSchedule), testSpec.Config);
                 }
 
                 (string name, string category) = GetNameAndCategory(testName);
@@ -512,6 +512,9 @@ namespace Ethereum.Test.Base
 
             return testsByName;
         }
+
+        private static IReleaseSpec WithZeroNonceStorageAccounts(IReleaseSpec spec, ConfigJson? config) =>
+            config?.ZeroNonceStorageAccounts is { Length: > 0 } accounts ? new OverridableReleaseSpec(spec) { Eip8253Accounts = accounts } : spec;
 
         private static ulong LoadChainId(ConfigJson? config) =>
             config?.Chainid is null ? MainnetSpecProvider.Instance.ChainId : System.Convert.ToUInt64(config.Chainid, 16);

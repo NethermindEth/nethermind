@@ -166,6 +166,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     ResolveDataDirectory(parseResult.GetValue(BasicOptions.DataDirectory),
         initConfig, keyStoreConfig, snapshotConfig);
 
+    IpMasker.Enabled = initConfig.MaskIpsInLogs;
     NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
     DotNettyLoggerFactory.DefaultFactory = new NethermindLoggerFactory(logManager, lowerLogLevel: true);
 #if !DEBUG
@@ -393,54 +394,11 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(argsSource);
     configProvider.AddSource(new EnvConfigSource());
 
-    string configFile = parseResult.GetValue(BasicOptions.Configuration)
+    string config = parseResult.GetValue(BasicOptions.Configuration)
         ?? Environment.GetEnvironmentVariable("NETHERMIND_CONFIG")
         ?? "mainnet";
 
-    // If configFile is not a path, handle it
-    if (string.IsNullOrEmpty(Path.GetDirectoryName(configFile)))
-    {
-        string configsDir = parseResult.GetValue(BasicOptions.ConfigurationDirectory)
-            ?? "configs".GetApplicationResourcePath();
-
-        configFile = Path.Join(configsDir, configFile);
-
-        // If the configFile doesn't have an extension, try with supported file extensions
-        if (!Path.HasExtension(configFile))
-        {
-            string? fallback;
-
-            foreach (string ext in new[] { ".json", ".cfg" })
-            {
-                fallback = $"{configFile}{ext}";
-
-                if (File.Exists(fallback))
-                {
-                    configFile = fallback;
-                    break;
-                }
-            }
-        }
-        // For backward compatibility. To be removed in the future.
-        else if (Path.GetExtension(configFile).Equals(".cfg", StringComparison.Ordinal))
-        {
-            string name = Path.GetFileNameWithoutExtension(configFile)!;
-
-            configFile = $"{configFile[..^4]}.json";
-
-            logger.Warn($"'{name}.cfg' is deprecated. Use '{name}' instead.");
-        }
-    }
-
-    // Resolve the full path for logging purposes
-    configFile = Path.GetFullPath(configFile);
-
-    if (!File.Exists(configFile))
-        throw new FileNotFoundException("Configuration file not found.", configFile);
-
-    logger.Info($"Loading configuration from {configFile}");
-
-    configProvider.AddSource(new JsonConfigSource(configFile));
+    configProvider.AddSource(CreateConfigSource(config, parseResult.GetValue(BasicOptions.ConfigurationDirectory)));
     configProvider.Initialize();
 
     (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
@@ -449,6 +407,33 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
         logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");
 
     return configProvider;
+}
+
+JsonConfigSource CreateConfigSource(string config, string? configsDir)
+{
+    string? configFile = ConfigFileLocator.Find(config, configsDir);
+
+    if (configFile is not null)
+    {
+        logger.Info($"Loading configuration from {configFile}");
+        return new JsonConfigSource(configFile);
+    }
+
+    using Stream stream = BuiltInConfigs.Open(config)
+        ?? throw new FileNotFoundException(ConfigFileLocator.NotFoundMessage(config), config);
+
+    if (configsDir is not null)
+        logger.Warn($"Configuration '{config}' not found in --configs-dir {configsDir}. Loading the built-in configuration.");
+    else
+        logger.Info($"Loading built-in configuration {config}");
+
+    // The node used to read configs/ next to the binary, so an edited or mounted file there is now ignored.
+    string oldConfigFile = Path.Join(AppContext.BaseDirectory, "configs", Path.ChangeExtension(config, ".json"));
+
+    if (File.Exists(oldConfigFile))
+        logger.Warn($"File {oldConfigFile} is ignored. To use it, set --config {oldConfigFile}.");
+
+    return new JsonConfigSource(stream);
 }
 
 RootCommand CreateRootCommand()
@@ -568,14 +553,14 @@ static class BasicOptions
     public static Option<string> Configuration { get; } =
         new("--config", "-c")
         {
-            Description = "The path to the configuration file or the file name (also without extension) of any of the configuration files in the configuration files directory.",
+            Description = "The path to a configuration file, or the name of a built-in configuration (for example, mainnet or sepolia).",
             HelpName = "network or file name"
         };
 
     public static Option<string> ConfigurationDirectory { get; } =
         new("--configs-dir", "--configsDirectory", "-cd")
         {
-            Description = "The path to the configuration files directory.",
+            Description = "The path to a directory with your own configuration files. A name given with --config is looked up in this directory before the built-in configurations.",
             HelpName = "path"
         };
 

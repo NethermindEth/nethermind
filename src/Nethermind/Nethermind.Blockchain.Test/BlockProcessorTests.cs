@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.Blockchain;
@@ -72,6 +73,7 @@ using System.Linq;
 using Nethermind.Trie;
 using Nethermind.State.Proofs;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Facade.Filters;
 
@@ -842,7 +844,7 @@ public partial class BlockProcessorTests
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
         // As the node wires it: on an Amsterdam block the access list seeds, on any other the changesets do.
         using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, new ChangesetPrefixStateSeedSource(index), builder => builder
-            .AddSingleton<IRewardCalculatorSource>(new ZeroRewardToTheBeneficiary())
+            .AddSingleton<IRewardCalculator>(new ZeroRewardToTheBeneficiary())
             .AddDecorator<IPrefixStateSeedSource, BlockAccessListPrefixStateSeedSource>());
         IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
         BlockHeader parent = chain.BlockTree.Head!.Header;
@@ -1286,7 +1288,7 @@ public partial class BlockProcessorTests
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
         ChangesetPrefixStateSeedSource seeds = new(index);
         // A calculator that does not rule rewards out, so the reward pass runs and its boundary is checked.
-        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds, builder => builder.AddSingleton<IRewardCalculatorSource>(new UnhintedNoRewards()));
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds, builder => builder.AddSingleton<IRewardCalculator>(new UnhintedNoRewards()));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, spec);
@@ -1341,17 +1343,13 @@ public partial class BlockProcessorTests
         return tracer.BuildResult();
     }
 
-    private sealed class UnhintedNoRewards : IRewardCalculatorSource, IRewardCalculator
+    private sealed class UnhintedNoRewards : IRewardCalculator
     {
-        public IRewardCalculator Get(ITransactionProcessor processor) => this;
-
         public BlockReward[] CalculateRewards(Block block) => [];
     }
 
-    private sealed class ZeroRewardToTheBeneficiary : IRewardCalculatorSource, IRewardCalculator
+    private sealed class ZeroRewardToTheBeneficiary : IRewardCalculator
     {
-        public IRewardCalculator Get(ITransactionProcessor processor) => this;
-
         public BlockReward[] CalculateRewards(Block block) => [new BlockReward(block.Beneficiary!, UInt256.Zero)];
     }
 
@@ -1482,7 +1480,7 @@ public partial class BlockProcessorTests
     {
         RefusingSeedSource seeds = new();
         using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance, seeds,
-            builder => builder.AddSingleton<IRewardCalculatorSource>(new ZeroRewardToTheBeneficiary()));
+            builder => builder.AddSingleton<IRewardCalculator>(new ZeroRewardToTheBeneficiary()));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddThreeTransferBlock(chain, parent.Beneficiary);
         using ParallelBlockTracer.OwnedEnvironment environment = BuildParallelEnvironment(chain);
@@ -2191,7 +2189,8 @@ public partial class BlockProcessorTests
         IRewardCalculator? rewardCalculator = null,
         IBlockCachePreWarmer? preWarmer = null,
         BlockHeader? parentHeader = null,
-        ISpecProvider? specProvider = null)
+        ISpecProvider? specProvider = null,
+        IBlockValidator? blockValidator = null)
     {
         specProvider ??= HoodiSpecProvider.Instance;
         TestStateHeaderProvider stateHeaderProvider = new() { Parent = parentHeader };
@@ -2203,7 +2202,7 @@ public partial class BlockProcessorTests
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
             stateProvider, specProvider, balManager, LimboLogs.Instance);
         BlockProcessor processor = new(specProvider,
-            TestBlockValidator.AlwaysValid,
+            blockValidator ?? TestBlockValidator.AlwaysValid,
             rewardCalculator ?? NoBlockRewards.Instance,
             transactionsExecutor,
             stateProvider,
@@ -2406,6 +2405,32 @@ public partial class BlockProcessorTests
         processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
         Assert.That(eventFired, Is.True, "TransactionsExecuted should fire after ProcessTransactions completes");
+    }
+
+    [Test]
+    public void ProcessOne_keeps_the_generated_bal_that_the_validator_sets_on_a_rejected_block()
+    {
+        BlockAccessListAtIndex slice = new();
+        slice.AddAccountRead(TestItem.AddressA);
+        GeneratedBlockAccessList generated = new();
+        generated.Merge(slice);
+
+        IBlockValidator validator = Substitute.For<IBlockValidator>();
+        validator.ValidateProcessedBlock(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), Arg.Any<Block>(), out Arg.Any<string?>())
+            .Returns(ci =>
+            {
+                ci.ArgAt<Block>(2).GeneratedBlockAccessList = generated;
+                ci[3] = "invalid block";
+                return false;
+            });
+        (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch(blockValidator: validator);
+
+        using IDisposable scope = stateProvider.BeginScope(null);
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
+
+        Assert.Throws<InvalidBlockException>(() =>
+            processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, HoodiSpecProvider.Instance.GetSpec(block.Header), CancellationToken.None));
+        Assert.That(block.EncodedGeneratedBlockAccessList, Is.EqualTo(BlockAccessListDecoder.EncodeToBytes(generated)));
     }
 
     [Test]

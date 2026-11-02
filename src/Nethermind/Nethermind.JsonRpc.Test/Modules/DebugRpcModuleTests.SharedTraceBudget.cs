@@ -146,7 +146,7 @@ public partial class DebugRpcModuleTests
             new { timeout = "bad", streamMode = true });
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}"));
+            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"invalid argument 2\"},\"id\":67}"));
             Assert.That(counter.Calls, Is.Zero);
         }
     }

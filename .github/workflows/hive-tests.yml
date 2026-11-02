@@ -197,7 +197,13 @@ jobs:
           path: hive/workspace
           retention-days: 7
 
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: nethermind/global.json
+
       - name: Print results
+        working-directory: nethermind
         run: |
-          rm -f hive/workspace/logs/hive.json
-          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+          rm -f ../hive/workspace/logs/hive.json
+          dotnet run --file scripts/hive-results.cs -- "../hive/workspace/logs/*.json"

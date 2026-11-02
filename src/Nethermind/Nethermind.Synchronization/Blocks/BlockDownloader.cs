@@ -351,7 +351,7 @@ namespace Nethermind.Synchronization.Blocks
                         new BlockEntry(
                             parentHeader,
                             blockHeader,
-                            Block: null,
+                            Block: TryGetLocalBlock(blockHeader),
                             Receipts: null,
                             PeerInfo: null,
                             EncodedAccessList: null));
@@ -438,7 +438,12 @@ namespace Nethermind.Synchronization.Blocks
                 {
                     BlockHeader? blockHeader = headersSpan[i];
                     if (blockHeader is null) break;
-                    if (!_downloadRequests.TryGetValue(blockHeader.Hash, out BlockEntry blockEntry)) break;
+                    if (!_downloadRequests.TryGetValue(blockHeader.Hash, out BlockEntry blockEntry))
+                    {
+                        if (TryGetLocalBlock(blockHeader) is not { } localBlock) break;
+                        blockEntry = _downloadRequests.GetOrAdd(blockHeader.Hash, new BlockEntry(headersSpan[i - 1]!, blockHeader, localBlock, Receipts: null, PeerInfo: null, EncodedAccessList: null));
+                    }
+
                     blockEntry.CanExecuteMissingData = shouldProcess && ShouldDownloadAccessList(blockHeader, true);
                     if (blockEntry.Block is null) break;
                     if (ShouldDownloadAccessList(blockHeader, shouldProcess) && !blockEntry.HasAccessList) break;
@@ -734,6 +739,27 @@ namespace Nethermind.Synchronization.Blocks
 
         /// <summary>Whether this header requires receipts before suggestion.</summary>
         protected virtual bool ShouldDownloadReceipts(BlockHeader header, bool shouldProcess, bool requested) => requested;
+
+        /// <summary>
+        /// Returns a block already stored locally for <paramref name="header"/>, so that its body is not downloaded again.
+        /// </summary>
+        /// <returns>The stored block, or <c>null</c> when the body has to be downloaded from a peer.</returns>
+        protected virtual Block? FindLocalBlock(BlockHeader header) => null;
+
+        private Block? TryGetLocalBlock(BlockHeader header)
+        {
+            if (FindLocalBlock(header) is not { } localBlock) return null;
+
+            // Only check binding a stored body to its header: IsValidDownloadedBlock skips the roots (validateHashes: false),
+            // and a beacon body can mismatch its header, e.g. a Taiko payload with null Transactions/Withdrawals stored under the wire roots.
+            if (!_blockValidator.ValidateBodyAgainstHeader(header, localBlock.Body, out string? errorMessage))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Stored body of {header.ToString(BlockHeader.Format.Short)} does not match its header, downloading it instead: {errorMessage}");
+                return null;
+            }
+
+            return new Block(header, localBlock.Body);
+        }
 
         protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock) =>
             shouldProcess

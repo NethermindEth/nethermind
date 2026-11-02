@@ -57,6 +57,9 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The logs format as `LogPath:LogLevel;*`", DefaultValue = "null")]
     string? LogRules { get; set; }
 
+    [ConfigItem(Description = "Whether to mask IP addresses, enode URLs and ENR records in logs. Loopback and unspecified addresses are not masked.", DefaultValue = "false")]
+    bool MaskIpsInLogs { get; set; }
+
     [ConfigItem(Description = "The diagnostic mode.", DefaultValue = "None")]
     DiagnosticMode DiagnosticMode { get; set; }
 

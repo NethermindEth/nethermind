@@ -88,6 +88,26 @@ public class BlobGasCalculatorTests
     }
 
     [Test]
+    public void Fee_per_blob_gas_follows_each_input_when_called_back_to_back()
+    {
+        const ulong excessBlobGas = 10_000_000;
+        ulong cancunFraction = Cancun.Instance.BlobBaseFeeUpdateFraction;
+        ulong pragueFraction = Prague.Instance.BlobBaseFeeUpdateFraction;
+
+        BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, cancunFraction, out UInt256 cancun);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, pragueFraction, out UInt256 prague);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas + 1_000_000, cancunFraction, out UInt256 cancunHigherExcess);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, cancunFraction, out UInt256 cancunAgain);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prague, Is.Not.EqualTo(cancun));
+            Assert.That(cancunHigherExcess, Is.GreaterThan(cancun));
+            Assert.That(cancunAgain, Is.EqualTo(cancun));
+        }
+    }
+
+    [Test]
     public void GetGasInfo_computes_the_fee_per_blob_gas_once_per_block()
     {
         IReleaseSpec spec = Cancun.Instance;

@@ -883,7 +883,10 @@ public partial class EngineModuleTests
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain, txs.Length);
         Assert.That(payload.Transactions, Has.Length.EqualTo(txs.Length),
             "the built payload must contain exactly the submitted transactions");
-        await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
+        ResultWrapper<PayloadStatusV1> newPayloadResult = await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
+        Assert.That(newPayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid), "the block must be accepted before the forkchoice");
+        // VALID comes before the commit, which the forkchoice waits for only a bounded time before answering SYNCING.
+        await chain.WaitForCommitted(payload.BlockHash!);
 
         Task txPoolHeadWait = chain.WaitForTxPoolHead(payload.BlockHash!);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(

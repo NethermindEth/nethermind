@@ -79,22 +79,21 @@ public class RandomWalkKademliaDiscoveryTests
         }
     }
 
-    [Test]
+    [TestCase(400, new[] { 600 })]
+    [TestCase(1000, new int[0])]
+    [TestCase(1100, new int[0])]
     [CancelAfter(10000)]
-    public async Task DiscoverNodes_should_not_delay_when_lookup_exceeds_minimum_iteration_duration(CancellationToken token)
+    public async Task DiscoverNodes_should_deduct_lookup_time_from_minimum_iteration_duration(
+        int lookupMilliseconds,
+        int[] expectedDelayMilliseconds,
+        CancellationToken token)
     {
-        TestKademlia kademlia = new() { LookupDelay = TimeSpan.FromMilliseconds(1100) };
-        using IContainer container = CreateContainer(kademlia, new RoutingTableStub());
-        IKademliaDiscovery<int, int> discovery = container.Resolve<IKademliaDiscovery<int, int>>();
+        NoWaitTimeProvider timeProvider = new();
+        TestKademlia kademlia = new() { OnLookup = _ => timeProvider.Advance(TimeSpan.FromMilliseconds(lookupMilliseconds)) };
 
-        Stopwatch stopwatch = Stopwatch.StartNew();
-        List<int> nodes = await discovery.DiscoverNodes(1, 2, token).Take(3).ToListAsync(token);
+        TimeSpan[] delays = await RunIterations(kademlia, new RoutingTableStub(), iterations: 3, token, timeProvider: timeProvider);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(nodes, Is.EqualTo(new[] { 1, 2, 1 }));
-            Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2.7)));
-        }
+        Assert.That(delays.Distinct(), Is.EqualTo(Array.ConvertAll(expectedDelayMilliseconds, static ms => TimeSpan.FromMilliseconds(ms))));
     }
 
     [TestCase(15, 16)]
@@ -301,9 +300,10 @@ public class RandomWalkKademliaDiscoveryTests
         RoutingTableStub routingTable,
         int iterations,
         CancellationToken token,
-        Action<int>? onDelayRequested = null)
+        Action<int>? onDelayRequested = null,
+        NoWaitTimeProvider? timeProvider = null)
     {
-        NoWaitTimeProvider timeProvider = new()
+        timeProvider ??= new NoWaitTimeProvider
         {
             OnDelayRequested = onDelayRequested
         };
@@ -341,6 +341,9 @@ public class RandomWalkKademliaDiscoveryTests
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
         public override long GetTimestamp() => Volatile.Read(ref _timestamp);
+
+        /// <summary>Moves the clock forward as if <paramref name="time"/> had passed.</summary>
+        public void Advance(TimeSpan time) => Interlocked.Add(ref _timestamp, time.Ticks);
 
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
@@ -402,7 +405,6 @@ public class RandomWalkKademliaDiscoveryTests
 
         public int LookupNodesCalls => _lookupNodesCalls;
         public int? LastMaxResults { get; private set; }
-        public TimeSpan LookupDelay { get; set; }
 
         /// <summary>Called with the one-based ordinal of each started lookup.</summary>
         public Action<int>? OnLookup { get; init; }
@@ -422,7 +424,7 @@ public class RandomWalkKademliaDiscoveryTests
             LastMaxResults = maxResults;
             int lookup = Interlocked.Increment(ref _lookupNodesCalls);
             OnLookup?.Invoke(lookup);
-            return CreateAsyncEnumerable(LookupDelay, token, 1, 2);
+            return CreateAsyncEnumerable(token, 1, 2);
         }
 
         public int[] GetKNeighbour(int target, int excluding = 0, bool excludeSelf = false) => throw new NotSupportedException();
@@ -443,12 +445,8 @@ public class RandomWalkKademliaDiscoveryTests
         public int CreateRandomKeyAtDistance(int nodePrefix, int depth) => depth;
     }
 
-    private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>(TimeSpan delay, [EnumeratorCancellation] CancellationToken token, params IEnumerable<T> items)
+    private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>([EnumeratorCancellation] CancellationToken token, params IEnumerable<T> items)
     {
-        if (delay > TimeSpan.Zero)
-        {
-            await Task.Delay(delay, token);
-        }
         foreach (T item in items)
         {
             await Task.Yield();

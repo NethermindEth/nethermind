@@ -30,6 +30,7 @@ using Nethermind.Facade.Find;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -41,6 +42,7 @@ public class LogFinderTests
 {
     private IBlockTree _blockTree = null!;
     private BlockTree _rawBlockTree = null!;
+    private IBlockStore _blockStore = null!;
     private IReceiptStorage _receiptStorage = null!;
     private LogFinder _logFinder = null!;
     private IReceiptsRecovery _receiptsRecovery = null!;
@@ -55,10 +57,11 @@ public class LogFinderTests
         _specProvider = Substitute.For<ISpecProvider>();
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip155Enabled.Returns(true);
         _receiptStorage = new InMemoryReceiptStorage(allowReceiptIterator);
-        _rawBlockTree = Build.A.BlockTree()
+        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree()
             .WithTransactions(_receiptStorage, LogsForBlockBuilder)
-            .OfChainLength(out _headTestBlock, chainLength)
-            .TestObject;
+            .OfChainLength(out _headTestBlock, chainLength);
+        _rawBlockTree = blockTreeBuilder.TestObject;
+        _blockStore = blockTreeBuilder.BlockStore;
         _blockTree = _rawBlockTree;
         _receiptsRecovery = Substitute.For<IReceiptsRecovery>();
         _logFinder = CreateLogFinder();
@@ -331,6 +334,63 @@ public class LogFinderTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void filter_by_block_hash_finds_logs_of_a_stored_block_that_is_not_canonical([Values] bool siblingOfCanonical, [Values] bool persistentReceipts)
+    {
+        PersistentReceiptStorage? persistentStorage = null;
+        if (persistentReceipts)
+        {
+            // Records without tx hashes make the storage recover them from the body of the requested block.
+            TestSpecProvider specProvider = new(Byzantium.Instance);
+            _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId), specProvider);
+            TestMemColumnsDb<ReceiptsColumns> receiptsDb = new();
+            receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, []);
+            _receiptStorage = persistentStorage = new PersistentReceiptStorage(
+                receiptsDb, specProvider, _receiptsRecovery, _rawBlockTree, _blockStore, new ReceiptConfig { StoreTxHashes = false })
+            { MigratedBlockNumber = 0 };
+            _logFinder = CreateLogFinder();
+        }
+
+        Block parent = siblingOfCanonical ? _rawBlockTree.FindBlock(_headTestBlock.Number - 1, BlockTreeLookupOptions.None)! : _headTestBlock;
+        LogEntry log = Build.A.LogEntry.WithAddress(TestItem.AddressE).WithTopics(TestItem.KeccakF).TestObject;
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        Block block = Build.A.Block
+            .WithParent(parent)
+            .WithTransactions(transaction)
+            .WithBloom(new Bloom([log]))
+            .WithExtraData([1])
+            .TestObject;
+        Assert.That(_rawBlockTree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
+        _receiptStorage.Insert(block, Build.A.Receipt
+            .WithLogs(log)
+            .WithTransactionHash(transaction.Hash)
+            .WithBlockHash(block.Hash)
+            .WithBlockNumber(block.Number)
+            .TestObject);
+        persistentStorage?.ClearCache();
+        BlockParameter blockHash = new(block.Hash!);
+        LogFilter logFilter = new(0, blockHash, blockHash, AddressFilter.AnyAddress, new SequenceTopicsFilter());
+
+        FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
+
+        Assert.That(_rawBlockTree.IsMainChain(block.Header), Is.False);
+        Assert.That(logs.Select(static l => (l.BlockHash, l.Address, l.TransactionHash, l.TransactionIndex, l.LogIndex)),
+            Is.EqualTo(new[] { (block.Hash, TestItem.AddressE, transaction.Hash, 0L, 0L) }));
+        AssertSerializedAsFilterLogs(_logFinder.FindLogs(logFilter));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void single_block_filter_reads_receipts_only_when_enumerated()
+    {
+        CountingReceiptFinder counting = new(_receiptStorage);
+        LogFinder logFinder = new(_blockTree, counting, _receiptStorage, LimboLogs.Instance, _receiptsRecovery, MainnetSpecProvider.Instance);
+        IEnumerable<FilterLog> logs = logFinder.FindLogs(FilterBuilder.New().FromBlock(4).ToBlock(4).Build());
+
+        Assert.That(counting.Calls, Is.Zero);
+        Assert.That(logs.Count(), Is.EqualTo(3));
+        Assert.That(counting.Calls, Is.EqualTo(1));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void filter_all_logs_should_throw_when_to_block_is_not_found()
     {
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
@@ -521,6 +581,19 @@ public class LogFinderTests
 
         Assert.That(logs.Select(static log => log.BlockNumber), Is.EqualTo(new ulong[] { 1, 1, 4 }));
         AssertSerializedAsFilterLogs(logs);
+    }
+
+    [Test]
+    public void Indexed_range_ending_in_unprocessed_block_throws_before_enumeration([Values] bool indexCoversEnd)
+    {
+        Block parent = _rawBlockTree.FindBlock(_headTestBlock.Number - 1, BlockTreeLookupOptions.None)!;
+        Block unprocessed = Build.A.Block.WithParent(parent).WithReceiptsRoot(TestItem.KeccakA).WithExtraData([1]).TestObject;
+        Assert.That(_rawBlockTree.SuggestBlock(unprocessed), Is.EqualTo(AddBlockResult.Added));
+        ILogIndexStorage logIndexStorage = CreateLogIndexStorage(1, (int)unprocessed.Number - (indexCoversEnd ? 0 : 1));
+        LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(unprocessed.Number).WithAddress(TestItem.AddressA).Build();
+
+        Assert.That(() => CreateIndexedLogFinder(logIndexStorage).FindLogs(filter, _blockTree.FindHeader(1)!, unprocessed.Header),
+            Throws.TypeOf<BlockNotProcessedException>());
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

@@ -488,6 +488,27 @@ public partial class ForwardHeaderProviderTests
     }
 
     [Test]
+    public async Task Cached_pin_is_kept_when_owner_sleeps_only_for_other_contexts([Values(
+        AllocationContexts.Bodies,
+        AllocationContexts.Blocks)] AllocationContexts sleepContexts)
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+        using CachedPinSetup setup = await CreateCachedPinSetup(ctx);
+        setup.PeerInfo.PutToSleep(sleepContexts, DateTime.UtcNow);
+
+        for (int i = 0; i < 3; i++)
+        {
+            using IOwnedReadOnlyList<BlockHeader?>? response = await setup.ForwardHeader.GetBlockHeaders(0, 4, CancellationToken.None);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response, Has.Count.EqualTo(3));
+                Assert.That(setup.HeaderRequests, Is.EqualTo(1), "a sleep outside the forward header context must not drop the cached window");
+            }
+        }
+    }
+
+    [Test]
     public async Task Cached_pin_respects_bounds_and_cancellation([Values(1, 2)] int maxHeaders)
     {
         await using IContainer node = CreateNode();

@@ -4,11 +4,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api.Monitoring;
 using Nethermind.Api.Steps;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
 using Nethermind.Network;
-using Nethermind.Monitoring.Config;
 
 namespace Nethermind.Init.Steps;
 

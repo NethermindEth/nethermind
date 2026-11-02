@@ -327,6 +327,12 @@ public sealed class TrieNodeCache : ITrieNodeCache
         public TrieNode GetOrAdd(Hash256? address, in TreePath path, TrieNode trieNode)
         {
             (int shard, int hashCode) = GetShardAndHashCode(address, path);
+            return GetOrAdd(shard, hashCode, trieNode);
+        }
+
+        /// <summary>Same as <see cref="GetOrAdd(Hash256?, in TreePath, TrieNode)"/>, by the shard and hash from <see cref="GetShardAndHashCode"/>.</summary>
+        public TrieNode GetOrAdd(int shard, int hashCode, TrieNode trieNode)
+        {
             int idx = hashCode & _mask;
 
             ref (int hashCode, TrieNode? node) entry = ref _shards[shard][idx];

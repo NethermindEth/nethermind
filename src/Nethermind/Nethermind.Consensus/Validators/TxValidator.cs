@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Validation;
 using Nethermind.Crypto;
@@ -609,8 +610,8 @@ public abstract class BaseSignatureTxValidator : ITxValidator
             return TxErrorMessages.InvalidTxSignature;
         }
 
-        UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
-        UInt256 rValue = new(signature.RAsSpan, isBigEndian: true);
+        UInt256 sValue = Bytes.ReadUInt256BigEndian(signature.SAsSpan);
+        UInt256 rValue = Bytes.ReadUInt256BigEndian(signature.RAsSpan);
 
         UInt256 sMax = releaseSpec.IsEip2Enabled ? SecP256k1Curve.HalfNPlusOne : SecP256k1Curve.N;
         return sValue.IsZero || sValue >= sMax ? TxErrorMessages.InvalidTxSignature

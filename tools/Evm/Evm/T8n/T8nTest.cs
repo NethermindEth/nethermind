@@ -12,7 +12,6 @@ using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 
 namespace Evm.T8n;
 
@@ -41,11 +40,12 @@ public class T8nTest(IReleaseSpec spec, ISpecProvider specProvider, Address curr
     public UInt256? ParentBaseFee { get; set; }
     public ulong ParentGasUsed { get; set; }
     public ulong ParentGasLimit { get; set; }
-    public Dictionary<string, Hash256> BlockHashes { get; set; } = [];
+    public Dictionary<ulong, Hash256>? BlockHashes { get; set; }
     public Ommer[] Ommers { get; set; } = [];
     public ulong StateChainId { get; set; } = MainnetSpecProvider.Instance.ChainId;
     public GethTraceOptions GethTraceOptions { get; set; } = GethTraceOptions.Default;
     public bool IsTraceEnabled { get; set; } = false;
+    public bool AreRewardsEnabled { get; set; } = true;
 
     private BlockHeader ConstructBlockHeader()
     {
@@ -59,16 +59,24 @@ public class T8nTest(IReleaseSpec spec, ISpecProvider specProvider, Address curr
 
         if (CurrentRandom is not null) header.MixHash = CurrentRandom;
         if (CurrentBaseFee.HasValue) header.BaseFeePerGas = CurrentBaseFee.Value;
-        if (ParentExcessBlobGas.HasValue && ParentBlobGasUsed.HasValue)
+        if (BlockHashes is not null) header.ParentHash = BlockHashes.GetValueOrDefault(CurrentNumber - 1, Keccak.Zero);
+        header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
+        if (CurrentExcessBlobGas.HasValue)
+        {
+            header.ExcessBlobGas = CurrentExcessBlobGas;
+        }
+        else if (ParentExcessBlobGas.HasValue && ParentBlobGasUsed.HasValue)
         {
             BlockHeader parentHeader = Build.A.BlockHeader
+                .WithTimestamp(ParentTimestamp)
+                .WithBaseFee(ParentBaseFee ?? UInt256.Zero)
                 .WithExcessBlobGas(ParentExcessBlobGas.Value)
                 .WithBlobGasUsed(ParentBlobGasUsed.Value)
                 .TestObject;
             header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Spec);
         }
         header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(Transactions);
-        header.IsPostMerge = Spec is Paris;
+        header.IsPostMerge = SpecProvider.TerminalTotalDifficulty?.IsZero ?? false;
         header.Hash = header.CalculateHash();
 
         return header;

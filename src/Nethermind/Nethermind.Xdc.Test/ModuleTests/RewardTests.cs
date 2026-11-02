@@ -51,8 +51,7 @@ public class RewardTests
         XdcBlockHeader checkpointHeader = builder.TestObject;
         IXdcReleaseSpec spec = Substitute.For<IXdcReleaseSpec>();
         spec.SwitchBlock.Returns(0UL);
-        XdcRewardCalculatorSource source = CreateRewardCalculatorSource(isSubnet);
-        XdcRewardCalculator rewardCalculator = (XdcRewardCalculator)source.Get(
+        XdcRewardCalculator rewardCalculator = CreateRewardCalculator(isSubnet,
             CreateXdcTransactionProcessor(Substitute.For<ISpecProvider>(), Substitute.For<IMasternodeVotingContract>()));
 
         HashSet<Address> masternodes = rewardCalculator.GetRewardMasternodes(checkpointHeader, spec);
@@ -764,7 +763,7 @@ public class RewardTests
             .TestObject;
     }
 
-    private static XdcRewardCalculatorSource CreateRewardCalculatorSource(bool isSubnet)
+    private static XdcRewardCalculator CreateRewardCalculator(bool isSubnet, ITransactionProcessor transactionProcessor)
     {
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
@@ -773,8 +772,8 @@ public class RewardTests
         IMintedRecordContract mintedRecordContract = Substitute.For<IMintedRecordContract>();
         ISigningTxCache signingTxCache = Substitute.For<ISigningTxCache>();
         return isSubnet
-            ? new XdcSubnetRewardCalculatorSource(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache)
-            : new XdcRewardCalculatorSource(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache);
+            ? new XdcSubnetRewardCalculator(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache, transactionProcessor)
+            : new XdcRewardCalculator(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache, transactionProcessor);
     }
 
     private static XdcTransactionProcessor CreateXdcTransactionProcessor(

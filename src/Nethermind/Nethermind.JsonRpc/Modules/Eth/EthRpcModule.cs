@@ -1017,8 +1017,7 @@ public partial class EthRpcModule(
         if (filterId > int.MaxValue)
             return ResultWrapper<bool?>.Success(false);
 
-        _blockchainBridge.UninstallFilter((int)filterId);
-        return ResultWrapper<bool?>.Success(true);
+        return ResultWrapper<bool?>.Success(_blockchainBridge.UninstallFilter((int)filterId));
     }
 
     public ResultWrapper<IEnumerable<object>> eth_getFilterChanges(UInt256 filterId)
@@ -1069,9 +1068,9 @@ public partial class EthRpcModule(
 
             return GetLogsResponse(filterLogs, timeout, out timeoutTransferred);
         }
-        catch (ResourceNotFoundException)
+        catch (ResourceNotFoundException e)
         {
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
+            return GetLogsFailure(e);
         }
         finally
         {
@@ -1143,9 +1142,9 @@ public partial class EthRpcModule(
 
             return GetLogsResponse(filterLogs, timeout, out timeoutTransferred);
         }
-        catch (ResourceNotFoundException)
+        catch (ResourceNotFoundException e)
         {
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
+            return GetLogsFailure(e);
         }
         finally
         {
@@ -1155,6 +1154,11 @@ public partial class EthRpcModule(
             }
         }
     }
+
+    // While receipts sync, the processed head can trail the synced headers, so a missing block is reported as not synced yet.
+    private ResultWrapper<IEnumerable<FilterLog>> GetLogsFailure(ResourceNotFoundException e) => e is BlockNotProcessedException && !_ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet()
+        ? ResultWrapper<IEnumerable<FilterLog>>.Fail(e.Message, ErrorCodes.ResourceNotFound)
+        : ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
 
     // https://github.com/ethereum/EIPs/issues/1186
     public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter)
