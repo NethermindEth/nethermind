@@ -2056,13 +2056,7 @@ public partial class EngineModuleTests
             Task<ExecutionPayloadV4> helper = BuildAndInsertEmptyBlock(chain, parent.Hash!, slot: 2);
             if (queueBeforeVerdict)
             {
-                using AutoCancelTokenSource cts = chain.CreateCancellationSource();
-                if (await Task.WhenAny(helper, chain.CommitWaitStarted).WaitAsync(cts.Token) == helper)
-                {
-                    await helper;
-                    Assert.Fail("the helper completed without waiting for its queued verdict");
-                }
-                Task wait = await chain.CommitWaitStarted;
+                Task wait = await chain.WaitForCommitWait(helper);
                 verdictWaitPending = !wait.IsCompleted;
                 processingRelease.TrySetResult();
             }
@@ -2131,8 +2125,17 @@ public partial class EngineModuleTests
         /// <summary>The block whose commit was held, once its verdict was given.</summary>
         public Hash256? HeldBlock => Volatile.Read(ref _heldBlock);
 
-        /// <summary>Reports the helper's wait task so a queued verdict can be verified to keep it incomplete.</summary>
-        public Task<Task> CommitWaitStarted => _commitWaitStarted.Task;
+        /// <summary>Reports the helper's wait task without hiding a helper failure behind the verdict wait.</summary>
+        public async Task<Task> WaitForCommitWait(Task helper)
+        {
+            using AutoCancelTokenSource cts = CreateCancellationSource();
+            if (await Task.WhenAny(helper, _commitWaitStarted.Task).WaitAsync(cts.Token) == helper)
+            {
+                await helper;
+                Assert.Fail("the helper completed without waiting for its queued verdict");
+            }
+            return await _commitWaitStarted.Task;
+        }
 
         /// <summary>Holds the next block's commit after its verdict.</summary>
         public void HoldCommitOf(BlockHeader parent)
