@@ -82,6 +82,15 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
     }
 
     [Test]
+    public void Streams_callee_out_of_gas_without_an_error_on_the_calling_step([Values] bool precompile)
+    {
+        List<StructLog> logs = StreamLogs(CalleeOutOfGasCode(precompile), GethTraceOptions.Default);
+
+        Assert.That(logs.Where(static l => l.Error is not null).Select(static l => l.Depth).ToArray(),
+            Is.EqualTo(precompile ? Array.Empty<int>() : [2]), "depths of the steps with an error");
+    }
+
+    [Test]
     public void Streams_parent_refund_survives_child_revert()
     {
         List<StructLog> logs = StreamLogs(RefundThenChildRevertCode(), GethTraceOptions.Default);

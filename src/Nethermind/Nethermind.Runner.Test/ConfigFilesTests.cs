@@ -461,7 +461,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
         }
     }
 
-    [TestCase("chiado_archive.json")]
+    [TestCaseSource(nameof(AllConfigFiles))]
     public void Config_file_contains_only_known_settings(string configFile)
     {
         (string errorMsg, IList<(IConfigSource Source, string Category, string Name)> errors) = GetConfigProvider(configFile).FindIncorrectSettings();
