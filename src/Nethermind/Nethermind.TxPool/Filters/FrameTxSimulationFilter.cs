@@ -19,7 +19,7 @@ namespace Nethermind.TxPool.Filters;
 /// Admitting an opaque transaction with no verdict leaves no payer, so <see cref="FrameTxPayerExposureFilter"/>
 /// reserves nothing against it: the exposure bound lapses while this node's own simulator is faulting.
 /// A gossiped transaction's simulation yields to block processing and to this node's block building, and is deferred.
-/// An accepted prefix's EIP-8298 code dependencies are reserved against <paramref name="maxPendingPerCode"/>.</remarks>
+/// An accepted prefix's code dependencies (EIP-8298 targets, EIP-8151 ecRecover signers) are reserved against <paramref name="maxPendingPerCode"/>.</remarks>
 internal sealed class FrameTxSimulationFilter(
     IFrameTxPrefixSimulator? simulator,
     ILogger logger,
@@ -81,7 +81,7 @@ internal sealed class FrameTxSimulationFilter(
                     if (!codeDependencies.TryReserve(tx.Hash!.ValueHash256, result.CodeDependencies, maxPendingPerCode, out bool recorded))
                     {
                         Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxCodeDependencyLimitReached);
-                        if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, too many pending transactions depend on the same account with mutable code.");
+                        if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, too many pending transactions depend on the same account whose code can change or that ecRecover recovered.");
                         return AcceptTxResult.FrameTxCodeDependencyLimitReached;
                     }
 
