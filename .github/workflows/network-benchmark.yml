@@ -2,6 +2,8 @@ name: Network Benchmark
 
 # Runs the Nethermind.Network.Benchmark benchmarks at a base and a head commit in one job on one runner,
 # and writes a comparison table to the job summary. Timings are only comparable within a run.
+# Base and head run in alternating rounds of separate processes, so that drift on the runner during the job
+# lands on both sides instead of on whichever ran later, and the comparison pairs each round's runs.
 
 on:
   workflow_dispatch:
@@ -19,6 +21,11 @@ on:
         required: false
         type: string
         default: "*RlpxRoundTripBenchmarks* *OutFlowBenchmarks*"
+      rounds:
+        description: Number of rounds, each running the benchmarks once at the base and once at the head.
+        required: false
+        type: number
+        default: 5
 
 permissions:
   contents: read
@@ -87,34 +94,49 @@ jobs:
           persist-credentials: false
           path: base
 
-      - name: Run benchmarks at base
-        id: run-base
-        continue-on-error: true
-        working-directory: base/src/Nethermind/Nethermind.Benchmark.Runner
-        env:
-          FILTER: ${{ inputs.filter }}
-        run: |
-          read -ra patterns <<< "${FILTER}"
-          dotnet run -c Release -- --filter "${patterns[@]}" --join --buildTimeout 900 --artifacts "${RUNNER_TEMP}/bdn-base"
+      # The comparison reads the layout this workflow writes, which a head or base from before it may not know.
+      - name: Check out the comparison script
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          sparse-checkout: scripts/network-bench
+          path: workflow
 
-      - name: Run benchmarks at head
-        id: run-head
-        continue-on-error: true
-        working-directory: head/src/Nethermind/Nethermind.Benchmark.Runner
+      - name: Run benchmarks
+        id: run
         env:
           FILTER: ${{ inputs.filter }}
+          ROUNDS: ${{ inputs.rounds || 5 }}
         run: |
           read -ra patterns <<< "${FILTER}"
-          dotnet run -c Release -- --filter "${patterns[@]}" --join --buildTimeout 900 --artifacts "${RUNNER_TEMP}/bdn-head"
+          outcome_base=success
+          outcome_head=success
+          # Fixed counts keep the job's length proportional to the rounds; the rounds supply the repetitions.
+          for ((round = 1; round <= ROUNDS; round++)); do
+            # Alternating the order cancels drift that grows over the job.
+            if ((round % 2)); then sides=(base head); else sides=(head base); fi
+            for side in "${sides[@]}"; do
+              (cd "${side}/src/Nethermind/Nethermind.Benchmark.Runner" &&
+                dotnet run -c Release -- --filter "${patterns[@]}" --join --buildTimeout 900 \
+                  --launchCount 1 --warmupCount 5 --iterationCount 10 \
+                  --artifacts "${RUNNER_TEMP}/bdn-${side}/round-${round}") ||
+                printf -v "outcome_${side}" failure
+            done
+          done
+          {
+            echo "base=${outcome_base}"
+            echo "head=${outcome_head}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Compare
         if: always()
         env:
           BASE_SHA: ${{ steps.refs.outputs.base }}
           HEAD_SHA: ${{ steps.refs.outputs.head }}
-          BASE_OUTCOME: ${{ steps.run-base.outcome }}
-          HEAD_OUTCOME: ${{ steps.run-head.outcome }}
-        run: head/scripts/network-bench/compare.cs "${RUNNER_TEMP}/bdn-base" "${RUNNER_TEMP}/bdn-head" >> "${GITHUB_STEP_SUMMARY}"
+          BASE_OUTCOME: ${{ steps.run.outputs.base }}
+          HEAD_OUTCOME: ${{ steps.run.outputs.head }}
+        run: workflow/scripts/network-bench/compare.cs "${RUNNER_TEMP}/bdn-base" "${RUNNER_TEMP}/bdn-head" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload results
         if: always()
@@ -128,5 +150,5 @@ jobs:
           retention-days: 14
 
       - name: Fail if the head run failed
-        if: steps.run-head.outcome != 'success'
+        if: steps.run.outputs.head != 'success'
         run: exit 1
