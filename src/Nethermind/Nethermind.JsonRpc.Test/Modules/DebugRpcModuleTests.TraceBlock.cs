@@ -1972,14 +1972,26 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceBlockByNumber_mux_preserves_javascript_result_errors([Values] bool nested)
+    public async Task Debug_traceBlockByNumber_mux_preserves_javascript_result_errors(
+        [Values] bool nested,
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
+        [Values("result", "step")] string callback)
     {
         using Context ctx = await Context.Create();
-        const string script = "{fault:function(){},result:function(){throw Error('mux result failure');}}";
+        Block block = await ctx.Blockchain.AddBlock(CreateTraceBlockTransactions(ctx.Blockchain));
+        string script = callback == "result"
+            ? "{fault:function(){},result:function(){throw Error('mux result failure');}}"
+            : "{fault:function(){},step:function(){throw Error('mux step failure');},result:function(){return {};}}";
         Dictionary<string, object> children = new() { [script] = new { }, ["noopTracer"] = new { } };
         object config = nested ? new Dictionary<string, object> { ["muxTracer"] = children } : children;
 
-        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceBlockByNumber", "latest",
+        object selector = method switch
+        {
+            "debug_traceBlockByNumber" => block.Number,
+            "debug_traceBlockByHash" => block.Hash!,
+            _ => Rlp.Encode(block).ToString()
+        };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, method, selector,
             new { tracer = "muxTracer", tracerConfig = config });
         JToken json = JToken.Parse(response);
         JToken? error = json["error"];
@@ -1987,7 +1999,7 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That((int?)error["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-            Assert.That((string?)error["message"], Does.Contain("mux result failure"), response);
+            Assert.That((string?)error["message"], Does.Contain($"mux {callback} failure"), response);
             Assert.That(json["result"], Is.Null, response);
         }
     }
