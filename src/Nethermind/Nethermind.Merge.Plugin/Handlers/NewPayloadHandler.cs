@@ -947,8 +947,24 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private void TrackQueuedCopy(Hash256 blockHash, ValueHash256? inclusionListDigest, Task left)
     {
-        QueuedCopy[] stillQueued = Array.FindAll(_queuedCopies, static copy => !copy.Left.IsCompleted);
-        _queuedCopies = [.. stillQueued, new QueuedCopy(blockHash, inclusionListDigest, left)];
+        QueuedCopy[] queuedCopies = _queuedCopies;
+        int stillQueued = 0;
+        foreach (QueuedCopy copy in queuedCopies)
+        {
+            if (!copy.Left.IsCompleted) stillQueued++;
+        }
+
+        QueuedCopy[] tracked = new QueuedCopy[stillQueued + 1];
+        int count = 0;
+        foreach (QueuedCopy copy in queuedCopies)
+        {
+            if (!copy.Left.IsCompleted) tracked[count++] = copy;
+        }
+
+        // A copy can leave the queue between the two passes; drop the slot it would have taken.
+        if (count < stillQueued) Array.Resize(ref tracked, count + 1);
+        tracked[count] = new QueuedCopy(blockHash, inclusionListDigest, left);
+        _queuedCopies = tracked;
     }
 
     private async Task EnqueueOnceAddedAsync(Task<AddBlockResult> suggest, Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
