@@ -1972,6 +1972,8 @@ public partial class DebugRpcModuleTests
         if (!bodyAvailable) chain.BlockTree.DeleteOldBlock(genesis.Number, genesis.Hash!);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(chain.BlockTree.GetLowestBlock(), Is.EqualTo(1));
+            Assert.That(chain.BlockTree.LowestServedBlock, Is.EqualTo(1));
             Assert.That(chain.BlockTree.FindHeader(genesis.Hash!), Is.Not.Null);
             Assert.That(chain.BlockTree.FindBlock(genesis.Hash!), bodyAvailable ? Is.Not.Null : Is.Null);
         }
@@ -1980,9 +1982,9 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual["result"], Is.Null);
-            Assert.That((int?)actual["error"]?["code"], Is.EqualTo(bodyAvailable ? ErrorCodes.InvalidInput : ErrorCodes.ResourceNotFound));
+            Assert.That((int?)actual["error"]?["code"], Is.EqualTo(bodyAvailable ? ErrorCodes.InvalidInput : ErrorCodes.PrunedHistoryUnavailable));
             Assert.That((string?)actual["error"]?["message"], Is.EqualTo(bodyAvailable
-                ? "genesis is not traceable" : $"block {genesis.Hash} not found"));
+                ? "genesis is not traceable" : ErrorMessages.PrunedHistoryUnavailable));
         }
     }
 
