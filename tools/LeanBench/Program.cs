@@ -26,7 +26,7 @@ namespace Nethermind.Tools.LeanBench;
 
 public static partial class Program
 {
-    private const string BackendCommit = "cf1e92f87a7aec052b680f73e56145e866218583";
+    private const string BackendCommit = "e2bc4212013087c0823188e975b224ade286d878";
     private static readonly List<BenchmarkRow> Rows = [];
     private static readonly List<BatchSample> Samples = [];
     private static readonly BenchCase[] Cases = [new("sphincs1", 1, 0), new("sphincs4", 4, 0),
