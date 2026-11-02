@@ -50,11 +50,17 @@ public sealed partial class ParallelBlockTracer : IParallelBlockTracer, IDisposa
     /// sets <see cref="StreamedPerWorker"/>.</summary>
     private const int DefaultStreamedPerWorker = 32;
 
-    /// <summary>Bytes of one streamed block that may be serialized and not yet written, unless a test sets
-    /// <see cref="StreamedBudgetBytes"/>.</summary>
-    private const long DefaultStreamedBudgetBytes = 32 * 1024 * 1024;
+    /// <summary>Bytes of one streamed block that may be serialized and not yet written, counted as the chunk memory
+    /// they hold, at least <see cref="StreamedBudgetBytesPerWorker"/> per worker. With the window it bounds the memory a
+    /// request holds when its client reads slowly: 32 MiB, and 4 MiB per worker above 8 workers. A worker that finds
+    /// it spent waits before it takes another transaction.</summary>
+    internal const long StreamedBudgetBytes = 32 * 1024 * 1024;
 
-    /// <summary>Chunk bytes the idle serialized traces keep for the next blocks, across all of them.</summary>
+    /// <summary>The budget each worker adds, so that large traces still leave every worker room to trace ahead.</summary>
+    internal const long StreamedBudgetBytesPerWorker = 4 * 1024 * 1024;
+
+    /// <summary>Idle chunks kept for the next blocks, at least this many bytes of them; the store also covers one
+    /// chunk for every transaction of the widest windows two interleaved blocks can hold.</summary>
     private const long RetainedSerializedBytes = 8 * 1024 * 1024;
 
     private bool _disposed;
@@ -65,15 +71,6 @@ public sealed partial class ParallelBlockTracer : IParallelBlockTracer, IDisposa
     /// workers to pass a transaction that costs as much as many others, few enough that the traces waiting behind it
     /// stay bounded. The value is a heuristic.</summary>
     internal int StreamedPerWorker { get; init; } = DefaultStreamedPerWorker;
-
-    /// <summary>Bytes of one streamed block that may be serialized and not yet written, at least
-    /// <see cref="StreamedBudgetBytesPerWorker"/> per worker. With the window it bounds the memory a request holds when
-    /// its client reads slowly; a worker that finds it spent waits before it takes another transaction. The default
-    /// is 32 MiB.</summary>
-    internal long StreamedBudgetBytes { get; init; } = DefaultStreamedBudgetBytes;
-
-    /// <summary>The budget each worker adds, so that large traces still leave every worker room to trace ahead.</summary>
-    internal const long StreamedBudgetBytesPerWorker = 4 * 1024 * 1024;
 
     internal bool IsDisposing
     {
@@ -87,9 +84,10 @@ public sealed partial class ParallelBlockTracer : IParallelBlockTracer, IDisposa
         _environments = new ShareableOverridableEnvSource<Components>(buildEnvironment, _degree);
         _budgets = budgets;
         _workers = new Workers(2 * _degree);
-        // Every instance of the widest windows two interleaved blocks can hold goes back to the pool, so a backlog
-        // allocates none; the chunk bytes kept while idle are capped on their own.
-        _serialized = new SerializedTraces.Pool(2 * _degree * DefaultStreamedPerWorker, RetainedSerializedBytes);
+        // Every instance of the widest windows two interleaved blocks can hold goes back to the pool, with a chunk
+        // each, so a backlog of small traces allocates none; larger traces past the store use the shared array pool.
+        int widestWindows = 2 * _degree * DefaultStreamedPerWorker;
+        _serialized = new SerializedTraces.Pool(widestWindows, Math.Max(widestWindows, (int)(RetainedSerializedBytes / SerializedTraces.ChunkSize)));
         _seeds = seeds;
         _logger = logManager.GetClassLogger<ParallelBlockTracer>();
     }

@@ -254,7 +254,7 @@ internal sealed class SerializingTraceEmitter<TTrace> : OrderedTraceEmitter<TTra
         Start(transactions, window);
     }
 
-    /// <summary>The bytes serialized and not yet written.</summary>
+    /// <summary>The chunk memory held by what is serialized and not yet written.</summary>
     internal long PendingBytes => Volatile.Read(ref _pending);
 
     public override void Reserve(CancellationToken token)
@@ -290,7 +290,7 @@ internal sealed class SerializingTraceEmitter<TTrace> : OrderedTraceEmitter<TTra
             throw;
         }
 
-        Interlocked.Add(ref _pending, serialized.Length);
+        Interlocked.Add(ref _pending, serialized.Held);
         return serialized;
     }
 
@@ -308,9 +308,9 @@ internal sealed class SerializingTraceEmitter<TTrace> : OrderedTraceEmitter<TTra
 
     protected override void Release(SerializedTraces slot)
     {
-        long length = slot.Length;
+        long held = slot.Held;
         _pool!.Return(slot);
-        if (Interlocked.Add(ref _pending, -length) <= _budget) _underBudget.Set();
+        if (Interlocked.Add(ref _pending, -held) <= _budget) _underBudget.Set();
     }
 
     public override void Clear()

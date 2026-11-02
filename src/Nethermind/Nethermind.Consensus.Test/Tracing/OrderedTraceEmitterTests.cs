@@ -278,7 +278,7 @@ public class OrderedTraceEmitterTests
     [Test]
     public void SerializedTraces_ReusedAfterALargerTrace_HoldsOnlyItsOwnBytes()
     {
-        SerializedTraces.Pool pool = new(capacity: 1, retainedBytes: SerializedTraces.ChunkSize);
+        SerializedTraces.Pool pool = new(capacity: 1, chunks: 1);
         string large = new('x', 100_000);
 
         SerializedTraces first = pool.Rent(Options);
@@ -307,7 +307,7 @@ public class OrderedTraceEmitterTests
     [Test]
     public void SerializedTraces_ALargeTrace_IsHeldInChunksAndReadsBackWhole()
     {
-        SerializedTraces.Pool pool = new(capacity: 1, retainedBytes: SerializedTraces.ChunkSize);
+        SerializedTraces.Pool pool = new(capacity: 1, chunks: 1);
         SerializedTraces serialized = pool.Rent(Options);
         Utf8JsonWriter writer = serialized.Start(Options);
         StringBuilder expected = new();
@@ -339,7 +339,7 @@ public class OrderedTraceEmitterTests
     [Test]
     public void SerializedTracesPool_KeepsChunksOnlyUpToItsCap_AndReusesThem()
     {
-        SerializedTraces.Pool pool = new(capacity: 2, retainedBytes: 2 * SerializedTraces.ChunkSize);
+        SerializedTraces.Pool pool = new(capacity: 2, chunks: 2);
         SerializedTraces large = Filled(pool, 5 * SerializedTraces.ChunkSize);
         large.Seal();
         int chunks = 0;
@@ -372,7 +372,7 @@ public class OrderedTraceEmitterTests
     [Test]
     public void SerializedTracesPool_RentsTheInstanceWhoseWriterHasTheOptions()
     {
-        SerializedTraces.Pool pool = new(capacity: 2, retainedBytes: SerializedTraces.ChunkSize);
+        SerializedTraces.Pool pool = new(capacity: 2, chunks: 1);
         JsonWriterOptions deeper = new() { SkipValidation = true, MaxDepth = 32 };
         SerializedTraces shallow = pool.Rent(Options);
         Utf8JsonWriter shallowWriter = shallow.Start(Options);
@@ -439,7 +439,7 @@ public class OrderedTraceEmitterTests
             direct.WriteEndArray();
         }
 
-        SerializedTraces.Pool pool = new(capacity: 1, retainedBytes: SerializedTraces.ChunkSize);
+        SerializedTraces.Pool pool = new(capacity: 1, chunks: 1);
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0));
         using (Utf8JsonWriter writer = new(pipe.Writer, new JsonWriterOptions { SkipValidation = true }))
         {
@@ -479,7 +479,7 @@ public class OrderedTraceEmitterTests
     {
         RecordingStream stream = new(serializeAhead: true);
         using SerializingTraceEmitter<int> emitter = new();
-        emitter.Start(stream, stream.SerializeAheadOptions!.Value, new SerializedTraces.Pool(8, SerializedTraces.ChunkSize), transactions: 4, window: 8, budgetBytes: 1);
+        emitter.Start(stream, stream.SerializeAheadOptions!.Value, new SerializedTraces.Pool(8, 1), transactions: 4, window: 8, budgetBytes: 1);
         Reserve(emitter, 2);
 
         emitter.Add(1, new Traces(11, 12));
@@ -496,7 +496,7 @@ public class OrderedTraceEmitterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(pending, Is.EqualTo("11,12".Length), "precondition: the bytes of the transaction waiting behind the first one");
+            Assert.That(pending, Is.EqualTo(SerializedTraces.ChunkSize), "precondition: the chunk held by the transaction waiting behind the first one");
             Assert.That(emitter.PendingBytes, Is.Zero, "writing gives the bytes back");
             Assert.That(stream.Json(), Is.EqualTo("[0,11,12]"));
         }
@@ -506,7 +506,7 @@ public class OrderedTraceEmitterTests
     public void Emitter_ReusedForTheNextBlock_HasTheWindowOfThatBlock([Values] bool serializeAhead)
     {
         RecordingStream stream = new(serializeAhead);
-        SerializedTraces.Pool pool = new(8, SerializedTraces.ChunkSize);
+        SerializedTraces.Pool pool = new(8, 8);
         using SerializingTraceEmitter<int> ahead = new();
         using InTurnTraceEmitter<int> inTurn = new();
         ParallelTraceResults<int> emitter = serializeAhead ? ahead : inTurn;
@@ -538,7 +538,7 @@ public class OrderedTraceEmitterTests
     {
         const int transactions = 64;
         RecordingStream stream = new(serializeAhead: true, throughOutput: true);
-        SerializedTraces.Pool pool = new(2 * transactions, 64 * SerializedTraces.ChunkSize);
+        SerializedTraces.Pool pool = new(2 * transactions, 2 * transactions);
         using SerializingTraceEmitter<int> emitter = new();
         int[][] traces = new int[transactions][];
         for (int i = 0; i < transactions; i++) traces[i] = [i, i + 1];
@@ -581,7 +581,7 @@ public class OrderedTraceEmitterTests
         if (stream.SerializeAheadOptions is { } options)
         {
             SerializingTraceEmitter<int> ahead = new();
-            ahead.Start(stream, options, new SerializedTraces.Pool(window, window * SerializedTraces.ChunkSize), transactions, window, budgetBytes: long.MaxValue);
+            ahead.Start(stream, options, new SerializedTraces.Pool(window, window), transactions, window, budgetBytes: long.MaxValue);
             return ahead;
         }
 

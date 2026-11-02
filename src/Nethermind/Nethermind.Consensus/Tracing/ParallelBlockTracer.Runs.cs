@@ -43,7 +43,8 @@ public sealed partial class ParallelBlockTracer
 
         private readonly object _gate = new();
         private readonly Queue<(IParallelTraceJob Job, long Ticket)> _jobs = new(count * KeptPerThread);
-        private Thread[]? _threads;
+        private readonly Thread?[] _threads = new Thread?[count];
+        private int _started;
         private bool _grown;
         private bool _completed;
 
@@ -51,23 +52,22 @@ public sealed partial class ParallelBlockTracer
         {
             lock (_gate)
             {
-                if (_threads is null) Start();
+                if (_started < count) StartMissing();
                 _jobs.Enqueue((job, ticket));
                 _grown |= _jobs.Count > count * KeptPerThread;
                 Monitor.Pulse(_gate);
             }
         }
 
-        /// <summary>Starts the threads; the set is recorded before any starts, so a thread that fails to start does
-        /// not leave the started ones unknown to <see cref="Dispose"/>.</summary>
-        private void Start()
+        /// <summary>Starts the threads not started yet. A thread is recorded only once it has started, so one that
+        /// fails to start is tried again by the next post, and <see cref="Dispose"/> joins exactly the started ones.</summary>
+        private void StartMissing()
         {
-            Thread[] threads = new Thread[count];
-            _threads = threads;
-            for (int i = 0; i < threads.Length; i++)
+            for (; _started < count; _started++)
             {
-                threads[i] = new Thread(Work) { IsBackground = true, Name = $"{nameof(ParallelBlockTracer)} {i}" };
-                threads[i].Start();
+                Thread thread = new(Work) { IsBackground = true, Name = $"{nameof(ParallelBlockTracer)} {_started}" };
+                thread.Start();
+                _threads[_started] = thread;
             }
         }
 
@@ -99,19 +99,15 @@ public sealed partial class ParallelBlockTracer
         /// <summary>Lets the threads finish the jobs already posted, then waits for them.</summary>
         public void Dispose()
         {
-            Thread[]? threads;
+            int started;
             lock (_gate)
             {
                 _completed = true;
                 Monitor.PulseAll(_gate);
-                threads = _threads;
+                started = _started;
             }
 
-            if (threads is null) return;
-            foreach (Thread? thread in threads)
-            {
-                if (thread is not null && thread.ThreadState != ThreadState.Unstarted) thread.Join();
-            }
+            for (int i = 0; i < started; i++) _threads[i]!.Join();
         }
     }
 
@@ -227,7 +223,7 @@ public sealed partial class ParallelBlockTracer
             if (stream.SerializeAheadOptions is { } options)
             {
                 _serializing ??= new SerializingTraceEmitter<TTrace>();
-                long budget = Math.Max(tracer.StreamedBudgetBytes, workers * StreamedBudgetBytesPerWorker);
+                long budget = Math.Max(StreamedBudgetBytes, workers * StreamedBudgetBytesPerWorker);
                 _serializing.Start(stream, options, tracer._serialized, transactions, window, budget);
                 return _results = _serializing;
             }
