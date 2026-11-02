@@ -9,14 +9,14 @@ namespace Nethermind.Stateless.Execution.IO;
 internal static partial class InputDecoder
 {
     /// <remarks>Only where <see cref="FirstTouchMemoryFlag"/> is on, which assumes the input lies in writable memory that
-    /// outlives the run, as on SP1. The input's second offset locates the witness, and the witness's first its state list.
+    /// outlives the run, as on SP1. The offset at <see cref="WitnessOffsetPosition"/> locates the witness, and the witness's first its state list.
     /// Decoding checks both before it decodes a node, so offsets out of range only leave the nodes copied.</remarks>
     static partial void PlaceWitnessNodesInInput(ReadOnlySpan<byte> data)
     {
-        if (!FirstTouchMemoryFlag.IsActive || data.Length < 2 * sizeof(uint))
+        if (!FirstTouchMemoryFlag.IsActive || data.Length < WitnessOffsetPosition + sizeof(uint))
             return;
 
-        uint witness = BinaryPrimitives.ReadUInt32LittleEndian(data[sizeof(uint)..]);
+        uint witness = BinaryPrimitives.ReadUInt32LittleEndian(data[WitnessOffsetPosition..]);
         if (witness > data.Length - sizeof(uint))
             return;
 

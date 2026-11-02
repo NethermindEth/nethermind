@@ -21,6 +21,9 @@ internal static partial class InputDecoder
     /// <summary>The schema id of an Amsterdam block.</summary>
     internal const ushort AmsterdamSchemaId = ((ushort)ProtocolFork.Amsterdam << 8) | Revision1;
 
+    /// <summary>Where an encoded <c>StatelessInput</c> holds the offset of its witness: past that of its new payload request.</summary>
+    internal const int WitnessOffsetPosition = sizeof(uint);
+
     /// <summary>Decodes a stateless input into the payload the run executes.</summary>
     /// <remarks>
     /// Also installs the run's hash seed, as soon as the payload's own commitment is available and

@@ -88,6 +88,28 @@ public class StatelessInputGeneratorTests
 
     [Test]
     [NonParallelizable]
+    public async Task Encoded_input_holds_its_witness_offset_where_the_decoder_reads_it([Values] bool amsterdam)
+    {
+        (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam, currentChainActivation: true);
+        using (witness)
+        {
+            byte[] encoded = (await InputGenerator.EncodeInput(block, witness, specProvider))!;
+            ReadOnlySpan<byte> data = encoded.AsSpan(sizeof(ushort));
+            int offset = BinaryPrimitives.ReadInt32LittleEndian(data[InputDecoder.WitnessOffsetPosition..]);
+            ExecutionWitness decoded = amsterdam ? DecodeWitness<SszExecutionPayloadAmsterdam>(data) : DecodeWitness<SszExecutionPayload>(data);
+
+            Assert.That(data[offset..].ToArray(), Is.EqualTo(ExecutionWitness.Encode(decoded)));
+        }
+
+        static ExecutionWitness DecodeWitness<TPayload>(ReadOnlySpan<byte> data) where TPayload : SszExecutionPayload, ISszCodec<TPayload>, new()
+        {
+            StatelessInput<TPayload>.Decode(data, out StatelessInput<TPayload> input);
+            return input.Witness;
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
     public async Task Encoded_execution_rejects_an_empty_transaction_entry()
     {
         (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam: false, currentChainActivation: true);
