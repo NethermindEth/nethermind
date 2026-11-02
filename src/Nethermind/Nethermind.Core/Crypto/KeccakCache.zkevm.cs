@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto;
 
@@ -128,20 +129,31 @@ public static partial class KeccakCache
         ComputeAndMemoizeFixed(input, ref slot, 64, out keccak256);
 
     /// <summary>Hashes an input of constant <paramref name="length"/> that missed its slot and memoizes the digest there.</summary>
-    /// <remarks>The slot is written before the caller's output, which may alias the input.</remarks>
+    /// <remarks>The slot is written before the caller's output, which may alias the input. The digest is computed
+    /// straight into the slot, which the output then copies.</remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ComputeAndMemoizeFixed(ReadOnlySpan<byte> input, ref ulong slot, nuint length, out ValueHash256 keccak256)
     {
-        ValueHash256 digest = ValueKeccak.Compute(input);
-        WriteSlotFixed(ref slot, ref MemoryMarshal.GetReference(input), length, digest);
-        keccak256 = digest;
+        ref byte inputRef = ref MemoryMarshal.GetReference(input);
+        ref ValueHash256 memoized = ref Unsafe.As<ulong, ValueHash256>(ref Unsafe.Add(ref slot, MemoValueWord));
+        KeccakHash.ComputeHash256Fixed(ref inputRef, length, out memoized);
+        WriteSlotKeyFixed(ref slot, ref inputRef, length);
+        keccak256 = memoized;
     }
 
-    /// <summary>Stores a digest and its constant-length input's key in <paramref name="slot"/>, writing the
-    /// key words as <see cref="ProbeFixed"/> reads them.</summary>
+    /// <summary>Stores a digest and its constant-length input's key in <paramref name="slot"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteSlotFixed(ref ulong slot, ref byte inputRef, nuint length, in ValueHash256 keccak256)
+    {
+        Unsafe.As<ulong, ValueHash256>(ref Unsafe.Add(ref slot, MemoValueWord)) = keccak256;
+        WriteSlotKeyFixed(ref slot, ref inputRef, length);
+    }
+
+    /// <summary>Stores a constant-length input's key in <paramref name="slot"/>, writing the key words as
+    /// <see cref="ProbeFixed"/> reads them.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteSlotKeyFixed(ref ulong slot, ref byte inputRef, nuint length)
     {
         nuint keyWords = (length + 7) >> 3;
         if (keyWords > 0) Unsafe.Add(ref slot, 0) = KeyWord(ref inputRef, length, 0);
@@ -152,7 +164,6 @@ public static partial class KeccakCache
         if (keyWords > 5) Unsafe.Add(ref slot, 5) = KeyWord(ref inputRef, length, 5);
         if (keyWords > 6) Unsafe.Add(ref slot, 6) = KeyWord(ref inputRef, length, 6);
         if (keyWords > 7) Unsafe.Add(ref slot, 7) = KeyWord(ref inputRef, length, 7);
-        Unsafe.As<ulong, ValueHash256>(ref Unsafe.Add(ref slot, MemoValueWord)) = keccak256;
         Unsafe.Add(ref slot, MemoLengthWord) = length;
     }
 
@@ -362,11 +373,15 @@ public static partial class KeccakCache
     /// little-endian target, so shifting them down zero-pads them and the stored key never needs a
     /// byte-granular compare. A big-endian target would derive a different word - harmless for
     /// correctness, since key and probe stay consistent, but it would scatter the slot index. riscv64
-    /// and every host this runs on are little-endian.
+    /// and every host this runs on are little-endian. Where <see cref="StrictAlignmentFlag"/> is on, the word ending an
+    /// input that starts on a word boundary is not on one, and reading it is a byte-by-byte gather: the bytes are read
+    /// in pieces from where they start instead, which gives the same word.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong MemoLastKeyWord(ref byte inputRef, nuint length, nuint partial) => partial == 0
         ? 0
+        : StrictAlignmentFlag.IsActive
+        ? KeccakHash.PartialLane(ref Unsafe.Add(ref inputRef, length - partial), partial)
         : Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, length - sizeof(ulong))) >> (int)((sizeof(ulong) - partial) << 3);
 
     /// <summary>The input's slot in <see cref="Memo"/>.</summary>

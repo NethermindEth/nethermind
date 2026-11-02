@@ -734,7 +734,9 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         Task processing = Task.Run(() => run = ProcessWhileWarming(block, (footprints, index) =>
             index > 0 || (footprints.WarmPassEnded && !footprints.HasWork && footprints.Get(1) is not null)));
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
         Assert.That(processing.Wait(TimeSpan.FromSeconds(30)), Is.True, "the session did not end");
+#pragma warning restore NUnit2045
         Assert.That(run!.Tally.Rejected, Is.EqualTo(1));
     }
 

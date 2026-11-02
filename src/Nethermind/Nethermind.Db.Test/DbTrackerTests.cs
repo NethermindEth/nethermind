@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Api.Monitoring;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
@@ -17,8 +18,6 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
-using Nethermind.Monitoring.Config;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -95,17 +94,22 @@ public class DbTrackerTests
 
     [Parallelizable(ParallelScope.None)]
     [Test]
-    public void PublishesMetricsWhenDbIsCreated()
+    public void PublishesMetricsOnlyWhenMetricsEnabled([Values] bool metricsEnabled)
     {
         IDbFactory fakeDbFactory = Substitute.For<IDbFactory>();
         fakeDbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(new FakeDb(new IDbMeta.DbMetric { TotalReads = 42 }));
 
-        (IContainer container, _) = BuildTrackerContainer(fakeDbFactory, new MetricsConfig { Enabled = true });
+        (IContainer container, Action updateAction) = BuildTrackerContainer(fakeDbFactory, new MetricsConfig { Enabled = metricsEnabled });
         using IContainer _disposable = container;
 
         container.Resolve<IDbFactory>().CreateDb(new DbSettings("TestDb", "TestDb"));
 
-        Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(42));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.DbReads.GetValueOrDefault("TestDb"), Is.EqualTo(metricsEnabled ? 42 : 0));
+            Assert.That(updateAction, metricsEnabled ? Is.Not.Null : Is.Null);
+            Assert.That(container.Resolve<DbMonitoringModule.DbTracker>().GetAllDbMeta().Count(), Is.EqualTo(metricsEnabled ? 1 : 0));
+        }
     }
 
     private (IContainer, Action, DbMonitoringModule.DbTracker) ConfigurePausedMetricUpdater()
@@ -156,7 +160,9 @@ public class DbTrackerTests
 
         updateAction!();
 
+#pragma warning disable NUnit2045 // The key must exist before indexing the result.
         Assert.That(Metrics.DbReads.ContainsKey("GoodDb"), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(Metrics.DbReads["GoodDb"], Is.EqualTo(42));
     }
 
@@ -174,7 +180,7 @@ public class DbTrackerTests
         // DbMetricIntervalSeconds = 0 disables the interval guard so we can update twice in a row.
         (IContainer container, Action updateAction) = BuildTrackerContainer(
             innerFactory,
-            new MetricsConfig { DbMetricIntervalSeconds = 0 },
+            new MetricsConfig { Enabled = true, DbMetricIntervalSeconds = 0 },
             withInterceptor: false);
         using IContainer _ = container;
 
@@ -185,7 +191,9 @@ public class DbTrackerTests
         tracker.AddDb("PrunedState", pruningDb);
 
         updateAction!();
+#pragma warning disable NUnit2045 // The size precondition is checked before starting a pruning cycle.
         Assert.That(Metrics.DbSize["PrunedState"], Is.EqualTo(100));
+#pragma warning restore NUnit2045
 
         // Trigger and commit a full pruning cycle; pruningDb._currentDb now points to the second inner DB.
         Assert.That(pruningDb.TryStartPruning(out IPruningContext context), Is.True);
@@ -233,9 +241,12 @@ public class DbTrackerTests
 
         Action invoke = () => updateAction!();
         Assert.That(invoke, Throws.Nothing);
-        Assert.That(invoke, Throws.Nothing);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(invoke, Throws.Nothing);
 
-        Assert.That(testLogger.LogList, Is.Empty);
+            Assert.That(testLogger.LogList, Is.Empty);
+        }
     }
 
     /// <summary>
@@ -260,7 +271,7 @@ public class DbTrackerTests
             .AddSingleton<DbMonitoringModule.DbTracker>()
             .AddSingleton<IDbConfig>(new DbConfig())
             .AddSingleton<HyperClockCacheWrapper>()
-            .AddSingleton<IMetricsConfig>(metricsConfig ?? new MetricsConfig())
+            .AddSingleton<IMetricsConfig>(metricsConfig ?? new MetricsConfig { Enabled = true })
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IMonitoringService>(monitoringService);
 
@@ -293,7 +304,7 @@ public class DbTrackerTests
             .AddModule(new DbModule(new InitConfig(), new ReceiptConfig(), new SyncConfig()))
             .AddModule(new DbMonitoringModule())
             .AddSingleton<IDbConfig>(new DbConfig())
-            .AddSingleton<IMetricsConfig>(new MetricsConfig())
+            .AddSingleton<IMetricsConfig>(new MetricsConfig { Enabled = true })
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IMonitoringService>(monitoringService)
             .AddDecorator<IDbFactory, DbMonitoringModule.DbTracker.DbFactoryInterceptor>()

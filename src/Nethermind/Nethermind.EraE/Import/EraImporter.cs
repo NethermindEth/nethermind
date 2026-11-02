@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.EraE.Config;
 using EraImportException = Nethermind.Era1.EraImportException;
+using KnownHeaders = Nethermind.Era1.KnownHeaders;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Store;
@@ -103,6 +104,9 @@ public sealed class EraImporter(
         if (syncConfig.FastSync && suggestFromBlock == 1)
             suggestFromBlock = ulong.MaxValue;
 
+        await KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(blockTree, from, to,
+            async number => (await eraStore.FindBlockAndReceipts(number, cancellation: cancellation)).Item1, cancellation);
+
         // Align to era boundary for parallel section
         ulong nextEraStart = eraStore.NextEraStart(blockNumber);
         if (nextEraStart <= to)
@@ -161,6 +165,8 @@ public sealed class EraImporter(
                 return;
             if (block.IsBodyMissing)
                 throw new EraImportException($"Block {number} body is missing — archive may be corrupted.");
+
+            KnownHeaders.EnsureMatch(blockTree, block);
 
             if (suggestFromBlock <= block.Number)
             {

@@ -65,13 +65,19 @@ public class ReceiptsRecoveryTests
         Block block = Build.A.Block.WithTransactions(tx).TestObject;
         TxReceipt receipt = Build.A.Receipt.WithBlockHash(block.Hash!).TestObject;
 
-        Assert.That(tx.SenderAddress, Is.Null);
-        Assert.That(receipt.ContractAddress, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.SenderAddress, Is.Null);
+            Assert.That(receipt.ContractAddress, Is.Null);
+        }
 
         ReceiptsRecoveryResult result = _receiptsRecovery.TryRecover(block, new[] { receipt });
 
-        Assert.That(result, Is.EqualTo(ReceiptsRecoveryResult.NeedReinsert));
-        Assert.That(receipt.ContractAddress, Is.EqualTo(new Address("0x3a6e7897affdf344781bb9098a605e9839ac131b")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(ReceiptsRecoveryResult.NeedReinsert));
+            Assert.That(receipt.ContractAddress, Is.EqualTo(new Address("0x3a6e7897affdf344781bb9098a605e9839ac131b")));
+        }
     }
 
     // The stored sender deliberately differs from the signer: if recovery ran, the signer would win.

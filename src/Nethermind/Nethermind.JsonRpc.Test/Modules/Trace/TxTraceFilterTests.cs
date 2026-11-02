@@ -26,22 +26,31 @@ public class TxTraceFilterTests
         ParityTraceAction reward = new() { Type = "reward", Author = TestItem.AddressC };
 
         TxTraceFilter filterForFrom = new(new[] { TestItem.AddressA }, null, 0, null, TraceFilterMode.Intersection);
-        Assert.That(filterForFrom.ShouldUseTxTrace(action1), Is.EqualTo(true));
-        Assert.That(filterForFrom.ShouldUseTxTrace(action2), Is.EqualTo(false));
-        Assert.That(filterForFrom.ShouldUseTxTrace(action3), Is.EqualTo(true));
-        Assert.That(filterForFrom.ShouldUseTxTrace(reward), Is.EqualTo(false));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filterForFrom.ShouldUseTxTrace(action1), Is.EqualTo(true));
+            Assert.That(filterForFrom.ShouldUseTxTrace(action2), Is.EqualTo(false));
+            Assert.That(filterForFrom.ShouldUseTxTrace(action3), Is.EqualTo(true));
+            Assert.That(filterForFrom.ShouldUseTxTrace(reward), Is.EqualTo(false));
+        }
 
         TxTraceFilter filterForTo = new(null, new[] { TestItem.AddressC }, 0, null, TraceFilterMode.Intersection);
-        Assert.That(filterForTo.ShouldUseTxTrace(action1), Is.EqualTo(false));
-        Assert.That(filterForTo.ShouldUseTxTrace(action2), Is.EqualTo(true));
-        Assert.That(filterForTo.ShouldUseTxTrace(action3), Is.EqualTo(true));
-        Assert.That(filterForTo.ShouldUseTxTrace(reward), Is.EqualTo(true));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filterForTo.ShouldUseTxTrace(action1), Is.EqualTo(false));
+            Assert.That(filterForTo.ShouldUseTxTrace(action2), Is.EqualTo(true));
+            Assert.That(filterForTo.ShouldUseTxTrace(action3), Is.EqualTo(true));
+            Assert.That(filterForTo.ShouldUseTxTrace(reward), Is.EqualTo(true));
+        }
 
         TxTraceFilter filterForFromAndTo = new(new[] { TestItem.AddressA }, new[] { TestItem.AddressC }, 0, null, TraceFilterMode.Intersection);
-        Assert.That(filterForFromAndTo.ShouldUseTxTrace(action1), Is.EqualTo(false));
-        Assert.That(filterForFromAndTo.ShouldUseTxTrace(action2), Is.EqualTo(false));
-        Assert.That(filterForFromAndTo.ShouldUseTxTrace(action3), Is.EqualTo(true));
-        Assert.That(filterForFromAndTo.ShouldUseTxTrace(reward), Is.EqualTo(false));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filterForFromAndTo.ShouldUseTxTrace(action1), Is.EqualTo(false));
+            Assert.That(filterForFromAndTo.ShouldUseTxTrace(action2), Is.EqualTo(false));
+            Assert.That(filterForFromAndTo.ShouldUseTxTrace(action3), Is.EqualTo(true));
+            Assert.That(filterForFromAndTo.ShouldUseTxTrace(reward), Is.EqualTo(false));
+        }
     }
 
     private static readonly ParityTraceAction AToB = new() { From = TestItem.AddressA, To = TestItem.AddressB };
@@ -138,7 +147,9 @@ public class TxTraceFilterTests
         ParityTraceAction action1 = new() { From = TestItem.AddressA };
         ParityTraceAction action2 = new() { From = TestItem.AddressB };
 
+#pragma warning disable NUnit2045 // Each call advances the pagination state used by the next check.
         Assert.That(traceFilter.ShouldUseTxTrace(action1), Is.EqualTo(false));
+#pragma warning restore NUnit2045
         Assert.That(traceFilter.ShouldUseTxTrace(action2), Is.EqualTo(false));
         Assert.That(traceFilter.ShouldUseTxTrace(action1), Is.EqualTo(false));
         Assert.That(traceFilter.ShouldUseTxTrace(action2), Is.EqualTo(false));

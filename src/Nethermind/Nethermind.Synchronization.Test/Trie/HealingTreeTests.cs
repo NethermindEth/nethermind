@@ -95,8 +95,11 @@ public class HealingTreeTests
         if (successfullyRecovered)
         {
             // Recovered code is persisted, so the next read no longer hits the network.
-            Assert.That(db[_key.Bytes], Is.EqualTo(_rlp));
-            Assert.That(codeDb.Get(_key.Bytes), Is.EqualTo(_rlp));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(db[_key.Bytes], Is.EqualTo(_rlp));
+                Assert.That(codeDb.Get(_key.Bytes), Is.EqualTo(_rlp));
+            }
             recovery.Received(1).Recover(_key.ValueHash256, Arg.Any<CancellationToken>());
         }
     }
@@ -410,13 +413,19 @@ public class HealingTreeTests
             for (ulong i = 0; i < 100; i++)
             {
                 Address address = new(Keccak.Compute(i.ToString()));
-                Assert.That(mainWorldState.GetBalance(address), Is.EqualTo((UInt256)i));
-                Assert.That(mainWorldState.GetNonce(address), Is.EqualTo(i));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(mainWorldState.GetBalance(address), Is.EqualTo((UInt256)i));
+                    Assert.That(mainWorldState.GetNonce(address), Is.EqualTo(i));
+                }
             }
 
             Address storageAddress = new(Keccak.Compute("storage"));
-            Assert.That(mainWorldState.GetBalance(storageAddress), Is.EqualTo((UInt256)100));
-            Assert.That(mainWorldState.GetNonce(storageAddress), Is.EqualTo(100ul));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(mainWorldState.GetBalance(storageAddress), Is.EqualTo((UInt256)100));
+                Assert.That(mainWorldState.GetNonce(storageAddress), Is.EqualTo(100ul));
+            }
             for (int i = 1; i < 100; i++)
             {
                 mainWorldState.Get(new StorageCell(storageAddress, (UInt256)i), out UInt256 storageValue1);

@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Synchronization;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
@@ -84,6 +85,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     internal int BackwardExitFloor => _backwardExitFloor;
     private int _stallTicks;
     private bool _stallWarned;
+    private bool _forwardBelowBarrierWarned;
+    // The forward walk starts below the pivot when the stored index ends below the barrier the pivot is raised to.
+    private ulong _forwardProgressStart;
 
     public string Description => "log index builder";
 
@@ -99,6 +103,12 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         ArgumentNullException.ThrowIfNull(receiptStorage);
         ArgumentNullException.ThrowIfNull(logManager);
         ArgumentNullException.ThrowIfNull(syncConfig);
+
+        if (config.Enabled)
+        {
+            ThrowIfBelowOne(config.MaxReceiptsParallelism, nameof(ILogIndexConfig.MaxReceiptsParallelism));
+            ThrowIfBelowOne(config.MaxAggregationParallelism, nameof(ILogIndexConfig.MaxAggregationParallelism));
+        }
 
         _config = config;
         _logIndexStorage = logIndexStorage;
@@ -118,6 +128,12 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         Direction(isForward: false) = new();
         Direction(isForward: true) = new();
+    }
+
+    private static void ThrowIfBelowOne(int parallelism, string setting)
+    {
+        if (parallelism < 1)
+            throw new InvalidConfigurationException($"LogIndex.{setting} must be at least 1 but is {parallelism}.", ExitCodes.ForbiddenOptionValue);
     }
 
     private static int StallDeadlineTicks(IHistoryConfig? historyConfig, IBlocksConfig? blocksConfig)
@@ -166,7 +182,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             if (!_pivotTask.IsCompleted && _logger.IsInfo)
                 _logger.Info($"{GetLogPrefix()}: waiting for the first block...");
 
-            await _pivotTask;
+            ulong pivot = await _pivotTask;
+            _forwardProgressStart = GetNextBlockNumber(isForward: true) is { } next ? ulong.Min(pivot, (ulong)next) : pivot;
 
             StartProcessing(isForward: true);
             StartProcessing(isForward: false);
@@ -284,9 +301,20 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         : 0UL;
 
     // Block 0 should always be present
-    public ulong MinTargetBlockNumber => _syncConfig.AncientReceiptsBarrierCalc <= 1
+    public ulong MinTargetBlockNumber => AncientReceiptsBarrier <= 1
         ? 0UL
-        : _syncConfig.AncientReceiptsBarrierCalc;
+        : AncientReceiptsBarrier;
+
+    /// <summary>The lowest block the receipts download keeps.</summary>
+    /// <remarks>
+    /// With fast sync it is keyed on the tree pivot, like the receipts feed: a CL-discovered pivot never reaches the sync config.
+    /// Without fast sync no feed runs and it keeps the config value.
+    /// It stays at the configured barrier even when an earlier feed run from a lower pivot left receipts below it: the barrier names the oldest receipts
+    /// the operator asked for, and queries below the index are still answered from receipts.
+    /// </remarks>
+    private ulong AncientReceiptsBarrier => !_syncConfig.FastSync
+        ? _syncConfig.AncientReceiptsBarrierCalc
+        : ulong.Max(1UL, ulong.Min(_blockTree.SyncPivot.BlockNumber, ulong.Max(_syncConfig.AncientBodiesBarrier, _syncConfig.AncientReceiptsBarrier)));
 
     // Nothing below the lowest body the node ever downloaded can be a retained island, so the sliced
     // descent stops there instead of fabricating down to the barrier. Clamped by the published boundary:
@@ -419,7 +447,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
                 int batchSize = _config.MaxBatchSize;
                 int end = isForward ? start + batchSize - 1 : start - batchSize + 1;
-                end = Math.Max(end, (int)(isForward ? MinTargetBlockNumber : BackwardTargetBlockNumber));
+                if (!isForward)
+                    end = Math.Max(end, backwardFloor);
                 end = Math.Min(end, (int)MaxTargetBlockNumber);
 
                 // from - inclusive, to - exclusive
@@ -433,6 +462,13 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
                 if (batch.Length == 0)
                 {
+                    if (isForward && (ulong)start < MinTargetBlockNumber && (ulong)start <= MaxTargetBlockNumber && !_forwardBelowBarrierWarned)
+                    {
+                        _forwardBelowBarrierWarned = true;
+                        if (_logger.IsWarn) _logger.Warn(
+                            $"{GetLogPrefix(isForward)}: the stored log index ends at block {start - 1}, below the ancient receipts barrier {MinTargetBlockNumber}, and the receipts for block {start} are unavailable - the forward index cannot advance. Restart once with LogIndex.Reset=true to rebuild the log index.");
+                    }
+
                     ulong lowestStored = _blockTree.GetLowestBlock();
                     if (!isForward && (ulong)start < lowestStored)
                     {
@@ -505,11 +541,11 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (forward.Progress is { HasEnded: false } forwardProgress)
         {
             ulong bestKnown = _blockTree.BestKnownNumber;
-            forwardProgress.TargetValue = bestKnown >= MaxReorgDepth + pivotNumber
-                ? bestKnown - MaxReorgDepth - pivotNumber + 1UL
+            forwardProgress.TargetValue = bestKnown >= MaxReorgDepth + _forwardProgressStart
+                ? bestKnown - MaxReorgDepth - _forwardProgressStart + 1UL
                 : 0UL;
-            forwardProgress.Update(_logIndexStorage.MaxBlockNumber is { } max && (ulong)max >= pivotNumber
-                ? (ulong)max - pivotNumber + 1UL
+            forwardProgress.Update(_logIndexStorage.MaxBlockNumber is { } max && (ulong)max >= _forwardProgressStart
+                ? (ulong)max - _forwardProgressStart + 1UL
                 : 0UL);
             forwardProgress.CurrentQueued = forward.Queue!.QueueCount;
         }

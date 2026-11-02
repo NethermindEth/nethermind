@@ -241,21 +241,10 @@ public class StatelessBlockTree : IBlockTree, IBlockhashCache, IHeaderFinder
                 ? header?.Hash
                 : null;
 
-    public Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken)
-    {
-        const ulong length = BlockhashCache.MaxDepth + 1;
-        Hash256[] result = new Hash256[(int)length];
-        result[0] = blockHeader.Hash;
-        for (ulong i = 1; i < length; i++)
-        {
-            if (_numberToHeader.TryGetValue(blockHeader.Number - i, out BlockHeader header))
-            {
-                result[i] = header.Hash;
-            }
-        }
-
-        return Task.FromResult(result);
-    }
+    /// <inheritdoc/>
+    /// <remarks>Returns <see langword="null"/>: <see cref="GetHash"/> answers every lookup from the witness headers.</remarks>
+    public Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken) =>
+        Task.FromResult<Hash256[]?>(null);
 
     // No-op: the stateless block tree is its own cache (headers are fixed for the verification scope),
     // there is no auxiliary growing structure to drop. Required by IBlockhashCache.

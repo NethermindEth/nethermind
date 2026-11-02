@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Int256;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Core.Extensions;
@@ -51,6 +52,21 @@ public static unsafe partial class Bytes
         return new Bswap64Hoist(m8, m16);
     }
 
+    /// <summary>Reads the 32 big-endian bytes of <paramref name="word"/> as a <see cref="UInt256"/>.</summary>
+    /// <remarks>A limb at a time: the constructor gathers the word a byte at a time here.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="word"/> is not 32 bytes long.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static UInt256 ReadUInt256BigEndian(ReadOnlySpan<byte> word)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(word.Length, 32);
+        ref byte source = ref MemoryMarshal.GetReference(word);
+        return new UInt256(
+            ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 24)),
+            ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 16)),
+            ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 8)),
+            ZkEvmBitOperations.ReadUInt64BigEndian(ref source));
+    }
+
     /// <summary>A run of byte swaps sharing the masks <see cref="HoistBswap64"/> loaded.</summary>
     internal readonly struct Bswap64Hoist(ulong m8, ulong m16)
     {
@@ -64,16 +80,18 @@ public static unsafe partial class Bytes
 
     /// <summary>Copies <paramref name="source"/> to the start of <paramref name="destination"/>.</summary>
     /// <remarks>
-    /// Corelib copies more than 64 bytes through a GC-transition wrapper around the zkVM's <c>memmove</c>
-    /// that spills every callee-saved register, ~60 steps a call whatever the length. Where
-    /// <see cref="ZiskFlag"/> is on, this calls <c>memmove</c> directly, so overlapping spans stay safe;
-    /// elsewhere it keeps corelib's copy. See <c>Bytes.std.cs</c> for the host form.
+    /// On ZisK, corelib copies more than 64 bytes through a GC-transition wrapper around the zkVM's <c>memmove</c>
+    /// that spills every callee-saved register, ~60 steps a call whatever the length. On SP1 and OpenVM, corelib's
+    /// <c>SpanHelpers.Memmove</c> adds ~13 instructions to each copy of more than 16 bytes before it reaches the same
+    /// routine. Where <see cref="ZiskFlag"/>, <see cref="Sp1Flag"/> or <see cref="OpenVmFlag"/> is on, this calls
+    /// <c>memmove</c> directly, so overlapping spans stay safe; elsewhere it keeps corelib's copy. See
+    /// <c>Bytes.std.cs</c> for the host form.
     /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="destination"/> is shorter than <paramref name="source"/>.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Copy(ReadOnlySpan<byte> source, Span<byte> destination)
     {
-        if (!ZiskFlag.IsActive)
+        if (!ZiskFlag.IsActive && !Sp1Flag.IsActive && !OpenVmFlag.IsActive)
         {
             source.CopyTo(destination);
             return;
@@ -90,15 +108,42 @@ public static unsafe partial class Bytes
     /// which may overlap.</summary>
     /// <remarks>
     /// Where <see cref="ZiskFlag"/> is on, this is the zkVM's <c>memmove</c>, which its runtime turns into a
-    /// DMA precompile; elsewhere it is corelib's copy. Unpinned pointers are safe because nothing between taking
+    /// DMA precompile, and where <see cref="Sp1Flag"/> or <see cref="OpenVmFlag"/> is on it is the guest's assembly
+    /// <c>memmove</c>; elsewhere it is corelib's copy. Unpinned pointers are safe because nothing between taking
     /// them and the call returning can reach a GC safepoint: the import suppresses the GC transition and the
-    /// callee is a two-instruction thunk.
+    /// callee is native code with no calls back into managed code.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Memmove(void* destination, void* source, nuint length)
     {
-        if (ZiskFlag.IsActive) Accelerators.Memmove(destination, source, length);
+        if (ZiskFlag.IsActive || Sp1Flag.IsActive || OpenVmFlag.IsActive) Accelerators.Memmove(destination, source, length);
         else Buffer.MemoryCopy(source, destination, length, length);
+    }
+
+    /// <summary>Writes the four words at <paramref name="source"/>, which is word-aligned, to the 32 bytes at <paramref name="destination"/>, which is not.</summary>
+    /// <remarks>
+    /// Where <see cref="StrictAlignmentFlag"/> is on, a misaligned 32-byte copy is 32 byte loads and stores. This
+    /// writes the five aligned words that hold the destination instead, and keeps the bytes of the first and the last
+    /// that lie outside it. The words are aligned and the guest is single-threaded, so writing those bytes back is not a
+    /// race. The destination must be misaligned: with a skew of 0 the shifts by 64 wrap and the write is wrong.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void WriteMisalignedWords(byte* destination, ulong* source)
+    {
+        int skew = (int)((nuint)destination & (sizeof(ulong) - 1));
+        Debug.Assert(skew != 0);
+        // Rounding both addresses lets the JIT drop the alignment test of every access.
+        ulong* words = (ulong*)((nuint)destination & ~(nuint)(sizeof(ulong) - 1));
+        source = (ulong*)((nuint)source & ~(nuint)(sizeof(ulong) - 1));
+        int low = skew * 8;
+        int high = 64 - low;
+        ulong outside = ulong.MaxValue >> high;
+        ulong w0 = source[0], w1 = source[1], w2 = source[2], w3 = source[3];
+        words[0] = (words[0] & outside) | (w0 << low);
+        words[1] = (w0 >> high) | (w1 << low);
+        words[2] = (w1 >> high) | (w2 << low);
+        words[3] = (w2 >> high) | (w3 << low);
+        words[4] = (words[4] & ~outside) | (w3 >> high);
     }
 
     /// <summary>Sets <paramref name="length"/> bytes at <paramref name="destination"/> to <paramref name="value"/>.</summary>

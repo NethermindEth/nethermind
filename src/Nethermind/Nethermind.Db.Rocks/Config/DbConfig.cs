@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.Rocks.Config;
@@ -9,8 +10,9 @@ public class DbConfig : IDbConfig
 {
     public static DbConfig Default = new();
 
-    public ulong SharedBlockCacheSize { get; set; } = 256UL.MiB;
-    public bool SkipMemoryHintSetting { get; set; } = false;
+    public ulong SharedBlockCacheSize { get; set; } = 512UL.MiB;
+    [Obsolete]
+    public bool SkipMemoryHintSetting { get; set; }
 
     public bool WriteAheadLogSync { get; set; } = false;
     public bool EnableDbStatistics { get; set; } = false;
@@ -191,7 +193,7 @@ public class DbConfig : IDbConfig
     public ulong StateDbWriteBufferSize { get; set; } = 64UL.MB;
     public ulong StateDbWriteBufferNumber { get; set; } = 4;
     public bool? StateDbVerifyChecksum { get; set; } = true;
-    public ulong? StateDbRowCacheSize { get; set; }
+    public ulong? StateDbRowCacheSize { get; set; } = 128UL.MiB;
     public bool StateDbEnableFileWarmer { get; set; } = false;
     public double StateDbCompressibilityHint { get; set; } = 0.45;
     public string StateDbRocksDbOptions { get; set; } =

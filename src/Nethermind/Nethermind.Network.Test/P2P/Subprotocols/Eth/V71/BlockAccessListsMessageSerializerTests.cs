@@ -34,8 +34,11 @@ public class BlockAccessListsMessageSerializerTests
         serializer.Serialize(buffer2, deserialized);
         buffer.SetReaderIndex(0);
         string allHex = buffer.ReadAllHex();
-        Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
-        Assert.That(allHex, Is.EqualTo(expectedData));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
+            Assert.That(allHex, Is.EqualTo(expectedData));
+        }
     }
 
     [TestCaseSource(nameof(BlockAccessListsRejectionCases))]

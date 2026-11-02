@@ -4,9 +4,9 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Api.Monitoring;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
-using Nethermind.Monitoring.Config;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
@@ -22,6 +22,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
     private readonly ILogger _logger;
     private readonly Options _options;
 
+    private readonly bool _prometheusEnabled;
     private readonly string _exposeHost;
     private readonly int? _exposePort;
     private readonly string _nodeName;
@@ -52,6 +53,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         string pushGatewayUrl = metricsConfig.PushGatewayUrl;
         int intervalSeconds = metricsConfig.IntervalSeconds;
 
+        _prometheusEnabled = metricsConfig.Enabled;
         _exposeHost = exposeHost;
         _exposePort = exposePort;
         _nodeName = string.IsNullOrWhiteSpace(nodeName)
@@ -72,7 +74,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
 
     public async Task StartAsync()
     {
-        if (_pushGatewayUrl is not null)
+        if (_prometheusEnabled && _pushGatewayUrl is not null)
         {
             MetricPusherOptions pusherOptions = new()
             {
@@ -115,7 +117,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
             _metricPusher.Start();
         }
 
-        if (_exposePort is not null)
+        if (_prometheusEnabled && _exposePort is not null)
         {
             _metricServer = new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value);
             _metricServer.Start();

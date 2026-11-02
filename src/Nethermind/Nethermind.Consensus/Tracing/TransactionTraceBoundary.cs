@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -12,6 +14,8 @@ namespace Nethermind.Consensus.Tracing;
 /// <summary>Marks completion of a requested transaction without changing the block presented to tracers.</summary>
 public sealed class TransactionTraceBoundary : IBlockTracer
 {
+    private const int SerialLookupLength = 64;
+
     private readonly IBlockTracer _inner;
     private readonly Hash256? _transactionHash;
     private readonly IPrefixStateSeedSource? _seeds;
@@ -31,6 +35,8 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     internal IPrefixStateSeedSource? Seeds => _seeds;
     internal bool IsExecutionRequired { get; set; }
     internal bool HasExecuted { get; set; }
+    private bool CompletesBeforeTransactions { get; init; }
+    private int KnownIndex { get; init; } = -1;
 
     /// <summary>No transaction is traced: a seed can replace the whole block, or a refused seed can replay it
     /// silently before tracing rewards.</summary>
@@ -44,22 +50,65 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     public static IBlockTracer Wrap(IBlockTracer tracer, Hash256? transactionHash, IPrefixStateSeedSource? seeds = null) =>
         transactionHash is null || tracer.IsTracingRewards ? tracer : new TransactionTraceBoundary(tracer, transactionHash, seeds);
 
+    /// <summary><see cref="Wrap"/> for a target whose position in the block the caller already knows.</summary>
+    /// <param name="index">The target's index in the block. An index that does not hold the target falls back to the
+    /// lookup by hash.</param>
+    internal static IBlockTracer WrapAt(IBlockTracer tracer, Hash256? transactionHash, int index, IPrefixStateSeedSource? seeds = null) =>
+        transactionHash is null || tracer.IsTracingRewards ? tracer : new TransactionTraceBoundary(tracer, transactionHash, seeds) { KnownIndex = index };
+
     /// <summary>Wraps a tracer that wants only what comes after the transactions: the seed for the end of the block
     /// stays armed through the rewards and withdrawals, so they are applied and traced on the state the last
     /// transaction left, as in the replay. A refused seed replays transactions without forwarding their traces.</summary>
     public static TransactionTraceBoundary AfterTransactions(IBlockTracer tracer, IPrefixStateSeedSource seeds) => new(tracer, null, seeds) { IsExecutionRequired = true };
 
+    /// <summary>Wraps a tracer that does not trace rewards so that the replay completes just before transaction
+    /// <paramref name="index"/>; for index 0 that is after the pre-execution system calls.</summary>
+    internal static TransactionTraceBoundary BeforeTransaction(IBlockTracer tracer, Block block, int index) =>
+        index == 0
+            ? new(tracer, null, null) { CompletesBeforeTransactions = true }
+            : new(tracer, block.Transactions[index - 1].Hash, null);
+
     internal int IndexOf(Block block)
     {
         Transaction[] transactions = block.Transactions;
         if (_transactionHash is null) return transactions.Length;
-        for (int i = 0; i < transactions.Length; i++)
+        int known = KnownIndex;
+        return (uint)known < (uint)transactions.Length && transactions[known].Hash == _transactionHash
+            ? known
+            : IndexOf(transactions, _transactionHash);
+    }
+
+    /// <summary>The index of the transaction with <paramref name="hash"/>, or -1.</summary>
+    /// <remarks>
+    /// Senders are recovered after this lookup, so the transactions are not hashed yet. The first
+    /// <see cref="SerialLookupLength"/> are hashed on this thread; each window after that is twice as long and is
+    /// hashed in parallel first, so a late target in a large block does not hash its prefix on one thread.
+    /// </remarks>
+    internal static int IndexOf(Transaction[] transactions, Hash256 hash)
+    {
+        int start = 0;
+        int end = Math.Min(transactions.Length, SerialLookupLength);
+        while (start < end)
         {
-            if (transactions[i].Hash == _transactionHash) return i;
+            if (start > 0) HashInParallel(transactions, start, end);
+            for (int i = start; i < end; i++)
+            {
+                if (transactions[i].Hash == hash) return i;
+            }
+
+            start = end;
+            end = Math.Min(transactions.Length, end * 2);
         }
 
         return -1;
     }
+
+    private static void HashInParallel(Transaction[] transactions, int start, int end) =>
+        ParallelUnbalancedWork.For(start, end, transactions, static (i, txs) =>
+        {
+            _ = txs[i].Hash;
+            return txs;
+        });
 
     internal static TransactionTraceBoundary? Get(IBlockTracer tracer, ProcessingOptions options) =>
         IsUnpersistedReplay(options) ? tracer as TransactionTraceBoundary : null;
@@ -76,7 +125,7 @@ public sealed class TransactionTraceBoundary : IBlockTracer
 
     public void StartNewBlockTrace(Block block)
     {
-        IsComplete = false;
+        IsComplete = CompletesBeforeTransactions;
         HasExecuted = false;
         _isTarget = false;
         _suppressed = false;

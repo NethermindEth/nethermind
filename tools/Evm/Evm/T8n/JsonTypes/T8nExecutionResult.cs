@@ -3,12 +3,10 @@
 
 using Ethereum.Test.Base;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Evm.State;
@@ -18,28 +16,27 @@ namespace Evm.T8n.JsonTypes;
 
 public class T8nExecutionResult
 {
+    /// <summary>The block hash geth's <c>t8n</c> puts in receipts and logs, as the real one is not known yet.</summary>
+    private static readonly Hash256 PlaceholderBlockHash = new("0x1337000000000000000000000000000000000000000000000000000000000000");
+
     public PostState PostState { get; set; } = new();
     public Dictionary<Address, AccountState> Accounts { get; set; } = [];
     public byte[] TransactionsRlp { get; set; } = [];
 
     public static T8nExecutionResult ConstructT8nExecutionResult(IWorldState stateProvider,
+        StateWriteRecorder stateWrites,
         Block block,
         T8nTest test,
-        StorageTxTracer storageTracer,
-        BlockReceiptsTracer blockReceiptsTracer,
-        ISpecProvider specProvider,
         TransactionExecutionReport txReport)
     {
-        IReceiptSpec receiptSpec = specProvider.GetSpec(block.Header);
+        TxReceipt[] receipts = [.. txReport.SuccessfulTransactionReceipts];
         Hash256 txRoot = TxTrie.CalculateRoot(txReport.SuccessfulTransactions.ToArray());
-        Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(receiptSpec,
-            txReport.SuccessfulTransactionReceipts.ToArray(), new ReceiptMessageDecoder());
-        LogEntry[] logEntries = txReport.SuccessfulTransactionReceipts
-            .SelectMany(receipt => receipt.Logs ?? Enumerable.Empty<LogEntry>())
+        Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(test.Spec, receipts, new ReceiptMessageDecoder());
+        LogEntry[] logEntries = receipts
+            .SelectMany(receipt => receipt.Logs ?? [])
             .ToArray();
-        Bloom bloom = new(logEntries);
-        ulong gasUsed = blockReceiptsTracer.TxReceipts.Length == 0 ? 0UL : blockReceiptsTracer.LastReceipt.GasUsedTotal;
-        ulong? blobGasUsed = test.Spec.IsEip4844Enabled ? BlobGasCalculator.CalculateBlobGas(txReport.ValidTransactions.ToArray()) : null;
+        ulong gasUsed = receipts.Length == 0 ? 0UL : receipts[^1].GasUsedTotal;
+        bool hasBlobGas = block.ExcessBlobGas is not null;
 
         PostState postState = new()
         {
@@ -47,74 +44,108 @@ public class T8nExecutionResult
             TxRoot = txRoot,
             ReceiptsRoot = receiptsRoot,
             WithdrawalsRoot = block.WithdrawalsRoot,
-            LogsHash = Keccak.Compute(Rlp.OfEmptyList.Bytes),
-            LogsBloom = bloom,
-            Receipts = txReport.SuccessfulTransactionReceipts.ToArray(),
+            LogsHash = Keccak.Compute(Rlp.Encode(logEntries).Bytes),
+            LogsBloom = new Bloom(logEntries),
+            Receipts = BuildReceipts(block, test.Spec, txReport.SuccessfulTransactions, receipts),
             Rejected = txReport.RejectedTransactionReceipts.Count == 0
                 ? null
                 : txReport.RejectedTransactionReceipts.ToArray(),
             CurrentDifficulty = test.CurrentDifficulty,
             GasUsed = new UInt256(gasUsed),
             CurrentBaseFee = test.CurrentBaseFee,
-            CurrentExcessBlobGas = block.ExcessBlobGas,
-            BlobGasUsed = blobGasUsed,
+            CurrentExcessBlobGas = hasBlobGas ? block.ExcessBlobGas : null,
+            BlobGasUsed = hasBlobGas ? BlobGasCalculator.CalculateBlobGas(txReport.SuccessfulTransactions.ToArray()) : null,
+            RequestsHash = block.RequestsHash,
+            Requests = block.ExecutionRequests,
         };
 
         T8nExecutionResult t8NExecutionResult = new()
         {
             PostState = postState,
             TransactionsRlp = Rlp.Encode(txReport.SuccessfulTransactions.ToArray()).Bytes,
-            Accounts = CollectAccounts(test, stateProvider, storageTracer, block),
+            Accounts = CollectAccounts(stateProvider, stateWrites),
         };
 
         return t8NExecutionResult;
     }
 
-    private static Dictionary<Address, AccountState> CollectAccounts(T8nTest test, IWorldState stateProvider, StorageTxTracer storageTracer, Block block)
+    private static T8nReceipt[] BuildReceipts(Block block, IReleaseSpec spec, List<Transaction> transactions, TxReceipt[] receipts)
     {
-        Dictionary<Address, AccountState?> accounts = test.Alloc.Keys.ToDictionary(address => address,
-            address => GetAccountState(address, stateProvider, storageTracer));
+        UInt256? blobGasPrice = BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas)
+            ? feePerBlobGas
+            : null;
+        ulong logIndex = 0;
+        T8nReceipt[] result = new T8nReceipt[receipts.Length];
 
-        accounts.AddRange(test.Ommers.ToDictionary(ommer => ommer.Address,
-            ommer => GetAccountState(ommer.Address, stateProvider, storageTracer)));
-
-        if (block.Beneficiary is not null)
+        for (int i = 0; i < receipts.Length; i++)
         {
-            accounts[block.Beneficiary] = GetAccountState(block.Beneficiary, stateProvider, storageTracer);
+            TxReceipt receipt = receipts[i];
+            LogEntry[] logs = receipt.Logs ?? [];
+            T8nLog[] t8nLogs = new T8nLog[logs.Length];
+            for (int j = 0; j < logs.Length; j++)
+            {
+                t8nLogs[j] = new T8nLog
+                {
+                    Address = logs[j].Address,
+                    Topics = logs[j].Topics,
+                    Data = logs[j].Data,
+                    BlockNumber = block.Number,
+                    TransactionHash = receipt.TxHash!,
+                    TransactionIndex = (ulong)i,
+                    BlockHash = PlaceholderBlockHash,
+                    BlockTimestamp = block.Timestamp,
+                    LogIndex = logIndex++,
+                };
+            }
+
+            ulong blobGasUsed = BlobGasCalculator.CalculateBlobGas(transactions[i]);
+            result[i] = new T8nReceipt
+            {
+                Type = receipt.TxType == TxType.Legacy ? null : receipt.TxType,
+                Root = receipt.PostTransactionState?.BytesToArray() ?? [],
+                Status = receipt.StatusCode,
+                CumulativeGasUsed = receipt.GasUsedTotal,
+                LogsBloom = receipt.Bloom,
+                Logs = t8nLogs,
+                TransactionHash = receipt.TxHash!,
+                ContractAddress = receipt.ContractAddress ?? Address.Zero,
+                GasUsed = receipt.GasUsed,
+                BlobGasUsed = blobGasUsed == 0 ? null : blobGasUsed,
+                BlobGasPrice = blobGasUsed == 0 ? null : blobGasPrice,
+                BlockHash = PlaceholderBlockHash,
+                BlockNumber = block.Number,
+                TransactionIndex = (ulong)i,
+            };
         }
 
-        foreach (Transaction tx in test.Transactions)
-        {
-            if (tx.To is not null && !accounts.ContainsKey(tx.To))
-            {
-                accounts[tx.To] = GetAccountState(tx.To, stateProvider, storageTracer);
-            }
-            if (tx.SenderAddress is not null && !accounts.ContainsKey(tx.SenderAddress))
-            {
-                accounts[tx.SenderAddress] = GetAccountState(tx.SenderAddress, stateProvider, storageTracer);
-            }
-        }
-
-        return accounts
-            .Where(addressAndAccount => addressAndAccount.Value is not null)
-            .ToDictionary(addressAndAccount => addressAndAccount.Key, addressAndAccount => addressAndAccount.Value!);
+        return result;
     }
 
-    private static AccountState? GetAccountState(Address address, IWorldState stateProvider, StorageTxTracer storageTxTracer)
+    private static Dictionary<Address, AccountState> CollectAccounts(IWorldState stateProvider, StateWriteRecorder stateWrites)
     {
-        if (!stateProvider.AccountExists(address)) return null;
-
-        stateProvider.TryGetAccount(address, out AccountStruct account);
-        byte[] code = stateProvider.GetCode(address).AsArray();
-        AccountState accountState = new()
+        Dictionary<Address, AccountState> accounts = [];
+        foreach ((AddressAsKey address, HashSet<UInt256> slots) in stateWrites.Writes)
         {
-            Nonce = account.Nonce,
-            Balance = account.Balance,
-            Code = code
-        };
+            if (!stateProvider.AccountExists(address)) continue;
 
-        accountState.Storage = storageTxTracer.GetStorage(address) ?? [];
+            stateProvider.TryGetAccount(address, out AccountStruct account);
 
-        return accountState;
+            Dictionary<UInt256, byte[]> storage = [];
+            foreach (UInt256 slot in slots)
+            {
+                stateProvider.Get(new StorageCell(address, slot), out UInt256 value);
+                if (!value.IsZero) storage[slot] = value.ToBigEndian();
+            }
+
+            accounts[address] = new AccountState
+            {
+                Nonce = (ulong)account.Nonce,
+                Balance = account.Balance,
+                Code = stateProvider.GetCode(address).AsArray(),
+                Storage = storage,
+            };
+        }
+
+        return accounts;
     }
 }

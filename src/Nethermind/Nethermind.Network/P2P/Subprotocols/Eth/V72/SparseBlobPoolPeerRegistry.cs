@@ -25,6 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V72;
 public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, IDisposable
 {
     internal const int SupernodeCustodyColumnThreshold = 64;
+    internal const int MinSamplerFullProviderAnnouncements = 2;
     private const int MaxTrackedTransactions = 16384;
     private const int MinProviderProbabilityPercent = 15;
     private const int MaxProviderProbabilityPercent = 100;
@@ -82,6 +83,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private int _inFlightCellWork;
     private int _trackedTransactionCount;
     private int _transactionOrderCount;
+    private int _peerCount;
     private double _cellServeTokens = GlobalCellServeTokenCapacity;
     private DateTimeOffset _cellServeTokensUpdatedAt;
     private int _maintenanceScheduled;
@@ -305,6 +307,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             }
 
             _peers[peer.Id] = peer;
+            Volatile.Write(ref _peerCount, _peers.Count);
         }
 
         ProcessPeerCleanupActions(cleanupActions, peer.Id);
@@ -321,6 +324,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             if (((ICollection<KeyValuePair<PublicKey, ISparseBlobPoolPeer>>)_peers)
                 .Remove(new KeyValuePair<PublicKey, ISparseBlobPoolPeer>(peer.Id, peer)))
             {
+                Volatile.Write(ref _peerCount, _peers.Count);
                 cleanupActions = CollectPeerCleanupActions(peer.Id);
             }
         }
@@ -542,7 +546,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
 
         int threshold = Math.Clamp(providerProbabilityPercent, MinProviderProbabilityPercent, MaxProviderProbabilityPercent);
-        if (announcementMask.IsFull && ShouldFetchFull(hash, threshold))
+        // With fewer peers than providers a sampler waits for, sampling never starts.
+        if (announcementMask.IsFull && (Volatile.Read(ref _peerCount) < MinSamplerFullProviderAnnouncements || ShouldFetchFull(hash, threshold)))
         {
             return BlobCellMask.Full;
         }

@@ -46,8 +46,11 @@ public class KBucketTreeTests
         Add(tree, left1);
         Add(tree, right1);
 
-        Assert.That(tree.GetAllAtDistance(31), Is.EqualTo(new[] { left1, left0 }));
-        Assert.That(tree.GetAllAtDistance(30), Is.EqualTo(new[] { right1, right0 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.GetAllAtDistance(31), Is.EqualTo(new[] { left1, left0 }));
+            Assert.That(tree.GetAllAtDistance(30), Is.EqualTo(new[] { right1, right0 }));
+        }
     }
 
     [Test]
@@ -128,8 +131,11 @@ public class KBucketTreeTests
         tree.TryAddOrRefresh(replacementHash, 2, out _);
         tree.TryAddOrRefresh(replacementHash, 1, out _);
 
-        Assert.That(tree.TryGet(replacementHash, out int replacement), Is.True);
-        Assert.That(replacement, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.TryGet(replacementHash, out int replacement), Is.True);
+            Assert.That(replacement, Is.EqualTo(2));
+        }
 
         tree.Remove(activeHash);
 

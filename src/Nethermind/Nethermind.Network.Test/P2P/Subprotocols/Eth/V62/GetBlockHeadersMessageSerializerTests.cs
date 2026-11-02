@@ -28,33 +28,42 @@ public class GetBlockHeadersMessageSerializerTests
         Assert.That(Bytes.AreEqual(bytes, expectedBytes), Is.True, "bytes");
 
         using GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-        Assert.That(deserialized.StartBlockHash, Is.EqualTo(message.StartBlockHash), $"{nameof(message.StartBlockHash)}");
-        Assert.That(deserialized.MaxHeaders, Is.EqualTo(message.MaxHeaders), $"{nameof(message.MaxHeaders)}");
-        Assert.That(deserialized.Reverse, Is.EqualTo(message.Reverse), $"{nameof(message.Reverse)}");
-        Assert.That(deserialized.Skip, Is.EqualTo(message.Skip), $"{nameof(message.Skip)}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.StartBlockHash, Is.EqualTo(message.StartBlockHash), $"{nameof(message.StartBlockHash)}");
+            Assert.That(deserialized.MaxHeaders, Is.EqualTo(message.MaxHeaders), $"{nameof(message.MaxHeaders)}");
+            Assert.That(deserialized.Reverse, Is.EqualTo(message.Reverse), $"{nameof(message.Reverse)}");
+            Assert.That(deserialized.Skip, Is.EqualTo(message.Skip), $"{nameof(message.Skip)}");
+        }
 
         SerializerTester.TestZero(serializer, message);
     }
 
-    [Test]
-    public void Roundtrip_number()
+    [TestCase(0UL, "c480010201", TestName = "Roundtrip_number_zero")]
+    [TestCase(100UL, "c464010201", TestName = "Roundtrip_number_single_byte")]
+    [TestCase(0x01020304UL, "c88401020304010201", TestName = "Roundtrip_number_multiple_bytes")]
+    [TestCase(ulong.MaxValue, "cc88ffffffffffffffff010201", TestName = "Roundtrip_number_maximum")]
+    public void Roundtrip_number(ulong blockNumber, string expectedHex)
     {
         using GetBlockHeadersMessage message = new();
         message.MaxHeaders = 1;
         message.Skip = 2;
         message.Reverse = 1;
-        message.StartBlockNumber = 100;
+        message.StartBlockNumber = blockNumber;
         GetBlockHeadersMessageSerializer serializer = new();
         byte[] bytes = serializer.Serialize(message);
-        byte[] expectedBytes = Bytes.FromHexString("c464010201");
+        byte[] expectedBytes = Bytes.FromHexString(expectedHex);
 
         Assert.That(Bytes.AreEqual(bytes, expectedBytes), Is.True, "bytes");
 
         using GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-        Assert.That(deserialized.StartBlockNumber, Is.EqualTo(message.StartBlockNumber), $"{nameof(message.StartBlockNumber)}");
-        Assert.That(deserialized.MaxHeaders, Is.EqualTo(message.MaxHeaders), $"{nameof(message.MaxHeaders)}");
-        Assert.That(deserialized.Reverse, Is.EqualTo(message.Reverse), $"{nameof(message.Reverse)}");
-        Assert.That(deserialized.Skip, Is.EqualTo(message.Skip), $"{nameof(message.Skip)}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.StartBlockNumber, Is.EqualTo(message.StartBlockNumber), $"{nameof(message.StartBlockNumber)}");
+            Assert.That(deserialized.MaxHeaders, Is.EqualTo(message.MaxHeaders), $"{nameof(message.MaxHeaders)}");
+            Assert.That(deserialized.Reverse, Is.EqualTo(message.Reverse), $"{nameof(message.Reverse)}");
+            Assert.That(deserialized.Skip, Is.EqualTo(message.Skip), $"{nameof(message.Skip)}");
+        }
 
         SerializerTester.TestZero(serializer, message);
     }
@@ -75,10 +84,13 @@ public class GetBlockHeadersMessageSerializerTests
         Assert.That(bytes, Is.EqualTo(expectedBytes), "bytes");
 
         using GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-        Assert.That(deserialized.StartBlockNumber, Is.EqualTo(message.StartBlockNumber), $"{nameof(message.StartBlockNumber)}");
-        Assert.That(deserialized.MaxHeaders, Is.EqualTo(message.MaxHeaders), $"{nameof(message.MaxHeaders)}");
-        Assert.That(deserialized.Reverse, Is.EqualTo(message.Reverse), $"{nameof(message.Reverse)}");
-        Assert.That(deserialized.Skip, Is.EqualTo(message.Skip), $"{nameof(message.Skip)}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.StartBlockNumber, Is.EqualTo(message.StartBlockNumber), $"{nameof(message.StartBlockNumber)}");
+            Assert.That(deserialized.MaxHeaders, Is.EqualTo(message.MaxHeaders), $"{nameof(message.MaxHeaders)}");
+            Assert.That(deserialized.Reverse, Is.EqualTo(message.Reverse), $"{nameof(message.Reverse)}");
+            Assert.That(deserialized.Skip, Is.EqualTo(message.Skip), $"{nameof(message.Skip)}");
+        }
 
         SerializerTester.TestZero(serializer, message);
     }
@@ -91,12 +103,17 @@ public class GetBlockHeadersMessageSerializerTests
     }
 
     [Test]
-    public void Deserialize_allows_32_byte_start_block_selector()
+    public void Deserialize_allows_32_byte_start_block_selector([Values] bool mutateInput)
     {
-        GetBlockHeadersMessageSerializer serializer = new();
         byte[] bytes = BuildSerializedMessageWithStartBlockSelector(Hash256.Size);
+        RlpReader reader = new(bytes);
 
-        using GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
+        using GetBlockHeadersMessage deserialized = GetBlockHeadersMessageSerializer.Deserialize(ref reader);
+        if (mutateInput)
+        {
+            Array.Clear(bytes);
+        }
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(deserialized.StartBlockHash,
@@ -104,6 +121,7 @@ public class GetBlockHeadersMessageSerializerTests
             Assert.That(deserialized.MaxHeaders, Is.EqualTo(1));
             Assert.That(deserialized.Skip, Is.EqualTo(2));
             Assert.That(deserialized.Reverse, Is.EqualTo(1));
+            Assert.That(reader.Position, Is.EqualTo(bytes.Length));
         }
     }
 

@@ -12,14 +12,13 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api.Monitoring;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Init.Modules;
-using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -313,6 +312,26 @@ public class MetricsTests
     }
 
     [Test]
+    public void UpdateAllMetrics_updates_gauges_only_when_metrics_enabled([Values] bool metricsEnabled)
+    {
+        MetricsController metricsController = new(new MetricsConfig { Enabled = metricsEnabled });
+        metricsController.RegisterMetrics(typeof(TestMetrics));
+        bool callbackRan = false;
+        metricsController.AddMetricsUpdateAction(() => callbackRan = true);
+        Prometheus.Gauge gauge = ((MetricsController.GaugeMetricUpdater)metricsController._individualUpdater[$"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThree)}"]).Gauge;
+        double before = gauge.Value;
+        TestMetrics.OneTwoThree = (long)before + 1;
+
+        metricsController.UpdateAllMetrics();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callbackRan, Is.True);
+            Assert.That(gauge.Value, Is.EqualTo(metricsEnabled ? before + 1 : before));
+        }
+    }
+
+    [Test]
     [NonParallelizable]
     public async Task Load_CarryForwardDetailedMetrics()
     {
@@ -325,7 +344,7 @@ public class MetricsTests
                 EnableDetailedMetric = true
             };
             await using IContainer container = new ContainerBuilder()
-                .AddModule(new MonitoringModule(metricsConfig))
+                .AddModule(new MonitoringModule())
                 .AddSingleton<IMetricsConfig>(metricsConfig)
                 .AddSingleton<ISyncConfig>(new SyncConfig())
                 .AddSingleton<IPruningConfig>(new PruningConfig())

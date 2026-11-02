@@ -174,10 +174,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             using GetTrieNodesMessage deserialized = serializer.Deserialize(buffer);
 
-            Assert.That(deserialized.RequestId, Is.EqualTo(msg.RequestId));
-            Assert.That(deserialized.RootHash, Is.EqualTo(msg.RootHash));
-            Assert.That(deserialized.Bytes, Is.EqualTo(msg.Bytes));
-            Assert.That(deserialized.Paths.Count, Is.EqualTo(msg.Paths.Count));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deserialized.RequestId, Is.EqualTo(msg.RequestId));
+                Assert.That(deserialized.RootHash, Is.EqualTo(msg.RootHash));
+                Assert.That(deserialized.Bytes, Is.EqualTo(msg.Bytes));
+                Assert.That(deserialized.Paths.Count, Is.EqualTo(msg.Paths.Count));
+            }
 
             serializer.Serialize(buffer2, deserialized);
             byte[] secondBytes = new byte[buffer2.ReadableBytes];

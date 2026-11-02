@@ -489,8 +489,11 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
+        public IDisposable? BeginResponse() => _progressTracker.BeginResponse();
+
         public void ReleaseRequest(SnapSyncBatch batch, bool responseHandled)
         {
+            _progressTracker.ReportRequestReleased(batch);
             if (batch.AccountRangeRequest is not null)
             {
                 // Re-offered from the progress it recorded, so the flag makes no difference here.

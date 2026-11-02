@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -236,9 +235,7 @@ public partial class Bloom : IEquatable<Bloom>
     internal static BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
     {
         KeccakCache.ComputeTo(sequence, out ValueHash256 keccak);
-        ulong u = Unsafe.ReadUnaligned<ulong>(ref Unsafe.As<ValueHash256, byte>(ref keccak));
-        u = BinaryPrimitives.ReverseEndianness(u);
-        return new BloomExtract(u);
+        return new BloomExtract(ReadIndexBits(ref Unsafe.As<ValueHash256, byte>(ref keccak)));
     }
 
     public readonly struct BloomExtract(ulong indexes)
