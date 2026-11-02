@@ -17,7 +17,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             int ethMessageStart;
             try
             {
-                requestId = ReadRequestId(data.Span, out ethMessageStart);
+                requestId = Eth66MessageEnvelope.ReadRequestId(data.Span, out ethMessageStart);
             }
             catch
             {

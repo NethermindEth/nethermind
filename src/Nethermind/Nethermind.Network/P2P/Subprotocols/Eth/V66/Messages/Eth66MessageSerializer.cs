@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 
         public TEth66Message Deserialize(ReadOnlySpan<byte> data)
         {
-            long requestId = ReadRequestId(data, out int ethMessageStart);
+            long requestId = Eth66MessageEnvelope.ReadRequestId(data, out int ethMessageStart);
             return new TEth66Message
             {
                 RequestId = requestId,
@@ -37,13 +37,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 
         public int GetLength(TEth66Message message) =>
             Rlp.LengthOfSequence(Rlp.LengthOf(message.RequestId) + _ethMessageSerializer.GetLength(message.EthMessage));
+    }
 
+    internal static class Eth66MessageEnvelope
+    {
         /// <summary>
         /// Reads the request id of a message that is exactly the list in <paramref name="data"/>.
         /// </summary>
         /// <param name="ethMessageStart">The position of the wrapped message, which takes the rest of the list.</param>
         /// <exception cref="RlpException">The list does not take all of <paramref name="data"/>.</exception>
-        protected static long ReadRequestId(ReadOnlySpan<byte> data, out int ethMessageStart)
+        public static long ReadRequestId(ReadOnlySpan<byte> data, out int ethMessageStart)
         {
             RlpReader ctx = new(data);
             int sequenceLength = ctx.ReadSequenceLength();
