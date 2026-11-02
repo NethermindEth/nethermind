@@ -171,9 +171,15 @@ try
         values["RPS_LIST"] = "1";
         return values;
     }
-    SweepConfiguration PreparedConfiguration()
+    SweepConfiguration PreparedConfiguration(bool qualificationOnly = false)
     {
         var values = PreparedValues();
+        if (qualificationOnly)
+        {
+            values["RPS_LIST"] = "";
+            values["GENERIC_FIRST_USE"] = "true";
+            values["GENERIC_WARMUP_DURATION"] = "1s";
+        }
         var configuration = new SweepConfiguration(key => values.GetValueOrDefault(key));
         // Substitute fixture paths and runtime deadlines after testing the production authorization constraints.
         configuration.Values["MIGRATION_LATEST_START_UTC"] = DateTimeOffset.UtcNow.AddDays(1).ToString("yyyy-MM-ddTHH:mm:ssZ");
@@ -183,11 +189,13 @@ try
         configuration.Values["STATE_ROOT"] = Path.Combine(tests.DirectoryPath, "prepared-state");
         return configuration;
     }
-    foreach (var failure in new[] { "", "gate2", "running", "verify" })
-        tests.Case("prepared qualification precedes every timed arm " + failure, () =>
+    foreach (var (failure, qualificationOnly) in new[] { ("", false), ("gate2", false), ("running", false), ("verify", false), ("", true), ("gate", true), ("gate2", true) })
+        tests.Case($"prepared qualification precedes every timed arm {failure} qualificationOnly={qualificationOnly}", () =>
         {
-            var configuration = PreparedConfiguration();
-            var trace = Path.Combine(tests.DirectoryPath, "prepared-trace-" + failure);
+            var configuration = PreparedConfiguration(qualificationOnly);
+            var trace = Path.Combine(tests.DirectoryPath, $"prepared-trace-{failure}-{qualificationOnly}");
+            configuration.Values["STATE_ROOT"] = trace + "-state";
+            configuration.Values["OUT_DIR"] = trace + "-out";
             var previousCapture = Environment.GetEnvironmentVariable("SWEEP_CAPTURE");
             Environment.SetEnvironmentVariable("SWEEP_CAPTURE", trace + "-starts");
             Environment.SetEnvironmentVariable("PREPARED_CAPTURE", trace);
@@ -199,13 +207,27 @@ try
             }
             catch (IOException) when (failure.Length > 0) { }
             var rows = File.ReadAllLines(trace).Select(line => JsonNode.Parse(line)!["action"]!.ToString()).ToArray();
-            if (failure.Length == 0)
+            if (qualificationOnly)
+            {
+                RpcScriptTests.Assert(!rows.Contains("cell") && !rows.Contains("running") && rows[^1] == "verify", "qualification-only mode started a measured arm or skipped final verification");
+                RpcScriptTests.Assert(File.ReadAllLines(trace + "-starts").Length == (failure == "gate" ? 1 : 2) && Directory.GetFiles(configuration["STATE_ROOT"], "node.log", SearchOption.AllDirectories).Length == (failure == "gate" ? 1 : 2), "qualification-only mode started extra processes or lost shutdown logs");
+            }
+            else if (failure.Length == 0)
             {
                 var firstCell = Array.IndexOf(rows, "cell");
                 RpcScriptTests.Assert(firstCell >= 0 && rows.Take(firstCell).Count(action => action == "gate") == 2, "timing preceded both-image qualification");
                 RpcScriptTests.Assert(rows.Count(action => action == "running") == 2 && rows[^1] == "verify", "per-arm gates missing");
             }
             else RpcScriptTests.Assert(!rows.Contains("cell"), "failed prepared gate reached timing");
+            var costs = File.ReadAllLines(Path.Combine(configuration["OUT_DIR"], "prepared-qualification-costs.jsonl")).Select(line => JsonNode.Parse(line)!).ToArray();
+            RpcScriptTests.Assert(costs.Length == (failure is "verify" or "gate" ? 1 : 2), "qualifier cost evidence missing or merged with measured arms");
+            for (var index = 0; index < costs.Length; index++)
+            {
+                var cost = costs[index];
+                RpcScriptTests.Assert(cost["image"]!.ToString() == SweepConfiguration.PreparedImages[index] && cost["manifest_sha256"]!.ToString() == configuration["PREPARED_SNAPSHOT_SHA256"], "cost identity drifted");
+                RpcScriptTests.Assert(cost["passed"]!.GetValue<bool>() == !(failure is "verify" or "gate" || failure == "gate2" && index == 1), "failed qualifier cost recorded as success");
+                RpcScriptTests.Assert(cost["elapsed_seconds"]!.GetValue<double>() >= 0 && DateTimeOffset.Parse(cost["finished_utc"]!.ToString()) >= DateTimeOffset.Parse(cost["started_utc"]!.ToString()), "invalid qualifier wall interval");
+            }
             Environment.SetEnvironmentVariable("PREPARED_CAPTURE", null);
             Environment.SetEnvironmentVariable("FAIL_PREPARED_ACTION", null);
             Environment.SetEnvironmentVariable("SWEEP_CAPTURE", previousCapture);

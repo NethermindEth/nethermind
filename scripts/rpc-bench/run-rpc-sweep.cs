@@ -291,8 +291,30 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         {
             foreach (var arm in configuration.Arms.DistinctBy(arm => arm.Image))
             {
-                await RunArm(arm, arm.Label + "_prepared_qualification", cancellationToken, qualifyOnly: true);
-                if (_failures.Count > 0) throw new IOException("prepared qualification failed; no timing authorized: " + string.Join(", ", _failures.Keys));
+                var started = DateTimeOffset.UtcNow;
+                var elapsed = Stopwatch.StartNew();
+                var passed = false;
+                try
+                {
+                    await RunArm(arm, arm.Label + "_prepared_qualification", cancellationToken, qualifyOnly: true);
+                    if (_failures.Count > 0) throw new IOException("prepared qualification failed; no timing authorized: " + string.Join(", ", _failures.Keys));
+                    passed = true;
+                }
+                finally
+                {
+                    await File.AppendAllTextAsync(Path.Combine(Get("OUT_DIR"), "prepared-qualification-costs.jsonl"), new JsonObject
+                    {
+                        ["image"] = arm.Image, ["manifest_sha256"] = Get("PREPARED_SNAPSHOT_SHA256"),
+                        ["started_utc"] = started.ToString("O"), ["finished_utc"] = DateTimeOffset.UtcNow.ToString("O"),
+                        ["elapsed_seconds"] = elapsed.Elapsed.TotalSeconds, ["passed"] = passed,
+                        ["scope"] = "Untimed qualifier wall cost including verification, pull, startup, diagnostics, oracle, shutdown and final verification; not RPC latency or a future runtime bound."
+                    }.ToJsonString() + "\n", CancellationToken.None);
+                }
+            }
+            if (configuration.Rates.Length == 0)
+            {
+                await WriteSummary(cancellationToken);
+                return 0;
             }
         }
         var seen = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -618,7 +640,9 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
             var aggregation = await Script("per-category-matrix.cs", ["@" + manifest], null, cancellationToken, false);
             text.AppendLine(aggregation.Code == 0 ? aggregation.Output : "aggregation failed");
         }
-        else if (configuration.Rates.Length == 0) text.AppendLine("No k6 cells requested (empty rps_list) — parity/timings only.");
+        else if (configuration.Rates.Length == 0) text.AppendLine(configuration.Prepared
+            ? "Prepared both-image qualification only (empty rps_list) — no measured arms, first-use or warmup."
+            : "No k6 cells requested (empty rps_list) — parity/timings only.");
         else { text.AppendLine("No cell summaries produced — every client failed to start."); Fail("no cell summaries produced"); }
         if (configuration.Corpus)
         {
