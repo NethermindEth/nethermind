@@ -98,7 +98,9 @@ class ShutterBlockHandlerTests : BaseEngineModuleTests
         Block head = Build.A.Block.WithTimestamp(ShutterTestsCommon.InitialSlotTimestamp).TestObject;
         Task newHead = Task.Run(() => api.TriggerNewHeadBlock(new(head)));
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before reading the result; .Result has no timeout.
         Assert.That(newHead.Wait(TimeSpan.FromSeconds(10)), Is.True, "NewHeadBlock handler deadlocked against the timeout callback");
+#pragma warning restore NUnit2045
         Assert.That(waitTask.Result, Is.EqualTo(head));
     }
 

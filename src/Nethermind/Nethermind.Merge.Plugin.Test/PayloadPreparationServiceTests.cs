@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
@@ -65,6 +66,7 @@ public class PayloadPreparationServiceTests
         IBoostRelay relay = Substitute.For<IBoostRelay>();
         using TestPayloadPreparationService service = CreateLateBuildService(boost, empty, build.Task, relay);
         string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        Assert.That(() => service.Stored(payloadId), Is.Not.Null.After(5000, 10));
         IBlockImprovementContext context = service.Stored(payloadId)!;
 
         using ManualResetEventSlim buildChecked = new(), firstPinning = new(), resumeBuild = new(), resumeFirst = new();
@@ -286,7 +288,7 @@ public class PayloadPreparationServiceTests
         Build.A.Block.WithNumber(1).WithGasUsed(21000).WithTransactions(Build.A.Transaction.TestObject).TestObject;
 
     /// <summary>A service whose empty block is <paramref name="empty"/> and whose improvement build finishes with <paramref name="build"/>.</summary>
-    private static TestPayloadPreparationService CreateLateBuildService(bool boost, Block empty, Task<Block?> build, IBoostRelay relay)
+    private static TestPayloadPreparationService CreateLateBuildService(bool boost, Block? empty, Task<Block?> build, IBoostRelay relay)
     {
         IBlockProducer producer = Substitute.For<IBlockProducer>();
         producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.PrepareEmptyBlock, Arg.Any<CancellationToken>())
@@ -342,9 +344,220 @@ public class PayloadPreparationServiceTests
             TimeSpan.FromMilliseconds(1));
     }
 
+    private static TestPayloadPreparationService CreateService(IBlockProducer producer) =>
+        new(producer, Substitute.For<ITxPool>(), new BlockImprovementContextFactory(producer, TimePerSlot),
+            Substitute.For<ITimerFactory>(), LimboLogs.Instance, TimePerSlot, TimeSpan.FromMilliseconds(1));
+
+    private static Task<Block?> BuildCall(IBlockProducer producer, IBlockProducer.Flags flags, Action<CancellationToken>? onToken = null) =>
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), flags,
+            onToken is null ? Arg.Any<CancellationToken>() : Arg.Do(onToken));
+
     [Test]
     [CancelAfter(30000)]
-    public async Task GetPayload_waits_for_the_improvement_when_there_is_no_empty_block([Values] bool skipCancel)
+    public async Task StartPreparingPayload_does_not_wait_for_the_empty_block()
+    {
+        Block empty = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        TaskCompletionSource<Block?> emptyBuild = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProducer producer = Substitute.For<IBlockProducer>();
+        BuildCall(producer, IBlockProducer.Flags.PrepareEmptyBlock)
+            .Returns(emptyBuild.Task);
+        BuildCall(producer, IBlockProducer.Flags.None)
+            .Returns(new TaskCompletionSource<Block?>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+        using TestPayloadPreparationService service = CreateService(producer);
+
+        try
+        {
+            string payloadId = await Task.Run(() => service.StartPreparingPayload(ParentHeader, Attributes)).WaitAsync(WaitTimeout);
+            ValueTask<IBlockProductionContext?> payload = service.GetPayload(payloadId);
+            bool waitedForEmptyBlock = !payload.IsCompleted;
+            emptyBuild.SetResult(empty);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(waitedForEmptyBlock, Is.True);
+                Assert.That((await payload)?.CurrentBestBlock, Is.SameAs(empty));
+            }
+        }
+        finally
+        {
+            emptyBuild.TrySetResult(empty);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30000)]
+    public async Task Failed_empty_block_still_starts_the_improvement()
+    {
+        Block improved = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        IBlockProducer producer = Substitute.For<IBlockProducer>();
+        BuildCall(producer, IBlockProducer.Flags.PrepareEmptyBlock)
+            .Returns(Task.FromException<Block?>(new InvalidOperationException()));
+        BuildCall(producer, IBlockProducer.Flags.None)
+            .Returns(improved);
+        using TestPayloadPreparationService service = CreateService(producer);
+
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+
+        Assert.That((await service.GetPayload(payloadId, skipCancel: true))?.CurrentBestBlock, Is.SameAs(improved));
+    }
+
+    [Test]
+    [CancelAfter(30000)]
+    public async Task Cancel_or_dispose_stops_a_build_whose_empty_block_is_pending([Values] bool dispose)
+    {
+        TaskCompletionSource<Block?> emptyBuild = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<CancellationToken> emptyBuildToken = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProducer producer = Substitute.For<IBlockProducer>();
+        BuildCall(producer, IBlockProducer.Flags.PrepareEmptyBlock, t => emptyBuildToken.TrySetResult(t))
+            .Returns(emptyBuild.Task);
+        using TestPayloadPreparationService service = CreateService(producer);
+
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        CancellationToken token = await emptyBuildToken.Task.WaitAsync(WaitTimeout);
+        if (dispose) service.Dispose();
+        else service.CancelBlockProduction(payloadId);
+        bool emptyBuildCancelled = token.IsCancellationRequested;
+        emptyBuild.SetResult(Build.A.Block.WithNumber(1).TestObject);
+        IBlockProductionContext? payload = await service.GetPayload(payloadId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(emptyBuildCancelled, Is.True);
+            Assert.That(payload, Is.Null);
+            Assert.That(service.Stored(payloadId), Is.Null);
+            _ = BuildCall(producer.DidNotReceive(), IBlockProducer.Flags.None);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30000)]
+    public async Task Dispose_before_publishing_the_context_leaves_nothing_stored()
+    {
+        RecordingBlockImprovementContextFactory factory = new();
+        using TestPayloadPreparationService service = CreateService(factory);
+        factory.OnContextCreated = () => service.Dispose();
+
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        await service.GetPayload(payloadId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.Contexts, Has.Count.EqualTo(1));
+            Assert.That(service.Stored(payloadId), Is.Null);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30000)]
+    public async Task StartPreparingPayload_after_dispose_returns_an_id_without_a_payload([Values] bool disposedAfterShutdownRead)
+    {
+        IBlockProducer producer = Substitute.For<IBlockProducer>();
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>())
+            .Returns(Build.A.Block.WithNumber(1).TestObject);
+        using TestPayloadPreparationService service = CreateService(producer);
+        FieldInfo shutdownField = typeof(PayloadPreparationService).GetField("_shutdown", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        CancellationTokenSource shutdown = (CancellationTokenSource)shutdownField.GetValue(service)!;
+        if (disposedAfterShutdownRead)
+        {
+            // Dispose ran after StartPreparingPayload read the source, so the source is still visible but disposed.
+            shutdown.Cancel();
+            shutdown.Dispose();
+        }
+        else
+        {
+            service.Dispose();
+        }
+
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        shutdownField.SetValue(service, null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await service.GetPayload(payloadId), Is.Null);
+            _ = BuildCall(producer.DidNotReceive(), IBlockProducer.Flags.None);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30000)]
+    public async Task StartPreparingPayload_does_not_build_a_published_payload_again()
+    {
+        IBlockProducer producer = Substitute.For<IBlockProducer>();
+        BuildCall(producer, IBlockProducer.Flags.PrepareEmptyBlock)
+            .Returns(Build.A.Block.WithNumber(1).TestObject);
+        BuildCall(producer, IBlockProducer.Flags.None)
+            .Returns(new TaskCompletionSource<Block?>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+        using TestPayloadPreparationService service = CreateService(producer);
+
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        Assert.That(() => service.Stored(payloadId), Is.Not.Null.After(5000, 10));
+        service.StartPreparingPayload(ParentHeader, Attributes);
+        await service.GetPayload(payloadId);
+
+        _ = BuildCall(producer.Received(1), IBlockProducer.Flags.PrepareEmptyBlock);
+    }
+
+    [Test]
+    [CancelAfter(30000)]
+    public async Task GetPayload_returns_the_empty_block_immediately_while_a_build_is_in_progress()
+    {
+        Block empty = Build.A.Block.WithNumber(1).TestObject;
+        TaskCompletionSource<Block?> build = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using TestPayloadPreparationService service = CreateLateBuildService(false, empty, build.Task, Substitute.For<IBoostRelay>());
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        await service.WaitForPreparation(payloadId).WaitAsync(WaitTimeout);
+        IBlockImprovementContext context = service.Stored(payloadId)!;
+
+        ValueTask<IBlockProductionContext?> payload = service.GetPayload(payloadId);
+        bool returnedImmediately = payload.IsCompleted;
+        build.SetResult(FullBlock());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(returnedImmediately, Is.True);
+            Assert.That((await payload)?.CurrentBestBlock, Is.SameAs(empty));
+            Assert.That(context.Disposed, Is.True);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30000)]
+    public async Task GetPayload_leaves_a_missing_block_available_for_a_later_request([Values] bool boost)
+    {
+        TaskCompletionSource<Block?> improvement = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using TestPayloadPreparationService service = CreateLateBuildService(boost, null, improvement.Task, Substitute.For<IBoostRelay>());
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        await service.WaitForPreparation(payloadId).WaitAsync(WaitTimeout);
+        IBlockImprovementContext context = service.Stored(payloadId)!;
+
+        ValueTask<IBlockProductionContext?> payload = service.GetPayload(payloadId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.IsCompleted, Is.True);
+            Assert.That(await payload, Is.Null);
+            Assert.That(context.Disposed, Is.False);
+        }
+
+        Block improved = FullBlock();
+        improvement.SetResult(improved);
+        await context.ImprovementTask.WaitAsync(WaitTimeout);
+        string retriedId = service.StartPreparingPayload(ParentHeader, Attributes);
+        IBlockProductionContext? retrieved = await service.GetPayload(retriedId);
+        IBlockProductionContext? again = await service.GetPayload(retriedId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retriedId, Is.EqualTo(payloadId));
+            Assert.That(retrieved?.CurrentBestBlock, Is.SameAs(improved));
+            Assert.That(again?.CurrentBestBlock, Is.SameAs(improved));
+            Assert.That(context.Disposed, Is.True);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30000)]
+    public async Task GetPayload_with_skipCancel_waits_for_the_improvement_when_there_is_no_empty_block()
     {
         using TestPayloadPreparationService service = CreateService(new RecordingBlockImprovementContextFactory());
         TaskCompletionSource<Block?> improvement = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -353,11 +566,9 @@ public class PayloadPreparationServiceTests
         IBlockImprovementContext context = Substitute.For<IBlockImprovementContext>();
         context.Best.Returns(_ => best);
         context.ImprovementTask.Returns(improvement.Task);
-        // Cancelling would fail the build, as it does when the improvement is waiting on the producer lock.
-        context.When(c => c.CancelOngoingImprovements()).Do(_ => improvement.TrySetCanceled());
         service.Store("payload", context);
 
-        ValueTask<IBlockProductionContext?> payload = service.GetPayload("payload", skipCancel);
+        ValueTask<IBlockProductionContext?> payload = service.GetPayload("payload", skipCancel: true);
         bool returnedEarly = payload.IsCompleted;
         best = new(improved, UInt256.One);
         improvement.TrySetResult(improved);
@@ -367,33 +578,6 @@ public class PayloadPreparationServiceTests
             Assert.That(returnedEarly, Is.False);
             Assert.That((await payload)?.CurrentBestBlock, Is.SameAs(improved));
         }
-    }
-
-    [Test]
-    [CancelAfter(30000)]
-    public async Task GetPayload_keeps_a_block_finished_after_the_missing_block_wait_times_out()
-    {
-        using TestPayloadPreparationService service = CreateService(new RecordingBlockImprovementContextFactory());
-        TaskCompletionSource<Block?> improvement = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Block partial = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
-        BlockProductionSnapshot best = new(null, UInt256.Zero);
-        bool disposed = false;
-        IBlockImprovementContext context = Substitute.For<IBlockImprovementContext>();
-        context.Best.Returns(_ => best);
-        context.ImprovementTask.Returns(improvement.Task);
-        context.When(c => c.Dispose()).Do(_ => Volatile.Write(ref disposed, true));
-        context.When(c => c.DisposeAndCancelOngoingImprovements()).Do(_ => Volatile.Write(ref disposed, true));
-        // The build only finishes once cancelled, and like TrySetBest it is rejected once the context is disposed.
-        context.When(c => c.CancelOngoingImprovements()).Do(_ => Task.Run(() =>
-        {
-            if (!Volatile.Read(ref disposed)) best = new(partial, UInt256.One);
-            improvement.TrySetResult(partial);
-        }));
-        service.Store("payload", context);
-
-        IBlockProductionContext? payload = await service.GetPayload("payload");
-
-        Assert.That(payload?.CurrentBestBlock, Is.SameAs(partial));
     }
 
     [Test]

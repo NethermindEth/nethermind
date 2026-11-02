@@ -110,6 +110,8 @@ dotnet_diagnostic.CA1510.severity = warning
 dotnet_diagnostic.CA2208.severity = suggestion
 dotnet_diagnostic.NETH002.severity = error
 dotnet_diagnostic.NETH006.severity = error
+dotnet_diagnostic.NUnit2045.severity = error
+dotnet_diagnostic.NUnit2056.severity = error
 dotnet_diagnostic.IDE0320.severity = warning
 dotnet_diagnostic.IDE0018.severity = warning
 dotnet_diagnostic.IDE0019.severity = warning
@@ -126,10 +128,6 @@ dotnet_diagnostic.IDE0028.severity = warning
 # IDE0130: JSON converters intentionally exposed under Nethermind.Serialization.Json
 # despite living in Nethermind.Core to avoid a circular project reference.
 [src/Nethermind/Nethermind.Core/{BloomConverter,Crypto/PublicKeyConverter,Crypto/PublicKeyHashedConverter,JsonConverters/*}.cs]
-dotnet_diagnostic.IDE0130.severity = none
-
-# IDE0130: ABI JSON converters exposed under Nethermind.Blockchain.Contracts.Json.
-[src/Nethermind/Nethermind.Abi/Abi{DefinitionConverter,ParameterConverter,Type}.cs]
 dotnet_diagnostic.IDE0130.severity = none
 
 # IDE0130: Rlp-side helpers intentionally exposed under Nethermind.Core* namespaces;

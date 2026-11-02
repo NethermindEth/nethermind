@@ -41,6 +41,7 @@ public class NethermindNodeTests
     {
         if (_nethermindContainer != null)
         {
+            await _nethermindContainer.WriteDiagnosticLogsAsync("Nethermind");
             await _nethermindContainer.DisposeAsync();
         }
     }

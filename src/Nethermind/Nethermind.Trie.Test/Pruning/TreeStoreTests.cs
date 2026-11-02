@@ -167,9 +167,12 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode returnedNode = trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA);
             TrieNode returnedNode2 = trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakB);
             TrieNode returnedNode3 = trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakC);
-            Assert.That(returnedNode.NodeType, Is.EqualTo(NodeType.Unknown));
-            Assert.That(returnedNode2.NodeType, Is.EqualTo(NodeType.Unknown));
-            Assert.That(returnedNode3.NodeType, Is.EqualTo(NodeType.Unknown));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(returnedNode.NodeType, Is.EqualTo(NodeType.Unknown));
+                Assert.That(returnedNode2.NodeType, Is.EqualTo(NodeType.Unknown));
+                Assert.That(returnedNode3.NodeType, Is.EqualTo(NodeType.Unknown));
+            }
             trieStore.WaitForPruning();
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(scheme == INodeStorage.KeyScheme.HalfPath ? 552 : 396));
         }
@@ -235,8 +238,11 @@ namespace Nethermind.Trie.Test.Pruning
                 tree.Commit();
             }
 
-            Assert.That(fullTrieStore.MemoryUsedByDirtyCache, Is.EqualTo(scheme == INodeStorage.KeyScheme.Hash ? 545956 : 616104L));
-            Assert.That(fullTrieStore.CommittedNodesCount, Is.EqualTo(1349));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(fullTrieStore.MemoryUsedByDirtyCache, Is.EqualTo(scheme == INodeStorage.KeyScheme.Hash ? 545956 : 616104L));
+                Assert.That(fullTrieStore.CommittedNodesCount, Is.EqualTo(1349));
+            }
         }
 
         [Test]
@@ -389,8 +395,11 @@ namespace Nethermind.Trie.Test.Pruning
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(4, a)) { }
 
             fullTrieStore.WaitForPruning();
-            Assert.That(storage.Get(null, TreePath.Empty, a.Keccak), Is.Not.Null);
-            Assert.That(fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.Get(null, TreePath.Empty, a.Keccak), Is.Not.Null);
+                Assert.That(fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak), Is.True);
+            }
         }
 
         [Test]
@@ -415,9 +424,12 @@ namespace Nethermind.Trie.Test.Pruning
             //  <- do not persist in this test
 
             // <- do not persist in this test
-            Assert.That(
-            storage.Get(null, TreePath.Empty, a.Keccak), Is.Null);
-            Assert.That(fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(
+                storage.Get(null, TreePath.Empty, a.Keccak), Is.Null);
+                Assert.That(fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak), Is.True);
+            }
         }
 
         [Test]
@@ -474,8 +486,11 @@ namespace Nethermind.Trie.Test.Pruning
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(8, a)) { }
             fullTrieStore.WaitForPruning();
 
-            Assert.That(storage.Get(null, TreePath.Empty, a.Keccak), Is.Not.Null);
-            Assert.That(fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.Get(null, TreePath.Empty, a.Keccak), Is.Not.Null);
+                Assert.That(fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak), Is.True);
+            }
         }
 
         [Test]
@@ -517,8 +532,11 @@ namespace Nethermind.Trie.Test.Pruning
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(8, a)) { }
 
             fullTrieStore.WaitForPruning();
-            Assert.That(nodeStorage.Get(null, TreePath.Empty, a.Keccak), Is.Not.Null);
-            Assert.That(fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(nodeStorage.Get(null, TreePath.Empty, a.Keccak), Is.Not.Null);
+                Assert.That(fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak), Is.True);
+            }
         }
 
         [Test]
@@ -554,8 +572,11 @@ namespace Nethermind.Trie.Test.Pruning
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(7, b)) { }
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(8, b)) { }
 
-            Assert.That(memDb[a.Keccak!.Bytes], Is.Null);
-            Assert.That(fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(memDb[a.Keccak!.Bytes], Is.Null);
+                Assert.That(fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak), Is.True);
+            }
         }
 
         [Test]
@@ -616,9 +637,12 @@ namespace Nethermind.Trie.Test.Pruning
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(8, a)) { }
 
             fullTrieStore.WaitForPruning();
-            Assert.That(asStorage.Get(null, TreePath.Empty, a.Keccak), Is.Not.Null);
-            Assert.That(asStorage.Get(TestItem.KeccakA, TreePath.Empty, storage1.Keccak), Is.Not.Null);
-            Assert.That(fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(asStorage.Get(null, TreePath.Empty, a.Keccak), Is.Not.Null);
+                Assert.That(asStorage.Get(TestItem.KeccakA, TreePath.Empty, storage1.Keccak), Is.Not.Null);
+                Assert.That(fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak), Is.True);
+            }
             // Assert.That(trieStore.IsInMemory(storage1.Keccak), Is.False);
         }
 
@@ -672,10 +696,13 @@ namespace Nethermind.Trie.Test.Pruning
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(7, b)) { } // Should be 'a' to test properly
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(8, b)) { } // Should be 'a' to test properly
 
-            Assert.That(memDb[a.Keccak!.Bytes], Is.Null);
-            Assert.That(memDb[storage1.Keccak!.Bytes], Is.Null);
-            Assert.That(fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak), Is.True);
-            Assert.That(fullTrieStore.IsNodeCached(null, TreePath.Empty, storage1.Keccak), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(memDb[a.Keccak!.Bytes], Is.Null);
+                Assert.That(memDb[storage1.Keccak!.Bytes], Is.Null);
+                Assert.That(fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak), Is.True);
+                Assert.That(fullTrieStore.IsNodeCached(null, TreePath.Empty, storage1.Keccak), Is.True);
+            }
         }
 
         [Test]
@@ -753,10 +780,13 @@ namespace Nethermind.Trie.Test.Pruning
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(8, branch)) { }
 
             fullTrieStore.WaitForPruning();
-            Assert.That(storage.Get(null, TreePath.FromNibble(new byte[] { 0 }), a.Keccak), Is.Not.Null);
-            Assert.That(storage.Get(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak), Is.Not.Null);
-            Assert.That(fullTrieStore.IsNodeCached(null, TreePath.FromNibble(new byte[] { 0 }), a.Keccak), Is.True);
-            Assert.That(fullTrieStore.IsNodeCached(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.Get(null, TreePath.FromNibble(new byte[] { 0 }), a.Keccak), Is.Not.Null);
+                Assert.That(storage.Get(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak), Is.Not.Null);
+                Assert.That(fullTrieStore.IsNodeCached(null, TreePath.FromNibble(new byte[] { 0 }), a.Keccak), Is.True);
+                Assert.That(fullTrieStore.IsNodeCached(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak), Is.True);
+            }
         }
 
         [TestCase(true)]
@@ -854,8 +884,11 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode readOnlyNode = readOnlyTrieStore.FindCachedOrUnknown(null, TreePath.Empty, node.Keccak);
 
             Assert.That(readOnlyNode, Is.Not.EqualTo(originalNode));
-            Assert.That(readOnlyNode.Keccak, Is.EqualTo(originalNode.Keccak));
-            Assert.That(readOnlyNode.NodeType, Is.EqualTo(originalNode.NodeType));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(readOnlyNode.Keccak, Is.EqualTo(originalNode.Keccak));
+                Assert.That(readOnlyNode.NodeType, Is.EqualTo(originalNode.NodeType));
+            }
 
             CappedArray<byte> origRlp = originalNode.FullRlp;
             CappedArray<byte> readOnlyRlp = readOnlyNode.FullRlp;
@@ -865,8 +898,11 @@ namespace Nethermind.Trie.Test.Pruning
             byte firstReadOnlyByte = readOnlyRlp[0];
             origRlp[0] ^= 1;
 
-            Assert.That(readOnlyNode.GetChildHash(0), Is.EqualTo(TestItem.Keccaks[0]));
-            Assert.That(readOnlyNode.FullRlp[0], Is.EqualTo(firstReadOnlyByte));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(readOnlyNode.GetChildHash(0), Is.EqualTo(TestItem.Keccaks[0]));
+                Assert.That(readOnlyNode.FullRlp[0], Is.EqualTo(firstReadOnlyByte));
+            }
         }
 
         private long ExpectedPerNodeKeyMemorySize => (scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage) + MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;
@@ -989,10 +1025,13 @@ namespace Nethermind.Trie.Test.Pruning
             ulong lastPersisted = trieStore.LastPersistedBlockNumber;
 
             // Block within boundary: should return true
-            Assert.That(trieStore.HasRoot(rootHashes[(int)lastPersisted], lastPersisted), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trieStore.HasRoot(rootHashes[(int)lastPersisted], lastPersisted), Is.True);
 
-            // Block 1 is well outside the pruning boundary but should still be accessible in archive mode
-            Assert.That(trieStore.HasRoot(rootHashes[startBlock], startBlock), Is.True);
+                // Block 1 is well outside the pruning boundary but should still be accessible in archive mode
+                Assert.That(trieStore.HasRoot(rootHashes[startBlock], startBlock), Is.True);
+            }
 
             trieStore.Dispose();
         }
@@ -1201,12 +1240,18 @@ namespace Nethermind.Trie.Test.Pruning
                 fullTrieStore.WaitForPruning();
             }
 
-            Assert.That(memDb.Count, Is.EqualTo(1));
-            Assert.That(fullTrieStore.MemoryUsedByDirtyCache, Is.EqualTo(scheme == INodeStorage.KeyScheme.Hash ? 12032 : 15360));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(memDb.Count, Is.EqualTo(1));
+                Assert.That(fullTrieStore.MemoryUsedByDirtyCache, Is.EqualTo(scheme == INodeStorage.KeyScheme.Hash ? 12032 : 15360));
+            }
 
             fullTrieStore.PersistCache(default);
-            Assert.That(memDb.Count, Is.EqualTo(64));
-            Assert.That(fullTrieStore.MemoryUsedByDirtyCache, Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(memDb.Count, Is.EqualTo(64));
+                Assert.That(fullTrieStore.MemoryUsedByDirtyCache, Is.EqualTo(0));
+            }
             return Task.CompletedTask;
         }
 
@@ -1752,8 +1797,11 @@ namespace Nethermind.Trie.Test.Pruning
 
             commitSet.Seal(null);
 
-            Assert.That(commitSet.IsSealed, Is.True);
-            Assert.That(commitSet.StateRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(commitSet.IsSealed, Is.True);
+                Assert.That(commitSet.StateRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            }
         }
 
         [Test]
@@ -1795,8 +1843,11 @@ namespace Nethermind.Trie.Test.Pruning
                 CreateRecord(currentNode, currentLastCommit),
                 CreateRecord(candidateNode, candidateLastCommit));
 
-            Assert.That(merged.Node, Is.SameAs(expectCandidateNode ? candidateNode : currentNode));
-            Assert.That(merged.LastCommit, Is.EqualTo(expectedLastCommit));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(merged.Node, Is.SameAs(expectCandidateNode ? candidateNode : currentNode));
+                Assert.That(merged.LastCommit, Is.EqualTo(expectedLastCommit));
+            }
         }
 
         [Test]
@@ -1891,8 +1942,11 @@ namespace Nethermind.Trie.Test.Pruning
                 trieStore.WaitForPruning();
             }
 
-            Assert.That(testLogger.LogList.Where(m => m.Contains("Pruning failed")), Is.Empty);
-            Assert.That(trieStore.LastPersistedBlockNumber, Is.GreaterThanOrEqualTo(1UL));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(testLogger.LogList.Where(m => m.Contains("Pruning failed")), Is.Empty);
+                Assert.That(trieStore.LastPersistedBlockNumber, Is.GreaterThanOrEqualTo(1UL));
+            }
         }
 
         [Test]

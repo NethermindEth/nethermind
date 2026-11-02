@@ -23,7 +23,9 @@ public class VmStateStackTests
 
         for (int i = frames.Length - 1; i >= 0; i--)
         {
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
             Assert.That(stack.Pop(), Is.SameAs(frames[i]), $"frame at depth {i}");
+#pragma warning restore NUnit2045
             Assert.That(stack.Count, Is.EqualTo(i));
         }
 

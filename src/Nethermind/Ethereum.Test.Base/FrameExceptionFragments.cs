@@ -60,7 +60,6 @@ public static class FrameExceptionFragments
         // one fragment covers all three places a bad msg length is caught.
         FrameTxValidation.InvalidMsgLength,
         FrameTxValidation.ZeroDigestMsg,
-        FrameTxValidation.BlobFeeWithoutBlobs,
         FrameTxValidation.KeyedNoncesNotEnabled,
         FrameTxValidation.LegacyNonceNotAllowed,
         FrameTxValidation.MalformedNonceKeySet,

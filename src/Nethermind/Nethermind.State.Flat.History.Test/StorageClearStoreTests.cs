@@ -54,10 +54,13 @@ public class StorageClearStoreTests
         RecordClear(10, AccountA);
         RecordClear(30, AccountA);
 
-        Assert.That(_store.HasClearInRange(AccountA, 15, 25), Is.False,
-            "neither clear (10, 30) falls in (15, 25]");
-        Assert.That(_store.HasClearInRange(AccountA, 25, 35), Is.True,
-            "the clear at 30 falls in (25, 35]");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.HasClearInRange(AccountA, 15, 25), Is.False,
+                "neither clear (10, 30) falls in (15, 25]");
+            Assert.That(_store.HasClearInRange(AccountA, 25, 35), Is.True,
+                "the clear at 30 falls in (25, 35]");
+        }
     }
 
     private void RecordClear(ulong block, byte[] accountKey)

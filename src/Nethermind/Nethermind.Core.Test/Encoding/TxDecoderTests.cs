@@ -308,7 +308,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Rejects_transaction_nonce_too_wide_during_decoding([Values(9, 33)] int nonceLength)
         {
-            byte[] txBytes = BuildLegacyTxWithNonce([0x01, .. new byte[nonceLength - 1]]);
+            byte[] txBytes = BuildLegacyTx([0x01, .. new byte[nonceLength - 1]]);
 
             void Decode()
             {
@@ -321,10 +321,41 @@ namespace Nethermind.Core.Test.Encoding
                 Throws.TypeOf<RlpException>().With.Message.Contains("NonceTooWide"));
         }
 
+        [TestCase("0x020000000000000021", "InvalidTxChainId", TestName = "Chain id 2^64 - 1")]
+        [TestCase("0x020000000000000022", "InvalidTxChainId", TestName = "Chain id 2^64 - 1, odd parity")]
+        [TestCase("0x020000000000000023", "InvalidTxSignature", TestName = "Chain id 2^64")]
+        [TestCase("0x0100000000000000000000000000000000000000000000000000000000000000", "InvalidTxSignature", TestName = "32-byte v")]
+        public void Rejects_legacy_v_wider_than_uint64_by_its_chain_id(string v, string error)
+        {
+            byte[] txBytes = BuildLegacyTx([], Bytes.FromHexString(v));
+
+            void Decode()
+            {
+                RlpReader decoderContext = new(txBytes);
+                _txDecoder.DecodeGuardNotNull(ref decoderContext, RlpBehaviors.AllowUnsigned);
+            }
+
+            Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains(error));
+        }
+
+        [Test]
+        public void Keeps_decoding_error_of_wide_v_without_r_and_s_that_end_the_transaction([Values(0, 1, 3)] int itemsAfterV)
+        {
+            byte[] txBytes = BuildLegacyTx([], Bytes.FromHexString("0x020000000000000021"), itemsAfterV);
+
+            void Decode()
+            {
+                RlpReader decoderContext = new(txBytes);
+                _txDecoder.DecodeGuardNotNull(ref decoderContext, RlpBehaviors.AllowUnsigned);
+            }
+
+            Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Not.Contains("Chain id"));
+        }
+
         [TestCaseSource(nameof(NonCanonicalNonceTestCases))]
         public void Rejects_non_canonical_transaction_nonce(byte[] nonceBytes)
         {
-            byte[] txBytes = BuildLegacyTxWithNonce(nonceBytes);
+            byte[] txBytes = BuildLegacyTx(nonceBytes);
 
             void Decode()
             {
@@ -655,15 +686,18 @@ namespace Nethermind.Core.Test.Encoding
             .SignedAndResolved(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA)
             .TestObject;
 
-        private static byte[] BuildLegacyTxWithNonce(ReadOnlySpan<byte> nonceBytes)
+        private static byte[] BuildLegacyTx(ReadOnlySpan<byte> nonceBytes, ReadOnlySpan<byte> vBytes = default, int emptyItemsAfterV = 2)
         {
-            int nonceRlpLength = GetByteStringRlpLength(nonceBytes);
-            int payloadLength = nonceRlpLength + 8;
+            const int emptyItemsBetweenNonceAndV = 5;
+            int payloadLength = GetByteStringRlpLength(nonceBytes) + emptyItemsBetweenNonceAndV + GetByteStringRlpLength(vBytes) + emptyItemsAfterV;
             byte[] txBytes = new byte[1 + payloadLength];
             txBytes[0] = (byte)(Rlp.EmptyListByte + payloadLength);
 
             int position = 1;
             EncodeByteString(txBytes, ref position, nonceBytes);
+            txBytes.AsSpan(position, emptyItemsBetweenNonceAndV).Fill(Rlp.EmptyByteArrayByte);
+            position += emptyItemsBetweenNonceAndV;
+            EncodeByteString(txBytes, ref position, vBytes);
             txBytes.AsSpan(position).Fill(Rlp.EmptyByteArrayByte);
             return txBytes;
         }

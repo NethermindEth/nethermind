@@ -181,8 +181,11 @@ public class ReceiptsSyncFeedTests
         _feed.InitializeFeed();
 
         using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
-        Assert.That(request, Is.Null);
-        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request, Is.Null);
+            Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+        }
     }
 
     [Test]
@@ -229,8 +232,11 @@ public class ReceiptsSyncFeedTests
         LoadScenario(_64BodiesWithOneTxEachFollowedByEmpty);
         using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
         Assert.That(request, Is.Not.Null);
-        Assert.That(request!.MinNumber, Is.EqualTo(1024));
-        Assert.That(request.Prioritized, Is.EqualTo(true));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request!.MinNumber, Is.EqualTo(1024));
+            Assert.That(request.Prioritized, Is.EqualTo(true));
+        }
     }
 
     [Test]
@@ -240,9 +246,12 @@ public class ReceiptsSyncFeedTests
         _syncConfig.DownloadReceiptsInFastSync = false;
 
         using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
-        Assert.That(request, Is.Null);
-        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
-        Assert.That(_progressLogger.HasEnded, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request, Is.Null);
+            Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+            Assert.That(_progressLogger.HasEnded, Is.True);
+        }
     }
 
     [TestCase(1UL, 1024UL, false, null, false)]
@@ -537,9 +546,12 @@ public class ReceiptsSyncFeedTests
         FillBatchResponses(batch!);
         _feed.HandleResponse(batch);
         _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1UL);
-        Assert.That(_feed.PrepareRequest().Result, Is.EqualTo(null));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_feed.PrepareRequest().Result, Is.EqualTo(null));
 
-        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+            Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+        }
     }
 
     [Test]

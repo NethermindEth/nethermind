@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -58,11 +57,12 @@ public class ResourcePoolTests
         SnapshotContent content1 = _resourcePool.GetSnapshotContent(usage);
 
         content1.Accounts[new Address("0x1234567890123456789012345678901234567890")] = new Account(1, 2);
-        content1.StorageNodes[(TestItem.KeccakA, TreePath.Empty)] = new TrieNode(NodeType.Unknown, TestItem.KeccakB);
+        content1.StateRootPointer = 1;
+        content1.StorageRoots[TestItem.KeccakA] = 2;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(content1.Accounts, Is.Not.Empty);
-            Assert.That(content1.StorageNodes, Is.Not.Empty);
+            Assert.That(content1.StorageRoots, Is.Not.Empty);
         }
 
         _resourcePool.ReturnSnapshotContent(usage, content1);
@@ -75,7 +75,27 @@ public class ResourcePoolTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(content2.Accounts, Is.Empty);
-            Assert.That(content2.StorageNodes, Is.Empty);
+            Assert.That(content2.StateRootPointer, Is.Zero);
+            Assert.That(content2.StorageRoots, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Test_ReturnSortedSnapshotContent_ResetsRootMetadata()
+    {
+        ResourcePool.Usage usage = ResourcePool.Usage.Compact2;
+        SortedSnapshotContent content = _resourcePool.GetSortedSnapshotContent(usage);
+        content.StateRootPointer = 1;
+        content.StorageRoots[TestItem.KeccakA] = 2;
+
+        _resourcePool.ReturnSortedSnapshotContent(usage, content);
+        SortedSnapshotContent recycled = _resourcePool.GetSortedSnapshotContent(usage);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recycled, Is.SameAs(content));
+            Assert.That(recycled.StateRootPointer, Is.Zero);
+            Assert.That(recycled.StorageRoots, Is.Empty);
         }
     }
 
@@ -105,7 +125,7 @@ public class ResourcePoolTests
     }
 
     [Test]
-    public void Test_ReturnSnapshotContent_ReusedContentStartsEmpty_WhetherOrNotStorageNodesWereWritten()
+    public void Test_ReturnSnapshotContent_ReusedContentStartsEmpty_WhetherOrNotStorageRootsWereWritten()
     {
         ResourcePool.Usage usage = ResourcePool.Usage.ReadOnlyProcessingEnv;
         Address address = new("0x1234567890123456789012345678901234567890");
@@ -122,16 +142,16 @@ public class ResourcePoolTests
                 Assert.That(content.ReadAccounts, Is.Empty);
                 Assert.That(content.Storages, Is.Empty);
                 Assert.That(content.SelfDestructedStorageAddresses, Is.Empty);
-                Assert.That(content.StateNodes, Is.Empty);
-                Assert.That(content.StorageNodes, Is.Empty);
+                Assert.That(content.StateRootPointer, Is.Zero);
+                Assert.That(content.StorageRoots, Is.Empty);
             }
 
             content.Accounts[address] = new Account(1, 2);
             content.ReadAccounts[address] = new Account(3, 4);
             content.Storages[(address, UInt256.One)] = UInt256.One;
             content.SelfDestructedStorageAddresses[address] = true;
-            content.StateNodes[TreePath.Empty] = new TrieNode(NodeType.Unknown, TestItem.KeccakA);
-            if (round != 1) content.StorageNodes[(TestItem.KeccakA, TreePath.Empty)] = new TrieNode(NodeType.Unknown, TestItem.KeccakB);
+            content.StateRootPointer = 1;
+            if (round != 1) content.StorageRoots[TestItem.KeccakA] = 2;
 
             _resourcePool.ReturnSnapshotContent(usage, content);
         }
@@ -172,8 +192,11 @@ public class ResourcePoolTests
     {
         TransientResource resource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
         Assert.That(resource, Is.Not.Null);
-        Assert.That(resource.size.PrewarmedAddressSize, Is.EqualTo(1024));
-        Assert.That(resource.size.NodesCacheSize, Is.EqualTo(1024));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resource.size.PrewarmedAddressSize, Is.EqualTo(1024));
+            Assert.That(resource.size.NodesCacheSize, Is.EqualTo(1024));
+        }
     }
 
     [Test]
@@ -238,9 +261,12 @@ public class ResourcePoolTests
         TransientResource p2 = _resourcePool.GetCachedResource(usage);
         TransientResource p3 = _resourcePool.GetCachedResource(usage);
 
-        Assert.That(p1, Is.SameAs(r2)); // LIFO
-        Assert.That(p2, Is.SameAs(r1));
-        Assert.That(p3, Is.Not.SameAs(r3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(p1, Is.SameAs(r2)); // LIFO
+            Assert.That(p2, Is.SameAs(r1));
+            Assert.That(p3, Is.Not.SameAs(r3));
+        }
     }
 
     [Test]
@@ -253,9 +279,12 @@ public class ResourcePoolTests
         SnapshotContent content;
         using (Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, usage))
         {
-            Assert.That(snapshot.From, Is.EqualTo(from));
-            Assert.That(snapshot.To, Is.EqualTo(to));
-            Assert.That(snapshot.Content, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(snapshot.From, Is.EqualTo(from));
+                Assert.That(snapshot.To, Is.EqualTo(to));
+                Assert.That(snapshot.Content, Is.Not.Null);
+            }
             content = snapshot.Content;
         }
 

@@ -48,8 +48,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             ulong estimate = testEnvironment.Estimate(tx, block.Header, out string? err);
 
-            Assert.That(estimate, Is.EqualTo(0ul), "Should return 0 when Address.Zero has insufficient balance for value transfer");
-            Assert.That(err, Is.EqualTo(GasEstimator.InsufficientBalance), "Should provide insufficient balance error message");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(estimate, Is.EqualTo(0ul), "Should return 0 when Address.Zero has insufficient balance for value transfer");
+                Assert.That(err, Is.EqualTo(GasEstimator.InsufficientBalance), "Should provide insufficient balance error message");
+            }
         }
 
         [Test]
@@ -66,8 +69,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             ulong estimate = testEnvironment.Estimate(tx, block.Header, out string? err);
 
-            Assert.That(estimate, Is.GreaterThan(0ul), "Should succeed when Address.Zero has no value transfer");
-            Assert.That(err, Is.Null, "No error should occur for Address.Zero with no value transfer");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(estimate, Is.GreaterThan(0ul), "Should succeed when Address.Zero has no value transfer");
+                Assert.That(err, Is.Null, "No error should occur for Address.Zero with no value transfer");
+            }
         }
 
         [TestCase(50_000ul, false)]
@@ -95,8 +101,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             if (shouldSucceed)
             {
-                Assert.That(result, Is.GreaterThan(1_000_000ul), "Gas estimation should account for the gas threshold in the contract");
-                Assert.That(err, Is.Null);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result, Is.GreaterThan(1_000_000ul), "Gas estimation should account for the gas threshold in the contract");
+                    Assert.That(err, Is.Null);
+                }
             }
             else
             {
@@ -150,8 +159,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             ulong result = testEnvironment.Estimate(tx, block.Header, out string? err);
 
-            Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed when inner call reverts but transaction succeeds overall");
-            Assert.That(err, Is.Null, "No error should occur - inner reverts should not be treated as top-level failures");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed when inner call reverts but transaction succeeds overall");
+                Assert.That(err, Is.Null, "No error should occur - inner reverts should not be treated as top-level failures");
+            }
         }
 
         private static IEnumerable<TestCaseData> NestedOutOfGasCases()
@@ -274,8 +286,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             ulong result = testEnvironment.Estimate(tx, block.Header, out string? err);
 
-            Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed for CREATE2 + setup call pattern");
-            Assert.That(err, Is.Null, "No error for CREATE2 + setup call");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed for CREATE2 + setup call pattern");
+                Assert.That(err, Is.Null, "No error for CREATE2 + setup call");
+            }
         }
 
         [Test]
@@ -333,8 +348,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             ulong result = testEnvironment.Estimate(tx, block.Header, out string? err);
 
-            Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed with mixed inner reverts");
-            Assert.That(err, Is.Null, "No error when inner calls revert but overall tx succeeds");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed with mixed inner reverts");
+                Assert.That(err, Is.Null, "No error when inner calls revert but overall tx succeeds");
+            }
         }
 
         [Test]
@@ -393,8 +411,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             ulong result = testEnvironment.Estimate(tx, block.Header, out string? err);
 
-            Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed when inner call OOGs but caller handles it");
-            Assert.That(err, Is.Null, "No error - inner OOG should not affect top-level estimation");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed when inner call OOGs but caller handles it");
+                Assert.That(err, Is.Null, "No error - inner OOG should not affect top-level estimation");
+            }
         }
 
         [TestCase(50_000ul, true)]
@@ -430,13 +451,19 @@ namespace Nethermind.Evm.Test.Tracing
 
             if (shouldSucceed)
             {
-                Assert.That(result, Is.GreaterThan(0), "Gas estimation should find enough gas for the success path");
-                Assert.That(err, Is.Null, "No error - binary search should find gas level above threshold");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result, Is.GreaterThan(0), "Gas estimation should find enough gas for the success path");
+                    Assert.That(err, Is.Null, "No error - binary search should find gas level above threshold");
+                }
             }
             else
             {
-                Assert.That(result, Is.GreaterThan(0), "Low threshold should always succeed");
-                Assert.That(err, Is.Null);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result, Is.GreaterThan(0), "Low threshold should always succeed");
+                    Assert.That(err, Is.Null);
+                }
             }
         }
 
@@ -492,8 +519,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             ulong result = testEnvironment.Estimate(tx, block.Header, out string? err);
 
-            Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed for CREATE with constructor that makes calls");
-            Assert.That(err, Is.Null, "No error for constructor-call pattern");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed for CREATE with constructor that makes calls");
+                Assert.That(err, Is.Null, "No error for constructor-call pattern");
+            }
         }
 
         [Test]
@@ -541,8 +571,11 @@ namespace Nethermind.Evm.Test.Tracing
 
                 ulong result = freshEnv.Estimate(tx, block.Header, out string? err);
 
-                Assert.That(result, Is.GreaterThan(0ul), $"Iteration {i}: gas estimation should succeed");
-                Assert.That(err, Is.Null, $"Iteration {i}: no error expected");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result, Is.GreaterThan(0ul), $"Iteration {i}: gas estimation should succeed");
+                    Assert.That(err, Is.Null, $"Iteration {i}: no error expected");
+                }
 
                 firstResult ??= result;
                 Assert.That(result, Is.EqualTo(firstResult.Value), $"Iteration {i}: result should be consistent");
@@ -618,8 +651,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             ulong result = testEnvironment.Estimate(tx, block.Header, out string? err);
 
-            Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed for deeply nested call chain");
-            Assert.That(err, Is.Null, "No error for deeply nested calls");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed for deeply nested call chain");
+                Assert.That(err, Is.Null, "No error for deeply nested calls");
+            }
         }
 
         [Test]
@@ -676,8 +712,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             ulong result = testEnvironment.Estimate(tx, block.Header, out string? err);
 
-            Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed for CREATE2 with inner revert in constructor");
-            Assert.That(err, Is.Null, "No error for GnosisSafe-like CREATE2 pattern");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed for CREATE2 with inner revert in constructor");
+                Assert.That(err, Is.Null, "No error for GnosisSafe-like CREATE2 pattern");
+            }
         }
 
         [Test]
@@ -708,8 +747,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             ulong result = testEnvironment.Estimate(tx, block.Header, out string? err);
 
-            Assert.That(result, Is.EqualTo(0ul), "Gas estimation should fail when top-level call reverts");
-            Assert.That(err, Is.Not.Null, "Should report an error when top-level reverts");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(0ul), "Gas estimation should fail when top-level call reverts");
+                Assert.That(err, Is.Not.Null, "Should report an error when top-level reverts");
+            }
         }
 
         [Test]
@@ -752,8 +794,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             ulong result = testEnvironment.Estimate(tx, block.Header, out string? err);
 
-            Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed when DELEGATECALL reverts but caller handles it");
-            Assert.That(err, Is.Null, "No error for caught DELEGATECALL revert");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed when DELEGATECALL reverts but caller handles it");
+                Assert.That(err, Is.Null, "No error for caught DELEGATECALL revert");
+            }
         }
 
         [Test]
@@ -795,8 +840,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             ulong result = testEnvironment.Estimate(tx, block.Header, out string? err, errorMargin: 0);
 
-            Assert.That(err, Is.Null);
-            Assert.That(result, Is.GreaterThan(Transaction.BaseTxGasCost));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Is.Null);
+                Assert.That(result, Is.GreaterThan(Transaction.BaseTxGasCost));
+            }
         }
 
         [Test]
@@ -825,8 +873,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             ulong result = testEnvironment.Estimate(tx, block.Header, out string? err);
 
-            Assert.That(err, Is.Null, err);
-            Assert.That(result, Is.GreaterThan(Transaction.BaseTxGasCost));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Is.Null, err);
+                Assert.That(result, Is.GreaterThan(Transaction.BaseTxGasCost));
+            }
         }
 
         private class TestEnvironment : IDisposable
@@ -908,8 +959,11 @@ namespace Nethermind.Evm.Test.Tracing
             ulong result = 0;
             string? err = null;
             Assert.DoesNotThrow(() => result = testEnvironment.Estimate(tx, block.Header, out err));
-            Assert.That(err, Is.Null, err);
-            Assert.That(result, Is.GreaterThan(GasCostOf.Transaction));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Is.Null, err);
+                Assert.That(result, Is.GreaterThan(GasCostOf.Transaction));
+            }
         }
     }
 }

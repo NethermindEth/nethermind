@@ -168,13 +168,17 @@ public class HistoryStoreV3Tests
         if (flush) db.Flush();
         using HistoryStoreV3.ReadScope scope = new();
         Span<byte> output = stackalloc byte[64];
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(store.TryGetValueBeforeNextChange(5, KeyA, output, out _, scope, generation: 0), Is.EqualTo(1));
+#pragma warning restore NUnit2045
         Assert.That(output[0], Is.EqualTo(0xAA));
         Assert.That(store.TryGetValueBeforeNextChange(5, KeyB, output, out _, scope, generation: 0), Is.EqualTo(-1));
 
         using (IWriteBatch batch = db.StartWriteBatch()) store.RecordPreValue(25, KeyB, [0xBB], batch);
         if (flush) db.Flush();
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(store.TryGetValueBeforeNextChange(5, KeyB, output, out _, scope, generation: 0), Is.EqualTo(-1));
+#pragma warning restore NUnit2045
         Assert.That(store.TryGetValueBeforeNextChange(5, KeyB, output, out ulong next, scope, generation: 1), Is.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {

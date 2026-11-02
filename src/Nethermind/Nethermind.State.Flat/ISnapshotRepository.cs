@@ -5,7 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
-using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat;
 
@@ -14,7 +14,7 @@ public interface ISnapshotRepository
     /// <summary>Number of in-memory base snapshots currently held.</summary>
     int SnapshotCount { get; }
 
-    /// <summary>Estimated bytes held by the in-memory snapshot tiers (base + compacted).</summary>
+    /// <summary>Estimated bytes held by the in-memory snapshot tiers (base + compacted), including the trie node buffer bytes they pin.</summary>
     long InMemoryBytes { get; }
 
     /// <summary>Total persisted snapshots across the base/compacted/CompactSized buckets.</summary>

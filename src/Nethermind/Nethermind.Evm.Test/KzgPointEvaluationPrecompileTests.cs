@@ -96,11 +96,14 @@ public class KzgPointEvaluationPrecompileTests
 
     private static byte[] CreateKzgTestInput(string versionedHash, string z, string y, string commitment, string proof)
     {
-        Assert.That(versionedHash.Length, Is.EqualTo(64));
-        Assert.That(z.Length, Is.EqualTo(64));
-        Assert.That(y.Length, Is.EqualTo(64));
-        Assert.That(commitment.Length, Is.EqualTo(96));
-        Assert.That(proof.Length, Is.EqualTo(96));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(versionedHash.Length, Is.EqualTo(64));
+            Assert.That(z.Length, Is.EqualTo(64));
+            Assert.That(y.Length, Is.EqualTo(64));
+            Assert.That(commitment.Length, Is.EqualTo(96));
+            Assert.That(proof.Length, Is.EqualTo(96));
+        }
         return Bytes.FromHexString(versionedHash + z + y + commitment + proof);
     }
 
