@@ -403,23 +403,19 @@ namespace Nethermind.Serialization.Rlp
                 RlpHelpers.ThrowNullArrayElement(index);
             }
 
-            bool hasValue;
             try
             {
-                reader.Position = RlpHelpers.ReadKeccakPrefix(reader.Data, reader.Position, allowNull: true, out hasValue);
-                if (hasValue)
+                reader.Position = RlpHelpers.ReadKeccakPrefix(reader.Data, reader.Position, allowNull: true, out bool hasValue);
+                if (!hasValue)
                 {
-                    reader.Read(Hash256.Size).CopyTo(topic);
+                    ThrowNullTopic();
                 }
+
+                reader.Read(Hash256.Size).CopyTo(topic);
             }
             catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
             {
                 ThrowTopicDecode(e);
-            }
-
-            if (!hasValue)
-            {
-                ThrowNullTopic();
             }
         }
 

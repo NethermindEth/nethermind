@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts;
@@ -25,7 +26,7 @@ public ref struct LogTopicsIterator
         _end = decoder.StartDecodingTopics(ref _reader);
     }
 
-    /// <param name="topic">Receives the next topic; must be <see cref="Core.Crypto.Hash256.Size"/> bytes.</param>
+    /// <param name="topic">Receives the next topic; must be <see cref="Hash256.Size"/> bytes.</param>
     /// <returns><c>false</c> when there are no more topics.</returns>
     public bool TryGetNext(scoped Span<byte> topic)
     {

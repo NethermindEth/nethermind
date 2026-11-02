@@ -751,18 +751,18 @@ public class LogFinderTests
     {
         LogEntry[] logEntries =
         [
-            new(TestItem.AddressF, [1], [TestItem.KeccakA, TopicOne, Keccak.Zero, TestItem.KeccakB]),
-            new(TestItem.AddressF, [], []),
-            new(TestItem.AddressF, [], [Keccak.Zero, new Hash256("0x00ff00000000000000000000000000000000000000000000000000000000ff00")]),
+            new(TestItem.AddressA, [1], [TestItem.KeccakA, TopicOne, Keccak.Zero, TestItem.KeccakB]),
+            new(TestItem.AddressA, [], []),
+            new(TestItem.AddressA, [], [Keccak.Zero, new Hash256("0x00ff00000000000000000000000000000000000000000000000000000000ff00")]),
         ];
         Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
         byte[] encoded = EncodeReceipt(block, compact, logEntries);
         LogFinder finder = CreateEncodedLogFinder(block, encoded, compact, indexed, out ILogIndexStorage? index);
-        LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressF).Build();
+        LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
 
         AssertSerializedAsFilterLogs(finder.FindLogs(filter));
         Assert.That(finder.FindLogs(filter).Select(static log => log.Topics), Is.EqualTo(logEntries.Select(static log => log.Topics)));
-        index?.Received().GetEnumerator(TestItem.AddressF, 1, 1);
+        index?.Received().GetEnumerator(TestItem.AddressA, 1, 1);
     }
 
     [Test]
@@ -772,9 +772,9 @@ public class LogFinderTests
             ? malformedIndex == 0 ? [TopicOne, TestItem.KeccakA] : [TestItem.KeccakA, TopicOne]
             : malformedIndex == 0 ? [TestItem.KeccakB, TestItem.KeccakA] : [TestItem.KeccakA, TestItem.KeccakB];
         Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
-        byte[] encoded = EncodeReceipt(block, compact, new LogEntry(TestItem.AddressF, [], topics));
-        int address = encoded.AsSpan().IndexOf(TestItem.AddressF.Bytes);
-        Assert.That(encoded.AsSpan(address + 1).IndexOf(TestItem.AddressF.Bytes), Is.EqualTo(-1));
+        byte[] encoded = EncodeReceipt(block, compact, new LogEntry(TestItem.AddressA, [], topics));
+        // The log's address follows the receipt's sender, which is also TestItem.AddressA.
+        int address = encoded.AsSpan().LastIndexOf(TestItem.AddressA.Bytes);
         if (compact)
         {
             // TopicOne is stored as the single byte 0x01; an RLP null of the same length replaces it.
@@ -791,7 +791,7 @@ public class LogFinderTests
         }
 
         LogFinder finder = CreateEncodedLogFinder(block, encoded, compact, indexed, out _);
-        LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressF).Build();
+        LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
 
         using (Assert.EnterMultipleScope())
         {
@@ -824,7 +824,7 @@ public class LogFinderTests
         }
 
         index = CreateLogIndexStorage(1, 1);
-        index.GetEnumerator(TestItem.AddressF, 1, 1).Returns(_ => new[] { 1 }.AsEnumerable().GetEnumerator());
+        index.GetEnumerator(TestItem.AddressA, 1, 1).Returns(_ => new[] { 1 }.AsEnumerable().GetEnumerator());
         return new IndexedLogFinder(_blockTree, receiptFinder, _receiptStorage, LimboLogs.Instance, recovery, _specProvider!, index, minBlocksToUseIndex: 1);
     }
 

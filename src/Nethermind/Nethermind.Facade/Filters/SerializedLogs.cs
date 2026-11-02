@@ -116,11 +116,11 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
             return;
         }
 
-        Span<byte> topic = stackalloc byte[Hash256.Size];
+        Span<byte> buffer = stackalloc byte[Hash256.Size];
         LogTopicsIterator encoded = iterator.IterateTopics(log.TopicsRlp);
-        while (encoded.TryGetNext(topic))
+        while (encoded.TryGetNext(buffer))
         {
-            HexWriter.WriteFixed32HexRawValue(writer, topic);
+            HexWriter.WriteFixed32HexRawValue(writer, buffer);
         }
     }
 
