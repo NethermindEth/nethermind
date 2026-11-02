@@ -5462,7 +5462,9 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
             Transaction replaced = SponsoredFrameTx(TestItem.PrivateKeyA, Paymasters[0]);
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
             Assert.That(_txPool.SubmitTx(replaced, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
             Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, Paymasters[1]), TxHandlingOptions.None),
                 Is.EqualTo(AcceptTxResult.FrameTxCodeDependencyLimitReached), "the only slot must be taken");
 
@@ -5492,7 +5494,9 @@ namespace Nethermind.TxPool.Test
             PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
             foreach (PrivateKey sender in senders) EnsureSenderBalance(sender.Address, UInt256.MaxValue);
             Transaction holder = SponsoredFrameTx(TestItem.PrivateKeyA, Paymasters[0]);
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
             Assert.That(_txPool.SubmitTx(holder, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
             Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, Paymasters[1]), TxHandlingOptions.None),
                 Is.EqualTo(AcceptTxResult.FrameTxCodeDependencyLimitReached), "the only paymaster slot must be taken");
 
