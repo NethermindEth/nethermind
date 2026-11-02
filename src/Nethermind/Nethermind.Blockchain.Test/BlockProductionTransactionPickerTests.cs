@@ -92,6 +92,18 @@ public class BlockProductionTransactionPickerTests
             .SetName("An added candidate has no reason");
     }
 
+    /// <summary>The skips whose reason is built from numbers: execution gas, state gas and the account nonce.</summary>
+    private static IEnumerable<TestCaseData> DeferredSkips()
+    {
+        yield return new TestCaseData(Osaka.Instance, AccountNonce, BlockGasLimit - 50_000, 0UL, ExecutionGasReason(50_000))
+            .SetArgDisplayNames("execution gas");
+        yield return new TestCaseData(Amsterdam.Instance, AccountNonce, 0UL, BlockGasLimit - 50_000,
+                "Not enough state gas in block, gas limit 100000 > 50000")
+            .SetArgDisplayNames("state gas");
+        yield return new TestCaseData(Osaka.Instance, AccountNonce + 2, 0UL, 0UL, "Invalid nonce - expected 3")
+            .SetArgDisplayNames("account nonce");
+    }
+
     [TestCaseSource(nameof(SkipReasons))]
     public void Rejection_reasons_keep_their_text(IReleaseSpec spec, Transaction tx, ulong cumulativeExecutionGas,
         ulong cumulativeStateGas, BlockProcessor.TxAction expectedAction, string expectedReason)
@@ -283,28 +295,30 @@ public class BlockProductionTransactionPickerTests
         }
     }
 
-    /// <summary>A candidate skipped at the execution-gas check allocates its own args object and nothing more: the reason
-    /// string is built on the first read of <see cref="BlockProcessor.AddingTxEventArgs.Reason"/>, once.</summary>
-    [Test]
-    public void A_candidate_skipped_for_gas_allocates_only_its_args_until_its_reason_is_read()
+    /// <summary>A candidate skipped at a check whose reason is built from numbers allocates its own args object and nothing
+    /// more: the reason string is built on the first read of <see cref="BlockProcessor.AddingTxEventArgs.Reason"/>, once.</summary>
+    [TestCaseSource(nameof(DeferredSkips))]
+    public void A_deferred_skip_allocates_only_its_args_until_its_reason_is_read(IReleaseSpec spec, ulong nonce,
+        ulong cumulativeExecutionGas, ulong cumulativeStateGas, string expectedReason)
     {
         // The args object: AddingTxEventArgs is 56 B on 64-bit and the deferred reason's kind and two numbers add up to
-        // 24 B more, 80 B. The reason string alone (59 chars) is 144 B, so formatting it during the call would break this
-        // bound, and master's 200 B per skip (args plus string) is well above it.
+        // 24 B more, 80 B. The shortest of these reasons, "Invalid nonce - expected 3" (26 chars), is an 80 B string and
+        // the gas ones are 136-144 B, so formatting any of them during the call would break this bound. Master's skip
+        // allocates its 56 B args plus that string.
         const long argsBound = 96;
-        const ulong gasRemaining = 50_000;
         using FundedSender sender = new(1.Ether);
         Block block = BlockWithoutBaseFee();
-        BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker(Osaka.Instance);
-        Transaction tx = Tx();
+        BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker(spec);
+        Transaction tx = Tx(nonce);
         HashSet<Transaction> transactionsInBlock = [];
 
-        BlockProcessor.AddingTxEventArgs Skip() => picker.CanAddTransaction(block, tx, transactionsInBlock, sender.State, BlockGasLimit - gasRemaining, 0);
+        BlockProcessor.AddingTxEventArgs Skip() =>
+            picker.CanAddTransaction(block, tx, transactionsInBlock, sender.State, cumulativeExecutionGas, cumulativeStateGas);
 
         // Warm both paths up (JIT, static initialisation, the pooled buffer of the interpolation) outside the measurement.
         for (int i = 0; i < 10; i++)
         {
-            Assert.That(Skip().Reason, Is.EqualTo(ExecutionGasReason(gasRemaining)));
+            Assert.That(Skip().Reason, Is.EqualTo(expectedReason));
         }
 
         long before = GC.GetAllocatedBytesForCurrentThread();
@@ -326,9 +340,40 @@ public class BlockProductionTransactionPickerTests
             Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
             Assert.That(callAllocated, Is.GreaterThan(0).And.LessThanOrEqualTo(argsBound), "a fresh args object and no reason string");
             Assert.That(firstReadAllocated, Is.GreaterThanOrEqualTo(2L * reason.Length), "the reason is first built when it is read");
-            Assert.That(reason, Is.EqualTo(ExecutionGasReason(gasRemaining)));
+            Assert.That(reason, Is.EqualTo(expectedReason));
             Assert.That(secondReadAllocated, Is.Zero, "and only once");
             Assert.That(secondRead, Is.SameAs(reason));
+        }
+    }
+
+    /// <summary><see cref="BlockProcessor.AddingTxEventArgs.Set"/> on the args of a deferred skip replaces their action and
+    /// reason, both before the deferred reason was ever read and after it was.</summary>
+    [TestCaseSource(nameof(DeferredSkips))]
+    public void Set_replaces_a_deferred_reason_whether_or_not_it_was_read(IReleaseSpec spec, ulong nonce,
+        ulong cumulativeExecutionGas, ulong cumulativeStateGas, string expectedReason)
+    {
+        using FundedSender sender = new(1.Ether);
+        Block block = BlockWithoutBaseFee();
+        BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker(spec);
+
+        BlockProcessor.AddingTxEventArgs Skip() =>
+            picker.CanAddTransaction(block, Tx(nonce), new HashSet<Transaction>(), sender.State, cumulativeExecutionGas, cumulativeStateGas);
+
+        BlockProcessor.AddingTxEventArgs unread = Skip();
+        BlockProcessor.AddingTxEventArgs setUnread = unread.Set(BlockProcessor.TxAction.Stop, "replacement");
+
+        BlockProcessor.AddingTxEventArgs read = Skip();
+        string readBeforeSet = read.Reason;
+        read.Set(BlockProcessor.TxAction.Stop, "replacement after a read");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(setUnread, Is.SameAs(unread));
+            Assert.That((unread.Action, unread.Reason), Is.EqualTo((BlockProcessor.TxAction.Stop, "replacement")),
+                "Set before any Reason read");
+            Assert.That(readBeforeSet, Is.EqualTo(expectedReason));
+            Assert.That((read.Action, read.Reason), Is.EqualTo((BlockProcessor.TxAction.Stop, "replacement after a read")),
+                "Set after a Reason read");
         }
     }
 }
