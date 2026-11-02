@@ -123,7 +123,7 @@ public partial class PatriciaTree
                 int commonPrefixLength = isCompactLeaf
                     ? Nibbles.CommonPrefixLength(compactKey, compactStart, key, consumed, Math.Min(keyLength, remaining))
                     : CommonPrefixLength(nibbleKey!, key, consumed, Math.Min(keyLength, remaining));
-                if (nibbleCount == SecuredKeyNibbles && (node.IsExtension ? keyLength >= remaining : keyLength != remaining)) ThrowPathExceedsKey();
+                if (nibbleCount == SecuredKeyNibbles && (node.IsExtension ? keyLength == 0 || keyLength >= remaining : keyLength != remaining)) ThrowPathExceedsKey();
 
                 if (commonPrefixLength == keyLength)
                 {
@@ -265,7 +265,7 @@ public partial class PatriciaTree
             else
             {
                 byte[] extensionKey = node.Key!;
-                if (extensionKey.Length >= nibbleCount - consumed)
+                if (extensionKey.Length == 0 || extensionKey.Length >= nibbleCount - consumed)
                 {
                     if (nibbleCount == SecuredKeyNibbles) ThrowPathExceedsKey();
                     if (extensionKey.Length > nibbleCount - consumed) return default;
@@ -284,15 +284,23 @@ public partial class PatriciaTree
     }
 
     /// <remarks>Only in a secured trie. The sibling the branch collapsed into sits one level
-    /// below it, so its path is checked by checking the collapsed node's at the branch's depth.</remarks>
-    partial void ValidateCollapsedBranch(TraverseStack ancestors, TrieNode? node)
+    /// below it, so its path is checked by checking the collapsed node's at the branch's depth. An empty extension sibling
+    /// merges into a valid extension of one nibble, so it is checked in the branch instead.</remarks>
+    partial void ValidateCollapsedBranch(TraverseStack ancestors, TrieNode branch, TrieNode? node)
     {
         if (node is null || _deletedKeyNibbles != SecuredKeyNibbles) return;
 
         int depth = 0;
         foreach (TraverseStackFrame frame in ancestors.Frames) depth += frame.Node.IsExtension ? frame.Node.Key!.Length : 1;
         int remaining = SecuredKeyNibbles - depth;
-        if (node.IsBranch ? remaining <= 0 : node.IsLeaf ? node.Key!.Length != remaining : node.Key!.Length >= remaining) ThrowPathExceedsKey();
+        if (node.IsBranch ? remaining <= 0 : node.IsLeaf ? node.Key!.Length != remaining : node.Key!.Length >= remaining || IsEmptyExtensionSibling(branch))
+            ThrowPathExceedsKey();
+    }
+
+    private bool IsEmptyExtensionSibling(TrieNode branch)
+    {
+        TreePath path = TreePath.Empty;
+        return branch.FindOnlyChild() is int index and >= 0 && branch.GetChild(TrieStore, ref path, index) is { IsExtension: true } sibling && sibling.Key!.Length == 0;
     }
 
     /// <summary>Rejects a secured trie node whose path does not end at the length of the hashed keys.</summary>

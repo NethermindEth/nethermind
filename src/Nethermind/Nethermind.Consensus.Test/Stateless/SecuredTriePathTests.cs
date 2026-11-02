@@ -109,6 +109,38 @@ public class SecuredTriePathTests
             visited ? Throws.TypeOf<TrieException>() : Throws.Nothing);
     }
 
+    /// <remarks>
+    /// An empty extension over an inlined branch is short enough to be inlined too, so only the walk that visits it can reject
+    /// it. On the slot's path every access visits it; as the slot leaf's sibling only a delete that collapses the branch into it.
+    /// </remarks>
+    [Test]
+    public void Inlined_empty_extension_is_rejected_once_visited([Values] bool onSlotPath, [Values] SlotAccess access)
+    {
+        const int ExtensionNibbles = 60;
+        byte[] slotKey = SlotKey();
+        byte[] emptyExtension;
+        byte[] extensionChild;
+        if (onSlotPath)
+        {
+            emptyExtension = Extension([], Branch(
+                (slotKey[ExtensionNibbles], Leaf(slotKey[(ExtensionNibbles + 1)..], StorageValue)),
+                (slotKey[ExtensionNibbles] ^ 1, Leaf(new byte[KeyNibbles - ExtensionNibbles - 1], StorageValue))));
+            extensionChild = emptyExtension;
+        }
+        else
+        {
+            byte[] siblingLeaf = Leaf(new byte[KeyNibbles - ExtensionNibbles - 2], StorageValue);
+            emptyExtension = Extension([], Branch((0, siblingLeaf), (1, siblingLeaf)));
+            extensionChild = Branch((slotKey[ExtensionNibbles], Leaf(slotKey[(ExtensionNibbles + 1)..], StorageValue)), (slotKey[ExtensionNibbles] ^ 1, emptyExtension));
+        }
+
+        Assert.That(emptyExtension, Has.Length.LessThan(Hash256.Size), "the empty extension must be inlined");
+
+        byte[] storageRoot = Extension(slotKey[..ExtensionNibbles], extensionChild);
+        Assert.That(() => AccessStorage(storageRoot, onSlotPath ? [] : [extensionChild], access == SlotAccess.Read ? StorageAccess.Read : StorageAccess.Write, access == SlotAccess.Delete ? UInt256.Zero : 2),
+            onSlotPath || access == SlotAccess.Delete ? Throws.TypeOf<TrieException>() : Throws.Nothing);
+    }
+
     private static void ReadBalance(byte[] root, params byte[][] nodes)
     {
         using Witness witness = CreateWitness([.. nodes, root]);
@@ -165,6 +197,9 @@ public class SecuredTriePathTests
 
     private static byte[] Leaf(byte[] nibbles, byte[] value) =>
         Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(nibbles, isLeaf: true)), Rlp.Encode(value)).Bytes;
+
+    private static byte[] Extension(byte[] nibbles, byte[] child) =>
+        Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(nibbles, isLeaf: false)), Reference(child)).Bytes;
 
     private static byte[] Branch(params (int Slot, byte[] Child)[] children)
     {

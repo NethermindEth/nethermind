@@ -136,7 +136,7 @@ namespace Nethermind.Trie
 
         /// <summary>Checks the node a write's climb collapsed a branch into, below the frames still on <paramref name="ancestors"/>,
         /// where this build does; see <c>PatriciaTree.zkevm.cs</c>.</summary>
-        partial void ValidateCollapsedBranch(TraverseStack ancestors, TrieNode? node);
+        partial void ValidateCollapsedBranch(TraverseStack ancestors, TrieNode branch, TrieNode? node);
 
         /// <summary>Reads the value at <paramref name="rawKey"/> straight from its bytes, where this build does.</summary>
         /// <returns>Whether it did; when not, the caller walks the key's nibbles.</returns>
@@ -797,8 +797,9 @@ namespace Nethermind.Trie
                 }
 
                 // About 1% reach here
-                node = MaybeCombineNode(ref path, node, null);
-                ValidateCollapsedBranch(traverseStack, node);
+                TrieNode branch = node;
+                node = MaybeCombineNode(ref path, branch, null);
+                ValidateCollapsedBranch(traverseStack, branch, node);
             }
 
             return node;
