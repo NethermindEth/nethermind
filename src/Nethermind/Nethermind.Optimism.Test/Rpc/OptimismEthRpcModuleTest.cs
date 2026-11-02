@@ -43,6 +43,7 @@ using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -386,19 +387,28 @@ public class OptimismEthRpcModuleTest
         return wallet;
     }
 
+    public enum StateFailure { MissingTrieNode, CorruptTrieNode, SnapshotNotGathered, StoreClosed }
+
     /// <summary>
-    /// The chain's state as the nonce tracker reads it, which can go unavailable, as on a node that has not synced or has
-    /// pruned the head state.
+    /// The chain's state as the nonce tracker reads it, which can fail: on a node that has not synced or has pruned the
+    /// head state, holds a corrupt trie node, cannot gather its flat state snapshot in time or is closing its database.
     /// </summary>
     private sealed class HeadState
     {
         public HeadState() =>
             Reader.TryGetAccount(Arg.Any<BlockHeader?>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(call =>
             {
-                if (!Available)
-                    throw new MissingTrieNodeException("The head state is not available", null, TreePath.Empty, Keccak.EmptyTreeHash);
-
-                bool exists = Chain!.StateReader.TryGetAccount(call.ArgAt<BlockHeader?>(0), call.ArgAt<Address>(1), out AccountStruct account);
+                IStateReader reader = Failure switch
+                {
+                    null => Chain!.StateReader,
+                    StateFailure.MissingTrieNode => throw new MissingTrieNodeException("The head state is not available", null, TreePath.Empty, Keccak.EmptyTreeHash),
+                    // The real reader, over a trie whose nodes do not decode.
+                    StateFailure.CorruptTrieNode => CorruptTrieReader(),
+                    // As FlatDbManager gives up gathering a snapshot.
+                    StateFailure.SnapshotNotGathered => throw new InvalidOperationException("Timed out gathering ReadOnlySnapshotBundle"),
+                    _ => throw new ObjectDisposedException("state db"),
+                };
+                bool exists = reader.TryGetAccount(call.ArgAt<BlockHeader?>(0), call.ArgAt<Address>(1), out AccountStruct account);
                 call[2] = account;
                 return exists;
             });
@@ -407,7 +417,17 @@ public class OptimismEthRpcModuleTest
 
         public TestRpcBlockchain? Chain { get; set; }
 
-        public bool Available { get; set; } = true;
+        // Null while the state can be read.
+        public StateFailure? Failure { get; set; }
+
+        private static StateReader CorruptTrieReader()
+        {
+            IScopedTrieStore nodes = Substitute.For<IScopedTrieStore>();
+            nodes.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Returns(call => new TrieNode(NodeType.Unknown, call.Arg<Hash256>(), new byte[] { 0xc0 }));
+            ITrieStore trieStore = Substitute.For<ITrieStore>();
+            trieStore.GetTrieStore(null).Returns(nodes);
+            return new StateReader(trieStore, Substitute.For<IKeyValueStore>(), LimboLogs.Instance);
+        }
     }
 
     private static Transaction SignedByC(TestRpcBlockchain rpcBlockchain, ulong nonce) =>
@@ -535,18 +555,22 @@ public class OptimismEthRpcModuleTest
         Assert.That(sent, Is.EqualTo(5UL), "a nonce given in the request must be sent as it is");
     }
 
-    [TestCase(5UL, 1UL, TestName = "Forwarding_node_does_not_fill_past_an_explicit_nonce_after_a_gap")]
-    [TestCase(1UL, 2UL, TestName = "Forwarding_node_fills_past_an_explicit_nonce_without_a_gap")]
-    public async Task Forwarding_node_counts_an_explicit_nonce_without_a_gap(ulong explicitNonce, ulong nextFilled)
+    [TestCase(0, 5UL, new ulong[] { 5, 1 }, TestName = "Forwarding_node_does_not_fill_past_an_explicit_nonce_after_a_gap")]
+    [TestCase(0, 1UL, new ulong[] { 1, 2 }, TestName = "Forwarding_node_fills_past_an_explicit_nonce_without_a_gap")]
+    // Nonces 1 and 2 are with the sequencer, which accepts a replacement of 1.
+    [TestCase(2, 1UL, new ulong[] { 1, 2, 1, 3 }, TestName = "Forwarding_node_does_not_go_back_after_replacing_a_nonce_below_the_next")]
+    public async Task Forwarding_node_counts_an_explicit_nonce_without_a_gap(int filledBefore, ulong explicitNonce, ulong[] sent)
     {
         RecordingSequencer sequencer = new();
         TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer);
         await rpcBlockchain.AddBlock(SignedByC(rpcBlockchain, 0));
 
+        for (int i = 0; i < filledBefore; i++)
+            AssertSucceeded(await SendFromC(rpcBlockchain));
         AssertSucceeded(await SendFromC(rpcBlockchain, $",\"nonce\":\"0x{explicitNonce:x}\""));
         AssertSucceeded(await SendFromC(rpcBlockchain));
 
-        Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new[] { explicitNonce, nextFilled }));
+        Assert.That(sequencer.ReceivedNonces, Is.EqualTo(sent));
     }
 
     [Test]
@@ -565,11 +589,14 @@ public class OptimismEthRpcModuleTest
         Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 0, 0 }), "a transaction the node did not sign must not use up a nonce of its from");
     }
 
-    [Test]
-    public async Task Forwarding_node_forwards_an_explicit_nonce_without_the_head_state()
+    [TestCase(StateFailure.MissingTrieNode, typeof(MissingTrieNodeException))]
+    [TestCase(StateFailure.CorruptTrieNode, typeof(TrieNodeException))]
+    [TestCase(StateFailure.SnapshotNotGathered, typeof(InvalidOperationException))]
+    [TestCase(StateFailure.StoreClosed, typeof(ObjectDisposedException))]
+    public async Task Forwarding_node_forwards_an_explicit_nonce_without_the_head_state(StateFailure failure, Type error)
     {
         RecordingSequencer sequencer = new();
-        HeadState headState = new() { Available = false };
+        HeadState headState = new() { Failure = failure };
         TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer, headState: headState);
 
         string withoutNonce = await SendFromC(rpcBlockchain);
@@ -577,7 +604,8 @@ public class OptimismEthRpcModuleTest
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(JToken.Parse(withoutNonce)["error"], Is.Not.Null, "without the head state there is no nonce to fill");
+            Assert.That(JToken.Parse(withoutNonce)["error"]?["data"]?.Value<string>(), Does.Contain(error.FullName),
+                "without the head state there is no nonce to fill, so the state error stops the send");
             Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 5 }), "a request with its nonce needs no head state");
         }
     }
@@ -590,7 +618,7 @@ public class OptimismEthRpcModuleTest
         RecordingSequencer sequencer = new(index =>
         {
             if (index == 0)
-                headState.Available = false;
+                headState.Failure = StateFailure.MissingTrieNode;
 
             return Task.FromResult<string?>(AcceptedByTheSequencer);
         });
@@ -598,7 +626,7 @@ public class OptimismEthRpcModuleTest
         await rpcBlockchain.AddBlock(SignedByC(rpcBlockchain, 0));
 
         string accepted = await SendFromC(rpcBlockchain);
-        headState.Available = true;
+        headState.Failure = null;
         AssertSucceeded(await SendFromC(rpcBlockchain));
 
         using (Assert.EnterMultipleScope())

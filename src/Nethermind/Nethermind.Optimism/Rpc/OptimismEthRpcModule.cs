@@ -31,7 +31,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -132,8 +131,9 @@ public class OptimismEthRpcModule(
         ulong nonce = legacy.Nonce ??= nextNonce ?? _txPool.GetLatestPendingNonce(from);
 
         (ResultWrapper<Hash256> result, bool signedByNode) = await SignAndSend(rpcTx);
-        // Only a transaction this node signed is counted: a request that brings its own signature is sent as it is, so its
-        // from need not be the account that signed it. A nonce past a gap waits at the sequencer, so it is not counted either.
+        // Only a transaction this node signed is counted: a request that brings its own signature keeps it, so its from need
+        // not be the account that signed it. Nor is a nonce other than the one the tracker gave: a replacement below it, or a
+        // nonce past a gap, which waits at the sequencer.
         if (signedByNode && nonce == nextNonce && result.Result.ResultType == ResultType.Success)
             nonceTracker.OnForwarded(from, nonce);
 
@@ -146,9 +146,11 @@ public class OptimismEthRpcModule(
         {
             return nonceTracker.GetNextNonce(from);
         }
-        // Without the head state the next nonce is unknown; a request that has its nonce is forwarded all the same, uncounted.
-        catch (MissingTrieNodeException) when (hasNonce)
+        // The next nonce is read only to count the forward. A request that has its nonce does not need it, so it is forwarded
+        // uncounted whatever stops the read: missing or corrupt state, a flat snapshot that cannot be gathered, a closing store.
+        catch (Exception e) when (hasNonce)
         {
+            if (_logger.IsDebug) _logger.Debug($"Forwarding a transaction of {from} uncounted, as its next nonce cannot be read: {e.Message}");
             return null;
         }
     }

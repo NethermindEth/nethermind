@@ -85,7 +85,7 @@ public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader
 
     /// <summary>
     /// The nonce to fill for <paramref name="sender"/>. The caller holds the lock of <paramref name="sender"/>.
-    /// Throws <c>MissingTrieNodeException</c> when the head state is not available.
+    /// Throws when the head state cannot be read, for example <c>MissingTrieNodeException</c> when it is not available.
     /// </summary>
     public ulong GetNextNonce(Address sender)
     {
