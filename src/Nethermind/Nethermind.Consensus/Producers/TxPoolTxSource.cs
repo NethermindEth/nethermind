@@ -62,7 +62,6 @@ namespace Nethermind.Consensus.Producers
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, targetBlock.Number))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
-            // The filters read the base fee from the context rather than computing it for every candidate.
             TxFilterContext filterContext = new(parent, spec, baseFee);
             // EIP-8141: the pool ranks a max_fee by a per-gas view that leaves out intrinsic gas, so the budget the
             // processor checks is checked here too, rather than failing at execution in every block built.

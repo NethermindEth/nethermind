@@ -33,8 +33,8 @@ public class TxFilterPipeline(ILogManager logManager) : ITxFilterPipeline
         }
 
         return true;
-    }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void TraceRejection(Transaction tx, bool isAllowed) => _logger.Trace($"Rejected tx ({isAllowed}) {tx.ToShortString()}");
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceRejection(Transaction tx, bool isAllowed) => _logger.Trace($"Rejected tx ({isAllowed}) {tx.ToShortString()}");
+    }
 }

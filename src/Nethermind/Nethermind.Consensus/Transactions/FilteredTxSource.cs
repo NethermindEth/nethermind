@@ -19,7 +19,6 @@ public class FilteredTxSource<T>(ITxSource innerSource, ITxFilter txFilter, ILog
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parentHeader, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
     {
-        // The base fee is computed only if the filter reads it, as before, rather than once for every build.
         TxFilterContext context = new(parentHeader, specProvider.GetSpec(targetBlock));
 
         foreach (Transaction tx in innerSource.GetTransactions(parentHeader, targetBlock, gasLimit, payloadAttributes, filterSource))
