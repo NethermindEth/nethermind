@@ -810,6 +810,20 @@ internal static partial class RlpHelpers
         return position;
     }
 
+    /// <summary>Decodes a hash stored without its leading zero bytes into <paramref name="bytes"/>, right-aligning it.</summary>
+    /// <param name="bytes">Receives the hash; must be <see cref="Hash256.Size"/> bytes.</param>
+    /// <returns>The position past the item.</returns>
+    /// <exception cref="RlpException">The item is an RLP null.</exception>
+    public static int DecodeZeroPrefixKeccakNonNull(ReadOnlySpan<byte> data, int position, Span<byte> bytes)
+    {
+        if (data[position] == Rlp.EmptyByteArrayByte)
+        {
+            ThrowNullDecodedValue<Hash256>();
+        }
+
+        return DecodeZeroPrefixKeccakBytes(data, position, bytes);
+    }
+
     /// <summary>Decodes a hash stored without its leading zero bytes, right-aligning it.</summary>
     /// <returns>The position past the item.</returns>
     public static int DecodeZeroPrefixKeccak(ReadOnlySpan<byte> data, int position, out Hash256? keccak)

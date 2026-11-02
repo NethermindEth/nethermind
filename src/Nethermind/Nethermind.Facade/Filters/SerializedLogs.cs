@@ -6,9 +6,11 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Facade.Filters;
 
@@ -63,7 +65,7 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
         long transactionIndex,
         ReadOnlySpan<byte> transactionHash,
         scoped in LogEntryStructRef log,
-        Hash256[] topics)
+        scoped in ReceiptsIterator iterator)
     {
         if (transactionHash.Length != Hash256.Size)
         {
@@ -87,10 +89,7 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
         writer.WriteBoolean("removed"u8, false);
         writer.WritePropertyName("topics"u8);
         writer.WriteStartArray();
-        foreach (Hash256 topic in topics)
-        {
-            HexWriter.WriteFixed32HexRawValue(writer, topic.Bytes);
-        }
+        WriteTopics(writer, log, iterator);
         writer.WriteEndArray();
         writer.WritePropertyName("transactionHash"u8);
         HexWriter.WriteFixed32HexRawValue(writer, transactionHash);
@@ -103,6 +102,30 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidTransactionHash(int length) =>
         throw new ArgumentException($"Transaction hash must be {Hash256.Size} bytes and was {length} bytes", "transactionHash");
+
+    private static void WriteTopics(Utf8JsonWriter writer, scoped in LogEntryStructRef log, scoped in ReceiptsIterator iterator)
+    {
+        if (log.Topics is { } topics)
+        {
+            foreach (Hash256 topic in topics)
+            {
+                HexWriter.WriteFixed32HexRawValue(writer, topic.Bytes);
+            }
+
+            return;
+        }
+
+        Span<byte> buffer = stackalloc byte[Hash256.Size];
+        RlpReader reader = new(log.TopicsRlp);
+        int end = iterator.StartDecodingTopics(ref reader);
+        for (int index = 0; reader.Position < end; index++)
+        {
+            iterator.DecodeTopic(ref reader, index, buffer);
+            HexWriter.WriteFixed32HexRawValue(writer, buffer);
+        }
+
+        reader.Check(end);
+    }
 
     private static void WriteData(Utf8JsonWriter writer, scoped in LogEntryStructRef log)
     {

@@ -226,6 +226,14 @@ namespace Nethermind.Blockchain.Receipts
         public readonly Hash256[] DecodeTopics(RlpReader reader) =>
             _receiptRefDecoder.DecodeTopics(reader);
 
+        /// <inheritdoc cref="IReceiptRefDecoder.StartDecodingTopics"/>
+        public readonly int StartDecodingTopics(ref RlpReader reader) =>
+            _receiptRefDecoder.StartDecodingTopics(ref reader);
+
+        /// <inheritdoc cref="IReceiptRefDecoder.DecodeTopic"/>
+        public readonly void DecodeTopic(ref RlpReader reader, int index, Span<byte> topic) =>
+            _receiptRefDecoder.DecodeTopic(ref reader, index, topic);
+
         public readonly bool CanDecodeBloom => _receiptRefDecoder is null || _receiptRefDecoder.CanDecodeBloom;
     }
 }

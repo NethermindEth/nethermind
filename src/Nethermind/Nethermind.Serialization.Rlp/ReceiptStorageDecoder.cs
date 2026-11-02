@@ -385,6 +385,44 @@ namespace Nethermind.Serialization.Rlp
 
         public Hash256[] DecodeTopics(RlpReader reader) => HashDecoder.DecodeNonNullArray(ref reader);
 
+        /// <inheritdoc/>
+        /// <remarks>Checks the topic count as <see cref="RlpDecoder{T}.DecodeNonNullArray"/> does.</remarks>
+        public int StartDecodingTopics(ref RlpReader reader)
+        {
+            int end = reader.ReadSequenceLength() + reader.Position;
+            reader.GuardLimit(reader.PeekNumberOfItemsRemaining(end, RlpLimit.DefaultLimit.Limit + 1));
+            return end;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>Rejects the topic as <see cref="RlpDecoder{T}.DecodeNonNullArray"/> rejects a null or malformed element.</remarks>
+        public void DecodeTopic(ref RlpReader reader, int index, Span<byte> topic)
+        {
+            if (reader.PeekByte() == Rlp.EmptyListByte)
+            {
+                RlpHelpers.ThrowNullArrayElement(index);
+            }
+
+            bool hasValue;
+            try
+            {
+                reader.Position = RlpHelpers.ReadKeccakPrefix(reader.Data, reader.Position, allowNull: true, out hasValue);
+                if (hasValue)
+                {
+                    reader.Read(Hash256.Size).CopyTo(topic);
+                }
+            }
+            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+            {
+                throw new RlpException($"Cannot decode stream of {nameof(Hash256)}", e);
+            }
+
+            if (!hasValue)
+            {
+                throw new RlpException($"{nameof(Hash256)} decoding returned null");
+            }
+        }
+
         public bool CanDecodeBloom => true;
     }
 }

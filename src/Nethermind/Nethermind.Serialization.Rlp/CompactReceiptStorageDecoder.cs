@@ -150,6 +150,10 @@ namespace Nethermind.Serialization.Rlp
 
         public Hash256[] DecodeTopics(RlpReader reader) => CompactLogEntryDecoder.DecodeTopics(reader);
 
+        public int StartDecodingTopics(ref RlpReader reader) => CompactLogEntryDecoder.StartDecodingTopics(ref reader);
+
+        public void DecodeTopic(ref RlpReader reader, int index, Span<byte> topic) => CompactLogEntryDecoder.DecodeTopic(ref reader, topic);
+
         // Refstruct decode does not generate bloom
         public bool CanDecodeBloom => false;
 

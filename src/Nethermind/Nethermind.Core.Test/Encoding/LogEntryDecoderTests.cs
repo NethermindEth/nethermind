@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -247,6 +248,74 @@ public class LogEntryDecoderTests
 
         CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef structRef);
         return CompactLogEntryDecoder.DecodeTopics(new RlpReader(structRef.TopicsRlp));
+    }
+
+    private const string Topic = "a01111111111111111111111111111111111111111111111111111111111111111";
+
+    // Valid and malformed topic lists; each decoder accepts some and rejects others.
+    [TestCase("c0")]
+    [TestCase("e1" + Topic)]
+    [TestCase("f884" + Topic + Topic + Topic + Topic)]
+    [TestCase("c3000102")]
+    [TestCase("e09f" + "22222222222222222222222222222222222222222222222222222222222222")]
+    [TestCase("c180")]
+    [TestCase("c20180")]
+    [TestCase("e2" + Topic + "80")]
+    [TestCase("c1c0")]
+    [TestCase("c2c180")]
+    [TestCase("c28100")]
+    [TestCase("e2a1" + "333333333333333333333333333333333333333333333333333333333333333333")]
+    [TestCase("c4a0010203")]
+    [TestCase("c1" + Topic)]
+    [TestCase("c201")]
+    [TestCase("01")]
+    public void Topics_decoded_one_at_a_time_match_DecodeTopics([Values] bool compact, string topicsRlp)
+    {
+        byte[] rlp = Bytes.FromHexString(topicsRlp);
+        IReceiptRefDecoder decoder = compact ? CompactReceiptStorageDecoder.Instance : new ReceiptStorageDecoder();
+
+        Hash256[]? expected = null;
+        Exception? expectedError = null;
+        try
+        {
+            expected = decoder.DecodeTopics(new RlpReader(rlp));
+        }
+        catch (Exception e)
+        {
+            expectedError = e;
+        }
+
+        List<Hash256> actual = [];
+        Exception? actualError = null;
+        try
+        {
+            RlpReader reader = new(rlp);
+            int end = decoder.StartDecodingTopics(ref reader);
+            Span<byte> topic = stackalloc byte[Hash256.Size];
+            for (int index = 0; reader.Position < end; index++)
+            {
+                topic.Fill(0xff);
+                decoder.DecodeTopic(ref reader, index, topic);
+                actual.Add(new Hash256(topic));
+            }
+
+            reader.Check(end);
+        }
+        catch (Exception e)
+        {
+            actualError = e;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actualError?.GetType(), Is.EqualTo(expectedError?.GetType()));
+            Assert.That(actualError?.Message, Is.EqualTo(expectedError?.Message));
+            Assert.That(actualError?.InnerException?.GetType(), Is.EqualTo(expectedError?.InnerException?.GetType()));
+            if (expectedError is null)
+            {
+                Assert.That(actual, Is.EqualTo(expected));
+            }
+        }
     }
 
     [Test]
