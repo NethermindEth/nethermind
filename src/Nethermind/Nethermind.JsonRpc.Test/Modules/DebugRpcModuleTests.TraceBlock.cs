@@ -353,12 +353,13 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
             nameof(IDebugRpcModule.debug_traceBlockByNumber), block.Number, options);
         JToken json = JToken.Parse(response);
+        bool setupFailure = tracer == "mux-js-constructor-error";
         using (Assert.EnterMultipleScope())
         {
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-            Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(setupFailure ? "Error: ordinary setup failure" : "execution timeout"), response);
             Assert.That(json["result"], Is.Null, response);
-            Assert.That(clock.Timers, Has.Count.EqualTo(expiry == "before" ? 2 : 1));
+            Assert.That(clock.Timers, Has.Count.EqualTo(setupFailure ? 0 : expiry == "before" ? 2 : 1));
             Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
         }
     }
