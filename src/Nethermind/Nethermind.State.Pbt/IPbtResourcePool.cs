@@ -19,6 +19,12 @@ public interface IPbtResourcePool
     /// </summary>
     void ReturnSnapshotContent(PbtResourcePool.Usage usage, PbtSnapshotContent content);
 
+    /// <summary>Rents an empty sorted content for a compacted layer.</summary>
+    PbtSortedSnapshotContent GetSortedSnapshotContent(PbtResourcePool.Usage usage);
+
+    /// <summary>Returns <paramref name="sortedContent"/>, resetting it, with the same contract as <see cref="ReturnSnapshotContent"/>.</summary>
+    void ReturnSortedSnapshotContent(PbtResourcePool.Usage usage, PbtSortedSnapshotContent sortedContent);
+
     /// <summary>Rents an empty canonical leaf accumulator for one key-zone partition.</summary>
     PbtWriteBatchBuilder<PbtPath> GetWriteBatch(PbtResourcePool.Usage usage);
 

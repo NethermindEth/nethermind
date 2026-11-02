@@ -70,7 +70,7 @@ public class PbtNodeGroupKeyTests
         }
         using PbtSnapshotContent content = new();
         content.SetTree([.. paths.Distinct().Select(static path => (path, (byte[]?)[1]))]);
-        PbtGroupRecord[] ordered = [.. content.EnumerateNodeGroups()];
+        PbtGroupRecord[] ordered = content.NodeGroups();
         byte[][] keys = [.. ordered.Skip(1).Select(static group => group.Path.ToStorageKey(PbtColumns.StorageNodeGroups))];
         using (Assert.EnterMultipleScope())
         {

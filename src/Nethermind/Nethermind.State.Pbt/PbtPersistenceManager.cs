@@ -212,13 +212,12 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
         {
             if (candidate.InMemory is { } snapshot)
             {
-                PbtSnapshotContent content = snapshot.Content;
-                foreach ((ValueHash256 addressHash, PbtAccount? account) in content.Accounts) batch.SetAccount(addressHash, account);
-                foreach ((HashedKey<PbtPath> runKey, PackedSlotRun run) in content.HeaderStorages) batch.SetSlotRun(runKey.Key, run);
-                foreach ((HashedKey<PbtStoragePath> runKey, PackedSlotRun run) in content.Storages) batch.SetSlotRun(runKey.Key, run);
-                foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) batch.SetCode(codeHash, code);
+                foreach ((ValueHash256 addressHash, PbtAccount? account) in snapshot.Accounts) batch.SetAccount(addressHash, account);
+                foreach ((HashedKey<PbtPath> runKey, PackedSlotRun run) in snapshot.HeaderStorages) batch.SetSlotRun(runKey.Key, run);
+                foreach ((HashedKey<PbtStoragePath> runKey, PackedSlotRun run) in snapshot.Storages) batch.SetSlotRun(runKey.Key, run);
+                foreach ((ValueHash256 codeHash, CodeInfo code) in snapshot.Codes) batch.SetCode(codeHash, code);
                 // Only groups reachable from the new root are written; a removed group's stale bytes stay unreachable.
-                foreach (PbtGroupRecord group in content.EnumerateNodeGroups()) batch.SetNodeGroup(group.Path, group.Payload.Span);
+                foreach (PbtGroupRecord group in snapshot.EnumerateNodeGroups()) batch.SetNodeGroup(group.Path, group.Payload.Span);
             }
             else candidate.Persisted!.ApplyTo(batch, cancellationToken);
             batch.Commit();

@@ -78,7 +78,7 @@ public class PbtStateReaderTests
         PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         content.Accounts[Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes)] = PbtAccount.From(new Account(1, 100), null);
         container.Resolve<PbtSnapshotRepository>().TryAdd(new(baseState, new(header), TestItem.KeccakD.ValueHash256,
-            content, pool, PbtResourcePool.Usage.MainBlockProcessing));
+            content, null, pool, PbtResourcePool.Usage.MainBlockProcessing));
         PbtStateReader reader = container.Resolve<PbtStateReader>();
         using PbtReadOnlySnapshotBundle held = manager.TryGatherReadOnlyBundle(new(header))!;
         Assert.That(reader.HasStateForBlock(header), Is.True);

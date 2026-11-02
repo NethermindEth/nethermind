@@ -75,15 +75,15 @@ public sealed class PbtReadOnlySnapshotBundle(
     private PbtPersistedSnapshot? PersistedLayer(int index) => index < persistedSnapshots.Count ? persistedSnapshots[index] : null;
 
     private bool TryAccount(int index, in ValueHash256 address, out PbtAccount? account) =>
-        MemoryLayer(index) is { } memory ? memory.Content.Accounts.TryGetValue(address, out account) : PersistedLayer(index)!.TryGetAccount(address, out account);
+        MemoryLayer(index) is { } memory ? memory.TryGetAccount(address, out account) : PersistedLayer(index)!.TryGetAccount(address, out account);
     private bool TryCode(int index, in ValueHash256 hash, out CodeInfo? code) =>
-        MemoryLayer(index) is { } memory ? memory.Content.Codes.TryGetValue(hash, out code) : PersistedLayer(index)!.TryGetCode(hash, out code);
+        MemoryLayer(index) is { } memory ? memory.TryGetCode(hash, out code) : PersistedLayer(index)!.TryGetCode(hash, out code);
     private bool TryReadSlot<TKey>(int layer, in HashedKey<TKey> key, in ValueHash256 address, int index, out UInt256 value) where TKey : struct, IPbtKey<TKey>
     {
         if (MemoryLayer(layer) is { } memory)
         {
-            if (memory.Content.TryGetSlotRun(key, out PackedSlotRun? run)) { value = run!.Get(index); return true; }
-            if (memory.Content.SelfDestructedStorageAddresses.ContainsKey(address)) { value = default; return true; }
+            if (memory.TryGetSlotRun(key, out PackedSlotRun? run)) { value = run!.Get(index); return true; }
+            if (memory.HasSelfDestruct(address)) { value = default; return true; }
         }
         else
         {
@@ -104,8 +104,8 @@ public sealed class PbtReadOnlySnapshotBundle(
     {
         if (MemoryLayer(index) is { } memory)
         {
-            if (memory.Content.TryGetSlotRun(key, out PackedSlotRun? borrowed)) { run = borrowed!.Clone(); return true; }
-            if (memory.Content.SelfDestructedStorageAddresses.ContainsKey(address)) { run = SlotRun.Empty; return true; }
+            if (memory.TryGetSlotRun(key, out PackedSlotRun? borrowed)) { run = borrowed!.Clone(); return true; }
+            if (memory.HasSelfDestruct(address)) { run = SlotRun.Empty; return true; }
         }
         else
         {
@@ -304,11 +304,11 @@ public sealed class PbtReadOnlySnapshotBundle(
         {
             // A key held by several layers is counted once per layer, which only lowers the false-positive rate.
             long capacity = 0;
-            for (int layer = 0; layer < LayerCount; layer++) capacity += MemoryLayer(layer)?.Content.SlotFilterKeyCount ?? 0;
+            for (int layer = 0; layer < LayerCount; layer++) capacity += MemoryLayer(layer)?.SlotFilterKeyCount ?? 0;
 
             // Layers that hold no run still get a filter: every read then skips them.
             filter = new BloomFilter(Math.Max(capacity, 1), slotFilterBitsPerKey);
-            for (int layer = 0; layer < LayerCount; layer++) MemoryLayer(layer)?.Content.AddSlotFilterKeysTo(filter);
+            for (int layer = 0; layer < LayerCount; layer++) MemoryLayer(layer)?.AddSlotFilterKeysTo(filter);
         }
         catch (Exception)
         {

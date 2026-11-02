@@ -412,7 +412,7 @@ public class PbtDbManagerTests
         content.HeaderStorages[SlotRun.RunKey(Eip8297KeyDerivation.HeaderStorageKey(address, 0))] = SlotRun.Empty;
         content.Storages[SlotRun.RunKey(Eip8297KeyDerivation.StorageKey(TestItem.AddressA.ToHash().Bytes, address, 1000))] = SlotRun.Empty;
         content.RootGroupPointer = 0;
-        return new(from, to, TestItem.KeccakB.ValueHash256, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        return new(from, to, TestItem.KeccakB.ValueHash256, content, null, pool, PbtResourcePool.Usage.MainBlockProcessing);
     }
 
     private static bool ConvertLoaderSnapshot(IContainer container, StateId from, StateId to)
@@ -987,7 +987,7 @@ public class PbtDbManagerTests
             MaxReorgDepth = 2,
         });
         StateId fork = new(1, TestItem.KeccakB.ValueHash256);
-        harness.Repository.TryAdd(new(PersistenceState(0), fork, TestItem.KeccakC.ValueHash256, new(), harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
+        harness.Repository.TryAdd(new(PersistenceState(0), fork, TestItem.KeccakC.ValueHash256, new(), null, harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
         // Committed last, block 5 is the committed head.
         harness.AddChain(5);
         Assert.That(PersistedTo(harness, fork), Is.Null, "supplied height, rather than longest fork, controls depth");
@@ -1051,10 +1051,10 @@ public class PbtDbManagerTests
         SchedulerCompactor compactor = new();
         using PbtPersistenceManager persistenceManager = harness.CreatePersistenceManager(loader, compactor);
         StateId fork1 = new(1, TestItem.KeccakB.ValueHash256), fork2 = new(2, TestItem.KeccakB.ValueHash256);
-        harness.Repository.TryAdd(new(PersistenceState(0), fork1, default, new(), harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
-        harness.Repository.TryAdd(new(fork1, fork2, default, new(), harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
+        harness.Repository.TryAdd(new(PersistenceState(0), fork1, default, new(), null, harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
+        harness.Repository.TryAdd(new(fork1, fork2, default, new(), null, harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
         StateId orphan = new(3, TestItem.KeccakC.ValueHash256);
-        harness.Repository.TryAdd(new(new StateId(2, TestItem.KeccakC.ValueHash256), orphan, default, new(), harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
+        harness.Repository.TryAdd(new(new StateId(2, TestItem.KeccakC.ValueHash256), orphan, default, new(), null, harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
         // Committed last, block 4 is the committed head.
         harness.AddChain(4);
         harness.Repository.TryAddCompacted(PersistenceSnapshot(0, 4, harness.Pool));
@@ -1163,13 +1163,13 @@ public class PbtDbManagerTests
         using PersistenceManagerHarness harness = new(new PbtConfig { CompactionOffset = 0 });
         using PbtPersistedTestStore store = new();
         StateId fork = new(1, TestItem.KeccakB.ValueHash256);
-        using (PbtSnapshot snapshot = new(PersistenceState(0), fork, default, new(), harness.Pool, PbtResourcePool.Usage.MainBlockProcessing))
+        using (PbtSnapshot snapshot = new(PersistenceState(0), fork, default, new(), null, harness.Pool, PbtResourcePool.Usage.MainBlockProcessing))
         using (PbtPersistedSnapshot persisted = store.Build(snapshot)) harness.Repository.TryAddPersisted(persisted);
         harness.AddChain(3);
         if (headOnFork)
         {
             StateId forkHead = new(3, TestItem.KeccakB.ValueHash256);
-            harness.Repository.TryAdd(new(fork, forkHead, default, new(), harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
+            harness.Repository.TryAdd(new(fork, forkHead, default, new(), null, harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
         }
         harness.Finalized.FinalizedBlockNumber = 2;
         harness.Finalized.SetCanonicalRoot(1, TestItem.KeccakA);
@@ -1246,7 +1246,7 @@ public class PbtDbManagerTests
         using PbtReadOnlySnapshotBundle freshHead = manager.GatherReadOnlyBundle(PersistenceState(1));
         StateId newBranch = new(2, TestItem.KeccakB.ValueHash256);
         harness.Repository.TryAdd(new(PersistenceState(1), newBranch, TestItem.KeccakC.ValueHash256,
-            new(), harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
+            new(), null, harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
         using PbtReadOnlySnapshotBundle freshBranch = manager.GatherReadOnlyBundle(newBranch);
         using (Assert.EnterMultipleScope())
         {
@@ -1294,7 +1294,7 @@ public class PbtDbManagerTests
     {
         using PersistenceManagerHarness harness = new(new PbtConfig { EnableLongFinality = false, CompactSize = 1, MinReorgDepth = 0, MaxReorgDepth = 0, CompactionOffset = 0 });
         StateId reset = new(1, TestItem.KeccakB.ValueHash256);
-        harness.Repository.TryAdd(new(PersistenceState(0), reset, default, new(), harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
+        harness.Repository.TryAdd(new(PersistenceState(0), reset, default, new(), null, harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
         harness.Repository.TryAdd(PersistenceSnapshot(0, 1, harness.Pool));
         harness.Repository.TryAdd(PersistenceSnapshot(1, 5, harness.Pool));
         using (Assert.EnterMultipleScope())
@@ -1621,7 +1621,7 @@ public class PbtDbManagerTests
         {
             PbtSnapshotContent content = pbtPool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
             content.Accounts[Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes)] = PbtAccount.From(new Account(to.BlockNumber, 100), null);
-            PbtSnapshot pbtSnapshot = new(from, to, TestItem.KeccakB.ValueHash256, content, pbtPool, PbtResourcePool.Usage.MainBlockProcessing);
+            PbtSnapshot pbtSnapshot = new(from, to, TestItem.KeccakB.ValueHash256, content, null, pbtPool, PbtResourcePool.Usage.MainBlockProcessing);
             if (compacted) pbtRepository.TryAddCompacted(pbtSnapshot); else pbtRepository.TryAdd(pbtSnapshot);
             FlatSnapshot flatSnapshot = flatPool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing);
             flatSnapshot.Content.Accounts[TestItem.AddressA] = new Account(to.BlockNumber, 100);
@@ -1643,6 +1643,6 @@ public class PbtDbManagerTests
 
     private static PbtSnapshot PersistenceSnapshot(int from, int to, PbtResourcePool pool) =>
         new(PersistenceState(from), PersistenceState(to), TestItem.KeccakA.ValueHash256,
-            pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing), pool, PbtResourcePool.Usage.MainBlockProcessing);
+            pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing), null, pool, PbtResourcePool.Usage.MainBlockProcessing);
 
 }

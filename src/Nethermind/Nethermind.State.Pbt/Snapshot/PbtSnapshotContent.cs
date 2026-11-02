@@ -9,10 +9,8 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.NodeBuffer;
-using Nethermind.State.Pbt.Persistence;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Pbt.Snapshot;
@@ -35,11 +33,8 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     public readonly ConcurrentDictionary<ValueHash256, bool> SelfDestructedStorageAddresses = new();
     private IPbtGroupRecordBufferPin? _nodeGroupPin;
 
-    /// <summary>The group record buffer whose records this content owns, or null before <see cref="BeginNodeGroupWrites"/>.</summary>
-    public IPbtGroupRecordBuffer? GroupRecordBuffer => _nodeGroupPin?.Buffer;
-
-    /// <summary>The first pointer this content's groups can have, or null before <see cref="BeginNodeGroupWrites"/>.</summary>
-    public ulong? NodeGroupWriteBoundary => _nodeGroupPin?.WriteBoundary;
+    /// <summary>The pin on the generation active at <see cref="BeginNodeGroupWrites"/>, or null before it; released on reset.</summary>
+    public IPbtGroupRecordBufferPin? NodeGroupPin => _nodeGroupPin;
 
     /// <summary>Pins the active generation of <paramref name="buffer"/>, unless already pinned, so later group writes stay readable.</summary>
     public void BeginNodeGroupWrites(IPbtGroupRecordBuffer buffer)
@@ -50,31 +45,6 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
 
     /// <summary>The pointer of the root group of the tree this layer published, or 0 for an empty tree or when it published none.</summary>
     public ulong RootGroupPointer { get; set; }
-
-    /// <summary>Estimates the group record buffer bytes of this layer: those from its pin to its root group record.</summary>
-    /// <remarks>
-    /// The pin keeps them from being dropped. The root group is published last, so the range covers the records the layer wrote,
-    /// along with any other writer's records interleaved there. Generations are taken to be <see cref="PbtGroupRecordBuffer.DefaultGenerationBytes"/> long.
-    /// </remarks>
-    public long EstimatePinnedNodeBytes()
-    {
-        if (_nodeGroupPin is null) return 0;
-
-        ulong from = _nodeGroupPin.WriteBoundary;
-        ulong to = RootGroupPointer;
-        if (to <= from) return 0;
-
-        long generations = (long)((to >> PbtGroupRecordCodec.OffsetBits) - (from >> PbtGroupRecordCodec.OffsetBits));
-        return generations * PbtGroupRecordBuffer.DefaultGenerationBytes + (uint)to - (uint)from;
-    }
-
-    /// <summary>Enumerates the groups of this layer's tree that were written since its generation pin, in <see cref="PbtNodeGroupKey.InKeyOrder"/> order.</summary>
-    /// <remarks>
-    /// Groups the tree inherits from earlier layers, and groups replaced within this layer, are not enumerated. The layer's
-    /// generation pin keeps the records valid while the layer is not reset.
-    /// </remarks>
-    public PbtNodeGroupKey.KeyOrderEnumerable EnumerateNodeGroups() =>
-        _nodeGroupPin is null ? default : PbtNodeGroupKey.InKeyOrder(_nodeGroupPin.Buffer, RootGroupPointer, _nodeGroupPin.WriteBoundary);
 
     /// <summary>The runs of header slots for <see cref="PbtPath"/> run keys, or of the other slots for <see cref="PbtStoragePath"/> ones.</summary>
     private ConcurrentDictionary<HashedKey<TKey>, PackedSlotRun> Runs<TKey>() where TKey : struct, IPbtKey<TKey> =>
@@ -123,16 +93,6 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     public bool TryGetSlotRun<TKey>(in HashedKey<TKey> runKey, [NotNullWhen(true)] out PackedSlotRun? run) where TKey : struct, IPbtKey<TKey> =>
         Runs<TKey>().TryGetValue(runKey, out run);
 
-    /// <summary>Takes ownership of <paramref name="run"/> and returns the run it replaces to its pool.</summary>
-    /// <remarks>Replacements of one run require caller serialization; a run being read must not be replaced.</remarks>
-    public void SetRun<TKey>(in HashedKey<TKey> runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey>
-    {
-        ConcurrentDictionary<HashedKey<TKey>, PackedSlotRun> runs = Runs<TKey>();
-        runs.TryGetValue(runKey, out PackedSlotRun? previous);
-        runs[runKey] = run;
-        if (previous is not null) SlotRun.Return(previous);
-    }
-
     /// <summary>Takes ownership of <paramref name="run"/> unless the layer already holds a run of <paramref name="runKey"/>.</summary>
     public bool TryAddRun<TKey>(in HashedKey<TKey> runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey> => Runs<TKey>().TryAdd(runKey, run);
 
@@ -143,18 +103,6 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     /// </remarks>
     public bool TryReplaceRun<TKey>(in HashedKey<TKey> runKey, PackedSlotRun run, PackedSlotRun expected) where TKey : struct, IPbtKey<TKey> =>
         Runs<TKey>().TryUpdate(runKey, run, expected);
-
-    /// <summary>Takes over the generation range of <paramref name="source"/>, whose groups a merged layer covers.</summary>
-    public void CopyNodeGroupsFrom(PbtSnapshotContent source)
-    {
-        Debug.Assert(_nodeGroupPin is null || source._nodeGroupPin is null || ReferenceEquals(_nodeGroupPin.Buffer, source._nodeGroupPin.Buffer));
-        if (source._nodeGroupPin is { } pin && (_nodeGroupPin is null || pin.WriteBoundary < _nodeGroupPin.WriteBoundary))
-        {
-            IPbtGroupRecordBufferPin copy = pin.Copy();
-            _nodeGroupPin?.Dispose();
-            _nodeGroupPin = copy;
-        }
-    }
 
     public void Reset()
     {
@@ -168,17 +116,6 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         RootGroupPointer = 0;
         _nodeGroupPin?.Dispose();
         _nodeGroupPin = null;
-    }
-
-    public PbtSnapshotPayloadSize GetPayloadSize()
-    {
-        long leafBytes = Accounts.Count * (ValueHash256.MemorySize + 128L)
-            + SelfDestructedStorageAddresses.Count * ValueHash256.MemorySize;
-        foreach ((_, PackedSlotRun run) in HeaderStorages) leafBytes += PbtPath.KeyLength + run.Count * ValueHash256.MemorySize;
-        foreach ((_, PackedSlotRun run) in Storages) leafBytes += PbtStoragePath.KeyLength + run.Count * ValueHash256.MemorySize;
-        foreach ((_, CodeInfo code) in Codes) leafBytes += ValueHash256.MemorySize + code.Code.Length;
-
-        return new PbtSnapshotPayloadSize(leafBytes, EstimatePinnedNodeBytes());
     }
 
     public void Dispose() => Reset();

@@ -198,7 +198,7 @@ public class PbtFormatInteropTests
         using PbtPersistedTestStore store = new();
         StateId from = sync ? StateId.Sync : StateId.PreGenesis;
         using PbtSnapshot source = new(from, new(0, TestItem.KeccakB.ValueHash256), TestItem.KeccakC.ValueHash256,
-            new(), new PbtResourcePool(new PbtConfig()), PbtResourcePool.Usage.MainBlockProcessing);
+            new(), null, new PbtResourcePool(new PbtConfig()), PbtResourcePool.Usage.MainBlockProcessing);
         using PbtPersistedSnapshot persisted = store.Build(source);
         using (Assert.EnterMultipleScope())
         {
@@ -256,7 +256,7 @@ public class PbtFormatInteropTests
 
     private static PbtSnapshot PersistedSource(PbtSnapshotContent content) => new(StateId.PreGenesis,
         new(0, TestItem.KeccakB.ValueHash256), TestItem.KeccakC.ValueHash256, content,
-        new PbtResourcePool(new PbtConfig()), PbtResourcePool.Usage.MainBlockProcessing);
+        null, new PbtResourcePool(new PbtConfig()), PbtResourcePool.Usage.MainBlockProcessing);
 
     private static string PhysicalDigest(PbtTreeHarness tree)
     {

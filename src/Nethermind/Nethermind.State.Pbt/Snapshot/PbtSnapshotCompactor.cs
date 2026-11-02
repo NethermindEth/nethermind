@@ -2,15 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
-using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 using Nethermind.Db;
-using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Core.Crypto;
-using Nethermind.Pbt;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
-using Nethermind.State.Pbt.Common;
 
 namespace Nethermind.State.Pbt.Snapshot;
 
@@ -47,28 +41,18 @@ public class PbtSnapshotCompactor(
 
     private PbtSnapshot Compact(IReadOnlyList<PbtSnapshot> chainOldestFirst, PbtResourcePool.Usage usage)
     {
-        PbtSnapshotContent merged = resourcePool.GetSnapshotContent(usage);
+        PbtSortedSnapshotContent merged = resourcePool.GetSortedSnapshotContent(usage);
         try
         {
-            for (int i = 0; i < chainOldestFirst.Count; i++)
-            {
-                PbtSnapshotContent content = chainOldestFirst[i].Content;
-                foreach ((ValueHash256 addressHash, _) in content.SelfDestructedStorageAddresses) merged.ClearStorage(addressHash);
-                foreach ((ValueHash256 addressHash, PbtAccount? account) in content.Accounts) merged.Accounts[addressHash] = account;
-                foreach ((HashedKey<PbtPath> runKey, PackedSlotRun run) in content.HeaderStorages) merged.SetRun(runKey, run.Clone());
-                foreach ((HashedKey<PbtStoragePath> runKey, PackedSlotRun run) in content.Storages) merged.SetRun(runKey, run.Clone());
-                foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) merged.Codes[codeHash] = code;
-                merged.CopyNodeGroupsFrom(content);
-            }
-
-            PbtSnapshot newest = chainOldestFirst[^1];
-            merged.RootGroupPointer = newest.RootGroupPointer;
-            return new PbtSnapshot(chainOldestFirst[0].From, newest.To, newest.TreeRoot, merged, resourcePool, usage);
+            merged.BuildFromMerge(chainOldestFirst);
         }
         catch
         {
-            resourcePool.ReturnSnapshotContent(usage, merged);
+            resourcePool.ReturnSortedSnapshotContent(usage, merged); // don't leak the pooled buffers on failure
             throw;
         }
+
+        PbtSnapshot newest = chainOldestFirst[^1];
+        return new PbtSnapshot(chainOldestFirst[0].From, newest.To, newest.TreeRoot, null, merged, resourcePool, usage);
     }
 }

@@ -90,20 +90,25 @@ internal static class PbtSnapshotTestExtensions
     /// links from its direct parent and its unlisted siblings stay unresolved. A null payload marks its group absent: an absent root
     /// publishes an empty tree, and an absent descendant is unlinked from its parent. Unresolved groups fall back to the persisted view.
     /// </remarks>
-    /// <summary>The groups <see cref="PbtSnapshotContent.EnumerateNodeGroups"/> enumerates, in its order.</summary>
-    internal static PbtGroupRecord[] NodeGroups(this PbtSnapshotContent content) => [.. content.EnumerateNodeGroups()];
+    /// <summary>The groups of the layer's tree written since its generation pin, as <see cref="PbtSnapshot.EnumerateNodeGroups"/> enumerates them.</summary>
+    internal static PbtGroupRecord[] NodeGroups(this PbtSnapshotContent content) => content.NodeGroupPin is { } pin
+        ? [.. PbtNodeGroupKey.InKeyOrder(pin.Buffer, content.RootGroupPointer, pin.WriteBoundary)]
+        : [];
+
+    /// <summary>The groups <see cref="PbtSnapshot.EnumerateNodeGroups"/> enumerates, in its order.</summary>
+    internal static PbtGroupRecord[] NodeGroups(this PbtSnapshot snapshot) => [.. snapshot.EnumerateNodeGroups()];
 
     internal static void SetTree(this PbtSnapshotContent content, params (PbtStorageNodePath Path, byte[]? Payload)[] groups)
     {
-        content.BeginNodeGroupWrites(content.GroupRecordBuffer ?? DefaultGroupRecordBuffer);
-        content.RootGroupPointer = BuildTree(content.GroupRecordBuffer!, groups, fillAncestors: true);
+        content.BeginNodeGroupWrites(content.NodeGroupPin?.Buffer ?? DefaultGroupRecordBuffer);
+        content.RootGroupPointer = BuildTree(content.NodeGroupPin!.Buffer, groups, fillAncestors: true);
     }
 
     /// <summary>Publishes a complete physical tree as the layer's own groups, each linked from its nearest physical ancestor across compressed routes.</summary>
     internal static void SetPhysicalTree(this PbtSnapshotContent content, IEnumerable<PbtPhysicalPayload> groups)
     {
-        content.BeginNodeGroupWrites(content.GroupRecordBuffer ?? DefaultGroupRecordBuffer);
-        content.RootGroupPointer = BuildTree(content.GroupRecordBuffer!,
+        content.BeginNodeGroupWrites(content.NodeGroupPin?.Buffer ?? DefaultGroupRecordBuffer);
+        content.RootGroupPointer = BuildTree(content.NodeGroupPin!.Buffer,
             [.. groups.Select(static group => (group.Key, (byte[]?)group.Payload.ToArray()))], fillAncestors: false);
     }
 
