@@ -45,6 +45,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public ulong HeadNumber { get; set; }
         public Hash256 HeadHash { get; set; }
+        public ulong EarliestBlock { get; protected set; }
 
         // this means that we know what the number, hash, and total diff of the head block is
         public bool IsInitialized { get; set; }

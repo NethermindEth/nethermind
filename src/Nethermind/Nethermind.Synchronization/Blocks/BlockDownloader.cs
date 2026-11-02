@@ -324,13 +324,19 @@ namespace Nethermind.Synchronization.Blocks
             ArrayPoolList<BlockHeader> bodiesToDownload = new(headers.Count);
             ArrayPoolList<BlockHeader> blockAccessListsToDownload = new(headers.Count);
 
+            // Estimate from the peers that can serve this window: a peer that announced it no longer stores
+            // these blocks would only answer with nothing, and sizing from it caps the request sent to a peer that can.
+            ulong lowestBlockNumber = headers[1].Number;
             int bodiesRequestSize =
-                (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
+                (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, new EarliestBlockPeerAllocationStrategy(EstimatedAllocationStrategy, lowestBlockNumber), AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxBodyFetch;
             int? blockAccessListsRequestSize = null;
-            int receiptsRequestSize =
-                (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, BlocksSyncPeerAllocationStrategyFactory.ReceiptsAllocationStrategy, AllocationContexts.Blocks, cancellation))
-                ?? GethSyncLimits.MaxReceiptFetch;
+            // Only estimate receipts when they are downloaded: every estimate is a throwaway allocation that can wait
+            // for a free peer, and it runs under the request lock.
+            int receiptsRequestSize = shouldDownloadReceipt
+                ? (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, new EarliestBlockPeerAllocationStrategy(BlocksSyncPeerAllocationStrategyFactory.ReceiptsAllocationStrategy, lowestBlockNumber), AllocationContexts.Blocks, cancellation))
+                  ?? GethSyncLimits.MaxReceiptFetch
+                : GethSyncLimits.MaxReceiptFetch;
 
             int headersCount = headers.Count;
             BlockHeader parentHeader = headers[0];
@@ -370,7 +376,7 @@ namespace Nethermind.Synchronization.Blocks
                 {
                     blockAccessListsRequestSize ??=
                         (HasFreeBlockAccessListsPeer()
-                            ? await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, BlocksSyncPeerAllocationStrategyFactory.BlockAccessListsAllocationStrategy, AllocationContexts.BlockAccessLists, cancellation)
+                            ? await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, new EarliestBlockPeerAllocationStrategy(BlocksSyncPeerAllocationStrategyFactory.BlockAccessListsAllocationStrategy, lowestBlockNumber), AllocationContexts.BlockAccessLists, cancellation)
                             : null)
                         ?? GethSyncLimits.MaxBodyFetch;
 
