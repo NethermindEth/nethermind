@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -84,6 +85,23 @@ public class ProtocolHandlerBaseTests
             ScheduledTask = fulfillFunc(request, cancellationToken);
             return true;
         }
+    }
+
+    /// <summary>Keeps each scheduled task until the test runs it.</summary>
+    private sealed class QueuingBackgroundTaskScheduler : IBackgroundTaskScheduler
+    {
+        private readonly Queue<Func<Task>> _tasks = new();
+
+        public int Count => _tasks.Count;
+
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
+        {
+            _tasks.Enqueue(() => fulfillFunc(request, CancellationToken.None));
+            return true;
+        }
+
+        public Task RunNext() => _tasks.Dequeue()();
     }
 
     private readonly struct TestSyncServeRequestHandler : ISyncServeRequestHandler<TestProtocolHandler, TestRequestMessage, TestResponseMessage>
@@ -207,6 +225,26 @@ public class ProtocolHandlerBaseTests
             IsDisposed = true;
             base.Dispose();
         }
+    }
+
+    [Test]
+    public async Task Sync_serve_requests_over_the_in_flight_limit_are_dropped(
+        [Values(SchedulingPath.SyncServeTask, SchedulingPath.SyncServeValueTask, SchedulingPath.HandlerSyncServe)] SchedulingPath path)
+    {
+        const int limit = BackgroundTaskSchedulerWrapper.MaxSyncServeRequestsInFlight;
+        QueuingBackgroundTaskScheduler scheduler = new();
+        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromSeconds(1), scheduler);
+
+        for (int i = 0; i <= limit; i++) Schedule(handler, path, new TestRequestMessage());
+        Assert.That(scheduler.Count, Is.EqualTo(limit));
+
+        await scheduler.RunNext();
+        Schedule(handler, path, new TestRequestMessage());
+        Schedule(handler, path, new TestRequestMessage());
+        Assert.That(scheduler.Count, Is.EqualTo(limit));
+
+        Schedule(handler, SchedulingPath.BackgroundTask, new TestRequestMessage());
+        Assert.That(scheduler.Count, Is.EqualTo(limit + 1), "Other background tasks are not limited");
     }
 
     [Test]
