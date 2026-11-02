@@ -482,7 +482,7 @@ public partial class BlockProcessorTests
                 {
                     // No worker loops back before the last transaction is taken, so each one takes exactly one.
                     taken.Signal();
-                    if (index == 1) release.Wait(TimeSpan.FromSeconds(10));
+                    if (index == 1) release.Wait();
                     else taken.Wait(TimeSpan.FromSeconds(10));
                 }
 
