@@ -215,14 +215,14 @@ namespace Nethermind.Serialization.Rlp
                 ? rlp
                 : GetDecoder<T>() is { } rlpDecoder
                     ? rlpDecoder.Encode(item, behaviors)
-                    : throw new RlpReaderException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
+                    : throw new NotSupportedException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
 
         public static Rlp Encode<T>(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
             => items is []
                 ? OfEmptyList
                 : GetDecoder<T>() is { } rlpDecoder
                     ? rlpDecoder.Encode(items, behaviors)
-                    : throw new RlpReaderException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
+                    : throw new NotSupportedException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
 
         public static Rlp Encode(int[] integers)
         {
