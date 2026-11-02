@@ -297,7 +297,7 @@ public class BlockchainTestJsonOutputTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.GetProperty("pass").GetBoolean(), Is.True, $"stdout was: {Trim(stdout)}, stderr was: {Trim(stderr)}");
-            Assert.That(rejections.GetArrayLength(), Is.EqualTo(2), $"stdout was: {Trim(stdout)}");
+            Assert.That(rejections.GetArrayLength(), Is.EqualTo(3), $"stdout was: {Trim(stdout)}");
         }
 
         using (Assert.EnterMultipleScope())
@@ -308,6 +308,8 @@ public class BlockchainTestJsonOutputTests
             Assert.That(rejections[1].GetProperty("index").GetInt32(), Is.EqualTo(1));
             Assert.That(rejections[1].GetProperty("hash").GetString(), Is.EqualTo(invalidBlockHash));
             Assert.That(rejections[1].GetProperty("error").GetString(), Does.StartWith("InvalidBlockNumber: "));
+            Assert.That(rejections[2].GetProperty("index").GetInt32(), Is.EqualTo(2), "a repeated block is reported at its own index");
+            Assert.That(rejections[2].GetProperty("hash").GetString(), Is.EqualTo(invalidBlockHash));
         }
     }
 
@@ -505,8 +507,8 @@ public class BlockchainTestJsonOutputTests
     }
 
     /// <summary>
-    /// Writes a Paris fixture whose first block does not decode and whose second skips a block number, both
-    /// expected to be rejected; the second names <paramref name="expectException"/>.
+    /// Writes a Paris fixture whose first block does not decode and whose second and third are one block that skips a
+    /// block number, all expected to be rejected; the repeated block names <paramref name="expectException"/>.
     /// </summary>
     private (string Path, string InvalidBlockHash) WriteRejectedBlocksFixture(string expectException)
     {
@@ -524,6 +526,7 @@ public class BlockchainTestJsonOutputTests
                 "genesisBlockHeader": {{_serializer.Serialize(genesis)}},
                 "blocks": [
                   { "rlp": "0xdead", "expectException": "BlockException.RLP_STRUCTURES_ENCODING" },
+                  { "rlp": "{{blockRlp.ToHexString(true)}}", "expectException": "{{expectException}}" },
                   { "rlp": "{{blockRlp.ToHexString(true)}}", "expectException": "{{expectException}}" }
                 ],
                 "lastblockhash": "{{genesis.Hash}}",

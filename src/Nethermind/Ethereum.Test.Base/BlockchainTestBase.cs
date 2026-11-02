@@ -1275,15 +1275,33 @@ public abstract class BlockchainTestBase
     /// </remarks>
     private sealed class RejectionRecorder(List<BlockRejection> rejections)
     {
-        private readonly Dictionary<Hash256, int> _indexByHash = [];
+        private readonly Dictionary<Hash256, List<int>> _indicesByHash = [];
 
-        public void Register(Hash256 hash, int index) => _indexByHash.TryAdd(hash, index);
+        public void Register(Hash256 hash, int index)
+        {
+            if (!_indicesByHash.TryGetValue(hash, out List<int>? indices))
+            {
+                _indicesByHash[hash] = indices = [];
+            }
 
+            indices.Add(index);
+        }
+
+        /// <remarks>A fixture can carry the same block more than once, so each rejection goes to the first copy not yet rejected.</remarks>
         public void Record(Hash256 hash, string error)
         {
-            if (_indexByHash.TryGetValue(hash, out int index))
+            if (!_indicesByHash.TryGetValue(hash, out List<int>? indices)) return;
+
+            lock (rejections)
             {
-                Record(index, hash, error);
+                foreach (int index in indices)
+                {
+                    if (!rejections.Exists(r => r.Index == index))
+                    {
+                        Record(index, hash, error);
+                        return;
+                    }
+                }
             }
         }
 
