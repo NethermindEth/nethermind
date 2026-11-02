@@ -58,6 +58,10 @@ public static partial class HardforkLabels
         // EIP-8288 extends EIP-8141: scheduling it alone also schedules frame transactions, while an
         // earlier EIP-8141 activation is kept rather than reported as a conflicting label.
         target.Eip8141TransitionTimestamp ??= target.Eip8288TransitionTimestamp;
+        if (target.Eip8141TransitionTimestamp > target.Eip8288TransitionTimestamp)
+            throw new InvalidConfigurationException(
+                $"EIP-8288 at 0x{target.Eip8288TransitionTimestamp:x} cannot activate before the EIP-8141 it extends at 0x{target.Eip8141TransitionTimestamp:x}.",
+                ExitCodes.ConflictingChainspecEipConfiguration);
     }
 
     /// <param name="name">Fork class name (e.g. <c>Homestead</c>); the JSON wire key is its camelCase form.</param>
