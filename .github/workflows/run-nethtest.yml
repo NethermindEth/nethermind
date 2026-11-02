@@ -659,6 +659,10 @@ jobs:
           if [ -n "$BATCHREAD" ]; then
             SETUP_ARGS="$SETUP_ARGS --batchRead $BATCHREAD"
           fi
+          # These lanes read only .pass, so they keep nethtest's check of the reason a payload was rejected for.
+          if [ "$RUNNER_FLAG" = "--engineTest" ]; then
+            SETUP_ARGS="$SETUP_ARGS --match-exceptions"
+          fi
 
           RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
           if command -v cygpath >/dev/null 2>&1; then

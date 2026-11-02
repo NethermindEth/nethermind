@@ -24,6 +24,7 @@ public readonly record struct BlockchainTestsRunnerOptions(
     bool? ParallelExecution = null,
     bool? ParallelExecutionBatchRead = null,
     bool WithholdBlockAccessLists = false,
+    bool MatchExpectedExceptions = false,
     PreWarmMode? PreWarming = null,
     IBlockAccessListExecutionReport? BlockAccessListExecutionObserver = null,
     Func<bool, string?>? ProgressUpdateFactory = null);
@@ -38,8 +39,8 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
     protected override bool WithholdBlockAccessLists => _withholdBlockAccessLists;
     protected override PreWarmMode? PreWarmingOverride => _preWarming;
     protected override IBlockAccessListExecutionReport? BlockAccessListExecutionObserver => _blockAccessListExecutionObserver;
-    // A rejection's reason is the consumer's to judge, from the client error each result reports.
-    protected override bool MatchExpectedExceptions => false;
+    // A rejection's reason is the consumer's to judge, from the client error each result reports, unless --match-exceptions asks for the old check.
+    protected override bool MatchExpectedExceptions => _matchExpectedExceptions;
     private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
     private readonly ITestSourceLoader? _testsSource = testsSource;
     private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
@@ -54,6 +55,7 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
     private readonly bool? _parallelExecution = options.ParallelExecution;
     private readonly bool? _parallelExecutionBatchRead = options.ParallelExecutionBatchRead;
     private readonly bool _withholdBlockAccessLists = options.WithholdBlockAccessLists;
+    private readonly bool _matchExpectedExceptions = options.MatchExpectedExceptions;
     private readonly PreWarmMode? _preWarming = options.PreWarming;
     private readonly IBlockAccessListExecutionReport? _blockAccessListExecutionObserver = options.BlockAccessListExecutionObserver;
     private readonly Func<bool, string?>? _progressUpdateFactory = options.ProgressUpdateFactory;

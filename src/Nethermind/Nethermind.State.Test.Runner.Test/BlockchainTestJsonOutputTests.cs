@@ -313,6 +313,20 @@ public class BlockchainTestJsonOutputTests
         }
     }
 
+    [TestCase("BlockException.INVALID_BLOCK_NUMBER", ExpectedResult = true)]
+    [TestCase("TransactionException.INSUFFICIENT_ACCOUNT_FUNDS", ExpectedResult = false)]
+    public async Task<bool> Match_exceptions_fails_a_payload_rejected_for_another_reason(string expectedException)
+    {
+        (string invalidPayload, _) = SkippedNumberPayload();
+        string fixture = WriteEngineFixture("rejected_engine",
+        [
+            $$"""{ "params": [{{invalidPayload}}], "newPayloadVersion": "1", "forkchoiceUpdatedVersion": "1", "validationError": "{{expectedException}}" }""",
+        ]);
+        (string stdout, _) = await RunNethtest(fixture, "enginetest", "--match-exceptions");
+
+        return SingleResult(stdout).GetProperty("pass").GetBoolean();
+    }
+
     // The verdict only asks whether a rejection was expected, so an exception the client error does not match passes too.
     [Test]
     public async Task Engine_test_reports_an_invalid_payload_and_a_json_rpc_error_by_payload_index(

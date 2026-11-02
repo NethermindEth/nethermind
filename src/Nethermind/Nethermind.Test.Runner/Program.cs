@@ -100,6 +100,9 @@ internal class Program
             new Option<PreWarmMode?>("--preWarming") { Description = "Run the block prewarmer, and the precompile and state caches it brings, which nodes run by default (Block), or leave it off (None); when omitted, it is off. [Only for Blockchain/Engine Test]" }
                 .AcceptOnlyFromAmong(nameof(PreWarmMode.None), nameof(PreWarmMode.Block));
 
+        public static Option<bool> MatchExceptions { get; } =
+            new("--match-exceptions") { Description = "Also fail an engine test whose payload is rejected with an error that does not match the fixture's expected exception, as nethtest did before; by default a rejected payload passes whenever a rejection was expected. [Only for Engine Test]" };
+
         public static Option<bool> BalReport { get; } =
             new("--bal-report") { Description = "Print a JSON line on stderr naming the executor (parallel or sequential) that ran each block, and one when a block the parallel executor rejected is re-run sequentially. [Only for Blockchain/Engine Test]" };
 
@@ -137,6 +140,7 @@ internal class Program
             Options.BatchRead,
             Options.PreWarming,
             Options.BalReport,
+            Options.MatchExceptions,
             Options.ForkAlias,
         ];
         rootCommand.SetAction((parseResult, cancellationToken) => Run(parseResult, null, cancellationToken));
@@ -272,6 +276,7 @@ internal class Program
                     ParallelExecution: parallelExecution,
                     ParallelExecutionBatchRead: batchRead,
                     WithholdBlockAccessLists: parseResult.GetValue(Options.BalWithhold),
+                    MatchExpectedExceptions: parseResult.GetValue(Options.MatchExceptions),
                     PreWarming: preWarming,
                     BlockAccessListExecutionObserver: balReport ? new BlockAccessListExecutionReport(Console.Error) : null);
                 (List<EthereumTestResult> results, bool allFilesLoaded) = await RunBlockTestFiles(files, runnerOptions, workers);
