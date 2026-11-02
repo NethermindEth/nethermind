@@ -1330,6 +1330,75 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void CompactReclaimingBlobFiles_RestoresBlobFilesOff_WhenARuntimeTuneDisabledThemDespiteConfiguredEnable()
+        {
+            // The inverse of the runtime-tuned case: configuration enables blob files, but the sync tuner's
+            // Tune(Default) (bodies feed Finished) has since forced them off, so the live value is false while
+            // configuration still says true. The restore must reproduce the live false, not re-infer the configured
+            // true: re-enabling blob writing contradicts the live options, and because _currentTune stays Default a
+            // later Tune(Default) short-circuits on its no-op guard and never corrects it.
+            DbConfig config = new()
+            {
+                AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;blob_compression_type=kNoCompression;disable_auto_compactions=true;"
+            };
+            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            using OptionsCapturingDbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance);
+
+            const int heights = 100;
+            byte[] value = new byte[4096];
+            Random.Shared.NextBytes(value);
+            for (ulong number = 1; number <= heights; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
+            db.Flush();
+            Assert.That(BlobBytes(DbPath), Is.GreaterThan(0), "the configured blob mode must be engaged before the tune disables it");
+
+            db.Tune(ITunableDb.TuneType.EnableBlobFiles);
+            db.Tune(ITunableDb.TuneType.Default);
+
+            bool compacted = db.CompactReclaimingBlobFiles();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted, Is.True);
+                Assert.That(db.AppliedOptions, Is.Not.Empty, "the compaction must have applied and then restored options");
+                Assert.That(db.AppliedOptions[^1].TryGetValue("enable_blob_files", out string? restoredBlobFiles) ? restoredBlobFiles : null, Is.EqualTo("false"),
+                    "the restore must reproduce the live post-Tune(Default) false, not re-enable the configured true");
+            }
+        }
+
+        [Test]
+        public void CompactReclaimingBlobFiles_RestoresTheTuneThatLandedDuringCompaction_NotThePreCompactionOptions()
+        {
+            // The concurrency case: the sync tuner's Tune(Default) (bodies feed Finished) lands while the forced
+            // compaction is running - the window the lock is deliberately not held. The restore must re-derive from
+            // the effective options that Tune left, turning blob files off, rather than blindly re-applying the
+            // pre-compaction snapshot that still had them on. Blob files start on via a runtime tune, exactly as the
+            // tuner turns them on while bodies sync.
+            DbConfig config = new() { AdditionalRocksDbOptions = "disable_auto_compactions=true;" };
+            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            using TuneDuringCompactionDbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance, ITunableDb.TuneType.Default);
+
+            db.Tune(ITunableDb.TuneType.EnableBlobFiles);
+
+            const int heights = 100;
+            byte[] value = new byte[4096];
+            Random.Shared.NextBytes(value);
+            for (ulong number = 1; number <= heights; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
+            db.Flush();
+            Assert.That(BlobBytes(DbPath), Is.GreaterThan(0), "the runtime tune must engage blob mode before the compaction");
+
+            bool compacted = db.CompactReclaimingBlobFiles();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted, Is.True);
+                Assert.That(db.TuneInjected, Is.True, "the test must have injected the mid-compaction Tune for the assertion to mean anything");
+                Assert.That(db.AppliedOptions, Is.Not.Empty, "the compaction must have applied and then restored options");
+                Assert.That(db.AppliedOptions[^1].TryGetValue("enable_blob_files", out string? restoredBlobFiles) ? restoredBlobFiles : null, Is.EqualTo("false"),
+                    "the restore must honor the Tune(Default) that landed during the compaction, not re-apply the pre-compaction blob-files-on snapshot");
+            }
+        }
+
+        [Test]
         public void CompactReclaimingBlobFiles_ReclaimsPartiallyReferencedBlobFiles_ThatAPlainCompactionCannot()
         {
             // The sliced-history shape a realistic retention prune leaves behind: scattered survivors across the
@@ -2493,6 +2562,32 @@ namespace Nethermind.Db.Test
         {
             AppliedOptions.Add(new Dictionary<string, string>(options));
             base.ApplyOptions(options);
+        }
+    }
+
+    // Injects a Tune mid-compaction - in the unlocked window CompactReclaimingBlobFiles leaves between its snapshot
+    // and its restore - to deterministically reproduce the sync tuner firing from a feed thread during the rewrite,
+    // without a real thread race.
+    class TuneDuringCompactionDbOnTheRocks(
+        string basePath,
+        DbSettings dbSettings,
+        IDbConfig dbConfig,
+        IRocksDbConfigFactory rocksDbConfigFactory,
+        ILogManager logManager,
+        ITunableDb.TuneType tuneToInject
+        ) : OptionsCapturingDbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager)
+    {
+        public bool TuneInjected { get; private set; }
+
+        internal override void CompactOpenRange(IColumnFamilyHandle? cf, bool forceBottommost)
+        {
+            if (!TuneInjected)
+            {
+                Tune(tuneToInject);
+                TuneInjected = true;
+            }
+
+            base.CompactOpenRange(cf, forceBottommost);
         }
     }
 }
