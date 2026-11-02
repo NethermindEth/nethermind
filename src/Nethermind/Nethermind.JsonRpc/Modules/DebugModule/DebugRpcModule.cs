@@ -7,6 +7,7 @@ using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -21,6 +22,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -45,6 +47,7 @@ public class DebugRpcModule(
     IDebugBridge debugBridge,
     IJsonRpcConfig jsonRpcConfig,
     ISpecProvider specProvider,
+    IForkInfo forkInfo,
     IBlockchainBridge blockchainBridge,
     IBlocksConfig blocksConfig,
     IBlockFinder blockFinder,
@@ -56,6 +59,7 @@ public class DebugRpcModule(
 
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
+    private static readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
     // Registry-resolved so AuRa chains encode/decode the block seal (step + signature) correctly.
     private readonly IRlpDecoder<Block> _blockDecoder = Rlp.GetDecoderOrThrow<Block>();
     private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
@@ -785,6 +789,27 @@ public class DebugRpcModule(
     {
         object configValue = debugBridge.GetConfigValue(category, name);
         return ResultWrapper<object>.Success(configValue);
+    }
+
+    public ResultWrapper<JsonNode> debug_config()
+    {
+        Fork current = forkInfo.GetForkActivationsSummary(blockFinder.Head?.Header).Current;
+        ReadOnlySpan<Fork> forkSchedule = forkInfo.GetAllForks();
+        ForkConfig[] forks = new ForkConfig[forkSchedule.Length];
+        for (int index = 0; index < forkSchedule.Length; index++)
+        {
+            // The summary reports an active genesis fork by timestamp, so the active entry reuses it to match eth_config.
+            forks[index] = forkSchedule[index].Id.Equals(current.Id)
+                ? ForkConfigFactory.Create(current, specProvider, active: true)
+                : ForkConfigFactory.Create(forkSchedule[index], specProvider);
+        }
+
+        DebugConfigSummary config = new()
+        {
+            Forks = forks,
+        };
+
+        return ResultWrapper<JsonNode>.Success(JsonSerializer.SerializeToNode(config, TypeInfoJsonSerializer.GetTypeInfo<DebugConfigSummary>(UnchangedDictionaryKeyOptions))!);
     }
 
     public ResultWrapper<bool> debug_resetHead(Hash256 blockHash) =>

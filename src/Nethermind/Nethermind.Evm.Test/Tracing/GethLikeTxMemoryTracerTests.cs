@@ -303,6 +303,19 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     }
 
     [Test]
+    public void Callee_out_of_gas_leaves_the_calling_step_without_error([Values] bool precompile)
+    {
+        using GethLikeTxTrace trace = ExecuteAndTrace(CalleeOutOfGasCode(precompile));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.False);
+            Assert.That(trace.Entries.Where(static e => e.Error is not null).Select(static e => e.Depth).ToArray(),
+                Is.EqualTo(precompile ? Array.Empty<int>() : [2]), "depths of the steps with an error");
+        }
+    }
+
+    [Test]
     public void Can_trace_call_depth()
     {
         byte[] deployedCode = new byte[3];
