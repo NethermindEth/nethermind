@@ -4,9 +4,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -16,6 +19,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Subscribe;
@@ -173,6 +177,37 @@ public class AdminModuleTests
 
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)!;
         Assert.That(response.Result!.ToString(), Is.EqualTo(_exampleDataDir), "admin_dataDir reflects the path passed at module construction");
+    }
+
+    [TestCase("admin-datadir-test/node", TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirConfigured_ReturnsAbsoluteDataDir")]
+    [TestCase(null, TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirNull_ReturnsAbsoluteCurrentDirectory")]
+    [TestCase("", TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirEmpty_ReturnsAbsoluteCurrentDirectory")]
+    [TestCase("   ", TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirWhitespace_ReturnsAbsoluteCurrentDirectory")]
+    public async Task AdminDataDir_ResolvedThroughDiWiring_ReturnsAbsoluteDataDir(string? dataDir)
+    {
+        const string baseDbPath = "nethermind_db/mainnet";
+        string expected = Path.GetFullPath(string.IsNullOrWhiteSpace(dataDir) ? "." : dataDir);
+
+        string? result = await ResolveAdminDataDir(new InitConfig { BaseDbPath = baseDbPath, DataDir = dataDir });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.EqualTo(baseDbPath), "the DB subdirectory is not the data directory");
+            Assert.That(Path.IsPathRooted(result), Is.True, "the data directory is absolute");
+            Assert.That(result, Is.EqualTo(expected));
+        }
+    }
+
+    private async Task<string?> ResolveAdminDataDir(InitConfig initConfig)
+    {
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new PseudoNethermindModule(new ChainSpec(), new ConfigProvider(initConfig), LimboLogs.Instance))
+            .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, nameof(AdminModuleTests)))
+            .Build();
+
+        IAdminRpcModule adminModule = container.Resolve<IAdminRpcModule>();
+        string serialized = await RpcTest.TestSerializedRequest(adminModule, "admin_dataDir");
+        return _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)!.Result?.ToString();
     }
 
     [TestCase(false, TestName = "AdminIsStateRootAvailable_WhenStateMissing_ReturnsFalse")]

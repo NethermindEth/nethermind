@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -160,18 +161,22 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
     private static ParallelTraceBudgets CreateParallelTraceBudgets(ISpecProvider specProvider, IFlatDbConfig flatDbConfig, ParallelTraceBudget budget) =>
         new(specProvider, budget, flatDbConfig.Enabled && flatDbConfig.HistoryEnabled && flatDbConfig.HistoryTransactionIndexEnabled);
 
-    private IAdminRpcModule CreateAdminRpcModule(IComponentContext ctx) => new AdminRpcModule(
+    private IAdminRpcModule CreateAdminRpcModule(IComponentContext ctx)
+    {
+        string? dataDir = ctx.Resolve<IInitConfig>().DataDir;
+        return new AdminRpcModule(
             ctx.Resolve<IBlockTree>(),
             ctx.Resolve<INetworkConfig>(),
             ctx.Resolve<IPeerPool>(),
             ctx.Resolve<IStaticNodesManager>(),
             ctx.Resolve<IStateReader>(),
             ctx.Resolve<IEnode>(),
-            ctx.Resolve<IInitConfig>().BaseDbPath, // IInitConfig not accessible from IAdminRpcModule, so we construct it manually here
+            Path.GetFullPath(string.IsNullOrWhiteSpace(dataDir) ? "." : dataDir), // IInitConfig not accessible from IAdminRpcModule, so we construct it manually here
             ctx.Resolve<ChainSpec>().Parameters,
             ctx.Resolve<ITrustedNodesManager>(),
             ctx.Resolve<ISubscriptionManager>(),
             ctx.Resolve<IJsonRpcConfig>(),
             ctx.Resolve<IBlockProcessingPauseControl>(),
             ctx.ResolveOptional<INodeRecordProvider>());
+    }
 }
