@@ -72,11 +72,17 @@ public class NativeBackendStartupTests
     [TestCase("key", "recursive guest key does not match")]
     [TestCase("old-key", "recursive guest key does not match")]
     [TestCase("bounds", "acceptance bounds do not match")]
-    public async Task Actual_backend_startup_fails_closed_in_a_fresh_process(string mode, string expected)
+    // The runtime switch hides carry-less multiply (on x64, EnableAES also covers PCLMULQDQ) as a CPU without it would;
+    // the check must fail before any native call.
+    [TestCase("cpu", "needs carry-less multiply", "EIP-8288 requires a CPU the native Lean backend supports")]
+    public async Task Actual_backend_startup_fails_closed_in_a_fresh_process(string mode, string expected,
+        string reason = "EIP-8288 requires the pinned native Lean backend")
     {
         ProcessStartInfo start = new("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         start.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
         start.Environment[NativeStartupProbe.Variable] = mode;
+        if (mode == "cpu")
+            start.Environment[RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "DOTNET_EnableArm64Aes" : "DOTNET_EnableAES"] = "0";
         using Process process = Process.Start(start);
         Assert.That(process, Is.Not.Null);
         Task<string> output = process.StandardOutput.ReadToEndAsync();
@@ -89,7 +95,7 @@ public class NativeBackendStartupTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(process.ExitCode, Is.Zero, diagnostics);
-                Assert.That(diagnostics, Does.Contain("EIP-8288 requires the pinned native Lean backend"));
+                Assert.That(diagnostics, Does.Contain(reason));
                 Assert.That(diagnostics, Does.Contain(expected));
             }
         }

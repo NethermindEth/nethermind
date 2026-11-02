@@ -3,7 +3,8 @@
 
 # The EIP-8288 native Lean backend, loaded only on chains that schedule EIP-8288. It is cross-compiled on the build
 # platform for a fixed CPU baseline: tools/lean-ffi's target-cpu=native would tie the image to the builder's CPU.
-# leanVM needs carry-less multiply (pclmulqdq on x86-64, aes on aarch64); src/lib.rs fails the build without it.
+# leanVM needs carry-less multiply (pclmulqdq on x86-64, aes on aarch64; src/lib.rs fails the build without it) and has
+# no runtime fallback, so NativeLeanProofVerifier checks these baselines at startup and the two must stay in step.
 FROM --platform=$BUILDPLATFORM rust:1.99.0-slim-trixie@sha256:2752b332db73fdbb7dc576f06c82ed1f312005784ef913d7e04a28f5f55dc581 AS lean
 
 ARG BUILDARCH
@@ -14,7 +15,7 @@ WORKDIR /lean
 COPY tools/lean-ffi .
 
 RUN case "$TARGETARCH" in \
-    amd64) target=x86_64-unknown-linux-gnu cc=x86_64-linux-gnu pkg=gcc-x86-64-linux-gnu flags="-C target-cpu=x86-64-v3 -C target-feature=+pclmulqdq,+aes" ;; \
+    amd64) target=x86_64-unknown-linux-gnu cc=x86_64-linux-gnu pkg=gcc-x86-64-linux-gnu flags="-C target-cpu=x86-64-v2 -C target-feature=+pclmulqdq" ;; \
     arm64) target=aarch64-unknown-linux-gnu cc=aarch64-linux-gnu pkg=gcc-aarch64-linux-gnu flags="-C target-feature=+aes" ;; \
     *) echo "Unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
   esac && \
