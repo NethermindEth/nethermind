@@ -35,27 +35,8 @@ public class FrameExceptionFragmentsTests
         return false;
     }
 
-    /// <summary>Encodes a frame transaction payload, varying only the fields the caller supplies.</summary>
-    private static byte[] EncodePayload(Rlp frames, Rlp maxFee, Rlp[] nonceKeys = null, Rlp nonce = null, Rlp fees = null)
-    {
-        Rlp payloadSequence = Rlp.Encode([
-            Rlp.Encode(1L),                      // chain_id
-            .. nonceKeys is null ? [] : new[] { Rlp.Encode(nonceKeys) },
-            nonce ?? Rlp.Encode(0L),             // nonce, or nonce_seq after nonce_keys
-            Rlp.Encode(TestItem.AddressA.Bytes), // sender
-            frames,
-            Rlp.Encode(Array.Empty<Rlp>()),      // signatures
-            fees ?? Rlp.Encode(maxFee, Rlp.Encode(0L)), // fees: max_fee, max_priority_fee_per_gas
-            Rlp.Encode(Array.Empty<Rlp>())]);    // blob_versioned_hashes
-
-        byte[] payload = new byte[1 + payloadSequence.Length];
-        payload[0] = (byte)TxType.FrameTx;
-        payloadSequence.Bytes.CopyTo(payload, 1);
-        return payload;
-    }
-
     private static string DecodeFailureMessage(Rlp frames, Rlp maxFee) =>
-        DecodeFailureMessage(EncodePayload(frames, maxFee));
+        DecodeFailureMessage(FrameTxPayload.Encode(frames, maxFee));
 
     private static string DecodeFailureMessage(byte[] payload)
     {
@@ -89,7 +70,7 @@ public class FrameExceptionFragmentsTests
     {
         // A frame transaction has no envelope signature, so an overlong declared length leaves the end-of-payload
         // checkpoint past the last field; every overrun then fails at the same peek, so one case says it all.
-        byte[] payload = EncodePayload(
+        byte[] payload = FrameTxPayload.Encode(
             frames: Rlp.Encode(Array.Empty<Rlp>()),
             maxFee: Rlp.Encode(0L));
         Assert.That(payload[1] + 1, Is.LessThanOrEqualTo(ShortSequencePrefixMax),
@@ -140,7 +121,7 @@ public class FrameExceptionFragmentsTests
             nonceKeys[i] = Rlp.Encode(i + 1L);
         }
 
-        string message = DecodeFailureMessage(EncodePayload(
+        string message = DecodeFailureMessage(FrameTxPayload.Encode(
             frames: Rlp.Encode(Array.Empty<Rlp>()),
             maxFee: Rlp.Encode(0L),
             nonceKeys));
@@ -153,7 +134,7 @@ public class FrameExceptionFragmentsTests
     [Test]
     public void Decode_CoversANonceSeqWiderThan64Bits()
     {
-        string message = DecodeFailureMessage(EncodePayload(
+        string message = DecodeFailureMessage(FrameTxPayload.Encode(
             frames: Rlp.Encode(Array.Empty<Rlp>()),
             maxFee: Rlp.Encode(0L),
             nonceKeys: [Rlp.Encode(1L)],
@@ -169,7 +150,7 @@ public class FrameExceptionFragmentsTests
     [Test]
     public void Decode_CoversAFeeListMissingAnElement()
     {
-        string message = DecodeFailureMessage(EncodePayload(
+        string message = DecodeFailureMessage(FrameTxPayload.Encode(
             frames: Rlp.Encode(Array.Empty<Rlp>()),
             maxFee: Rlp.Encode(0L),
             fees: Rlp.Encode(new[] { Rlp.Encode(0L) })));    // the list [max_fee]
@@ -225,7 +206,7 @@ public class FrameExceptionFragmentsTests
     [TestCaseSource(nameof(MalformedFrameCases))]
     public void Decode_CoversAMalformedFrame(Rlp frames, string wording)
     {
-        string message = DecodeFailureMessage(EncodePayload(frames, Rlp.Encode(0L)));
+        string message = DecodeFailureMessage(FrameTxPayload.Encode(frames, Rlp.Encode(0L)));
 
         using (Assert.EnterMultipleScope())
         {

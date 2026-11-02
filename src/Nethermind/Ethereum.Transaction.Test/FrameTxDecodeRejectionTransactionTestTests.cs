@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -28,80 +29,59 @@ public class FrameTxDecodeRejectionTransactionTestTests : TransactionTestBase
     /// <summary>A zero with a leading zero byte: the single byte 0x00 instead of the empty string 0x80.</summary>
     private static readonly Rlp ZeroWithLeadingZero = new([0x00]);
 
-    [TestCase("0x06", "TransactionException.RLP_ERROR_EOF", TestName = "The type byte alone is RLP_ERROR_EOF")]
-    [TestCase("0x06c0", "TransactionException.RLP_TOO_FEW_ELEMENTS", TestName = "An empty payload list is RLP_TOO_FEW_ELEMENTS")]
-    public void TruncatedPayloadIsRejectedWithItsLabel(string txBytes, string expectedException)
+    private static IEnumerable<TestCaseData> LabelledRejectionCases()
     {
-        Result result = RunTest(TestFor(txBytes, expectedException));
+        yield return new TestCaseData("0x06", "TransactionException.RLP_ERROR_EOF")
+            .SetName("The type byte alone is RLP_ERROR_EOF");
+        yield return new TestCaseData("0x06c0", "TransactionException.RLP_TOO_FEW_ELEMENTS")
+            .SetName("An empty payload list is RLP_TOO_FEW_ELEMENTS");
 
-        Assert.That((bool)result, Is.True, result.Error);
-    }
-
-    [Test]
-    public void PayloadWithoutItsLastFieldIsTooFewElements()
-    {
-        Rlp payload = Rlp.Encode(
+        Rlp withoutLastField = Rlp.Encode(
             Rlp.Encode(1L),                                 // chain_id
             Rlp.Encode(0L),                                 // nonce
             Rlp.Encode(TestItem.AddressA.Bytes),            // sender
             Rlp.Encode(Array.Empty<Rlp>()),                 // frames
             Rlp.Encode(Array.Empty<Rlp>()),                 // signatures
             Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L)));    // fees; no blob_versioned_hashes
-        string txBytes = Bytes.Concat((byte)TxType.FrameTx, payload.Bytes).ToHexString(true);
+        yield return new TestCaseData(Bytes.Concat((byte)TxType.FrameTx, withoutLastField.Bytes).ToHexString(true),
+                "TransactionException.RLP_TOO_FEW_ELEMENTS")
+            .SetName("A payload without its last field is RLP_TOO_FEW_ELEMENTS");
+        yield return new TestCaseData(FrameTxPayload.Encode(nonce: NonceOf2Pow64).ToHexString(true),
+                "TransactionException.NONCE_OVERFLOW")
+            .SetName("A nonce wider than 64 bits is NONCE_OVERFLOW");
+        yield return new TestCaseData(FrameTxPayload.Encode(maxPriorityFeePerGas: ZeroWithLeadingZero).ToHexString(true),
+                "TransactionException.RLP_LEADING_ZEROS_PRIORITY_FEE")
+            .SetName("A priority fee with a leading zero is RLP_LEADING_ZEROS_PRIORITY_FEE");
+        // EIP-8250's seq_beyond_width: the fixtures label a nonce_seq wider than 64 bits TYPE_6_INVALID_FRAME_FORMAT only.
+        yield return new TestCaseData(FrameTxPayload.Encode(nonceKeys: [Rlp.Encode(1L)], nonce: NonceOf2Pow64).ToHexString(true),
+                "TransactionException.TYPE_6_INVALID_FRAME_FORMAT")
+            .SetName("A keyed nonce_seq wider than 64 bits is TYPE_6_INVALID_FRAME_FORMAT");
+        yield return new TestCaseData(FrameTxPayload.Encode(fees: Rlp.Encode(new[] { Rlp.Encode(0L) })).ToHexString(true), // the list [max_fee]
+                "TransactionException.TYPE_6_INVALID_FRAME_FORMAT")
+            .SetName("A fee list missing an element is TYPE_6_INVALID_FRAME_FORMAT");
+    }
 
-        Result result = RunTest(TestFor(txBytes, "TransactionException.RLP_TOO_FEW_ELEMENTS"));
+    [TestCaseSource(nameof(LabelledRejectionCases))]
+    public void RejectionMatchesItsLabel(string txBytes, string expectedException)
+    {
+        Result result = RunTest(TestFor(txBytes, expectedException));
 
         Assert.That((bool)result, Is.True, result.Error);
     }
 
-    [Test]
-    public void NonceWiderThan64BitsIsNonceOverflow()
+    private static IEnumerable<TestCaseData> MislabelledRejectionCases()
     {
-        Result result = RunTest(TestFor(TxBytes(nonce: NonceOf2Pow64), "TransactionException.NONCE_OVERFLOW"));
-
-        Assert.That((bool)result, Is.True, result.Error);
+        yield return new TestCaseData(FrameTxPayload.Encode(nonce: NonceOf2Pow64).ToHexString(true),
+                "TransactionException.NONCE_TOO_BIG")
+            .SetName("A nonce wider than 64 bits is not NONCE_TOO_BIG");
+        yield return new TestCaseData("0x06", "TransactionException.TYPE_6_INVALID_SIGNATURE")
+            .SetName("The type byte alone is not TYPE_6_INVALID_SIGNATURE");
     }
 
-    [Test]
-    public void PriorityFeeWithLeadingZeroIsLeadingZerosPriorityFee()
+    [TestCaseSource(nameof(MislabelledRejectionCases))]
+    public void RejectionDoesNotMatchAnotherLabel(string txBytes, string expectedException)
     {
-        Result result = RunTest(TestFor(TxBytes(maxPriorityFeePerGas: ZeroWithLeadingZero),
-            "TransactionException.RLP_LEADING_ZEROS_PRIORITY_FEE"));
-
-        Assert.That((bool)result, Is.True, result.Error);
-    }
-
-    // EIP-8250's seq_beyond_width: the fixtures label a nonce_seq wider than 64 bits TYPE_6_INVALID_FRAME_FORMAT only.
-    [Test]
-    public void KeyedNonceSeqWiderThan64BitsIsInvalidFrameFormat()
-    {
-        Result result = RunTest(TestFor(TxBytes(nonceKeys: [Rlp.Encode(1L)], nonce: NonceOf2Pow64),
-            "TransactionException.TYPE_6_INVALID_FRAME_FORMAT"));
-
-        Assert.That((bool)result, Is.True, result.Error);
-    }
-
-    [Test]
-    public void FeeListMissingAnElementIsInvalidFrameFormat()
-    {
-        Result result = RunTest(TestFor(TxBytes(fees: Rlp.Encode(new[] { Rlp.Encode(0L) })), // the list [max_fee]
-            "TransactionException.TYPE_6_INVALID_FRAME_FORMAT"));
-
-        Assert.That((bool)result, Is.True, result.Error);
-    }
-
-    [Test]
-    public void NonceWiderThan64BitsIsNotNonceTooBig()
-    {
-        Result result = RunTest(TestFor(TxBytes(nonce: NonceOf2Pow64), "TransactionException.NONCE_TOO_BIG"));
-
-        Assert.That((bool)result, Is.False);
-    }
-
-    [Test]
-    public void TypeByteAloneIsNotAnInvalidSignature()
-    {
-        Result result = RunTest(TestFor("0x06", "TransactionException.TYPE_6_INVALID_SIGNATURE"));
+        Result result = RunTest(TestFor(txBytes, expectedException));
 
         Assert.That((bool)result, Is.False);
     }
@@ -118,24 +98,6 @@ public class FrameTxDecodeRejectionTransactionTestTests : TransactionTestBase
         Result result = RunTest(TestFor("0x02c0", labels));
 
         Assert.That(result.Error, Is.EqualTo($"Expected '{labels}' but got 'Cannot decode stream of Transaction'."));
-    }
-
-    /// <summary>A frame transaction with no frames, varying only the fields the caller supplies.</summary>
-    private static string TxBytes(Rlp nonce = null, Rlp maxPriorityFeePerGas = null, Rlp[] nonceKeys = null, Rlp fees = null)
-    {
-        Rlp payload = Rlp.Encode([
-            Rlp.Encode(1L),                                 // chain_id
-            .. nonceKeys is null ? [] : new[] { Rlp.Encode(nonceKeys) },
-            nonce ?? Rlp.Encode(0L),                        // nonce, or nonce_seq after nonce_keys
-            Rlp.Encode(TestItem.AddressA.Bytes),            // sender
-            Rlp.Encode(Array.Empty<Rlp>()),                 // frames
-            Rlp.Encode(Array.Empty<Rlp>()),                 // signatures
-            fees ?? Rlp.Encode(                             // fees
-                Rlp.Encode(0L),                             // max_fee
-                maxPriorityFeePerGas ?? Rlp.Encode(0L)),
-            Rlp.Encode(Array.Empty<Rlp>())]);               // blob_versioned_hashes
-
-        return Bytes.Concat((byte)TxType.FrameTx, payload.Bytes).ToHexString(true);
     }
 
     private static TransactionTest TestFor(string txBytes, string expectedException) =>
