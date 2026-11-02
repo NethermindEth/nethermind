@@ -108,6 +108,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     // the runtime sync tuner can desync from the live options. Guarded by _tuneLock.
     private readonly Dictionary<string, string> _effectiveBlobGcOptions;
 
+    // Set while a blob-GC CompactReclaimingBlobFiles rewrite is running, so a Tune landing in the unlocked
+    // compaction window withholds the blob-GC keys from the live database and cannot weaken the running reclaim
+    // pass - it still records its intended values for the epilogue restore. Read and written only under _tuneLock.
+    private bool _blobCompactionInProgress;
+
     private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
     private string RepairedMarkerPath => Path.Join(_fullPath, "repaired.marker");
 
@@ -1877,6 +1882,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             Dictionary<string, string> steadyState = SnapshotBlobGarbageCollectionOptions();
             ApplyOptions(BlobGarbageCollectionOptions);
             foreach ((string key, string value) in steadyState) _effectiveBlobGcOptions[key] = value;
+
+            // From here until the epilogue, a concurrent Tune must not touch the blob-GC keys on the live database:
+            // flipping enable_blob_files off mid-rewrite would weaken this reclaim pass, and the one-shot caller marks
+            // it done either way. Set last, after the GC options above have reached the live database.
+            _blobCompactionInProgress = true;
         }
 
         try
@@ -1889,6 +1899,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         {
             lock (_tuneLock)
             {
+                // Clear first so the restore's own blob-GC keys reach the live database rather than being withheld.
+                _blobCompactionInProgress = false;
                 RestoreOptionsAfterBlobGarbageCollection();
             }
         }
@@ -2233,16 +2245,28 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     protected virtual void ApplyOptions(IDictionary<string, string> options)
     {
-        // Track the live value of every blob-GC option this applies. Always called with _tuneLock held (by Tune
-        // and by the blob-GC compaction prologue/epilogue), so the map is updated without re-entering the lock,
-        // which is not reentrant.
+        // Track the live value of every blob-GC option this applies, and - while a blob-GC compaction is running -
+        // withhold those keys from the live database so a concurrent Tune cannot flip blob files off under the
+        // running reclaim pass and weaken it. The intended value is still tracked, so the compaction's epilogue
+        // restore re-derives the correct final state. Always called with _tuneLock held (by Tune and by the blob-GC
+        // compaction prologue/epilogue), so the map and the flag are read without re-entering the lock, which is
+        // not reentrant.
+        Dictionary<string, string>? liveOptions = null;
         foreach ((string key, string value) in options)
         {
-            if (_effectiveBlobGcOptions.ContainsKey(key)) _effectiveBlobGcOptions[key] = value;
+            if (!_effectiveBlobGcOptions.ContainsKey(key)) continue;
+
+            _effectiveBlobGcOptions[key] = value;
+            if (_blobCompactionInProgress) (liveOptions ??= new Dictionary<string, string>(options)).Remove(key);
         }
 
-        _db.SetOptions(options);
+        IDictionary<string, string> toApply = liveOptions ?? options;
+        if (toApply.Count > 0) SetLiveOptions(toApply);
     }
+
+    /// <summary>Pushes the options to the live RocksDB instance. The single sink for live option changes, kept
+    /// separate so <see cref="ApplyOptions"/> can withhold the blob-GC keys while a compaction runs.</summary>
+    protected virtual void SetLiveOptions(IDictionary<string, string> options) => _db.SetOptions(options);
 
     private Dictionary<string, string> GetStandardOptions() =>
         // Defaults are from rocksdb source code

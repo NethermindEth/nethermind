@@ -1369,10 +1369,11 @@ namespace Nethermind.Db.Test
         public void CompactReclaimingBlobFiles_RestoresTheTuneThatLandedDuringCompaction_NotThePreCompactionOptions()
         {
             // The concurrency case: the sync tuner's Tune(Default) (bodies feed Finished) lands while the forced
-            // compaction is running - the window the lock is deliberately not held. The restore must re-derive from
-            // the effective options that Tune left, turning blob files off, rather than blindly re-applying the
-            // pre-compaction snapshot that still had them on. Blob files start on via a runtime tune, exactly as the
-            // tuner turns them on while bodies sync.
+            // compaction is running - the window the lock is deliberately not held. The live database must not have
+            // blob files flipped off under the running reclaim pass (the Tune is deferred), while the restore must
+            // still re-derive from the effective options that Tune left, turning blob files off afterwards, rather
+            // than blindly re-applying the pre-compaction snapshot that still had them on. Blob files start on via a
+            // runtime tune, exactly as the tuner turns them on while bodies sync.
             DbConfig config = new() { AdditionalRocksDbOptions = "disable_auto_compactions=true;" };
             RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
             using TuneDuringCompactionDbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance, ITunableDb.TuneType.Default);
@@ -1392,9 +1393,13 @@ namespace Nethermind.Db.Test
             {
                 Assert.That(compacted, Is.True);
                 Assert.That(db.TuneInjected, Is.True, "the test must have injected the mid-compaction Tune for the assertion to mean anything");
+                Assert.That(db.LiveBlobFilesWhenTuneInjected, Is.EqualTo("true"),
+                    "the mid-compaction Tune(Default) must be deferred: the live database must still have blob files on while the reclaim pass runs, not flipped off under it");
                 Assert.That(db.AppliedOptions, Is.Not.Empty, "the compaction must have applied and then restored options");
                 Assert.That(db.AppliedOptions[^1].TryGetValue("enable_blob_files", out string? restoredBlobFiles) ? restoredBlobFiles : null, Is.EqualTo("false"),
                     "the restore must honor the Tune(Default) that landed during the compaction, not re-apply the pre-compaction blob-files-on snapshot");
+                Assert.That(db.LatestLiveBlobFiles(), Is.EqualTo("false"),
+                    "after the restore the live database must end with blob files off, matching the Tune(Default) that landed during the compaction");
             }
         }
 
@@ -2558,10 +2563,32 @@ namespace Nethermind.Db.Test
     {
         public List<IDictionary<string, string>> AppliedOptions { get; } = [];
 
+        // What actually reached the live database, after ApplyOptions withholds the blob-GC keys during a
+        // compaction - distinct from AppliedOptions, which records every requested change including a withheld one.
+        public List<IDictionary<string, string>> LiveAppliedOptions { get; } = [];
+
         protected override void ApplyOptions(IDictionary<string, string> options)
         {
             AppliedOptions.Add(new Dictionary<string, string>(options));
             base.ApplyOptions(options);
+        }
+
+        protected override void SetLiveOptions(IDictionary<string, string> options)
+        {
+            LiveAppliedOptions.Add(new Dictionary<string, string>(options));
+            base.SetLiveOptions(options);
+        }
+
+        /// <summary>The most recent value of <c>enable_blob_files</c> the live database was actually told to use,
+        /// or null if none was ever pushed.</summary>
+        public string? LatestLiveBlobFiles()
+        {
+            for (int i = LiveAppliedOptions.Count - 1; i >= 0; i--)
+            {
+                if (LiveAppliedOptions[i].TryGetValue("enable_blob_files", out string? value)) return value;
+            }
+
+            return null;
         }
     }
 
@@ -2579,12 +2606,18 @@ namespace Nethermind.Db.Test
     {
         public bool TuneInjected { get; private set; }
 
+        // The live enable_blob_files value right after the mid-compaction Tune returned, before the real
+        // compaction and the epilogue restore - "true" proves the Tune's attempt to flip blob files off was
+        // withheld from the live database for the duration of the reclaim pass.
+        public string? LiveBlobFilesWhenTuneInjected { get; private set; }
+
         internal override void CompactOpenRange(IColumnFamilyHandle? cf, bool forceBottommost)
         {
             if (!TuneInjected)
             {
                 Tune(tuneToInject);
                 TuneInjected = true;
+                LiveBlobFilesWhenTuneInjected = LatestLiveBlobFiles();
             }
 
             base.CompactOpenRange(cf, forceBottommost);
