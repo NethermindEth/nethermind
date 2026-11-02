@@ -92,16 +92,20 @@ public sealed partial class CodeInfo
 
     /// <summary>
     /// <see cref="AnalyzeJump"/> for <paramref name="destination"/>, a position inside the code whose bit is still
-    /// clear, in code that does not start with STOP.
+    /// clear, in code that does not start with STOP, if <paramref name="bitmap"/> is this code's <see cref="IncrementalJumpBitmap"/>.
     /// </summary>
     /// <param name="destination">A destination inside the code.</param>
-    /// <param name="bitmap">This code's <see cref="IncrementalJumpBitmap"/>.</param>
+    /// <param name="bitmap">The bitmap the jump is checked against.</param>
     /// <param name="code">The first byte of this code.</param>
-    /// <remarks>Code that starts with STOP halts before any jump, so a running jump needs no test for it.</remarks>
+    /// <remarks>
+    /// Code that starts with STOP halts before any jump, so a running jump needs no test for it. The bitmap is compared
+    /// with the field, as in <see cref="IsJumpProvenByLookBack"/>, so the scanned-jump handler makes no call.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal bool AnalyzeRunningJump(nint destination, long[] bitmap, ref byte code) =>
+    internal bool AnalyzeRunningJump(nint destination, long[]? bitmap, ref byte code) =>
+        ReferenceEquals(bitmap, _incrementalJumpBitmap) &&
         Unsafe.Add(ref code, destination) == (byte)Instruction.JUMPDEST &&
-        JumpDestinationAnalyzer.AnalyzeJump(destination, bitmap, ref code, ref _analyzedUntil);
+        JumpDestinationAnalyzer.AnalyzeJump(destination, bitmap!, ref code, ref _analyzedUntil);
 
     /// <summary>
     /// Reports whether <paramref name="bitmap"/> is this code's <see cref="IncrementalJumpBitmap"/> and a single look-back

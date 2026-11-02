@@ -101,6 +101,78 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Streaming_trace_returns_an_excluded_precompile_action_when_its_frame_ends()
+    {
+        Transaction tx = Build.A.Transaction.WithData([1, 2]).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink);
+        InputReturningTracer tracer = new(block, tx, ParityTraceTypes.Trace, writer);
+        try
+        {
+            tracer.ReportAction(100000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, tx.Data, ExecutionType.TRANSACTION);
+            tracer.ReportAction(50000, UInt256.Zero, TestItem.AddressB, IdentityPrecompile.Address, new byte[] { 3, 4 }, ExecutionType.STATICCALL, isPrecompileCall: true);
+            tracer.ReportActionEnd(49000, new byte[] { 3, 4 });
+            int returnedOnExit = tracer.ReturnedInputs;
+            tracer.ReportActionEnd(10000, ReadOnlyMemory<byte>.Empty);
+            tracer.MarkAsSuccess(TestItem.AddressA, default, [], []);
+            ParityLikeTxTrace trace = tracer.BuildResult();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(returnedOnExit, Is.EqualTo(1), "the excluded precompile call's input goes back when its frame ends");
+                Assert.That(trace.Action!.Subtraces, Is.Empty);
+                Assert.That(trace.Action.Input.AsSpan().ToArray(), Is.EqualTo(new byte[] { 1, 2 }));
+            }
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+
+        Assert.That(tracer.ReturnedInputs, Is.EqualTo(tracer.CopiedInputs));
+    }
+
+    [Test]
+    public void Streaming_tracer_reused_for_the_next_transaction_does_not_allocate_action_buffers()
+    {
+        // More actions than the shared pool keeps per array size on most machines, so per-action rentals would miss it.
+        const int ActionCount = 4096;
+        const int Runs = 6;
+        const int WarmUpRuns = 2;
+        Transaction tx = Build.A.Transaction.WithData(new byte[68]).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink);
+        StreamingParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace, writer, pipeWriter: null, CancellationToken.None, fillVmTraceSlot: false);
+        long allocated = long.MaxValue;
+        try
+        {
+            for (int run = 0; run < Runs; run++)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                if (run > 0) tracer.ResetForNextTx(block, tx);
+                tracer.ReportAction(1_000_000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, tx.Data, ExecutionType.TRANSACTION);
+                for (int i = 0; i < ActionCount; i++)
+                {
+                    tracer.ReportAction(50000, UInt256.Zero, TestItem.AddressB, TestItem.AddressC, tx.Data, ExecutionType.CALL);
+                    tracer.ReportActionEnd(40000, ReadOnlyMemory<byte>.Empty);
+                }
+                tracer.ReportActionEnd(10000, ReadOnlyMemory<byte>.Empty);
+                tracer.MarkAsSuccess(TestItem.AddressA, default, [], []);
+                tracer.BuildResult();
+                if (run >= WarmUpRuns) allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+
+        Assert.That(allocated, Is.LessThan(1024), $"tracing {ActionCount} actions again allocated {allocated} bytes");
+    }
+
+    [Test]
     public void Vm_trace_only_skips_action_input_copies()
     {
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
@@ -219,7 +291,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
     [Test]
     public void Failed_frame_uses_parity_error_label(
-        [Values("Mutable Call In Static Context", "Out of stack", "Out of bounds", "Invalid code")] string expectedError)
+        [Values("Mutable Call In Static Context", "Out of stack", "Out of bounds", "Invalid code", "Out of gas")] string expectedError)
     {
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done, Spec);
@@ -230,6 +302,8 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             "Mutable Call In Static Context" => ExecuteAndTraceParityCall(Prepare.EvmCode.StaticCall(TestItem.AddressC, 50000).Op(Instruction.STOP).Done),
             "Out of stack" => ExecuteAndTraceParityCall(outOfStack.Done),
             "Out of bounds" => ExecuteAndTraceParityCall(Prepare.EvmCode.PushData(1).PushData(0).PushData(0).Op(Instruction.RETURNDATACOPY).Done),
+            // A precompile call with value is kept in the trace; the stipend still leaves it short of gas.
+            "Out of gas" => ExecuteAndTraceParityCall(Prepare.EvmCode.CallWithValue(BN254MulPrecompile.Address, 10, 1).Op(Instruction.STOP).Done),
             // EIP-3541: returned code must not begin with 0xEF.
             _ => ExecuteAndTraceParityCall(MainnetSpecProvider.ShanghaiActivation,
                 Prepare.EvmCode.Create(Prepare.EvmCode.PushData(0xEF).PushData(0).Op(Instruction.MSTORE8).Return(1, 0).Done, 0).Op(Instruction.STOP).Done),

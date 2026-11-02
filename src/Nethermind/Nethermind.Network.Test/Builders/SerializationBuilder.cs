@@ -40,9 +40,9 @@ namespace Nethermind.Network.Test.Builders
         protected override void BeforeReturn() => TestObject = new MessageSerializationService(_serializers);
 
         public SerializationBuilder WithEncryptionHandshake() => With(new AuthMessageSerializer())
-                .With(new AuthEip8MessageSerializer(new Eip8MessagePad(new CryptoRandom())))
+                .With(new AuthEip8MessageSerializer())
                 .With(new AckMessageSerializer())
-                .With(new AckEip8MessageSerializer(new Eip8MessagePad(new CryptoRandom())));
+                .With(new AckEip8MessageSerializer());
 
         public SerializationBuilder WithP2P() => With(new Nethermind.Network.P2P.Messages.PingMessageSerializer())
                 .With(new Nethermind.Network.P2P.Messages.PongMessageSerializer())
