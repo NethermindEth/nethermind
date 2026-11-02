@@ -34,9 +34,10 @@ Console.WriteLine();
 Console.WriteLine($"Runner `{Env("RUNNER_NAME")}`, base `{Short(Env("BASE_SHA"))}` ({Env("BASE_OUTCOME")}), " +
     $"head `{Short(Env("HEAD_SHA"))}` ({Env("HEAD_OUTCOME")}), {rounds} round{(rounds == 1 ? "" : "s")}.");
 Console.WriteLine();
-Console.WriteLine("Each round runs the base and the head next to each other. Δ is the median of the rounds' changes in median " +
-    "time, and the range shows the smallest and largest of them. A change is consistent (✓) when it has the same sign in every " +
-    "round, which needs at least three rounds. Times are medians across the rounds; allocations are per operation.");
+Console.WriteLine("Each round runs the base and the head next to each other. Δ is the mean of the rounds' changes in median time, " +
+    $"with its 99% confidence interval from a paired t-test across the rounds, which needs at least two. A change is significant (✓) " +
+    $"when the interval excludes zero and the change is at least {MinimumChange}%. Times are medians across the rounds; allocations " +
+    "are per operation.");
 Console.WriteLine();
 
 if (headRounds.Count == 0 || headRounds.All(static round => round.Count == 0))
@@ -45,7 +46,7 @@ if (headRounds.Count == 0 || headRounds.All(static round => round.Count == 0))
     return 1;
 }
 
-Console.WriteLine("| Benchmark | Base | Head | Δ | Δ range | Consistent | Alloc base | Alloc head | Δ alloc |");
+Console.WriteLine("| Benchmark | Base | Head | Δ | 99% interval | Significant | Alloc base | Alloc head | Δ alloc |");
 Console.WriteLine("|---|---:|---:|---:|---:|:---:|---:|---:|---:|");
 List<string> failed = [];
 foreach (var name in headRounds.SelectMany(static round => round.Keys).Distinct())
@@ -61,12 +62,14 @@ foreach (var name in headRounds.SelectMany(static round => round.Keys).Distinct(
             deltas.Add((h.Median - b.Median) / b.Median * 100);
     }
 
-    var consistent = deltas.Count >= 3 && (deltas.All(static delta => delta > 0) || deltas.All(static delta => delta < 0));
+    var mean = deltas.Count == 0 ? (double?)null : deltas.Average();
+    var halfWidth = deltas.Count < 2 ? (double?)null : HalfWidth99(deltas);
+    var significant = mean is { } m && halfWidth is { } w && Math.Abs(m) >= MinimumChange && Math.Abs(m) > w;
     Console.WriteLine(
         $"| {name} | {Format(@base, FormatTime)} | {Format(head, FormatTime)} " +
-        $"| {(deltas.Count == 0 ? "—" : FormatPercent(Median(deltas)))} " +
-        $"| {(deltas.Count == 0 ? "—" : $"{FormatPercent(deltas.Min())} to {FormatPercent(deltas.Max())}")} " +
-        $"| {(consistent ? "✓" : "")} " +
+        $"| {(mean is { } meanChange ? FormatPercent(meanChange) : "—")} " +
+        $"| {(mean is { } center && halfWidth is { } width ? $"{FormatPercent(center - width)} to {FormatPercent(center + width)}" : "—")} " +
+        $"| {(significant ? "✓" : "")} " +
         $"| {FormatBytes(@base.Allocated)} | {FormatBytes(head.Allocated)} | {FormatDelta(head.Allocated, @base.Allocated)} |");
 }
 
@@ -150,6 +153,22 @@ static Summary Collect(List<Dictionary<string, Result?>> rounds, string name)
     return new Summary(ran, failed, medians.Count == 0 ? null : Median(medians), allocated.Count == 0 ? null : allocated.Max());
 }
 
+// Half the width of the 99% confidence interval of the mean, from Student's t with n - 1 degrees of freedom.
+static double HalfWidth99(List<double> values)
+{
+    // Two-sided 99% quantiles for 1 to 30 degrees of freedom; the last is a conservative bound beyond.
+    ReadOnlySpan<double> quantiles =
+    [
+        63.657, 9.925, 5.841, 4.604, 4.032, 3.707, 3.499, 3.355, 3.250, 3.169,
+        3.106, 3.055, 3.012, 2.977, 2.947, 2.921, 2.898, 2.878, 2.861, 2.845,
+        2.831, 2.819, 2.807, 2.797, 2.787, 2.779, 2.771, 2.763, 2.756, 2.750,
+    ];
+
+    var mean = values.Average();
+    var variance = values.Sum(value => (value - mean) * (value - mean)) / (values.Count - 1);
+    return quantiles[Math.Min(values.Count - 1, quantiles.Length) - 1] * Math.Sqrt(variance / values.Count);
+}
+
 static double Median(List<double> values)
 {
     var sorted = values.Order().ToArray();
@@ -192,6 +211,12 @@ static string FormatDelta(double? head, double? @base) => (head, @base) switch
     (_, 0) => "new",
     _ => FormatPercent((head.Value - @base.Value) / @base.Value * 100),
 };
+
+partial class Program
+{
+    // A smaller change is not worth acting on for these benchmarks, however sure.
+    private const double MinimumChange = 2;
+}
 
 record Result(double Median, double? Allocated);
 
