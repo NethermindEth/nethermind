@@ -249,7 +249,13 @@ internal class Program
         while (inputs.Count > 0)
         {
             List<string>? files = CollectFiles(inputs, chunk, failOnUnreadablePath: isBlockTest || isEngineTest);
-            if (files is null) return IncompleteInputExitCode;
+            if (files is null)
+            {
+                // Each stdin line is its own batch, so a bad path fails only its line and the session reads on.
+                if (!readStdin) return IncompleteInputExitCode;
+                exitCode = IncompleteInputExitCode;
+                files = [];
+            }
 
             if (isEngineTest || isBlockTest)
             {

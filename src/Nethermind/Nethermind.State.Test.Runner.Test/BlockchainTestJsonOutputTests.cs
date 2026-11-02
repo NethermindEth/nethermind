@@ -184,6 +184,21 @@ public class BlockchainTestJsonOutputTests
     }
 
     [Test]
+    public async Task A_missing_path_on_stdin_fails_only_its_own_line()
+    {
+        string missing = Path.Combine(_directory, "missing.json");
+        (string stdout, string stderr, int exitCode) = await NethtestProcess.RunWithExitCode(
+            ["blocktest", "--stdin", "--jsonout", "--neverTrace"], $"{missing}\n{WriteFixture()}\n\n");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exitCode, Is.EqualTo(2));
+            Assert.That(stderr, Does.Contain(missing));
+            Assert.That(stdout, Does.Contain("more_than_8_differences"), "the line after the missing path still runs");
+        }
+    }
+
+    [Test]
     [Platform(Exclude = "Win")]
     [UnsupportedOSPlatform("windows")]
     public async Task An_unreadable_fixture_file_is_an_error_before_anything_runs(
