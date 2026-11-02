@@ -2053,21 +2053,14 @@ public partial class EngineModuleTests
         {
             if (queueBeforeVerdict) OccupyBlockProcessor(chain, parent, processingRelease.Task);
             chain.HoldCommitOf(parent.Header);
-            Task<ExecutionPayloadV4> helper = BuildAndInsertEmptyBlock(chain, parent.Hash!, slot: 2);
-            if (queueBeforeVerdict)
-            {
-                Task wait = await chain.WaitForCommitWait(helper);
-                verdictWaitPending = !wait.IsCompleted;
-                processingRelease.TrySetResult();
-            }
-
             if (waitReachesCommit)
             {
-                helperBlock = (await helper).BlockHash;
+                helperBlock = (await RunHelper()).BlockHash;
             }
             else
             {
-                AssertionException? failure = await Assert.ThrowsAsync<AssertionException>(() => helper);
+                // Starting the helper inside ThrowsAsync isolates its expected assertion from the test's result.
+                AssertionException? failure = await Assert.ThrowsAsync<AssertionException>(RunHelper);
                 Assert.That(failure!.Message, Does.Contain("must become the head"));
             }
         }
@@ -2097,6 +2090,18 @@ public partial class EngineModuleTests
                 Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(parent.Hash));
                 Assert.That(chain.BlockTree.FinalizedHash, Is.Not.EqualTo(held));
             }
+        }
+
+        async Task<ExecutionPayloadV4> RunHelper()
+        {
+            Task<ExecutionPayloadV4> helper = BuildAndInsertEmptyBlock(chain, parent.Hash!, slot: 2);
+            if (queueBeforeVerdict)
+            {
+                Task wait = await chain.WaitForCommitWait(helper);
+                verdictWaitPending = !wait.IsCompleted;
+                processingRelease.TrySetResult();
+            }
+            return await helper;
         }
     }
 
