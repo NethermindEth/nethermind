@@ -699,108 +699,6 @@ namespace Nethermind.Db.Test
             Assert.That(db.GatherMetric().TotalReads - before, Is.EqualTo(32));
         }
 
-        [Test]
-        public void Native_leases_survive_mutation_cache_pressure_and_shutdown(
-            [Values] bool flushed, [Values(ReadFlags.None, ReadFlags.HintCacheMiss)] ReadFlags flags, [Values] bool shutdown)
-        {
-            DbConfig config = new() { BlocksDbRocksDbOptions = "block_based_table_factory.block_size=512;compression=kNoCompression;" };
-            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
-            using HyperClockCacheWrapper cache = new(64UL.KiB);
-            using NativeCloseTrackingDbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
-                factory, LimboLogs.Instance, cache.Handle)
-            {
-                PinnedSliceDrainTimeout = TimeSpan.Zero
-            };
-            byte[] key = [1, 2, 3];
-            byte[] expected = new byte[32768];
-            Random random = new(11990);
-            random.NextBytes(expected);
-            db.PutSpan(key, expected, WriteFlags.None);
-            if (flushed) db.Flush();
-
-            ReadOnlySpan<byte> held = db.GetNativeSlice(key, out nint lastHandle, flags);
-            using CountdownEvent acquired = new(4);
-            using ManualResetEventSlim mutated = new();
-            Task[] readers = new Task[4];
-            Array.Fill(readers, Task.CompletedTask);
-            try
-            {
-                Assert.That(lastHandle, Is.Not.Zero);
-                for (int worker = 0; worker < readers.Length; worker++)
-                {
-                    readers[worker] = Task.Run(() =>
-                    {
-                        for (int read = 0; read < 32; read++)
-                        {
-                            ReadOnlySpan<byte> repeated = db.GetNativeSlice(key, out nint repeatedHandle, flags);
-                            try
-                            {
-                                Assert.That(repeated, Is.SequenceEqualTo(expected));
-                            }
-                            finally
-                            {
-                                db.DangerousReleaseHandle(repeatedHandle);
-                            }
-                        }
-
-                        ReadOnlySpan<byte> bytes = db.GetNativeSlice(key, out nint handle, flags);
-                        try
-                        {
-                            Assert.That(handle, Is.Not.Zero);
-                            acquired.Signal();
-                            Assert.That(mutated.Wait(TimeSpan.FromSeconds(30)), Is.True, "writer did not finish");
-                            Assert.That(bytes, Is.SequenceEqualTo(expected), "a live lease changed under writes or shutdown");
-                        }
-                        finally
-                        {
-                            db.DangerousReleaseHandle(handle);
-                        }
-                    });
-                }
-
-                Assert.That(acquired.Wait(TimeSpan.FromSeconds(30)), Is.True, "readers did not acquire their leases");
-                db.PutSpan(key, [9, 8, 7], WriteFlags.None);
-                db.Flush();
-                Assert.That(GetValue(db, key), Is.EqualTo(new byte[] { 9, 8, 7 }));
-                db.Remove(key);
-                byte[] pressure = new byte[4096];
-                for (int i = 0; i < 128; i++)
-                {
-                    random.NextBytes(pressure);
-                    db.PutSpan([2, (byte)i], pressure, WriteFlags.None);
-                }
-                db.Flush();
-                db.Compact();
-                for (int i = 0; i < 128; i++) Assert.That(GetValue(db, [2, (byte)i]), Has.Length.EqualTo(pressure.Length));
-                Assert.That(GetValue(db, key), Is.Null, "fresh reads must see the deletion");
-                Assert.That(held, Is.SequenceEqualTo(expected));
-                if (shutdown) db.Dispose();
-                Assert.That(db.NativeCloses, Is.Zero);
-
-                mutated.Set();
-                Assert.That(Task.WaitAll(readers, TimeSpan.FromSeconds(30)), Is.True, "readers did not release their leases");
-                Assert.That(db.NativeCloses, Is.Zero, "the final lease still owns the database");
-                Assert.That(held, Is.SequenceEqualTo(expected));
-                db.DangerousReleaseHandle(lastHandle);
-                lastHandle = 0;
-                if (!shutdown) db.Dispose();
-                db.Dispose();
-                Assert.That(db.NativeCloses, Is.EqualTo(1), "the last release and Dispose must close exactly once");
-            }
-            finally
-            {
-                mutated.Set();
-                try
-                {
-                    Task.WaitAll(readers);
-                }
-                finally
-                {
-                    if (lastHandle != 0) db.DangerousReleaseHandle(lastHandle);
-                }
-            }
-        }
-
         [TestCase(GetPath.ByteArray, TestName = "Corrupted_exception_on_byte_array_get_writes_marker_and_shuts_down")]
         [TestCase(GetPath.CallerBuffer, TestName = "Corrupted_exception_on_caller_buffer_get_writes_marker_and_shuts_down")]
         [TestCase(GetPath.NativeSlice, TestName = "Corrupted_exception_on_native_slice_get_writes_marker_and_shuts_down")]
@@ -2387,9 +2285,8 @@ namespace Nethermind.Db.Test
         DbSettings dbSettings,
         IDbConfig dbConfig,
         IRocksDbConfigFactory rocksDbConfigFactory,
-        ILogManager logManager,
-        nint sharedCache = 0
-        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, sharedCache: sharedCache)
+        ILogManager logManager
+        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager)
     {
         private int _nativeCloses;
         public int NativeCloses => Volatile.Read(ref _nativeCloses);

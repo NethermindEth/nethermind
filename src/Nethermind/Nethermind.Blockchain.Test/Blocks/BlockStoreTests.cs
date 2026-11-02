@@ -206,8 +206,8 @@ public class BlockStoreTests
 
         if (empty)
         {
-            db[Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray())] = [];
-            db[block.Hash.Bytes] = [];
+            db[NumberedKey(block)] = [];
+            db[block.Hash!.Bytes] = [];
         }
         ReceiptRecoveryBlock? result = store.GetReceiptRecoveryBlock(block.Number, block.Hash!);
 
@@ -229,8 +229,8 @@ public class BlockStoreTests
         using PinnedTestDb db = new();
         BlockStore store = new(db);
         Block block = Build.A.Block.WithNumber(1).TestObject;
-        db[Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray())] = [];
-        db[block.Hash.Bytes] = new BlockDecoder().Encode(block).Bytes;
+        db[NumberedKey(block)] = [];
+        db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
         ReceiptRecoveryBlock recovery = store.GetReceiptRecoveryBlock(block.Number, block.Hash)!.Value;
         try
         {
@@ -288,10 +288,10 @@ public class BlockStoreTests
         using PinnedTestDb db = new();
         BlockStore store = new(db);
         Block block = Build.A.Block.WithNumber(1).TestObject;
-        db[Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray())] = nullBlock ? [0xc0] : [0x01];
+        db[NumberedKey(block)] = nullBlock ? [0xc0] : [0x01];
 
-        if (nullBlock) Assert.That(store.GetReceiptRecoveryBlock(block.Number, block.Hash), Is.Null);
-        else Assert.That(() => store.GetReceiptRecoveryBlock(block.Number, block.Hash), Throws.InstanceOf<RlpException>());
+        if (nullBlock) Assert.That(store.GetReceiptRecoveryBlock(block.Number, block.Hash!), Is.Null);
+        else Assert.That(() => store.GetReceiptRecoveryBlock(block.Number, block.Hash!), Throws.InstanceOf<RlpException>());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.Released, Is.EqualTo(1));
@@ -325,6 +325,8 @@ public class BlockStoreTests
             recovery.Dispose();
         }
     }
+
+    private static byte[] NumberedKey(Block block) => Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray());
 
     private sealed class PinnedTestDb : TestMemDb, IReadOnlyNativeKeyValueStore, IDisposable
     {
