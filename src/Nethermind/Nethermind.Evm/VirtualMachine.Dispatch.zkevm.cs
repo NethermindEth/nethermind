@@ -157,8 +157,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             // Unscoped because a function pointer cannot declare its parameters scoped; the chain ends before this call does.
             DispatchState state = new()
             {
-                Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = carried, PairedHandlers = dispatched, HandlerCacheWritable = !readOnly,
-                Vm = this, Memory = ref VmState.Memory
+                Gas = ref Unsafe.AsRef(in gas),
+                OpcodeHandlers = carried,
+                PairedHandlers = dispatched,
+                HandlerCacheWritable = !readOnly,
+                Vm = this,
+                Memory = ref VmState.Memory
             };
 
             // The cache resolves the entries the paired table tags (see RawCalliHelper.ResolveHandler).
