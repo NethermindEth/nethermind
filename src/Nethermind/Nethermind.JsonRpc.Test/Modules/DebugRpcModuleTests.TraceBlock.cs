@@ -1187,6 +1187,21 @@ public partial class DebugRpcModuleTests
         IDebugRpcModule module = method == "debug_traceBlockByNumber" ? WithDeadlineClock(context.DebugRpcModule, clock) : context.DebugRpcModule;
         string response = await RpcTest.TestSerializedRequest(module, method, selector, options);
         JToken json = JToken.Parse(response);
+        if (mux)
+        {
+            JToken? error = json["error"];
+            Assert.That(error, Is.Not.Null, response);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)error["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)error["message"], Is.Not.Null.And.Not.Empty, response);
+                Assert.That(json["result"], Is.Null, response);
+                if (failure != "null")
+                    Assert.That((string?)error["message"], Does.Contain(failure == "primitive" ? "42" : "setup-before-timeout"), response);
+            }
+            if (method == "debug_traceBlockByNumber") Assert.That(clock.Timers, Is.Empty, "a failed mux setup must never arm an execution timer");
+            return;
+        }
         Assert.That(json["error"], Is.Null, response);
         JArray traces = (JArray)json["result"]!;
         Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length), response);
@@ -1967,16 +1982,13 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceBlockByNumber", "latest",
             new { tracer = "muxTracer", tracerConfig = config });
         JToken json = JToken.Parse(response);
-        Assert.That(json["error"], Is.Null, response);
-        JArray entries = (JArray)json["result"]!;
-        Assert.That(entries, Is.Not.Empty);
-        foreach (JToken entry in entries)
+        JToken? error = json["error"];
+        Assert.That(error, Is.Not.Null, response);
+        using (Assert.EnterMultipleScope())
         {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That((string?)entry["error"] ?? "", Does.Contain("mux result failure"), response);
-                Assert.That(entry["result"], Is.Null, response);
-            }
+            Assert.That((int?)error["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)error["message"], Does.Contain("mux result failure"), response);
+            Assert.That(json["result"], Is.Null, response);
         }
     }
 
