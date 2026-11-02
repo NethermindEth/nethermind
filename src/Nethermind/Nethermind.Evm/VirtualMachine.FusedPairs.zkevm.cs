@@ -671,7 +671,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong slot = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 if ((Unsafe.Add(ref slot, 1) | Unsafe.Add(ref slot, 2) | Unsafe.Add(ref slot, 3) | (slot >> 32)) == 0)
                 {
-                    ref byte source = ref AlignedMemory(ref state).GetActiveInitializedWord(slot);
+                    ref byte source = ref AlignedMemory(ref state).GetActiveInitializedRange(slot, EvmPooledMemory.WordSize);
                     if (!Unsafe.IsNullRef(ref source))
                     {
                         LoadMemoryWord(ref slot, ref source);
@@ -706,7 +706,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             if (head < EvmStack.MaxStackSize - 1 && ChargeUntested(ref gas, 2 * VeryLowGasCost.GasCost))
             {
-                ref byte source = ref AlignedMemory(ref state).GetActiveInitializedWord(Unsafe.Add(ref ip, 1));
+                ref byte source = ref AlignedMemory(ref state).GetActiveInitializedRange(Unsafe.Add(ref ip, 1), EvmPooledMemory.WordSize);
                 if (!Unsafe.IsNullRef(ref source))
                 {
                     LoadMemoryWord(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref source);

@@ -1988,7 +1988,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong offset = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) == 0)
                 {
-                    ref byte destination = ref AlignedMemory(ref state).GetActiveInitializedWord(offset);
+                    ref byte destination = ref AlignedMemory(ref state).GetActiveInitializedRange(offset, EvmPooledMemory.WordSize);
                     if (!Unsafe.IsNullRef(ref destination))
                     {
                         StoreMemoryWord(ref destination, ref offset);
@@ -2610,7 +2610,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong slot = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 if ((Unsafe.Add(ref slot, 1) | Unsafe.Add(ref slot, 2) | Unsafe.Add(ref slot, 3) | (slot >> 32)) == 0)
                 {
-                    ref byte source = ref AlignedMemory(ref state).GetActiveInitializedWord(slot);
+                    ref byte source = ref AlignedMemory(ref state).GetActiveInitializedRange(slot, EvmPooledMemory.WordSize);
                     if (!Unsafe.IsNullRef(ref source))
                     {
                         // Memory holds the word big-endian; the slot takes it in limb layout, over the offset it held.
@@ -2651,8 +2651,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong slot = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 ulong offset = slot;
                 // Below 2^32 the offset cannot overflow when the word is added to it.
+                // A 32-bit guest compares in native words, which the input's length fits; the last test keeps the end from wrapping.
                 if ((Unsafe.Add(ref slot, 1) | Unsafe.Add(ref slot, 2) | Unsafe.Add(ref slot, 3) | (offset >> 32)) == 0 &&
-                    offset + EvmStack.WordSize <= (ulong)AlignedStack(ref stack).InputDataLength)
+                    (IntPtr.Size == sizeof(uint)
+                        ? (nuint)offset + EvmStack.WordSize <= (nuint)AlignedStack(ref stack).InputDataLength && (nuint)offset <= uint.MaxValue - EvmStack.WordSize
+                        : offset + EvmStack.WordSize <= (ulong)AlignedStack(ref stack).InputDataLength))
                 {
                     // The input holds the word as memory does; the slot takes it in limb layout, over the offset it held.
                     ref byte source = ref Unsafe.Add(ref Unsafe.AsRef(in AlignedStack(ref stack).InputData), (nint)offset);

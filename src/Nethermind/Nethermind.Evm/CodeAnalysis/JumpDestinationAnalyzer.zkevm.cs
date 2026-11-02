@@ -233,6 +233,20 @@ public sealed partial class JumpDestinationAnalyzer
         nint skew = Skew(ref end);
         ref ulong row = ref Aligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_reachBiases), skew * ReachRowLength));
         ref ulong word = ref Aligned(ref FirstWindowWord(ref end, skew));
+        if (IntPtr.Size == sizeof(uint))
+        {
+            // A 32-bit core adds a 64-bit word as a register pair, carrying between them. Halves drop only that carry,
+            // which comes from a byte with bit 7 set and so can only name a byte that does not reach.
+            ref uint half = ref Unsafe.As<ulong, uint>(ref word);
+            ref uint biases = ref Unsafe.As<ulong, uint>(ref row);
+            uint reached = ReachingBytes(ref half, ref biases, 0) | ReachingBytes(ref half, ref biases, 1) |
+                ReachingBytes(ref half, ref biases, 2) | ReachingBytes(ref half, ref biases, 3) |
+                ReachingBytes(ref half, ref biases, 4) | ReachingBytes(ref half, ref biases, 5) |
+                ReachingBytes(ref half, ref biases, 6) | ReachingBytes(ref half, ref biases, 7) |
+                ReachingBytes(ref half, ref biases, 8) | ReachingBytes(ref half, ref biases, 9);
+            return (reached & (uint)Unsafe.Add(ref row, ReachHighBits)) != 0;
+        }
+
         ulong reach = ReachingBytes(ref word, ref row, 0) | ReachingBytes(ref word, ref row, 1) |
             ReachingBytes(ref word, ref row, 2) | ReachingBytes(ref word, ref row, 3);
         return ((reach | ReachingBytes(ref word, ref row, 4)) & Unsafe.Add(ref row, ReachHighBits)) != 0;
@@ -264,6 +278,22 @@ public sealed partial class JumpDestinationAnalyzer
     private static nint FindMarkedBelow(long[] bitmap, nint destination, nint limit)
     {
         ref long words = ref MemoryMarshal.GetArrayDataReference(bitmap);
+        if (IntPtr.Size == sizeof(uint))
+        {
+            // A 32-bit core masks and tests a 64-bit word as a register pair: there the search runs over 32-bit words.
+            ref uint halves = ref Unsafe.As<long, uint>(ref words);
+            nint half = destination >> 5;
+            uint below = Unsafe.Add(ref halves, half) & ((1u << (int)destination) - 1);
+            while (below == 0)
+            {
+                if (--half < limit >> 5) return -1;
+                below = Unsafe.Add(ref halves, half);
+            }
+
+            nint found = (half << 5) + HighestSetBit(below);
+            return found >= limit ? found : -1;
+        }
+
         nint word = destination >> BitShiftPerInt64;
         // The positions of the destination's word below it; a shift counts modulo 64.
         ulong marks = (ulong)Unsafe.Add(ref words, word) & ((1UL << (int)destination) - 1);
@@ -375,7 +405,11 @@ public sealed partial class JumpDestinationAnalyzer
                 else if (op == jumpDest)
                 {
                     nint jumpDestination = (nint)(position - codeStart);
-                    Unsafe.Add(ref bits, jumpDestination >> BitShiftPerInt64) |= 1L << (int)jumpDestination;
+                    // A 32-bit core shifts a 64-bit word as a register pair: there one 32-bit word takes the bit.
+                    if (IntPtr.Size == sizeof(uint))
+                        Unsafe.Add(ref Unsafe.As<long, uint>(ref bits), jumpDestination >> 5) |= 1u << (int)jumpDestination;
+                    else
+                        Unsafe.Add(ref bits, jumpDestination >> BitShiftPerInt64) |= 1L << (int)jumpDestination;
                     if (position == end)
                     {
                         startsInstruction = true;
@@ -428,6 +462,14 @@ public sealed partial class JumpDestinationAnalyzer
     private static ulong ReachingBytes(ref ulong word, ref ulong row, int index)
     {
         ulong bytes = Unsafe.Add(ref word, index);
+        return (bytes + Unsafe.Add(ref row, index)) & ~bytes;
+    }
+
+    /// <summary><see cref="ReachingBytes(ref ulong, ref ulong, int)"/> of window half-word <paramref name="index"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint ReachingBytes(ref uint word, ref uint row, int index)
+    {
+        uint bytes = Unsafe.Add(ref word, index);
         return (bytes + Unsafe.Add(ref row, index)) & ~bytes;
     }
 }

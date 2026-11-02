@@ -73,6 +73,13 @@ public ref partial struct EvmStack
         CodeInfo? codeInfo = _codeInfo;
         if (codeInfo is null || !codeInfo.IsJumpProvenByLookBack(destination, _jumpDestinations, ref code)) return false;
 
+        if (IntPtr.Size == sizeof(uint))
+        {
+            // As in IsAnalyzedJumpDestination: one 32-bit word, not a shift across a register pair.
+            Unsafe.Add(ref Unsafe.As<long, uint>(ref _jumpDestinationBits), destination >> 5) |= 1u << (int)destination;
+            return true;
+        }
+
         ref long segment = ref Unsafe.Add(ref _jumpDestinationBits, destination >> 6);
         // As in IsAnalyzedJumpDestination: rounding the segment's address lets the JIT drop its alignment tests.
         if (StrictAlignmentFlag.IsActive)
