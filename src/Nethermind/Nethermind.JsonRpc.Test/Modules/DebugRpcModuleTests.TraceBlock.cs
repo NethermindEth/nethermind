@@ -1785,6 +1785,21 @@ public partial class DebugRpcModuleTests
         IDebugRpcModule module = method == "debug_traceBlockByNumber" ? WithDeadlineClock(context.DebugRpcModule, clock) : context.DebugRpcModule;
         string response = await RpcTest.TestSerializedRequest(module, method, selector, options);
         JToken json = JToken.Parse(response);
+        if (mux)
+        {
+            JToken? error = json["error"];
+            Assert.That(error, Is.Not.Null, response);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)error["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)error["message"], Is.Not.Null.And.Not.Empty, response);
+                Assert.That(json["result"], Is.Null, response);
+                if (failure != "null")
+                    Assert.That((string?)error["message"], Does.Contain(failure == "primitive" ? "42" : "setup-before-timeout"), response);
+            }
+            if (method == "debug_traceBlockByNumber") Assert.That(clock.Timers, Is.Empty, "a failed mux setup must never arm an execution timer");
+            return;
+        }
         Assert.That(json["error"], Is.Null, response);
         JArray traces = (JArray)json["result"]!;
         Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length), response);
@@ -2555,26 +2570,35 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceBlockByNumber_mux_preserves_javascript_result_errors([Values] bool nested)
+    public async Task Debug_traceBlockByNumber_mux_preserves_javascript_result_errors(
+        [Values] bool nested,
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
+        [Values("result", "step")] string callback)
     {
         using Context ctx = await Context.Create();
-        const string script = "{fault:function(){},result:function(){throw Error('mux result failure');}}";
+        Block block = await ctx.Blockchain.AddBlock(CreateTraceBlockTransactions(ctx.Blockchain));
+        string script = callback == "result"
+            ? "{fault:function(){},result:function(){throw Error('mux result failure');}}"
+            : "{fault:function(){},step:function(){throw Error('mux step failure');},result:function(){return {};}}";
         Dictionary<string, object> children = new() { [script] = new { }, ["noopTracer"] = new { } };
         object config = nested ? new Dictionary<string, object> { ["muxTracer"] = children } : children;
 
-        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceBlockByNumber", "latest",
+        object selector = method switch
+        {
+            "debug_traceBlockByNumber" => block.Number,
+            "debug_traceBlockByHash" => block.Hash!,
+            _ => Rlp.Encode(block).ToString()
+        };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, method, selector,
             new { tracer = "muxTracer", tracerConfig = config });
         JToken json = JToken.Parse(response);
-        Assert.That(json["error"], Is.Null, response);
-        JArray entries = (JArray)json["result"]!;
-        Assert.That(entries, Is.Not.Empty);
-        foreach (JToken entry in entries)
+        JToken? error = json["error"];
+        Assert.That(error, Is.Not.Null, response);
+        using (Assert.EnterMultipleScope())
         {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That((string?)entry["error"] ?? "", Does.Contain("mux result failure"), response);
-                Assert.That(entry["result"], Is.Null, response);
-            }
+            Assert.That((int?)error["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)error["message"], Does.Contain($"mux {callback} failure"), response);
+            Assert.That(json["result"], Is.Null, response);
         }
     }
 
