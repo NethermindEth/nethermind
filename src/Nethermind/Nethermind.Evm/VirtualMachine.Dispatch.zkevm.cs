@@ -114,14 +114,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         // code or in the padding that follows CodeInfo.ExecutionCodeSpan, and any two bytes are a valid table index.
         fixed (nint* entries = handlers)
         {
-            nint* table = entries + FollowerHandlersLength;
+            nint* table = CompactsHandlers ? (nint*)((uint*)entries + FollowerHandlersLength) : entries + FollowerHandlersLength;
             nint* dispatched = RawCalliHelper.DispatchTable(table);
             // Unscoped because a function pointer cannot declare its parameters scoped; the chain ends before this call does.
             DispatchState state = new() { Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = dispatched, Vm = this, Memory = ref VmState.Memory };
 
             ushort opcodes = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref stack.Code, programCounter));
             EvmExceptionType exceptionType =
-                ((delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[opcodes])(
+                ((delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)(CompactsHandlers ? (nint)((uint*)table)[opcodes] : table[opcodes]))(
                     ref stack, GetExecutionGas(ref gas), ref state, ref Unsafe.Add(ref stack.Code, programCounter), stack.Head, dispatched, ref stack.Code, ref Unsafe.Add(ref stack.Bottom, stack.Head * EvmStack.WordSize));
             stack.Head = state.Head;
             programCounter = state.FinalProgramCounter;
