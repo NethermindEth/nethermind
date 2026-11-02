@@ -18,6 +18,22 @@ public class RlpDecoderTests
     public void Transaction_decoder_is_registered() =>
         Assert.That(Rlp.GetDecoder<Transaction>(), Is.SameAs(TxDecoder.Instance));
 
+    // A missing registration is a configuration error, so it must not look like malformed input.
+    [Test]
+    public void Missing_decoder_throws_not_supported()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<NotSupportedException>(static () => Rlp.GetDecoderOrThrow<NonNullableItem>());
+            Assert.Throws<NotSupportedException>(static () =>
+            {
+                RlpReader reader = new(Rlp.OfEmptyByteArray.Bytes);
+                Rlp.Decode<NonNullableItem>(ref reader);
+            });
+            Assert.Throws<NotSupportedException>(static () => Rlp.Encode(new NonNullableItem()));
+        }
+    }
+
     [Test]
     public void Decode_complete_not_null_decodes_item()
     {

@@ -51,7 +51,7 @@ public static class KeyValueStoreRlpExtensions
       where TCacheKey : struct, IEquatable<TCacheKey>
     {
         decoder ??= Rlp.GetDecoder<TItem>()
-            ?? throw new RlpReaderException($"{nameof(Rlp)} does not support decoding {typeof(TItem).Name}");
+            ?? throw new NotSupportedException($"{nameof(Rlp)} does not support decoding {typeof(TItem).Name}");
 
         TItem? item = cache?.Get(cacheKey);
         item ??= db is IReadOnlyNativeKeyValueStore native

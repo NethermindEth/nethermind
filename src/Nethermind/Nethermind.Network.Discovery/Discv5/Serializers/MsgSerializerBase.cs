@@ -67,7 +67,11 @@ internal abstract class MsgSerializerBase<TMessage>(MessageType messageType, boo
             throw new RlpReaderException("discv5 byte fields require owned message memory.");
         }
 
-        ownedMessage.Span.Overlaps(value, out int offset);
+        if (!ownedMessage.Span.Overlaps(value, out int offset) && !value.IsEmpty)
+        {
+            throw new RlpReaderException("discv5 byte field is not in the owned message memory.");
+        }
+
         return ownedMessage.Slice(offset, value.Length);
     }
 

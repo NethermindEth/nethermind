@@ -93,14 +93,14 @@ namespace Nethermind.Serialization.Rlp
         public static IRlpDecoder<T>? GetDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder? value) ? value as IRlpDecoder<T> : null;
 
         public static IRlpDecoder<T> GetDecoderOrThrow<T>(string key = RlpDecoderKey.Default) =>
-            GetDecoder<T>(key) ?? throw new RlpReaderException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+            GetDecoder<T>(key) ?? throw new NotSupportedException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
             IRlpDecoder<T>? rlpDecoder = GetDecoder<T>();
             return rlpDecoder is not null
                 ? DecodeArrayPool(ref decoderContext, rlpDecoder, rlpBehaviors, limit)
-                : throw new RlpReaderException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+                : throw new NotSupportedException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref RlpReader decoderContext, IRlpDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
@@ -184,7 +184,7 @@ namespace Nethermind.Serialization.Rlp
         public static T Decode<T>(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             IRlpDecoder<T> rlpDecoder = GetDecoder<T>() ??
-                throw new RlpReaderException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+                throw new NotSupportedException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
 
             bool shouldCheckStream = decoderContext.BytesRead == 0 && (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes;
             T? result;
