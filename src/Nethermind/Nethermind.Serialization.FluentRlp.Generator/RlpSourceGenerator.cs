@@ -497,6 +497,8 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
             // Items of a fixed length need no pass over their prefixes to size the list. Each item is checked before it
             // is stored, so a sequence that is not a multiple of the length throws before it overruns an array.
+            // Otherwise the item count is an upper bound, because an element can span more than one item, as a tuple
+            // does, so an array is trimmed after the loop.
             string count = fixedItemLength is { } length ? $"r.Remaining / {length}" : "r.CountItems()";
             string check = fixedItemLength is { } itemLength
                 ? $$"""if (r.BytesRead - start != {{itemLength}}) throw new {{Library}}.RlpReaderException("RLP item has another length than declared");"""
@@ -518,6 +520,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                             {{store}}
                         }
 
+                        {{(asArray ? "if (count != items.Length) global::System.Array.Resize(ref items, count);" : "")}}
                         outer.ExitSequence(in r, itemLength);
                         return items;
                     }

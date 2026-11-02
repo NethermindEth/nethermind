@@ -44,6 +44,9 @@ public record UnsignedIntegers(byte A, ushort B, uint C, ulong D, UInt128 E, UIn
 [RlpSerializable]
 public record IntegerTuple((int, long) Values);
 
+[RlpSerializable]
+public record IntegerTuples((int, long)[] Values);
+
 [RlpSerializable(RlpRepresentation.Newtype, length: 32)]
 public record FixedKey(byte[] Bytes);
 
@@ -144,6 +147,16 @@ public class RlpDerivedTest
 
         IntegerTuple decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadIntegerTuple());
         Assert.That(decoded, Is.EqualTo(integerTuple));
+    }
+
+    [Test]
+    public void RecordWithTupleArray()
+    {
+        IntegerTuples tuples = new([(1, 2), (3, 4), (5, 6)]);
+        byte[] rlp = RlpCodec.Write(tuples, static (ref RlpWriter w, IntegerTuples tuples) => w.Write(tuples));
+
+        IntegerTuples decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadIntegerTuples());
+        Assert.That(decoded.Values, Is.EqualTo(tuples.Values));
     }
 
     [Test]

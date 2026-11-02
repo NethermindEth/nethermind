@@ -517,6 +517,20 @@ public class RlpReadWriteTest
     }
 
     [Test]
+    public void TupleArray()
+    {
+        (int, int)[] tuples = [(1, 2), (3, 4)];
+
+        byte[] rlp = RlpCodec.Write(tuples, static (ref RlpWriter w, (int, int)[] tuples) =>
+            w.Write(tuples, static (ref RlpWriter w, (int, int) tuple) => w.Write(tuple, Int32RlpConverter.Write, Int32RlpConverter.Write)));
+
+        (int, int)[] decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) =>
+            r.ReadArray(static (scoped ref RlpReader r) => r.ReadTuple(Int32RlpConverter.Read, Int32RlpConverter.Read)));
+
+        Assert.That(decoded, Is.EqualTo(tuples));
+    }
+
+    [Test]
     public void IntegerLimits()
     {
         using (Assert.EnterMultipleScope())
