@@ -3,63 +3,53 @@
 
 using System;
 using System.Collections.Generic;
+using Autofac;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
-using Nethermind.Network.Test.Builders;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
+using Nethermind.Stats.Model;
 using NUnit.Framework;
+using static Nethermind.Network.Test.P2P.MessageDecodingCompatibility;
 using Eth62 = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Eth63 = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Eth65 = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Eth66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Eth;
+namespace Nethermind.Network.Test.P2P;
 
-/// <summary>
-/// Pins which payloads the eth protocol handlers accept, as decoded through <see cref="IMessageSerializationService"/>.
-/// </summary>
 [TestFixture, Parallelizable(ParallelScope.All)]
-public class EthMessageDecodingCompatibilityTests
+public class MessageDecodingCompatibilityTests
 {
-    private static readonly IMessageSerializationService Service = new SerializationBuilder()
-        .WithEth71(MainnetSpecProvider.Instance)
-        .With(new Eth63.GetNodeDataMessageSerializer())
-        .With(new Eth63.NodeDataMessageSerializer())
-        .With(new Eth63.GetReceiptsMessageSerializer())
-        .With(new Eth63.ReceiptsMessageSerializer(MainnetSpecProvider.Instance))
-        .TestObject;
+    private static readonly IContainer Container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
 
-    public sealed record Sample(string Name, Func<byte[]> Payload, Func<IByteBuffer, P2PMessage> Deserialize)
+    private static IMessageSerializationService Service => Container.Resolve<IMessageSerializationService>();
+
+    [OneTimeTearDown]
+    public void OneTimeTearDown() => Container.Dispose();
+
+    /// <summary>
+    /// A sample of each <see cref="P2PMessage"/> the core modules register an <see cref="IMessageSerializer{T}"/> for.
+    /// </summary>
+    public static IEnumerable<Sample> Samples()
     {
-        public static Sample Of<T>(Func<T> create) where T : P2PMessage =>
-            new($"{typeof(T).Namespace!.Split('.')[^2]}.{typeof(T).Name}", () => Serialize(create()), Deserializer<T>());
-
-        public override string ToString() => Name;
-
-        private static byte[] Serialize<T>(T message) where T : P2PMessage
-        {
-            using (message)
-            {
-                using DisposableByteBuffer packet = Service.ZeroSerialize(message).AsDisposable();
-                packet.SkipBytes(Rlp.LengthOf(message.AdaptivePacketType));
-                return packet.ReadAllBytesAsArray();
-            }
-        }
-    }
-
-    private static Func<IByteBuffer, P2PMessage> Deserializer<T>() where T : P2PMessage => static buffer => Service.Deserialize<T>(buffer);
-
-    private static IEnumerable<Sample> Samples()
-    {
+        // The handlers read the base p2p messages from a byte array, which never checked for unread bytes.
+        yield return Sample.Of(static () => new HelloMessage { Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) }, NodeId = TestItem.PublicKeyA }, acceptsTrailingByte: true);
+        yield return Sample.Of(static () => new AddCapabilityMessage(new Capability(Protocol.Eth, 68)), acceptsTrailingByte: true);
+        yield return Sample.Of(static () => new DisconnectMessage(EthDisconnectReason.TooManyPeers), acceptsTrailingByte: true);
+        yield return Sample.Of(static () => PingMessage.Instance, acceptsTrailingByte: true);
+        yield return Sample.Of(static () => PongMessage.Instance, acceptsTrailingByte: true);
+        yield return Sample.Of(static () => new Eth62.StatusMessage { GenesisHash = TestItem.KeccakA, BestHash = TestItem.KeccakB, ForkId = new ForkId(0xfc64ec04, 1150000) });
+        yield return Sample.Of(static () => new Eth62.NewBlockHashesMessage((TestItem.KeccakA, 1UL)));
+        yield return Sample.Of(static () => new Eth62.NewBlockMessage { Block = Build.A.Block.WithTransactions(SignedTransaction()).TestObject, TotalDifficulty = 1 });
         yield return Sample.Of(static () => new Eth62.GetBlockHeadersMessage { StartBlockNumber = 1, MaxHeaders = 1 });
         yield return Sample.Of(static () => new Eth62.BlockHeadersMessage(Headers()));
         yield return Sample.Of(static () => new Eth62.GetBlockBodiesMessage(TestItem.KeccakA));
@@ -90,21 +80,20 @@ public class EthMessageDecodingCompatibilityTests
     }
 
     [Test]
-    public void Accepts_a_message_only_without_a_trailing_byte([ValueSource(nameof(Samples))] Sample sample, [Values] bool trailingByte)
-    {
-        byte[] payload = sample.Payload();
-        if (trailingByte) payload = [.. payload, 0];
+    public void Every_registered_span_serializer_has_a_sample() =>
+        AssertSampled(Container.Resolve<IReadOnlyList<SerializerInfo>>(), Samples());
 
-        Assert.That(IsAccepted(sample.Deserialize, payload), Is.EqualTo(!trailingByte));
-    }
+    [Test]
+    public void Accepts_a_trailing_byte_only_where_the_handlers_always_did([ValueSource(nameof(Samples))] Sample sample, [Values] bool trailingByte) =>
+        AssertTrailingByteHandling(Service, sample, trailingByte);
 
     private static IEnumerable<TestCaseData> Payloads()
     {
-        Func<IByteBuffer, P2PMessage> getBlockBodies66 = Deserializer<Eth66.GetBlockBodiesMessage>();
-        Func<IByteBuffer, P2PMessage> receipts66 = Deserializer<Eth66.ReceiptsMessage>();
-        Func<IByteBuffer, P2PMessage> receipts63 = Deserializer<Eth63.ReceiptsMessage>();
-        Func<IByteBuffer, P2PMessage> blockBodies62 = Deserializer<Eth62.BlockBodiesMessage>();
-        Func<IByteBuffer, P2PMessage> getBlockHeaders62 = Deserializer<Eth62.GetBlockHeadersMessage>();
+        Func<IMessageSerializationService, IByteBuffer, P2PMessage> getBlockBodies66 = Deserializer<Eth66.GetBlockBodiesMessage>();
+        Func<IMessageSerializationService, IByteBuffer, P2PMessage> receipts66 = Deserializer<Eth66.ReceiptsMessage>();
+        Func<IMessageSerializationService, IByteBuffer, P2PMessage> receipts63 = Deserializer<Eth63.ReceiptsMessage>();
+        Func<IMessageSerializationService, IByteBuffer, P2PMessage> blockBodies62 = Deserializer<Eth62.BlockBodiesMessage>();
+        Func<IMessageSerializationService, IByteBuffer, P2PMessage> getBlockHeaders62 = Deserializer<Eth62.GetBlockHeadersMessage>();
 
         yield return new TestCaseData(getBlockBodies66, "c201c0", true).SetName("eth66 envelope");
         yield return new TestCaseData(getBlockBodies66, "f8", false).SetName("eth66 truncated header");
@@ -121,30 +110,8 @@ public class EthMessageDecodingCompatibilityTests
     }
 
     [TestCaseSource(nameof(Payloads))]
-    public void Accepts_only_what_the_handlers_accept(Func<IByteBuffer, P2PMessage> deserialize, string payload, bool accepted) =>
-        Assert.That(IsAccepted(deserialize, Bytes.FromHexString(payload)), Is.EqualTo(accepted));
-
-    /// <summary>
-    /// Mirrors <c>ProtocolHandlerBase.Deserialize</c>, which accepts a message only if decoding it reads the whole payload.
-    /// </summary>
-    private static bool IsAccepted(Func<IByteBuffer, P2PMessage> deserialize, byte[] payload)
-    {
-        IByteBuffer buffer = Unpooled.Buffer(payload.Length);
-        buffer.WriteBytes(payload);
-        try
-        {
-            using P2PMessage message = deserialize(buffer);
-            return !buffer.IsReadable();
-        }
-        catch (Exception exception) when (exception is not AssertionException)
-        {
-            return false;
-        }
-        finally
-        {
-            buffer.Release();
-        }
-    }
+    public void Accepts_only_what_the_handlers_accept(Func<IMessageSerializationService, IByteBuffer, P2PMessage> deserialize, string payload, bool accepted) =>
+        Assert.That(IsAccepted(Service, deserialize, Bytes.FromHexString(payload)), Is.EqualTo(accepted));
 
     private static ArrayPoolList<Hash256> Hashes() => new(1) { TestItem.KeccakA };
 
