@@ -417,6 +417,35 @@ internal class NodeRecordBulkSetTests
     }
 
     [Test]
+    public void Delete_warming_of_an_already_warmed_path_loads_only_the_sibling()
+    {
+        Hash256 keyA = new("0x1000000000000000000000000000000000000000000000000000000000000001");
+        Hash256 keyB = new("0x1000000000000000000000000000000000000000000000000000000000000002");
+        Hash256 keyC = new("0x2000000000000000000000000000000000000000000000000000000000000000");
+        using NodeRecordBuffer original = new(0, SmallGenerationBytes);
+        using NodeRecordBufferPin retain = original.PinHead();
+        (ValueHash256 Hash, ulong Pointer) root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), NewWarmedNodeBuffer(1), null), null, (ValueKeccak.EmptyTreeHash, 0),
+            [(keyA, ExistingValue), (keyB, ExistingValue), (keyC, ExistingValue)], false);
+        Dictionary<TreePath, byte[]> persisted = Rlps(original, root);
+        WarmedNodeBuffer warmed = NewWarmedNodeBuffer(1024);
+        DictionaryNodeSource source = new(persisted, warmed, null);
+        using NodeRecordBuffer buffer = new(0, SmallGenerationBytes);
+        (ValueHash256 Hash, ulong Pointer) persistedRoot = (root.Hash, 0);
+
+        source.WarmUp(buffer, persistedRoot, keyA.ValueHash256, forDelete: false);
+        int pathFetches = source.FetchCount;
+        source.WarmUp(buffer, persistedRoot, keyA.ValueHash256, forDelete: true);
+
+        TreePath siblingPath = TreePath.FromPath(keyB.Bytes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.FetchCount - pathFetches, Is.EqualTo(1), "only the collapse sibling is read");
+            Assert.That(warmed.TryGet(null, siblingPath, out NodeRecord sibling, out _), Is.True);
+            Assert.That(sibling.Rlp.ToArray(), Is.EqualTo(persisted[siblingPath]));
+        }
+    }
+
+    [Test]
     public void Delete_warming_of_a_missing_key_loads_no_sibling([Values] bool divergingLeaf)
     {
         Hash256 keyA = new("0x1000000000000000000000000000000000000000000000000000000000000001");

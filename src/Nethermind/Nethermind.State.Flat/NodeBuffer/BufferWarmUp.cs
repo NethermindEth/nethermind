@@ -140,8 +140,7 @@ internal static class BufferWarmUp
     {
         frame = new Frame { Path = path, RecordOffset = -1, ChildSlot = -1, SiblingSlot = -1, SiblingRecordOffset = -1 };
         ulong pointer = child.Pointer;
-        if ((NodeRecordCodec.IsTransient(pointer) ? warmed.TryLocate(pointer, out NodeRecord record) : buffer.TryLocate(pointer, out record))
-            || warmed.TryGet(address, path, out record, out pointer))
+        if (WarmedNodeRecordBuffer.TryLocate(buffer, warmed, pointer, out NodeRecord record) || warmed.TryGet(address, path, out record, out pointer))
         {
             frame.Record = record;
             frame.Pointer = pointer;
