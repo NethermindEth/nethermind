@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using Ethereum.Test.Base;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -16,12 +17,43 @@ using NUnit.Framework;
 namespace Ethereum.Basic.Test;
 
 /// <summary>
-/// The state-test logs tracer must take the logs of a frame transaction whose <c>ASSERT</c> frame failed as the block
-/// processor's receipt does, and its composite must pass the frame reports on to the caller's tracer as the processor would.
+/// The state-test logs tracer must hash the RLP list of the logs it collected, take the logs of a frame transaction whose
+/// <c>ASSERT</c> frame failed as the block processor's receipt does, and its composite must pass the frame reports on to
+/// the caller's tracer as the processor would.
 /// </summary>
 public class StateTestLogsTracerTests
 {
     private static readonly LogEntry PrefixLog = new(TestItem.AddressA, [1, 2, 3], [TestItem.KeccakA]);
+
+    [TestCaseSource(nameof(LogLists))]
+    public void Logs_hash_is_keccak_of_the_log_list_rlp(LogEntry[] logs)
+    {
+        StateTestLogsTracer logsTracer = new();
+        logsTracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21_000, 21_000), [], logs);
+
+        Assert.That(logsTracer.LogsHash, Is.EqualTo(Keccak.Compute(LogEntryDecoder.Instance.Encode(logs).Bytes)));
+    }
+
+    /// <remarks>
+    /// The cases take every RLP length form: single-byte, short and long data strings, and log entries and lists on
+    /// both sides of the 55-byte boundary, the longest list with a three-byte length.
+    /// </remarks>
+    private static IEnumerable<TestCaseData> LogLists()
+    {
+        yield return LogList("no logs");
+        yield return LogList("one log", PrefixLog);
+        yield return LogList("short list", new LogEntry(TestItem.AddressB, [0x01], []));
+        yield return LogList("several logs with topics and large data",
+            new LogEntry(TestItem.AddressA, [], []),
+            new LogEntry(TestItem.AddressB, [0x7f], [TestItem.KeccakA]),
+            new LogEntry(TestItem.AddressC, Data(55), [TestItem.KeccakA, TestItem.KeccakB]),
+            new LogEntry(TestItem.AddressD, Data(56), [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC]),
+            new LogEntry(TestItem.AddressE, Data(70_000), [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD]));
+
+        static TestCaseData LogList(string name, params LogEntry[] logs) => new TestCaseData((object)logs).SetArgDisplayNames(name);
+
+        static byte[] Data(int length) => Enumerable.Range(1, length).Select(static i => (byte)i).ToArray();
+    }
 
     [Test]
     public void Failed_assert_frame_keeps_the_prefix_logs_as_the_block_receipt_does([Values] bool callerTraces)

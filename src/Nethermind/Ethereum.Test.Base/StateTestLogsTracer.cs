@@ -28,7 +28,21 @@ internal sealed class StateTestLogsTracer : TxTracer, IFrameTxReceiptTracer, ITx
     public bool IsTracingOutput => false;
 
     /// <summary>keccak256 of the RLP list of the collected logs, the value a state test's <c>logs</c> holds.</summary>
-    public Hash256 LogsHash => Keccak.Compute(LogEntryDecoder.Instance.Encode(_logs).Bytes);
+    /// <remarks>
+    /// Transfers, reverts and rejected transactions leave no logs, whose list hash is a constant; other lists are
+    /// encoded straight into the hasher rather than into an intermediate array.
+    /// </remarks>
+    public Hash256 LogsHash
+    {
+        get
+        {
+            if (_logs.Length == 0) return Keccak.OfAnEmptySequenceRlp;
+
+            KeccakRlpWriter writer = new();
+            LogEntryDecoder.Instance.Encode(ref writer, _logs);
+            return writer.GetHash();
+        }
+    }
 
     /// <summary>The tracer to run the transaction with, so that <paramref name="txTracer"/> still gets every callback.</summary>
     public ITxTracer Wrap(ITxTracer txTracer) =>
