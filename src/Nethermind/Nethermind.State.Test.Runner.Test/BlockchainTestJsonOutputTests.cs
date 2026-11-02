@@ -403,6 +403,25 @@ public class BlockchainTestJsonOutputTests
         }
     }
 
+    // An EEST fixture whose block access list has balance, nonce, code and storage changes and storage reads. The
+    // runner encodes the fixture's list itself and delivers it only when that encoding hashes to the header's
+    // commitment, so the block runs in parallel only while every field kind encodes as EIP-7928 says. The fixture
+    // also carries an execution witness, which is regenerated after the import and must not report the block again.
+    [Test]
+    public async Task An_access_list_with_every_change_kind_is_delivered()
+    {
+        string fixture = Path.Combine(AppContext.BaseDirectory, "Fixtures", "bal_code_changes_blocktest.json");
+        (string stdout, string stderr) = await RunNethtest(fixture, "blocktest", "--bal-report");
+
+        using JsonDocument report = JsonDocument.Parse(EventLines(stderr).Single());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SingleResult(stdout).GetProperty("pass").GetBoolean(), Is.True, $"stdout was: {Trim(stdout)}");
+            Assert.That(report.RootElement.GetProperty("path").GetString(), Is.EqualTo("parallel"), $"stderr was: {Trim(stderr)}");
+            Assert.That(report.RootElement.GetProperty("reason").GetString(), Is.Empty, $"stderr was: {Trim(stderr)}");
+        }
+    }
+
     /// <summary>Parses a results array holding exactly one result.</summary>
     private static JsonElement SingleResult(string stdout)
     {
