@@ -503,7 +503,7 @@ namespace Nethermind.Blockchain.Receipts
                 int index = -1;
                 if (txHashes.IsEmpty)
                 {
-                    // Advance a copy so recovery starts at the first transaction; the caller owns its memory.
+                    // Hash a copy: RecoverReceiptData expects the block positioned at its first transaction.
                     ReceiptRecoveryBlock cursor = block;
                     for (int i = 0; i < block.TransactionCount; i++)
                     {

@@ -520,9 +520,11 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             ClearSendersAndCache();
             ReceiptRecoveryBlock recoveryBlock = RecoveryBlock(block, fromRlp);
             bool served = _storage.TryGetReceipt(recoveryBlock, block.Transactions[i].Hash!, out TxReceipt? receipt, out int txIndex, out int logIndexStart);
-            Assert.That(recoveryBlock.GetNextTransactionValueHash(), Is.EqualTo(block.Transactions[0].Hash!.ValueHash256), "the caller's cursor must not advance");
-
-            Assert.That(served, Is.EqualTo(useCompactReceipts));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(recoveryBlock.GetNextTransactionValueHash(), Is.EqualTo(block.Transactions[0].Hash!.ValueHash256), "the caller's cursor must not advance");
+                Assert.That(served, Is.EqualTo(useCompactReceipts));
+            }
             if (!served) continue;
             receipt.AssertEquivalentTo(expected[i]);
             using (Assert.EnterMultipleScope())
@@ -676,13 +678,9 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(_storage.TryGetReceipt(new ReceiptRecoveryBlock(block), block.Transactions[0].Hash!, out _, out _, out _), Is.False);
     }
 
-    [TestCase("c0", false)]
-    [TestCase("8200c0", false)]
-    [TestCase("b80101", false)]
-    [TestCase("c0", true)]
-    [TestCase("8200c0", true)]
-    [TestCase("b80101", true)]
-    public void TryGetReceipt_without_hash_prefix_rejects_malformed_transaction_envelopes(string malformedHex, bool beforeTarget)
+    [Test]
+    public void TryGetReceipt_without_hash_prefix_rejects_malformed_transaction_envelopes(
+        [Values("c0", "8200c0", "b80101")] string malformedHex, [Values] bool beforeTarget)
     {
         (Block block, _) = PrepareBlock();
         byte[] malformed = Bytes.FromHexString(malformedHex);
@@ -709,9 +707,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.Catch<RlpException>(() => _storage.TryGetReceipt(recoveryBlock, Keccak.Compute(transaction), out _, out _, out _));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void TryGetReceipt_without_hash_prefix_rejects_malformed_target_or_prior_receipt(bool beforeTarget)
+    [Test]
+    public void TryGetReceipt_without_hash_prefix_rejects_malformed_target_or_prior_receipt([Values] bool beforeTarget)
     {
         Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA).WithTransactions(
             Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,

@@ -103,8 +103,14 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         // Kill the LRU so only the pending overlay can serve.
         _storage.ClearCache();
 
-        Assert.That(_storage.HasBlock(block.Number, block.Hash!), Is.True);
-        Assert.That(_storage.TryGetReceipt(new ReceiptRecoveryBlock(block), block.Transactions[0].Hash!, out TxReceipt? pending, out int txIndex, out int logIndexStart), Is.True);
+        TxReceipt? pending;
+        int txIndex;
+        int logIndexStart;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.HasBlock(block.Number, block.Hash!), Is.True);
+            Assert.That(_storage.TryGetReceipt(new ReceiptRecoveryBlock(block), block.Transactions[0].Hash!, out pending, out txIndex, out logIndexStart), Is.True);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pending, Is.SameAs(receipts[0]));
