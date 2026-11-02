@@ -1834,7 +1834,7 @@ namespace Nethermind.TxPool
                     {
                         _hashCache.DeleteFromCurrentBlock(tx.Hash);
                     }
-                    else if (accepted == AcceptTxResult.InvalidBlobProofs && tx.Hash is not null)
+                    else if ((accepted == AcceptTxResult.InvalidBlobProofs || state.SidecarRejected) && tx.Hash is not null)
                     {
                         _hashCache.SetInvalidBlobProofs(tx.Hash);
                     }

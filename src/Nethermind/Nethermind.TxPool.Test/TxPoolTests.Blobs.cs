@@ -3621,8 +3621,16 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
         }
 
+        public enum SidecarCorruption
+        {
+            Proof,
+            CommitmentCount,
+            Commitment,
+            ProofVersion
+        }
+
         [Test]
-        public void should_forget_full_blob_hash_rejected_for_invalid_blob_proofs()
+        public void should_forget_full_blob_hash_rejected_for_its_sidecar([Values] SidecarCorruption corruption)
         {
             _txPool = CreatePool(
                 new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
@@ -3635,19 +3643,20 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             Transaction invalid = CloneFullBlobTransactionWithSameSidecar(valid, 0);
             ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)valid.NetworkWrapper!;
-            byte[][] invalidProofs = new byte[wrapper.Proofs.Length][];
-            for (int i = 0; i < invalidProofs.Length; i++)
+            invalid.NetworkWrapper = corruption switch
             {
-                invalidProofs[i] = [.. wrapper.Proofs[i]];
-            }
-
-            invalidProofs[0][0] ^= 1;
-            invalid.NetworkWrapper = wrapper with { Proofs = invalidProofs };
+                SidecarCorruption.Proof => wrapper with { Proofs = WithFirstByteFlipped(wrapper.Proofs) },
+                SidecarCorruption.CommitmentCount => wrapper with { Commitments = [] },
+                SidecarCorruption.Commitment => wrapper with { Commitments = WithFirstByteFlipped(wrapper.Commitments) },
+                SidecarCorruption.ProofVersion => wrapper with { Version = ProofVersion.V0 },
+                _ => throw new ArgumentOutOfRangeException(nameof(corruption))
+            };
+            AcceptTxResult expected = corruption is SidecarCorruption.Proof ? AcceptTxResult.InvalidBlobProofs : AcceptTxResult.Invalid;
 
 #pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
             Assert.That(invalid.Hash, Is.EqualTo(valid.Hash));
 #pragma warning restore NUnit2045
-            Assert.That(_txPool.SubmitTx(invalid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
+            Assert.That(_txPool.SubmitTx(invalid, TxHandlingOptions.None), Is.EqualTo(expected));
             Assert.That(_txPool.SubmitTx(valid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
 
             Assert.That(_txPool.ForgetInvalidBlobProofs(valid.Hash!), Is.True);
@@ -5311,6 +5320,18 @@ namespace Nethermind.TxPool.Test
             clone.Nonce = (ulong)id;
             clone.Hash = clone.CalculateHash();
             return clone;
+        }
+
+        private static byte[][] WithFirstByteFlipped(byte[][] items)
+        {
+            byte[][] copy = new byte[items.Length][];
+            for (int i = 0; i < items.Length; i++)
+            {
+                copy[i] = [.. items[i]];
+            }
+
+            copy[0][0] ^= 1;
+            return copy;
         }
 
         private static void ReplaceBlobSidecar(Transaction tx, byte firstBlobByte)

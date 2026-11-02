@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.GasPolicy;
@@ -41,7 +42,7 @@ namespace Nethermind.TxPool.Filters
                 && CanSenderRecoveryFixIntrinsicGas(tx, spec);
             if (!result && !retryAfterSenderRecovery)
             {
-                return RejectMalformed(tx, result);
+                return RejectMalformed(tx, result, ref state);
             }
 
             Metrics.PendingTransactionsWithExpensiveFiltering++;
@@ -60,7 +61,7 @@ namespace Nethermind.TxPool.Filters
             // intrinsic result can become valid after recovery.
             if (retryAfterSenderRecovery && !(result = Validate(tx, spec)))
             {
-                return RejectMalformed(tx, result);
+                return RejectMalformed(tx, result, ref state);
             }
 
             return AcceptTxResult.Accepted;
@@ -95,13 +96,18 @@ namespace Nethermind.TxPool.Filters
             return tx.GasLimit >= selfTransferGas.MinRequiredGasLimit;
         }
 
-        private AcceptTxResult RejectMalformed(Transaction tx, ValidationResult result)
+        private AcceptTxResult RejectMalformed(Transaction tx, ValidationResult result, ref TxFilteringState state)
         {
             Metrics.PendingTransactionsMalformed++;
             // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
             if (logger.IsTrace) TraceMalformed(tx, result);
+            state.SidecarRejected = IsSidecarError(result.Error);
             return AcceptTxResult.Invalid.WithMessage(result.ToString());
         }
+
+        private static bool IsSidecarError(string? error) =>
+            error == TxErrorMessages.InvalidBlobDataSize
+            || error is TxErrorMessages.InvalidBlobHashes or TxErrorMessages.InvalidProofVersion;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceUnresolvableSender(Transaction tx) =>
