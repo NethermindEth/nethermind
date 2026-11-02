@@ -9,7 +9,7 @@ using Nethermind.TxPool;
 namespace Nethermind.Consensus.Transactions
 {
     /// <summary>Filtering transactions that have lower MaxFeePerGas than BaseFee</summary>
-    public class BaseFeeTxFilter : ITxFilter
+    public sealed class BaseFeeTxFilter : ITxFilter
     {
         // A service transaction is accepted without the base fee, so it is not computed for one.
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec) =>

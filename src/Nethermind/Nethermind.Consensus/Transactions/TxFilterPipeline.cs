@@ -9,7 +9,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Transactions;
 
-public class TxFilterPipeline(ILogManager logManager) : ITxFilterPipeline
+public sealed class TxFilterPipeline(ILogManager logManager) : ITxFilterPipeline
 {
     private readonly List<ITxFilter> _filters = [];
     private readonly ILogger _logger = logManager.GetClassLogger<TxFilterPipeline>();

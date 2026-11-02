@@ -8,7 +8,7 @@ using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc.TxPool;
 
-internal class XdcTxFilterPipeline(ITxFilterPipeline inner) : ITxFilterPipeline
+internal sealed class XdcTxFilterPipeline(ITxFilterPipeline inner) : ITxFilterPipeline
 {
     public void AddTxFilter(ITxFilter txFilter) => inner.AddTxFilter(txFilter);
 

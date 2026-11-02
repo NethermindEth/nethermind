@@ -13,7 +13,7 @@ namespace Nethermind.Consensus.Transactions;
 /// <summary>The filter for transactions below minimum gas price threshold. It is the minimal value for gas that the miner/validator would receive.
 /// Before 1559: EffectivePriorityFeePerGas = transaction.GasPrice.
 /// After 1559: EffectivePriorityFeePerGas = transaction.EffectiveGasPrice - BaseFee.</summary>
-public class MinGasPriceTxFilter(IBlocksConfig blocksConfig) : IMinGasPriceTxFilter
+public sealed class MinGasPriceTxFilter(IBlocksConfig blocksConfig) : IMinGasPriceTxFilter
 {
     /// <summary>Whether rejected results include detailed gas-price information.</summary>
     /// <remarks>Disabled by the standard selection pipeline, which discards the message.

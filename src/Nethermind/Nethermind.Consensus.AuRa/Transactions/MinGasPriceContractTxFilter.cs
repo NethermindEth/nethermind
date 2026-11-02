@@ -11,7 +11,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class MinGasPriceContractTxFilter(IMinGasPriceTxFilter minGasPriceFilter, IDictionaryContractDataStore<TxPriorityContract.Destination> minGasPrices) : ITxFilter
+    public sealed class MinGasPriceContractTxFilter(IMinGasPriceTxFilter minGasPriceFilter, IDictionaryContractDataStore<TxPriorityContract.Destination> minGasPrices) : ITxFilter
     {
         private readonly IMinGasPriceTxFilter _minGasPriceFilter = minGasPriceFilter;
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _minGasPrices = minGasPrices ?? throw new ArgumentNullException(nameof(minGasPrices));

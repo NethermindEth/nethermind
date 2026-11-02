@@ -14,7 +14,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions;
 
-public class TxCertifierFilter(ICertifierContract certifierContract, ITxFilter notCertifiedFilter, ILogManager logManager) : ITxFilter
+public sealed class TxCertifierFilter(ICertifierContract certifierContract, ITxFilter notCertifiedFilter, ILogManager logManager) : ITxFilter
 {
     private readonly ResettableDictionary<Address, bool> _certifiedCache = new(8);
     private readonly ILogger _logger = logManager.GetClassLogger<TxCertifierFilter>();

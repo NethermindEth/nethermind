@@ -7,7 +7,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Transactions;
 
-public class CompositeTxFilter(params ITxFilter[] txFilters) : ITxFilter
+public sealed class CompositeTxFilter(params ITxFilter[] txFilters) : ITxFilter
 {
     public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
     {

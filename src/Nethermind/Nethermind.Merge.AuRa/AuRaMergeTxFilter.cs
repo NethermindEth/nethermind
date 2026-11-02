@@ -9,7 +9,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.AuRa
 {
-    public class AuRaMergeTxFilter(IPoSSwitcher poSSwitcher, ITxFilter preMergeTxFilter, ITxFilter? postMergeTxFilter = null) : ITxFilter
+    public sealed class AuRaMergeTxFilter(IPoSSwitcher poSSwitcher, ITxFilter preMergeTxFilter, ITxFilter? postMergeTxFilter = null) : ITxFilter
     {
         private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
         private readonly ITxFilter _preMergeTxFilter = preMergeTxFilter;
