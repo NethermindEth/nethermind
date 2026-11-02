@@ -13,8 +13,6 @@ namespace Nethermind.Crypto;
 /// On ZisK these call ZisK's own hand-written library routines through call thunks in the runtime, in the same C ABI
 /// as the <see cref="Accelerators"/> imports. They spend far fewer steps than the crate's Rust routines, which copy
 /// every field element into and out of each precompile call. Elsewhere they forward to <see cref="Accelerators"/>.
-/// Callers may pass unpinned spans: no GC safepoint can occur in a call, as the imports suppress the GC transition
-/// and the guest is single-threaded.
 /// </remarks>
 public static unsafe class CurveAccelerators
 {
