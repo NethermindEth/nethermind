@@ -168,7 +168,9 @@ try
         values["SCRATCH_ROOT"] = "/mnt/sda/expb-data/rpc-prepared-benchmark-test";
         values["RPS_LIST"] = "1";
         var configuration = new SweepConfiguration(key => values.GetValueOrDefault(key));
-        // Substitute owned tiny paths after testing the production namespace constraint.
+        // Substitute fixture paths and runtime deadlines after testing the production authorization constraints.
+        configuration.Values["MIGRATION_LATEST_START_UTC"] = DateTimeOffset.UtcNow.AddDays(1).ToString("yyyy-MM-ddTHH:mm:ssZ");
+        configuration.Values["MIGRATION_FINISH_BY_UTC"] = DateTimeOffset.UtcNow.AddDays(2).ToString("yyyy-MM-ddTHH:mm:ssZ");
         configuration.Values["SCRATCH_ROOT"] = Path.Combine(tests.DirectoryPath, "prepared-scratch");
         configuration.Values["OUT_DIR"] = Path.Combine(tests.DirectoryPath, "prepared-out");
         configuration.Values["STATE_ROOT"] = Path.Combine(tests.DirectoryPath, "prepared-state");
