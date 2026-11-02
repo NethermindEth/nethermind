@@ -104,8 +104,10 @@ if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("PREPARED_SNAPSHOT_
 return Environment.GetEnvironmentVariable("FAIL_START_CLIENT") == values["CLIENT"]!.ToString() ? 1 : 0;
 """);
 File.WriteAllText(Path.Combine(scriptRoot, "stop-node.cs"), """
-File.WriteAllText(Environment.GetEnvironmentVariable("LOG_OUT")!, "Nethermind is shut down\n");
-return Environment.GetEnvironmentVariable("FAIL_STOP") == "true" ? 1 : 0;
+var phase = Path.GetFileName(Environment.GetEnvironmentVariable("STATE_DIR")!).EndsWith("_prepared_qualification", StringComparison.Ordinal) ? "qualification" : "measured";
+var health = Environment.GetEnvironmentVariable("FAIL_PREPARED_HEALTH") == phase ? "Exception: retained health failure\n" : "";
+File.WriteAllText(Environment.GetEnvironmentVariable("LOG_OUT")!, health + "Nethermind is shut down\n");
+return Environment.GetEnvironmentVariable("FAIL_STOP") == "true" || Environment.GetEnvironmentVariable("FAIL_PREPARED_STOP") == phase ? 1 : 0;
 """);
 File.WriteAllText(Path.Combine(scriptRoot, "prepared-snapshot.py"), """
 import json, os, pathlib, sys
@@ -146,7 +148,7 @@ var bin = Path.Combine(tests.DirectoryPath, "bin"); Directory.CreateDirectory(bi
 var docker = Path.Combine(bin, "docker"); File.WriteAllText(docker, "#!/bin/sh\nif [ \"$1\" = inspect ]; then echo true; fi\nexit 0\n"); File.SetUnixFileMode(docker, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 var identity = Path.Combine(bin, "id"); File.WriteAllText(identity, "#!/bin/sh\necho 0\n"); File.SetUnixFileMode(identity, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 var disk = Path.Combine(bin, "df"); File.WriteAllText(disk, "#!/bin/sh\nprintf 'Avail\\n999999999999999\\n'\n"); File.SetUnixFileMode(disk, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-var changedNames = new[] { "RPC_BENCH_SCRIPT_ROOT", "PATH", "SWEEP_CAPTURE", "GITHUB_STEP_SUMMARY", "FAIL_START_CLIENT", "FAIL_STOP", "FAIL_CELL", "FAIL_PHASE", "CELL_CAPTURE", "COMPARE_CODE", "RPC_BENCH_CORPUS_METHOD", "RPC_BENCH_CORPUS_TRACER", "RPC_BENCH_CORPUS_TRACE_TYPES", "PREPARED_CAPTURE", "FAIL_PREPARED_ACTION" };
+var changedNames = new[] { "RPC_BENCH_SCRIPT_ROOT", "PATH", "SWEEP_CAPTURE", "GITHUB_STEP_SUMMARY", "FAIL_START_CLIENT", "FAIL_STOP", "FAIL_CELL", "FAIL_PHASE", "CELL_CAPTURE", "COMPARE_CODE", "RPC_BENCH_CORPUS_METHOD", "RPC_BENCH_CORPUS_TRACER", "RPC_BENCH_CORPUS_TRACE_TYPES", "PREPARED_CAPTURE", "FAIL_PREPARED_ACTION", "FAIL_PREPARED_STOP", "FAIL_PREPARED_HEALTH" };
 var original = changedNames.ToDictionary(name => name, Environment.GetEnvironmentVariable);
 try
 {
@@ -207,6 +209,44 @@ try
             Environment.SetEnvironmentVariable("PREPARED_CAPTURE", null);
             Environment.SetEnvironmentVariable("FAIL_PREPARED_ACTION", null);
             Environment.SetEnvironmentVariable("SWEEP_CAPTURE", previousCapture);
+        });
+    foreach (var (phase, failure) in new[] { ("qualification", "stop"), ("qualification", "health"), ("measured", "stop"), ("measured", "health"), ("measured", "cell") })
+        tests.Case($"prepared {phase} {failure} failure aborts remaining batch after teardown", () =>
+        {
+            var configuration = PreparedConfiguration();
+            var trace = Path.Combine(tests.DirectoryPath, $"prepared-failure-{phase}-{failure}");
+            configuration.Values["STATE_ROOT"] = trace + "-state";
+            configuration.Values["OUT_DIR"] = trace + "-out";
+            configuration.Values["ROUNDS"] = "2";
+            if (failure == "cell") configuration.Values["RPS_LIST"] = "1 2";
+            var previousCapture = Environment.GetEnvironmentVariable("SWEEP_CAPTURE");
+            var setting = failure == "cell" ? "FAIL_CELL" : "FAIL_PREPARED_" + failure.ToUpperInvariant();
+            Environment.SetEnvironmentVariable("SWEEP_CAPTURE", trace + "-starts");
+            Environment.SetEnvironmentVariable("PREPARED_CAPTURE", trace);
+            Environment.SetEnvironmentVariable(setting, failure == "cell" ? "true" : phase);
+            try
+            {
+                try
+                {
+                    new SweepRunner(configuration).RunAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    throw new InvalidOperationException("failed prepared batch continued");
+                }
+                catch (IOException exception) when (exception.Message.Contains("prepared", StringComparison.Ordinal))
+                {
+                    var starts = phase == "qualification" ? 1 : 3;
+                    RpcScriptTests.Assert(File.ReadAllLines(trace + "-starts").Length == starts, "another arm started after failure");
+                    var rows = File.ReadAllLines(trace).Select(line => JsonNode.Parse(line)!["action"]!.ToString()).ToArray();
+                    RpcScriptTests.Assert(rows.Count(action => action == "cell") == (phase == "qualification" ? 0 : 1), "another cell started after failure");
+                    RpcScriptTests.Assert(rows[^1] == "verify" && Directory.GetFiles(configuration["STATE_ROOT"], "node.log", SearchOption.AllDirectories).Length == starts, "failure skipped teardown, fixture verification or log retention");
+                    if (failure == "health") RpcScriptTests.Assert(Directory.GetFiles(configuration["STATE_ROOT"], "node.log", SearchOption.AllDirectories).Any(path => File.ReadAllText(path).Contains("retained health failure", StringComparison.Ordinal)), "health failure evidence lost");
+                }
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(setting, null);
+                Environment.SetEnvironmentVariable("PREPARED_CAPTURE", null);
+                Environment.SetEnvironmentVariable("SWEEP_CAPTURE", previousCapture);
+            }
         });
     tests.Case("prepared startup failure stops the persisted owned child before aborting", () =>
     {

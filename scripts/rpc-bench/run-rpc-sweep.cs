@@ -290,8 +290,10 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         if (configuration.Prepared)
         {
             foreach (var arm in configuration.Arms.DistinctBy(arm => arm.Image))
+            {
                 await RunArm(arm, arm.Label + "_prepared_qualification", cancellationToken, qualifyOnly: true);
-            if (_failures.Count > 0) throw new IOException("both-image prepared qualification failed; no timing authorized");
+                if (_failures.Count > 0) throw new IOException("prepared qualification failed; no timing authorized: " + string.Join(", ", _failures.Keys));
+            }
         }
         var seen = new Dictionary<string, int>(StringComparer.Ordinal);
         for (var round = 0L; round < configuration.Number("ROUNDS"); round++)
@@ -301,6 +303,7 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
                 seen[arm.Label] = seen.GetValueOrDefault(arm.Label) + 1;
                 var label = arm.Label + (seen[arm.Label] > 1 ? "_r" + seen[arm.Label] : "");
                 await RunArm(arm, label, cancellationToken);
+                if (configuration.Prepared && _failures.Count > 0) throw new IOException("prepared arm failed; remaining batch aborted: " + string.Join(", ", _failures.Keys));
             }
         }
         await WriteSummary(cancellationToken);
@@ -468,7 +471,11 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
 
     private async Task MeasuredCell(string config, long rate, string duration, string cell, string client, string label, string corpus, string container, string manifest, CancellationToken cancellationToken)
     {
-        if (await Cell(config, rate, duration, cell, client, label, corpus, container, false, cancellationToken) != 0) Fail("load-test cells failed — matrix incomplete");
+        if (await Cell(config, rate, duration, cell, client, label, corpus, container, false, cancellationToken) != 0)
+        {
+            Fail("load-test cells failed — matrix incomplete");
+            if (configuration.Prepared) throw new IOException("prepared load-test cell failed; remaining batch aborted");
+        }
         var summary = Path.Combine(cell, "jsonbench-summary.md");
         if (File.Exists(summary)) _summaries.Add(manifest + "=" + summary);
         if (corpus.Length > 0) ReportFailureRate(cell, label);
