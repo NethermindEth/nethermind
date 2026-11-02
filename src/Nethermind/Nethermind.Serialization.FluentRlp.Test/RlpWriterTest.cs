@@ -313,22 +313,44 @@ public class RlpWriterTest
 
     // A write action that swallows the exception of a nested sequence leaves that sequence without a prefix.
     [Test]
-    public void WriteAfterSwallowedNestedException()
-        => Assert.That(static () => RlpCodec.Write(static (ref RlpWriter w) =>
+    public void WriteAfterSwallowedNestedException([Values] bool topLevel)
+        => Assert.That(() => RlpCodec.Write(topLevel, static (ref RlpWriter w, bool topLevel) =>
         {
-            w.WriteSequence(static (ref RlpWriter w) =>
+            if (topLevel)
             {
-                try
-                {
-                    w.WriteSequence(static (ref RlpWriter _) => throw new FormatException());
-                }
-                catch (FormatException)
-                {
-                }
-
-                w.Write(1);
-            });
+                SwallowNestedException(ref w);
+            }
+            else
+            {
+                w.WriteSequence(static (ref RlpWriter w) => SwallowNestedException(ref w));
+            }
         }), Throws.InvalidOperationException);
+
+    private static void SwallowNestedException(ref RlpWriter w)
+    {
+        try
+        {
+            w.WriteSequence(static (ref RlpWriter _) => throw new FormatException());
+        }
+        catch (FormatException)
+        {
+        }
+
+        w.Write(1);
+    }
+
+    // The content writer runs the action of a sequence twice: once to measure the payload and once to write it.
+    [Test]
+    public void ContentWriterWithActionThatChangesBetweenRuns()
+        => Assert.That(static () =>
+        {
+            RlpWriter writer = RlpWriter.ContentWriter(new byte[3]);
+            writer.WriteSequence(new int[1], static (ref RlpWriter w, int[] runs) =>
+            {
+                w.Write(1);
+                if (runs[0]++ > 0) w.Write(2);
+            });
+        }, Throws.InvalidOperationException);
 
     [Test]
     public void WriteDeeplyNestedSequence()
@@ -339,23 +361,24 @@ public class RlpWriterTest
     }
 
     // The buffered writer moves long prefixes into place when it copies its buffer. Nested sequences that cross the
-    // 55-byte boundary at several depths check that each insertion lands at the right place.
+    // 55-byte boundary at several depths check that each insertion lands at the right place. Declared lengths put
+    // StartSequence in the same write, after long sequences whose prefixes are not in place yet.
     [Test]
-    public void WriteNestedSequencesAsReference([Range(0, 49)] int seed)
+    public void WriteNestedSequencesAsReference([Range(0, 49)] int seed, [Values] bool declareLengths)
     {
         Node tree = Node.Random(new Random(seed), depth: 0);
         byte[] expected = Node.Encode(tree);
 
-        byte[] buffered = RlpCodec.Write(tree, static (ref RlpWriter w, Node tree) => tree.Write(ref w));
+        byte[] buffered = RlpCodec.Write((tree, declareLengths), static (ref RlpWriter w, (Node Tree, bool DeclareLengths) c) => c.Tree.Write(ref w, c.DeclareLengths));
 
         RlpWriter lengthWriter = RlpWriter.LengthWriter();
-        tree.Write(ref lengthWriter);
+        tree.Write(ref lengthWriter, declareLengths);
         byte[] measured = new byte[lengthWriter.Length];
         RlpWriter contentWriter = RlpWriter.ContentWriter(measured);
-        tree.Write(ref contentWriter);
+        tree.Write(ref contentWriter, declareLengths);
 
         ArrayBufferWriter<byte> bufferWriter = new();
-        int written = RlpCodec.Write(bufferWriter, tree, static (ref RlpWriter w, Node tree) => tree.Write(ref w));
+        int written = RlpCodec.Write(bufferWriter, (tree, declareLengths), static (ref RlpWriter w, (Node Tree, bool DeclareLengths) c) => c.Tree.Write(ref w, c.DeclareLengths));
 
         using (Assert.EnterMultipleScope())
         {
@@ -435,7 +458,8 @@ public class RlpWriterTest
             return new Node(null, children);
         }
 
-        public void Write(ref RlpWriter writer)
+        /// <summary>Writes the node. With <paramref name="declareLengths"/>, a sequence of an odd number of children uses <see cref="RlpWriter.StartSequence"/>.</summary>
+        public void Write(ref RlpWriter writer, bool declareLengths = false)
         {
             if (Bytes is not null)
             {
@@ -443,13 +467,23 @@ public class RlpWriterTest
                 return;
             }
 
-            writer.WriteSequence(Children!, static (ref RlpWriter w, List<Node> children) =>
+            if (declareLengths && Children!.Count % 2 == 1)
             {
-                foreach (Node child in children)
-                {
-                    child.Write(ref w);
-                }
-            });
+                RlpSequence sequence = writer.StartSequence(Children.Sum(static child => Encode(child).Length));
+                WriteChildren(ref writer, (Children, declareLengths));
+                writer.EndSequence(sequence);
+                return;
+            }
+
+            writer.WriteSequence((Children!, declareLengths), WriteChildren);
+        }
+
+        private static void WriteChildren(ref RlpWriter writer, (List<Node> Children, bool DeclareLengths) context)
+        {
+            foreach (Node child in context.Children)
+            {
+                child.Write(ref writer, context.DeclareLengths);
+            }
         }
 
         public static Node Read(scoped ref RlpReader reader) => reader.Choice(

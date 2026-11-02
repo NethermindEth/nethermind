@@ -197,7 +197,8 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                 bool isParameter = parameters.Any(p => p.Name == property.Name);
                 // A redeclared positional property must take the parameter value unchanged.
                 if (isParameter) return declaration.Initializer?.Value is not IdentifierNameSyntax { Identifier.ValueText: var name } || name != property.Name;
-                return property.SetMethod is not null && IsAutoProperty(declaration);
+                // A get-only auto-property without an initializer can get its value only from another constructor.
+                return IsAutoProperty(declaration) && (property.SetMethod is not null || declaration.Initializer is null);
             default:
                 return false;
         }
