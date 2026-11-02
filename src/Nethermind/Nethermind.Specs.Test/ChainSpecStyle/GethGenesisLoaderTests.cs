@@ -563,6 +563,22 @@ public class GethGenesisLoaderTests
     }
 
     [Test]
+    public void Eip8288_prototype_genesis_keeps_an_earlier_frames_activation()
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"eip8141PrototypeTime\": 10, \"eip8288PrototypeTime\": 20");
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.EqualTo(10UL));
+            Assert.That(chainSpec.Parameters.Eip8288TransitionTimestamp, Is.EqualTo(20UL));
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(9)).IsEip8141Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(10)).IsEip8141Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(19)).IsEip8288Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(20)).IsEip8288Enabled, Is.True);
+        }
+    }
+
+    [Test]
     public void Can_load_genesis_with_amsterdam_time()
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 15");

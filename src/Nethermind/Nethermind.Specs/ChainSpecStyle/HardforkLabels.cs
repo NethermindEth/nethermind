@@ -54,6 +54,10 @@ public static partial class HardforkLabels
     public static void ExpandAll(this ChainParameters target, IHasNamedForks source)
     {
         foreach (IHardforkLabel label in All) label.Apply(target, source);
+
+        // EIP-8288 extends EIP-8141: scheduling it alone also schedules frame transactions, while an
+        // earlier EIP-8141 activation is kept rather than reported as a conflicting label.
+        target.Eip8141TransitionTimestamp ??= target.Eip8288TransitionTimestamp;
     }
 
     /// <param name="name">Fork class name (e.g. <c>Homestead</c>); the JSON wire key is its camelCase form.</param>
