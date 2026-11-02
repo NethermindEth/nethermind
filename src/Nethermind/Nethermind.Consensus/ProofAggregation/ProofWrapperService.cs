@@ -10,7 +10,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Consensus.Validators;
 using Nethermind.Serialization.Rlp;

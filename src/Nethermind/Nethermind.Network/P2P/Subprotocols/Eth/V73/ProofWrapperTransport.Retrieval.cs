@@ -7,12 +7,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 using Nethermind.Serialization.Rlp;
-using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
