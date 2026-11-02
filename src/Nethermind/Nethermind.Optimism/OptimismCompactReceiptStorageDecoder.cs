@@ -149,7 +149,7 @@ public class OptimismCompactReceiptStorageDecoder :
 
     public int StartDecodingTopics(ref RlpReader reader) => CompactLogEntryDecoder.StartDecodingTopics(ref reader);
 
-    public void DecodeTopic(ref RlpReader reader, int index, Span<byte> topic) => CompactLogEntryDecoder.DecodeTopic(ref reader, topic);
+    public void DecodeTopic(ref RlpReader reader, int index, scoped Span<byte> topic) => CompactLogEntryDecoder.DecodeTopic(ref reader, topic);
 
     // Refstruct decode does not generate bloom
     public bool CanDecodeBloom => false;

@@ -252,28 +252,47 @@ public class LogEntryDecoderTests
 
     private const string Topic = "a01111111111111111111111111111111111111111111111111111111111111111";
 
-    // Valid and malformed topic lists; each decoder accepts some and rejects others.
-    [TestCase("c0")]
-    [TestCase("e1" + Topic)]
-    [TestCase("f884" + Topic + Topic + Topic + Topic)]
-    [TestCase("c3000102")]
-    [TestCase("e09f" + "22222222222222222222222222222222222222222222222222222222222222")]
-    [TestCase("c180")]
-    [TestCase("c20180")]
-    [TestCase("e2" + Topic + "80")]
-    [TestCase("c1c0")]
-    [TestCase("c2c180")]
-    [TestCase("c28100")]
-    [TestCase("e2a1" + "333333333333333333333333333333333333333333333333333333333333333333")]
-    [TestCase("c4a0010203")]
-    [TestCase("c1" + Topic)]
-    [TestCase("c201")]
-    [TestCase("01")]
-    public void Topics_decoded_one_at_a_time_match_DecodeTopics([Values] bool compact, string topicsRlp)
-    {
-        byte[] rlp = Bytes.FromHexString(topicsRlp);
-        IReceiptRefDecoder decoder = compact ? CompactReceiptStorageDecoder.Instance : new ReceiptStorageDecoder();
+    /// <summary>Valid and malformed topic lists; each decoder accepts some and rejects others.</summary>
+    public static readonly string[] TopicsRlpCases =
+    [
+        "c0",
+        "e1" + Topic,
+        "f884" + Topic + Topic + Topic + Topic,
+        "c3000102",
+        "e09f" + "22222222222222222222222222222222222222222222222222222222222222",
+        "c180",
+        "c20180",
+        "e2" + Topic + "80",
+        "c1c0",
+        "e2" + Topic + "c0",
+        "c2c180",
+        "c28100",
+        "e2a1" + "333333333333333333333333333333333333333333333333333333333333333333",
+        "c4a0010203",
+        "c1" + Topic,
+        "c201",
+        "01",
+    ];
 
+    [Test]
+    public void Topics_decoded_one_at_a_time_match_DecodeTopics([Values] bool compact, [ValueSource(nameof(TopicsRlpCases))] string topicsRlp) =>
+        AssertTopicsDecodedOneAtATimeMatchDecodeTopics(
+            compact ? CompactReceiptStorageDecoder.Instance : new ReceiptStorageDecoder(),
+            Bytes.FromHexString(topicsRlp));
+
+    [Test]
+    public void Topics_decoded_one_at_a_time_reject_more_topics_than_DecodeTopics()
+    {
+        int count = RlpLimit.DefaultLimit.Limit + 1;
+        byte[] rlp = new byte[Rlp.LengthOfSequence(count)];
+        int position = Rlp.StartSequence(rlp, 0, count);
+        rlp.AsSpan(position).Fill(Rlp.EmptyByteArrayByte);
+
+        AssertTopicsDecodedOneAtATimeMatchDecodeTopics(new ReceiptStorageDecoder(), rlp);
+    }
+
+    public static void AssertTopicsDecodedOneAtATimeMatchDecodeTopics(IReceiptRefDecoder decoder, byte[] rlp)
+    {
         Hash256[]? expected = null;
         Exception? expectedError = null;
         try
@@ -289,17 +308,14 @@ public class LogEntryDecoderTests
         Exception? actualError = null;
         try
         {
-            RlpReader reader = new(rlp);
-            int end = decoder.StartDecodingTopics(ref reader);
             Span<byte> topic = stackalloc byte[Hash256.Size];
-            for (int index = 0; reader.Position < end; index++)
+            LogTopicsIterator topics = new(rlp, decoder);
+            while (true)
             {
                 topic.Fill(0xff);
-                decoder.DecodeTopic(ref reader, index, topic);
+                if (!topics.TryGetNext(topic)) break;
                 actual.Add(new Hash256(topic));
             }
-
-            reader.Check(end);
         }
         catch (Exception e)
         {
@@ -308,6 +324,7 @@ public class LogEntryDecoderTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(expectedError, Is.Null.Or.InstanceOf<RlpException>().Or.InstanceOf<IndexOutOfRangeException>());
             Assert.That(actualError?.GetType(), Is.EqualTo(expectedError?.GetType()));
             Assert.That(actualError?.Message, Is.EqualTo(expectedError?.Message));
             Assert.That(actualError?.InnerException?.GetType(), Is.EqualTo(expectedError?.InnerException?.GetType()));

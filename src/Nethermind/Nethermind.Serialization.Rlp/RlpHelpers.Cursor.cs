@@ -814,7 +814,7 @@ internal static partial class RlpHelpers
     /// <param name="bytes">Receives the hash; must be <see cref="Hash256.Size"/> bytes.</param>
     /// <returns>The position past the item.</returns>
     /// <exception cref="RlpException">The item is an RLP null.</exception>
-    public static int DecodeZeroPrefixKeccakNonNull(ReadOnlySpan<byte> data, int position, Span<byte> bytes)
+    public static int DecodeZeroPrefixKeccakNonNull(ReadOnlySpan<byte> data, int position, scoped Span<byte> bytes)
     {
         if (data[position] == Rlp.EmptyByteArrayByte)
         {
@@ -845,13 +845,8 @@ internal static partial class RlpHelpers
     /// <exception cref="RlpException">The item is an RLP null.</exception>
     public static int DecodeZeroPrefixLogTopic0(ReadOnlySpan<byte> data, int position, out Hash256 topic)
     {
-        if (data[position] == Rlp.EmptyByteArrayByte)
-        {
-            ThrowNullDecodedValue<Hash256>();
-        }
-
         Span<byte> bytes = stackalloc byte[Hash256.Size];
-        position = DecodeZeroPrefixKeccakBytes(data, position, bytes);
+        position = DecodeZeroPrefixKeccakNonNull(data, position, bytes);
         topic = LogTopicCache.Get(bytes);
         return position;
     }

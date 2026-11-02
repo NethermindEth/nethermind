@@ -766,7 +766,7 @@ public class LogFinderTests
     }
 
     [Test]
-    public void FindLogs_WhenEncodedTopicIsMalformed_ThrowsOnEveryPath([Values] bool compact, [Values] bool indexed, [Values(0, 1)] int malformedIndex)
+    public void FindLogs_WhenEncodedTopicIsMalformed_ThrowsOnEveryPath([Values] bool compact, [Values] bool indexed, [Range(0, 1)] int malformedIndex)
     {
         Hash256[] topics = compact
             ? malformedIndex == 0 ? [TopicOne, TestItem.KeccakA] : [TestItem.KeccakA, TopicOne]

@@ -5,12 +5,12 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Facade.Filters;
 
@@ -103,6 +103,7 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
     private static void ThrowInvalidTransactionHash(int length) =>
         throw new ArgumentException($"Transaction hash must be {Hash256.Size} bytes and was {length} bytes", "transactionHash");
 
+    [SkipLocalsInit]
     private static void WriteTopics(Utf8JsonWriter writer, scoped in LogEntryStructRef log, scoped in ReceiptsIterator iterator)
     {
         if (log.Topics is { } topics)
@@ -115,16 +116,12 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
             return;
         }
 
-        Span<byte> buffer = stackalloc byte[Hash256.Size];
-        RlpReader reader = new(log.TopicsRlp);
-        int end = iterator.StartDecodingTopics(ref reader);
-        for (int index = 0; reader.Position < end; index++)
+        Span<byte> topic = stackalloc byte[Hash256.Size];
+        LogTopicsIterator encoded = iterator.IterateTopics(log.TopicsRlp);
+        while (encoded.TryGetNext(topic))
         {
-            iterator.DecodeTopic(ref reader, index, buffer);
-            HexWriter.WriteFixed32HexRawValue(writer, buffer);
+            HexWriter.WriteFixed32HexRawValue(writer, topic);
         }
-
-        reader.Check(end);
     }
 
     private static void WriteData(Utf8JsonWriter writer, scoped in LogEntryStructRef log)

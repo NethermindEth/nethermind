@@ -396,7 +396,7 @@ namespace Nethermind.Serialization.Rlp
 
         /// <inheritdoc/>
         /// <remarks>Rejects the topic as <see cref="RlpDecoder{T}.DecodeNonNullArray"/> rejects a null or malformed element.</remarks>
-        public void DecodeTopic(ref RlpReader reader, int index, Span<byte> topic)
+        public void DecodeTopic(ref RlpReader reader, int index, scoped Span<byte> topic)
         {
             if (reader.PeekByte() == Rlp.EmptyListByte)
             {
@@ -414,14 +414,21 @@ namespace Nethermind.Serialization.Rlp
             }
             catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
             {
-                throw new RlpException($"Cannot decode stream of {nameof(Hash256)}", e);
+                ThrowTopicDecode(e);
             }
 
             if (!hasValue)
             {
-                throw new RlpException($"{nameof(Hash256)} decoding returned null");
+                ThrowNullTopic();
             }
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowTopicDecode(Exception exception) =>
+            throw new RlpException($"Cannot decode stream of {nameof(Hash256)}", exception);
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowNullTopic() => throw new RlpException($"{nameof(Hash256)} decoding returned null");
 
         public bool CanDecodeBloom => true;
     }
