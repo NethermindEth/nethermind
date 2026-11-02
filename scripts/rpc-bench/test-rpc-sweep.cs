@@ -154,7 +154,7 @@ try
     Environment.SetEnvironmentVariable("SWEEP_CAPTURE", Path.Combine(tests.DirectoryPath, "capture")); Environment.SetEnvironmentVariable("GITHUB_STEP_SUMMARY", Path.Combine(tests.DirectoryPath, "summary"));
     foreach (var client in new[] { "nethermind-flat", "reth", "geth" }) Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, "snapshots", client + "-1"));
     int Run(Dictionary<string, string> values) => new SweepRunner(new SweepConfiguration(name => values.GetValueOrDefault(name))).RunAsync(CancellationToken.None).GetAwaiter().GetResult();
-    SweepConfiguration PreparedConfiguration()
+    Dictionary<string, string> PreparedValues()
     {
         var values = EnvironmentValues();
         values["PREPARED_SNAPSHOT_ROOT"] = Path.Combine(tests.DirectoryPath, "prepared-fixture");
@@ -163,10 +163,15 @@ try
         values["SNAPSHOT_BLOCK"] = "25490000";
         values["CLIENTS"] = string.Join(' ', SweepConfiguration.PreparedImages.Select(image => "nethermind@" + image + "+" + SweepConfiguration.PreparedFlags.Replace(' ', ';')));
         values["DB_ISOLATION_ALL"] = "overlay";
-        values["MIGRATION_LATEST_START_UTC"] = "2026-10-29T23:00:00Z";
-        values["MIGRATION_FINISH_BY_UTC"] = "2026-10-30T00:06:04Z";
+        values["MIGRATION_LATEST_START_UTC"] = "2026-11-02T21:00:00Z";
+        values["MIGRATION_FINISH_BY_UTC"] = "2026-11-02T23:57:04Z";
         values["SCRATCH_ROOT"] = "/mnt/sda/expb-data/rpc-prepared-benchmark-test";
         values["RPS_LIST"] = "1";
+        return values;
+    }
+    SweepConfiguration PreparedConfiguration()
+    {
+        var values = PreparedValues();
         var configuration = new SweepConfiguration(key => values.GetValueOrDefault(key));
         // Substitute fixture paths and runtime deadlines after testing the production authorization constraints.
         configuration.Values["MIGRATION_LATEST_START_UTC"] = DateTimeOffset.UtcNow.AddDays(1).ToString("yyyy-MM-ddTHH:mm:ssZ");
@@ -225,11 +230,20 @@ try
             Environment.SetEnvironmentVariable("SWEEP_CAPTURE", previousCapture);
         }
     });
-    foreach (var (name, value) in new[] { ("PREPARED_SNAPSHOT_SHA256", ""), ("PREPARED_SNAPSHOT_SHA256", "bad"), ("RECEIPT_HASHES_MIGRATION_TIMEOUT", "1"), ("DB_ISOLATION_ALL", "copy"), ("JB_ETH_CALL_CORPUS", "true"), ("CLIENTS", "nethermind"), ("SCRATCH_ROOT", "/mnt/sda/expb-data/rpc-prepared"), ("MIGRATION_FINISH_BY_UTC", "2026-10-30T00:06:05Z"), ("SNAPSHOT_BLOCK", "1"), ("NETWORK", "other") })
+    foreach (var finish in new[] { "2026-11-02T23:57:03Z", "2026-11-02T23:57:04Z" })
+        tests.Case("prepared authorization accepts cleanup boundary " + finish, () =>
+        {
+            var values = PreparedValues();
+            values["MIGRATION_FINISH_BY_UTC"] = finish;
+            values["PREPARED_SNAPSHOT_ROOT"] = "/mnt/sda/rpc-prepared-retained/getlogs-123";
+            var configuration = new SweepConfiguration(key => values.GetValueOrDefault(key));
+            RpcScriptTests.Assert(configuration["MIGRATION_FINISH_BY_UTC"] == finish && configuration.Snapshot("nethermind") == values["PREPARED_SNAPSHOT_ROOT"] + "/merged", "authorized cutoff or retained lower changed");
+        });
+    foreach (var (name, value) in new[] { ("PREPARED_SNAPSHOT_SHA256", ""), ("PREPARED_SNAPSHOT_SHA256", "bad"), ("RECEIPT_HASHES_MIGRATION_TIMEOUT", "1"), ("DB_ISOLATION_ALL", "copy"), ("JB_ETH_CALL_CORPUS", "true"), ("CLIENTS", "nethermind"), ("SCRATCH_ROOT", "/mnt/sda/expb-data/rpc-prepared"), ("MIGRATION_LATEST_START_UTC", ""), ("MIGRATION_FINISH_BY_UTC", ""), ("MIGRATION_FINISH_BY_UTC", "2026-11-02T23:57:05Z"), ("MIGRATION_FINISH_BY_UTC", "2026-11-03T00:57:04Z"), ("SNAPSHOT_BLOCK", "1"), ("NETWORK", "other") })
         tests.Case("prepared mode rejects incompatible " + name + value, () =>
         {
-            var values = PreparedConfiguration().Values;
-            values["SCRATCH_ROOT"] = "/mnt/sda/expb-data/rpc-prepared-benchmark-test";
+            var values = PreparedValues();
+            _ = new SweepConfiguration(key => values.GetValueOrDefault(key));
             values[name] = value;
             try { _ = new SweepConfiguration(key => values.GetValueOrDefault(key)); }
             catch (ArgumentException) { return; }
