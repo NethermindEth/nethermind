@@ -12,6 +12,87 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.NodeBuffer;
 
+/// <summary>The part of <see cref="NodeRecordBufferVisitor{TNodeContext}"/> that does not depend on the node context, so it is compiled once.</summary>
+internal abstract class NodeRecordBufferVisitor(
+    ReadOnlySnapshotBundle bundle,
+    SnapshotPooledList overlaySnapshots,
+    VisitingStats? diagnostics,
+    ReadFlags readFlags)
+{
+    /// <summary>Finds a trie's root record pointer in the newest overlay snapshot holding that trie, otherwise as <see cref="ReadOnlySnapshotBundle.FindRoot"/> does.</summary>
+    /// <remarks>Each snapshot's records resolve in the buffer of its own pin: an overlay buffer would take a bundle snapshot's pointers newer than its own pin for private ones.</remarks>
+    protected INodeRecordBuffer? FindRoot(Hash256? address, out ulong pointer) =>
+        ReadOnlySnapshotBundle.TryFindRoot(overlaySnapshots, address, out pointer, out INodeRecordBuffer? buffer) ? buffer : bundle.FindRoot(address, out pointer);
+
+    protected TrieNode Reference(Hash256 hash, in TreePath path)
+    {
+        RecordLookup(path);
+        return new TrieNode(NodeType.Unknown, hash);
+    }
+
+    /// <summary>Decodes the node <paramref name="reference"/> names from the record at <paramref name="pointer"/>, otherwise from its RLP, embedded in the parent or loaded by path from persistence.</summary>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <returns>False when persistence does not hold it either.</returns>
+    protected bool TryLoad(TrieNode reference, ulong pointer, INodeRecordBuffer? buffer, Hash256? address, in TreePath path, out Resolved resolved)
+    {
+        resolved = default;
+        TrieNode node = reference;
+        NodeRecord record = default;
+        if (buffer is not null && buffer.TryLocate(pointer, out record))
+        {
+            node = new TrieNode(NodeType.Unknown, reference.Keccak!, new CappedArray<byte>(record.Rlp.ToArray()));
+        }
+        else
+        {
+            buffer = null;
+            if (reference.FullRlp.IsNull)
+            {
+                diagnostics?.RecordCacheMiss();
+                byte[]? rlp = address is null
+                    ? bundle.TryLoadStateRlp(path, reference.Keccak!, readFlags)
+                    : bundle.TryLoadStorageRlp(address, path, reference.Keccak!, readFlags);
+                if (rlp is null) return false;
+                node = new TrieNode(NodeType.Unknown, reference.Keccak!, new CappedArray<byte>(rlp));
+            }
+        }
+
+        try
+        {
+            node.ResolveNode(NullTrieNodeResolver.Instance, path);
+        }
+        catch (TrieException)
+        {
+            return false;
+        }
+
+        resolved = new Resolved(node, record, buffer);
+        return true;
+    }
+
+    /// <returns>The child at <paramref name="index"/>, decoded when embedded in <paramref name="parent"/> and otherwise a reference to its hash; null when there is none.</returns>
+    protected TrieNode? Child(TrieNode parent, in TreePath path, int index, out TreePath childPath)
+    {
+        childPath = path;
+        parent.AppendChildPath(ref childPath, index);
+        TrieNode? child = parent.GetChildWithChildPath(NullTrieNodeResolver.Instance, ref childPath, index);
+        if (child?.Keccak is not null) RecordLookup(childPath);
+        return child;
+    }
+
+    private void RecordLookup(in TreePath path)
+    {
+        diagnostics?.RecordLookup();
+        diagnostics?.ObserveDepth(path.Length);
+    }
+
+    /// <summary>A decoded node, with the record it was decoded from while <see cref="Buffer"/> is set.</summary>
+    protected readonly record struct Resolved(TrieNode Node, NodeRecord Record, INodeRecordBuffer? Buffer)
+    {
+        /// <summary>The record pointer of the hashed child at <paramref name="index"/>; zero when unknown, which loads the child from persistence.</summary>
+        public ulong ChildPointer(int index) => Buffer is null ? 0 : Record.View.Child(index).Pointer;
+    }
+}
+
 /// <summary>Runs a tree visitor over the tries of a <see cref="ReadOnlySnapshotBundle"/> by following trie node buffer record pointers.</summary>
 /// <remarks>
 /// Calls the visitor as <see cref="PatriciaTree.Accept{TNodeContext}"/> does. Each trie starts at the root record of the newest in-memory
@@ -26,11 +107,11 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
     ITreeVisitor<TNodeContext> visitor,
     VisitingOptions options,
     VisitingStats? diagnostics)
+    : NodeRecordBufferVisitor(bundle, overlaySnapshots, diagnostics, visitor.ExtraReadFlag | (visitor.IsFullDbScan ? ReadFlags.HintReadAhead : ReadFlags.None))
     where TNodeContext : struct, INodeContext<TNodeContext>
 {
     private const long SubtreeSizeThreshold = 256 * 1024;
     private readonly ConcurrencyController _workers = new(options.MaxDegreeOfParallelism);
-    private readonly ReadFlags _readFlags = visitor.ExtraReadFlag | (visitor.IsFullDbScan ? ReadFlags.HintReadAhead : ReadFlags.None);
 
     public void Accept(Hash256 rootHash)
     {
@@ -48,77 +129,13 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
         Visit(root, default, null, TreePath.Empty, long.MaxValue);
     }
 
-    /// <summary>Finds a trie's root record pointer in the newest overlay snapshot holding that trie, otherwise as <see cref="ReadOnlySnapshotBundle.FindRoot"/> does.</summary>
-    /// <remarks>Each snapshot's records resolve in the buffer of its own pin: an overlay buffer would take a bundle snapshot's pointers newer than its own pin for private ones.</remarks>
-    private INodeRecordBuffer? FindRoot(Hash256? address, out ulong pointer)
-    {
-        for (int i = overlaySnapshots.Count - 1; i >= 0; i--)
-        {
-            Snapshot snapshot = overlaySnapshots[i];
-            if (address is null) pointer = snapshot.StateRootPointer;
-            else if (!snapshot.TryGetStorageRoot(address, out pointer)) continue;
-
-            return snapshot.BufferPin?.Buffer;
-        }
-
-        return bundle.FindRoot(address, out pointer);
-    }
-
-    private TrieNode Reference(Hash256 hash, in TreePath path)
-    {
-        RecordLookup(path);
-        return new TrieNode(NodeType.Unknown, hash);
-    }
-
-    private void RecordLookup(in TreePath path)
-    {
-        diagnostics?.RecordLookup();
-        diagnostics?.ObserveDepth(path.Length);
-    }
-
-    /// <summary>Decodes the node <paramref name="reference"/> names from the record at <paramref name="pointer"/>, otherwise from its RLP, embedded in the parent or loaded by path from persistence.</summary>
-    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
-    /// <returns>False, after visiting the node as missing, when persistence does not hold it either.</returns>
+    /// <summary>Loads a node as <see cref="NodeRecordBufferVisitor.TryLoad"/> does, visiting it as missing when that fails.</summary>
     private bool TryResolve(TrieNode reference, ulong pointer, INodeRecordBuffer? buffer, Hash256? address, in TreePath path,
         in TNodeContext context, out Resolved resolved)
     {
-        TrieNode node = reference;
-        NodeRecord record = default;
-        if (buffer is not null && buffer.TryLocate(pointer, out record))
-        {
-            node = new TrieNode(NodeType.Unknown, reference.Keccak!, new CappedArray<byte>(record.Rlp.ToArray()));
-        }
-        else
-        {
-            buffer = null;
-            if (reference.FullRlp.IsNull)
-            {
-                diagnostics?.RecordCacheMiss();
-                byte[]? rlp = address is null
-                    ? bundle.TryLoadStateRlp(path, reference.Keccak!, _readFlags)
-                    : bundle.TryLoadStorageRlp(address, path, reference.Keccak!, _readFlags);
-                if (rlp is null) return Missing(reference, context, out resolved);
-                node = new TrieNode(NodeType.Unknown, reference.Keccak!, new CappedArray<byte>(rlp));
-            }
-        }
+        if (TryLoad(reference, pointer, buffer, address, path, out resolved)) return true;
 
-        try
-        {
-            node.ResolveNode(NullTrieNodeResolver.Instance, path);
-        }
-        catch (TrieException)
-        {
-            return Missing(reference, context, out resolved);
-        }
-
-        resolved = new Resolved(node, record, buffer);
-        return true;
-    }
-
-    private bool Missing(TrieNode reference, in TNodeContext context, out Resolved resolved)
-    {
         visitor.VisitMissingNode(context, reference.Keccak);
-        resolved = default;
         return false;
     }
 
@@ -175,16 +192,6 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
             : 0;
     }
 
-    /// <returns>The child at <paramref name="index"/>, decoded when embedded in <paramref name="parent"/> and otherwise a reference to its hash; null when there is none.</returns>
-    private TrieNode? Child(TrieNode parent, in TreePath path, int index, out TreePath childPath)
-    {
-        childPath = path;
-        parent.AppendChildPath(ref childPath, index);
-        TrieNode? child = parent.GetChildWithChildPath(NullTrieNodeResolver.Instance, ref childPath, index);
-        if (child?.Keccak is not null) RecordLookup(childPath);
-        return child;
-    }
-
     private long VisitBranch(in Resolved resolved, in TNodeContext context, Hash256? address, TreePath path, long sizeHint)
     {
         sizeHint /= TrieNode.BranchesCount;
@@ -230,12 +237,5 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
             }
         }
         return size;
-    }
-
-    /// <summary>A decoded node, with the record it was decoded from while <see cref="Buffer"/> is set.</summary>
-    private readonly record struct Resolved(TrieNode Node, NodeRecord Record, INodeRecordBuffer? Buffer)
-    {
-        /// <summary>The record pointer of the hashed child at <paramref name="index"/>; zero when unknown, which loads the child from persistence.</summary>
-        public ulong ChildPointer(int index) => Buffer is null ? 0 : Record.View.Child(index).Pointer;
     }
 }

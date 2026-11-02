@@ -353,17 +353,31 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
-        for (int i = snapshots.Count - 1; i >= 0; i--)
+        TryFindRoot(snapshots, address, out pointer, out INodeRecordBuffer? buffer);
+        return buffer;
+    }
+
+    /// <summary>Finds a trie's root record pointer in the newest of <paramref name="inMemorySnapshots"/> holding that trie.</summary>
+    /// <param name="inMemorySnapshots">The snapshots, oldest first.</param>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <param name="pointer">The root record's pointer; zero when none of <paramref name="inMemorySnapshots"/> holds the trie.</param>
+    /// <param name="buffer">The trie node buffer of the snapshot holding the trie, resolving <paramref name="pointer"/> and the pointers below it; null when there is none.</param>
+    /// <returns>Whether any of <paramref name="inMemorySnapshots"/> holds the trie.</returns>
+    internal static bool TryFindRoot(SnapshotPooledList inMemorySnapshots, Hash256? address, out ulong pointer, out INodeRecordBuffer? buffer)
+    {
+        for (int i = inMemorySnapshots.Count - 1; i >= 0; i--)
         {
-            Snapshot snapshot = snapshots[i];
+            Snapshot snapshot = inMemorySnapshots[i];
             if (address is null) pointer = snapshot.StateRootPointer;
             else if (!snapshot.TryGetStorageRoot(address, out pointer)) continue;
 
-            return snapshot.BufferPin?.Buffer;
+            buffer = snapshot.BufferPin?.Buffer;
+            return true;
         }
 
         pointer = 0;
-        return null;
+        buffer = null;
+        return false;
     }
 
     // Only the reader that moves the state out of NotBuilt builds. It holds a lease on this bundle, so neither the

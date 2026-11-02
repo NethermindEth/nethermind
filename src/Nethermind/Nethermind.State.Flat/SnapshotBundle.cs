@@ -4,7 +4,6 @@
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -199,25 +198,6 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
-    {
-        GuardDispose();
-
-        if (_nodeRecordBuffer!.TryGetNode(_currentPooledContent.StateRootPointer, path, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else if (DoFindStateNodeExternal(path, hash, out node))
-        {
-        }
-        else
-        {
-            node = new TrieNode(NodeType.Unknown, hash);
-        }
-
-        return node;
-    }
-
     // Returns a leased transient, or null once the bundle is being torn down. A stale read can acquire a
     // retired resource that was already re-rented by another bundle, so the acquire cannot be trusted on
     // its own: the identity re-check catches a resource swapped out by CollectAndApplySnapshot, and the
@@ -247,74 +227,6 @@ public sealed class SnapshotBundle : IDisposable
 
             spinWait.SpinOnce();
         }
-    }
-
-    private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
-    {
-        HashedKey<TreePath> key = new(path);
-        for (int i = _snapshots.Count - 1; i >= 0; i--)
-        {
-            if (_snapshots[i].TryGetStateNode(key, out node))
-            {
-                Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-                return true;
-            }
-        }
-
-        return _readOnlySnapshotBundle.TryFindStateNodes(key, out node);
-    }
-
-    public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash)
-    {
-        GuardDispose();
-
-        if (_changedStorageRoots.TryGetValue(address, out ulong root) && root != 0
-            && _nodeRecordBuffer!.TryGetNode(root, path, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else if (DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null)
-        {
-        }
-        else
-        {
-            node = new TrieNode(NodeType.Unknown, hash);
-        }
-
-        return node;
-    }
-
-
-    // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
-    // so if storage was self-destructed, the new root is different and orphaned nodes won't be traversed. So we skip the
-    // check for slightly improved latency.
-    private bool DoTryFindStorageNodeExternal(Hash256 address, in TreePath path, Hash256 hash, out TrieNode? node)
-    {
-        HashedKey<(Hash256, TreePath)> key = new((address, path));
-        for (int i = _snapshots.Count - 1; i >= 0; i--)
-        {
-            if (_snapshots[i].TryGetStorageNode(key, out node))
-            {
-                Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-                return true;
-            }
-        }
-
-        return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node);
-    }
-
-    public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
-    {
-        GuardDispose();
-
-        return _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, flags);
-    }
-
-    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
-    {
-        GuardDispose();
-
-        return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
 
     /// <summary>Runs a tree visitor over the tries of this bundle's snapshots by following trie node buffer record pointers.</summary>
