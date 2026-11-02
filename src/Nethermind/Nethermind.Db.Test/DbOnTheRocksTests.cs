@@ -1411,9 +1411,8 @@ namespace Nethermind.Db.Test
             // plain forced-bottommost compaction runs with blob garbage collection off, so it rewrites the SST
             // pointers but cannot retire a blob file any survivor still pins - it gives next to nothing back.
             // CompactReclaimingBlobFiles relocates the survivors into fresh blob files and drops the stale ones,
-            // reclaiming the great majority. This is the control: the earlier contiguous-retention shape let a
-            // plain compaction reclaim most of the disk because its pruned blob files were fully unreferenced,
-            // which hid the whole point of the blob-GC path.
+            // reclaiming the great majority. A contiguous prune would not show this: its pruned blob files become
+            // fully unreferenced, so a plain compaction reclaims them too.
             DbConfig config = new()
             {
                 AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;blob_compression_type=kNoCompression;disable_auto_compactions=true;"
@@ -1531,6 +1530,16 @@ namespace Nethermind.Db.Test
                         $"height {number} of another column must be untouched - the tombstone has to be scoped to its column family");
                 }
             }
+        }
+
+        [Test]
+        public void CompactReclaimingBlobFiles_OnAColumn_IsANoOp()
+        {
+            IDbConfig config = new DbConfig();
+            using ColumnsDb<ReceiptsColumns> columnsDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
+                _rocksdbConfigFactory, LimboLogs.Instance, new List<ReceiptsColumns> { ReceiptsColumns.Blocks });
+
+            Assert.That(columnsDb.GetColumnDb(ReceiptsColumns.Blocks).CompactReclaimingBlobFiles(), Is.False);
         }
 
         private IContainer CreateRocksDbContainer(DbConfig config)

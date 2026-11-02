@@ -100,7 +100,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     // Serializes every option change: the whole Tune body, the blob-GC compaction's snapshot/apply prologue and
     // its restore epilogue, and the effective-options map updates in ApplyOptions. Deliberately not held across
-    // the blob-GC CompactOpenRange, which runs for hours - see CompactReclaimingBlobFiles. Not reentrant.
+    // the blob-GC CompactOpenRange, which runs for hours - see CompactReclaimingBlobFiles.
     private readonly Lock _tuneLock = new();
 
     // The live values of the options the blob-GC compaction overrides, tracked at the ApplyOptions chokepoint so
@@ -2249,8 +2249,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // withhold those keys from the live database so a concurrent Tune cannot flip blob files off under the
         // running reclaim pass and weaken it. The intended value is still tracked, so the compaction's epilogue
         // restore re-derives the correct final state. Always called with _tuneLock held (by Tune and by the blob-GC
-        // compaction prologue/epilogue), so the map and the flag are read without re-entering the lock, which is
-        // not reentrant.
+        // compaction prologue/epilogue), so the map and the flag are read without taking the lock again.
         Dictionary<string, string>? liveOptions = null;
         foreach ((string key, string value) in options)
         {

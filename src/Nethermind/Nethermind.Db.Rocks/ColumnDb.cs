@@ -172,9 +172,6 @@ public class ColumnDb : IDb, ISnapshotSortedKeyValueStore, IMergeableKeyValueSto
     }
 
     /// <inheritdoc/>
-    public bool CompactReclaimingBlobFiles() => _mainDb.CompactReclaimingBlobFiles();
-
-    /// <inheritdoc/>
     public void InterruptCompactions() => _mainDb.InterruptCompactions();
 
     /// <summary>
