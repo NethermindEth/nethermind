@@ -3,6 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -46,6 +49,8 @@ public class BlockProductionTransactionPickerTests
     }
 
     private static Block BlockWithoutBaseFee() => Build.A.Block.WithGasLimit(BlockGasLimit).WithBaseFeePerGas(0).TestObject;
+
+    private static string ExecutionGasReason(ulong gasRemaining) => $"Not enough execution gas in block, gas limit {TxGasLimit} > {gasRemaining}";
 
     private sealed class FundedSender : IDisposable
     {
@@ -122,51 +127,111 @@ public class BlockProductionTransactionPickerTests
         Assert.That((alreadyIn.Action, alreadyIn.Reason, alreadyIn.Index), Is.EqualTo((BlockProcessor.TxAction.Skip, "Transaction already in block", 1)));
     }
 
+    /// <summary>A rejection kept while the same picker rejects other candidates, of every kind and with other numbers,
+    /// still reports its own candidate when it is read last; every rejection is an object of its own.</summary>
     [Test]
-    public void A_skip_after_a_skip_with_a_deferred_reason_reports_its_own_reason()
+    public void A_kept_rejection_reports_its_own_candidate_after_later_rejections()
     {
+        using FundedSender sender = new(1.Ether);
+        Block block = BlockWithoutBaseFee();
+        Block laterBlock = BlockWithoutBaseFee();
+        BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker(Amsterdam.Instance);
+
+        Transaction candidate = Tx();
+        HashSet<Transaction> transactionsInBlock = [Tx(nonce: AccountNonce + 10)];
+        BlockProcessor.AddingTxEventArgs kept = picker.CanAddTransaction(block, candidate, transactionsInBlock, sender.State, BlockGasLimit - 50_000, 0);
+
+        HashSet<Transaction> noTransactions = [];
+        (Transaction Tx, ulong ExecutionGas, ulong StateGas, BlockProcessor.TxAction Action, string Reason)[] later =
+        [
+            (Tx(), 0, BlockGasLimit - 70_000, BlockProcessor.TxAction.Skip, "Not enough state gas in block, gas limit 100000 > 70000"),
+            (Tx(nonce: AccountNonce + 2), 0, 0, BlockProcessor.TxAction.Skip, "Invalid nonce - expected 3"),
+            (Tx(), BlockGasLimit - 60_000, 0, BlockProcessor.TxAction.Skip, ExecutionGasReason(60_000)),
+            (TxWithoutSender(), 0, 0, BlockProcessor.TxAction.Skip, "Null sender"),
+            (Tx(), BlockGasLimit, 0, BlockProcessor.TxAction.Stop, "Block full"),
+        ];
+        BlockProcessor.AddingTxEventArgs[] laterArgs = later
+            .Select(c => picker.CanAddTransaction(laterBlock, c.Tx, noTransactions, sender.State, c.ExecutionGas, c.StateGas))
+            .ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(kept.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
+            Assert.That(kept.Reason, Is.EqualTo(ExecutionGasReason(50_000)));
+            Assert.That(kept.Transaction, Is.SameAs(candidate));
+            Assert.That(kept.Block, Is.SameAs(block));
+            Assert.That(kept.Index, Is.EqualTo(1));
+            Assert.That(kept.TransactionsInBlock, Is.SameAs(transactionsInBlock));
+
+            for (int i = 0; i < later.Length; i++)
+            {
+                Assert.That((laterArgs[i].Action, laterArgs[i].Reason), Is.EqualTo((later[i].Action, later[i].Reason)), $"later rejection {i}");
+                Assert.That(laterArgs[i].Transaction, Is.SameAs(later[i].Tx), $"later rejection {i}");
+                Assert.That(laterArgs[i].Block, Is.SameAs(laterBlock), $"later rejection {i}");
+            }
+
+            Assert.That(laterArgs[0], Is.Not.SameAs(kept));
+            Assert.That(laterArgs.Append(kept).Distinct(ReferenceEqualityComparer.Instance).Count(), Is.EqualTo(later.Length + 1),
+                "every rejection is an object of its own");
+        }
+    }
+
+    /// <summary>Two threads share one picker and each rejects its own candidates at the execution-gas check, with numbers
+    /// and a considered set of its own; every result, read only after both finish, belongs to the call that returned it.</summary>
+    [Test]
+    public void Rejections_from_two_threads_on_one_picker_each_keep_their_own_candidate()
+    {
+        const int callsPerThread = 1_000;
         using FundedSender sender = new(1.Ether);
         Block block = BlockWithoutBaseFee();
         BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker(Osaka.Instance);
 
-        BlockProcessor.AddingTxEventArgs gasSkip = picker.CanAddTransaction(block, Tx(), new HashSet<Transaction>(), sender.State, BlockGasLimit - 50_000, 0);
-        Assert.That(gasSkip.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
+        // Gas remaining stays between the base cost of a transaction and its gas limit, so each call is skipped for gas.
+        (Transaction Tx, HashSet<Transaction> TransactionsInBlock, ulong FirstGasRemaining)[] threads =
+        [
+            (Tx(), [], 30_000),
+            (Tx(nonce: AccountNonce + 1), [Tx(nonce: AccountNonce + 20)], 60_000),
+        ];
+        BlockProcessor.AddingTxEventArgs[][] results = threads.Select(static _ => new BlockProcessor.AddingTxEventArgs[callsPerThread]).ToArray();
+        using Barrier start = new(threads.Length);
 
-        Transaction noSender = TxWithoutSender();
-        BlockProcessor.AddingTxEventArgs nullSender = picker.CanAddTransaction(block, noSender, new HashSet<Transaction>(), sender.State, 0, 0);
-
-        Assert.That((nullSender.Action, nullSender.Reason, nullSender.Transaction), Is.EqualTo((BlockProcessor.TxAction.Skip, "Null sender", noSender)));
-    }
-
-    /// <summary>One picker rejects candidates for different deferred reasons in turn; each reports its own kind and numbers,
-    /// in both orders, so nothing of an earlier rejection's reason sticks to the reused args.</summary>
-    [Test]
-    public void Deferred_rejections_of_different_kinds_each_report_their_own_reason()
-    {
-        using FundedSender sender = new(1.Ether);
-        Block block = BlockWithoutBaseFee();
-        BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker(Amsterdam.Instance);
-        HashSet<Transaction> transactionsInBlock = [];
-
-        string Reason(Transaction tx, ulong cumulativeExecutionGas, ulong cumulativeStateGas)
+        Task[] workers = threads.Select((thread, t) => Task.Factory.StartNew(() =>
         {
-            BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, tx, transactionsInBlock, sender.State, cumulativeExecutionGas, cumulativeStateGas);
-            Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
-            return args.Reason;
+            start.SignalAndWait();
+            for (int i = 0; i < callsPerThread; i++)
+            {
+                results[t][i] = picker.CanAddTransaction(block, thread.Tx, thread.TransactionsInBlock, sender.State,
+                    BlockGasLimit - (thread.FirstGasRemaining + (ulong)i), 0);
+            }
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)).ToArray();
+        Task.WaitAll(workers);
+
+        List<string> wrong = [];
+        for (int t = 0; t < threads.Length; t++)
+        {
+            for (int i = 0; i < callsPerThread; i++)
+            {
+                BlockProcessor.AddingTxEventArgs args = results[t][i];
+                bool own = args.Action == BlockProcessor.TxAction.Skip
+                    && args.Reason == ExecutionGasReason(threads[t].FirstGasRemaining + (ulong)i)
+                    && ReferenceEquals(args.Transaction, threads[t].Tx)
+                    && ReferenceEquals(args.TransactionsInBlock, threads[t].TransactionsInBlock)
+                    && args.Index == threads[t].TransactionsInBlock.Count
+                    && ReferenceEquals(args.Block, block);
+                if (!own) wrong.Add($"thread {t} call {i}: {args.Action} \"{args.Reason}\" index {args.Index}");
+            }
         }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Reason(Tx(), BlockGasLimit - 50_000, 0), Is.EqualTo("Not enough execution gas in block, gas limit 100000 > 50000"));
-            Assert.That(Reason(Tx(nonce: AccountNonce + 2), 0, 0), Is.EqualTo("Invalid nonce - expected 3"));
-            Assert.That(Reason(Tx(), BlockGasLimit - 60_000, 0), Is.EqualTo("Not enough execution gas in block, gas limit 100000 > 60000"));
-            Assert.That(Reason(Tx(), 0, BlockGasLimit - 70_000), Is.EqualTo("Not enough state gas in block, gas limit 100000 > 70000"));
-            Assert.That(Reason(Tx(nonce: AccountNonce + 1), 0, 0), Is.EqualTo("Invalid nonce - expected 3"));
+            Assert.That(wrong, Is.Empty);
+            Assert.That(results.SelectMany(static r => r).Distinct(ReferenceEqualityComparer.Instance).Count(),
+                Is.EqualTo(threads.Length * callsPerThread), "every call returns an object of its own");
         }
     }
 
-    /// <summary>Subscribers such as AuRa's permission check may keep or change the args they are raised with, so a later
-    /// candidate must never be written into them, and what they set must be what the caller gets back.</summary>
+    /// <summary>The event raises only added candidates, with the args the call returns; later calls leave the args a
+    /// subscriber kept alone.</summary>
     [Test]
     public void Added_candidates_get_args_of_their_own_that_later_calls_leave_alone()
     {
@@ -178,8 +243,7 @@ public class BlockProductionTransactionPickerTests
 
         Transaction first = Tx();
         BlockProcessor.AddingTxEventArgs added = picker.CanAddTransaction(block, first, new HashSet<Transaction>(), sender.State, 0, 0);
-        Transaction second = Tx();
-        BlockProcessor.AddingTxEventArgs skipped = picker.CanAddTransaction(block, second, new HashSet<Transaction>(), sender.State, BlockGasLimit - 50_000, 0);
+        BlockProcessor.AddingTxEventArgs skipped = picker.CanAddTransaction(block, Tx(), new HashSet<Transaction>(), sender.State, BlockGasLimit - 50_000, 0);
         BlockProcessor.AddingTxEventArgs addedAgain = picker.CanAddTransaction(block, Tx(), new HashSet<Transaction>(), sender.State, 0, 0);
 
         using (Assert.EnterMultipleScope())
@@ -190,53 +254,81 @@ public class BlockProductionTransactionPickerTests
             Assert.That(addedAgain, Is.Not.SameAs(added));
             Assert.That(skipped, Is.Not.SameAs(added).And.Not.SameAs(addedAgain));
             Assert.That((added.Action, added.Reason, added.Transaction), Is.EqualTo((BlockProcessor.TxAction.Add, string.Empty, first)),
-                "a later skip must not rewrite args a subscriber kept");
-            Assert.That((skipped.Action, skipped.Reason, skipped.Transaction),
-                Is.EqualTo((BlockProcessor.TxAction.Skip, "Not enough execution gas in block, gas limit 100000 > 50000", second)),
-                "a later added candidate must not touch the reused rejection args");
+                "later calls must not rewrite args a subscriber kept");
         }
     }
 
+    /// <summary>A subscriber such as AuRa's permission check vetoes a candidate by setting <c>Skip</c> on the args it is
+    /// raised with; the caller gets that action and reason on that same object.</summary>
     [Test]
-    public void A_subscriber_can_still_skip_the_candidate_it_is_raised_for()
+    public void A_subscriber_s_veto_reaches_the_caller_on_the_args_it_was_raised_with()
     {
         using FundedSender sender = new(1.Ether);
         Block block = BlockWithoutBaseFee();
         BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker(Osaka.Instance);
-        picker.AddingTransaction += (_, e) => e.Set(BlockProcessor.TxAction.Skip, "not permitted");
+        BlockProcessor.AddingTxEventArgs? raised = null;
+        picker.AddingTransaction += (_, e) =>
+        {
+            raised = e;
+            e.Set(BlockProcessor.TxAction.Skip, "not permitted");
+        };
 
-        BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, Tx(), new HashSet<Transaction>(), sender.State, 0, 0);
+        Transaction candidate = Tx();
+        BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, candidate, new HashSet<Transaction>(), sender.State, 0, 0);
 
-        Assert.That((args.Action, args.Reason), Is.EqualTo((BlockProcessor.TxAction.Skip, "not permitted")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(args, Is.SameAs(raised));
+            Assert.That((args.Action, args.Reason, args.Transaction), Is.EqualTo((BlockProcessor.TxAction.Skip, "not permitted", candidate)));
+        }
     }
 
-    [TestCase(BlockGasLimit - 50_000, AccountNonce, TestName = "A candidate skipped for gas allocates nothing")]
-    [TestCase(0UL, AccountNonce + 2, TestName = "A candidate skipped for its nonce allocates nothing")]
-    public void A_skipped_candidate_allocates_nothing(ulong cumulativeExecutionGas, ulong nonce)
+    /// <summary>A candidate skipped at the execution-gas check allocates its own args object and nothing more: the reason
+    /// string is built on the first read of <see cref="BlockProcessor.AddingTxEventArgs.Reason"/>, once.</summary>
+    [Test]
+    public void A_candidate_skipped_for_gas_allocates_only_its_args_until_its_reason_is_read()
     {
-        const int calls = 1_000;
+        // The args object: AddingTxEventArgs is 56 B on 64-bit and the deferred reason's kind and two numbers add up to
+        // 24 B more, 80 B. The reason string alone (59 chars) is 144 B, so formatting it during the call would break this
+        // bound, and master's 200 B per skip (args plus string) is well above it.
+        const long argsBound = 96;
+        const ulong gasRemaining = 50_000;
         using FundedSender sender = new(1.Ether);
         Block block = BlockWithoutBaseFee();
         BlockProcessor.BlockProductionTransactionPicker picker = CreatePicker(Osaka.Instance);
-        Transaction tx = Tx(nonce);
+        Transaction tx = Tx();
         HashSet<Transaction> transactionsInBlock = [];
 
-        BlockProcessor.TxAction Skip() => picker.CanAddTransaction(block, tx, transactionsInBlock, sender.State, cumulativeExecutionGas, 0).Action;
+        BlockProcessor.AddingTxEventArgs Skip() => picker.CanAddTransaction(block, tx, transactionsInBlock, sender.State, BlockGasLimit - gasRemaining, 0);
 
+        // Warm both paths up (JIT, static initialisation, the pooled buffer of the interpolation) outside the measurement.
         for (int i = 0; i < 10; i++)
         {
-            Assert.That(Skip(), Is.EqualTo(BlockProcessor.TxAction.Skip));
+            Assert.That(Skip().Reason, Is.EqualTo(ExecutionGasReason(gasRemaining)));
         }
 
-        long start = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < calls; i++)
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        BlockProcessor.AddingTxEventArgs args = Skip();
+        long callAllocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        before = GC.GetAllocatedBytesForCurrentThread();
+        string reason = args.Reason;
+        long firstReadAllocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        before = GC.GetAllocatedBytesForCurrentThread();
+        string secondRead = args.Reason;
+        long secondReadAllocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        TestContext.Out.WriteLine($"skip call {callAllocated} B, first Reason read {firstReadAllocated} B, second {secondReadAllocated} B");
+
+        using (Assert.EnterMultipleScope())
         {
-            Skip();
+            Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
+            Assert.That(callAllocated, Is.GreaterThan(0).And.LessThanOrEqualTo(argsBound), "a fresh args object and no reason string");
+            Assert.That(firstReadAllocated, Is.GreaterThanOrEqualTo(2L * reason.Length), "the reason is first built when it is read");
+            Assert.That(reason, Is.EqualTo(ExecutionGasReason(gasRemaining)));
+            Assert.That(secondReadAllocated, Is.Zero, "and only once");
+            Assert.That(secondRead, Is.SameAs(reason));
         }
-
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
-
-        // Less than a byte per call: an args object or a reason string per candidate would be tens of kilobytes.
-        Assert.That(allocated, Is.LessThan(calls));
     }
 }
