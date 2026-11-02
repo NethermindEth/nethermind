@@ -65,8 +65,9 @@ namespace Nethermind.Trie
         /// <summary>A bit for each branch slot whose child may differ from the one the branch's RLP encodes.</summary>
         /// <remarks>
         /// Only where <see cref="FirstTouchMemoryFlag"/> is on. A slot is marked each time <see cref="DataItem"/> gives a
-        /// writable reference to it, which every child write does, and when a write below changes the child in place. The
-        /// hot read path resolves a child without a mark. A slot without its bit holds null or the child that the RLP
+        /// reference to it, which every child write does, and when a write below changes the child in place. Some reads,
+        /// such as <see cref="FindOnlyChild"/>, also take a reference and set a bit they do not need; the hot read path
+        /// resolves a child without a mark. A slot without its bit holds null or the child that the RLP
         /// encodes, so a re-encode copies that slot from the RLP. A walk that tests the bits first skips the other slots:
         /// SP1 charges for reading each of them the first time. A bit is never cleared, as a slot with its bit set is only
         /// encoded again. Kept on the node rather than its <see cref="BranchData"/>, where it fits in the padding after
@@ -273,7 +274,7 @@ namespace Nethermind.Trie
         /// <remarks>Only where <see cref="FirstTouchMemoryFlag"/> is on, as the bits are only kept there.</remarks>
         private static bool TracksTakenChildren => FirstTouchMemoryFlag.IsActive;
 
-        /// <summary>The slots of <paramref name="item"/>, a branch, that may hold a child; see <see cref="_takenChildren"/>.</summary>
+        /// <summary>The slots of <paramref name="item"/>, a branch, whose child may differ from its RLP; see <see cref="_takenChildren"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ushort TakenChildren(TrieNode item) => item._takenChildren;
 

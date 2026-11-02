@@ -1090,7 +1090,8 @@ namespace Nethermind.Trie
             /// A null slot still holds the child <paramref name="previousRlp"/> encodes, so the bytes between changed children,
             /// and the unchanged ones after the last of them, are copied over as they are. Measuring the changed children
             /// first sizes the result, so they are written straight into it. Where <see cref="CopiesBranchValue"/>, the items
-            /// past the last changed child are never walked.
+            /// past the last changed child are never walked. Where <see cref="TracksTakenChildren"/>, a slot without its bit is
+            /// copied from <paramref name="previousRlp"/> like a null one.
             /// </remarks>
             [SkipLocalsInit]
             private static CappedArray<byte> SpliceBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item,

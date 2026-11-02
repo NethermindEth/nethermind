@@ -229,11 +229,11 @@ namespace Nethermind.Trie
         /// <remarks>Not on the host, which persists the new RLP. See <c>TrieNode.zkevm.cs</c> for the guest.</remarks>
         private static bool KeepsRlpOfHashedBranch => false;
 
-        /// <summary>Whether a walk over a branch's children skips the slots that never held one.</summary>
+        /// <summary>Whether a walk over a branch's children skips the slots whose child cannot differ from its RLP.</summary>
         /// <remarks>Not on the host. See <c>TrieNode.zkevm.cs</c> for the guest.</remarks>
         private static bool TracksTakenChildren => false;
 
-        /// <summary>The slots of <paramref name="item"/>, a branch, that may hold a child: all of them on the host.</summary>
+        /// <summary>The slots of <paramref name="item"/>, a branch, whose child may differ from its RLP: all of them on the host.</summary>
         private static ushort TakenChildren(TrieNode item) => ushort.MaxValue;
 
         /// <summary>Records that the child in branch slot <paramref name="i"/> may differ from the one this node's RLP encodes:
