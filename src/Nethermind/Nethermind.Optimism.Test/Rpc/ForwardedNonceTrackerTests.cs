@@ -86,19 +86,26 @@ public class ForwardedNonceTrackerTests
         IDisposable first = await tracker.LockSenderAsync(TestItem.AddressA);
         Task<IDisposable> sameAccount = tracker.LockSenderAsync(TestItem.AddressA);
         Task<IDisposable> otherAccount = tracker.LockSenderAsync(TestItem.AddressB);
-        bool sameAccountWaited = !sameAccount.IsCompleted;
         bool otherAccountWaited = !otherAccount.IsCompleted;
         int locksWhileHeld = tracker.SenderLockCount;
+        // A correct lock never lets the second send in while the first holds it, so this window cannot fail one. It catches a
+        // lock that lets the second in on its own within 2 s, above the 1 s of the bypasses it was written against (a timed
+        // wait whose result is ignored, a wait that is not awaited); one that lets it in only later passes. Checked at once,
+        // as such a lock cannot be released cleanly below.
+        await Task.WhenAny(sameAccount, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.That(sameAccount.IsCompleted, Is.False, "a second send from the account waits for the first");
 
         first.Dispose();
-        (await sameAccount.WaitAsync(TimeSpan.FromSeconds(10))).Dispose();
+        IDisposable second = await sameAccount.WaitAsync(TimeSpan.FromSeconds(10));
+        (int Users, bool Held) afterFirst = tracker.SenderLockState(TestItem.AddressA);
+        second.Dispose();
         (await otherAccount).Dispose();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(sameAccountWaited, Is.True, "a second send from the account waits for the first");
             Assert.That(otherAccountWaited, Is.False, "a send from another account does not wait");
             Assert.That(locksWhileHeld, Is.EqualTo(2));
+            Assert.That(afterFirst, Is.EqualTo((1, true)), "the second send holds the lock once the first is done");
             Assert.That(tracker.SenderLockCount, Is.EqualTo(0), "a lock no send uses is removed");
         }
     }
