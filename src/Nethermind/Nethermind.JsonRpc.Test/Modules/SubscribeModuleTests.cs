@@ -725,6 +725,32 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
+        [Test]
+        public void Subscription_does_not_queue_a_block_whose_receipt_blooms_match_no_accepted_log()
+        {
+            _jsonRpcDuplexClient.SendJsonRpcResult(Arg.Any<JsonRpcResult>())
+                .Returns(new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+            IReceiptMonitor receiptMonitor = Substitute.For<IReceiptMonitor>();
+            LogEntry fromA = Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject;
+            Bloom falsePositive = new(new[] { fromA, Build.A.LogEntry.WithAddress(TestItem.AddressC).TestObject });
+            BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithBloom(falsePositive).TestObject;
+            ReceiptsEventArgs receiptsEvent = new(header, [Build.A.Receipt.WithBlockNumber(header.Number).WithLogs(fromA).WithBloom(falsePositive).TestObject]);
+            Filter filter = new() { FromBlock = BlockParameter.Latest, ToBlock = BlockParameter.Latest, Address = [TestItem.AddressC] };
+            using ManualResetEventSlim disposed = new();
+            _jsonRpcDuplexClient.When(c => c.Dispose()).Do(_ => disposed.Set());
+
+            using (new LogsSubscription(_jsonRpcDuplexClient, receiptMonitor, _filterStore, _blockTree, _logManager, filter))
+            {
+                for (int i = 0; i < Subscription.MaxQueuedBlocks + 2; i++)
+                {
+                    receiptMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEvent);
+                }
+
+                Assert.That(disposed.Wait(TimeSpan.FromMilliseconds(500)), Is.False);
+                _jsonRpcDuplexClient.DidNotReceive().SendJsonRpcResult(Arg.Any<JsonRpcResult>());
+            }
+        }
+
         private void SetHead(ulong number)
         {
             BlockHeader head = Build.A.BlockHeader.WithNumber(number).TestObject;
