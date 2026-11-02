@@ -74,6 +74,14 @@ public class KeccakAbsorbTests
     }
 
     [Test]
+    public void Copy_takes_the_fused_path_only_where_its_last_load_ends_in_the_source(
+        [Range(1, 7)] int offset, [Values(136, 137, 142, 143, 200, 272, 279)] int length)
+    {
+        int lastLoadEnd = length / RateBytes * RateBytes + sizeof(ulong);
+        Assert.That(KeccakHash.CopyReadsOnlySource((nuint)offset, (nuint)length), Is.EqualTo(lastLoadEnd <= offset + length));
+    }
+
+    [Test]
     public void Partial_lane_zero_extends_only_its_bytes([Range(0, 7)] int partial)
     {
         byte[] lane = new byte[sizeof(ulong)];
