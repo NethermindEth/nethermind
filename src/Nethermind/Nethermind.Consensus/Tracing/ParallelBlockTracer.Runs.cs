@@ -292,6 +292,9 @@ public sealed partial class ParallelBlockTracer
                         return;
                     }
 
+                    // The workers already waiting for a place would otherwise hold their threads until the next write.
+                    if (index == transactions - 1) results.LastTaken(_workers - 1);
+
                     if (!TraceOne(index, seeds, stop))
                         throw new InvalidOperationException("The tracer bounded the first transaction and refused a later one.");
                 }

@@ -439,17 +439,21 @@ public partial class BlockProcessorTests
         }
     }
 
-    /// <summary>One place per worker and one worker per transaction after the first: once every transaction is taken,
-    /// the second one is held and the window is full. The workers that finish their transactions then find the cursor
-    /// spent and give their threads back, rather than wait for a place they would give straight back.</summary>
+    /// <summary>One place per worker, with the oldest transaction not yet written held: once the last transaction is
+    /// taken, the workers with nothing left to take give their threads back rather than wait for a place they would
+    /// give straight back.</summary>
+    /// <param name="waiting">False: one worker per transaction after the first, so every worker loops back after the
+    /// last one is taken. True: one worker fewer, the third and the last transactions held too, so the workers that
+    /// finished wait for a place when the write of the second frees one and the last transaction takes it.</param>
     [Test]
-    public async Task AccessListSeed_ParallelStream_WhenTheCursorIsSpentAndTheWindowIsFull_GivesTheWorkerThreadsBack()
+    public async Task AccessListSeed_ParallelStream_WhenTheLastTransactionIsTakenWithTheWindowFull_GivesTheWorkerThreadsBack([Values] bool waiting)
     {
         using BasicTestBlockchain chain = await CreateAccessListSeedChain();
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = Historical(await AddSharedStateBlock(chain));
         IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
-        int workers = block.Transactions.Length - 1;
+        int last = block.Transactions.Length - 1;
+        int workers = waiting ? last - 1 : last;
         int helperThreads = workers - 1;
         int otherThreads = 2 * workers - helperThreads;
         using ParallelTraceBudget budget = new(workers);
@@ -457,9 +461,15 @@ public partial class BlockProcessorTests
         GethTraceOptions options = new() { Tracer = "callTracer" };
         using CountdownEvent occupied = new(otherThreads);
         using CountdownEvent taken = new(workers);
+        using CountdownEvent finished = new(workers - 2);
         using ManualResetEventSlim releaseWorkers = new(false);
+        using ManualResetEventSlim releaseOldest = new(false);
         using ManualResetEventSlim release = new(false);
+        using ManualResetEventSlim lastTaken = new(false);
+        // Two helpers at most still hold a transaction; a race can free one more thread without the fix, never two.
+        using CountdownEvent probes = new(helperThreads - 2);
         Task[] blockers = new Task[otherThreads];
+        Task[] probing = new Task[probes.InitialCount];
 
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0));
         using Utf8JsonWriter writer = new(pipe.Writer, ResponseWriterOptions);
@@ -467,7 +477,7 @@ public partial class BlockProcessorTests
         IParallelTraceStream<GethLikeTxTrace> stream = GethLikeTraceStream.Rent(writer, pipe.Writer, CancellationToken.None);
 
         Task<bool> run = Task.FromResult(false);
-        bool threadGivenBack;
+        bool threadsGivenBack;
         bool traced;
         try
         {
@@ -478,27 +488,51 @@ public partial class BlockProcessorTests
             run = Task.Run(() => parallel.TryStream(block, parent, (state, txHash) =>
             {
                 int index = Array.FindIndex(block.Transactions, tx => tx.Hash == txHash);
-                if (index != 0)
+                IBlockTracer<GethLikeTxTrace> tracer = GethStyleTracer.CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, chain.SpecProvider);
+                if (index == 0) return tracer;
+
+                if (index > workers)
                 {
-                    // No worker loops back before the last transaction is taken, so each one takes exactly one.
-                    taken.Signal();
-                    if (index == 1) release.Wait();
-                    else taken.Wait(TimeSpan.FromSeconds(10));
+                    lastTaken.Set();
+                    release.Wait();
+                    return tracer;
                 }
 
-                return GethStyleTracer.CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, chain.SpecProvider);
+                // No worker loops back before every worker holds a transaction, so each one takes exactly one.
+                taken.Signal();
+                if (index == 1) releaseOldest.Wait();
+                else if (waiting && index == 2) release.Wait();
+                else taken.Wait(TimeSpan.FromSeconds(10));
+                return waiting && index > 2 ? new CompletionTracer<GethLikeTxTrace>(tracer, () => finished.Signal()) : tracer;
             }, afterTransactions: null, stream, CancellationToken.None));
 
-            Assert.That(taken.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: every transaction after the first is taken, one by each worker");
-            threadGivenBack = parallel.QueueWorker(static () => { }).Wait(TimeSpan.FromSeconds(10));
+            Assert.That(taken.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: one transaction is taken by each worker");
+            if (waiting)
+            {
+                Assert.That(finished.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: the transactions behind the held ones are traced");
+                // Their workers find the window full and wait in Reserve; the write of the first one frees one place.
+                Thread.Sleep(200);
+                releaseOldest.Set();
+                Assert.That(lastTaken.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: the place the write freed takes the last transaction");
+            }
+
+            for (int i = 0; i < probing.Length; i++)
+                probing[i] = parallel.QueueWorker(() => { probes.Signal(); probes.Wait(TimeSpan.FromSeconds(10)); });
+            threadsGivenBack = probes.Wait(TimeSpan.FromSeconds(10));
         }
         finally
         {
+            releaseOldest.Set();
             release.Set();
             releaseWorkers.Set();
             foreach (Task? blocker in blockers)
             {
                 if (blocker is not null) await blocker;
+            }
+
+            foreach (Task? probe in probing)
+            {
+                if (probe is not null) await probe;
             }
 
             // Awaited before the events the run waits on are disposed, whatever failed above.
@@ -510,9 +544,9 @@ public partial class BlockProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(threadGivenBack, Is.True, "a helper with nothing left to take gives its thread back while the oldest transaction is held");
-            Assert.That(traced, Is.True, "the block is traced in parallel once the held transaction is released");
-            Assert.That(JsonDocument.Parse(ReadAll(pipe)).RootElement.GetArrayLength(), Is.EqualTo(block.Transactions.Length), "every transaction is written once the held one is");
+            Assert.That(threadsGivenBack, Is.True, "every helper with nothing left to take gives its thread back while the oldest transaction is held");
+            Assert.That(traced, Is.True, "the block is traced in parallel once the held transactions are released");
+            Assert.That(JsonDocument.Parse(ReadAll(pipe)).RootElement.GetArrayLength(), Is.EqualTo(block.Transactions.Length), "every transaction is written once the held ones are");
         }
     }
 

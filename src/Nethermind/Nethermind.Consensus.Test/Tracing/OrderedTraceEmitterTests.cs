@@ -15,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.IO;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Tracing;
@@ -491,33 +492,24 @@ public class OrderedTraceEmitterTests
         serialized.Seal();
         byte[] element = serialized.Written.ToArray();
 
-        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0));
-        FlushRecordingPipeWriter recording = new(pipe.Writer);
+        FlushRecordingPipeWriter recording = new(keepOutput: true);
         using (Utf8JsonWriter writer = new(recording, new JsonWriterOptions { SkipValidation = true }))
         {
             writer.WriteStartArray();
-            writer.Flush();
-            recording.Restart();
-
             TraceStreamOutput output = new(writer, recording, CancellationToken.None, flushThresholdBytes);
             output.WriteSerialized(serialized.Written);
             pool.Return(serialized);
             writer.WriteEndArray();
         }
 
-        pipe.Writer.Complete();
-        Assert.That(pipe.Reader.TryRead(out ReadResult read), Is.True);
-        byte[] written = read.Buffer.ToArray();
-        pipe.Reader.AdvanceTo(read.Buffer.End);
         byte[] expected = [.. "["u8, .. element, .. "]"u8];
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(element.Length, Is.GreaterThan(TraceStreamOutput.InElementFlushBytes + SerializedTraces.ChunkSize), "precondition: the element is longer than a flush inside it");
-            Assert.That(recording.FirstFlushAt, Is.LessThan(element.Length), "the pipe is flushed before the element ends");
-            Assert.That(recording.MostUnflushed, Is.InRange(TraceStreamOutput.InElementFlushBytes, TraceStreamOutput.InElementFlushBytes + SerializedTraces.ChunkSize),
-                "the element is flushed once per flush inside an element, neither per chunk nor much later");
-            Assert.That(written, Is.EqualTo(expected), "the element reaches the pipe whole and in order");
+            Assert.That(recording.MaxUnflushedBytes, Is.InRange(TraceStreamOutput.InElementFlushBytes, TraceStreamOutput.InElementFlushBytes + SerializedTraces.ChunkSize),
+                "the element is flushed once per flush inside an element, neither per chunk nor only at its end");
+            Assert.That(recording.WrittenSpan.ToArray(), Is.EqualTo(expected), "the element reaches the writer whole and in order");
         }
     }
 
@@ -546,6 +538,44 @@ public class OrderedTraceEmitterTests
             Assert.That(pending, Is.EqualTo(SerializedTraces.ChunkSize), "precondition: the chunk held by the transaction waiting behind the first one");
             Assert.That(emitter.PendingBytes, Is.Zero, "writing gives the bytes back");
             Assert.That(stream.Json(), Is.EqualTo("[0,11,12]"));
+        }
+    }
+
+    /// <summary>Workers wait for a place, for the window or for the byte budget, while the oldest transaction is
+    /// held: once the last transaction is taken they are all let go, rather than kept until the next write, and the
+    /// next block waits for its places again.</summary>
+    [Test]
+    public void Emitter_WhenTheLastTransactionIsTaken_LetsTheWorkersWaitingForAPlaceGo([Values] bool budgetSpent)
+    {
+        RecordingStream stream = new(serializeAhead: true);
+        SerializedTraces.Pool pool = new(8, 1);
+        using SerializingTraceEmitter<int> emitter = new();
+        StartWithTheOldestHeld();
+
+        Task[] waiters = [Task.Run(() => emitter.Reserve(CancellationToken.None)), Task.Run(() => emitter.Reserve(CancellationToken.None))];
+        bool waited = Task.WaitAny(waiters, TimeSpan.FromMilliseconds(200)) == -1;
+        emitter.LastTaken(waiters: waiters.Length);
+        bool letGo = Task.WaitAll(waiters, Timeout);
+        string written = stream.Json();
+
+        emitter.DisposeUnpublished();
+        emitter.Clear();
+        StartWithTheOldestHeld();
+        using CancellationTokenSource blocked = new(TimeSpan.FromMilliseconds(200));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waited, Is.True, budgetSpent ? "precondition: the byte budget is spent" : "precondition: the window is full");
+            Assert.That(letGo, Is.True, "every worker waiting for a place is let go once the last transaction is taken");
+            Assert.That(written, Is.EqualTo("[]"), "nothing is written while the oldest transaction is held");
+            Assert.That(() => emitter.Reserve(blocked.Token), Throws.InstanceOf<OperationCanceledException>(), "the next block waits for a place again");
+        }
+
+        void StartWithTheOldestHeld()
+        {
+            emitter.Start(stream, stream.SerializeAheadOptions!.Value, pool, transactions: 3, window: budgetSpent ? 8 : 2, budgetBytes: budgetSpent ? 1 : long.MaxValue);
+            Reserve(emitter, 2);
+            emitter.Add(1, new Traces(11));
         }
     }
 
@@ -647,50 +677,6 @@ public class OrderedTraceEmitterTests
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 0) OnDispose?.Invoke();
         }
-    }
-
-    /// <summary>Passes everything to a pipe and records how many bytes each flush finds unflushed.</summary>
-    private sealed class FlushRecordingPipeWriter(PipeWriter inner) : PipeWriter
-    {
-        private long _advanced;
-        private long _flushedAt;
-
-        /// <summary>The bytes advanced past when the first flush came, or -1 before it.</summary>
-        public long FirstFlushAt { get; private set; } = -1;
-
-        /// <summary>The most bytes any one flush found unflushed.</summary>
-        public long MostUnflushed { get; private set; }
-
-        /// <summary>Counts from here, as if everything written before had been flushed.</summary>
-        public void Restart()
-        {
-            _advanced = 0;
-            _flushedAt = 0;
-            FirstFlushAt = -1;
-            MostUnflushed = 0;
-        }
-
-        public override void Advance(int bytes)
-        {
-            _advanced += bytes;
-            inner.Advance(bytes);
-        }
-
-        public override Memory<byte> GetMemory(int sizeHint = 0) => inner.GetMemory(sizeHint);
-
-        public override Span<byte> GetSpan(int sizeHint = 0) => inner.GetSpan(sizeHint);
-
-        public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
-        {
-            if (FirstFlushAt < 0) FirstFlushAt = _advanced;
-            MostUnflushed = Math.Max(MostUnflushed, _advanced - _flushedAt);
-            _flushedAt = _advanced;
-            return inner.FlushAsync(cancellationToken);
-        }
-
-        public override void CancelPendingFlush() => inner.CancelPendingFlush();
-
-        public override void Complete(Exception exception = null) => inner.Complete(exception);
     }
 
     /// <summary>Writes each trace as a number into one JSON array, and counts any two writes that overlap.</summary>
