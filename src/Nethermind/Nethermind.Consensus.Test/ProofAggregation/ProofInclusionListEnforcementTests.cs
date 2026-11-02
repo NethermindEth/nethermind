@@ -3,6 +3,7 @@
 
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Linq;
 using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -42,9 +43,13 @@ public class ProofInclusionListEnforcementTests
     [TestCase("unfunded", true)]
     [TestCase("withdrawal-funded", true)]
     [TestCase("execution-gas-full", true)]
-    // EIPs#12475: obligations follow from the signed commitment alone. A null commitment obligates no dependency-bearing
-    // entry; a committed list obligates it even when its proof does not verify.
-    [TestCase("null-commitment", true)]
+    // EIPs#12475: obligations follow from each list's resolved proof alone. A list without a verified proof obligates no
+    // dependency-bearing entry; a covering verified one obligates it, and the inclusion check assumes its dependencies are
+    // satisfied without verifying any proof again.
+    [TestCase("empty-proof", true)]
+    // A block cached or inserted before its newPayload request resolved the lists is resolved when processed, so a valid
+    // proof still obligates the entries it covers.
+    [TestCase("unresolved-proof", false)]
     [TestCase("bad-proof", false)]
     [TestCase("full-bad-proof", true)]
     [TestCase("mixed-omit-frame", false)]
@@ -78,7 +83,7 @@ public class ProofInclusionListEnforcementTests
         };
         state.InsertCode(sender, code, spec);
         state.SubtractFromBalance(sender, state.GetBalance(sender), spec, out _);
-        if (scenario != "unfunded") state.AddToBalance(sender, 1.Ether, spec, out _);
+        if (scenario is not ("unfunded" or "withdrawal-funded")) state.AddToBalance(sender, 1.Ether, spec, out _);
         if (mixed) state.AddToBalance(TestItem.PrivateKeyB.Address, 1.Ether, spec, out _);
         state.Commit(spec);
 
@@ -191,12 +196,13 @@ public class ProofInclusionListEnforcementTests
         List<FrameDependency> inclusionDependencies = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
         byte[] inclusionProof = scenario is "bounded-proof" or "generic-compressed-union"
             ? LeanProofTestEnvelope.CreateMaximal(inclusionDependencies) : LeanProofTestEnvelope.Create(inclusionDependencies, 0);
-        block.InclusionLists = [new CommitteeInclusionList(0, block.InclusionListTransactions!, scenario == "null-commitment" ? null
-            : new InclusionListCommitment(ValueKeccak.Compute(generic ? inclusionProof : [1]), Eip8288Dependencies.ComputeDepsHash(inclusionDependencies)))
-        {
-            // As newPayload resolves it for a node holding the committed proof.
-            HoldsValidProof = scenario != "null-commitment"
-        }];
+        CommitteeInclusionList list = scenario == "empty-proof"
+            ? new CommitteeInclusionList(block.InclusionListTransactions!)
+            : new CommitteeInclusionList(block.InclusionListTransactions!, generic ? inclusionProof : [1],
+                [.. inclusionDependencies.Select(static dependency => Eip8288Dependencies.Serialize([dependency]))]);
+        // As newPayload resolves a list whose proof verifies.
+        if (scenario is not ("empty-proof" or "unresolved-proof")) list.VerifiedProofDeps = new HashSet<FrameDependency>(inclusionDependencies);
+        block.InclusionLists = [list];
         (ulong, ulong)? originalDimensions = block.Header.GasUsedPerDimension;
         ulong originalGasUsed = block.GasUsed;
         UInt256 balance = state.GetBalance(sender);

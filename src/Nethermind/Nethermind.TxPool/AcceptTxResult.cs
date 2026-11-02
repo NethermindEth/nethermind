@@ -152,7 +152,7 @@ namespace Nethermind.TxPool
 
         /// <summary>
         /// An EIP-8141 frame transaction whose validation prefix plus signature verification would cost a node more
-        /// than <c>MAX_VERIFY_GAS</c> to check. It stays consensus-valid; only public mempool propagation is refused.
+        /// than the node verification budget to check. It stays consensus-valid; only public mempool propagation is refused.
         /// </summary>
         public static readonly AcceptTxResult FrameTxVerifyGasTooHigh = new(TxPoolErrorMessages.FrameTxVerifyGasTooHigh);
 
@@ -161,9 +161,6 @@ namespace Nethermind.TxPool
 
         /// <summary>An EIP-8250 transaction whose selected nonce keys are not all at its <c>nonce_seq</c>: an exact match, so neither old nor future.</summary>
         public static readonly AcceptTxResult KeyedNonceUnmet = new(TxPoolErrorMessages.KeyedNonceUnmet);
-
-        /// <summary>A frame transaction whose recent-root reference is not committed or usable at the next slot.</summary>
-        public static readonly AcceptTxResult FrameTxRecentRootUnmet = new(TxPoolErrorMessages.FrameTxRecentRootUnmet);
 
         /// <summary>An EIP-8141 frame transaction whose resolved payer's summed pending maximum cost would exceed the payer's balance.</summary>
         public static readonly AcceptTxResult FrameTxPayerExposureExceeded = new(TxPoolErrorMessages.FrameTxPayerExposureExceeded);

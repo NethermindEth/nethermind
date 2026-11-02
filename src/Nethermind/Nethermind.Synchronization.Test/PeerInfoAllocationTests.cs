@@ -63,23 +63,25 @@ namespace Nethermind.Synchronization.Test
             return peerInfo.CanBeAllocated(AllocationContexts.BlockAccessLists);
         }
 
-        [Test]
-        public void Blocks_request_allocation_filters_current_peer_that_cannot_serve_block_access_lists()
+        [TestCase(EthVersions.Eth70, 256UL)]
+        // A peer behind the highest requested block cannot have every list.
+        [TestCase(EthVersions.Eth71, 199UL)]
+        public void Blocks_request_allocation_filters_current_peer_that_cannot_serve_block_access_lists(byte currentProtocolVersion, ulong currentHeadNumber)
         {
             using BlocksRequest request = new();
             request.BlockAccessListsRequests.Dispose();
-            request.BlockAccessListsRequests = BuildHeaders(1, 1);
+            request.BlockAccessListsRequests = BuildHeaders(100, 200);
 
-            PeerInfo currentPreEth71Peer = SetupPeerInfo("Nethermind/current-eth70", 128, EthVersions.Eth70, 30303);
+            PeerInfo currentPeer = SetupPeerInfo("Nethermind/current", currentHeadNumber, currentProtocolVersion, 30303);
             PeerInfo highPreEth71Peer = SetupPeerInfo("Nethermind/high-eth70", 256, EthVersions.Eth70, 30304);
-            PeerInfo highEth71Peer = SetupPeerInfo("Nethermind/high-eth71", 256, EthVersions.Eth71, 30305);
+            PeerInfo highEth71Peer = SetupPeerInfo("Nethermind/high-eth71", 200, EthVersions.Eth71, 30305);
             INodeStatsManager nodeStatsManager = SetupNodeStatsManager();
 
             PeerInfo? allocated = new BlocksSyncPeerAllocationStrategyFactory()
                 .Create(request)
                 .Allocate(
-                    currentPreEth71Peer,
-                    [currentPreEth71Peer, highPreEth71Peer, highEth71Peer],
+                    currentPeer,
+                    [currentPeer, highPreEth71Peer, highEth71Peer],
                     nodeStatsManager,
                     Substitute.For<IBlockTree>());
 

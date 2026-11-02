@@ -57,6 +57,9 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The logs format as `LogPath:LogLevel;*`", DefaultValue = "null")]
     string? LogRules { get; set; }
 
+    [ConfigItem(Description = "Whether to mask IP addresses, enode URLs and ENR records in logs. Loopback and unspecified addresses are not masked.", DefaultValue = "false")]
+    bool MaskIpsInLogs { get; set; }
+
     [ConfigItem(Description = "The diagnostic mode.", DefaultValue = "None")]
     DiagnosticMode DiagnosticMode { get; set; }
 
@@ -87,7 +90,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
     ulong? ExitOnBlockNumber { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Exit when invalid block is triggered. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
+    [ConfigItem(Description = "[TECHNICAL] Exit when invalid block is triggered. Useful for scripting and testing.", DefaultValue = "false", HiddenFromDocs = true)]
     bool ExitOnInvalidBlock { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "2", HiddenFromDocs = true)]

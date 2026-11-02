@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -24,6 +25,7 @@ using Nethermind.History;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 
 namespace Nethermind.Facade.Test;
 
@@ -206,6 +208,25 @@ public class LogIndexBuilderTests
         builder.AddTo(_testDisposables);
 
         Assert.That(builder.StallTicksBeforeGivingUp, Is.EqualTo(expectedTicks));
+    }
+
+    [Test]
+    public void Rejects_parallelism_below_one_only_when_enabled(
+        [Values(1, 0, -1)] int parallelism,
+        [Values(nameof(ILogIndexConfig.MaxReceiptsParallelism), nameof(ILogIndexConfig.MaxAggregationParallelism))] string setting,
+        [Values] bool enabled)
+    {
+        _config.Enabled = enabled;
+        if (setting == nameof(ILogIndexConfig.MaxReceiptsParallelism))
+            _config.MaxReceiptsParallelism = parallelism;
+        else
+            _config.MaxAggregationParallelism = parallelism;
+
+        IResolveConstraint expected = enabled && parallelism < 1
+            ? Throws.TypeOf<InvalidConfigurationException>().With.Message.Contain($"LogIndex.{setting}")
+            : Throws.Nothing;
+
+        Assert.That(() => GetService(Substitute.For<ILogIndexStorage>()), expected);
     }
 
     private static ISyncPointers DownloadedToTheBarrier()

@@ -502,15 +502,6 @@ public static class FrameTxValidation
         return next;
     }
 
-    /// <summary>The number of optional leading protocol verifier frames, an <c>expiry_verify</c> frame and then an
-    /// EIP-8272 <c>recent_root_verify</c> frame, which EIP-8141 prefix-shape matching skips.</summary>
-    public static int ProtocolVerifierFrameCount(TxFrame[] frames)
-    {
-        int next = RecentRootVerifyFrameIndex(frames);
-        if (next < frames.Length && IsRecentRootVerifyFrame(frames[next])) next++;
-        return next;
-    }
-
     /// <summary>The only index the public mempool admits a <c>recent_root_verify</c> frame at: directly behind the
     /// optional leading <c>expiry_verify</c> frame.</summary>
     private static int RecentRootVerifyFrameIndex(TxFrame[] frames) =>

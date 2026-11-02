@@ -352,9 +352,9 @@ public class GuestOpcodeHandlerTests
         // Operands below 2^64, powers of two on either side, a zero divisor, and wider ones the shared handlers take.
         (BigInteger Top, BigInteger Second)[] factors =
         [
-            (ulong.MaxValue, ulong.MaxValue), (ulong.MaxValue, 7), (7, ulong.MaxValue), (0, wordA), (wordA, 0), (wordA, 1), (1, wordA),
+            (ulong.MaxValue, ulong.MaxValue), (ulong.MaxValue, 7), (7, ulong.MaxValue), (7, 0), (0, wordA), (wordA, 0), (wordA, 1), (1, wordA),
             (BigInteger.One << 200, wordA), (wordA, BigInteger.One << 64), (wordA, BigInteger.One << 224), (wordA, BigInteger.One << 255),
-            (wordA, wordB), (wordB, (BigInteger.One << 64) + 1),
+            (wordA, wordB), (wordB, wordA), (wordA, wordA), (wordB, (BigInteger.One << 64) + 1),
         ];
         foreach ((BigInteger top, BigInteger second) in factors)
         {

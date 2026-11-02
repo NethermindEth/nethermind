@@ -17,6 +17,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
     private readonly WriteBufferAdjuster _adjuster = new(db);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.FlatInTrie);
     private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.StorageNodes), logManager.GetClassLogger<FlatInTriePersistence>());
+    private readonly PrefetchSampling _prefetchSampling = new();
 
     public void Flush()
     {
@@ -54,7 +55,8 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
                         (ISortedKeyValueStore)view.Snapshot.GetColumn(FlatDbColumns.StorageNodes),
                         isPreimageMode: false,
                         rlpWrapSlots: _rlpWrapSlots
-                    )
+                    ),
+                    sampling: _prefetchSampling
                 ),
                 trieReader,
                 currentState,

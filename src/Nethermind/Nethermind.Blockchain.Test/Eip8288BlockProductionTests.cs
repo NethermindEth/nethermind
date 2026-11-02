@@ -123,6 +123,28 @@ public class Eip8288BlockProductionTests
         Assert.That(args.Reason == "Too large for CL", Is.EqualTo(dependencyBearing));
     }
 
+    // A prover that refuses the statement leaves the body to what is already proven, as a production deadline does.
+    [Test]
+    public async Task Production_without_a_deadline_degrades_when_the_prover_is_busy()
+    {
+        CountingVerifier verifier = new() { OnProof = static () => throw new LeanProverBusyException() };
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("busy-prover"), default);
+        proofs.AddVerified([dependency], [[1]], null);
+        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, dependency, [UInt256.One]), TxHandlingOptions.PersistentBroadcast),
+            Is.EqualTo(AcceptTxResult.Accepted));
+
+        Block? block = await chain.BlockProducer.BuildBlock();
+
+        Assert.That(block, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block!.Transactions, Is.Empty);
+            Assert.That(verifier.ProofCalls, Is.Positive, "the prover was asked and refused");
+        }
+    }
+
     [Test]
     public async Task Background_aggregate_is_reused_by_fresh_production_scopes([Values] bool mixed)
     {
@@ -137,7 +159,7 @@ public class Eip8288BlockProductionTests
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [.. new[] { first, second }.OrderBy(static tx => tx.Hash!.ToString()).Select(static tx => new WrapperTransaction(tx))],
+            Transactions = [.. new[] { first, second }.OrderBy(static tx => tx.Hash!.ToString()).Select(static tx => tx)],
             Deps = Eip8288Dependencies.Canonicalize([firstDependency, secondDependency]),
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [[1], [1]]
@@ -235,6 +257,74 @@ public class Eip8288BlockProductionTests
             release.Set();
             await initial.WaitAsync(TimeSpan.FromSeconds(5));
         }
+    }
+
+    [Test]
+    public async Task Scheduled_statement_finishes_after_a_later_slot_starts()
+    {
+        // Five witnesses fold over several native calls; a statement longer than a slot must still finish and be stored.
+        List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(Enumerable.Range(0, 5)
+            .Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"slow-{i}"), default)));
+        AggregationInput input = new() { Deps = deps, Witnesses = [.. deps.Select(_ => (ReadOnlyMemory<byte>)new byte[] { 1 })] };
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        CountingVerifier verifier = new() { OnProof = () => { entered.Set(); release.Wait(); } };
+        ProductionProofCache cache = new(verifier);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Assert.That(cache.ObserveProduction(100, 10), Is.True);
+        cache.Schedule(deps, Eip8288Dependencies.ComputeDepsHash(deps), input, Eip8288Verifier.Pinned, store);
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(cache.ObserveProduction(112, 11), Is.True);
+        }
+        finally { release.Set(); }
+        for (int i = 0; i < 100 && cache.IsScheduled; i++) await Task.Delay(50);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.IsScheduled, Is.False);
+            Assert.That(verifier.ProofCalls, Is.GreaterThan(1));
+            Assert.That(store.TryGetRecursiveProof(deps, out _), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Newer_statements_wait_for_the_running_one_and_only_the_newest_runs_next()
+    {
+        List<FrameDependency> first = Statement("running", 5);
+        List<FrameDependency> second = Statement("replaced", 1);
+        List<FrameDependency> third = Statement("newest", 1);
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        CountingVerifier verifier = new() { OnProof = () => { entered.Set(); release.Wait(); } };
+        ProductionProofCache cache = new(verifier);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Schedule(first);
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.IsScheduledWithin(new HashSet<FrameDependency>([.. first, .. second])), Is.True, "a body extending it keeps it");
+                Assert.That(cache.IsScheduledWithin(new HashSet<FrameDependency>([.. first.Skip(1), .. second])), Is.False);
+            }
+            Schedule(second);
+            Schedule(third);
+        }
+        finally { release.Set(); }
+        Assert.That(() => store.TryGetRecursiveProof(third, out _), Is.True.After(5000, 20));
+        for (int i = 0; i < 100 && cache.IsScheduled; i++) await Task.Delay(50);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetRecursiveProof(first, out _), Is.True, "the running statement is never cancelled");
+            Assert.That(store.TryGetRecursiveProof(second, out _), Is.False, "a pending statement is replaced by a newer one");
+        }
+
+        void Schedule(List<FrameDependency> deps) => cache.Schedule(deps, Eip8288Dependencies.ComputeDepsHash(deps),
+            new AggregationInput { Deps = deps, Witnesses = [.. deps.Select(_ => (ReadOnlyMemory<byte>)new byte[] { 1 })] }, Eip8288Verifier.Pinned, store);
+
+        static List<FrameDependency> Statement(string name, int count) => Eip8288Dependencies.Canonicalize(Enumerable.Range(0, count)
+            .Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"{name}-{i}"), default)));
     }
 
     [Test]
@@ -640,7 +730,7 @@ public class Eip8288BlockProductionTests
         Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [new(transaction)],
+            Transactions = [transaction],
             Deps = [dependency],
             Mode = MempoolWrapper.ModeRecursive,
             RecursiveStark = new RecursiveStark(hash.ToByteArray(), new Hash256(hash))
@@ -720,6 +810,65 @@ public class Eip8288BlockProductionTests
             Assert.That(verifier.LastInput!.Deps, Is.EquivalentTo(next));
             Assert.That(verifier.LastInput.RecursiveProofs, Is.Empty);
         }
+    }
+
+    [Test]
+    public async Task Scheduled_production_proof_is_bounded_to_a_prefix_of_a_large_backlog()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency[] backlog = [.. Enumerable.Range(0, 12).Select(i =>
+            new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"backlog-{i}"), default))];
+        for (int i = 0; i < backlog.Length; i++)
+        {
+            proofs.AddVerified([backlog[i]], [[1]], null);
+            Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, backlog[i], [(UInt256)(i + 1)]), TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        using CancellationTokenSource deadline = new();
+        await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Twelve witnesses need three leaves and two merges; the budget allows two leaves and one merge.
+        HashSet<FrameDependency> all = [.. backlog];
+        Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Length == 8), Is.True.After(5000, 20));
+        Assert.That(proofs.ProvenSubsets(all).Any(subset => subset.Length > 8), Is.False);
+    }
+
+    [Test]
+    public async Task Scheduled_production_proof_passes_over_a_transaction_that_alone_exceeds_the_bound()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency[] wide = [.. Enumerable.Range(0, 9).Select(i =>
+            new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"wide-{i}"), default))];
+        foreach (FrameDependency dependency in wide) proofs.AddVerified([dependency], [[1]], null);
+        Transaction oversized = CreateTransaction(chain, wide[0], [(UInt256)100], transaction =>
+        {
+            transaction.Frames![1] = new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)wide.Length * Eip8288Constants.LeanSphincsVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize(wide));
+            transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
+            // A higher priority fee puts it first in the body, so the bounded run starts with it.
+            transaction.GasPrice = 2.GWei;
+        });
+        Assert.That(chain.TxPool.SubmitTx(oversized, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        FrameDependency[] backlog = [.. Enumerable.Range(0, 12).Select(i =>
+            new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"narrow-{i}"), default))];
+        for (int i = 0; i < backlog.Length; i++)
+        {
+            proofs.AddVerified([backlog[i]], [[1]], null);
+            Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, backlog[i], [(UInt256)(i + 1)]), TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        using CancellationTokenSource deadline = new();
+        await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+
+        HashSet<FrameDependency> all = [.. backlog, .. wide];
+        Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Length == 8), Is.True.After(5000, 20));
+        Assert.That(proofs.ProvenSubsets(all).Any(subset => subset.Intersect(wide).Any()), Is.False);
     }
 
     [TestCase(1, false)]
@@ -915,7 +1064,7 @@ public class Eip8288BlockProductionTests
         Assert.That(processed.StarkProof, Is.Empty);
     }
 
-    // EIP-8288 Test Case 11: an inclusion-list proof may cover a superset of its list (a committed mempool wrapper proof); it is
+    // EIP-8288 Test Case 11: an inclusion-list proof may cover a superset of its list (a reused mempool wrapper proof); it is
     // merged into the block proof with the surplus discarded, and block_deps_hash covers exactly dependencies(block).
     [Test]
     public async Task Owned_inclusion_list_witnesses_produce_when_the_shared_store_is_full([Values] bool superset)
@@ -969,10 +1118,10 @@ public class Eip8288BlockProductionTests
         }
     }
 
-    // A held inclusion-list proof is a reusable statement under a deadline, and a rebuild keeps the obligated list
+    // A verified inclusion-list proof is a reusable statement under a deadline, and a rebuild keeps the obligated list
     // transactions ahead of a larger proven set that would omit them.
     [Test]
-    public async Task Deadline_production_keeps_inclusion_list_transactions_covered_by_a_held_list_proof()
+    public async Task Deadline_production_keeps_inclusion_list_transactions_covered_by_a_verified_list_proof()
     {
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(new CountingVerifier(), proofs);
@@ -1002,7 +1151,7 @@ public class Eip8288BlockProductionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(notReady!.Proven, Is.EquivalentTo(new[] { listedDependency }), "the list's statement wins over the larger unlisted one");
-            Assert.That(proofs.TryGetRecursiveProof([listedDependency], out _), Is.True, "the rebuild reuses the held list proof");
+            Assert.That(proofs.TryGetRecursiveProof([listedDependency], out _), Is.True, "the rebuild reuses the verified list proof");
         }
     }
 
@@ -1032,6 +1181,43 @@ public class Eip8288BlockProductionTests
         Assert.That(result.IsSuccess, Is.False);
     }
 
+    // EIP-8437: a blob-carrying dependency-bearing transaction that reached the blob pool with its blob data is produced like a
+    // type-3 blob transaction: it is included, its blob gas is charged, and its dependency is proven in the block.
+    [Test]
+    public async Task Blob_carrying_dependency_bearing_transaction_is_included_in_a_block()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        ((TestBlockProducer)chain.BlockProducer).PrepareBlobFields = true;
+        await KzgPolynomialCommitments.InitializeAsync();
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
+        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero], static tx =>
+        {
+            IBlobProofsManager proofsManager = IBlobProofsManager.For(ProofVersion.V1);
+            ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper([new byte[CkzgLib.Ckzg.BytesPerBlob]]);
+            proofsManager.ComputeProofsAndCommitments(wrapper);
+            tx.NetworkWrapper = wrapper;
+            tx.BlobVersionedHashes = proofsManager.ComputeHashes(wrapper);
+            tx.MaxFeePerBlobGas = 1.GWei;
+        });
+        Assert.That(transaction.CarriesBlobs, Is.True);
+        ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
+
+        Result<Hash256[]> admitted = await AcceptWrapper(service, EncodeWrapper(dependency, transaction), transaction);
+        Assert.That(admitted.IsSuccess, Is.True, admitted.Error);
+        Assert.That(chain.TxPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+        Block block = await ProduceAndImport(chain, slot: 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions.Select(static tx => tx.Hash), Is.EqualTo(new[] { transaction.Hash }));
+            Assert.That(block.Header.BlobGasUsed, Is.EqualTo(Eip4844Constants.GasPerBlob));
+            Assert.That(block.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash(
+                Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)))));
+        }
+    }
+
     private static Task<BasicTestBlockchain> CreateChain(CountingVerifier verifier, LeanProofStore proofs, Action<ContainerBuilder>? configure = null) =>
         BasicTestBlockchain.Create(builder =>
         {
@@ -1050,7 +1236,11 @@ public class Eip8288BlockProductionTests
         });
 
     private static Transaction CreateTransaction(BasicTestBlockchain chain, FrameDependency dependency, UInt256[] keys,
-        ulong nonce = 0, PrivateKey? key = null, params TxFrame[] execution)
+        ulong nonce = 0, PrivateKey? key = null, params TxFrame[] execution) =>
+        CreateTransaction(chain, dependency, keys, null, nonce, key, execution);
+
+    private static Transaction CreateTransaction(BasicTestBlockchain chain, FrameDependency dependency, UInt256[] keys,
+        Action<Transaction>? beforeSigning, ulong nonce = 0, PrivateKey? key = null, params TxFrame[] execution)
     {
         ulong stateGas = keys.Length == 1 && keys[0].IsZero ? 0 : (ulong)keys.Length * GasCostOf.SSetState;
         TxFrame[] frames =
@@ -1074,13 +1264,14 @@ public class Eip8288BlockProductionTests
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 100.GWei
         };
+        beforeSigning?.Invoke(transaction);
         FrameTxTestFrames.SignSecp256k1(transaction, key ?? TestItem.PrivateKeyB, (key ?? TestItem.PrivateKeyB).Address);
         transaction.Hash = transaction.CalculateHash();
         return transaction;
     }
 
     private static async Task<Result<Hash256[]>> AcceptWrapper(ProofWrapperService service, byte[] wrapper, params Transaction[] transactions)
-        => (await service.AcceptDetailedAsync(wrapper, transactions.ToDictionary(static tx => tx.Hash!.ValueHash256))).Result;
+        => (await service.AcceptDetailedAsync(wrapper)).Result;
     private static Transaction CreatePlainTransaction(BasicTestBlockchain chain) =>
         Build.A.Transaction.WithType(TxType.EIP1559).WithChainId(chain.SpecProvider.ChainId).WithNonce(0)
             .WithTo(TestItem.AddressA).WithValue(1).WithGasLimit(100_000).WithMaxFeePerGas(100.GWei).WithMaxPriorityFeePerGas(1.GWei)
@@ -1088,7 +1279,7 @@ public class Eip8288BlockProductionTests
 
     private static byte[] EncodeWrapper(FrameDependency dependency, params Transaction[] transactions) => MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
     {
-        Transactions = [.. transactions.OrderBy(static tx => tx.Hash!.ToString()).Select(static tx => new WrapperTransaction(tx))],
+        Transactions = [.. transactions.OrderBy(static tx => tx.Hash!.ToString()).Select(static tx => tx)],
         Deps = [dependency],
         Mode = MempoolWrapper.ModeDirect,
         Proofs = [[1]]

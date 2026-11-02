@@ -139,7 +139,7 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Disable feeding ENR DNS records to discv4 table")]
     bool DisableDiscV4DnsFeeder { get; set; }
 
-    [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Shutdown timeout when closing TCP port.")]
+    [ConfigItem(DefaultValue = "1000", HiddenFromDocs = true, Description = "[TECHNICAL] Shutdown timeout when closing TCP port.")]
     long RlpxHostShutdownCloseTimeoutMs { get; set; }
 
     [ConfigItem(DefaultValue = ProductInfo.DefaultPublicClientIdFormat, Description = "A template string for the public client id provided to external clients. Allowed placeholders: `{name}` `{version}` `{versionPostfix}` `{os}` `{runtime}`.")]
@@ -159,7 +159,4 @@ public interface INetworkConfig : IConfig
 
     [ConfigItem(DefaultValue = "true", Description = "When filtering discovery nodes by recent IP, bucket discovery node IPs by subnet (e.g., IPv4 /24, IPv6 /64) so multiple discovery node IPs in the same subnet share a single entry. If false, use exact IP addresses only.")]
     bool FilterDiscoveryNodesBySameSubnet { get; set; }
-
-    [ConfigItem(DefaultValue = "64", Description = "EIP-8437 fork grace window, in blocks: from when the local target fork switches to a fork that changes the EIP-8288 verifier until the head is this many blocks past it, a peer's proof failure is a local refusal rather than invalid peer data.")]
-    long ProofWrapperForkGraceBlocks { get; set; }
 }

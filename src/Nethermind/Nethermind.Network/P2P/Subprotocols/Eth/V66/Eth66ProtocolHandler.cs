@@ -39,7 +39,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private readonly MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> _headersRequests66;
         private readonly MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests66;
         private readonly MessageDictionary<GetNodeDataMessage, IByteArrayList> _nodeDataRequests66;
-        private readonly MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)> _receiptsRequests66;
+        private protected readonly MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)> _receiptsRequests66;
+
+        private static readonly Func<BlockHeadersMessage, int, IOwnedReadOnlyList<BlockHeader>> SelectBlockHeaders =
+            static (message, _) => message.EthMessage.BlockHeaders;
+        private static readonly Func<BlockBodiesMessage, int, (OwnedBlockBodies, long)> SelectBlockBodies =
+            static (message, size) => (message.EthMessage.Bodies, size);
+        private static readonly Func<ReceiptsMessage, int, (IOwnedReadOnlyList<TxReceipt[]>, long)> SelectReceipts =
+            static (message, size) => (message.EthMessage.TxReceipts, size);
+        private static readonly Action<IByteBuffer, GetReceiptsMessage> ValidateReceipts =
+            static (content, request) => ThrowIfReceiptsExceedRequest(content, 1, request.EthMessage);
+        private static readonly Func<NodeDataMessage, int, IByteArrayList> SelectNodeData =
+            static (message, _) => message.EthMessage.Data;
 
         public Eth66ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -74,19 +85,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleInBackground<Eth66ProtocolHandler, GetBlockHeadersMessage, BlockHeadersMessage, GetBlockHeadersHandler>(message);
                     return true;
                 case Eth66MessageCode.BlockHeaders:
-                    _headersRequests66.ThrowIfNotRequested(message.Content);
-                    BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
-                    ReportIn(headersMsg, size);
-                    Handle(headersMsg, size);
+                    HandleCorrelatedResponse(_headersRequests66, message.Content, size, SelectBlockHeaders);
                     return true;
                 case Eth66MessageCode.GetBlockBodies:
                     HandleInBackground<Eth66ProtocolHandler, GetBlockBodiesMessage, BlockBodiesMessage, GetBlockBodiesHandler>(message);
                     return true;
                 case Eth66MessageCode.BlockBodies:
-                    _bodiesRequests66.ThrowIfNotRequested(message.Content);
-                    BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
-                    ReportIn(bodiesMsg, size);
-                    HandleBodies(bodiesMsg, size);
+                    HandleCorrelatedResponse(_bodiesRequests66, message.Content, size, SelectBlockBodies);
                     return true;
                 case Eth66MessageCode.GetPooledTransactions:
                     HandleInBackground<Eth66ProtocolHandler, GetPooledTransactionsMessage, PooledTransactionsMessage, GetPooledTransactionsHandler>(message);
@@ -118,19 +123,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleInBackground<Eth66ProtocolHandler, GetReceiptsMessage, ReceiptsMessage, GetReceiptsHandler>(message);
                     return true;
                 case Eth66MessageCode.Receipts:
-                    ThrowIfReceiptsUnexpected(message.Content);
-                    ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
-                    ReportIn(receiptsMessage, size);
-                    Handle(receiptsMessage, size);
+                    HandleCorrelatedResponse(_receiptsRequests66, message.Content, size, SelectReceipts, ValidateReceipts);
                     return true;
                 case Eth66MessageCode.GetNodeData:
                     HandleInBackground<Eth66ProtocolHandler, GetNodeDataMessage, NodeDataMessage, GetNodeDataHandler>(message);
                     return true;
                 case Eth66MessageCode.NodeData:
-                    _nodeDataRequests66.ThrowIfNotRequested(message.Content);
-                    NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
-                    ReportIn(nodeDataMessage, size);
-                    Handle(nodeDataMessage, size);
+                    HandleCorrelatedResponse(_nodeDataRequests66, message.Content, size, SelectNodeData);
                     return true;
                 default:
                     return base.HandleMessageCore(message);
@@ -171,16 +170,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             V63.Messages.NodeDataMessage nodeDataMessage = await FulfillNodeDataRequest(message.EthMessage, cancellationToken);
             return new NodeDataMessage(message.RequestId, nodeDataMessage);
         }
-
-        private void Handle(BlockHeadersMessage message, long size) => _headersRequests66.Handle(message.RequestId, message.EthMessage.BlockHeaders, size);
-
-        private void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size) => _bodiesRequests66.Handle(blockBodiesMessage.RequestId, (blockBodiesMessage.EthMessage.Bodies, size), size);
-
-        private void Handle(NodeDataMessage msg, int size) => _nodeDataRequests66.Handle(msg.RequestId, msg.EthMessage.Data, size);
-
-        protected void Handle(ReceiptsMessage msg, long size) => _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size);
-        protected void ThrowIfReceiptsUnexpected(IByteBuffer content) =>
-            ThrowIfReceiptsExceedRequest(content, 1, _receiptsRequests66.GetPendingRequest(content).EthMessage);
 
         private protected override void TrackPooledTransactionRequest(P2PMessage message)
         {

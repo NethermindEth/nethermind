@@ -726,28 +726,45 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
     {
         bool isEip2780SelfTransfer = IsEip2780SelfTransfer(tx, spec);
-        if (Volatile.Read(ref tx.IntrinsicGasMemo) is IntrinsicGasMemo memo
-            && ReferenceEquals(memo.Spec, spec)
-            && memo.IsEip2780SelfTransfer == isEip2780SelfTransfer)
+        if (TryGetMemoizedIntrinsicGas(tx, spec, isEip2780SelfTransfer, out IntrinsicGas<EthereumGasPolicy> gas))
         {
-            return memo.Gas;
+            return gas;
         }
 
-        IntrinsicGas<EthereumGasPolicy> gas = CalculateIntrinsicGasWithoutMemo(tx, spec, isEip2780SelfTransfer);
+        gas = CalculateIntrinsicGasWithoutMemo(tx, spec, isEip2780SelfTransfer);
         Volatile.Write(ref tx.IntrinsicGasMemo, new IntrinsicGasMemo(spec, isEip2780SelfTransfer, gas));
         return gas;
     }
 
+    /// <remarks>Reads the intrinsic-gas memo but never writes it, so a caller that skips memoization keeps it unset.</remarks>
     internal static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGasAsEip2780SelfTransfer(Transaction tx, IReleaseSpec spec)
     {
         bool isEip2780SelfTransfer = IsEip2780SelfTransfer(tx, spec);
-        IntrinsicGas<EthereumGasPolicy> gas = CalculateIntrinsicGasWithoutMemo(tx, spec, isEip2780SelfTransfer);
+        if (!TryGetMemoizedIntrinsicGas(tx, spec, isEip2780SelfTransfer, out IntrinsicGas<EthereumGasPolicy> gas))
+        {
+            gas = CalculateIntrinsicGasWithoutMemo(tx, spec, isEip2780SelfTransfer);
+        }
+
         ulong eip2780ExtraGas = Eip2780ExtraGas(tx, spec, isEip2780SelfTransfer);
         EthereumGasPolicy standard = gas.Standard;
         standard.Value -= eip2780ExtraGas;
         EthereumGasPolicy floor = gas.FloorGas;
         floor.Value = floor.Value.SaturatingSub(eip2780ExtraGas);
         return new IntrinsicGas<EthereumGasPolicy>(standard, floor);
+    }
+
+    private static bool TryGetMemoizedIntrinsicGas(Transaction tx, IReleaseSpec spec, bool isEip2780SelfTransfer, out IntrinsicGas<EthereumGasPolicy> gas)
+    {
+        if (Volatile.Read(ref tx.IntrinsicGasMemo) is IntrinsicGasMemo memo
+            && ReferenceEquals(memo.Spec, spec)
+            && memo.IsEip2780SelfTransfer == isEip2780SelfTransfer)
+        {
+            gas = memo.Gas;
+            return true;
+        }
+
+        gas = default;
+        return false;
     }
 
     private sealed record IntrinsicGasMemo(IReleaseSpec Spec, bool IsEip2780SelfTransfer, IntrinsicGas<EthereumGasPolicy> Gas) : IIntrinsicGasMemo;

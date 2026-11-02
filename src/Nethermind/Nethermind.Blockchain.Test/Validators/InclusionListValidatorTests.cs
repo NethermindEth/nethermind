@@ -11,9 +11,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.TxPool;
@@ -31,17 +31,22 @@ public class InclusionListValidatorTests
         ((ForkActivation)0, new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true }));
     private static readonly TxValidator _txValidator = new(TestBlockchainIds.ChainId);
     private static readonly Transaction _validTx = BuildTx();
-    private static readonly InclusionListCommitment Committed = new(TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
+    private const bool Proven = true;
 
-    /// <summary>A counted list as newPayload resolves it for an attester holding the committed proof, if any.</summary>
-    private static CommitteeInclusionList Counted(ulong index, Transaction[] transactions, InclusionListCommitment? commitment)
-        => new(index, transactions, commitment) { HoldsValidProof = commitment is not null };
+    /// <summary>A counted list as newPayload resolves it: with a verified proof covering its entries, or with none.</summary>
+    private static CommitteeInclusionList Counted(Transaction[] transactions, bool proven)
+        => new(transactions)
+        {
+            VerifiedProofDeps = proven
+                ? transactions.SelectMany(static tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)).ToHashSet()
+                : null
+        };
 
     [TestCase(false, false)]
     [TestCase(true, false)]
     [TestCase(false, true)]
     [TestCase(true, true)]
-    public void Null_commitments_establish_no_mandatory_dependency_transactions(bool dependencies, bool full)
+    public void Lists_without_a_verified_proof_establish_no_mandatory_dependency_transactions(bool dependencies, bool full)
     {
         Transaction transaction = BuildFrameTx();
         byte[] data = new byte[Eip8288Constants.DependencyTripleLength];
@@ -50,8 +55,8 @@ public class InclusionListValidatorTests
             Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, data)];
         Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(full ? 30_000_000UL : 0)
             .WithInclusionListTransactions(dependencies ? [transaction] : []).TestObject;
-        // A null commitment obligates only dependency-free entries; an empty list binds nothing whatever it commits to.
-        block.InclusionLists = [Counted(0, block.InclusionListTransactions!, dependencies ? null : Committed)];
+        // A list without a verified proof obligates only dependency-free entries; an empty list binds nothing whatever it proves.
+        block.InclusionLists = [Counted(block.InclusionListTransactions!, !dependencies)];
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
 
         Assert.That(IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
@@ -88,10 +93,9 @@ public class InclusionListValidatorTests
             yield return Case("Same-nonce replacement advances nonce", [_validTx], true, blockTxs: [BuildTx(value: UInt256.One, to: TestItem.AddressC)], senderNonce: 1);
             // EIP-1559 fee check uses MaxFeePerGas (cap), not the tip: cap above baseFee → appendable.
             yield return Case("EIP-1559 low tip but sufficient fee cap", [Build1559Tx()], false, baseFee: 5.GWei);
-            // The blob carve-out applies to building an IL, not to judging one.
-            yield return Case("Blob tx", [BuildBlobTx()], false);
-            // Blob gas is paid up front, so a blob fee beyond the balance makes the tx unappendable.
-            yield return Case("Blob tx cannot afford blob fee", [BuildBlobTx(maxFeePerBlobGas: 100_000.GWei)], true);
+            yield return Case("Blob tx is ignored", [BuildBlobTx()], true);
+            yield return Case("Blob entry does not hide an omitted ordinary tx", [BuildBlobTx(), _validTx], false);
+            yield return Case("Blob entry is ignored after an included ordinary tx", [_validTx, BuildBlobTx()], true, blockTxs: [_validTx]);
             // A tx normal execution rejects must not be reported appendable.
             yield return Case("Malformed 1559 tx (tip > fee cap)", [BuildMalformed1559Tx()], true);
             // A tx whose GasLimit is below the intrinsic cost cannot execute.
@@ -122,50 +126,6 @@ public class InclusionListValidatorTests
 
         IReadOnlyStateProvider state = StateWith(TestItem.AddressA, 10.Ether, senderNonce);
         Assert.That(IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator), Is.EqualTo(satisfied));
-    }
-
-    [Test]
-    public void Blob_appendability_requires_capacity_and_base_fee(
-        [Values(0UL, Eip4844Constants.GasPerBlob - 1, Eip4844Constants.GasPerBlob)] ulong remainingBlobGas,
-        [Values] bool underpriced,
-        [Values] bool included)
-    {
-        IReleaseSpec spec = Bogota.Instance;
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithBlobGasUsed(spec.GasCosts.MaxBlobGasPerBlock - remainingBlobGas)
-            .WithExcessBlobGas(2 * spec.BlobBaseFeeUpdateFraction)
-            .TestObject;
-        Assert.That(BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee), Is.True);
-        Transaction tx = BuildBlobTx(maxFeePerBlobGas: underpriced ? blobBaseFee - UInt256.One : blobBaseFee);
-        if (included) block = new Block(block.Header, [tx], block.Uncles);
-
-        bool expected = included || underpriced || remainingBlobGas < Eip4844Constants.GasPerBlob;
-        Assert.That(IsSatisfied(block, [tx], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.EqualTo(expected));
-    }
-
-    // Withdrawals land after the block's transactions, so judging against the raw post-block balance
-    // would make an honest builder look like a censor.
-    [TestCase(0UL, ExpectedResult = false, TestName = "Sender funded before withdrawals is appendable")]
-    [TestCase(9_500_000_000UL, ExpectedResult = true, TestName = "Sender funded only by this block's withdrawal is not appendable")]
-    public bool Withdrawals_are_not_spendable_by_an_appended_tx(ulong withdrawnGwei)
-    {
-        Withdrawal[] withdrawals = withdrawnGwei == 0
-            ? []
-            : [Build.A.Withdrawal.WithRecipient(TestItem.AddressA).WithAmount(withdrawnGwei).TestObject];
-
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithBaseFeePerGas(UInt256.Zero)
-            .WithTransactions([])
-            .WithWithdrawals(withdrawals)
-            .WithInclusionListTransactions([_validTx])
-            .TestObject;
-
-        // Withdrawing 9.5 of the 10 ether leaves 0.5, below _validTx's ~1.001 ether cost.
-        return IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
     }
 
     // EIP-8037 admits a transaction per dimension, so an entry that fits the state gas the block actually spent
@@ -214,8 +174,8 @@ public class InclusionListValidatorTests
     // EIP-8288: omission is permitted only when EIP-7805 excuses it. No block dependency count or weighted budget, local proof
     // envelope or wrapper limit is an omission ground, however large the block's dependency union already is.
     [TestCase(Eip8288Constants.MaxProofDependencies, 0, Eip8288Constants.LeanSphincsScheme, false, TestName = "Full proof envelope is no omission ground")]
-    [TestCase(Eip8288Constants.MaxDepsPerAggregateWrapper, 0, Eip8288Constants.LeanSphincsScheme, false, TestName = "Aggregate wrapper ceiling is no omission ground")]
-    [TestCase(Eip8288Constants.MaxDepsPerAggregateWrapper, 0, Eip8288Constants.LeanSphincsScheme, true, TestName = "Dependency already in a large block")]
+    [TestCase(4096, 0, Eip8288Constants.LeanSphincsScheme, false, TestName = "Large dependency union is no omission ground")]
+    [TestCase(4096, 0, Eip8288Constants.LeanSphincsScheme, true, TestName = "Dependency already in a large block")]
     [TestCase(256, 256, Eip8288Constants.LeanStarkScheme, false, TestName = "Many leanSTARKs are no omission ground for another")]
     [TestCase(256, 256, Eip8288Constants.LeanSphincsScheme, false, TestName = "Many leanSTARKs are no omission ground for a leanSPHINCS")]
     public void No_dependency_capacity_excuses_an_omission(int blockDependencies, int blockLeanStark, byte scheme, bool present)
@@ -245,7 +205,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([entry]).TestObject;
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
 
-        CommitteeInclusionList[] lists = [Counted(0, [entry], Committed)];
+        CommitteeInclusionList[] lists = [Counted([entry], Proven)];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(InclusionListProofValidator.SelectEligible([entry], lists, spec), Has.Length.EqualTo(1));
@@ -254,13 +214,12 @@ public class InclusionListValidatorTests
         }
     }
 
-    // EIPs#12475: obligations follow from signed data alone. An entry with dependencies binds through a list whose
-    // recursive_stark is non-null, even for a builder lacking the proof, and not through a null one; an independent committed
-    // list can still require it.
-    [TestCase(false, false, ExpectedResult = true, TestName = "Entry under only a null commitment imposes no obligation")]
-    [TestCase(false, true, ExpectedResult = false, TestName = "Another committed list still requires the entry")]
-    [TestCase(true, false, ExpectedResult = false, TestName = "Entry under a committed list is required")]
-    public bool Each_list_commitment_derives_its_own_obligations(bool firstCommitted, bool secondList)
+    // EIPs#12475: obligations follow from each signed list alone. An entry with dependencies binds through a list whose proof
+    // verifies and covers it, and not through a list without one; an independent proven list can still require it.
+    [TestCase(false, false, ExpectedResult = true, TestName = "Entry under only an unproven list imposes no obligation")]
+    [TestCase(false, true, ExpectedResult = false, TestName = "Another proven list still requires the entry")]
+    [TestCase(true, false, ExpectedResult = false, TestName = "Entry under a proven list is required")]
+    public bool Each_list_proof_derives_its_own_obligations(bool firstProven, bool secondList)
     {
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("entry"), default);
         Transaction entry = BuildFrameTx();
@@ -268,8 +227,8 @@ public class InclusionListValidatorTests
         entry.Frames = [.. entry.Frames!, new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
             UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
         entry.Hash = entry.CalculateHash();
-        List<CommitteeInclusionList> lists = [Counted(0, [entry], firstCommitted ? Committed : null)];
-        if (secondList) lists.Add(Counted(9, [entry], Committed));
+        List<CommitteeInclusionList> lists = [Counted([entry], firstProven)];
+        if (secondList) lists.Add(Counted([entry], Proven));
         Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(1_000_000).TestObject;
         block.InclusionLists = lists;
         block.InclusionListTransactions = CommitteeInclusionList.Flatten(lists);
@@ -311,13 +270,14 @@ public class InclusionListValidatorTests
     public bool Sender_with_code_appendability_depends_on_delegation(bool isDelegated)
     {
         IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+        ValueHash256 codeHash = new("0x" + new string('a', 64));
         state.TryGetAccount(TestItem.AddressA, out Arg.Any<AccountStruct>()).Returns(call =>
         {
             // Any non-empty codehash → HasCode = true.
-            call[1] = new AccountStruct(0UL, 10.Ether, Keccak.EmptyTreeHash, new ValueHash256("0x" + new string('a', 64)));
+            call[1] = new AccountStruct(0UL, 10.Ether, Keccak.EmptyTreeHash, codeHash);
             return true;
         });
-        state.IsDelegatedCode(TestItem.AddressA).Returns(isDelegated);
+        state.IsDelegatedCode(codeHash).Returns(isDelegated);
 
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)

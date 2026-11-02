@@ -249,7 +249,7 @@ public class GetPayloadDirectResponseTests
             dto = new[] { rawResponse[0] };
             raw = rawResponse;
             materialized = new PayloadBodiesV1DirectResponse(new ExecutionPayloadBodyV1Result?[] { new([], [], block.StarkProof) });
-            Assert.That(rawResponse[0]!.RecursiveStarkProof, Is.EqualTo(block.StarkProof));
+            Assert.That(rawResponse[0]!.StarkProof, Is.EqualTo(block.StarkProof));
         }
         else
         {
@@ -257,7 +257,7 @@ public class GetPayloadDirectResponseTests
             dto = new[] { rawResponse[0] };
             raw = rawResponse;
             materialized = new PayloadBodiesV2DirectResponse([new([], [], null, block.StarkProof)]);
-            Assert.That(rawResponse[0]!.RecursiveStarkProof, Is.EqualTo(block.StarkProof));
+            Assert.That(rawResponse[0]!.StarkProof, Is.EqualTo(block.StarkProof));
         }
         byte[] expected = JsonSerializer.SerializeToUtf8Bytes(dto, dto.GetType(), EthereumJsonSerializer.JsonOptions);
         Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(await WriteStreamableAsync(raw))), Is.True);
@@ -279,7 +279,7 @@ public class GetPayloadDirectResponseTests
         (Block block, BlobsBundleV2 blobsBundle, byte[][]? executionRequests) = CreatePayloadInputs(1, 1, withdrawals: true, requests: true, BalKind.Encoded, slotNumber: 42);
         block.StarkProof = new byte[proofLength];
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
-        if (inclusionCommitment) block.InclusionLists = [new CommitteeInclusionList(0, [], new InclusionListCommitment(default, default))];
+        if (inclusionCommitment) block.InclusionLists = [new CommitteeInclusionList([], [1], [])];
 
         object plain = CreatePlainResult(6, block, blobsBundle, executionRequests);
         IStreamableResult direct = CreateDirectResult(6, block, blobsBundle, executionRequests);

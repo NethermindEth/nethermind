@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO.Abstractions;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api.Steps;
@@ -16,12 +17,14 @@ using Nethermind.Logging;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.SendPolicy.Plugin.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class SendPolicyTxSenderTests
 {
+    private static readonly IFileSystem FileSystem = new RealFileSystem();
     private const ulong ChainId = TestBlockchainIds.ChainId;
     private static readonly EthereumEcdsa Ecdsa = new(ChainId);
     private static readonly PrivateKey Owner = TestItem.PrivateKeyA;
@@ -157,6 +160,35 @@ public class SendPolicyTxSenderTests
         }
     }
 
+    [Test]
+    public async Task Same_metadata_replacement_refuses_previously_allowed_send([Values] bool malformed, [Values] bool atomic)
+    {
+        using TempPath rules = WriteRules([$"from {Owner.Address}", $"to {Friend} 1"]);
+        string path = RulesFile(rules);
+        DateTime timestamp = File.GetLastWriteTimeUtc(path);
+        long size = new FileInfo(path).Length;
+        ITxSender inner = AcceptingSender();
+        SendPolicyTxSender sender = CreateSender(inner, path);
+        (Hash256 _, AcceptTxResult? before) = await sender.SendTransaction(Send(Owner, Friend, 1), TxHandlingOptions.None);
+        Assert.That(before, Is.EqualTo(AcceptTxResult.Accepted));
+
+        string replacement = atomic ? path + ".replacement" : path;
+        File.WriteAllLines(replacement, [$"from {Owner.Address}", malformed ? $"zz {Friend} 1" : $"to {Unlisted} 1"]);
+        File.SetLastWriteTimeUtc(replacement, timestamp);
+        if (atomic) File.Move(replacement, path, true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new FileInfo(path).Length, Is.EqualTo(size));
+            Assert.That(File.GetLastWriteTimeUtc(path), Is.EqualTo(timestamp));
+        }
+        inner.ClearReceivedCalls();
+
+        (Hash256 _, AcceptTxResult? after) = await sender.SendTransaction(Send(Owner, Friend, 1), TxHandlingOptions.None);
+
+        Assert.That(after?.ToString(), Does.Contain(malformed ? "unknown rule 'zz'" : "unlisted destination"));
+        await inner.DidNotReceiveWithAnyArgs().SendTransaction(default!, default);
+    }
+
     private static IEnumerable<TestCaseData> SendsUnderCap()
     {
         yield return CapCase("third send in the period", true, (0, 0, true), (1, 0, true), (2, 0, true));
@@ -286,12 +318,12 @@ public class SendPolicyTxSenderTests
         using TempPath rules = WriteRules(["bogus"]);
         SendPolicyConfig config = new() { Enabled = true, RulesPath = exists ? RulesFile(rules) : RulesFile(rules) + ".missing" };
 
-        Assert.That(() => new SendPolicyRuleFile(config, LimboLogs.Instance), Throws.TypeOf<InvalidConfigurationException>().With.Message.Contains("rule file unusable"));
+        Assert.That(() => new SendPolicyRuleFile(config, FileSystem, LimboLogs.Instance), Throws.TypeOf<InvalidConfigurationException>().With.Message.Contains("rule file unusable"));
     }
 
     [Test]
     public void Rule_file_requires_a_path() =>
-        Assert.That(() => new SendPolicyRuleFile(new SendPolicyConfig { Enabled = true }, LimboLogs.Instance), Throws.TypeOf<InvalidConfigurationException>());
+        Assert.That(() => new SendPolicyRuleFile(new SendPolicyConfig { Enabled = true }, FileSystem, LimboLogs.Instance), Throws.TypeOf<InvalidConfigurationException>());
 
     [Test]
     public void Plugin_enabled_follows_config([Values] bool enabled) =>
@@ -322,6 +354,7 @@ public class SendPolicyTxSenderTests
         .AddSingleton<ISendPolicyConfig>(new SendPolicyConfig { Enabled = true, RulesPath = rulesPath })
         .AddSingleton<IEthereumEcdsa>(Ecdsa)
         .AddSingleton<ITimestamper>(Timestamper.Default)
+        .AddSingleton<IFileSystem>(FileSystem)
         .AddSingleton<ILogManager>(LimboLogs.Instance)
         .Build();
 
@@ -349,7 +382,7 @@ public class SendPolicyTxSenderTests
     private static SendPolicyTxSender CreateSender(ITxSender inner, string rulesPath, bool warnOnly = false, ITimestamper? clock = null)
     {
         SendPolicyConfig config = new() { Enabled = true, RulesPath = rulesPath, WarnOnly = warnOnly };
-        return new SendPolicyTxSender(inner, new SendPolicyRuleFile(config, LimboLogs.Instance), new SendPolicyJournal(config, clock ?? Timestamper.Default, LimboLogs.Instance), config, Ecdsa, LimboLogs.Instance);
+        return new SendPolicyTxSender(inner, new SendPolicyRuleFile(config, FileSystem, LimboLogs.Instance), new SendPolicyJournal(config, clock ?? Timestamper.Default, LimboLogs.Instance), config, Ecdsa, LimboLogs.Instance);
     }
 
     private static Transaction Send(PrivateKey from, Address? to, UInt256 value, TxType type = TxType.EIP1559, ulong gasLimit = 60_000, ulong nonce = 0, UInt256? maxFeePerGas = null) =>

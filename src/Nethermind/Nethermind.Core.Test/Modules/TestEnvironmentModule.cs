@@ -33,6 +33,11 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
 {
     public const string NodeKey = "NodeKey";
 
+    /// <summary>
+    /// Whether RLPx and discovery run over in-memory channels. When disabled, they use real sockets as in production.
+    /// </summary>
+    public bool InMemoryNetwork { get; init; } = true;
+
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
@@ -43,7 +48,6 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
             // These two don't use the DB provider
             .AddKeyedSingleton<IFullDb>(DbNames.PeersDb, (_) => new MemDb())
             .AddKeyedSingleton<IFullDb>(DbNames.DiscoveryNodes, (_) => new MemDb())
-            .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig))
             .AddSingleton(NodeFilter.AcceptAll) // Disable inbound rate limiting for in-memory channels
 
             .AddSingleton<PseudoNethermindRunner>()
@@ -123,5 +127,10 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
 
             .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
             ;
+
+        if (InMemoryNetwork)
+        {
+            builder.AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig));
+        }
     }
 }

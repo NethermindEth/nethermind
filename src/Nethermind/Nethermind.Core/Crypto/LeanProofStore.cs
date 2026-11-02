@@ -13,7 +13,6 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
 {
     /// <summary>Maximum retained wrapper size, bounded by the protocol ceiling.</summary>
     public const int MaxWrapperBytes = Eip8288Constants.MaxWrapperBytes;
-    public const int MaxWrapperTransactions = Eip8288Constants.MaxTxsPerWrapper;
     /// <summary>Full witness bytes a sender may retain through pending transactions.</summary>
     public const long MaxSenderPinnedBytes = 12 * 1024 * 1024;
     /// <summary>Distinct witness records a sender may retain through pending transactions.</summary>
@@ -362,7 +361,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
 
     private void Publish(FrameDependency dependency, ProofRecord record)
     {
-        // A record the verifier upgrade rule removed never covers a dependency again.
+        // A record the verifier-change rule removed never covers a dependency again.
         if (record.Node is null) return;
         if (_coverage.TryGetValue(dependency, out ProofRecord? previous))
         {
@@ -493,7 +492,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
     }
 
     /// <summary>
-    /// Applies the EIP-8288 verifier upgrade rule: drops every aggregate proof, whatever pins it, and every direct witness
+    /// Applies the local verifier-change rule: drops every aggregate proof, whatever pins it, and every direct witness
     /// <paramref name="revalidate"/> rejects under the new verifier.
     /// </summary>
     /// <remarks>Transactions covered only by dropped records are no longer proven; <see cref="Covers"/> then fails for them.</remarks>
@@ -563,44 +562,6 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         return false;
     }
 
-    /// <summary>Retrieves a held recursive proof by its <c>(stark_proof_hash, deps_hash)</c> pair, with its <c>proof_deps</c>.</summary>
-    /// <remarks>EIP-8288 inclusion lists commit to such a pair, usually naming a mempool wrapper's proof whose dependencies are
-    /// a superset of the list's.</remarks>
-    public bool TryGetRecursiveProof(in ValueHash256 proofHash, in ValueHash256 depsHash, out byte[]? proof, out FrameDependency[]? dependencies)
-    {
-        lock (_lock)
-        {
-            ProofRecord? match = _recursiveByDeps.TryGetValue(depsHash, out ProofRecord? cached) && cached.RecursiveInput.ProofHash == proofHash
-                ? cached : FindRecursive(proofHash, depsHash);
-            proof = (byte[]?)match?.RecursiveProof!.Clone();
-            dependencies = match?.Dependencies;
-            return match is not null;
-        }
-    }
-
-    /// <summary>Retrieves a held recursive proof by <c>stark_proof_hash</c> alone, as <c>engine_getInclusionListProofV1</c> serves
-    /// an <c>il_proof</c>.</summary>
-    public bool TryGetRecursiveProof(in ValueHash256 proofHash, out byte[]? proof, out FrameDependency[]? dependencies)
-    {
-        lock (_lock)
-        {
-            ProofRecord? match = FindRecursive(proofHash, null);
-            proof = (byte[]?)match?.RecursiveProof!.Clone();
-            dependencies = match?.Dependencies;
-            return match is not null;
-        }
-    }
-
-    private ProofRecord? FindRecursive(in ValueHash256 proofHash, ValueHash256? depsHash)
-    {
-        foreach (ProofRecord record in _recursiveCache)
-            if (record.RecursiveInput.ProofHash == proofHash && (depsHash is null || record.DependencyHash == depsHash)) return record;
-        foreach (ProofRecord record in _identities.Values)
-            if (record.RecursiveProof is not null && record.RecursiveInput.ProofHash == proofHash
-                && (depsHash is null || record.DependencyHash == depsHash)) return record;
-        return null;
-    }
-
     /// <summary>Lists verified recursive proofs sharing at least two dependencies with <paramref name="within"/>, most shared first.</summary>
     /// <remarks>
     /// A producer extends one of them, discarding the dependencies it no longer needs, instead of folding every witness again:
@@ -631,6 +592,35 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
             foreach (FrameDependency dependency in record.Dependencies)
                 if (within.Contains(dependency)) shared++;
             if (shared >= 2) overlaps.Add((shared, record));
+        }
+    }
+
+    /// <summary>The smallest verified recursive proof proving every dependency in <paramref name="dependencies"/>, by proof bytes plus
+    /// 96 bytes per proven dependency, or <c>null</c> when none does.</summary>
+    /// <remarks>An inclusion list reuses it whole, so it may prove dependencies outside <paramref name="dependencies"/>. Only records
+    /// proving the first dependency and the bounded generated cache are examined.</remarks>
+    public RecursiveProofInput? SmallestProving(IReadOnlyList<FrameDependency> dependencies)
+    {
+        if (dependencies.Count == 0) return null;
+        ProofRecord? best = null;
+        long bestSize = long.MaxValue;
+        lock (_lock)
+        {
+            if (_holders.TryGetValue(dependencies[0], out List<ProofRecord>? holders))
+                foreach (ProofRecord record in holders) Consider(record);
+            foreach (ProofRecord record in _recursiveCache) Consider(record);
+        }
+        return best?.RecursiveInput;
+
+        void Consider(ProofRecord record)
+        {
+            if (record.RecursiveProof is null) return;
+            long size = record.RecursiveProof.Length + (long)record.Dependencies.Length * Eip8288Constants.DependencyTripleLength;
+            if (size >= bestSize) return;
+            foreach (FrameDependency dependency in dependencies)
+                if (Array.IndexOf(record.Dependencies, dependency) < 0) return;
+            best = record;
+            bestSize = size;
         }
     }
 

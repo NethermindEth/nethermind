@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -43,7 +44,7 @@ public class NativeLeanProofVerifierTests
     public void EnsureNativeLibraryLoads()
     {
         NativeLeanProofVerifier.Instance.EnsureAvailable();
-        Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(7u));
+        Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(9u));
         Assert.That(NativeLeanProofVerifier.AggregatedVerificationKey, Is.EqualTo(Eip8288Constants.AggregatedVk.ToArray()));
     }
 
@@ -96,6 +97,32 @@ public class NativeLeanProofVerifierTests
         Assert.That(Native.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proof), Is.True);
         deps[^1] = deps[0];
         Assert.That(Native.VerifyRecursiveStark(Eip8288Dependencies.ComputeDepsHash(deps), Eip8288Constants.AggregatedVk, proof), Is.False);
+    }
+
+    [Test]
+    public void Proofs_from_different_threads_run_on_one_prover_thread()
+    {
+        // leanVM's arena keeps a slab resident per thread that ever proved, so every caller must share one thread.
+        FrameDependency dep = Dependency("sphincs");
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dep]);
+        AggregationInput input = new() { Deps = [dep], Witnesses = [Witness("sphincs")] };
+        int[] provers = new int[2];
+        int[] callers = new int[2];
+        for (int i = 0; i < provers.Length; i++)
+        {
+            int index = i;
+            Thread caller = new(() =>
+            {
+                callers[index] = Environment.CurrentManagedThreadId;
+                Native.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input);
+                provers[index] = NativeLeanProofVerifier.LastProverThreadId;
+            });
+            caller.Start();
+            caller.Join();
+        }
+        Assert.That(callers[0], Is.Not.EqualTo(callers[1]));
+        Assert.That(provers[1], Is.EqualTo(provers[0]));
+        Assert.That(provers[0], Is.Not.EqualTo(callers[0]).And.Not.EqualTo(callers[1]));
     }
 
     [Test]
@@ -162,19 +189,17 @@ public class NativeLeanProofVerifierTests
     }
 
     [Test]
-    public void Empty_dependency_set_has_an_empty_proof_and_rejects_old_envelopes()
+    public void Empty_dependency_set_has_an_empty_proof_and_rejects_any_other()
     {
         ValueHash256 emptyHash = Eip8288Dependencies.ComputeDepsHash([]);
         byte[] empty = Native.ProveRecursiveStark(emptyHash, Eip8288Constants.AggregatedVk, new());
-        byte[] oldEnvelope = [(byte)'N', (byte)'L', (byte)'R', (byte)'3', 0, 0, 0, 0, 0, 0, 0, 0];
+        byte[] nonEmpty = new byte[12];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(empty, Is.Empty);
             Assert.That(RecursiveStarkAggregator.VerifyStarkCheck(Native, Eip8288Verifier.Pinned, 0, emptyHash, empty), Is.True);
-            Assert.That(RecursiveStarkAggregator.VerifyStarkCheck(Native, Eip8288Verifier.Pinned, 0, emptyHash, oldEnvelope), Is.False);
-            Assert.That(Native.VerifyRecursiveStark(emptyHash, Eip8288Constants.AggregatedVk, oldEnvelope), Is.False);
-            Assert.That(Native.VerifyRecursiveStark(emptyHash, Eip8288Constants.AggregatedVk,
-                [(byte)'N', (byte)'L', (byte)'R', (byte)'2', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), Is.False);
+            Assert.That(RecursiveStarkAggregator.VerifyStarkCheck(Native, Eip8288Verifier.Pinned, 0, emptyHash, nonEmpty), Is.False);
+            Assert.That(Native.VerifyRecursiveStark(emptyHash, Eip8288Constants.AggregatedVk, nonEmpty), Is.False);
         }
     }
 
@@ -204,7 +229,6 @@ public class NativeLeanProofVerifierTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(proof.Length, Is.InRange(1, Eip8288Constants.MaxMixedGuestProofBytes));
-            Assert.That(proof.AsSpan().StartsWith("NLR"u8), Is.False);
             for (int offset = 0; offset < triples.Length; offset += Eip8288Constants.DependencyTripleLength)
                 Assert.That(proof.AsSpan().IndexOf(triples.AsSpan(offset + 32, 64)), Is.EqualTo(-1));
         }

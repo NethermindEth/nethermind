@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Collections;
 
@@ -23,6 +24,28 @@ internal static class GuestList<T>
         Size(list) = count;
         Version(list)++;
     }
+
+    /// <summary>Appends <paramref name="item"/>, copied once from where it lies.</summary>
+    /// <remarks><see cref="List{T}.Add"/> takes the item by value, so a caller holding it by reference first copies it
+    /// into an argument temporary, a second copy of a large struct.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Add(List<T> list, in T item)
+    {
+        T[] items = Items(list);
+        int size = Size(list);
+        if ((uint)size < (uint)items.Length)
+        {
+            Version(list)++;
+            Size(list) = size + 1;
+            Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(items), size) = item;
+            return;
+        }
+
+        list.Add(item);
+    }
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_items")]
+    private static extern ref T[] Items(List<T> list);
 
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_size")]
     private static extern ref int Size(List<T> list);

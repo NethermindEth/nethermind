@@ -6,7 +6,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -15,7 +14,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -27,9 +25,7 @@ public sealed class NewPayloadWithWitnessHandler(
     Lazy<IEngineRpcModule> engineModule,
     WitnessRendezvous rendezvous,
     IBlockFinder blockFinder,
-    IStateReader stateReader,
-    IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps,
-    Lazy<IWitnessGeneratingBlockProcessingEnvFactory> witnessEnvFactory,
+    BlockWitnessGenerator witnessGenerator,
     ILogManager? logManager = null) :
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>,
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>,
@@ -165,25 +161,16 @@ public sealed class NewPayloadWithWitnessHandler(
     private Witness? GenerateWitness(Hash256 blockHash, string methodName)
     {
         Block? block = blockFinder.FindBlock(blockHash);
-        BlockHeader? parent = block is null ? null : blockFinder.FindHeader(block.ParentHash!);
-        if (block is null || parent is null || !stateReader.HasStateForBlock(parent)) return null;
+        if (block is null) return null;
 
         if (_logger.IsDebug) _logger.Debug($"{methodName}: no witness captured for {blockHash}; re-executing the block to generate it.");
-
-        // The collector bypasses the processing pipeline, so run its preprocessing (sender recovery) here.
-        for (int i = 0; i < preprocessorSteps.Count; i++)
-        {
-            preprocessorSteps[i].RecoverData(block);
-        }
-
-        using IWitnessGeneratingBlockProcessingEnvScope scope = witnessEnvFactory.Value.CreateScope();
-        return scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, block);
+        return witnessGenerator.Generate(block);
     }
 
     /// <summary>Copies <paramref name="witness"/> into a witness that owns no pooled buffers.</summary>
     /// <remarks>Responses dispose their witness only after it is serialized, so a cached one must survive both
     /// that and eviction while another response may still be reading it.</remarks>
-    private static Witness ToUnowned(Witness witness) => new()
+    internal static Witness ToUnowned(Witness witness) => new()
     {
         Codes = new UnownedList(witness.Codes.AsSpan().ToArray()),
         State = new UnownedList(witness.State.AsSpan().ToArray()),

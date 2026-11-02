@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using CkzgLib;
 using System.Collections.Generic;
 using System.Threading;
 using System.Linq;
@@ -14,6 +15,7 @@ using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -52,14 +54,14 @@ public class ProofWrapperServiceTests
             ProofWrapperService service = CreateService([], store, new FakeLeanProofVerifier(true));
             byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
             {
-                Transactions = [new WrapperTransaction(transaction)],
+                Transactions = [transaction],
                 Deps = [claim],
                 Mode = mode,
                 Proofs = mode == MempoolWrapper.ModeDirect ? [[1]] : null,
                 RecursiveStark = mode == MempoolWrapper.ModeRecursive ? new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([claim]))) : null
             }).Bytes;
 
-            ProofWrapperAcceptance result = await AcceptResolvedDetailedAsync(service, encoded, transaction);
+            ProofWrapperAcceptance result = await service.AcceptDetailedAsync(encoded);
 
             Assert.That(result.Result.IsSuccess, Is.EqualTo(!literalZero), result.Result.Error);
             Assert.That(store.Covers(transaction), Is.EqualTo(!literalZero));
@@ -69,25 +71,20 @@ public class ProofWrapperServiceTests
     }
 
     [Test]
-    public async Task Transport_owned_body_avoids_encoded_copy_and_reuses_prechecked_proof([Values] bool owned)
+    public async Task Transport_owned_body_avoids_an_encoded_copy([Values] bool owned)
     {
-        (ProofWrapperService producer, _) = Create(1, 0, out Transaction[] transactions);
+        (ProofWrapperService producer, _) = Create(1, 0);
         byte[] encoded = producer.BuildWrapper().Data!;
         (ProofWrapperService receiver, FakeLeanProofVerifier verifier) = Create(0, 0);
-        IReadOnlyDictionary<ValueHash256, Transaction> recovered = transactions.ToDictionary(static tx => tx.CalculateHash().ValueHash256);
         byte[]? published = null;
-        receiver.WrapperValidated += (body, _, _) => published = body;
+        receiver.WrapperValidated += (body, _) => published = body;
 
-        ProofWrapperAcceptance precheck = owned
-            ? await receiver.VerifyClaimedProofsOwnedAsync(encoded)
-            : await receiver.VerifyClaimedProofsAsync(encoded);
         ProofWrapperAcceptance accepted = owned
-            ? await receiver.AcceptOwnedDetailedAsync(encoded, recovered)
-            : await receiver.AcceptDetailedAsync(encoded, recovered);
+            ? await receiver.AcceptOwnedDetailedAsync(encoded)
+            : await receiver.AcceptDetailedAsync(encoded);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(precheck.HasValidProof, Is.True, precheck.Result.Error);
             Assert.That(accepted.HasValidProof, Is.True, accepted.Result.Error);
             Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
             Assert.That(ReferenceEquals(published, encoded), Is.EqualTo(owned));
@@ -122,24 +119,24 @@ public class ProofWrapperServiceTests
         ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier, spec);
         byte[] Encode() => MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [new WrapperTransaction(transaction)],
+            Transactions = [transaction],
             Deps = [dependency],
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [[1]]
         }).Bytes;
         byte[] wrapper = Encode();
 
-        ProofWrapperAcceptance deferred = await AcceptResolvedDetailedAsync(service, wrapper, transaction);
+        ProofWrapperAcceptance deferred = await service.AcceptDetailedAsync(wrapper);
         Assert.That(deferred.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
         Assert.That(verifier.VerificationCalls, Is.Zero);
         spec.IsEip7906Enabled = true;
         spec.IsEip8250Enabled = scenario != "scalar";
-        Assert.That((await AcceptResolvedDetailedAsync(service, wrapper, transaction)).HasValidProof, Is.True);
+        Assert.That((await service.AcceptDetailedAsync(wrapper)).HasValidProof, Is.True);
         Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
 
         transaction.Frames![0] = new(FrameMode.DepVerify, (FrameFlags)0xff, null,
             Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]));
-        Assert.That((await AcceptResolvedDetailedAsync(service, Encode(), transaction)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Invalid));
+        Assert.That((await service.AcceptDetailedAsync(Encode())).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Invalid));
         Assert.That(verifier.VerificationCalls, Is.EqualTo(1), "intrinsic malformed data is rejected before verification");
     }
 
@@ -159,13 +156,13 @@ public class ProofWrapperServiceTests
                 (ulong)(Eip8288Constants.MaxDependenciesPerFrame + 1) * Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, data)]
         };
         RecursiveStark recursive = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])));
-        Result<Hash256[]> accepted = await AcceptResolvedAsync(service, MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        Result<Hash256[]> accepted = await service.AcceptAsync(MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [new WrapperTransaction(transaction)],
+            Transactions = [transaction],
             Deps = [dependency],
             Mode = MempoolWrapper.ModeRecursive,
             RecursiveStark = recursive
-        }).Bytes, transaction);
+        }).Bytes);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(accepted.IsSuccess, Is.False);
@@ -188,13 +185,13 @@ public class ProofWrapperServiceTests
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
         };
         RecursiveStark recursive = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])));
-        Result<Hash256[]> accepted = await AcceptResolvedAsync(service, MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        Result<Hash256[]> accepted = await service.AcceptAsync(MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [new WrapperTransaction(transaction)],
+            Transactions = [transaction],
             Deps = [dependency],
             Mode = MempoolWrapper.ModeRecursive,
             RecursiveStark = recursive
-        }).Bytes, transaction);
+        }).Bytes);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(accepted.Error, Is.EqualTo(FrameTxValidation.LegacyNonceNotAllowed));
@@ -203,35 +200,21 @@ public class ProofWrapperServiceTests
     }
 
     [Test]
-    public async Task Pool_eviction_after_preflight_retains_the_verified_verdict_without_peer_penalty()
+    public async Task Pool_rejection_retains_the_verified_verdict_for_a_retry()
     {
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
-        Transaction transaction = new()
-        {
-            Type = TxType.FrameTx,
-            NonceKeys = [UInt256.Zero],
-            ChainId = 1,
-            SenderAddress = Address.Zero,
-            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
-                UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
-        };
-        transaction.Hash = transaction.CalculateHash();
+        Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
         ITxPool pool = Substitute.For<ITxPool>();
-        bool missingAfterPreflight = true;
-        int resolves = 0;
-        pool.TryGetPendingTransaction(transaction.Hash.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
-        {
-            bool found = !missingAfterPreflight || ++resolves == 1;
-            call[1] = found ? transaction : null;
-            return found;
-        });
+        int submissions = 0;
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+            .Returns(_ => ++submissions == 1 ? AcceptTxResult.FeeTooLow : AcceptTxResult.Accepted);
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
         FakeLeanProofVerifier verifier = new(true);
         ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [new WrapperTransaction(transaction.Hash)],
+            Transactions = [transaction],
             Deps = [dependency],
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [[1]]
@@ -239,10 +222,80 @@ public class ProofWrapperServiceTests
         ProofWrapperAcceptance first = await service.AcceptDetailedAsync(wrapper);
         Assert.That(first.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
         Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
-        missingAfterPreflight = false;
         ProofWrapperAcceptance retry = await service.AcceptDetailedAsync(wrapper);
         Assert.That(retry.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
         Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+    }
+
+    // EIP-8437: proof and dependency-rule failures, including exceeding MAX_SIGS_PER_TX or another EIP-8288 dependency limit, are
+    // discarded without penalty, so they are reported apart from malformed encodings, which remain penalizable. EIP-8288 Test
+    // Case 12: a mode-1 proof wider than the circuit's dependency-list limit, the pinned guest's, is invalid.
+    [TestCase("valid", ProofWrapperAcceptanceStatus.Accepted)]
+    [TestCase("proof", ProofWrapperAcceptanceStatus.Invalid)]
+    [TestCase("union", ProofWrapperAcceptanceStatus.Invalid)]
+    [TestCase("unsorted", ProofWrapperAcceptanceStatus.Invalid)]
+    [TestCase("limit", ProofWrapperAcceptanceStatus.Invalid)]
+    [TestCase("transaction limit", ProofWrapperAcceptanceStatus.Invalid)]
+    [TestCase("wide", ProofWrapperAcceptanceStatus.Accepted)]
+    [TestCase("wider than the circuit bound", ProofWrapperAcceptanceStatus.Invalid)]
+    [TestCase("leanstark within the circuit bound", ProofWrapperAcceptanceStatus.Accepted)]
+    [TestCase("leanstark wider than the circuit bound", ProofWrapperAcceptanceStatus.Invalid)]
+    [TestCase("reference", ProofWrapperAcceptanceStatus.Malformed)]
+    [TestCase("order", ProofWrapperAcceptanceStatus.Malformed)]
+    public async Task Proof_and_dependency_failures_are_invalid_and_encoding_failures_malformed(string scenario, ProofWrapperAcceptanceStatus expected)
+    {
+        // EIP-8288 Test Case 12: seventeen distinct signature dependencies across two transactions exceed
+        // MAX_LEANSIG_DEPS_PER_WRAPPER in mode 0 ("limit") but not in mode 1 ("wide").
+        (int count, Func<int, int> perTransaction) = scenario switch
+        {
+            "limit" or "wide" => (2, static i => 9 - i),
+            "transaction limit" => (1, static _ => Eip8288Constants.MaxSigsPerTx + 1),
+            "wider than the circuit bound" => (Eip8288Constants.MaxProofDependencies / Eip8288Constants.MaxSigsPerTx + 1,
+                static _ => Eip8288Constants.MaxSigsPerTx),
+            // The pinned guest holds at most MaxGenericStarkProofs leanSTARK dependencies per list.
+            "leanstark within the circuit bound" => (Eip8288Constants.MaxGenericStarkProofs, static _ => Eip8288Constants.MaxStarksPerTx),
+            "leanstark wider than the circuit bound" => (Eip8288Constants.MaxGenericStarkProofs + 1, static _ => Eip8288Constants.MaxStarksPerTx),
+            "unsorted" => (1, static _ => 2),
+            _ => (1, (Func<int, int>)(static _ => 1))
+        };
+        Transaction[] transactions = [.. Enumerable.Range(0, count).Select(i =>
+        {
+            int own = perTransaction(i);
+            byte scheme = scenario.StartsWith("leanstark", StringComparison.Ordinal) ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme;
+            Transaction transaction = CreateTransaction(new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"sig{i}"), default), Keccak.Compute($"tx{i}"));
+            FrameDependency[] dependencies = [.. Enumerable.Range(0, own)
+                .Select(j => new FrameDependency(scheme, ValueKeccak.Compute($"sig{i}:{j}"), default))];
+            transaction.Frames![0] = new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)own * dependencies[0].VerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize(dependencies));
+            transaction.Hash = transaction.CalculateHash();
+            return transaction;
+        }).OrderBy(static tx => tx.Hash!.ToString())];
+        List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(
+            transactions.SelectMany(static tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)));
+        if (scenario == "union") deps = [new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("other"), default)];
+        if (scenario == "unsorted") deps.Reverse();
+        byte mode = scenario == "limit" ? MempoolWrapper.ModeDirect : MempoolWrapper.ModeRecursive;
+        byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = transactions,
+            Deps = deps,
+            Mode = mode,
+            Proofs = mode == MempoolWrapper.ModeDirect ? [.. deps.Select(static _ => new byte[] { 1 })] : null,
+            RecursiveStark = mode == MempoolWrapper.ModeRecursive ? new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps))) : null
+        }).Bytes;
+        byte[] transaction = MempoolWrapperDecoder.EncodeTransaction(transactions[0]);
+        Rlp proofContent = Rlp.Encode(Rlp.Encode([Rlp.Encode(Eip8288Dependencies.Serialize(deps))]), Rlp.Encode(new byte[] { 1 }));
+        if (scenario == "reference")
+            encoded = Rlp.Encode(Rlp.Encode([Rlp.Encode(Rlp.Encode(Keccak.Compute(transaction)))]), Rlp.Encode(1UL), proofContent).Bytes;
+        if (scenario == "order")
+            encoded = Rlp.Encode(Rlp.Encode([Rlp.Encode(transaction), Rlp.Encode(transaction)]), Rlp.Encode(1UL), proofContent).Bytes;
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(scenario != "proof"), pool: pool);
+
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(encoded);
+
+        Assert.That(result.Status, Is.EqualTo(expected), result.Result.Error);
     }
 
     [Test]
@@ -268,12 +321,12 @@ public class ProofWrapperServiceTests
         ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, verifier);
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [new WrapperTransaction(transaction)],
+            Transactions = [transaction],
             Deps = [dependency],
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [[1]]
         }).Bytes;
-        ProofWrapperAcceptance result = await AcceptResolvedDetailedAsync(service, wrapper, transaction);
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(wrapper);
         Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
         Assert.That(store.Covers(transaction), Is.False);
         Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
@@ -470,37 +523,194 @@ public class ProofWrapperServiceTests
         public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
         {
             Inputs.Add(input);
-            if (!RecursiveStarkAggregator.TryAggregate(input, this, Eip8288Verifier.Pinned, out _, out ValueHash256 actual) || actual != depsHash)
+            if (!RecursiveStarkAggregatorTests.TryAggregate(input, this, Eip8288Verifier.Pinned, out _, out ValueHash256 actual) || actual != depsHash)
                 throw new InvalidOperationException("Invalid proving input.");
             return [1];
         }
     }
 
-    private static Transaction CreateTransaction(FrameDependency dependency, Hash256 hash) => new()
+    /// <summary>A frame transaction declaring <paramref name="dependency"/>, distinguished by a nonce derived from <paramref name="key"/>.</summary>
+    private static Transaction CreateTransaction(FrameDependency dependency, Hash256 key)
     {
-        Type = TxType.FrameTx,
-        NonceKeys = [UInt256.Zero],
-        ChainId = 1,
-        SenderAddress = Address.Zero,
-        Hash = hash,
-        Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
-            UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
-    };
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
+            ChainId = 1,
+            SenderAddress = Address.Zero,
+            Nonce = BitConverter.ToUInt32(key.Bytes[..4]),
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dependency.VerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
+        };
+        transaction.Hash = transaction.CalculateHash();
+        return transaction;
+    }
 
+    // EIP-8288: produced wrappers carry their full transactions, within MAX_WRAPPER_BYTES less the room an aggregate proof needs.
     [Test]
-    public void Hash_only_wrappers_do_not_repeat_transaction_payloads()
+    public void Produced_wrappers_carry_full_transactions_within_the_byte_budget()
     {
-        (ProofWrapperService service, FakeLeanProofVerifier verifier) = Create(10, 256 * 1024);
+        (ProofWrapperService service, FakeLeanProofVerifier verifier) = Create(10, 128 * 1024, out Transaction[] transactions);
         byte[] first = service.BuildWrapper().Data!;
         MempoolWrapper decoded = Decode(first);
         byte[] second = service.BuildWrapper().Data!;
+        MempoolWrapper rotated = Decode(second);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded.Transactions, Has.Count.EqualTo(10));
-            Assert.That(first.Length, Is.LessThan(LeanProofStore.MaxWrapperBytes - Eip8288Constants.MaxAggregateProofBytes));
+            Assert.That(decoded.Transactions, Has.Count.LessThan(10));
+            Assert.That(first.Length, Is.LessThanOrEqualTo(Eip8288Constants.MaxWrapperBytes - Eip8288Constants.MaxAggregateProofBytes));
+            Assert.That(decoded.Transactions.Select(static tx => tx.Hash), Is.SubsetOf(transactions.Select(static tx => tx.Hash)));
+            Assert.That(decoded.Transactions.Select(MempoolWrapperDecoder.EncodeTransaction),
+                Is.EqualTo(decoded.Transactions.Select(tx => MempoolWrapperDecoder.EncodeTransaction(transactions.Single(t => t.Hash == tx.Hash)))));
+            Assert.That(rotated.Transactions.Select(static tx => tx.Hash), Is.Not.EqualTo(decoded.Transactions.Select(static tx => tx.Hash)),
+                "the next build rotates to the remaining transactions");
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "transactions sharing a dependency reuse the proof");
+        }
+    }
+
+    // EIP-8288: every AGGREGATION_INTERVAL a node produces mode-1 wrappers over bounded subsets, so one cycle covers every pending
+    // dependency-bearing transaction, however many wrappers that takes.
+    [Test]
+    public void One_cycle_produces_bounded_wrappers_covering_every_pending_transaction()
+    {
+        (ProofWrapperService service, FakeLeanProofVerifier verifier) = Create(10, 128 * 1024, out Transaction[] transactions);
+        List<MempoolWrapper> produced = [];
+        Result result = service.RefreshWrapper(() => produced.Add(Decode(service.GetLatestWrapper().Data!)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(Result.Success));
+            Assert.That(produced, Has.Count.GreaterThan(1));
+            Assert.That(produced.SelectMany(static w => w.Transactions).Select(static tx => tx.Hash),
+                Is.EquivalentTo(transactions.Select(static tx => tx.Hash)), "each transaction is in exactly one wrapper of the cycle");
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "subsets sharing a dependency reuse the proof");
+        }
+    }
+
+    // EIP-8288 (71440967): mode 1 is limited by the circuit, not MAX_LEANSIG_DEPS_PER_WRAPPER. A produced wrapper merges proven aggregates whole,
+    // well beyond MAX_LEANSIG_DEPS_PER_WRAPPER, while fresh mode-0 witnesses, folded directly into the aggregate, stay within the
+    // proving-cost budget of that many signatures.
+    [Test]
+    public void Produced_wrappers_are_bounded_by_proving_cost_rather_than_dependency_count([Values] bool proven)
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            FrameDependency[] dependencies = [.. Eip8288Dependencies.Canonicalize(Enumerable.Range(0, Eip8288Constants.MaxSigsPerTx)
+                .Select(j => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"wide:{i}:{j}"), default)))];
+            if (proven) store.AddVerified(dependencies, null, [(byte)(i + 1)]);
+            else store.AddVerified(dependencies, [.. dependencies.Select(static _ => new byte[] { 1 })], null);
+            transactions[i] = new Transaction
+            {
+                Type = TxType.FrameTx,
+                NonceKeys = [UInt256.Zero],
+                ChainId = 1,
+                SenderAddress = Address.Zero,
+                Nonce = (ulong)i,
+                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)dependencies.Length * Eip8288Constants.LeanSphincsVerificationGas,
+                    UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))]
+            };
+            transactions[i].Hash = transactions[i].CalculateHash();
+        }
+        ProofWrapperService service = CreateService(transactions, store, new FakeLeanProofVerifier(true));
+
+        Result<byte[]> result = service.BuildWrapper();
+
+        Assert.That(result.IsSuccess, Is.True, result.Error);
+        MempoolWrapper wrapper = Decode(result.Data!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrapper.Mode, Is.EqualTo(MempoolWrapper.ModeRecursive));
+            Assert.That(wrapper.Transactions, Has.Count.EqualTo(proven ? transactions.Length : 1));
+            Assert.That(wrapper.Deps, Has.Count.EqualTo((proven ? transactions.Length : 1) * Eip8288Constants.MaxSigsPerTx));
+            Assert.That(MempoolWrapperValidator.Validate(wrapper, new FakeLeanProofVerifier(true), Eip8288Verifier.Pinned, out string? error), Is.True, error);
+        }
+    }
+
+    // EIP-8288 proof reuse: candidates are partitioned by transaction-hash prefix, oversized buckets subdivided by successive bits,
+    // so for a given pool and held-proof state the wrappers do not depend on the order transactions arrived in.
+    [Test]
+    public void Produced_wrappers_are_hash_prefix_buckets_independent_of_arrival_order()
+    {
+        (ProofWrapperService service, _) = Create(10, 128 * 1024, out Transaction[] transactions);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        store.AddVerified([new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default)], [[1]], null);
+        ProofWrapperService reordered = CreateService([.. transactions.Reverse()], store, new FakeLeanProofVerifier(true));
+
+        List<Hash256[]> first = Produced(service), second = Produced(reordered);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Has.Count.GreaterThan(1));
             Assert.That(second, Is.EqualTo(first));
-            Assert.That(decoded.Transactions.Concat(Decode(second).Transactions).Select(transaction => transaction.Hash).Distinct().Count(), Is.EqualTo(10));
-            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+            foreach (Hash256[] bucket in first)
+            {
+                int prefix = CommonPrefixBits(bucket[0], bucket[^1]);
+                Assert.That(transactions.Where(t => !bucket.Contains(t.Hash!) && CommonPrefixBits(t.Hash!, bucket[0]) >= prefix), Is.Empty,
+                    "every transaction sharing the bucket's prefix is in it");
+            }
+        }
+
+        static List<Hash256[]> Produced(ProofWrapperService wrappers)
+        {
+            List<Hash256[]> produced = [];
+            Assert.That(wrappers.RefreshWrapper(() => produced.Add([.. Decode(wrappers.GetLatestWrapper().Data!).Transactions.Select(static tx => tx.Hash!)])),
+                Is.EqualTo(Result.Success));
+            return [.. produced.OrderBy(static bucket => bucket[0].ToString())];
+        }
+
+        static int CommonPrefixBits(Hash256 a, Hash256 b)
+        {
+            for (int bit = 0; bit < 256; bit++)
+                if ((a.Bytes[bit >> 3] ^ b.Bytes[bit >> 3]) >> (7 - (bit & 7)) != 0) return bit;
+            return 256;
+        }
+    }
+
+    // EIP-8288 proof reuse: aggregation leaves a dependency set a peer offers a proof of for a bounded wait, reuses the proof once
+    // held, and proves the set itself once the wait lapses without one.
+    [Test]
+    public void Offered_dependency_set_waits_for_the_offer_and_then_is_proven_locally([Values] bool offerArrives)
+    {
+        Create(1, 64, out Transaction[] transactions);
+        List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(transactions[0], FrameTxSigHash.ComputeValue);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        store.AddVerified(deps, [[1]], null);
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService(transactions, store, verifier);
+        ValueHash256 digest = ValueKeccak.Compute(Eip8288Dependencies.Serialize(deps));
+        service.IsDependencySetOffered = offered => offered == digest;
+        ManualTimeProvider clock = new();
+
+        Result waiting = service.RefreshWrapper(clock: clock);
+        if (offerArrives) store.AddCachedRecursive(deps, [7]);
+        else clock.Advance(ProofWrapperService.ReuseOfferWait);
+        Result produced = service.RefreshWrapper(clock: clock);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waiting, Is.Not.EqualTo(Result.Success));
+            Assert.That(produced, Is.EqualTo(Result.Success));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(offerArrives ? 0 : 1));
+            Assert.That(Decode(service.GetLatestWrapper().Data!).RecursiveStark!.StarkProof, Is.EqualTo(offerArrives ? new byte[] { 7 } : new byte[] { 1 }));
+        }
+    }
+
+    // A cycle stops proving once its budget is spent, and the next resumes the rotation where it stopped.
+    [Test]
+    public void Exhausted_cycle_budget_defers_the_remaining_subsets_to_the_next_cycle()
+    {
+        (ProofWrapperService service, _) = Create(10, 128 * 1024, out Transaction[] transactions);
+        List<MempoolWrapper> first = [], second = [];
+        Assert.That(service.RefreshWrapper(() => first.Add(Decode(service.GetLatestWrapper().Data!)), TimeSpan.Zero), Is.EqualTo(Result.Success));
+        Assert.That(service.RefreshWrapper(() => second.Add(Decode(service.GetLatestWrapper().Data!)), TimeSpan.Zero), Is.EqualTo(Result.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Has.Count.EqualTo(1));
+            Assert.That(second, Has.Count.EqualTo(1));
+            Assert.That(second[0].Transactions.Select(static tx => tx.Hash), Is.Not.SubsetOf(first[0].Transactions.Select(static tx => tx.Hash)),
+                "the next cycle continues the rotation");
+            Assert.That(first[0].Transactions.Count + second[0].Transactions.Count, Is.LessThanOrEqualTo(transactions.Length));
         }
     }
 
@@ -515,6 +725,67 @@ public class ProofWrapperServiceTests
             Assert.That(ValueKeccak.Compute(second), Is.EqualTo(ValueKeccak.Compute(first)));
             Assert.That(verifier.ProofCalls, Is.EqualTo(1));
         }
+    }
+
+    // A transaction whose own proving cost exceeds the per-wrapper budget is still produced, alone, rather than never offered.
+    [Test]
+    public void Transaction_exceeding_the_proving_budget_alone_is_still_produced()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Dictionary<FrameDependency, byte[]> witnesses = [];
+        Transaction wide = WitnessedTransaction(store, witnesses, 0, sphincs: Eip8288Constants.MaxSigsPerTx, starks: 1);
+        Transaction small = WitnessedTransaction(store, witnesses, 1, sphincs: 1);
+        Assert.That(store.TryGetInput(Eip8288Dependencies.ForTransaction(wide, FrameTxSigHash.ComputeValue), out AggregationInput wideInput), Is.True);
+        Assert.That(RecursiveStarkAggregator.EstimatedCost(wideInput), Is.GreaterThan(ProofWrapperService.MaxWrapperProvingCost));
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService([wide, small], store, verifier);
+        List<MempoolWrapper> produced = [];
+
+        Result result = service.RefreshWrapper(() => produced.Add(Decode(service.GetLatestWrapper().Data!)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(Result.Success));
+            Assert.That(produced.SelectMany(static w => w.Transactions).Select(static tx => tx.Hash), Is.EquivalentTo(new[] { wide.Hash, small.Hash }));
+            Assert.That(produced.Single(w => w.Transactions.Any(tx => tx.Hash == wide.Hash)).Transactions, Has.Count.EqualTo(1));
+            Assert.That(produced.Select(static w => w.Mode), Is.All.EqualTo(MempoolWrapper.ModeRecursive));
+            Assert.That(verifier.ProofCalls, Is.Positive);
+        }
+    }
+
+    /// <summary>A frame transaction with <paramref name="sphincs"/> leanSPHINCS and <paramref name="starks"/> leanSTARK dependencies,
+    /// whose coverage is added to <paramref name="store"/>: their direct witnesses, recorded in <paramref name="witnesses"/>, or a
+    /// recursive proof when <paramref name="proven"/>.</summary>
+    private static Transaction WitnessedTransaction(LeanProofStore store, Dictionary<FrameDependency, byte[]> witnesses, ulong nonce, int sphincs,
+        int starks = 0, int starkWitnessBytes = 1024, bool proven = false)
+    {
+        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize(
+            Enumerable.Range(0, sphincs).Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"{nonce}:{i}"), default))
+                .Concat(Enumerable.Range(0, starks).Select(i => new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"{nonce}:stark:{i}"), default))));
+        if (proven) store.AddVerified(dependencies, null, [(byte)(nonce + 1)]);
+        else
+        {
+            byte[][] direct = [.. dependencies.Select(dependency =>
+            {
+                byte[] witness = new byte[dependency.Scheme == Eip8288Constants.LeanStarkScheme ? starkWitnessBytes : Eip8288Constants.LeanSphincsWitnessBytes];
+                dependency.DataHash.Bytes.CopyTo(witness);
+                witnesses[dependency] = witness;
+                return witness;
+            })];
+            store.AddVerified(dependencies, direct, null);
+        }
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
+            ChainId = 1,
+            SenderAddress = Address.Zero,
+            Nonce = nonce,
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)dependencies.Sum(static dependency => (long)dependency.VerificationGas),
+                UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))]
+        };
+        transaction.Hash = transaction.CalculateHash();
+        return transaction;
     }
 
     [Test]
@@ -561,7 +832,7 @@ public class ProofWrapperServiceTests
             Assert.That(wrapper.Transactions[0].Hash, Is.EqualTo(transaction.Hash));
             Assert.That(wrapper.Deps, Is.EqualTo(dependencies));
             Assert.That(verifier.ProofCalls, Is.EqualTo(sameParent ? 0 : 1));
-            Assert.That(result.Data!.Length, Is.LessThanOrEqualTo(LeanProofStore.MaxWrapperBytes));
+            Assert.That(result.Data!.Length, Is.LessThanOrEqualTo(Eip8288Constants.MaxWrapperBytes));
             Assert.That(store.TryGetInput(dependencies, out _), Is.True);
         }
         if (sameParent) Assert.That(wrapper.RecursiveStark!.StarkProof, Is.EqualTo(proof));
@@ -630,12 +901,12 @@ public class ProofWrapperServiceTests
         };
         byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [.. new[] { transaction, later }.OrderBy(static tx => tx.CalculateHash().ToString()).Select(static tx => new WrapperTransaction(tx))],
+            Transactions = [.. new[] { transaction, later }.OrderBy(static tx => tx.CalculateHash().ToString()).Select(static tx => tx)],
             Deps = [dependency],
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [[1]]
         }).Bytes;
-        ProofWrapperAcceptance result = await AcceptResolvedDetailedAsync(service, encoded, transaction, later);
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(encoded);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
@@ -643,8 +914,8 @@ public class ProofWrapperServiceTests
             Assert.That(result.Result.Error, Is.EqualTo(AcceptTxResult.FeeTooLow.ToString()));
             Assert.That(store.Covers(transaction), Is.True);
             pool.Received(1).SubmitTx(Arg.Is<Transaction>(entry => entry.Nonce == 1), TxHandlingOptions.PersistentBroadcast);
-            Assert.That((await service.AcceptDetailedAsync([0])).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Invalid));
-            Assert.That((await AcceptResolvedAsync(service, encoded, [transaction, later])).IsSuccess, Is.False);
+            Assert.That((await service.AcceptDetailedAsync([0])).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Malformed));
+            Assert.That((await service.AcceptAsync(encoded)).IsSuccess, Is.False);
         }
     }
 
@@ -684,12 +955,12 @@ public class ProofWrapperServiceTests
             Transaction first = Transaction(accepted, 0), later = Transaction(rejected, 1);
             byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
             {
-                Transactions = [.. new[] { first, later }.OrderBy(static tx => tx.CalculateHash().ToString()).Select(static tx => new WrapperTransaction(tx))],
-                Deps = [accepted, rejected],
+                Transactions = [.. new[] { first, later }.OrderBy(static tx => tx.CalculateHash().ToString())],
+                Deps = Eip8288Dependencies.Canonicalize([accepted, rejected]),
                 Mode = MempoolWrapper.ModeDirect,
                 Proofs = [new byte[Eip8288Constants.LeanSphincsWitnessBytes], rejectedWitness]
             }).Bytes;
-            Assert.That((await AcceptResolvedDetailedAsync(service, encoded, first, later)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
+            Assert.That((await service.AcceptDetailedAsync(encoded)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
             Assert.That(store.Covers(first), Is.True);
             Assert.That(store.Covers(later), Is.False);
         }
@@ -698,7 +969,7 @@ public class ProofWrapperServiceTests
     [Test]
     public async Task Native_admission_is_offloaded_bounded_and_owns_its_input_snapshot()
     {
-        (ProofWrapperService producer, _) = Create(1, 0, out Transaction[] transactions);
+        (ProofWrapperService producer, _) = Create(1, 0);
         byte[] encoded = producer.BuildWrapper().Data!;
         byte[] original = (byte[])encoded.Clone();
         FakeLeanProofVerifier verifier = new(true);
@@ -706,19 +977,127 @@ public class ProofWrapperServiceTests
         using ManualResetEventSlim release = new();
         verifier.OnVerification = () => { entered.Set(); release.Wait(TimeSpan.FromSeconds(5)); };
         ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
-        Task<ProofWrapperAcceptance> first = AcceptResolvedDetailedAsync(service, encoded, transactions);
+        service.MaxAdmissionWaiters = 0;
+        Task<ProofWrapperAcceptance> first = service.AcceptDetailedAsync(encoded);
         try
         {
             Assert.That(entered.Wait(TimeSpan.FromSeconds(2)), Is.True);
             Assert.That(first.IsCompleted, Is.False);
             encoded[0] ^= 0xff;
-            Assert.That((await AcceptResolvedDetailedAsync(service, original, transactions)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Busy));
+            Assert.That((await service.AcceptDetailedAsync(original)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Busy));
         }
         finally { release.Set(); }
         Assert.That((await first).HasValidProof, Is.True);
         verifier.OnVerification = null;
-        Assert.That((await AcceptResolvedDetailedAsync(service, original, transactions)).HasValidProof, Is.True);
+        Assert.That((await service.AcceptDetailedAsync(original)).HasValidProof, Is.True);
         Assert.That(verifier.VerificationCalls, Is.EqualTo(1), "the memo belongs to the original owned bytes");
+    }
+
+    [TestCase(1, 5_000, false, TestName = "Concurrent_admission_waits_its_turn")]
+    [TestCase(1, 50, true, TestName = "Concurrent_admission_is_busy_after_its_wait_timeout")]
+    [TestCase(0, 5_000, true, TestName = "Concurrent_admission_is_busy_beyond_the_waiter_bound")]
+    public async Task Concurrent_admission_waits_in_a_bounded_queue(int waiters, int timeoutMs, bool busy)
+    {
+        (ProofWrapperService producer, _) = Create(2, 0);
+        byte[] first = producer.BuildWrapper().Data!;
+        FakeLeanProofVerifier verifier = new(true);
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        verifier.OnVerification = () => { entered.Set(); release.Wait(TimeSpan.FromSeconds(5)); };
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
+        service.MaxAdmissionWaiters = waiters;
+        service.AdmissionWaitTimeout = TimeSpan.FromMilliseconds(timeoutMs);
+        Task<ProofWrapperAcceptance> admitting = service.AcceptDetailedAsync(first);
+        Task<ProofWrapperAcceptance> waiting;
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(2)), Is.True);
+            waiting = service.AcceptDetailedAsync(first);
+            if (busy) Assert.That((await waiting.WaitAsync(TimeSpan.FromSeconds(2))).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Busy));
+            else
+            {
+                await Task.Delay(100);
+                Assert.That(waiting.IsCompleted, Is.False, "a queued caller waits for the admission in progress");
+            }
+        }
+        finally { release.Set(); }
+        Assert.That((await admitting).HasValidProof, Is.True);
+        if (!busy) Assert.That((await waiting.WaitAsync(TimeSpan.FromSeconds(5))).Status, Is.Not.EqualTo(ProofWrapperAcceptanceStatus.Busy));
+    }
+
+    // EIP-8288 bounds a wrapper only by bytes; a wrapper of many transactions hands admission on between chunks, so a caller
+    // waiting behind it is admitted before its remaining chunks.
+    [Test]
+    public async Task Large_wrapper_admission_yields_between_chunks()
+    {
+        (ProofWrapperService largeProducer, _) = Create(ProofWrapperService.AdmissionChunk + 1, 0);
+        (ProofWrapperService smallProducer, _) = Create(1, 10, out Transaction[] small);
+        byte[] large = largeProducer.BuildWrapper().Data!;
+        byte[] waiting = smallProducer.BuildWrapper().Data!;
+        ITxPool pool = Substitute.For<ITxPool>();
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
+        List<Hash256> submitted = [];
+        Task<ProofWrapperAcceptance>? second = null;
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(call =>
+        {
+            lock (submitted)
+            {
+                submitted.Add(call.Arg<Transaction>().Hash!);
+                if (submitted.Count == 1) second = service.AcceptDetailedAsync(waiting);
+            }
+            return AcceptTxResult.Accepted;
+        });
+
+        Assert.That((await service.AcceptDetailedAsync(large)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+        Assert.That((await second!).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(submitted, Has.Count.EqualTo(ProofWrapperService.AdmissionChunk + 2));
+            Assert.That(submitted.IndexOf(small[0].Hash!), Is.EqualTo(ProofWrapperService.AdmissionChunk));
+        }
+    }
+
+    // Cancelled after a transaction was pooled, admission reports the interruption rather than a plain cancellation, and the
+    // same wrapper can be resubmitted.
+    [Test]
+    public async Task Admission_cancelled_after_pooling_reports_an_interruption()
+    {
+        (ProofWrapperService producer, _) = Create(3, 0);
+        byte[] wrapper = producer.BuildWrapper().Data!;
+        ITxPool pool = Substitute.For<ITxPool>();
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
+        using CancellationTokenSource cancellation = new();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(_ =>
+        {
+            cancellation.Cancel();
+            return AcceptTxResult.Accepted;
+        });
+
+        ProofWrapperAcceptance interrupted = await service.AcceptDetailedAsync(wrapper, cancellation.Token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(interrupted.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Interrupted));
+            Assert.That(interrupted.Result.Error, Does.Contain("1 of 3 transactions pooled"));
+            Assert.That((await service.AcceptDetailedAsync(wrapper)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+        }
+    }
+
+    // A cancellation after only pool rejections is a plain cancellation: nothing was pooled, so nothing was interrupted.
+    [Test]
+    public async Task Admission_cancelled_after_only_rejections_is_not_an_interruption()
+    {
+        (ProofWrapperService producer, _) = Create(3, 0);
+        byte[] wrapper = producer.BuildWrapper().Data!;
+        ITxPool pool = Substitute.For<ITxPool>();
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
+        using CancellationTokenSource cancellation = new();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(_ =>
+        {
+            cancellation.Cancel();
+            return AcceptTxResult.Invalid;
+        });
+
+        await Assert.ThatAsync(async () => await service.AcceptDetailedAsync(wrapper, cancellation.Token), Throws.InstanceOf<OperationCanceledException>());
     }
 
     [Test]
@@ -759,20 +1138,20 @@ public class ProofWrapperServiceTests
         ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, verifier);
         byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [new WrapperTransaction(transaction)],
+            Transactions = [transaction],
             Deps = [dependency],
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [[1]]
         }).Bytes;
         for (int i = 0; i < 3; i++)
-            Assert.That((await AcceptResolvedDetailedAsync(service, encoded, transaction)).Status,
+            Assert.That((await service.AcceptDetailedAsync(encoded)).Status,
                 Is.EqualTo(proofValid ? ProofWrapperAcceptanceStatus.PoolRejected : ProofWrapperAcceptanceStatus.Invalid));
         Assert.That(store.TryGetInput([dependency], out _), Is.False);
         Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
     }
 
     [Test]
-    public void Cancellation_preserves_only_successfully_admitted_coverage([Values] bool firstAccepted)
+    public async Task Cancellation_preserves_only_successfully_admitted_coverage([Values] bool firstAccepted)
     {
         using CancellationTokenSource cancellation = new();
         FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("first"), default);
@@ -801,13 +1180,16 @@ public class ProofWrapperServiceTests
         ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, new FakeLeanProofVerifier(true));
         byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = transactions.Select(transaction => new WrapperTransaction(transaction)).ToArray(),
+            Transactions = transactions,
             Deps = dependencies,
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [[1], [1]]
         }).Bytes;
-        Assert.That(async () => await AcceptResolvedAsync(service, encoded, transactions, cancellation.Token),
-            Throws.InstanceOf<OperationCanceledException>());
+        // Interrupted only once a transaction was pooled; after only a rejection the cancellation propagates.
+        if (firstAccepted)
+            Assert.That((await service.AcceptDetailedAsync(encoded, cancellation.Token)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Interrupted));
+        else
+            await Assert.ThatAsync(async () => await service.AcceptDetailedAsync(encoded, cancellation.Token), Throws.InstanceOf<OperationCanceledException>());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Covers(transactions[0]), Is.EqualTo(firstAccepted));
@@ -818,45 +1200,37 @@ public class ProofWrapperServiceTests
     }
 
     [Test]
-    public async Task Recovered_hash_entries_are_admitted_and_the_original_wrapper_is_reported_valid()
+    public async Task Full_transactions_are_admitted_and_the_wrapper_is_reported_valid()
     {
         Transaction transaction = CreateHashedTransaction(TestItem.KeccakA);
-        (ProofWrapperService service, ITxPool pool, byte[] wrapper) = CreateHashWrapper(AcceptTxResult.Accepted, transaction);
+        (ProofWrapperService service, ITxPool pool, byte[] wrapper) = CreateWrapper(AcceptTxResult.Accepted, transaction);
         List<byte[]> validated = [];
-        List<Transaction> resolved = [];
-        service.WrapperValidated += (encoded, transactions, _) =>
-        {
-            validated.Add(encoded);
-            resolved.AddRange(transactions.Values);
-        };
+        service.WrapperValidated += (encoded, _) => validated.Add(encoded);
 
-        ProofWrapperAcceptance unresolved = await service.AcceptDetailedAsync(wrapper);
-        ProofWrapperAcceptance recovered = await service.AcceptDetailedAsync(wrapper, Recovered(transaction));
+        ProofWrapperAcceptance accepted = await service.AcceptDetailedAsync(wrapper);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(unresolved.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
-            Assert.That(recovered.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), recovered.Result.Error);
+            Assert.That(accepted.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), accepted.Result.Error);
+            Assert.That(accepted.Result.Data, Is.EqualTo(new[] { transaction.Hash }));
             Assert.That(validated, Has.Count.EqualTo(1));
-            Assert.That(validated[0], Is.EqualTo(wrapper), "the validated object keeps its hash entry");
-            Assert.That(resolved, Is.EqualTo(new[] { transaction }), "the relay is handed the envelope it offers by hash");
-            pool.Received(1).SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+            Assert.That(validated[0], Is.EqualTo(wrapper));
+            pool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == transaction.Hash), TxHandlingOptions.PersistentBroadcast);
         }
     }
 
-    // EIPs#12473: a wrapper is relayed only once usable for admission, so a verified proof over transactions the pool
-    // rejects (for example unfunded) is not republished.
+    // A wrapper none of whose transactions the pool holds, for example as they are unfunded, is not republished.
     [TestCase(true)]
     [TestCase(false)]
     public async Task Wrapper_is_relayed_only_when_admission_succeeds(bool poolAccepts)
     {
         Transaction transaction = CreateHashedTransaction(TestItem.KeccakA);
         (ProofWrapperService service, _, byte[] wrapper) =
-            CreateHashWrapper(poolAccepts ? AcceptTxResult.Accepted : AcceptTxResult.InsufficientFunds, transaction);
+            CreateWrapper(poolAccepts ? AcceptTxResult.Accepted : AcceptTxResult.InsufficientFunds, transaction);
         int relayed = 0;
-        service.WrapperValidated += (_, _, _) => relayed++;
+        service.WrapperValidated += (_, _) => relayed++;
 
-        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(wrapper, Recovered(transaction));
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(wrapper);
 
         using (Assert.EnterMultipleScope())
         {
@@ -865,27 +1239,64 @@ public class ProofWrapperServiceTests
         }
     }
 
-    // An already-pending funded transaction must not carry rejected junk through relay: admission has to succeed for every entry.
-    [Test]
-    public async Task Wrapper_with_a_pending_transaction_and_rejected_junk_is_not_relayed()
+    // EIP-8288 Test Case 12: a valid wrapper whose transaction fails pool admission is accepted and relayed unchanged when it
+    // newly admitted another; rejected transactions cannot ride on one that was already pending.
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Partly_pool_rejected_wrapper_is_relayed_unchanged_only_when_it_newly_admits_a_transaction(bool newlyAdmitted)
     {
-        Transaction pending = CreateHashedTransaction(TestItem.KeccakA);
+        Transaction accepted = CreateHashedTransaction(TestItem.KeccakA);
         Transaction junk = CreateHashedTransaction(TestItem.KeccakB);
-        (ProofWrapperService service, ITxPool pool, byte[] wrapper) = CreateHashWrapper(AcceptTxResult.InsufficientFunds, pending, junk);
-        pool.TryGetPendingTransaction(pending.Hash!.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
-        {
-            call[1] = pending;
-            return true;
-        });
-        int relayed = 0;
-        service.WrapperValidated += (_, _, _) => relayed++;
+        (ProofWrapperService service, ITxPool pool, byte[] wrapper) = CreateWrapper(AcceptTxResult.InsufficientFunds, accepted, junk);
+        if (newlyAdmitted)
+            pool.SubmitTx(Arg.Is<Transaction>(t => t.Hash == accepted.Hash), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        else
+            pool.TryGetPendingTransaction(accepted.Hash!.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
+            {
+                call[1] = accepted;
+                return true;
+            });
+        List<byte[]> relayed = [];
+        service.WrapperValidated += (body, _) => relayed.Add(body);
 
-        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(wrapper, Recovered(junk));
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(wrapper);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
-            Assert.That(relayed, Is.Zero);
+            Assert.That(relayed, Is.EqualTo(newlyAdmitted ? new[] { wrapper } : Array.Empty<byte[]>()));
+        }
+    }
+
+    // A partly rejected wrapper is relayed only when it newly admitted at least as many transactions as were rejected; already
+    // pending ones, free for anyone to include, do not count.
+    [TestCase(1, 3, 3, false)]
+    [TestCase(2, 0, 2, true)]
+    [TestCase(1, 0, 2, false)]
+    public async Task Partly_pool_rejected_wrapper_is_relayed_only_when_newly_admitted_transactions_match_the_rejected(
+        int admittedCount, int pendingCount, int rejectedCount, bool relayedExpected)
+    {
+        Transaction[] admitted = [.. Enumerable.Range(0, admittedCount).Select(static i => CreateHashedTransaction(Keccak.Compute($"admitted{i}")))];
+        Transaction[] pending = [.. Enumerable.Range(0, pendingCount).Select(static i => CreateHashedTransaction(Keccak.Compute($"pending{i}")))];
+        Transaction[] rejected = [.. Enumerable.Range(0, rejectedCount).Select(static i => CreateHashedTransaction(Keccak.Compute($"rejected{i}")))];
+        (ProofWrapperService service, ITxPool pool, byte[] wrapper) = CreateWrapper(AcceptTxResult.InsufficientFunds, [.. admitted, .. pending, .. rejected]);
+        HashSet<Hash256> accepted = [.. admitted.Select(static t => t.Hash!)];
+        pool.SubmitTx(Arg.Is<Transaction>(t => accepted.Contains(t.Hash!)), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        foreach (Transaction transaction in pending)
+            pool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
+            {
+                call[1] = transaction;
+                return true;
+            });
+        int relayed = 0;
+        service.WrapperValidated += (_, _) => relayed++;
+
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(wrapper);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
+            Assert.That(relayed, Is.EqualTo(relayedExpected ? 1 : 0));
         }
     }
 
@@ -896,9 +1307,7 @@ public class ProofWrapperServiceTests
         return transaction;
     }
 
-    private static Dictionary<ValueHash256, Transaction> Recovered(Transaction transaction) => new() { [transaction.Hash!.ValueHash256] = transaction };
-
-    private static (ProofWrapperService Service, ITxPool Pool, byte[] Wrapper) CreateHashWrapper(AcceptTxResult submitResult, params Transaction[] transactions)
+    private static (ProofWrapperService Service, ITxPool Pool, byte[] Wrapper) CreateWrapper(AcceptTxResult submitResult, params Transaction[] transactions)
     {
         ITxPool pool = Substitute.For<ITxPool>();
         pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(submitResult);
@@ -907,7 +1316,7 @@ public class ProofWrapperServiceTests
             transactions.SelectMany(static transaction => Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)));
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [.. transactions.Select(static transaction => new WrapperTransaction(transaction.Hash!))],
+            Transactions = [.. transactions.OrderBy(static transaction => transaction.Hash!.ToString())],
             Deps = dependencies,
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [.. dependencies.Select(static _ => new byte[] { 1 })]
@@ -915,99 +1324,13 @@ public class ProofWrapperServiceTests
         return (service, pool, wrapper);
     }
 
-    [TestCase(Eip8288Constants.MaxWrapperBytes + 1, ProofWrapperAcceptanceStatus.Invalid)]
-    public async Task Wrapper_size_above_the_local_limit_is_refused_and_above_max_wrapper_bytes_is_invalid(int size, ProofWrapperAcceptanceStatus expected)
+    [TestCase(Eip8288Constants.MaxWrapperBytes + 1, ProofWrapperAcceptanceStatus.Malformed)]
+    public async Task Wrapper_above_max_wrapper_bytes_is_malformed(int size, ProofWrapperAcceptanceStatus expected)
     {
         FakeLeanProofVerifier verifier = new(true);
         ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
         Assert.That((await service.AcceptDetailedAsync(new byte[size])).Status, Is.EqualTo(expected));
         Assert.That(verifier.VerificationCalls, Is.Zero);
-    }
-
-    // EIPs#12473: an aggregate within EIP-8288's limits that the local verifier cannot check is refused locally, not
-    // invalid, including more leanSTARKs than the local proof envelope since mode 1 has no scheme sublimit.
-    [TestCase(Eip8288Constants.MaxProofDependencies + 1, 0)]
-    [TestCase(Eip8288Constants.MaxGenericStarkProofs + 1, Eip8288Constants.MaxGenericStarkProofs + 1)]
-    [TestCase(64, 32)]
-    public async Task Aggregate_beyond_the_local_proof_capacity_is_refused_without_verification(int count, int leanStark)
-    {
-        FrameDependency[] deps = [.. Enumerable.Range(0, count)
-            .Select(i => new FrameDependency(i < leanStark ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme,
-                Keccak.Compute(i.ToString()).ValueHash256, default))];
-        List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(deps);
-        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
-        {
-            Transactions = [new WrapperTransaction(TestItem.KeccakA)],
-            Deps = canonical,
-            Mode = MempoolWrapper.ModeRecursive,
-            RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(canonical)))
-        }).Bytes;
-        FakeLeanProofVerifier verifier = new(true);
-        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((await service.VerifyClaimedProofsAsync(wrapper)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Refused));
-            Assert.That((await service.AcceptDetailedAsync(wrapper)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Refused));
-            Assert.That(verifier.VerificationCalls, Is.Zero);
-        }
-    }
-
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Preliminary_proof_check_precedes_recovery_and_is_not_repeated(bool proofValid)
-    {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
-        Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
-        transaction.Hash = transaction.CalculateHash();
-        ITxPool pool = Substitute.For<ITxPool>();
-        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
-        FakeLeanProofVerifier verifier = new(proofValid);
-        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier, pool: pool);
-        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
-        {
-            Transactions = [new WrapperTransaction(transaction.Hash)],
-            Deps = [dependency],
-            Mode = MempoolWrapper.ModeRecursive,
-            RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])))
-        }).Bytes;
-
-        ProofWrapperAcceptance claims = await service.VerifyClaimedProofsAsync(wrapper);
-        Assert.That(claims.Status, Is.EqualTo(proofValid ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.Invalid));
-        if (!proofValid) return;
-        ProofWrapperAcceptance recovered = await service.AcceptDetailedAsync(wrapper,
-            new Dictionary<ValueHash256, Transaction> { [transaction.Hash.ValueHash256] = transaction });
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(recovered.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), recovered.Result.Error);
-            Assert.That(verifier.VerificationCalls, Is.EqualTo(1), "the claimed proof is verified once");
-        }
-    }
-
-    [Test]
-    public async Task Verifier_fault_in_preliminary_proof_check_is_a_local_failure_and_not_remembered()
-    {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
-        Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
-        transaction.Hash = transaction.CalculateHash();
-        FakeLeanProofVerifier verifier = new(true) { OnVerification = static () => throw new InvalidOperationException("native fault") };
-        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
-        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
-        {
-            Transactions = [new WrapperTransaction(transaction.Hash)],
-            Deps = [dependency],
-            Mode = MempoolWrapper.ModeRecursive,
-            RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])))
-        }).Bytes;
-
-        ProofWrapperAcceptance faulted = await service.VerifyClaimedProofsAsync(wrapper);
-        verifier.OnVerification = null;
-        ProofWrapperAcceptance retried = await service.VerifyClaimedProofsAsync(wrapper);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(faulted.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
-            Assert.That(retried.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), "a fault is not remembered as a verdict");
-        }
     }
 
     [Test]
@@ -1039,8 +1362,7 @@ public class ProofWrapperServiceTests
         Assert.That(service.CurrentVerifier, Is.EqualTo(Eip8288Verifier.Pinned), "a half-applied upgrade is not committed");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((await service.VerifyClaimedProofsAsync([0xc0])).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
-            Assert.That((await service.AcceptDetailedAsync([0xc0], null)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
+            Assert.That((await service.AcceptDetailedAsync([0xc0])).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
             Assert.That(service.GetLatestWrapper().IsSuccess, Is.False);
             Assert.That(service.BuildWrapper().IsSuccess, Is.False);
         }
@@ -1055,9 +1377,9 @@ public class ProofWrapperServiceTests
         }
     }
 
-    // EIP-8288 Test Case 12: once the local head reaches a target fork with another AGGREGATED_VK, every held aggregate proof
+    // Local verifier-change rule: once the local head reaches a target fork with another AGGREGATED_VK, every held aggregate proof
     // is dropped, a direct witness whose scheme parameters are unchanged is kept by reusing its verdict, and pending
-    // transactions left without proof coverage leave the pool. Peer proof failures are local refusals within the window.
+    // transactions left without proof coverage leave the pool.
     [Test]
     public void Verifier_change_applies_the_upgrade_rule()
     {
@@ -1085,14 +1407,12 @@ public class ProofWrapperServiceTests
         service.VerifierChanged += changes.Add;
 
         Eip8288Verifier? before = service.RefreshVerifier();
-        bool transitionBefore = service.IsInVerifierTransition(64);
         head = HeadWithParent(finder, 10, 990);
         Eip8288Verifier? after = service.RefreshVerifier();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(before, Is.EqualTo(Eip8288Verifier.Pinned));
-            Assert.That(transitionBefore, Is.True, "the fork after the target fork changes the verifier");
             Assert.That(after, Is.EqualTo(new Eip8288Verifier(upgradedVk)));
             Assert.That(changes, Is.EqualTo(new[] { new Eip8288Verifier(upgradedVk) }));
             Assert.That(store.Covers(directTx), Is.True, "a re-validated direct witness is kept");
@@ -1100,10 +1420,7 @@ public class ProofWrapperServiceTests
             Assert.That(verifier.VerificationCalls, Is.EqualTo(1), "the direct verdict is reused under unchanged scheme parameters");
             pool.Received(1).RemoveTransaction(aggregatedTx.Hash);
             pool.DidNotReceive().RemoveTransaction(directTx.Hash);
-            head = HeadWithParent(finder, 74, 1_800);
-            Assert.That(service.IsInVerifierTransition(64), Is.True);
             head = HeadWithParent(finder, 75, 1_810);
-            Assert.That(service.IsInVerifierTransition(64), Is.False, "64 blocks past the fork");
             Assert.That(service.RefreshVerifier(), Is.EqualTo(after));
             Assert.That(changes, Has.Count.EqualTo(1));
         }
@@ -1180,7 +1497,8 @@ public class ProofWrapperServiceTests
         return (CreateService(transactions, store, verifier), verifier);
     }
 
-    private static ProofWrapperService CreateService(Transaction[] transactions, LeanProofStore store, ILeanProofVerifier verifier, IReleaseSpec? spec = null, ITxPool? pool = null)
+    private static ProofWrapperService CreateService(Transaction[] transactions, LeanProofStore store, ILeanProofVerifier verifier, IReleaseSpec? spec = null, ITxPool? pool = null,
+        IWrappedBlobTransactionAdmission? blobAdmission = null)
     {
         pool ??= Substitute.For<ITxPool>();
         pool.GetPendingTransactions().Returns(transactions);
@@ -1194,20 +1512,193 @@ public class ProofWrapperServiceTests
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
-        return new(pool, new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance), finder, store, verifier);
+        return new(pool, new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance), finder, store, verifier, blobAdmission);
     }
 
-    private static Task<ProofWrapperAcceptance> AcceptResolvedDetailedAsync(ProofWrapperService service, byte[] encoded,
-        params Transaction[] transactions)
-        => service.AcceptDetailedAsync(encoded, transactions.ToDictionary(static tx => tx.CalculateHash().ValueHash256));
+    /// <summary>A dependency-bearing frame transaction carrying <paramref name="blobs"/> blobs in the elided network form EIP-8437
+    /// transports: commitments and cell proofs, no blob data.</summary>
+    private static Transaction CreateBlobTransaction(Hash256 key, int blobs = 1)
+    {
+        Transaction transaction = CreateTransaction(new(Eip8288Constants.LeanSphincsScheme, key.ValueHash256, default), key);
+        byte[][] commitments = [.. Enumerable.Range(0, blobs).Select(static i => Enumerable.Repeat((byte)(i + 1), 48).ToArray())];
+        transaction.BlobVersionedHashes = [.. commitments.Select(static commitment =>
+        {
+            byte[] hash = System.Security.Cryptography.SHA256.HashData(commitment);
+            hash[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+            return hash;
+        })];
+        transaction.MaxFeePerBlobGas = 1;
+        transaction.NetworkWrapper = new ShardBlobNetworkWrapper([], commitments,
+            [.. Enumerable.Range(0, blobs * Ckzg.CellsPerExtBlob).Select(static i => Enumerable.Repeat((byte)i, 48).ToArray())], ProofVersion.V1);
+        transaction.Hash = transaction.CalculateHash();
+        return transaction;
+    }
 
-    private static async Task<Result<Hash256[]>> AcceptResolvedAsync(ProofWrapperService service, byte[] encoded,
-        Transaction transaction) => (await AcceptResolvedDetailedAsync(service, encoded, transaction)).Result;
+    private static byte[] DirectWrapper(params Transaction[] transactions)
+    {
+        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize(
+            transactions.SelectMany(static transaction => Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)));
+        return MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [.. transactions.OrderBy(static transaction => transaction.Hash!.ToString())],
+            Deps = dependencies,
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = [.. dependencies.Select(static _ => new byte[] { 1 })]
+        }).Bytes;
+    }
 
-    private static async Task<Result<Hash256[]>> AcceptResolvedAsync(ProofWrapperService service, byte[] encoded,
-        Transaction[] transactions, CancellationToken cancellationToken = default)
-        => (await service.AcceptDetailedAsync(encoded, transactions.ToDictionary(static tx => tx.CalculateHash().ValueHash256),
-            cancellationToken)).Result;
+    // leanSTARK, enabled here as a deviation from EIP-8288, is accepted like leanSPHINCS; a scheme EIP-8288 does not define is
+    // malformed encoding.
+    [TestCase(Eip8288Constants.LeanStarkScheme, ProofWrapperAcceptanceStatus.Accepted)]
+    [TestCase((byte)0x99, ProofWrapperAcceptanceStatus.Malformed)]
+    public async Task LeanStark_dependency_is_accepted_and_an_undefined_scheme_malformed(byte scheme, ProofWrapperAcceptanceStatus expected)
+    {
+        Transaction transaction = CreateTransaction(new(scheme, TestItem.KeccakA.ValueHash256, default), TestItem.KeccakA);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true));
+
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(DirectWrapper(transaction));
+
+        Assert.That(result.Status, Is.EqualTo(expected), result.Result.Error);
+    }
+
+    // EIP-8437: a blob-carrying dependency-bearing transaction arrives with its blob data elided. Once the wrapper validates it is
+    // handed to EIP-8070 cell retrieval, with its coverage pinned, instead of the pool; the wrapper is relayed.
+    [Test]
+    public async Task Blob_carrying_transaction_is_handed_to_cell_retrieval_under_pinned_coverage()
+    {
+        Transaction blob = CreateBlobTransaction(TestItem.KeccakA, 2), plain = CreateHashedTransaction(TestItem.KeccakB);
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        IWrappedBlobTransactionAdmission admission = Substitute.For<IWrappedBlobTransactionAdmission>();
+        Transaction? handed = null;
+        object? handedSource = null;
+        IDisposable? pin = null;
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        List<FrameDependency> blobDependencies = Eip8288Dependencies.ForTransaction(blob, FrameTxSigHash.ComputeValue);
+        bool coveredWhileHanded = false;
+        admission.Admit(Arg.Any<Transaction>(), Arg.Any<object?>(), Arg.Any<IDisposable>()).Returns(call =>
+        {
+            (handed, handedSource, pin) = (call.ArgAt<Transaction>(0), call.ArgAt<object?>(1), call.ArgAt<IDisposable>(2));
+            coveredWhileHanded = store.Covers(handed);
+            return AcceptTxResult.Accepted;
+        });
+        ProofWrapperService service = CreateService([], store, new FakeLeanProofVerifier(true), pool: pool, blobAdmission: admission);
+        int relayed = 0;
+        service.WrapperValidated += (_, _) => relayed++;
+        object source = new();
+
+        ProofWrapperAcceptance result = await service.AcceptOwnedDetailedAsync(DirectWrapper(blob, plain), default, source);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), result.Result.Error);
+            Assert.That(relayed, Is.EqualTo(1), "validated wrappers circulate before availability is established");
+            Assert.That(handed?.Hash, Is.EqualTo(blob.Hash));
+            Assert.That(((ShardBlobNetworkWrapper)handed!.NetworkWrapper!).Blobs, Is.Empty);
+            Assert.That(((ShardBlobNetworkWrapper)handed.NetworkWrapper!).Commitments, Has.Length.EqualTo(2));
+            Assert.That(handedSource, Is.SameAs(source));
+            Assert.That(coveredWhileHanded, Is.True);
+            Assert.That(store.TryReserveTransaction(blobDependencies, out IDisposable? reservation), Is.True, "the pin keeps the coverage");
+            reservation?.Dispose();
+            pool.DidNotReceive().SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == blob.Hash), Arg.Any<TxHandlingOptions>());
+            pool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == plain.Hash), TxHandlingOptions.PersistentBroadcast);
+        }
+        pin!.Dispose();
+        pin.Dispose();
+    }
+
+    // A wrapper submitted with full blob data, as over RPC, is admitted directly and relayed at once in the elided network form
+    // EIP-8437 carries; one whose blobs have no cell proofs cannot be relayed in that form.
+    [TestCase(ProofVersion.V1, true)]
+    [TestCase(ProofVersion.V0, false)]
+    public async Task Wrapper_with_full_blobs_is_relayed_in_its_elided_form(ProofVersion version, bool relayed)
+    {
+        Transaction blob = CreateBlobTransaction(TestItem.KeccakA, 1);
+        ShardBlobNetworkWrapper elided = (ShardBlobNetworkWrapper)blob.NetworkWrapper!;
+        blob.NetworkWrapper = elided with
+        {
+            Blobs = [new byte[Ckzg.BytesPerBlob]],
+            Proofs = version == ProofVersion.V1 ? elided.Proofs : [new byte[48]],
+            Version = version
+        };
+        blob.ClearLengthCache();
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
+        List<byte[]> relay = [];
+        service.WrapperValidated += (encoded, _) => relay.Add(encoded);
+
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(DirectWrapper(blob));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), result.Result.Error);
+            pool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs.Length == 1), TxHandlingOptions.PersistentBroadcast);
+            Assert.That(relay, Has.Count.EqualTo(relayed ? 1 : 0));
+            if (relayed)
+            {
+                Transaction relayedTx = Decode(relay[0]).Transactions.Single();
+                Assert.That(relayedTx.Hash, Is.EqualTo(blob.Hash));
+                Assert.That(MempoolWrapperDecoder.EncodeTransaction(relayedTx), Is.EqualTo(MempoolWrapperDecoder.EncodeTransaction(CreateBlobTransaction(TestItem.KeccakA, 1))));
+            }
+        }
+    }
+
+    [Test]
+    public async Task Blob_carrying_transaction_without_cell_retrieval_is_not_admitted()
+    {
+        Transaction blob = CreateBlobTransaction(TestItem.KeccakA);
+        ITxPool pool = Substitute.For<ITxPool>();
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
+        int relayed = 0;
+        service.WrapperValidated += (_, _) => relayed++;
+
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(DirectWrapper(blob));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
+            Assert.That(relayed, Is.Zero);
+            pool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        }
+    }
+
+    // The producer wraps blob-carrying dependency-bearing transactions from the blob pool in their elided network form.
+    [Test]
+    public void Produced_wrappers_carry_blob_transactions_in_their_elided_network_form()
+    {
+        Transaction plain = CreateHashedTransaction(TestItem.KeccakB);
+        Transaction blob = CreateBlobTransaction(TestItem.KeccakA, 2);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        foreach (Transaction transaction in new[] { plain, blob })
+            store.AddVerified(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue), [[1]], null);
+        ITxPool pool = Substitute.For<ITxPool>();
+        ProofWrapperService service = CreateService([plain], store, new FakeLeanProofVerifier(true), pool: pool);
+        Transaction light = new LightTransaction(blob);
+        pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]> { [Address.Zero] = [light] });
+        pool.TryGetPendingTransactionWithoutBlobs(blob.Hash!.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
+        {
+            call[1] = blob;
+            return true;
+        });
+        pool.TryGetPendingTransaction(blob.Hash!.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
+        {
+            call[1] = blob;
+            return true;
+        });
+
+        MempoolWrapper wrapper = Decode(service.BuildWrapper().Data!);
+
+        Transaction wrapped = wrapper.Transactions.Single(t => t.Hash == blob.Hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrapper.Transactions.Select(static t => t.Hash), Is.EquivalentTo(new[] { plain.Hash, blob.Hash }));
+            Assert.That(Eip8288Dependencies.IsDependencyBearing(light), Is.True, "the frameless pool record keeps its dependency flag");
+            Assert.That(MempoolWrapperDecoder.EncodeTransaction(wrapped), Is.EqualTo(MempoolWrapperDecoder.EncodeTransaction(blob)));
+            Assert.That(((ShardBlobNetworkWrapper)wrapped.NetworkWrapper!).Blobs, Is.Empty);
+            Assert.That(((ShardBlobNetworkWrapper)wrapped.NetworkWrapper!).Proofs, Has.Length.EqualTo(2 * Ckzg.CellsPerExtBlob));
+        }
+    }
 
     private static MempoolWrapper Decode(byte[] encoded)
     {

@@ -43,6 +43,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
             IsTracingCallOutputMemory |= t.IsTracingCallOutputMemory;
             IsTracingCode |= t.IsTracingCode;
             IsTracingStack |= t.IsTracingStack;
+            IsTracingStackPushes |= t.IsTracingStackPushes;
             IsTracingBlockHash |= t.IsTracingBlockHash;
             IsTracingStorage |= t.IsTracingStorage;
             IsTracingAccess |= t.IsTracingAccess;
@@ -79,6 +80,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
     public bool IsTracingCallOutputMemory { get; }
     public bool IsTracingCode { get; }
     public bool IsTracingStack { get; private set; }
+    public bool IsTracingStackPushes { get; }
     public bool IsTracingBlockHash { get; }
     public bool IsTracingAccess { get; }
     public bool IsTracingFees { get; }
@@ -468,6 +470,19 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
             if (innerTracer.IsTracingActions)
             {
                 innerTracer.ReportActionError(evmExceptionType);
+            }
+        }
+    }
+
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
+            {
+                innerTracer.ReportActionErrorDetails(error);
             }
         }
     }

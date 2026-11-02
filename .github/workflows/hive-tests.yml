@@ -126,7 +126,7 @@ jobs:
           outputs: type=docker,dest=${{ github.workspace }}/image.tar
 
       - name: Upload image artifact
-        uses: actions/upload-artifact@v7
+        uses: ./nethermind/.github/actions/upload-artifact
         with:
           name: nethermind-image-${{ github.run_id }}
           overwrite: true
@@ -155,7 +155,7 @@ jobs:
           path: nethermind
 
       - name: Download image artifact
-        uses: actions/download-artifact@v8
+        uses: ./nethermind/.github/actions/download-artifact
         with:
           name: nethermind-image-${{ github.run_id }}
 
@@ -191,13 +191,19 @@ jobs:
           ./hive "${hive_args[@]}"
 
       - name: Upload results
-        uses: actions/upload-artifact@v7
+        uses: ./nethermind/.github/actions/upload-artifact
         with:
           name: results-${{ strategy.job-index }}-${{ github.run_number }}-${{ github.run_attempt }}
           path: hive/workspace
           retention-days: 7
 
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: nethermind/global.json
+
       - name: Print results
+        working-directory: nethermind
         run: |
-          rm -f hive/workspace/logs/hive.json
-          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+          rm -f ../hive/workspace/logs/hive.json
+          dotnet run --file scripts/hive-results.cs -- "../hive/workspace/logs/*.json"

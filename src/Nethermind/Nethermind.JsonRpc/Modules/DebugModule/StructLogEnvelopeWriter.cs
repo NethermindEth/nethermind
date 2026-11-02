@@ -29,7 +29,8 @@ internal static class StructLogEnvelopeWriter
         CancellationToken cancellationToken,
         Func<Utf8JsonWriter, PipeWriter?, CancellationToken, GethLikeTxTrace?> runTrace,
         ILogger logger,
-        ulong fallbackGas = 0UL)
+        ulong fallbackGas = 0UL,
+        bool propagateDurationErrors = false)
     {
         GethLikeTxTrace? trace = null;
         Exception? failure = null;
@@ -42,7 +43,7 @@ internal static class StructLogEnvelopeWriter
         {
             trace = runTrace(writer, pipeWriter, cancellationToken);
         }
-        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when ((!propagateDurationErrors || ex is not TraceDurationFormatException) && !cancellationToken.IsCancellationRequested)
         {
             failure = ex;
         }

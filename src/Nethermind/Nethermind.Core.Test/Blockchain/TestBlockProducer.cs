@@ -10,6 +10,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
@@ -50,6 +51,23 @@ namespace Nethermind.Core.Test.Blockchain
             {
                 _blockParent = value;
             }
+        }
+
+        /// <summary>Whether produced headers carry the EIP-4844 blob fields, as a post-merge producer's do, so blob-carrying
+        /// transactions can be included.</summary>
+        public bool PrepareBlobFields { get; set; }
+
+        protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        {
+            BlockHeader header = base.PrepareBlockHeader(parent, payloadAttributes);
+            IReleaseSpec spec = _specProvider.GetSpec(header);
+            if (PrepareBlobFields && spec.IsEip4844Enabled)
+            {
+                header.BlobGasUsed = 0;
+                header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+            }
+
+            return header;
         }
 
         protected override Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)

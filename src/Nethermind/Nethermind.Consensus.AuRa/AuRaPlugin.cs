@@ -111,7 +111,7 @@ namespace Nethermind.Consensus.AuRa
                 .AddScoped<ITransactionProcessor, AuRaEthereumTransactionProcessor>()
                 .AddSingleton<ITransactionProcessorFactory, AuRaTransactionProcessorFactory>()
 
-                .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
+                .AddScoped<IRewardCalculator, AuRaRewardCalculator>()
                 .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()
                 .AddSingleton<IAuRaStepCalculator, AuRaChainSpecEngineParameters, ITimestamper, ILogManager>((param, timestamper, logManager)
                     => new AuRaStepCalculator(param.StepDuration, timestamper, logManager))
@@ -166,7 +166,8 @@ namespace Nethermind.Consensus.AuRa
                 [new TxFilterAdapter(blockTree, txPoolFilter, logManager, specProvider)],
                 txPriorityContract is not null || localDataSource is not null,
                 frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>(),
-                leanProofStore: ctx.Resolve<LeanProofStore>());
+                leanProofStore: ctx.Resolve<LeanProofStore>(),
+                stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>());
         }
 
         private static IComparer<Transaction> CreateTxPoolTxComparer(IComponentContext ctx, TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)

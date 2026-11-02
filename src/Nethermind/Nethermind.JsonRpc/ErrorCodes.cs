@@ -59,7 +59,15 @@ namespace Nethermind.JsonRpc
         /// The execution-apis block access list methods use a dedicated code while keeping
         /// <c>Resource not found</c> as the error message.
         /// </remarks>
-        public const int BlockAccessListResourceNotFound = -32001;
+        public const int BlockAccessListResourceNotFound = StandardResourceNotFound;
+
+        /// <summary>
+        /// Requested resource not found, with the code EIP-1474 and the execution-apis specification assign
+        /// </summary>
+        /// <remarks>
+        /// <see cref="ResourceNotFound"/> keeps <see cref="Default"/> for the methods that already return it.
+        /// </remarks>
+        public const int StandardResourceNotFound = -32001;
 
         /// <summary>
         /// Transaction creation failed

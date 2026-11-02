@@ -381,7 +381,11 @@ internal sealed class XdcMasternodeEthModule(
             return ResultWrapper<Address[]>.Success([]);
         }
 
-        Address[] masternodes = epochSwitchManager.GetEpochSwitchInfo(signedHeader)?.Masternodes ?? [];
+        if (!TryGetSigningMasternodes(xdcHeader, signedHeader, spec, out Address[] masternodes, out string? error, out int errorCode))
+        {
+            return ResultWrapper<Address[]>.Fail(error, errorCode);
+        }
+
         return ResultWrapper<Address[]>.Success(
             masternodes.Length == 0 ? [] : CollectSigners(signedHeader, masternodes, spec));
     }
@@ -400,16 +404,60 @@ internal sealed class XdcMasternodeEthModule(
             return ResultWrapper<uint>.Success(0);
         }
 
-        Address[] masternodes = epochSwitchManager.GetEpochSwitchInfo(signedHeader)?.Masternodes ?? [];
-
         // Signatures only finalize the canonical chain; a block on a discarded branch never gains finality.
-        if (masternodes.Length == 0 || header.Hash is null || !tree.IsMainChain(header.Hash, throwOnMissingHash: false))
+        if (header.Hash is null || !tree.IsMainChain(header.Hash, throwOnMissingHash: false))
+        {
+            return ResultWrapper<uint>.Success(0);
+        }
+
+        if (!TryGetSigningMasternodes(xdcHeader, signedHeader, spec, out Address[] masternodes, out string? error, out int errorCode))
+        {
+            return ResultWrapper<uint>.Fail(error, errorCode);
+        }
+
+        if (masternodes.Length == 0)
         {
             return ResultWrapper<uint>.Success(0);
         }
 
         Address[] signers = CollectSigners(signedHeader, masternodes, spec);
         return ResultWrapper<uint>.Success((uint)(100 * signers.Length / masternodes.Length));
+    }
+
+    /// <summary>Resolves the masternodes whose sign transactions count towards the given block.</summary>
+    /// <remarks>
+    /// Fails rather than returning no masternodes when the block predates XDPoS 2.0 or the node lacks the epoch switch
+    /// info of <paramref name="signedHeader"/>, as for epochs before its sync pivot: an empty list would be reported as a
+    /// block nobody signed.
+    /// </remarks>
+    private bool TryGetSigningMasternodes(
+        XdcBlockHeader header,
+        XdcBlockHeader signedHeader,
+        IXdcReleaseSpec spec,
+        out Address[] masternodes,
+        [NotNullWhen(false)] out string? error,
+        out int errorCode)
+    {
+        masternodes = [];
+        error = null;
+        errorCode = 0;
+
+        if (header.Number < spec.SwitchBlock)
+        {
+            error = "Unsupported block version : V1";
+            errorCode = ErrorCodes.InternalError;
+            return false;
+        }
+
+        if (epochSwitchManager.GetEpochSwitchInfo(signedHeader) is not { } epochSwitchInfo)
+        {
+            error = $"Cannot get epoch switch info for block {signedHeader.Number}, hash {signedHeader.Hash}";
+            errorCode = ErrorCodes.ResourceUnavailable;
+            return false;
+        }
+
+        masternodes = epochSwitchInfo.Masternodes;
+        return true;
     }
 
     /// <summary>

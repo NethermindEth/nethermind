@@ -7,14 +7,21 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
+using Nethermind.Specs.Forks;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -47,48 +54,77 @@ public class ExecutionPayloadTests
         byte[] control = EncodeTx(TxType.Legacy);
         if (malformed) encoded[^1] = [.. encoded[^1], 0xDC, 0xAF];
         int factoryCalls = 0;
-        using Lock.Scope _ = DecoderSwapLock.EnterScope();
-        IRlpDecoder<Transaction> original = Rlp.GetDecoder<Transaction>()!;
         FactoryTrackingDecoder decoder = new(() =>
         {
             Interlocked.Increment(ref factoryCalls);
             return new Transaction();
         });
-        Rlp.RegisterDecoder(typeof(Transaction), new InputScopedDecoder(encoded, decoder, original));
-        try
+        using DecoderSwap _ = new(encoded, decoder);
+        string? error;
+        Transaction[]? transactions;
+        if (borrowMemory)
         {
-            string? error;
-            Transaction[]? transactions;
-            if (borrowMemory)
-            {
-                Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
-                error = result.Error;
-                transactions = result.Data;
-            }
-            else
-            {
-                TransactionDecodingResult result = TxsDecoder.DecodeTxs(encoded, skipErrors: false);
-                error = result.Error;
-                transactions = result.Transactions;
-            }
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(error is not null, Is.EqualTo(malformed));
-                Assert.That(decoder.TrackedDecodes, malformed ? Is.GreaterThanOrEqualTo(count) : Is.EqualTo(count),
-                    "Payload decoding must route through the tracked decoder.");
-                Assert.That(Volatile.Read(ref factoryCalls), Is.Zero, "Payload decoding must bypass the reusable transaction factory.");
-                if (!malformed)
-                {
-                    Assert.That(transactions!, Has.Length.EqualTo(count));
-                }
-            }
-            RlpReader reader = new(control);
-            decoder.DecodeCompleteNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
-            Assert.That(Volatile.Read(ref factoryCalls), Is.EqualTo(1), "Ordinary decoding must exercise the tracked factory.");
+            Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
+            error = result.Error;
+            transactions = result.Data;
         }
-        finally
+        else
         {
-            Rlp.RegisterDecoder(typeof(Transaction), original);
+            TransactionDecodingResult result = TxsDecoder.DecodeTxs(encoded, skipErrors: false);
+            error = result.Error;
+            transactions = result.Transactions;
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error is not null, Is.EqualTo(malformed));
+            Assert.That(decoder.TrackedDecodes, malformed ? Is.GreaterThanOrEqualTo(count) : Is.EqualTo(count),
+                "Payload decoding must route through the tracked decoder.");
+            Assert.That(Volatile.Read(ref factoryCalls), Is.Zero, "Payload decoding must bypass the reusable transaction factory.");
+            if (!malformed)
+            {
+                Assert.That(transactions!, Has.Length.EqualTo(count));
+            }
+        }
+        RlpReader reader = new(control);
+        decoder.DecodeCompleteNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+        Assert.That(Volatile.Read(ref factoryCalls), Is.EqualTo(1), "Ordinary decoding must exercise the tracked factory.");
+    }
+
+    [Test, NonParallelizable]
+    public void Parallel_decoding_stops_claiming_entries_after_first_failure()
+    {
+        const int count = 10_000;
+        byte[] emptySignatureLegacyTx = Bytes.FromHexString("c9808080808080808080");
+        byte[][] encoded = Enumerable.Repeat(emptySignatureLegacyTx, count).ToArray();
+        FactoryTrackingDecoder decoder = new(static () => new Transaction());
+        using DecoderSwap _ = new(encoded, decoder);
+
+        TransactionDecodingResult result = TxsDecoder.DecodeTxs(encoded, skipErrors: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Does.StartWith("Transaction 0 is not valid"));
+            Assert.That(decoder.TrackedDecodes, Is.LessThan(count / 10), "Workers must not decode the tail after the first failure.");
+        }
+    }
+
+    /// <summary>Registers an <see cref="InputScopedDecoder"/> for <paramref name="inputs"/> until disposed.</summary>
+    private readonly ref struct DecoderSwap
+    {
+        private readonly Lock.Scope _lock;
+        private readonly IRlpDecoder<Transaction> _original;
+
+        public DecoderSwap(byte[][] inputs, IRlpDecoder<Transaction> own)
+        {
+            _lock = DecoderSwapLock.EnterScope();
+            _original = Rlp.GetDecoder<Transaction>()!;
+            Rlp.RegisterDecoder(typeof(Transaction), new InputScopedDecoder(inputs, own, _original));
+        }
+
+        public void Dispose()
+        {
+            Rlp.RegisterDecoder(typeof(Transaction), _original);
+            _lock.Dispose();
         }
     }
 
@@ -152,19 +188,12 @@ public class ExecutionPayloadTests
     public void Payload_decoding_uses_registered_decoder([Values(1, 64)] int count)
     {
         byte[][] encoded = EncodeTxs(count);
-        using Lock.Scope _ = DecoderSwapLock.EnterScope();
-        IRlpDecoder<Transaction> original = Rlp.GetDecoder<Transaction>()!;
-        Rlp.RegisterDecoder(typeof(Transaction), new InputScopedDecoder(encoded, new PayloadTestDecoder(), original));
-        try
-        {
-            Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
-            Assert.That(result.Error, Is.Null);
-            Assert.That(result.Data!.Select(tx => tx.Nonce), Is.EqualTo(Enumerable.Range(1000, count).Select(i => (ulong)i)));
-        }
-        finally
-        {
-            Rlp.RegisterDecoder(typeof(Transaction), original);
-        }
+        using DecoderSwap _ = new(encoded, new PayloadTestDecoder());
+
+        Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
+
+        Assert.That(result.Error, Is.Null);
+        Assert.That(result.Data!.Select(tx => tx.Nonce), Is.EqualTo(Enumerable.Range(1000, count).Select(i => (ulong)i)));
     }
 
     private sealed class PayloadTestDecoder : TxDecoder<Transaction>
@@ -523,4 +552,75 @@ public class ExecutionPayloadTests
 
         await Task.WhenAll(workers);
     }
+
+    private const ulong ParentGasLimit = 30_000_000;
+
+    private const ulong Eip1559TransitionBlock = 12_965_000;
+
+    // (30M + 30M / 1024) / 10,500; doubled by the elasticity multiplier at the EIP-1559 fork block.
+    [TestCase(Eip1559TransitionBlock + 1, 2_859, true)]
+    [TestCase(Eip1559TransitionBlock + 1, 2_860, false)]
+    [TestCase(Eip1559TransitionBlock, 5_719, true)]
+    [TestCase(Eip1559TransitionBlock, 5_720, false)]
+    public void Bounds_count_by_parent_gas_limit(ulong blockNumber, int count, bool expected)
+    {
+        bool result = Guard(parentProcessed: true).IsWithinParentGasLimit(Payload(count, blockNumber), London.Instance, out string? error, out Hash256? latestValidHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expected));
+            Assert.That(error, expected ? Is.Null : Does.StartWith("Transaction count"));
+            Assert.That(latestValidHash, Is.EqualTo(expected ? null : TestItem.KeccakA));
+        }
+    }
+
+    [TestCase(true, true, "parent")]
+    [TestCase(true, false, null)]
+    [TestCase(false, true, "zero")]
+    [TestCase(false, false, "zero")]
+    public void Reports_latest_valid_hash_by_parent_state(bool parentPostMerge, bool parentProcessed, string? expected)
+    {
+        bool result = Guard(parentProcessed, parentPostMerge).IsWithinParentGasLimit(Payload(100_000), London.Instance, out _, out Hash256? latestValidHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(latestValidHash, Is.EqualTo(expected switch { "parent" => TestItem.KeccakA, "zero" => Keccak.Zero, _ => null }));
+        }
+    }
+
+    private static readonly IReleaseSpec[] MinTransactionGasForks = [Frontier.Instance, London.Instance, Amsterdam.Instance, Eip8141Prototype.Instance];
+
+    [Test]
+    public void Min_transaction_gas_stays_below_every_net_base_cost([ValueSource(nameof(MinTransactionGasForks))] IReleaseSpec spec)
+    {
+        ulong baseCost = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
+        if (spec.IsEip8141Enabled) baseCost = Math.Min(baseCost, (ulong)Eip8141Constants.IntrinsicGasCost);
+        ulong refund = spec.IsEip7778Enabled ? 0 : RefundHelper.CalculateClaimableRefund(baseCost, baseCost, spec);
+
+        Assert.That(baseCost - refund, Is.GreaterThanOrEqualTo(PayloadTransactionCountGuard.MinTransactionGas),
+            "A block gas charge below the guard's floor makes it reject blocks that could be valid.");
+    }
+
+    [Test]
+    public void Allows_any_count_when_disabled_or_parent_unknown([Values] bool disabled)
+    {
+        PayloadTransactionCountGuard guard = disabled
+            ? PayloadTransactionCountGuard.Disabled
+            : new PayloadTransactionCountGuard(Substitute.For<IBlockTree>(), AlwaysPoS.Instance);
+
+        Assert.That(guard.IsWithinParentGasLimit(Payload(100_000), Osaka.Instance, out _, out _), Is.True);
+    }
+
+    private static PayloadTransactionCountGuard Guard(bool parentProcessed, bool parentPostMerge = true)
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        BlockHeader parent = Build.A.BlockHeader.WithGasLimit(ParentGasLimit).TestObject;
+        blockTree.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(parent);
+        blockTree.WasProcessed(parent.Number, TestItem.KeccakA).Returns(parentProcessed);
+        return new PayloadTransactionCountGuard(blockTree, parentPostMerge ? AlwaysPoS.Instance : NoPoS.Instance);
+    }
+
+    private static ExecutionPayload Payload(int count, ulong blockNumber = 0) =>
+        new() { ParentHash = TestItem.KeccakA, BlockNumber = blockNumber, Transactions = new byte[count][] };
 }

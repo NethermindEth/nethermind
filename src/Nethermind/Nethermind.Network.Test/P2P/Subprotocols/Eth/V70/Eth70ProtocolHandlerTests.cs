@@ -448,10 +448,12 @@ public class Eth70ProtocolHandlerTests
 
         TxReceipt[] block1 = BuildSequentialReceipts(3);
         TxReceipt[] block2 = BuildSequentialReceipts(2);
+        int requestCount = 0;
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            requestCount++;
             if (sent.FirstBlockReceiptIndex == 0)
             {
                 using ReceiptsMessage70 firstPage = new(sent.RequestId, new[] { block1.Take(2).ToArray() }.ToPooledList(), true);
@@ -465,10 +467,6 @@ public class Eth70ProtocolHandlerTests
                 UndecodableResponse.AssertReceiptsRejectedBeforeDecoding(_handler.HandleMessage,
                     UndecodableResponse.CreateReceipts(sent.RequestId, remaining + 1, Rlp.Encode(0)),
                     Eth70MessageCode.Receipts);
-
-                // Ends the still-pending request so the paging loop stops.
-                using ReceiptsMessage70 empty = new(sent.RequestId, ArrayPoolList<TxReceipt[]>.Empty(), false);
-                HandleZeroMessage(empty, Eth70MessageCode.Receipts);
                 return;
             }
 
@@ -481,7 +479,11 @@ public class Eth70ProtocolHandlerTests
 
         if (exceedsCount)
         {
-            Assert.That(async () => await task, Throws.TypeOf<SubprotocolException>().With.Message.Contains("no progress"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(async () => await task, Throws.InstanceOf<OperationCanceledException>());
+                Assert.That(requestCount, Is.EqualTo(2));
+            }
             return;
         }
 

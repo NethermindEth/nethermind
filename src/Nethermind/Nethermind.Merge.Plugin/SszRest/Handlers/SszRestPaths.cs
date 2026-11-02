@@ -82,6 +82,9 @@ public static class SszRestPaths
 
     public const string PayloadWithWitness = "payloads/witness";
 
+    /// <summary>A templated resource: <c>SszMiddleware</c> matches any payload id in place of <c>{payloadId}</c>.</summary>
+    public const string BuiltPayloadWithWitness = "payloads/{payloadId}/witness";
+
     public const string InclusionList = "inclusion_list";
 
     /// <summary>How a resource's fork and version are determined by <c>SszMiddleware</c>.</summary>
@@ -115,6 +118,7 @@ public static class SszRestPaths
     public const string PostBlobsV3 = $"POST {BasePath}blobs/v3";
     public const string PostBlobsV4 = $"POST {BasePath}blobs/v4";
     public const string PostPayloadsWitness = $"POST {BasePath}payloads/witness";
+    public const string GetPayloadsWitness = $"GET {BasePath}payloads/{{payload_id}}/witness";
     public const string GetInclusionList = $"GET {BasePath}inclusion_list";
 
     // Fork-scoped endpoint → selector pulling its method version off a fork spec, keyed by resource
@@ -136,6 +140,8 @@ public static class SszRestPaths
             [Payloads] = static spec => spec.EngineApiGetPayloadVersion,
             [PayloadBodiesByRange] = static spec => spec.EngineApiPayloadBodiesByRangeVersion,
             [InclusionList] = static spec => spec.IsEip7805Enabled ? 1 : null,
+            // Like the POST witness endpoint: the getPayload version, from the EIP-7928 fork onward.
+            [BuiltPayloadWithWitness] = static spec => spec.IsEip7928Enabled ? spec.EngineApiGetPayloadVersion : null,
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Every recognized fork-scoped (HTTP method, resource) pair, derived from the tables above.</summary>

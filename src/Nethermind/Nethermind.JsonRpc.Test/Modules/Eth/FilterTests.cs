@@ -25,7 +25,7 @@ public class FilterTests
             yield return new TestCaseData("{}",
                 new Filter
                 {
-                    FromBlock = BlockParameter.Earliest,
+                    FromBlock = BlockParameter.Latest,
                     ToBlock = BlockParameter.Latest,
                 });
 
@@ -46,7 +46,7 @@ public class FilterTests
                     }),
                 new Filter
                 {
-                    FromBlock = BlockParameter.Earliest,
+                    FromBlock = BlockParameter.Latest,
                     ToBlock = BlockParameter.Latest,
                     Topics =
                     [
@@ -112,7 +112,7 @@ public class FilterTests
                         new Address("0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358"),
                         new Address("0x02d77d118326c33bbe36ebeabf4f7ed6bc2dda5c")
                     ],
-                    FromBlock = BlockParameter.Earliest,
+                    FromBlock = BlockParameter.Latest,
                     ToBlock = BlockParameter.Latest,
                     Topics =
                     [

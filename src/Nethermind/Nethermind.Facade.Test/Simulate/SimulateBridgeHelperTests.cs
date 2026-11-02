@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -60,6 +61,48 @@ public class SimulateBridgeHelperTests
         BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithDifficulty(parentDifficulty).TestObject;
 
         return GetCallHeader(specProvider, MainnetSlotLength, parent, overrideTime: null).IsPostMerge;
+    }
+
+    /// <summary>
+    /// A simulated child of a parent that reached the terminal total difficulty is post-merge (EIP-3675) even when the
+    /// merge block number is unknown, as on Mainnet and Sepolia, whose chainspecs merge by TTD without pinning the
+    /// terminal block. This covers a child of the terminal PoW block, whose own difficulty is not zero.
+    /// </summary>
+    [TestCase(1_000UL, ExpectedResult = true, TestName = "terminal parent at TTD without a known merge block")]
+    [TestCase(1_200UL, ExpectedResult = true, TestName = "terminal parent above TTD without a known merge block")]
+    [TestCase(999UL, ExpectedResult = false, TestName = "pre-merge parent below TTD without a known merge block")]
+    [TestCase(null, ExpectedResult = false, TestName = "pre-merge parent with unknown total difficulty")]
+    public bool Simulated_header_is_post_merge_after_a_parent_at_terminal_total_difficulty(ulong? parentTotalDifficulty)
+    {
+        TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = 1_000 };
+        Assert.That(specProvider.MergeBlockNumber, Is.Null);
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithDifficulty(100).TestObject;
+        parent.TotalDifficulty = parentTotalDifficulty;
+
+        return GetCallHeader(specProvider, MainnetSlotLength, parent, overrideTime: null).IsPostMerge;
+    }
+
+    /// <summary>
+    /// PREVRANDAO in a simulated block reads <c>blockOverrides.prevRandao</c> (zero without an override) on a chain that
+    /// merged by total difficulty without a known merge block number, like Sepolia, both above a post-merge head and
+    /// above the terminal PoW block.
+    /// </summary>
+    [TestCase(0UL, null, true, TestName = "post-merge parent with a prevRandao override")]
+    [TestCase(0UL, null, false, TestName = "post-merge parent without a prevRandao override")]
+    [TestCase(100UL, 1_000UL, true, TestName = "terminal parent with a prevRandao override")]
+    [TestCase(100UL, 1_000UL, false, TestName = "terminal parent without a prevRandao override")]
+    public void Simulated_prevrandao_reads_the_mix_hash_on_a_chain_merged_by_terminal_total_difficulty(ulong parentDifficulty, ulong? parentTotalDifficulty, bool overridden)
+    {
+        TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = 1_000 };
+        Assert.That(specProvider.MergeBlockNumber, Is.Null);
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithDifficulty(parentDifficulty).WithMixHash(TestItem.KeccakB).TestObject;
+        parent.TotalDifficulty = parentTotalDifficulty;
+
+        BlockHeader header = GetCallHeader(specProvider, MainnetSlotLength, parent,
+            overridden ? new BlockOverride { PrevRandao = TestItem.KeccakA } : null);
+
+        BlockExecutionContext context = new(header, specProvider.GetSpec(header));
+        Assert.That(context.PrevRandao, Is.EqualTo((overridden ? TestItem.KeccakA : Hash256.Zero).ValueHash256));
     }
 
     /// <summary>
@@ -125,13 +168,13 @@ public class SimulateBridgeHelperTests
     private static ulong? GetCallHeaderSlot(ISpecProvider specProvider, ulong secondsPerSlot, BlockHeader parent, ulong? overrideTime) =>
         GetCallHeader(specProvider, secondsPerSlot, parent, overrideTime).SlotNumber;
 
-    private static BlockHeader GetCallHeader(ISpecProvider specProvider, ulong secondsPerSlot, BlockHeader parent, ulong? overrideTime)
+    private static BlockHeader GetCallHeader(ISpecProvider specProvider, ulong secondsPerSlot, BlockHeader parent, ulong? overrideTime) =>
+        GetCallHeader(specProvider, secondsPerSlot, parent, overrideTime is null ? null : new BlockOverride { Time = overrideTime });
+
+    private static BlockHeader GetCallHeader(ISpecProvider specProvider, ulong secondsPerSlot, BlockHeader parent, BlockOverride? overrides)
     {
         SimulateBridgeHelper helper = new(new BlocksConfig { SecondsPerSlot = secondsPerSlot }, specProvider);
-        BlockStateCall<TransactionWithSourceDetails> block = new()
-        {
-            BlockOverrides = overrideTime is null ? null : new BlockOverride { Time = overrideTime }
-        };
+        BlockStateCall<TransactionWithSourceDetails> block = new() { BlockOverrides = overrides };
 
         (BlockHeader callHeader, _) = helper.GetCallHeader(specProvider, block, parent, validate: true);
         callHeader.Hash = callHeader.CalculateHash();

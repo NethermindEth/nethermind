@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Synchronization;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
@@ -100,6 +101,12 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         ArgumentNullException.ThrowIfNull(logManager);
         ArgumentNullException.ThrowIfNull(syncConfig);
 
+        if (config.Enabled)
+        {
+            ThrowIfBelowOne(config.MaxReceiptsParallelism, nameof(ILogIndexConfig.MaxReceiptsParallelism));
+            ThrowIfBelowOne(config.MaxAggregationParallelism, nameof(ILogIndexConfig.MaxAggregationParallelism));
+        }
+
         _config = config;
         _logIndexStorage = logIndexStorage;
         _blockTree = blockTree;
@@ -118,6 +125,12 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         Direction(isForward: false) = new();
         Direction(isForward: true) = new();
+    }
+
+    private static void ThrowIfBelowOne(int parallelism, string setting)
+    {
+        if (parallelism < 1)
+            throw new InvalidConfigurationException($"LogIndex.{setting} must be at least 1 but is {parallelism}.", ExitCodes.ForbiddenOptionValue);
     }
 
     private static int StallDeadlineTicks(IHistoryConfig? historyConfig, IBlocksConfig? blocksConfig)

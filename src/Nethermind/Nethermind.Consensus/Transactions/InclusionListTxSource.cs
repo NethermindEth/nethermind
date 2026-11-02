@@ -109,25 +109,23 @@ public class InclusionListTxSource(
         {
             decodedLists = new CommitteeInclusionList[lists.Length];
             for (int i = 0; i < lists.Length; i++)
-                decodedLists[i] = new CommitteeInclusionList(lists[i].CommitteeIndex,
-                    _decoder.Value.DecodeAndRecover(lists[i].Transactions!, spec), lists[i].RecursiveStark?.ToCommitment());
+                decodedLists[i] = InclusionListV1.ToCommitteeList(lists[i], _decoder.Value.DecodeAndRecover(lists[i].Transactions!, spec));
             transactions = CommitteeInclusionList.Flatten(decodedLists);
         }
         Transaction[] eligible = transactions;
         AggregationInput? proofInput = null;
         if (spec.IsEip8288Enabled)
         {
-            // A commitment this node holds no valid proof for is treated as null: the list then obligates only its
-            // dependency-free transactions (EIPs#12475).
+            // An empty or invalid proof obligates only the list's dependency-free transactions (EIPs#12475).
             inclusionListProofs?.ResolveObligations(decodedLists, spec);
             eligible = InclusionListProofValidator.SelectEligible(transactions, decodedLists, spec);
-            // Committed proofs are usually mempool wrapper proofs covering a superset of the list; the block aggregation discards
-            // whatever the block does not need, so the block proof stays exact.
-            List<RecursiveProofInput> proven = inclusionListProofs?.ProvenInputs(decodedLists ?? [], spec) ?? [];
+            // A list proof may cover a superset of the list; the block aggregation discards whatever the block does not need,
+            // so the block proof stays exact.
+            List<RecursiveProofInput> proven = InclusionListProofService.ProvenInputs(decodedLists ?? []);
             if (_logger.IsDebug)
-                foreach (CommitteeInclusionList list in decodedLists ?? [])
-                    if (list.IsCommitted && !list.HoldsValidProof)
-                        _logger.Debug($"Inclusion list {list.CommitteeIndex} commits to a proof this node does not hold; treating its commitment as null.");
+                for (int i = 0; i < (decodedLists?.Length ?? 0); i++)
+                    if (decodedLists![i] is { StarkProof.Length: > 0, VerifiedProofDeps: null })
+                        _logger.Debug($"Inclusion list {i} carries a proof that does not verify; only its dependency-free transactions bind.");
             if (proven.Count > 0) proofInput = new AggregationInput { RecursiveProofs = proven };
         }
         Transaction[] ordered = OrderForProduction(FilterBlobs((Transaction[])eligible.Clone()));
@@ -153,7 +151,7 @@ public class InclusionListTxSource(
             return true;
         }
 
-        /// <summary>Whether a build's lists still have the registered positions and commitments; the transactions are identified
+        /// <summary>Whether a build's lists still have the registered proofs; the transactions are identified
         /// by the flattened array instance the build is keyed by, and this snapshot owns their bytes.</summary>
         public bool MatchesLists(IReadOnlyList<InclusionListV1>? lists) => InclusionListV1.AreEqual(Lists, lists, compareTransactions: false);
     }

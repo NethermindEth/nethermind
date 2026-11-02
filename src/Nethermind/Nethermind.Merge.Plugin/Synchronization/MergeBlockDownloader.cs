@@ -9,6 +9,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
@@ -32,6 +33,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         IReceiptsRecovery receiptsRecovery,
         IBlockProcessingQueue blockProcessingQueue,
         ISyncConfig syncConfig,
+        BlockAccessListServingWindow balServingWindow,
         ILogManager logManager,
         FinalizedBlockAccessListPolicy? finalizedBalPolicy = null)
         : BlockDownloader(
@@ -47,10 +49,24 @@ namespace Nethermind.Merge.Plugin.Synchronization
             receiptsRecovery,
             blockProcessingQueue,
             syncConfig,
+            balServingWindow,
             logManager)
     {
         private readonly IBlockTree _blockTree = blockTree;
         private readonly ILogger _logger = logManager.GetClassLogger<MergeBlockDownloader>();
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// <c>engine_newPayload</c> stores the bodies of beacon blocks at or above the beacon pivot, while beacon headers sync
+        /// fills the levels below it with headers only, so the block store is read only for levels marked as having a beacon body.
+        /// </remarks>
+        protected override Block? FindLocalBlock(BlockHeader header) =>
+            beaconPivot.BeaconPivotExists()
+            && header.Number >= beaconPivot.PivotNumber
+            && header.Hash is { } hash
+            && _blockTree.GetInfo(header.Number, hash).Info is { IsBeaconBody: true }
+                ? _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number)
+                : null;
 
         protected override bool ShouldDownloadAccessList(BlockHeader header, bool shouldProcess) =>
             base.ShouldDownloadAccessList(header, shouldProcess) || finalizedBalPolicy?.CanReconstruct(header) == true;
@@ -61,8 +77,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         protected override BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
         {
-            BlockTreeSuggestOptions suggestOptions =
-                shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
+            BlockTreeSuggestOptions suggestOptions = base.GetSuggestOption(shouldProcess, currentBlock);
 
             bool isKnownBeaconBlock = _blockTree.IsKnownBeaconBlock(currentBlock.Number, currentBlock.GetOrCalculateHash());
             if (_logger.IsTrace) _logger.Trace($"Current block {currentBlock}, BeaconPivot: {beaconPivot.PivotNumber}, IsKnownBeaconBlock: {isKnownBeaconBlock}");

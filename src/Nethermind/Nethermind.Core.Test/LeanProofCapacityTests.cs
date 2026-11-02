@@ -21,7 +21,7 @@ public class LeanProofCapacityTests
         {
             Assert.That(LeanProofCapacity.CapacityError(dependencies), Is.Null);
             // EIP-8288: stark_proof carries no dependencies, so the guest proof is the whole proof; the native acceptance bound
-            // covers MAX_AGGREGATE_PROOF_BYTES, which callers enforce first.
+            // covers the local aggregate proof bound, which callers enforce first.
             Assert.That(Eip8288Constants.MaxMixedGuestProofBytes, Is.GreaterThanOrEqualTo(Eip8288Constants.MaxAggregateProofBytes));
         }
     }
@@ -49,20 +49,20 @@ public class LeanProofCapacityTests
         Assert.That(LeanProofCapacity.CapacityError(new HashSet<FrameDependency>(), 0, duplicates), Is.Null);
     }
 
-    [Test]
-    public void Schemes_outside_enabled_schemes_have_no_capacity()
+    [TestCase((byte)0x00)]
+    [TestCase((byte)0x12)]
+    public void Schemes_outside_enabled_schemes_have_no_capacity(byte scheme)
     {
-        FrameDependency disabled = new(0x12, ValueKeccak.Compute("disabled"), default);
+        FrameDependency disabled = new(scheme, ValueKeccak.Compute("disabled"), default);
         Assert.That(LeanProofCapacity.CapacityError(new HashSet<FrameDependency>(), 0, [disabled]),
             Is.EqualTo("Unknown dependency proof scheme"));
     }
 
     [Test]
-    public void Local_proof_envelope_is_below_the_aggregate_wrapper_ceiling()
+    public void Local_proof_bounds_are_enforced()
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Eip8288Constants.MaxProofDependencies, Is.LessThan(Eip8288Constants.MaxDepsPerAggregateWrapper));
             Assert.That(LeanProofCapacity.CapacityError(Distinct(Eip8288Constants.MaxProofDependencies + 1, 0)), Is.Not.Null);
             Assert.That(LeanProofCapacity.CapacityError(Distinct(Eip8288Constants.MaxGenericStarkProofs + 1,
                 Eip8288Constants.MaxGenericStarkProofs + 1)), Is.Not.Null);

@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
@@ -128,6 +129,7 @@ public class HashKeyedNodeStorageTests
             if ((BitConverter.ToUInt32(HashOf(node).Bytes) & (uint)mask) == bucket) nodes[found++] = node;
         }
         HashKeyedNodeStorage storage = new(nodes.AsSpan(0, count));
+        Assert.That(OverflowedCount(storage), Is.EqualTo(count > 8 ? count : 0), "a bucket must overflow past eight entries, and only then");
 
         for (int phase = 0; phase < 2; phase++)
         {
@@ -197,6 +199,13 @@ public class HashKeyedNodeStorageTests
         }
 
         return new NodeStorage(db, INodeStorage.KeyScheme.Hash);
+    }
+
+    /// <summary>The entries the store moved to its overflow dictionary, which no read can tell apart from the bucketed ones.</summary>
+    private static int OverflowedCount(HashKeyedNodeStorage storage)
+    {
+        object overflow = typeof(HashKeyedNodeStorage).GetField("_overflow", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(storage)!;
+        return (int)overflow.GetType().GetProperty("Count")!.GetValue(overflow)!;
     }
 
     private static void Write(HashKeyedNodeStorage storage, bool throughBatch, in ValueHash256 hash, byte[] data)

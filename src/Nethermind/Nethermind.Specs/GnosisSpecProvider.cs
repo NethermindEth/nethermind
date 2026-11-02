@@ -66,7 +66,7 @@ public class GnosisSpecProvider : ForkScheduleSpecProvider
     public override ulong ChainId => BlockchainIds.Gnosis;
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public override ulong? DaoBlockNumber => null;
-    public string SealEngine => SealEngineType.AuRa;
+    public override string SealEngine => SealEngineType.AuRa;
 
     public static GnosisSpecProvider Instance => field ??= new();
 }

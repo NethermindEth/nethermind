@@ -17,6 +17,19 @@ public interface IExecutionPayloadParams
     byte[][]? InclusionListTransactions { get; set; }
     InclusionListV1[]? InclusionLists { get; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
+
+    /// <summary>Validates request parameters and bounds the transaction count before decoding when supported.</summary>
+    /// <remarks>The default preserves validation behavior for existing plugin implementations.</remarks>
+    /// <param name="latestValidHash">The latest valid ancestor known when the guard rejects the payload; otherwise <c>null</c>.</param>
+    internal ValidationResult ValidateParams(IReleaseSpec spec, int version, PayloadTransactionCountGuard? transactionCountGuard, out string? error, out Hash256? latestValidHash)
+    {
+        latestValidHash = null;
+        ValidationResult result = ValidateParams(spec, version, out error);
+        return result == ValidationResult.Success && transactionCountGuard is not null &&
+            !transactionCountGuard.IsWithinParentGasLimit(ExecutionPayload, spec, out error, out latestValidHash)
+            ? ValidationResult.Invalid
+            : result;
+    }
 }
 
 public enum ValidationResult : byte { Success, Fail, Invalid };
@@ -35,7 +48,7 @@ public class ExecutionPayloadParams(
     /// <summary>Inclusion-list entries as defined in <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.</summary>
     public byte[][]? InclusionListTransactions { get; set; } = inclusionListTransactions;
 
-    /// <summary>Each counted inclusion list with its EIP-8288 commitment, from <c>engine_newPayloadV7</c>.</summary>
+    /// <summary>Each counted inclusion list with its EIP-8288 proof, from <c>engine_newPayloadV7</c>.</summary>
     /// <remarks>Once validated, <see cref="InclusionListTransactions"/> holds them flattened for EIP-7805's checks.</remarks>
     public InclusionListV1[]? InclusionLists { get; } = inclusionLists;
 
@@ -129,8 +142,13 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
     public Hash256? ParentBeaconBlockRoot => parentBeaconBlockRoot;
 
-    public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
+    public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error) =>
+        ((IExecutionPayloadParams)this).ValidateParams(spec, version, null, out error, out _);
+
+    /// <inheritdoc/>
+    ValidationResult IExecutionPayloadParams.ValidateParams(IReleaseSpec spec, int version, PayloadTransactionCountGuard? transactionCountGuard, out string? error, out Hash256? latestValidHash)
     {
+        latestValidHash = null;
         ValidationResult result = ValidateInitialParams(spec, out error);
         if (result != ValidationResult.Success)
         {
@@ -143,11 +161,22 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return result;
         }
 
-        // engine_newPayloadV7 carries each list with its commitment in place of the flattened list; earlier versions keep theirs.
+        // engine_newPayloadV7 carries each list with its proof in place of the flattened list; earlier versions keep theirs.
         if ((version >= EngineApiVersions.NewPayload.V7) != (InclusionLists is not null))
         {
             error = version >= EngineApiVersions.NewPayload.V7 ? "Inclusion lists must be set" : "Inclusion lists must not be set before engine_newPayloadV7";
             return ValidationResult.Fail;
+        }
+
+        if (parentBeaconBlockRoot is null)
+        {
+            error = "Parent beacon block root must be set";
+            return ValidationResult.Fail;
+        }
+
+        if (transactionCountGuard is not null && !transactionCountGuard.IsWithinParentGasLimit(executionPayload, spec, out error, out latestValidHash))
+        {
+            return ValidationResult.Invalid;
         }
 
         bool isEmptyPreForkV4 = version == EngineApiVersions.NewPayload.V4 &&
@@ -186,12 +215,6 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         {
             error = "Blob versioned hashes do not match";
             return ValidationResult.Invalid;
-        }
-
-        if (parentBeaconBlockRoot is null)
-        {
-            error = "Parent beacon block root must be set";
-            return ValidationResult.Fail;
         }
 
         executionPayload.ParentBeaconBlockRoot = parentBeaconBlockRoot;

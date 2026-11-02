@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Frozen;
+using System.Collections.Generic;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -330,6 +331,8 @@ namespace Nethermind.Core.Specs
         bool IsEip8288Enabled { get; }
 
         /// <summary>EIP-8288 <c>AGGREGATED_VK</c> of this fork, which verifies every recursive aggregate proof.</summary>
+        /// <remarks>EIP-8288 fixes it at the protocol level; only devnet chainspecs override it per fork, through
+        /// <c>Eip8288AggregatedVk</c> and its transition, to exercise verifier-changing forks.</remarks>
         Crypto.ValueHash256 Eip8288AggregatedVk => Eip8288Verifier.PinnedAggregatedVk;
 
         /// <summary>
@@ -525,6 +528,9 @@ namespace Nethermind.Core.Specs
         /// </remarks>
         public bool IsEip8253Enabled { get; }
 
+        /// <summary>The accounts the EIP-8253 transition sets to nonce 1, from the chain configuration; empty while EIP-8253 is disabled and when none are listed.</summary>
+        IReadOnlyList<Address> Eip8253Accounts { get; }
+
         /// <summary>
         /// EIP-2780: Reduce intrinsic transaction gas (TX_BASE_COST) and reprice value-transfer
         /// and cold-account costs against actual state work.
@@ -563,6 +569,15 @@ namespace Nethermind.Core.Specs
         /// EIP-8298: SETCODEFROM code reuse instruction
         /// </summary>
         public bool IsEip8298Enabled { get; }
+
+        /// <summary>
+        /// EIP-4758: Deactivate SELFDESTRUCT (SENDALL).
+        /// </summary>
+        /// <remarks>
+        /// SELFDESTRUCT only moves the executing account's whole balance to the beneficiary and halts. It never
+        /// destroys the account, removing the same-transaction deletion EIP-6780 kept and the EIP-8246 tombstone.
+        /// </remarks>
+        public bool IsEip4758Enabled => false;
 
         /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.

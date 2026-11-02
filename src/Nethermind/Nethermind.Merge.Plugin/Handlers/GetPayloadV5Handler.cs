@@ -21,5 +21,7 @@ public class GetPayloadV5Handler(
     IBuilderOverridePolicy builderOverridePolicy)
     : GetPayloadHandlerBase<GetPayloadV5Result>(EngineApiVersions.GetPayload.V5, payloadPreparationService, specProvider, logManager, builderOverridePolicy)
 {
+    protected override bool ValidateFork(IReleaseSpec spec) => spec.IsOsakaEnabled && !spec.IsAmsterdamEnabled;
+
     protected override GetPayloadV5Result GetPayloadResultFromBlock(IBlockProductionContext context) => new GetPayloadV5DirectResponse(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV2(context.CurrentBestBlock!), context.CurrentBestBlock!.ExecutionRequests!, ShouldOverrideBuilder(context.CurrentBestBlock!));
 }

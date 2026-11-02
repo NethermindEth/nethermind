@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.IO;
-using System.IO.Pipelines;
 using System.Net;
 using System.Runtime.ExceptionServices;
 using System.Threading;
@@ -138,6 +137,11 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             // would hide a client reset from disconnect filters.
             ExceptionDispatchInfo.Throw(failure);
         }
+        finally
+        {
+            // Only after the workers finish: a client that closes its send side still waits for the pending responses.
+            await _stream.DisposeAsync();
+        }
 
         // The failed send's cancellation can close the transport before a worker observes it, ending every task cleanly.
         if (sendFailedBeforeClose && !cancellationToken.IsCancellationRequested && _sendLock.Failure is { } sendFailure)
@@ -157,7 +161,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     private async Task HandleRequest(Memory<byte> data, CancellationToken cancellationToken = default)
     {
-        PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data));
         using SocketJsonRpcResponseSink<TStream> sink = new(
             _stream,
             _jsonRpcLocalStats,
@@ -166,7 +169,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             _jsonRpcContext);
 
         await _jsonRpcProcessor.ProcessAsync(
-            request,
+            data,
             _jsonRpcContext,
             sink,
             new JsonRpcProcessingOptions(JsonRpcInputMode.MultipleDocuments),

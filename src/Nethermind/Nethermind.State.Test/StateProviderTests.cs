@@ -420,6 +420,53 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void SubtractFromBalanceAndSetNonce_matches_the_separate_calls_and_restores([Values(0u, 3u, 5u)] uint debit)
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 5, 2);
+        provider.InsertCode(_address1, new byte[] { 0x60, 0x01 }, Cancun.Instance);
+        provider.Set(new StorageCell(_address1, 1), 0x11);
+        provider.Commit(Cancun.Instance);
+        provider.CommitTree(0);
+        provider.TryGetAccount(_address1, out AccountStruct original);
+
+        Snapshot snapshot = provider.TakeSnapshot();
+        provider.SubtractFromBalanceAndSetNonce(_address1, debit, 3, Cancun.Instance);
+        provider.TryGetAccount(_address1, out AccountStruct combined);
+        provider.Restore(snapshot);
+        provider.TryGetAccount(_address1, out AccountStruct restored);
+        provider.SubtractFromBalance(_address1, debit, Cancun.Instance);
+        provider.SetNonce(_address1, 3);
+        provider.TryGetAccount(_address1, out AccountStruct separate);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(combined, Is.EqualTo(separate));
+            Assert.That(combined.Balance, Is.EqualTo((UInt256)(5 - debit)));
+            Assert.That(combined.Nonce, Is.EqualTo(3UL));
+            Assert.That(restored, Is.EqualTo(original));
+        }
+    }
+
+    [Test]
+    public void SubtractFromBalanceAndSetNonce_above_the_balance_throws_without_changing_the_account()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 5);
+
+        Assert.Throws<InsufficientBalanceException>(() => provider.SubtractFromBalanceAndSetNonce(_address1, 6, 1, Cancun.Instance));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)5));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(0UL));
+        }
+    }
+
+    [Test]
     public void Is_empty_account()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);

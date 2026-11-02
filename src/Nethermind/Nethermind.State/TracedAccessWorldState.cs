@@ -142,6 +142,12 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         _generatingBlockAccessList.AddNonceChange(address, oldNonce + delta);
     }
 
+    public override void SubtractFromBalanceAndSetNonce(Address address, in UInt256 balanceChange, ulong nonce, IReleaseSpec spec)
+    {
+        if (_generatingBlockAccessList is null) State.SubtractFromBalanceAndSetNonce(address, in balanceChange, nonce, spec);
+        else base.SubtractFromBalanceAndSetNonce(address, in balanceChange, nonce, spec);
+    }
+
     public override void SetNonce(Address address, in ulong nonce)
     {
         if (_generatingBlockAccessList is null) { base.SetNonce(address, nonce); return; }

@@ -129,7 +129,7 @@ namespace Nethermind.Synchronization.StateSync
             foreach (KeyValuePair<Hash256AsKey?, List<(TreePath path, StateSyncItem syncItem)>> kvp in itemsGroupedByAccount)
             {
                 using DeferredRlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
-                groupWriter.WriteValue(kvp.Key?.Value.Bytes.ToArray());
+                groupWriter.WriteValue(kvp.Key is { } key ? key.Value.Bytes : ReadOnlySpan<byte>.Empty);
 
                 for (int groupIndex = 0; groupIndex < kvp.Value.Count; groupIndex++)
                 {

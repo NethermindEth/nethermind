@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Security.Cryptography;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Logging;
@@ -16,10 +17,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         /// <param name="maxQueuedMessages">Queued sends after which a lagging client is disconnected.</param>
         protected Subscription(IJsonRpcDuplexClient jsonRpcDuplexClient, int maxQueuedMessages)
         {
-            Id = string.Concat("0x", Guid.NewGuid().ToString("N"));
+            Span<byte> id = stackalloc byte[16];
+            RandomNumberGenerator.Fill(id);
+            // A non-zero top nibble keeps the id a uint quantity, which has no leading zeros, at a fixed length.
+            id[0] |= 0x10;
+            Id = string.Concat("0x", Convert.ToHexStringLower(id));
             JsonRpcDuplexClient = jsonRpcDuplexClient;
             _maxQueuedMessages = maxQueuedMessages;
-            SendChannel = Channel.CreateBounded<Func<Task>>(new BoundedChannelOptions(maxQueuedMessages) { SingleReader = true });
+            SendChannel = Channel.CreateBounded<QueuedSend>(new BoundedChannelOptions(maxQueuedMessages) { SingleReader = true });
             ProcessMessages();
         }
 
@@ -59,7 +64,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly int _maxQueuedMessages;
         private volatile bool _overflowed;
 
-        private Channel<Func<Task>> SendChannel { get; }
+        private static readonly Func<object?, Task> InvokeAction = static action => ((Func<Task>)action!)();
+
+        private Channel<QueuedSend> SendChannel { get; }
 
         public virtual void Dispose() => SendChannel.Writer.TryComplete();
 
@@ -89,10 +96,19 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         /// A client that falls the queue limit's worth of sends behind is disconnected rather than buffered
         /// without limit, and its backlog is dropped.
         /// </remarks>
-        protected void ScheduleAction(Func<Task> action)
+        protected void ScheduleAction(Func<Task> action) => ScheduleAction(InvokeAction, action);
+
+        /// <summary>
+        /// Queues <paramref name="send"/> to be invoked with <paramref name="state"/> in order with the other queued sends.
+        /// </summary>
+        /// <remarks>
+        /// A delegate cached by the subscription plus the event's payload as <paramref name="state"/> queues an event
+        /// without allocating a closure, and keeps alive only that payload until it is sent.
+        /// </remarks>
+        protected void ScheduleAction(Func<object?, Task> send, object? state)
         {
             // TryComplete fails once disposed, so only an overflow gets past it.
-            if (SendChannel.Writer.TryWrite(action) || !SendChannel.Writer.TryComplete()) return;
+            if (SendChannel.Writer.TryWrite(new QueuedSend(send, state)) || !SendChannel.Writer.TryComplete()) return;
 
             _overflowed = true;
             if (_logger.IsWarn) _logger.Warn($"{GetErrorMsg()} Client fell {_maxQueuedMessages} sends behind and is disconnected.");
@@ -110,13 +126,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 while (await SendChannel.Reader.WaitToReadAsync())
                 {
-                    while (SendChannel.Reader.TryRead(out Func<Task> action))
+                    while (SendChannel.Reader.TryRead(out QueuedSend queued))
                     {
                         if (_overflowed) continue;
 
                         try
                         {
-                            await action();
+                            await queued.Send(queued.State);
                         }
                         catch (Exception e)
                         {
@@ -130,5 +146,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 if (_logger.IsError) _logger.Error($"{GetErrorMsg()} {nameof(ProcessMessages)} encountered an exception.", e);
             }
         }
+
+        private readonly record struct QueuedSend(Func<object?, Task> Send, object? State);
     }
 }

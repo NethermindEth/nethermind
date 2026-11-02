@@ -33,7 +33,7 @@ public sealed class WitnessCapturingBlockProcessor(
 {
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<WitnessCapturingBlockProcessor>();
 
-    public event Action? TransactionsExecuted
+    public event Action<Block>? TransactionsExecuted
     {
         add => inner.TransactionsExecuted += value;
         remove => inner.TransactionsExecuted -= value;

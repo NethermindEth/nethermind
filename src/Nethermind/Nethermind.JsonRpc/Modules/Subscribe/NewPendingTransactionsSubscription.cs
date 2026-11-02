@@ -3,7 +3,10 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
@@ -16,6 +19,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ITxPool _txPool;
         private readonly PendingTransactionPayloadCache _payloads;
         private readonly bool _includeTransactions;
+        private readonly Func<object?, Task> _send;
         private int _disposed;
 
         [ConstructorWithSideEffect]
@@ -43,19 +47,32 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _logger = logManager?.GetClassLogger<NewPendingTransactionsSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
             _includeTransactions = options?.IncludeTransactions ?? false;
             if (_includeTransactions) _payloads.AddSubscriber();
+            _send = _includeTransactions ? SendTransaction : SendHash;
 
             _txPool.NewPending += OnNewPending;
             if (_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} will track NewPendingTransactions");
         }
 
-        private void OnNewPending(object? sender, TxEventArgs e) => ScheduleAction(async () =>
+        /// <remarks>
+        /// A hash-only subscriber queues just the hash, so a lagging one does not keep the transaction, its calldata or
+        /// its blob sidecar alive.
+        /// </remarks>
+        private void OnNewPending(object? sender, TxEventArgs e)
         {
-            using JsonRpcResult result = _includeTransactions
-                ? CreateSubscriptionMessage(_payloads.Get(e.Transaction))
-                : CreateSubscriptionMessage(e.Transaction.Hash!);
+            if (e.Transaction is not { } transaction) return;
+            ScheduleAction(_send, _includeTransactions ? transaction : transaction.Hash);
+        }
+
+        private Task SendTransaction(object? transaction) => Send(CreateSubscriptionMessage(_payloads.Get((Transaction)transaction!)));
+
+        private Task SendHash(object? hash) => Send(CreateSubscriptionMessage((Hash256)hash!));
+
+        private async Task Send(JsonRpcResult message)
+        {
+            using JsonRpcResult result = message;
             await JsonRpcDuplexClient.SendJsonRpcResult(result);
             if (_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} printed hash of NewPendingTransaction.");
-        });
+        }
 
         public override string Type => SubscriptionType.EthSubscription.NewPendingTransactions;
 

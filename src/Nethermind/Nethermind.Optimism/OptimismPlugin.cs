@@ -11,6 +11,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Config;
 using Nethermind.Logging;
@@ -125,6 +126,8 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
             .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
             .AddDecorator<IBlockProducerTxSourceFactory, OptimismBlockProducerTxSourceFactory>()
             .AddSingleton<IPayloadPreparationService, OptimismPayloadPreparationService>()
+            // The system config sets the gas limit with no bound against the parent's.
+            .AddSingleton(PayloadTransactionCountGuard.Disabled)
             .AddScoped<IGenesisPostProcessor, OptimismGenesisPostProcessor>()
 
             // Rpcs

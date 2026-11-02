@@ -11,12 +11,14 @@ using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73;
+using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -35,13 +37,13 @@ internal sealed class WrapperTestVerifier : ILeanProofVerifier
     public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
     public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
 
-    /// <summary>When set, recursive STARK checks throw this instead of returning a verdict.</summary>
-    public Exception? Throws { get; set; }
+    /// <summary>When set, recursive STARK checks wait for it, as a slow verification would.</summary>
+    public ManualResetEventSlim? Hold { get; set; }
 
     public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
     {
         Interlocked.Increment(ref _calls);
-        if (Throws is { } exception) throw exception;
+        Hold?.Wait(TimeSpan.FromSeconds(10));
         return Valid;
     }
 
@@ -56,30 +58,15 @@ internal sealed class FakeWrapperLink(string name = "peer") : IWrapperLink
 
     public string Description => name;
 
-    /// <summary>Runs on the sending thread before a message is recorded.</summary>
-    public Action<P2PMessage>? OnSend { get; set; }
-
     public void Send(P2PMessage message)
     {
-        OnSend?.Invoke(message);
         lock (_sent) _sent.Add(message);
     }
 
     public void Penalize(string reason) { lock (_penalties) _penalties.Add(reason); }
 
-    private readonly List<string> _scores = [];
-    public void LowerScore(string reason) { lock (_scores) _scores.Add(reason); }
-
-    /// <summary>The type and size this peer announced per transaction hash through NewPooledTransactionHashes.</summary>
-    public Dictionary<Hash256, (TxType Type, int Size)> AnnouncedShapes { get; } = [];
-
-    public bool MatchesAnnouncedShape(Transaction transaction) =>
-        !AnnouncedShapes.TryGetValue(transaction.Hash!, out (TxType Type, int Size) shape)
-        || shape.Type == transaction.Type && shape.Size == transaction.GetLength();
-
     public T[] Sent<T>() where T : P2PMessage { lock (_sent) return [.. _sent.OfType<T>()]; }
     public string[] Penalties { get { lock (_penalties) return [.. _penalties]; } }
-    public string[] ScoreReductions { get { lock (_scores) return [.. _scores]; } }
     public void Clear() { lock (_sent) _sent.Clear(); }
 }
 
@@ -106,8 +93,8 @@ internal sealed class WrapperTestNode : IDisposable
             lock (Pending) Pending.Add(call.Arg<Transaction>());
             return AcceptTxResult.Accepted;
         });
-        Wrappers = new ProofWrapperService(Pool, specs, Tree, ProofStore, Verifier);
-        Transport = new ProofWrapperTransport(Pool, Wrappers, LimboLogs.Instance, Time);
+        Wrappers = new ProofWrapperService(Pool, specs, Tree, ProofStore, Verifier, new ForwardingBlobAdmission(this));
+        Transport = new ProofWrapperTransport(Wrappers, LimboLogs.Instance, Time);
     }
 
     public ManualTimeProvider Time { get; }
@@ -118,6 +105,19 @@ internal sealed class WrapperTestNode : IDisposable
     public LeanProofStore ProofStore { get; } = new(FrameTxSigHash.ComputeValue);
     public ProofWrapperService Wrappers { get; }
     public ProofWrapperTransport Transport { get; }
+
+    /// <summary>Where validated wrappers hand their blob-carrying transactions; none refuses them.</summary>
+    public IWrappedBlobTransactionAdmission? BlobAdmission { get; set; }
+
+    private sealed class ForwardingBlobAdmission(WrapperTestNode node) : IWrappedBlobTransactionAdmission
+    {
+        public AcceptTxResult Admit(Transaction transaction, object? source, IDisposable proofPin)
+        {
+            if (node.BlobAdmission is { } target) return target.Admit(transaction, source, proofPin);
+            proofPin.Dispose();
+            return AcceptTxResult.Invalid;
+        }
+    }
 
     /// <summary>Moves the local head to <paramref name="number"/> at <paramref name="timestamp"/>, with a parent one EIP-7843 slot
     /// of <paramref name="slotLength"/> seconds earlier, so the target fork is the one active at <c>timestamp + slotLength</c>.</summary>
@@ -146,31 +146,54 @@ internal sealed class WrapperTestNode : IDisposable
 internal static class WrapperTestObjects
 {
     /// <summary>A frame transaction with one leanSPHINCS dependency.</summary>
-    public static Transaction FrameTransaction(int seed)
+    public static Transaction FrameTransaction(int seed) => FrameTransaction(seed, Eip8288Constants.LeanSphincsScheme);
+
+    /// <summary>A frame transaction with one dependency under <paramref name="scheme"/>.</summary>
+    public static Transaction FrameTransaction(int seed, byte scheme)
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(BitConverter.GetBytes(seed)), default);
+        FrameDependency dependency = new(scheme, ValueKeccak.Compute(BitConverter.GetBytes(seed)), default);
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
             NonceKeys = [UInt256.Zero],
             ChainId = 1,
             SenderAddress = Address.Zero,
-            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dependency.VerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
         };
         transaction.Hash = new Hash256(ValueKeccak.Compute(Envelope(transaction)));
         return transaction;
     }
 
-    public static byte[] Envelope(Transaction transaction) => TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+    /// <summary>A dependency-bearing frame transaction carrying <paramref name="blobs"/> blobs in the elided network form
+    /// EIP-8437 transports: commitments bound to its versioned hashes and cell proofs, no blob data.</summary>
+    public static Transaction BlobFrameTransaction(int seed, int blobs = 1, bool dependencyBearing = true)
+    {
+        Transaction transaction = FrameTransaction(seed);
+        if (!dependencyBearing)
+            transaction.Frames = [new(FrameMode.Sender, FrameFlags.None, Address.Zero, 21_000, UInt256.Zero, BitConverter.GetBytes(seed))];
+        byte[][] commitments = [.. Enumerable.Range(0, blobs).Select(i => Enumerable.Repeat((byte)(seed + i + 1), 48).ToArray())];
+        transaction.BlobVersionedHashes = [.. commitments.Select(static commitment =>
+        {
+            byte[] hash = System.Security.Cryptography.SHA256.HashData(commitment);
+            hash[0] = 0x01;
+            return hash;
+        })];
+        transaction.MaxFeePerBlobGas = 1;
+        transaction.NetworkWrapper = new ShardBlobNetworkWrapper([], commitments,
+            [.. Enumerable.Range(0, blobs * CkzgLib.Ckzg.CellsPerExtBlob).Select(static i => Enumerable.Repeat((byte)i, 48).ToArray())], ProofVersion.V1);
+        transaction.ClearLengthCache();
+        transaction.Hash = transaction.CalculateHash();
+        return transaction;
+    }
 
-    /// <summary>The transaction as a PooledTransactions item: a typed envelope wrapped as an RLP string.</summary>
-    public static byte[] PooledItem(Transaction transaction) => TxDecoder.Instance.Encode(transaction, RlpBehaviors.InMempoolForm).Bytes;
+    /// <summary>The transaction's pooled encoding, as a wrapper carries it.</summary>
+    public static byte[] Envelope(Transaction transaction) => MempoolWrapperDecoder.EncodeTransaction(transaction);
 
-    /// <summary>A hash-only mode-1 wrapper over <paramref name="transactions"/> with an opaque proof.</summary>
+    /// <summary>A mode-1 wrapper over <paramref name="transactions"/> with an opaque proof.</summary>
     public static byte[] Wrapper(int proofBytes, params Transaction[] transactions) => Wrapper(proofBytes, proofBytes, transactions);
 
-    /// <summary>A hash-only mode-1 wrapper whose opaque proof is drawn from <paramref name="seed"/>, so wrappers of equal size
+    /// <summary>A mode-1 wrapper whose opaque proof is drawn from <paramref name="seed"/>, so wrappers of equal size
     /// over the same transactions differ.</summary>
     public static byte[] Wrapper(int proofBytes, int seed, params Transaction[] transactions)
     {
@@ -180,21 +203,21 @@ internal static class WrapperTestObjects
         new Random(seed).NextBytes(proof);
         return MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [.. sorted.Select(t => new WrapperTransaction(t.Hash!))],
+            Transactions = sorted,
             Deps = deps,
             Mode = MempoolWrapper.ModeRecursive,
             RecursiveStark = new RecursiveStark(proof, new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)))
         }).Bytes;
     }
 
-    /// <summary>A hash-only mode-0 wrapper over <paramref name="transactions"/> with one opaque witness per dependency.</summary>
+    /// <summary>A mode-0 wrapper over <paramref name="transactions"/> with one opaque witness per dependency.</summary>
     public static byte[] DirectWrapper(params Transaction[] transactions)
     {
         Transaction[] sorted = [.. transactions.OrderBy(t => t.Hash!.ToString())];
         List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(sorted.SelectMany(tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)));
         return MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [.. sorted.Select(t => new WrapperTransaction(t.Hash!))],
+            Transactions = sorted,
             Deps = deps,
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [.. deps.Select(static _ => new byte[] { 1 })]
@@ -202,4 +225,15 @@ internal static class WrapperTestObjects
     }
 
     public static WrapperAnnouncement Describe(byte[] wrapper) => WrapperAnnouncement.Create(wrapper);
+
+    /// <summary>Describes bytes that need not parse as a wrapper, as mode 1 with zero hints.</summary>
+    public static WrapperAnnouncement DescribeOpaque(byte[] wrapper) => Announcement(1, wrapper.Length, ValueKeccak.Compute(wrapper));
+
+    /// <summary>An announcement entry with arbitrary, possibly false, metadata.</summary>
+    public static WrapperAnnouncement Announcement(int mode, int length, in ValueHash256 hash, WrapperCoverage coverage = default) =>
+        WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)mode), Eth73Rlp.EncodeUInt((ulong)length),
+            Eth73Rlp.EncodeBytes(hash.Bytes), Eth73Rlp.EncodeBytes(coverage.DepsHash.Bytes), Eth73Rlp.EncodeBytes(coverage.TxsHash.Bytes)));
+
+    /// <summary>A ProofWrappers entry pairing <paramref name="wrapper"/> with its canonical hash.</summary>
+    public static ProofWrapperEntry Entry(byte[] wrapper) => new(ValueKeccak.Compute(wrapper), wrapper);
 }

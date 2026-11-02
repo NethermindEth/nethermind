@@ -3,10 +3,12 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -34,8 +36,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private readonly IJsonRpcService _jsonRpcService;
     private readonly JsonRpcDiagnostics _diagnostics;
     private readonly IProcessExitSource? _processExitSource;
+    private readonly FrozenDictionary<string, IBatchConcurrencyStrategy> _batchConcurrency;
 
-    public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager, IProcessExitSource? processExitSource = null)
+    public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager,
+        IProcessExitSource? processExitSource = null, IEnumerable<IBatchConcurrencyStrategy>? batchConcurrencyStrategies = null)
     {
         _logger = logManager?.GetClassLogger<JsonRpcProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
         ArgumentNullException.ThrowIfNull(fileSystem);
@@ -44,6 +48,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
 
         _processExitSource = processExitSource;
+        _batchConcurrency = (batchConcurrencyStrategies ?? [])
+            .SelectMany(static strategy => strategy.Methods, static (strategy, method) => (method, strategy))
+            .ToFrozenDictionary(static entry => entry.method, static entry => entry.strategy);
         _diagnostics = new JsonRpcDiagnostics(_jsonRpcConfig, fileSystem, _logger);
     }
 
@@ -85,18 +92,39 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             return;
         }
 
+        _diagnostics.RecordRequest(requestBody);
+
         if (options.InputMode != JsonRpcInputMode.SingleDocument)
         {
-            PipeReader reader = PipeReader.Create(new ReadOnlySequence<byte>(requestBody));
-            // Only the pipe path reads the timeout budget; ProcessCoreAsync returns it in its own finally.
-            CancellationTokenSource? timeoutSource = RentTimeout(context);
-            await ProcessCoreAsync(reader, context, sink, options, timeoutSource, timeoutSource?.Token ?? CancellationToken.None, cancellationToken);
+            await ProcessCompleteMessageToSink(requestBody, context, sink, cancellationToken);
             return;
         }
 
-        _diagnostics.RecordRequest(requestBody);
-
         await ProcessSingleDocumentMemoryToSink(requestBody, context, sink, options, cancellationToken);
+    }
+
+    private async ValueTask ProcessCompleteMessageToSink(ReadOnlyMemory<byte> message, JsonRpcContext context, IJsonRpcResponseSink sink, CancellationToken cancellationToken)
+    {
+        JsonRpcResult.Entry? result;
+        try
+        {
+            (_, result) = await ProcessCompleteDocumentsAsync(message, context, sink, cancellationToken);
+        }
+        catch (BadHttpRequestException e)
+        {
+            Handle(e);
+            return;
+        }
+        catch (ConnectionResetException e)
+        {
+            Handle(e);
+            return;
+        }
+
+        if (result.HasValue)
+        {
+            await WriteSingleEntryAsync(result.Value, sink, cancellationToken);
+        }
     }
 
     private async ValueTask ProcessCoreAsync(
@@ -611,6 +639,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         try
         {
             bool hasNext = source.TryGetNext(out JsonRpcRequest? request, out Exception? decodeException);
+            // Tracked as soon as read: deciding whether an item joins the window may already parse its params.
+            if (hasNext && request is not null) batchRequestJsonLifetime.TrackUntilBatchEnd(request);
             while (hasNext || window?.Count > 0)
             {
                 if (!batchStarted)
@@ -623,12 +653,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     && request is not null
                     && !isStopped
                     && concurrency > 1
-                    && CanExecuteConcurrently(request)
+                    && CanExecuteConcurrently(request, concurrency)
                     && !(window ??= new BatchExecutionWindow(concurrency, this, context)).IsFull)
                 {
-                    batchRequestJsonLifetime.TrackUntilBatchEnd(request);
                     window.Add(request);
                     hasNext = source.TryGetNext(out request, out decodeException);
+                    if (hasNext && request is not null) batchRequestJsonLifetime.TrackUntilBatchEnd(request);
                 }
 
                 requestIndex++;
@@ -656,10 +686,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     // valid element be dispatched in full after the sink already asked to stop.
                     isStopped |= sink.StopRequested;
                     hasNext = source.TryGetNext(out request, out decodeException);
+                    if (hasNext && request is not null) batchRequestJsonLifetime.TrackUntilBatchEnd(request);
                     continue;
                 }
-
-                batchRequestJsonLifetime.TrackUntilBatchEnd(request);
 
                 JsonRpcResult.Entry response = isStopped
                     ? CreateBatchResponseLimitEntry(request)
@@ -668,6 +697,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 await WriteBatchResponseAsync(request, response, requestIndex, requestCount, sink, cancellationToken);
                 isStopped |= sink.StopRequested;
                 hasNext = source.TryGetNext(out request, out decodeException);
+                if (hasNext && request is not null) batchRequestJsonLifetime.TrackUntilBatchEnd(request);
             }
 
             // JSON-RPC 2.0: an empty batch is itself an Invalid Request, answered with one error object rather
@@ -689,9 +719,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
     }
 
-    /// <summary>Whether a batch item may execute alongside its neighbours: it only reads state and runs the EVM.</summary>
-    private static bool CanExecuteConcurrently(JsonRpcRequest request) =>
-        request.Method is "eth_call" or "eth_estimateGas" or "eth_createAccessList";
+    /// <summary>Whether a batch item may execute alongside its neighbours, as its method's strategy decides.</summary>
+    private bool CanExecuteConcurrently(JsonRpcRequest request, int concurrency) =>
+        request.Method is { } method
+        && _batchConcurrency.TryGetValue(method, out IBatchConcurrencyStrategy? strategy)
+        && strategy.CanExecuteConcurrently(request, concurrency);
 
     private Task<JsonRpcResult.Entry> ExecuteInBackground(JsonRpcRequest request, JsonRpcContext context) =>
         Task.Run(() => HandleSingleRequest(request, context).AsTask());

@@ -43,6 +43,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
+        // Without the aggregator, received wrappers are still verified, admitted and relayed by the transport.
+        if (configProvider.GetConfig<ITxPoolConfig>().AggregateProofs) builder.AddSingleton<V73.ProofWrapperGossip>();
         builder
             .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
             .AddSingleton<SyncedTxGossipPolicy>()
@@ -77,11 +79,11 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<IMessagePad, Handshake.Eip8MessagePad>()
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
             .AddSingleton<Subprotocols.Eth.V72.ISparseBlobPoolPeerRegistry, Subprotocols.Eth.V72.SparseBlobPoolPeerRegistry>()
+            .Bind<IWrappedBlobTransactionAdmission, Subprotocols.Eth.V72.ISparseBlobPoolPeerRegistry>()
             .AddSingleton<IProtocolsManager, ProtocolsManager>()
             .AddFirst<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
             .AddLast<IP2PCapabilityResolver, SnapP2PCapabilityResolver>()
             .AddSingleton<V73.ProofWrapperTransport>()
-            .AddSingleton<V73.ProofWrapperGossip>()
 
             // Handshake
             .AddMessageSerializer<Handshake.AuthEip8Message, Handshake.AuthEip8MessageSerializer>()

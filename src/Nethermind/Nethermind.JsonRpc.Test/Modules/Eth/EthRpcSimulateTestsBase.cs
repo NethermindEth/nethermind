@@ -173,21 +173,23 @@ public class EthRpcSimulateTestsBase
             }
 
             await Task.Yield();
-            if (iteration > 0)
-            {
-                await Task.Delay(100);
-            }
-            else if (iteration > 3)
+            // Bounded, so a block that never carries the transactions fails the test instead of hanging the run.
+            if (iteration > 100)
             {
                 Assert.Fail("Did not produce expected block");
+            }
+            else if (iteration > 0)
+            {
+                await Task.Delay(100);
             }
             iteration++;
         }
         Assert.That(blockTree.SuggestBlock(block!), Is.EqualTo(AddBlockResult.Added));
 
         TxReceipt? createContractTxReceipt = null;
-        while (createContractTxReceipt is null)
+        for (int attempt = 0; createContractTxReceipt is null; attempt++)
         {
+            if (attempt > 100) Assert.Fail($"Contract transaction {tx.Hash!} got no receipt.");
             await Task.Delay(100);
             createContractTxReceipt = chain.Bridge.GetReceipt(acceptedHash);
         }

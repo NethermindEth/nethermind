@@ -50,7 +50,7 @@ public partial class SszExecutionPayloadV1(ExecutionPayload payload) : ISszExecu
     private static ExecutionPayload RequireStandardPayload(ExecutionPayload payload)
     {
         if (payload.InclusionLists is not null || payload is ExecutionPayloadV3
-            { RecursiveStarkProof: not null } or ExecutionPayloadV3 { RecursiveStarkBlockDepsHash: not null })
+            { StarkProof: not null })
             throw new NotSupportedException("EIP-8288 proof payloads require the JSON Engine API; the SSZ schema has no proof fields.");
         return payload;
     }

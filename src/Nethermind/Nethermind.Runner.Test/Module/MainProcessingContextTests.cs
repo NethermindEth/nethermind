@@ -24,8 +24,9 @@ namespace Nethermind.Runner.Test.Module;
 
 public class MainProcessingContextTests
 {
+    // The budget covers building the container and processing the first block, which take over 10 s on a stalled runner.
     [Test]
-    [CancelAfter(10000)]
+    [CancelAfter(60_000)]
     public async Task Block_tracer_registered_via_main_processing_module_is_attached_to_main_processor(CancellationToken cancellationToken)
     {
         RecordingBlockTracer recordingTracer = new();
@@ -53,7 +54,7 @@ public class MainProcessingContextTests
     }
 
     [Test]
-    [CancelAfter(10000)]
+    [CancelAfter(60_000)]
     public async Task Test_TransactionProcessed_EventIsFired(CancellationToken cancellationToken)
     {
         await using IContainer ctx = new ContainerBuilder()

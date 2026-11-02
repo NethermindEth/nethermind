@@ -56,7 +56,7 @@ namespace Nethermind.Store.Test.Proofs
         {
             UInt256[] keys = new UInt256[count];
             ValueHash256[] expectedHashes = new ValueHash256[count];
-            string[] expectedKeys = new string[count];
+            byte[][] expectedKeys = new byte[count][];
             Random random = new(42);
             byte[] bytes = new byte[32];
             for (int i = 0; i < count; i++)
@@ -65,7 +65,7 @@ namespace Nethermind.Store.Test.Proofs
                 if (i % 3 == 0) Array.Fill(bytes, (byte)(i % 2 == 0 ? 0 : 255));
                 keys[i] = new UInt256(bytes, isBigEndian: true);
                 expectedHashes[i] = ValueKeccak.Compute(bytes);
-                expectedKeys[i] = bytes.ToHexString(true, true);
+                expectedKeys[i] = bytes.ToArray();
             }
 
             IReadOnlyCollection<UInt256> storageKeys = collectionKind switch
@@ -125,7 +125,7 @@ namespace Nethermind.Store.Test.Proofs
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(collector.GetHashedStorageKeys().ToArray(), Is.EqualTo(hashes));
-                Assert.That(actual.StorageProofs.Select(static item => item.Key), Is.EqualTo(new[] { "0x1", "0x0", "0x1" }));
+                Assert.That(actual.StorageProofs.Select(static item => item.Key), Is.EqualTo(keys.Select(static key => key.ToBigEndian())));
                 Assert.That(actual.StorageProofs[0].Proof, Is.EqualTo(expected.StorageProofs[1].Proof));
                 Assert.That(actual.StorageProofs[1].Proof, Is.EqualTo(expected.StorageProofs[0].Proof));
                 Assert.That(actual.StorageProofs[2].Proof, Is.EqualTo(expected.StorageProofs[1].Proof));
@@ -433,8 +433,8 @@ namespace Nethermind.Store.Test.Proofs
         {
             (StateTree tree, _) = CreateTreeWithUInt256Storage();
             AccountProof proof = CollectProof(tree, TestItem.AddressA, StorageKeyZeroAndOne);
-            Assert.That(proof.StorageProofs[0].Key!, Is.EqualTo("0x0"));
-            Assert.That(proof.StorageProofs[1].Key!, Is.EqualTo("0x1"));
+            Assert.That(proof.StorageProofs[0].Key!, Is.EqualTo(new byte[] { 0 }));
+            Assert.That(proof.StorageProofs[1].Key!, Is.EqualTo(new byte[] { 1 }));
         }
 
         private static readonly byte[] StorageKeyA = Bytes.FromHexString("0x000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaa");
@@ -848,7 +848,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 {
                     byte[] indexBytes = new byte[32];
                     addressesWithStorage[i].StorageCells[j].Index.ToBigEndian(indexBytes.AsSpan());
-                    Assert.That(accountProof.StorageProofs[j].Key!, Is.EqualTo(indexBytes.ToHexString(true, true)), $"{i} {j}");
+                    Assert.That(accountProof.StorageProofs[j].Key!, Is.EqualTo(indexBytes), $"{i} {j}");
 
                     TrieNode node = new(NodeType.Unknown, accountProof.StorageProofs[j].Proof.Last());
                     node.ResolveNode(null, TreePath.Empty);

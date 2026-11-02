@@ -41,7 +41,7 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Proof_wrapper_ingress_resolves_pending_hashes_and_egress_proves_witnesses([Values] bool zeroDataHash)
+    public async Task Proof_wrapper_ingress_admits_full_transactions_and_egress_proves_witnesses([Values] bool zeroDataHash)
     {
         RecordingProofVerifier verifier = new();
         using Context context = await ProofContext(verifier);
@@ -50,24 +50,18 @@ public partial class EthRpcModuleTests
         byte[] frameData = transaction.Frames![1].Data.ToArray();
         MempoolWrapper direct = new()
         {
-            Transactions = [new WrapperTransaction(transaction)],
+            Transactions = [transaction],
             Mode = MempoolWrapper.ModeDirect,
             Deps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue),
             Proofs = [[7]]
         };
-        ResultWrapper<Hash256[]> received = await context.Test.EthRpcModule.eth_sendProofWrapper(MempoolWrapperDecoder.Instance.Encode(direct).Bytes,
-            [Rlp.Encode(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes]);
+        byte[] encoded = MempoolWrapperDecoder.Instance.Encode(direct).Bytes;
+        ResultWrapper<Hash256[]> received = await context.Test.EthRpcModule.eth_sendProofWrapper(encoded);
         Assert.That(received.Result, Is.EqualTo(Result.Success), received.Result.Error);
+        Assert.That(received.Data, Is.EqualTo(new[] { transaction.Hash }));
         Assert.That(context.Test.TxPool.TryGetPendingTransaction(received.Data[0].ValueHash256, out _), Is.True);
-        MempoolWrapper hashOnly = new()
-        {
-            Transactions = [new WrapperTransaction(received.Data[0])],
-            Mode = MempoolWrapper.ModeDirect,
-            Deps = direct.Deps,
-            Proofs = direct.Proofs
-        };
-        ResultWrapper<Hash256[]> resolved = await context.Test.EthRpcModule.eth_sendProofWrapper(MempoolWrapperDecoder.Instance.Encode(hashOnly).Bytes);
-        Assert.That(resolved.Result, Is.EqualTo(Result.Success), resolved.Result.Error);
+        ResultWrapper<Hash256[]> resubmitted = await context.Test.EthRpcModule.eth_sendProofWrapper(encoded);
+        Assert.That(resubmitted.Result, Is.EqualTo(Result.Success), resubmitted.Result.Error);
         int proofCalls = verifier.ProofCalls;
         Assert.That(context.Test.EthRpcModule.eth_getProofWrapper().Result.Error, Does.Contain("not ready"));
         Assert.That(verifier.ProofCalls, Is.EqualTo(proofCalls));
@@ -88,42 +82,26 @@ public partial class EthRpcModuleTests
         }
     }
 
-    [Test]
-    public async Task Proof_wrapper_ingress_rejects_unknown_transaction_hash()
-    {
-        using Context context = await ProofContext(new RecordingProofVerifier());
-        MempoolWrapper wrapper = new() { Transactions = [new WrapperTransaction(Keccak.Compute("unknown"))], Mode = MempoolWrapper.ModeDirect, Deps = [new(Eip8288Constants.LeanSphincsScheme, default, default)], Proofs = [[1]] };
-        ResultWrapper<Hash256[]> response = await context.Test.EthRpcModule.eth_sendProofWrapper(MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes);
-        Assert.That(response.Result.Error, Is.EqualTo(MempoolWrapperValidator.UnknownTransaction));
-    }
-
-    [TestCase("duplicate")]
+    // EIP-8288: wrappers carry full transactions, so a hash reference or a missing transaction is malformed, whatever the
+    // pool holds, and is rejected before proof verification.
+    [TestCase("reference")]
     [TestCase("empty")]
-    [TestCase("too-many")]
-    [TestCase("unclaimed")]
-    public async Task Wrapper_recovery_rejects_invalid_envelopes_before_proof_verification(string scenario)
+    [TestCase("oversized")]
+    public async Task Proof_wrapper_ingress_rejects_incomplete_wrappers_before_proof_verification(string scenario)
     {
         RecordingProofVerifier verifier = new();
         using Context context = await ProofContext(verifier);
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
         Transaction transaction = ProofTransaction(context, dependency);
-        byte[] envelope = Rlp.Encode(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
-        byte[][] envelopes = scenario switch
+        Rlp content = Rlp.Encode(Rlp.Encode([Rlp.Encode(Eip8288Dependencies.Serialize(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)))]),
+            Rlp.Encode([Rlp.Encode(new byte[] { 1 })]));
+        byte[] wrapper = scenario switch
         {
-            "duplicate" => [envelope, envelope],
-            "empty" => [[]],
-            "too-many" => new byte[Eip8288Constants.MaxTxsPerWrapper + 1][],
-            _ => [envelope]
+            "reference" => Rlp.Encode(Rlp.Encode([Rlp.Encode(Rlp.Encode(transaction.Hash!))]), Rlp.Encode(0UL), content).Bytes,
+            "empty" => Rlp.Encode(Rlp.Encode(Array.Empty<Rlp>()), Rlp.Encode(0UL), content).Bytes,
+            _ => new byte[Eip8288Constants.MaxWrapperBytes + 1]
         };
-        Hash256 hash = scenario == "unclaimed" ? Keccak.Compute("another-transaction") : transaction.Hash!;
-        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
-        {
-            Transactions = [new WrapperTransaction(hash)],
-            Deps = [dependency],
-            Mode = MempoolWrapper.ModeDirect,
-            Proofs = [[1]]
-        }).Bytes;
-        ResultWrapper<Hash256[]> result = await context.Test.EthRpcModule.eth_sendProofWrapper(wrapper, envelopes);
+        ResultWrapper<Hash256[]> result = await context.Test.EthRpcModule.eth_sendProofWrapper(wrapper);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result, Is.Not.EqualTo(Result.Success));

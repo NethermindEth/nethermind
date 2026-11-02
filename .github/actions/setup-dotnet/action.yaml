@@ -1,0 +1,111 @@
+name: Set up .NET
+description: >-
+  Runs actions/setup-dotnet, retrying up to 10 attempts with growing pauses: the dotnet-install
+  script sometimes crashes on hosted runners (e.g. "Internal CLR error" on windows-11-arm).
+  Run after actions/checkout, as this action is local.
+
+runs:
+  using: composite
+  steps:
+    - name: Set up .NET
+      id: attempt1
+      continue-on-error: true
+      uses: actions/setup-dotnet@v5
+
+    - name: Wait before attempt 2
+      if: steps.attempt1.outcome == 'failure'
+      shell: bash
+      run: sleep 5
+
+    - name: Set up .NET (attempt 2)
+      id: attempt2
+      if: steps.attempt1.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/setup-dotnet@v5
+
+    - name: Wait before attempt 3
+      if: steps.attempt2.outcome == 'failure'
+      shell: bash
+      run: sleep 10
+
+    - name: Set up .NET (attempt 3)
+      id: attempt3
+      if: steps.attempt2.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/setup-dotnet@v5
+
+    - name: Wait before attempt 4
+      if: steps.attempt3.outcome == 'failure'
+      shell: bash
+      run: sleep 15
+
+    - name: Set up .NET (attempt 4)
+      id: attempt4
+      if: steps.attempt3.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/setup-dotnet@v5
+
+    - name: Wait before attempt 5
+      if: steps.attempt4.outcome == 'failure'
+      shell: bash
+      run: sleep 20
+
+    - name: Set up .NET (attempt 5)
+      id: attempt5
+      if: steps.attempt4.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/setup-dotnet@v5
+
+    - name: Wait before attempt 6
+      if: steps.attempt5.outcome == 'failure'
+      shell: bash
+      run: sleep 25
+
+    - name: Set up .NET (attempt 6)
+      id: attempt6
+      if: steps.attempt5.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/setup-dotnet@v5
+
+    - name: Wait before attempt 7
+      if: steps.attempt6.outcome == 'failure'
+      shell: bash
+      run: sleep 30
+
+    - name: Set up .NET (attempt 7)
+      id: attempt7
+      if: steps.attempt6.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/setup-dotnet@v5
+
+    - name: Wait before attempt 8
+      if: steps.attempt7.outcome == 'failure'
+      shell: bash
+      run: sleep 35
+
+    - name: Set up .NET (attempt 8)
+      id: attempt8
+      if: steps.attempt7.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/setup-dotnet@v5
+
+    - name: Wait before attempt 9
+      if: steps.attempt8.outcome == 'failure'
+      shell: bash
+      run: sleep 40
+
+    - name: Set up .NET (attempt 9)
+      id: attempt9
+      if: steps.attempt8.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/setup-dotnet@v5
+
+    - name: Wait before attempt 10
+      if: steps.attempt9.outcome == 'failure'
+      shell: bash
+      run: sleep 45
+
+    - name: Set up .NET (attempt 10)
+      id: attempt10
+      if: steps.attempt9.outcome == 'failure'
+      uses: actions/setup-dotnet@v5

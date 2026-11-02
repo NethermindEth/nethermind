@@ -76,8 +76,8 @@ public class ReleaseSpecTests
     }
 
     /// <summary>Bools the sweeps cannot pin, so <see cref="EveryForkFlag"/> skips them.</summary>
-    /// <remarks><c>ValidateReceipts</c> is fork-gated (<c>ValidateReceiptsTransition</c>, Byzantium on a geth
-    /// genesis), but its <see cref="IReceiptSpec"/> default is on, so a decorator that stopped forwarding it
+    /// <remarks><c>ValidateReceipts</c> is fork-gated (<c>ValidateReceiptsTransition</c>), but its
+    /// <see cref="IReceiptSpec"/> default is on, so a decorator that stopped forwarding it
     /// would still report it on. Since the decorator sweep switches the flag under test on, it would pass on
     /// that default instead of failing — a green proving nothing, which is the failure class these sweeps exist
     /// to catch; <see cref="Forwarding_spec_implements_every_member_itself"/> pins its forwarding instead.

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -117,6 +117,56 @@ namespace Nethermind.State.Repositories
 
         public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers)
         {
+            int count = blockNumbers.Count;
+            if (count == 0) return ArrayPoolList<ChainLevelInfo?>.Empty();
+
+            int keyLength = GetKeyLength(blockNumbers[0]);
+            for (int i = 1; i < count; i++)
+            {
+                if (GetKeyLength(blockNumbers[i]) != keyLength)
+                    return ReadVariableLengthLevels(blockNumbers);
+            }
+
+            return ReadFixedLengthLevels(blockNumbers, keyLength);
+        }
+
+        private static int GetKeyLength(ulong number) =>
+            sizeof(ulong) - Math.Min(BitOperations.LeadingZeroCount(number) / sizeof(ulong), sizeof(ulong) - 1);
+
+        private IOwnedReadOnlyList<ChainLevelInfo?> ReadFixedLengthLevels(in ArrayPoolListRef<ulong> blockNumbers, int keyLength)
+        {
+            int count = blockNumbers.Count;
+            int byteCount = checked(count * keyLength);
+            if (byteCount <= 256)
+                return ReadFixedLengthLevels(blockNumbers, keyLength, stackalloc byte[byteCount]);
+
+            using ArrayPoolSpan<byte> keys = new(ArrayPool<byte>.Shared, byteCount);
+            return ReadFixedLengthLevels(blockNumbers, keyLength, keys);
+        }
+
+        private IOwnedReadOnlyList<ChainLevelInfo?> ReadFixedLengthLevels(in ArrayPoolListRef<ulong> blockNumbers, int keyLength, Span<byte> keys)
+        {
+            int count = blockNumbers.Count;
+            ArrayPoolList<ChainLevelInfo?> levels = new(count, count);
+            try
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    blockNumbers[i].ToBigEndianSpanWithoutLeadingZeros(out _).CopyTo(keys.Slice(i * keyLength, keyLength));
+                }
+
+                _blockInfoDb.GetMany<ChainLevelInfo?, LevelDecoder>(keys, keyLength, levels.AsSpan(), new LevelDecoder(_decoder));
+                return levels;
+            }
+            catch
+            {
+                levels.Dispose();
+                throw;
+            }
+        }
+
+        private IOwnedReadOnlyList<ChainLevelInfo?> ReadVariableLengthLevels(in ArrayPoolListRef<ulong> blockNumbers)
+        {
             byte[][] keys = new byte[blockNumbers.Count][];
             for (int i = 0; i < blockNumbers.Count; i++)
             {
@@ -125,16 +175,35 @@ namespace Nethermind.State.Repositories
 
             KeyValuePair<byte[], byte[]?>[] data = _blockInfoDb[keys];
 
-            return data.Select(kv =>
+            ArrayPoolList<ChainLevelInfo?> levels = new(data.Length, data.Length);
+            LevelDecoder decoder = new(_decoder);
+            try
+            {
+                for (int i = 0; i < data.Length; i++)
                 {
-                    if (kv.Value is null || kv.Value.Length == 0) return null;
-                    RlpReader reader = new(kv.Value);
-                    return _decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes);
-                })
-                .ToPooledList(data.Length);
+                    levels[i] = data[i].Value is byte[] value ? decoder.Decode(value) : null;
+                }
+
+                return levels;
+            }
+            catch
+            {
+                levels.Dispose();
+                throw;
+            }
         }
 
         void IClearableCache.ClearCache() => _blockInfoCache.Clear();
+
+        private readonly struct LevelDecoder(IRlpDecoder<ChainLevelInfo> decoder) : IValueDecoder<ChainLevelInfo?>
+        {
+            public ChainLevelInfo? Decode(ReadOnlySpan<byte> buffer)
+            {
+                if (buffer.IsEmpty) return null;
+                RlpReader reader = new(buffer);
+                return decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes);
+            }
+        }
 
         private readonly struct LevelNumber(ulong number) : IHash64bit<LevelNumber>
         {

@@ -77,7 +77,9 @@ public partial class EngineModuleTests
             Assert.That(result.Data.PayloadId, Is.Not.Null, "the payload keeps improving without an initial block");
             Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(head));
         }
-        factory.ReceivedWithAnyArgs(1).StartBlockImprovementContext(default!, default!, default!, default, default, default!);
+        // The empty block is prepared off the forkchoice call, so improvement starts asynchronously.
+        Assert.That(() => factory.ReceivedCalls().Count(static call => call.GetMethodInfo().Name == nameof(IBlockImprovementContextFactory.StartBlockImprovementContext)),
+            Is.EqualTo(1).After(5000, 10));
     }
 
     [Test]
@@ -659,7 +661,9 @@ public partial class EngineModuleTests
     public async Task Cannot_build_invalid_block_with_the_branch()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        TimeSpan timePerSlot = 4 * delay;
+        // The slot cutoff (timePerSlot * 1.3) must sit beyond the improvement the test waits for: with a 40 ms slot
+        // the loop stopped improving before the transactions that trigger it were submitted.
+        TimeSpan timePerSlot = TimeSpan.FromSeconds(60);
 
         using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
             .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(London.Instance))

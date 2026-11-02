@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using System;
 using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
@@ -66,6 +67,9 @@ namespace Nethermind.Serialization.Rlp
             BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext);
             // Blocks retain transactions without the return path provided by OwnedBlockBodies.Dispose.
             BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck, usePooledTransactions: false);
+            // EIP-8288: only a header committing to a recursive STARK admits a trailing stark_proof body field.
+            if (body.StarkProof is not null && header.RecursiveStark is null)
+                throw new RlpException("Block carries a stark_proof without a recursive STARK commitment.");
 
             Block block = new(header, body)
             {
@@ -82,10 +86,28 @@ namespace Nethermind.Serialization.Rlp
                 return Rlp.OfEmptyList;
             }
 
-            byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+            (int Total, int Txs, int Uncles, int? Withdrawals) lengths = GetContentLength(item, rlpBehaviors);
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(Rlp.LengthOfSequence(lengths.Total));
             RlpWriter writer = new(bytes);
-            Encode(ref writer, item, rlpBehaviors);
+            EncodeContent(ref writer, item, lengths);
             return new(bytes);
+        }
+
+        public ArrayPoolSpan<byte> EncodeToArrayPoolSpan(Block block, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            (int Total, int Txs, int Uncles, int? Withdrawals) lengths = GetContentLength(block, rlpBehaviors);
+            ArrayPoolSpan<byte> buffer = new(Rlp.LengthOfSequence(lengths.Total));
+            try
+            {
+                RlpWriter writer = new(buffer);
+                EncodeContent(ref writer, block, lengths);
+                return buffer;
+            }
+            catch
+            {
+                buffer.Dispose();
+                throw;
+            }
         }
 
         public override void Encode<TWriter>(ref TWriter writer, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -96,7 +118,13 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength) = GetContentLength(item, rlpBehaviors);
+            EncodeContent(ref writer, item, GetContentLength(item, rlpBehaviors));
+        }
+
+        private void EncodeContent<TWriter>(ref TWriter writer, Block item, (int Total, int Txs, int Uncles, int? Withdrawals) lengths)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
+        {
+            (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength) = lengths;
             writer.StartSequence(contentLength);
             _headerDecoder.Encode(ref writer, item.Header);
             writer.StartSequence(txsLength);

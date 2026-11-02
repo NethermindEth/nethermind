@@ -36,7 +36,7 @@ jobs:
           submodules: recursive
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Redirect build output to the large scratch disk (Linux)
         # Build on the ~70 GB /mnt; the multi-RID output overflows the ~21 GB root disk.
@@ -68,7 +68,7 @@ jobs:
           dotnet build src/Nethermind/EthereumTests.slnx -c release --no-restore -p:RunAnalyzersDuringBuild=false ${{ matrix.build_args }}
 
       - name: Prune foreign-RID native assets
-        run: bash scripts/ci/prune-runtimes.sh "${{ matrix.rid }}"
+        run: dotnet run --file scripts/ci/prune-runtimes.cs -- "${{ matrix.rid }}"
 
       - name: Deduplicate build output
         # Hardlink duplicate files so tar stores each once. Best-effort.
@@ -88,7 +88,7 @@ jobs:
         run: tar -C src/Nethermind -cf test-bin.tar artifacts/bin
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: test-bin-${{ matrix.variant }}-${{ matrix.rid }}
           path: test-bin.tar

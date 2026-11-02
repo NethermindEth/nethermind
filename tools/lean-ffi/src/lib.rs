@@ -590,7 +590,6 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
     }
     let discards: HashSet<_> = r.deps()?.into_iter().collect();
     r.end()?;
-    // EIP-8288: every discard must occur in the input union, matched by its full triple.
     let union: HashSet<_> = all.iter().copied().collect();
     if !discards.is_subset(&union) {
         return Err(());
@@ -679,7 +678,7 @@ fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn nlean_abi_version() -> u32 {
-    7
+    9
 }
 /// # Safety
 /// Output must hold nine writable u32 values.
@@ -863,7 +862,8 @@ mod tests {
         }
     }
 
-    /// Expected digests computed in Python from the EIP-8288 `get_deps_hash` pseudocode.
+    /// Expected digests computed in Python: leanSPHINCS-only lists from the EIP-8288 `get_deps_hash`
+    /// pseudocode, lists with leanSTARK entries from the split-domain deviation.
     #[test]
     fn dependency_commitment_matches_eip_pseudocode_vectors() {
         let dep = |scheme: u8, data: [u8; 32], key: [u8; 32]| {
@@ -874,10 +874,11 @@ mod tests {
             dep
         };
         let key = |start: u8| std::array::from_fn(|i| start + i as u8);
-        let (a, b, c) = (
+        let (a, b, c, d) = (
             dep(0x10, [7; 32], key(0)),
             dep(0x10, [7; 32], key(1)),
             dep(0x10, [1; 32], [0xff; 32]),
+            dep(0x10, [0xa5; 32], [0x5a; 32]),
         );
         let (g1, g2) = (
             dep(0x11, [7; 32], key(0)),
@@ -890,19 +891,27 @@ mod tests {
             ),
             (
                 vec![a],
-                "aef5a1c0fbd299e930670837a1d8525a37ebfbb3139edfa972cb84788484afe6",
+                "6921fc8275ae947e76ab603255f550b615341fb880a8635996d30b55201d28f6",
             ),
             (
                 vec![b, a, c, a],
-                "db319771cd52a8a6eadb4273e07df5fbf2a405592e956e3fe6f3121f9cb3b897",
+                "27ad454def73a88020d3f7a6428cd790cf354b531b0447013027e7fa277b9e13",
+            ),
+            (
+                vec![d, a, c, b],
+                "830b7c9edb9a816e25929dbae987d3fcf2e900fa009d930c60eddacb0d479ed8",
             ),
             (
                 vec![g1],
-                "2eacc579313017124720641cf33287809cb02437e8f381c427e0f5aa8162db93",
+                "3ae64e624f1d16e19a7699b95f501134828652df566420f26a4f298b5bb54b9a",
             ),
             (
                 vec![g2, a, g1, c],
-                "2523de87398f08d0bb08e78b1ff651b0452a1c12fe8dbae806a4c8ffe7fbaf31",
+                "ba1180b0f634d713dbf9b5b87e68a36786f550676d2b05d4f49f699eeb42e90f",
+            ),
+            (
+                vec![g2, d],
+                "b5a19f98eacfd5f1ac57b535e3aadbdfaf430698ebe563422ba883aa02f38adf",
             ),
         ] {
             let digest = commitment(&canonical(deps));
@@ -915,6 +924,7 @@ mod tests {
             );
         }
         assert_ne!(commitment(&[a]), commitment(&[g1]));
+        assert_ne!(commitment(&[d]), commitment(&[g2]));
     }
 
     #[test]
@@ -1157,7 +1167,7 @@ mod tests {
         let mut declared = [0; 96];
         declared[31] = 0x10;
         let hash = commitment(&[declared]);
-        assert!(verify_aggregate(&hash, b"NLR2\xff\xff\xff\xff").is_err());
+        assert!(verify_aggregate(&hash, &[0xff; 8]).is_err());
         assert!(verify_aggregate(&hash, &[0]).is_err());
         // Reject malicious nested vector lengths before upstream claim reconstruction.
         for preceding_vectors in 0..8 {
@@ -1212,14 +1222,14 @@ mod tests {
     }
     #[test]
     fn exported_limits_match_and_panics_fail_closed() {
-        assert_eq!(nlean_abi_version(), 7);
+        assert_eq!(nlean_abi_version(), 9);
         let mut key = [0u8; 32];
         assert_eq!(unsafe { nlean_aggregated_vk(key.as_mut_ptr()) }, 1);
         assert_eq!(
             key.iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect::<String>(),
-            "00f24bbdf44a31139c975223b77510cd93a905664da3c4a52b5eba4e9b07de9e"
+            "417152e8bd83e0dfb6f3e2bb8991e948f62c7f15d74b693b55979a40b239efa1"
         );
         let mut limits = [0u32; 9];
         assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), 9) }, 1);
@@ -1370,15 +1380,11 @@ mod tests {
     }
 
     #[test]
-    fn oversized_root_and_old_carried_envelopes_fail_closed() {
+    fn oversized_root_fails_closed() {
         let mut dep = [0; 96];
         dep[31] = 0x11;
         let hash = commitment(&[dep]);
         assert!(verify_aggregate(&hash, &vec![0; MAX_MIXED_GUEST_BYTES + 1]).is_err());
-        let mut envelope = b"NLR3".to_vec();
-        put_deps(&mut envelope, &[dep]);
-        put_blob(&mut envelope, &[0]);
-        assert!(verify_aggregate(&hash, &envelope).is_err());
         assert!(!verify_stark(&[0; 32], &[0; 32], &vec![0; MAX_BYTES + 1]));
     }
 

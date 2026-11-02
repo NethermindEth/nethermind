@@ -168,16 +168,18 @@ namespace Nethermind.Trie
                 return data;
             }
 
-            [SkipLocalsInit]
             public static CappedArray<byte> EncodeLeaf(TrieNode node, ICappedArrayPool? pool)
             {
                 Metrics.IncrementTreeNodeRlpEncodings();
 
-                if (TryEncodeLeafWithStoredKey(node, pool, out CappedArray<byte> reencoded))
-                {
-                    return reencoded;
-                }
+                return TryEncodeLeafWithStoredKey(node, pool, out CappedArray<byte> reencoded) ? reencoded : EncodeLeafFromKey(node, pool);
+            }
 
+            /// <remarks>Apart from <see cref="EncodeLeaf"/>, so a leaf encoded from its stored key skips this frame's
+            /// key buffer.</remarks>
+            [SkipLocalsInit]
+            private static CappedArray<byte> EncodeLeafFromKey(TrieNode node, ICappedArrayPool? pool)
+            {
                 if (node.Key is null)
                 {
                     ThrowNullKey(node);
@@ -1131,7 +1133,7 @@ namespace Nethermind.Trie
 
                 for (; Unsafe.IsAddressLessThan(ref child, ref last); child = ref Unsafe.Add(ref child, 1))
                 {
-                    int itemEnd = cursor + nodeRlp.PeekNextRlpLength(cursor);
+                    int itemEnd = cursor + (ZkEvmFlag.IsActive ? CanonicalChildRlpLength(previousRlp[cursor]) : nodeRlp.PeekNextRlpLength(cursor));
                     object? data = child;
                     if (data is not null)
                     {
@@ -1188,6 +1190,19 @@ namespace Nethermind.Trie
                 Bytes.Copy(previousRlp[runStart..tailEnd], destination[position..]);
                 if (!CopiesBranchValue) destination[^1] = 128;
                 return result;
+            }
+
+            /// <summary>The length of the item a canonical branch child with the RLP prefix <paramref name="prefix"/> spans.</summary>
+            /// <remarks>
+            /// A canonical child is an empty string (0x80), a hash (0xa0) or an embedded node shorter than a hash, a short list
+            /// (0xc0 + length), so short-form arithmetic suffices and spares the length table's narrow load. Only in the guest,
+            /// whose branch RLPs all come from the witness, under the parent block's state root, or from this encoder.
+            /// </remarks>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static int CanonicalChildRlpLength(int prefix)
+            {
+                Debug.Assert(prefix is 0x80 or 0xa0 or (>= 0xc0 and < 0xe0), "A branch child is an empty string, a hash or an embedded node shorter than a hash");
+                return prefix - 0x7F - (prefix & 0x40);
             }
 
             /// <summary>Resolves the key of <paramref name="data"/>, the child in slot <paramref name="index"/>, and returns the length of the item encoding it in its parent.</summary>

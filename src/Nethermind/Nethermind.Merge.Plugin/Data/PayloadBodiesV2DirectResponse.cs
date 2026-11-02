@@ -61,11 +61,11 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         Transaction[] transactions,
         Withdrawal[]? withdrawals,
         MemoryManager<byte>? blockAccessList,
-        byte[]? recursiveStarkProof = null)
+        byte[]? starkProof = null)
     {
         try
         {
-            return new PayloadBody(transactions, withdrawals, blockAccessList, recursiveStarkProof);
+            return new PayloadBody(transactions, withdrawals, blockAccessList, starkProof);
         }
         catch
         {
@@ -114,15 +114,15 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
 
     internal readonly struct PayloadBody : IDisposable
     {
-        private readonly byte[]? _recursiveStarkProof;
+        private readonly byte[]? _starkProof;
         private readonly Transaction[]? _transactions;
         private readonly byte[]? _blockRlp;
         private readonly Withdrawal[]? _withdrawals;
         private readonly MemoryManager<byte>? _blockAccessList;
 
-        public PayloadBody(Transaction[] transactions, Withdrawal[]? withdrawals, MemoryManager<byte>? blockAccessList, byte[]? recursiveStarkProof = null)
+        public PayloadBody(Transaction[] transactions, Withdrawal[]? withdrawals, MemoryManager<byte>? blockAccessList, byte[]? starkProof = null)
         {
-            _recursiveStarkProof = recursiveStarkProof;
+            _starkProof = starkProof;
             _transactions = transactions;
             _blockRlp = null;
             _withdrawals = withdrawals;
@@ -131,7 +131,7 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
 
         public PayloadBody(byte[] blockRlp, MemoryManager<byte>? blockAccessList)
         {
-            _recursiveStarkProof = null;
+            _starkProof = null;
             _transactions = null;
             _blockRlp = blockRlp;
             _withdrawals = null;
@@ -146,7 +146,7 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
             }
             else
             {
-                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, _transactions!, _withdrawals, _blockAccessList, includeBlockAccessList: true, recursiveStarkProof: _recursiveStarkProof);
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, _transactions!, _withdrawals, _blockAccessList, includeBlockAccessList: true, starkProof: _starkProof);
             }
         }
 
@@ -162,7 +162,7 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
                 return result;
             }
 
-            return new ExecutionPayloadBodyV2Result(_transactions!, _withdrawals, _blockAccessList?.Memory.ToArray(), _recursiveStarkProof);
+            return new ExecutionPayloadBodyV2Result(_transactions!, _withdrawals, _blockAccessList?.Memory.ToArray(), _starkProof);
         }
 
         public void Dispose() => _blockAccessList?.TryDispose();

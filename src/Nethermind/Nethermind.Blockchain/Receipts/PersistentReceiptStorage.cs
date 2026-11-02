@@ -453,7 +453,9 @@ namespace Nethermind.Blockchain.Receipts
                         }
 
                         _receiptsRecovery.TryRecover(block, receipts, forceRecoverSender: recoverSender);
-                        _receiptsCache.Set(blockHash, receipts);
+                        // Without sender recovery, creations in a block decoded from the database (no tx senders) get
+                        // no contract address; caching that would serve it to full reads.
+                        if (recoverSender) _receiptsCache.Set(blockHash, receipts);
                     }
 
                     return receipts;
@@ -987,7 +989,9 @@ namespace Nethermind.Blockchain.Receipts
                 _receiptsDb.PutSpan(blockNumPrefixed, rlp, writeFlags);
             }
 
-            _receiptsCache.Set(block.Hash, txReceipts);
+            // Sync and era import insert blocks decoded from the database, whose creations then get no contract address.
+            if (HasAllSenders(block)) _receiptsCache.Set(block.Hash, txReceipts);
+            else _receiptsCache.Delete(block.Hash);
 
             if (ensureCanonical)
             {
@@ -995,6 +999,16 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
+        }
+
+        private static bool HasAllSenders(Block block)
+        {
+            foreach (Transaction tx in block.Transactions)
+            {
+                if (tx.SenderAddress is null) return false;
+            }
+
+            return true;
         }
 
         public ulong MigratedBlockNumber
@@ -1105,11 +1119,11 @@ namespace Nethermind.Blockchain.Receipts
                 // it would permanently drop the tx-index write of every block queued near the head.
                 if (_pendingReceipts is not null)
                 {
-                    _pendingReceipts.RemoveRange(fromInclusive, toExclusive, () => _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts"));
+                    _pendingReceipts.RemoveRange(fromInclusive, toExclusive, () => _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive));
                 }
                 else
                 {
-                    _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts");
+                    _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive);
                 }
 
                 removedAny |= fromInclusive < toExclusive;

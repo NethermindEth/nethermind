@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 using NSubstitute;
@@ -30,7 +29,7 @@ public sealed class PipelinedRequestRecorder
         Processor = Substitute.For<IJsonRpcProcessor>();
         Processor
             .ProcessAsync(
-                Arg.Any<PipeReader>(),
+                Arg.Any<ReadOnlyMemory<byte>>(),
                 Arg.Any<JsonRpcContext>(),
                 Arg.Any<IJsonRpcResponseSink>(),
                 Arg.Any<JsonRpcProcessingOptions>(),
@@ -52,10 +51,7 @@ public sealed class PipelinedRequestRecorder
 
     private async ValueTask Process(CallInfo call)
     {
-        PipeReader reader = call.ArgAt<PipeReader>(0);
-        ReadResult read = await reader.ReadToEndAsync();
-        bool slow = read.Buffer.FirstSpan.SequenceEqual("slow"u8);
-        reader.AdvanceTo(read.Buffer.End);
+        bool slow = call.ArgAt<ReadOnlyMemory<byte>>(0).Span.SequenceEqual("slow"u8);
         string name = slow ? "slow" : "fast";
 
         Record($"{name} start");

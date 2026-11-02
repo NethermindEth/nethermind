@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using System.Threading;
 using Nethermind.Core;
@@ -46,30 +46,45 @@ internal sealed class MempoolFootprints(BlockHeader head)
         else if (Volatile.Read(ref _count) < MaxEntries && _entries.TryAdd(hash, entry)) Interlocked.Increment(ref _count);
     }
 
-    /// <summary>Stores the footprints that hold in <paramref name="block"/> at their transactions' positions.</summary>
-    /// <returns>The hashes of the transactions stored, or <see langword="null"/> when none is.</returns>
-    public HashSet<Hash256>? Seed(Block block, IReleaseSpec spec, BlockFootprints footprints)
+    /// <summary>
+    /// Stores the footprints that hold in <paramref name="block"/> at their transactions' positions where no footprint is
+    /// stored yet, alongside the block's warm runs: a footprint a warm run stored first is kept.
+    /// </summary>
+    /// <param name="cancellationToken">Ends the takeover at the next transaction once the warm pass is over.</param>
+    /// <returns>How many were stored.</returns>
+    /// <remarks>
+    /// Stopping early only stores fewer runs. Each store writes and indexes its footprint at once, and moves
+    /// <see cref="BlockFootprints.WritesVersion"/> once, so a refresh is checked against the runs stored as if the ones
+    /// left out had never been recorded.
+    /// </remarks>
+    public int SeedWhereEmpty(Block block, IReleaseSpec spec, BlockFootprints footprints, CancellationToken cancellationToken)
     {
         BlockHeader header = block.Header;
-        if (_entries.IsEmpty || _parentHash is null || header.ParentHash != _parentHash || header.Number != _number
-            || header.GasBeneficiary is not { } coinbase)
-        {
-            return null;
-        }
+        if (!HoldsFor(header, out Address? coinbase)) return 0;
 
-        HashSet<Hash256>? seeded = null;
+        int stored = 0;
         Transaction[] transactions = block.Transactions;
         for (int i = 0; i < transactions.Length; i++)
         {
+            if (cancellationToken.IsCancellationRequested) break;
+            // A position a warm run already filled is passed over before the run is adapted to the block; the store checks again.
+            if (footprints.Get(i) is not null) continue;
             Transaction tx = transactions[i];
             // A recorded run's transaction was recordable, and the block's has its hash, so its content and sender.
             if (tx.Hash is not { } hash || !_entries.TryGetValue(hash, out Entry entry)) continue;
             if (ForBlock(in entry, tx, header, spec, coinbase) is not { } footprint) continue;
-            footprints.Store(i, footprint);
-            (seeded ??= []).Add(hash);
+            if (footprints.TryStoreIfEmpty(i, footprint)) stored++;
         }
 
-        return seeded;
+        return stored;
+    }
+
+    /// <summary>Whether runs are recorded and the block <paramref name="header"/> heads follows the head they were recorded on; its coinbase when it does.</summary>
+    private bool HoldsFor(BlockHeader header, [NotNullWhen(true)] out Address? coinbase)
+    {
+        coinbase = null;
+        return !_entries.IsEmpty && _parentHash is not null && header.ParentHash == _parentHash && header.Number == _number
+            && (coinbase = header.GasBeneficiary) is not null;
     }
 
     private TransactionFootprint? ForBlock(in Entry entry, Transaction tx, BlockHeader header, IReleaseSpec spec, Address coinbase) =>

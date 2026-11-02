@@ -134,7 +134,8 @@ namespace Nethermind.Serialization.Rlp
         private static int DecodeCompactData(LiteRlpReader rlp, int position, out byte[] data)
         {
             position = DecodeCompactData(rlp, position, out ReadOnlySpan<byte> rlpData, out int zeroPrefix);
-            data = new byte[zeroPrefix + rlpData.Length];
+            int dataLength = zeroPrefix + rlpData.Length;
+            data = dataLength == 0 ? [] : new byte[dataLength];
             rlpData.CopyTo(data.AsSpan(zeroPrefix));
             return position;
         }

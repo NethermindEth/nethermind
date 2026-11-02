@@ -235,7 +235,7 @@ public class Eip7709Tests : VirtualMachineTestsBase
         {
             Assert.That(affordable.Failed, Is.False);
             Assert.That(starved.Failed, Is.True);
-            Assert.That(starved.Entries.Last().Error, Is.EqualTo(EvmExceptionType.OutOfGas.ToString()));
+            Assert.That(starved.Entries.Last().Error, Is.EqualTo(EvmExceptionType.OutOfGas.GetEvmExceptionDescription()));
         }
     }
 

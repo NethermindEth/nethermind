@@ -64,6 +64,7 @@ public class ShutterTxSource(
     public Task WaitForTransactions(ulong slot, CancellationToken cancellationToken)
     {
         TaskCompletionSource? tcs = null;
+        CancellationTokenRegistration ctr;
         lock (_syncObject)
         {
             if (_txCache.Contains(slot))
@@ -73,16 +74,24 @@ public class ShutterTxSource(
 
             ulong taskId = _keyWaitTaskId++;
             tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            CancellationTokenRegistration ctr = cancellationToken.Register(() => CancelWaitForTransactions(slot, taskId));
+            ctr = cancellationToken.Register(() => CancelWaitForTransactions(slot, taskId));
 
-            if (!_keyWaitTasks.ContainsKey(slot))
+            // A token cancelled before Register runs the callback inline, before the wait below is stored, so it finds
+            // nothing to cancel; storing the wait then would leave it pending forever.
+            if (!cancellationToken.IsCancellationRequested)
             {
-                _keyWaitTasks.Add(slot, []);
+                if (!_keyWaitTasks.ContainsKey(slot))
+                {
+                    _keyWaitTasks.Add(slot, []);
+                }
+                Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)> slotWaitTasks = _keyWaitTasks.GetValueOrDefault(slot)!;
+                slotWaitTasks!.Add(taskId, (tcs, ctr));
+                return tcs.Task;
             }
-            Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)> slotWaitTasks = _keyWaitTasks.GetValueOrDefault(slot)!;
-            slotWaitTasks!.Add(taskId, (tcs, ctr));
         }
-        return tcs.Task;
+
+        ctr.Dispose();
+        return Task.FromException(new OperationCanceledException(cancellationToken));
     }
 
     // Registrations are disposed outside _syncObject: CancellationTokenRegistration.Dispose blocks until an

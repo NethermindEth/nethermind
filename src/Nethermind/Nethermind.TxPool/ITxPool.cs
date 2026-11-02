@@ -202,6 +202,34 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[][]? proofs);
 
         /// <summary>
+        /// Gets locally available cells and V1 proofs for each of <paramref name="requestedBlobVersionedHashes"/>.
+        /// </summary>
+        /// <remarks>
+        /// The output arrays are indexed as <paramref name="requestedBlobVersionedHashes"/>, and the entry of an unknown blob hash
+        /// is set to <see langword="null"/> in <paramref name="cells"/> and <paramref name="proofs"/>. Implementations can share
+        /// work between blobs of the same transaction; this default looks each hash up on its own.
+        /// </remarks>
+        /// <returns>The number of known blob hashes, including those for which none of the requested cells are available.</returns>
+        int TryGetBlobCellsAndProofsV1(
+            byte[][] requestedBlobVersionedHashes,
+            BlobCellMask requestedMask,
+            BlobCellMask[] availableMasks,
+            byte[][]?[] cells,
+            byte[][]?[] proofs)
+        {
+            int found = 0;
+            for (int i = 0; i < requestedBlobVersionedHashes.Length; i++)
+            {
+                if (TryGetBlobCellsAndProofsV1(requestedBlobVersionedHashes[i], requestedMask, out availableMasks[i], out cells[i], out proofs[i]))
+                {
+                    found++;
+                }
+            }
+
+            return found;
+        }
+
+        /// <summary>
         /// Verifies and merges newly received cells into a pending sparse blob transaction.
         /// </summary>
         bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells);

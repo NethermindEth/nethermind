@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Int256;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Core.Extensions;
@@ -49,6 +50,21 @@ public static unsafe partial class Bytes
     {
         ZkEvmBitOperations.LoadSwapMasks(out ulong m8, out ulong m16);
         return new Bswap64Hoist(m8, m16);
+    }
+
+    /// <summary>Reads the 32 big-endian bytes of <paramref name="word"/> as a <see cref="UInt256"/>.</summary>
+    /// <remarks>A limb at a time: the constructor gathers the word a byte at a time here.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="word"/> is not 32 bytes long.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static UInt256 ReadUInt256BigEndian(ReadOnlySpan<byte> word)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(word.Length, 32);
+        ref byte source = ref MemoryMarshal.GetReference(word);
+        return new UInt256(
+            ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 24)),
+            ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 16)),
+            ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 8)),
+            ZkEvmBitOperations.ReadUInt64BigEndian(ref source));
     }
 
     /// <summary>A run of byte swaps sharing the masks <see cref="HoistBswap64"/> loaded.</summary>

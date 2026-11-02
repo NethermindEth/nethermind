@@ -19,6 +19,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -33,6 +34,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
 
@@ -66,11 +68,7 @@ public partial class BlockProcessor(
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
     protected readonly ILogManager _logManager = logManager;
     private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
-    private readonly Lazy<BlockAccessListSystemContractHandler> _balSystemContractHandler = new(() =>
-        new(
-            beaconBlockRootHandler,
-            balManager
-        ));
+    private readonly Lazy<BlockAccessListSystemContractHandler> _balSystemContractHandler = new(() => new(balManager));
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
         new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
     private ISystemContractHandler _systemContractHandler;
@@ -85,7 +83,7 @@ public partial class BlockProcessor(
     public sealed class BlockAccessListSequentialRetryException(BlockHeader block, string message, Exception? innerException = null)
         : InvalidBlockException(block, message, innerException);
 
-    public event Action? TransactionsExecuted;
+    public event Action<Block>? TransactionsExecuted;
 
     public virtual (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
@@ -117,12 +115,18 @@ public partial class BlockProcessor(
             ValidateProcessedBlock(suggestedBlock, options, block, receipts);
             _blockTransactionsExecutor.PublishTransactionProcessedEvents();
         }
-        catch (InvalidBlockException ex) when (_balManager.ParallelExecutionEnabled && IsBlockAccessListFailure(ex))
+        catch (InvalidBlockException ex) when (IsBlockAccessListFailure(ex))
         {
-            // Some checks run only on the parallel path, and no sequential re-execution backs them up, so a false
-            // positive on a valid block must stand out from ordinary invalid blocks.
-            Interlocked.Increment(ref Blockchain.Metrics.ParallelBlockAccessListRejections);
-            if (_logger.IsWarn) _logger.Warn($"Parallel validation rejected block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} for its block access list: {ex.Message}");
+            if (_balManager.ParallelExecutionEnabled)
+            {
+                // Some checks run only on the parallel path, so a false positive on a valid block must stand out from
+                // ordinary invalid blocks, even when a sequential retry later accepts it.
+                Interlocked.Increment(ref Blockchain.Metrics.ParallelBlockAccessListRejections);
+                if (_logger.IsWarn) _logger.Warn($"Parallel validation rejected block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} for its block access list: {ex.Message}");
+                if (HasFrameTransaction(suggestedBlock)) throw new BlockAccessListSequentialRetryException(suggestedBlock.Header, ex.Message, ex);
+            }
+
+            KeepGeneratedBlockAccessList(suggestedBlock, block.GeneratedBlockAccessList);
             throw;
         }
         finally
@@ -139,6 +143,20 @@ public partial class BlockProcessor(
         return (block, receipts);
     }
 
+    private static bool HasFrameTransaction(Block block)
+    {
+        foreach (Transaction tx in block.Transactions)
+        {
+            if (tx.Type == TxType.FrameTx) return true;
+        }
+
+        return false;
+    }
+
+    // The manager resets its generated access list in place for the next block, so the bad-block store gets a copy.
+    private static void KeepGeneratedBlockAccessList(Block suggestedBlock, GeneratedBlockAccessList? generated) =>
+        suggestedBlock.EncodedGeneratedBlockAccessList = generated is null ? null : BlockAccessListDecoder.EncodeToBytes(generated);
+
     private static bool IsBlockAccessListFailure(InvalidBlockException e) =>
         e is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException
             or BlockAccessListManager.ParallelExecutionException { InnerException: BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException };
@@ -150,6 +168,7 @@ public partial class BlockProcessor(
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
         {
             block.DisposeAccountChanges();
+            KeepGeneratedBlockAccessList(suggestedBlock, suggestedBlock.GeneratedBlockAccessList);
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
             throw new InvalidBlockException(suggestedBlock, error);
         }
@@ -241,7 +260,7 @@ public partial class BlockProcessor(
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
-        TransactionsExecuted?.Invoke();
+        TransactionsExecuted?.Invoke(block);
 
         PrepareProductionProof(block, options, spec, token);
         return FinalizeBlock(block, blockTracer, options, spec, receipts);
@@ -288,12 +307,22 @@ public partial class BlockProcessor(
                         IncludableTransactions includable = new(block);
                         (HashSet<FrameDependency> limit, int kept) = includable.ChooseProvenLimit(leanProofStore.ProvenSubsets(attempted));
                         // Only the latest payload's unrestricted body is worth proving; a restricted rebuild is a subset of it.
-                        if (latest && producing.LeanDependencyLimit is null && !_productionProofCache.IsScheduled)
+                        if (latest && producing.LeanDependencyLimit is null && !_productionProofCache.IsScheduledWithin(attempted))
                             ScheduleProductionProof(producing, includable, attempted, deps, depsHash, limit, kept, leanProofStore, verifier);
                         throw new LeanProofNotReadyException(limit);
                     }
                     AggregationInput input = producing is null ? new() : RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
-                    proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, verifier, in depsHash, token);
+                    try
+                    {
+                        proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, verifier, in depsHash, token);
+                    }
+                    // A prover that cannot take the statement now leaves the body to what is already proven, as a deadline would.
+                    catch (LeanProverBusyException) when (producing is not null && leanProofStore is not null)
+                    {
+                        OfferInclusionListProofs(producing, leanProofStore);
+                        throw new LeanProofNotReadyException(new IncludableTransactions(block)
+                            .ChooseProvenLimit(leanProofStore.ProvenSubsets(new HashSet<FrameDependency>(deps))).Limit);
+                    }
                     leanProofStore?.AddCachedRecursive(deps, proof);
                 }
                 token.ThrowIfCancellationRequested();
@@ -310,9 +339,13 @@ public partial class BlockProcessor(
 
     private const int MaxExtensionCandidates = 4;
 
-    /// <summary>Offers the verified recursive proofs behind the committed inclusion lists as reusable statements.</summary>
+    /// <summary>Estimated cost (<see cref="RecursiveStarkAggregator.EstimatedCost"/>) above which a scheduled statement is cut to
+    /// a nonce-ordered prefix of the body: two recursive merges and a four-signature leaf, about 50 s at the measured costs.</summary>
+    internal const long MaxScheduledStatementCost = 2 * RecursiveStarkAggregator.MergeCost + 4 * RecursiveStarkAggregator.SignatureCost;
+
+    /// <summary>Offers the verified recursive proofs of the inclusion lists as reusable statements.</summary>
     /// <remarks>
-    /// A rebuild under a deadline keeps only transactions whose dependencies form a proven statement. A held list proof is one,
+    /// A rebuild under a deadline keeps only transactions whose dependencies form a proven statement. A verified list proof is one,
     /// so the rebuild can keep the list's transactions, which attesters still obligate, and reuse that proof unchanged.
     /// </remarks>
     private static void OfferInclusionListProofs(BlockToProduce producing, LeanProofStore store)
@@ -356,24 +389,54 @@ public partial class BlockProcessor(
             List<FrameDependency> discards = [];
             foreach (FrameDependency dependency in narrowed.InnerDeps)
                 if (!narrowedNeeded.Contains(dependency)) discards.Add(dependency);
-            _productionProofCache.TrySchedule(narrowedTarget, Eip8288Dependencies.ComputeDepsHash(narrowedTarget),
-                new AggregationInput { RecursiveProofs = [narrowed], Discards = discards }, verifier, store);
-            return;
+            AggregationInput narrowing = new() { RecursiveProofs = [narrowed], Discards = discards };
+            if (RecursiveStarkAggregator.EstimatedCost(narrowing) <= MaxScheduledStatementCost)
+            {
+                _productionProofCache.Schedule(narrowedTarget, Eip8288Dependencies.ComputeDepsHash(narrowedTarget), narrowing, verifier, store);
+                return;
+            }
         }
         HashSet<FrameDependency> pending = includable.NeededAfter(provenLimit);
         if (pending.Count == 0) return;
+        List<RecursiveProofInput> overlaps = store.ProvenOverlaps(pending, MaxExtensionCandidates);
+        (AggregationInput scheduled, long cost) = Cheapest(pending);
+        if (cost > MaxScheduledStatementCost || !Eip8288Dependencies.FitsProofList(pending))
+        {
+            // A statement over the whole backlog can take many slots while more arrives; prove a nonce-ordered prefix that fits
+            // the budget instead, and let later passes take the rest. A statement the pinned guest cannot hold, such as one over
+            // more leanSTARK dependencies than a list may carry, is never sent to the prover: a prefix that fits is.
+            pending = includable.BoundedNeed(provenLimit, pending,
+                set => Eip8288Dependencies.FitsProofList(set) ? Cheapest(set).Cost : long.MaxValue, MaxScheduledStatementCost);
+            if (pending.Count == 0) return;
+            (scheduled, cost) = Cheapest(pending);
+        }
         List<FrameDependency> target = pending.Count == deps.Count ? deps : Eip8288Dependencies.Canonicalize(pending);
         if (store.TryGetRecursiveProof(target, out _)) return;
         ValueHash256 targetHash = pending.Count == deps.Count ? depsHash : Eip8288Dependencies.ComputeDepsHash(target);
-        AggregationInput scheduled = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, target);
-        long cost = RecursiveStarkAggregator.EstimatedCost(scheduled);
-        foreach (RecursiveProofInput parent in store.ProvenOverlaps(pending, MaxExtensionCandidates))
+        _productionProofCache.Schedule(target, targetHash, scheduled, verifier, store);
+
+        // Folding every witness again, or extending a verified overlapping statement, whichever is estimated cheaper.
+        (AggregationInput Input, long Cost) Cheapest(HashSet<FrameDependency> set)
         {
-            AggregationInput extended = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, target, parent);
-            long extendedCost = RecursiveStarkAggregator.EstimatedCost(extended);
-            if (extendedCost < cost) (scheduled, cost) = (extended, extendedCost);
+            List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(set);
+            AggregationInput best = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, canonical);
+            long bestCost = RecursiveStarkAggregator.EstimatedCost(best);
+            foreach (RecursiveProofInput parent in overlaps)
+            {
+                if (!Overlaps(parent, set)) continue;
+                AggregationInput extended = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, canonical, parent);
+                long extendedCost = RecursiveStarkAggregator.EstimatedCost(extended);
+                if (extendedCost < bestCost) (best, bestCost) = (extended, extendedCost);
+            }
+            return (best, bestCost);
         }
-        _productionProofCache.TrySchedule(target, targetHash, scheduled, verifier, store);
+    }
+
+    private static bool Overlaps(RecursiveProofInput parent, HashSet<FrameDependency> set)
+    {
+        foreach (FrameDependency dependency in parent.InnerDeps)
+            if (set.Contains(dependency)) return true;
+        return false;
     }
 
     /// <summary>The transactions of a body with their dependencies and nonce domains, to simulate restricting it.</summary>
@@ -462,6 +525,51 @@ public partial class BlockProcessor(
                 if (kept[i] && _obligated[i]) count++;
             return count;
         }
+
+        /// <summary>The dependencies, within <paramref name="needed"/>, of the longest nonce-ordered run of transactions not kept
+        /// under <paramref name="limit"/> whose proving cost stays within <paramref name="budget"/>; empty when none fits.</summary>
+        /// <remarks>The run is found by binary search over its length, taking cost to grow with the run, so <paramref name="cost"/>
+        /// is evaluated a logarithmic number of times. A first transaction that alone exceeds the budget is passed over with the rest
+        /// of its nonce domain, at most <see cref="MaxOversizedSkips"/> times.</remarks>
+        public HashSet<FrameDependency> BoundedNeed(IReadOnlySet<FrameDependency> limit, IReadOnlySet<FrameDependency> needed,
+            Func<HashSet<FrameDependency>, long> cost, long budget)
+        {
+            bool[] kept = new bool[_dependencies.Length];
+            Keep(limit, [], kept);
+            HashSet<(Address?, UInt256)> skipped = [];
+            for (int attempt = 0; attempt <= MaxOversizedSkips; attempt++)
+            {
+                List<(List<FrameDependency> Dependencies, (Address?, UInt256) Domain)> run = [];
+                for (int i = 0; i < _dependencies.Length; i++)
+                {
+                    if (kept[i] || skipped.Contains(_domains[i])) continue;
+                    List<FrameDependency> own = [];
+                    foreach (FrameDependency dependency in _dependencies[i])
+                        if (needed.Contains(dependency)) own.Add(dependency);
+                    if (own.Count != 0) run.Add((own, _domains[i]));
+                }
+                if (run.Count == 0) break;
+                int fits = 0;
+                for (int low = 1, high = run.Count; low <= high;)
+                {
+                    int middle = low + (high - low) / 2;
+                    if (cost(Prefix(run, middle)) <= budget) (fits, low) = (middle, middle + 1);
+                    else high = middle - 1;
+                }
+                if (fits != 0) return Prefix(run, fits);
+                skipped.Add(run[0].Domain);
+            }
+            return [];
+
+            static HashSet<FrameDependency> Prefix(List<(List<FrameDependency> Dependencies, (Address?, UInt256) Domain)> run, int length)
+            {
+                HashSet<FrameDependency> prefix = [];
+                for (int i = 0; i < length; i++) prefix.UnionWith(run[i].Dependencies);
+                return prefix;
+            }
+        }
+
+        private const int MaxOversizedSkips = 4;
 
         /// <summary>The dependencies the body still needs once the transactions kept under <paramref name="limit"/> are included.</summary>
         /// <remarks>
@@ -570,6 +678,11 @@ public partial class BlockProcessor(
         if (TComputesCommitments.IsActive)
         {
             header.Hash = header.CalculateHash();
+        }
+
+        if (BlockchainProcessor.IsMainProcessingThread)
+        {
+            Evm.Metrics.PublishBlockGasPrices(block.Transactions, spec.IsEip1559Enabled, header.BaseFeePerGas);
         }
 
         return receipts;
@@ -730,18 +843,6 @@ public partial class BlockProcessor(
             {
                 if (bal.GetAccountChanges(address) is not { HasStateChanges: true }) balChanges.Add(address);
             }
-        }
-    }
-
-    private void StoreBeaconRoot(Block block, IReleaseSpec spec)
-    {
-        try
-        {
-            beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Storing beacon block root for block {block.ToString(Block.Format.FullHashAndNumber)} failed: {e}");
         }
     }
 

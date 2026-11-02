@@ -5,7 +5,6 @@
 /LICENSE* @rubo @LukaszRozmej @MarekM25
 *.md @rubo @LukaszRozmej @MarekM25
 
-/src/Nethermind/**/I*Config.cs @rubo
 /src/Nethermind/Ethereum.Test.Base @flcl42
 /src/Nethermind/Nethermind.Abi @LukaszRozmej
 /src/Nethermind/Nethermind.Blockchain @LukaszRozmej @MarekM25 @flcl42
@@ -29,7 +28,7 @@
 /src/Nethermind/Nethermind.Merkleization @ak88 @Marchhill @smartprogrammer93 @flcl42
 /src/Nethermind/Nethermind.Network.Discovery @LukaszRozmej @flcl42 @asdacap
 /src/Nethermind/Nethermind.Network @LukaszRozmej @flcl42 @asdacap @marcindsobczak
-/src/Nethermind/Nethermind.Optimism @emlautarom1 @deffrian
+/src/Nethermind/Nethermind.Optimism @emlautarom1
 /src/Nethermind/Nethermind.Runner @LukaszRozmej @flcl42 @rubo
 /src/Nethermind/Nethermind.Serialization.Json @LukaszRozmej @benaadams
 /src/Nethermind/Nethermind.Serialization.Rlp @LukaszRozmej @Marchhill

@@ -14,12 +14,12 @@ public static class RecursiveStarkAggregator
 {
     /// <summary>Target serialized-witness size for each direct proving batch, in bytes.</summary>
     public const long MaxProductionWitnessBytes = 4 * 1024 * 1024;
-    // The pinned prototype guest folds two recursive inputs per step and discards at most MaxProofDependencies per step, while
+    // The pinned guest folds two recursive inputs per step and discards at most MaxProofDependencies per step, while
     // EIP-8288 bounds discards by the sum of a step's input dependency lists. Wider sets, such as the running wrapper aggregate
     // with every inclusion-list proof, fold over bounded steps of a binary tree, pruning each child separately; only the slot
     // deadline bounds the rounds.
     private const int MaxRecursiveChildren = 2;
-    private const int DirectBatchSize = 4;
+    internal const int DirectBatchSize = 4;
 
     /// <summary>Runs the STARK check of a block proof against its dependency list.</summary>
     /// <remarks>An empty dependency list carries an empty <c>stark_proof</c> and invokes no verifier; any other list needs
@@ -35,9 +35,9 @@ public static class RecursiveStarkAggregator
 
     // Relative native proving costs measured on a two-core devnet node: folding one leanSPHINCS signature into a leaf
     // costs about 2.2 s and each recursive merge of two proofs about 20 s, so a merge costs about nine signatures.
-    private const int SignatureCost = 1;
-    private const int GenericLeafCost = 2;
-    private const int MergeCost = 9;
+    internal const int SignatureCost = 1;
+    internal const int GenericLeafCost = 2;
+    internal const int MergeCost = 9;
 
     /// <summary>Estimates the relative native proving cost of an input from its leaves and recursive merges.</summary>
     /// <remarks>Signatures fold four to a leaf, each generic proof is its own leaf, and every node beyond the first
@@ -135,8 +135,8 @@ public static class RecursiveStarkAggregator
                 witnesses.Add(input.Witnesses[i]);
             }
         }
-        // A required dependency no input covers is left to the statement check of the proof built from this input.
-        wanted.IntersectWith(covered);
+        if (!wanted.IsSubsetOf(covered))
+            throw new ArgumentException("Required dependencies are not covered by the aggregation inputs", nameof(required));
         return new()
         {
             Deps = direct,
@@ -295,72 +295,5 @@ public static class RecursiveStarkAggregator
             cancellationToken.ThrowIfCancellationRequested();
             return new(canonical, childProof);
         }
-    }
-
-    /// <summary>
-    /// Runs the EIP-8288 recursive STARK statement: verify direct dependencies against their witnesses
-    /// and each nested proof against its claimed deps, then union and remove discards/duplicates,
-    /// returning the filtered set and its commitment.
-    /// </summary>
-    public static bool TryAggregate(AggregationInput input, ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier,
-        out IReadOnlyList<FrameDependency> filteredDeps, out ValueHash256 depsHash)
-    {
-        filteredDeps = [];
-        depsHash = default;
-
-        if (input.Deps.Count != input.Witnesses.Count) return false;
-        // The circuit checks direct dependencies against ENABLED_SCHEMES; a verified recursive input can prove only enabled
-        // schemes, so checking its list as well rejects nothing a valid input carries.
-        if (!Eip8288Dependencies.AreSchemesEnabled(input.Deps)) return false;
-        foreach (RecursiveProofInput recursiveProof in input.RecursiveProofs)
-        {
-            if (recursiveProof.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
-            if (!Eip8288Dependencies.AreSchemesEnabled(recursiveProof.InnerDeps)) return false;
-        }
-
-        List<FrameDependency> allDeps = [];
-        for (int i = 0; i < input.Deps.Count; i++)
-        {
-            FrameDependency dep = input.Deps[i];
-            ReadOnlyMemory<byte> witness = input.Witnesses[i];
-            bool valid = dep.Scheme switch
-            {
-                Eip8288Constants.LeanSphincsScheme => verifier.VerifyLeanSphincs(dep.DataHash, dep.VerificationKey, witness.Span),
-                Eip8288Constants.LeanStarkScheme => verifier.VerifyLeanStark(dep.DataHash, dep.VerificationKey, witness.Span),
-                _ => false,
-            };
-            if (!valid) return false;
-            allDeps.Add(dep);
-        }
-
-        foreach (RecursiveProofInput recursiveProof in input.RecursiveProofs)
-        {
-            // A recursive input above MAX_AGGREGATE_PROOF_BYTES is rejected before its verifier runs.
-            if (recursiveProof.Proof.Length is 0 or > Eip8288Constants.MaxAggregateProofBytes) return false;
-            ValueHash256 innerHash = Eip8288Dependencies.ComputeDepsHash(recursiveProof.InnerDeps);
-            if (!verifier.VerifyRecursiveStark(in innerHash, forkVerifier.AggregatedVk.Bytes, recursiveProof.Proof.Span)) return false;
-            allDeps.AddRange(recursiveProof.InnerDeps);
-        }
-
-        HashSet<FrameDependency> discards = input.Discards.Count == 0 ? [] : [.. input.Discards];
-        // EIP-8288: every discard must occur in the verified input union, matched by its full triple.
-        if (discards.Count != 0)
-        {
-            HashSet<FrameDependency> inputs = [.. allDeps];
-            if (!discards.IsSubsetOf(inputs)) return false;
-        }
-
-        List<FrameDependency> filtered = [];
-        HashSet<FrameDependency> seen = [];
-        foreach (FrameDependency dep in allDeps)
-        {
-            if (!seen.Add(dep)) continue;
-            if (discards.Contains(dep)) continue;
-            filtered.Add(dep);
-        }
-
-        filteredDeps = Eip8288Dependencies.Canonicalize(filtered);
-        depsHash = Eip8288Dependencies.ComputeDepsHash(filteredDeps);
-        return true;
     }
 }

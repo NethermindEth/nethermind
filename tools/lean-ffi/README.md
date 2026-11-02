@@ -1,8 +1,8 @@
 # EIP-8288 native Lean integration
 
-This adapter uses a temporary [leanVM mixed-recursion fork](https://github.com/Marchhill/leanVM/tree/cf1e92f87a7aec052b680f73e56145e866218583),
+This adapter uses a temporary [leanVM mixed-recursion fork](https://github.com/Marchhill/leanVM/tree/e2bc4212013087c0823188e975b224ade286d878),
 based on the Daisugi-compatible `f33f31bf7c1191667e29a68a3acae63b9164c1c6` revision.
-The fork adds one recursive guest for Keccak SPHINCS claims and generic leanVM programs;
+The fork adds one recursive guest for Keccak SPHINCS claims, generic leanVM programs and its own child proofs;
 `Cargo.lock` pins the exact dependency revision. Upstream replacement belongs behind the
 existing `ILeanProofVerifier` interface and thin C ABI. Proofs, guest key and native bounds
 must change together when the guest changes. No hash-based proof substitute is accepted.
@@ -42,13 +42,12 @@ The main solution compiles the test project without requiring Rust. Without the 
 the native suite is explicitly skipped. With it, the backend and fixtures are required and
 missing libraries fail the run.
 
-The C ABI is version 7, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
+The C ABI is version 9, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
 `nlean_limits` writes nine u32 values (proof bytes, dependencies, recursive children,
-SPHINCS witness bytes, generic STARK count, instructions, operand offset, aggregation input bytes,
-mixed guest proof bytes); startup
-checks these against the managed protocol bounds before accepting work.
-Verification/proving return 1 on success, 0 on failure and -1 for a contained panic;
-ABI 7 introduced -1, so startup rejects an ABI 6 library that reports panics as 0. Callers initialize proof output
+SPHINCS witness bytes, leanSTARK claims per list, instructions, operand offset, aggregation
+input bytes, mixed guest proof bytes); startup checks these against the managed protocol
+bounds before accepting work.
+Verification/proving return 1 on success, 0 on failure and -1 for a contained panic. Callers initialize proof output
 pointers to null; successful proof allocations must be released once with `nlean_free`
 using the returned pointer and length. Verification contains upstream panics and never
 accepts malformed inputs. Panic diagnostics on ABI callers and the pinned parallel worker
@@ -60,77 +59,87 @@ dispatcher, where the ABI catches them.
 
 All framing integers are unsigned 32-bit little-endian. The native backend bounds proofs and
 individual witnesses to 8 MiB and aggregation input to 18 MiB; managed callers first apply
-EIP-8288's 1.25 MiB `MAX_AGGREGATE_PROOF_BYTES` to every aggregate proof. This is an input-buffer limit,
-not a process memory bound. Dependency lists are bounded to 256; recursive children and distinct generic
-STARK claims to 16 each. This format and the
+the local 1.25 MiB pinned-prover bound (`Eip8288Constants.MaxAggregateProofBytes`, not an EIP-8288
+constant) to every aggregate proof. This is an input-buffer limit, not a process memory bound.
+Dependency lists are bounded to 256 and recursive children to 16. This format and the
 pinned key are prototype protocol choices, pending finalized EIP-8288 encodings.
 
 The serialized mixed guest proof is the whole `stark_proof`; an empty dependency list has an
 empty `stark_proof`. Blocks, wrappers and inclusion-list proofs reject a `stark_proof` above
-`MAX_AGGREGATE_PROOF_BYTES` before decoding or verification; measured proofs of this guest are
-265–300 KB. Standalone generic witnesses may be up to the native 8 MiB bound and are verified
-before recursive coverage can replace them. These bounds are not process memory guarantees.
+that local bound before decoding or verification; measured proofs of this guest are
+265–326 KB. These bounds are not process memory guarantees.
 
 The current EIP-8288 companion places `stark_proof` in the block body and commits to
-`[keccak256(stark_proof), block_deps_hash]` in the header. Header synchronization therefore
+`keccak256(stark_proof)` and `block_deps_hash` as two flat 32-byte header fields. Header synchronization therefore
 uses compact commitments. `eth` `BlockBodies` carry `stark_proof` after the existing fields from
 the activating fork on every `eth` version, as for withdrawals. Block decoding and validation
-enforce `MAX_AGGREGATE_PROOF_BYTES`, the proof hash, and the exact dependency union, verifying
+enforce the local proof size bound, the proof hash, and the exact dependency union, verifying
 under the block fork's `AGGREGATED_VK`. Engine payloads and payload-body responses
-carry `recursiveStarkProof`; an empty dependency union requires an empty proof.
+carry a single `starkProof` field; the execution layer derives the dependency commitment from
+the payload transactions. An empty dependency union requires an empty proof.
 The decoded block cache skips proofs above 64 KiB. Invalid-block diagnostics retain large
 proof-bearing records in a separate eight-entry / 64 MiB tier, counting body proofs and
 returning owned copies.
 
 A zero dependency `data_hash` resolves to the containing frame transaction's canonical
 signature hash before sorting and deduplication, for every scheme, so a zero leanSPHINCS
-message or leanSTARK `pub_input_hash` cannot be declared. Raw frame bytes remain zero for
+message or leanSTARK public commitment cannot be declared. Raw frame bytes remain zero for
 signing and `FRAMEDATACOPY`; wrapper, inclusion-list and block proof statements carry the
 resolved dependency.
 
 * **SPHINCS witness:** public key (32 bytes), signature (6176 bytes). As in EIP-8288, the
   dependency key is the public key itself, root then public parameter. Both the key and the
   signature over `data_hash` are checked.
-* **leanSTARK witness:** bytecode blob length, canonical bytecode, then fixed-integer bincode
-  serialization of the upstream CPU proof (no trailing bytes). The dependency key is
-  Keccak-256 of the EIP-8288 domain tag followed by that canonical verification-key encoding. `data_hash` is the VM's 32-byte public commitment,
-  packed into two 128-bit field cells; the guest must constrain the relation it represents.
-  At most 2048 instructions and operand offsets through 65535 are accepted; the offset
-  limit bounds upstream assembly's g-power table. Each instruction is a 45-byte record: opcode
-  byte, four u32 operands, three u64 immediate limbs, then u32 BLAKE2s metadata operand.
-  Opcodes 0–6 are XOR, MUL, SET, DEREF, JUMP, BLAKE2s, SHA3. Unused fields are zero. SHA3 packs its four extra message offsets
-  in the first two immediate limbs, capacity/output offsets in the third, and its digest flag
-  in the metadata field.
+* **leanSTARK witness (`0x11`, a deviation, see below):** bytecode blob length, canonical
+  bytecode, then fixed-integer bincode serialization of the upstream CPU proof (no trailing
+  bytes). The dependency key is Keccak-256 of the 30-byte tag `ethereum/8288/leanSTARK/vk/v1`
+  plus one zero byte, followed by the canonical program encoding. `data_hash` is the VM's 32-byte
+  public commitment, packed into two 128-bit field cells. At most 2048 instructions and operand
+  offsets through 65535 are accepted. Each instruction is a 45-byte record: opcode byte, four
+  u32 operands, three u64 immediate limbs, then a u32 BLAKE2s metadata operand; opcodes 0–6 are
+  XOR, MUL, SET, DEREF, JUMP, BLAKE2s, SHA3, and unused fields are zero.
 * **aggregation input:** direct count then `(96-byte dependency, witness blob)` pairs;
   child count then `(dependency count/triples, proof blob)` pairs; discard count/triples.
-* **aggregate:** the EIP-8288 `stark_proof`, one mixed guest proof without dependencies,
-  generic programs or raw witnesses. It verifies against `deps_hash` and `AGGREGATED_VK`
+* **aggregate:** the EIP-8288 `stark_proof`, one mixed guest proof without dependencies
+  or raw witnesses. It verifies against `deps_hash` and `AGGREGATED_VK`
   alone; a child's dependencies come from the aggregation input. Proving an empty list
   returns an empty `stark_proof`, which callers check without the backend.
 
 The recursive key is the actual mixed guest's Fiat-Shamir seed, pinned in
-`Eip8288Constants.AggregatedVk`. The guest authenticates signature claims, generic program
-commitments and public inputs, verifies child mixed proofs, and applies union, deduplication
+`Eip8288Constants.AggregatedVk`. The guest authenticates signature claims, verifies child mixed proofs, and applies union, deduplication
 and discard selection. The adapter requires exact canonical EIP dependency triples and
 recomputes their `get_deps_hash`; caller metadata cannot create an unproved claim.
 Every supplied raw witness and child proof is authenticated even when another input already
 covers the same claim. An unchanged verified statement can reuse its parent proof without
 executing another recursive proving step.
 
-`get_deps_hash` is BLAKE2s-256 over the canonical dependencies' full 96-byte
-`scheme || data_hash || verification_key` entries, so the same data and key under another
-scheme is another dependency. The guest's `enabled_schemes` are leanSPHINCS (`0x10`) and
-leanSTARK (`0x11`), matching `Eip8288Constants.LeanStarkSchemeEnabled`; it checks every entry
-of the selected list and of each child list, discarded entries included. Its leanSTARK proof
-format is a generic leanVM CPU proof whose `verification_key_hash` is Keccak-256 of the ASCII tag
-`ethereum/8288/leanSTARK/vk/v1`, one terminal zero byte (30 bytes total), and the canonical program encoding.
+### Deviation: leanSTARK enabled
 
-This profile is incompatible with the earlier ABI 5 `NLR3` profile, its Keccak commitment and
-guest key, with older `NLR2` captures, and with the 64-byte-entry ABI 6 guest, whose key differs.
-Startup checks ABI 7, the new key and all nine bounds
-together. New devnets require fresh chain and database namespaces.
+EIP-8288 (EIPs#12475/#12590) reserves `LEANSTARK_SCHEME` (`0x11`) until `get_deps_hash` is
+defined for it. This implementation enables it anyway, as its one deliberate deviation from the
+EIP, with the pinned guest's generic leanVM CPU proof as its leanSTARK profile:
 
-The latest companion specification has no block dependency quota: blocks are bounded by gas, and mode-1 wrappers by a scheme-independent 4,096-dependency ceiling. This prototype guest's 256-dependency and 16-generic-claim limits are local; this key cannot prove every set the draft permits, so this prototype is not full-capacity conformance. Wrappers above the local limits are refused locally, not judged invalid, and local inability to prove or retain a set is not an inclusion-list omission excuse. Full activation requires a verifier and proof format supporting every set the fork's gas rules permit, with the complete construction, including recursive merges and discards, benchmarked against the slot deadline.
+* A list of only leanSPHINCS (`0x10`) dependencies hashes exactly as the EIP specifies:
+  BLAKE2s-256 over the canonical dependencies' 64-byte `data_hash || verification_key` entries.
+  Blocks, wrappers and inclusion lists without leanSTARK dependencies are unaffected.
+* A list with any leanSTARK dependency commits to
+  `BLAKE2s(get_deps_hash(leanSPHINCS subset) || get_deps_hash(leanSTARK subset) || domain)`,
+  where each inner digest is the spec form over that scheme's entries and `domain` is
+  `eip8288/leanstark-deps` zero-padded to 32 bytes. The 96-byte preimage is never a list of
+  64-byte entries, so no leanSPHINCS-only list shares a digest with it, and the same data and
+  key under the other scheme is another dependency.
+* Frames, wrappers and inclusion-list `proof_deps` accept `0x11`, charged
+  `LEANSTARK_VERIFICATION_GAS`; any other scheme is rejected as before.
+* The guest checks every entry of the selected list and of each child list, discarded entries
+  included, against its run, and holds at most 16 leanSTARK entries per list. Like the
+  256-dependency bound it is part of the circuit's dependency-list limit: the builder never sends a
+  statement over it to the prover, a received mode-1 wrapper over it is invalid and an
+  inclusion-list proof over it imposes no obligation, both without penalty or verification.
+
+Startup checks ABI 9, the pinned key and the nine bounds together. New devnets require fresh
+chain and database namespaces.
+
+The latest companion specification has no block dependency quota: blocks are bounded by gas, mode-0 wrappers by `MAX_LEANSIG_DEPS_PER_WRAPPER`, `MAX_LEANSTARK_DEPS_PER_WRAPPER` and `MAX_WRAPPER_BYTES`, and mode-1 wrappers by `MAX_WRAPPER_BYTES` and the dependency-list limit of the circuit behind `AGGREGATED_VK`, which EIP-8288 fixes from benchmarks before activation. This prototype guest's limit is 256 dependencies, at most 16 of them leanSTARK; a received mode-1 wrapper over it is invalid and discarded before verification, without penalizing its sender. Blocks have no such limit in the draft, so this key cannot prove every block the draft permits and this prototype is not full-capacity conformance. Raising the bound changes the guest and so `AGGREGATED_VK`. Local inability to prove or retain a set is not an inclusion-list omission excuse. Full activation requires a verifier and proof format supporting every set the fork's gas rules permit, with the complete construction, including recursive merges and discards, benchmarked against the slot deadline.
 
 ## Proving resources
 
@@ -147,16 +156,13 @@ architecture, toolchain and locked dependencies match.
 ## Proof verification limits
 
 Before decoding, a zero-allocation pass checks proof vector lengths and transcript geometry
-against available bytes and the selected guest profile. Generic admission uses the same
-supported recursion geometry as proving, so a standalone-valid witness that cannot enter
-the mixed guest is rejected before pool coverage is retained. Program and decoding bounds
+against available bytes and the selected guest profile. Decoding bounds
 are prototype acceptance choices beyond the unrestricted EIP; interoperating nodes must
 share the pinned guest, format and bounds.
 
-The mixed profile uses PCS inverse-rate log 1. Generic CPU proofs require committed-polynomial
-log size at most 22 and bus log size at most 22; mixed child proofs permit 27 and 26 respectively.
-The host and guest enforce these geometry bounds, in addition to instruction, dependency and
-serialized-byte limits. A valid unrestricted upstream proof outside this profile is not admitted.
+The mixed profile uses PCS inverse-rate log 1. Mixed child proofs permit committed-polynomial
+log size at most 27 and bus log size at most 26. The host and guest enforce these geometry
+bounds, in addition to dependency and serialized-byte limits. A valid unrestricted upstream proof outside this profile is not admitted.
 
 The upstream project and temporary guest remain experimental and unaudited. The output
 cap and bounded native inputs do not bound native workspace or RSS. The adapter's
@@ -189,9 +195,8 @@ charged for every declaration, including duplicates.
 
 The `eth` JSON-RPC module provides:
 
-* `eth_sendProofWrapper("0x<RLP>")`: verify a mode 0 or mode 1 wrapper, retain its witnesses,
-  and submit its transactions. It returns transaction hashes. Hash-only entries must already
-  resolve in the local pool.
+* `eth_sendProofWrapper("0x<RLP>")`: verify a mode 0 or mode 1 wrapper, which carries its full
+  transactions, retain its witnesses, and submit its transactions. It returns transaction hashes.
 * `eth_getProofWrapper()`: return a hexadecimal RLP mode 1 wrapper for proof-backed pending
   transactions. Selection rotates across the pool when wrapper limits prevent including all
   candidates; unchanged selections reuse an already verified aggregate.
@@ -201,10 +206,10 @@ selected witnesses, discard dependencies outside the selected transaction set, a
 produced block proof. Selection reserves proof gas from both execution and state gas budgets.
 Managed proving folds at most four direct witnesses or two recursive children per native call;
 4 MiB is the direct-leaf batching target, not a block-wide witness limit. Native inputs are bounded
-to 18 MiB and output proofs to `MAX_AGGREGATE_PROOF_BYTES`. Each encoded dependency list and the selected
+to 18 MiB and output proofs to the local aggregate proof bound. Each encoded dependency list and the selected
 output are bounded to 256 dependencies; inputs may jointly cover more claims when
 the discarded subset brings the output within that bound.
-A verified recursive source covers duplicate generic claims without retaining or selecting
+A verified recursive source covers duplicate claims without retaining or selecting
 raw witness lengths for the output. Supplied raw duplicates still require authentication;
 coverage is not a shortcut around witness validation. Fresh-claim throughput and process
 memory measurements belong in the stacked
@@ -230,67 +235,105 @@ peer ingress retries temporary contention for a bounded interval. The Network pr
 the shared Consensus admission service so RPC and `eth/73` peers use the same verification, pool
 insertion and witness-retention rules.
 
-Wrappers are validated under their target fork, the fork active at `head.timestamp + L`, where
+Wrappers are validated under a locally predicted target fork, the fork active at `head.timestamp + L`, where
 `L = (head.timestamp - parent.timestamp) / (head.slot_number - parent.slot_number)` is the local
 EIP-7843 slot-length estimate in integer seconds (the head's fork without a parent or when slot
 numbers do not increase). The target fork
 fixes the verifier: `AGGREGATED_VK` for mode-1 proofs and each scheme's parameters for
-mode-0 witnesses. Two bounded verdict caches hold direct-witness verdicts keyed by
+mode-0 witnesses. Two bounded local verdict caches hold direct-witness verdicts keyed by
 `(dep, keccak256(witness), scheme_params)` and aggregate verdicts keyed by
 `(keccak256(stark_proof), deps_hash, AGGREGATED_VK)`; a lookup consults only the cache of the
 operation it would run. When the head reaches a target fork whose verifier differs, every held
 aggregate proof and mode-1 wrapper is dropped, mode-0 witnesses are kept only if they re-validate,
 pending transactions left without coverage are evicted, and nothing validated under the previous
-verifier is announced or served. Development chains schedule such a fork with the chainspec
+verifier is announced, served or used to suppress announcements. Development chains schedule such a fork with the chainspec
 parameters `eip8288AggregatedVkTransitionTimestamp` / `eip8288AggregatedVk`, or the geth genesis
 keys `eip8288AggregatedVkTimestamp` / `eip8288AggregatedVk`; the pinned backend verifies only its
-own key, so proofs under any other key fail.
+own key, so proofs under any other key fail. These options are devnet-only: EIP-8288 treats
+`AGGREGATED_VK` as fixed at the protocol level, and no production network overrides it.
 
 ## eth/73 proof wrapper propagation
 
-When the EIP-8288 fork is active, the node advertises the provisional `eth/73` of
+Once an EIP-8288 fork is scheduled, the node advertises the provisional `eth/73` of
 [EIP-8437](https://github.com/ethereum/EIPs/pull/12423), which extends `eth/72` with three
 messages at the provisional IDs `0x16`–`0x18`: NewProofWrapperHashes, GetProofWrappers and
 ProofWrappers. Status is unchanged and peers negotiate no verifier: each validates under its own
 target fork.
 
-The only object is the canonical hash-only EIP-8288 wrapper
-`[transaction_hashes, mode, [dependencies, proof_content]]`, at most `MAX_WRAPPER_BYTES` (2 MiB).
-An announcement entry is `[mode, length, hash]`; a returned wrapper must match the responding
-peer's announced mode and length as well as the hash. NewProofWrapperHashes and GetProofWrappers
-are bounded before decompression at their largest valid sizes, 2,499 and 2,127 bytes. Responses
+The only object is the canonical EIP-8288 wrapper
+`[transactions, mode, [dependencies, proof_content]]`, carrying each transaction's full pooled
+encoding, at most `MAX_WRAPPER_BYTES` (2 MiB).
+An announcement entry is `[mode, length, hash, deps-hash, txs-hash]`, the hints hashing the wrapper's
+concatenated dependency triples and its ascending consensus transaction hashes; a returned wrapper must
+match the responding peer's announced mode, length and hints as well as the hash, the hints checked
+before its proof is verified. A wrapper whose hints match a held one validated under the current rules
+is not fetched. NewProofWrapperHashes and GetProofWrappers are bounded before decompression at their
+largest valid sizes, 6,787 and 1,072 bytes. Requests to a
+peer set `compact = 1` once this node caches transaction encodings that peer sent in full within
+validated wrappers (LRU, 4 MiB per peer and 64 MiB overall, released with the connection); a
+responder then replaces each encoding it already sent in full on that connection with its
+`[encoding-hash]` where smaller. References are resolved from the cache and the complete wrapper must
+match its announced hash and length; a reference to an evicted encoding discards the item and
+retries it with `compact = 0` without penalty, while a reference in a `compact = 0` response or a
+reconstruction past the announced length disconnects the peer. Responses
 carry whole wrappers under the 2 MiB `eth` soft response limit, always including the first one.
 A wrapper is announced to every `eth/73` peer once validated, except a hash already announced or
 sent on that connection, or one whose transactions the peer's exchanged wrappers already cover
 without more proof bytes or verification work. No wrapper is announced, served, admitted or
-reaggregated before full validation.
+reaggregated before full validation. Each transaction is admitted individually; a valid wrapper is
+relayed unchanged even if some of its transactions are rejected, provided it newly admitted at least
+one and at least as many as were rejected (already pending ones do not count), and pool rejection
+never penalizes.
 
-Dependency-bearing transactions propagate on `eth/73` through Transactions and
-NewPooledTransactionHashes alongside their covering wrappers; below `eth/73` they are neither
-broadcast nor announced, and GetPooledTransactions answers them as unavailable. An envelope
-received before its covering wrapper is retained for 60 seconds within byte, count and per-peer
-limits and stands in for recovery, but its transaction is admitted only with the validated
-wrapper. One that expires with no covering wrapper on its connection counts against the sender's
-gossip score, unless the sender's announcements are unresolved or a local limit intervened.
-Missing envelopes are recovered with GetPooledTransactions from peers that announced or served
-the wrapper, checked against any type and size the responding peer announced. A holder serves
-every listed envelope, including ones evicted from its pool, from a bounded wrapper-envelope cache.
+Dependency-bearing transactions travel only inside their covering wrappers: on every `eth`
+version they are neither broadcast nor announced, and GetPooledTransactions answers them as
+unavailable. The one exception is EIP-8070 blob availability on `eth/73`: a blob-carrying one is
+wrapped with its blob data elided (commitments and cell proofs only), and once its wrapper validates
+it waits, with its proof coverage pinned, for its cells. Cells announced for it before then are
+recorded but not fetched; after validation they are fetched and checked like type-3 cells, the pool
+admits the transaction, and its cells are announced through NewPooledTransactionHashes. A wrapper
+submitted with full blob data, as over RPC, is admitted directly and relayed at once with its blob
+data elided (only blobs with cell proofs can be). Produced wrappers carry such transactions in the
+same elided form, and block production includes them like
+type-3 blob transactions. On `eth/73` every blob-carrying frame transaction uses EIP-8070 cells: one
+without dependencies is announced with a cell mask, served elided through PooledTransactions and
+fetched like a type-3 one, though its cells are requested only once its body is known; on `eth/72`
+it still travels whole.
 
-Local policy follows the EIP-8437 recommended defaults: 30-second requests, 120-second recovery
-across at most three sources, 8 MiB/s served per peer, four announcements per second per peer and
-1,024 pending announcements, at most a quarter per peer, kept for 60 seconds. Received wrappers and recovered envelopes are
-charged to per-peer and global byte budgets before allocation. Around a fork that changes the
-verifier, a peer's proof failure is a local refusal from when the local target fork switches to it,
-or the fork after the target fork does, until the head is `Network.ProofWrapperForkGraceBlocks`
-(default 64) blocks past the fork.
+Local policy follows the EIP-8437 recommended defaults: 30-second requests, at most three fetch
+sources per wrapper, 8 MiB/s served per peer, four announcements per second per peer and
+1,024 pending announcements, at most a quarter per peer, kept for 60 seconds. Received wrappers are
+charged to per-peer and global byte budgets before allocation. Only transport violations (item counts,
+hard byte lengths, response order, malformed encodings and announcement mismatches) penalize the
+serving peer. Proof and dependency-rule failures, including the mode-0 dependency limits, the
+per-transaction limits and the dependency list's order, never do, including across a fork that
+changes the verifier; an invalid wrapper is not fetched again while the verifier that judged it
+stays current. Each peer keeps a verification-failure score, one per wrapper of its that failed,
+capped at 16 and halving every five minutes: from three, its sources are asked after the others and
+it gets one outstanding request instead of four. It is never disconnected for it.
 
-The EIP-8288 one-second tick refreshes pending selections independently of one tracked
-aggregation worker. Ticks coalesce while proving; they do not imply one-second proving.
-Selections rotate across disjoint groups, reuse authenticated child proofs and discard
-removed dependencies. Completed selections are checked against current pool membership
+Every EIP-8288 `AGGREGATION_INTERVAL` (one second), a tracked aggregation worker produces mode-1
+wrappers over bounded subsets until every pending dependency-bearing transaction is covered or
+one interval of proving has elapsed; the next cycle resumes the rotation where it stopped. Ticks
+coalesce while proving. Subsets are transaction-hash-prefix buckets: the candidates in canonical
+order start as one bucket, and one that does not fit is subdivided by successive hash bits. Buckets
+do not depend on arrival order, but splits depend on the held proofs through the proving-cost
+estimate, so other nodes cut the same buckets only where their pool and held proofs agree. Mode 1 is bounded by `MAX_WRAPPER_BYTES` and the
+circuit's dependency-list limit (the guest's 256 dependencies), and a bucket also by an estimated
+proving cost equal to folding 16 fresh signatures: already proven aggregates merge whole and may
+carry many more dependencies. Mode-0 witnesses fold directly into the aggregate, and a set a held
+proof already proves is not proven again; for partial coverage held proofs are merged and only
+missing dependencies added, discarding those outside the retained transactions. A set an announced
+mode-1 wrapper claims (by its `deps-hash`) is left for up to two intervals while that wrapper is
+fetched, then proven locally. Completed selections are checked against current pool membership
 before publication. `eth_getProofWrapper` returns a copy without invoking the prover.
 Managed aggregation folds at most four direct witnesses or two children per call.
 Cancellation is checked between calls; an individual native call remains uninterruptible.
+Setting `TxPool.AggregateProofs` to `false` (default `true`) disables this worker, so no proving is
+spent on mempool aggregation and `eth_getProofWrapper` has nothing to return. Received wrappers,
+including those submitted through `eth_sendProofWrapper`, are still verified, admitted and relayed as
+received. Block production still proves its own blocks, but off the deadline path, and local inclusion
+lists can obligate only transactions covered by a received mode-1 proof.
 
 The node-wide prover decorator shares up to 64 verified aggregation steps within 32 MiB, keyed by
 immutable complete inputs, verification key and expected statement. Identical concurrent requests
@@ -306,60 +349,44 @@ within a normal slot budget.
 
 ## Proof-bearing inclusion lists
 
-A signed inclusion list commits to `recursive_stark = [stark_proof_hash, deps_hash]`, or null.
-The committed proof usually is a mempool wrapper's, which other nodes already hold, and may
-cover a superset of the list's dependencies; otherwise it travels as an
-`il_proof = [stark_proof, proof_deps]` on the consensus layer. A node holds a valid proof for a
-commitment only with all three of the proof bytes, their `proof_deps` and a `VALID` aggregate
-verdict under the target block fork's `AGGREGATED_VK`, and `proof_deps` contain the list's `deps`,
-the union over entries that decode and pass EIP-8141/EIP-8288 static validity. A verdict whose
-bytes were released only spares verifying the proof again when it is supplied again.
+A signed inclusion list carries `recursive_stark = InclusionListProof{stark_proof, proof_deps}`
+inline, whose serialized SSZ container plus its four-byte `InclusionList` offset fits
+`MAX_IL_PROOF_BYTES`; an empty proof is `"0x"` with no
+`proof_deps`. The proof is often a mempool wrapper's and may cover a superset of the list's
+dependencies. Under the target block's fork, a nonempty proof whose `proof_deps` are sorted,
+deduplicated, under enabled schemes and within the guest's local list bounds is verified against `get_deps_hash(proof_deps)` and
+`AGGREGATED_VK`, its verdict cached by `(keccak256(stark_proof), deps_hash, AGGREGATED_VK)`.
+Each entry binds independently: a dependency-free one always, and a dependency-bearing one that
+passes EIP-8141/EIP-8288 static validity when the list's proof verifies and its `proof_deps`
+contain `dependencies(tx)`. The builder folds each verified list proof into its block aggregate
+whole and discards the dependencies absent from `dependencies(block)`.
 
-The methods follow [execution-apis#945](https://github.com/ethereum/execution-apis/pull/945). Each
-takes the target block's `timestamp`, whose fork fixes static validity and the key, and fails with
-`-38005` outside EIP-8288:
+With both EIP-8288 and EIP-7805 active, `engine_getInclusionListV2` returns `transactions` with
+`recursiveStark: {starkProof, proofDeps}`, `engine_forkchoiceUpdatedV6` accepts
+`PayloadAttributesV6.inclusionLists` and `engine_newPayloadV7` receives `InclusionListV1` entries `{transactions, recursiveStark}` in
+committee-position order. Earlier API versions retain their existing formats. The execution
+client assumes the consensus client supplies the lists counted by EIP-7805; it does not
+authenticate consensus-layer signatures.
 
-* `engine_verifyInclusionListProofV1(timestamp, transactions, recursiveStark, ilProof|null,
-  attestationDeadlineMs)` returns `{status, validationError}`: `VALID` when the proof's bytes are
-  held, a lookup, or the supplied matching `il_proof` matches a cached `VALID` verdict or verifies,
-  retaining the bytes until `attestationDeadlineMs`; `INVALID` when the list has no dependencies,
-  the known `proof_deps` omit one, an `INVALID` verdict is held (with or without an `il_proof`), or
-  the matching proof fails; `PROOF_UNKNOWN` otherwise, including for a `VALID` verdict whose bytes
-  were released. After parameter decoding, a matching `il_proof` failing submit's shape checks is
-  `INVALID` without verification, its verdict recorded; one that does not hash to the commitment
-  is ignored, whatever its shape.
-* `engine_getInclusionListProofV1(timestamp, starkProofHash)` returns the held `il_proof`, from
-  a validated mode-1 wrapper or a retained `il_proof`, or null once its bytes are released.
-* `engine_submitInclusionListProofV1(timestamp, ilProof, viewFreezeDeadlineMs)` verifies a
-  proof-topic `il_proof` and records its verdict, `VALID` or `INVALID`, retaining a valid proof
-  until `viewFreezeDeadlineMs`; size bounds, noncanonical `proof_deps` and schemes outside
-  `ENABLED_SCHEMES` are `INVALID` without verification, and that verdict is recorded too.
-
-Retention follows the deadlines the consensus layer supplies, in Unix milliseconds: a proof stays
-until the latest deadline any call gave it, and a deadline already past adds none. The execution
-client derives no deadline from slot lengths. The store is bounded by EIP-8288's peak of 80
-`il_proof`s (130 MiB).
-
-With both EIP-8288 and EIP-7805 active, `engine_forkchoiceUpdatedV6` accepts
-`PayloadAttributesV6.inclusionLists` and `engine_newPayloadV7` receives separate
-`InclusionListV1` entries in strictly increasing committee-position order. Each entry carries
-`committeeIndex`, `transactions`, and `recursiveStark: {starkProofHash, depsHash}` or null.
-Earlier API versions retain their existing formats. The execution client assumes the consensus
-client supplies the lists counted by EIP-7805; it does not authenticate consensus-layer
-signatures.
-
-A counted list always obligates its dependency-free entries, those without a dependency frame; its
-dependency-bearing entries, including one whose dependency frame carries no triples, only when this
-node holds a valid proof for its commitment. A commitment to an unknown or failing
-proof, one whose `proof_deps` omit a list dependency, or one on a list without dependencies is
-treated as null. Request bounds (positions, sizes, an incomplete commitment) fail the call; an
-undecodable entry only affects its own list. Builders fold each held committed proof into the
-block aggregate whole and discard the dependencies their block does not need, so the block proof
-stays exact. `getPayload` does not echo inclusion-list commitments.
-
-`engine_getInclusionListV1` keeps its existing non-frame sampling and returns transaction
-bytes only; constructing and signing a list with its proof remains a consensus-layer
+Request bounds (list count and transaction bytes, a missing or oversized proof, a `proofDeps` entry
+that is not 96 bytes) fail the call; proof bytes never count toward
+`MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST`; an undecodable entry or an invalid proof only affects its own list.
+`getPayload` does not echo inclusion-list proofs. Signing a list remains a consensus-layer
 integration requirement.
+
+The local list reserves a quarter of `MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST` for dependency-bearing
+transactions when a held proof covers any (no more than they need): its dependency-free transactions
+are drawn as before within the rest, and the remaining bytes are filled with ready, statically valid
+dependency-bearing pool transactions covered by one held recursive proof: a validated mode-1
+wrapper proof or one from the background aggregation cycle, reused whole with its canonical
+`proof_deps`. Candidates come from a bounded uniform sample of senders, at most one each, drawn
+before any state read or validation. Taking them in random order, the proof is the smallest
+held one covering a candidate whose container fits `MAX_IL_PROOF_BYTES` and that verifies,
+normally from the verdict cache, under the `AGGREGATED_VK` of the fork predicted for the next
+slot, so proof size or count cannot steer which transactions are listed. `engine_getInclusionListV2` never
+proves, since its 1 s timeout is below a recursive aggregation, and verifies at most two held
+proofs per call. Without a covering proof, or with no bytes left, the list carries no
+dependency-bearing transaction and an empty proof.
 
 Legacy inclusion sources and producers without an inclusion source use mutually exclusive
 decoding fallbacks; the proof-aware source overrides that path with its prepared snapshot.
@@ -369,7 +396,8 @@ discarding what its block does not need; EIP-8288 bounds a step's discards by th
 input dependency lists and leaves the number of bounded steps to the slot deadline. The pinned
 guest folds two recursive inputs per step and discards at most 256 dependencies, so the managed
 aggregator merges over a binary tree, pruning each child separately, at the cost of extra proving
-rounds; the cold case of 16 unheld 4,096-dependency wrapper proofs exceeds what it can prove.
+rounds; inclusion-list proofs whose dependency lists exceed the local 256-dependency bound
+cannot be folded.
 
 The separate [frame/FOCIL PR #13590](https://github.com/NethermindEth/nethermind/pull/13590)
 adds per-includer VERIFY budgets, claimed evaluation positions and BAL replay. It overlaps

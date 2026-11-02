@@ -16,7 +16,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     // code is, up to the code (or initcode) size limit in opcodes, each of which may be expensive (an inline
     // precompile STATICCALL, a large KECCAK256 or MCOPY). Gas still bounds the total work; only the
     // cancellation latency grows.
-    private const int CancellationPollInterval = 1024;
+    internal const int CancellationPollInterval = 1024;
 
     /// <summary>The dispatch table the running transaction uses, resolved once by <c>PrepareOpcodes</c>.</summary>
     private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] _opcodeHandlers = null!;
@@ -95,6 +95,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         _executionHandlers = table.GetExecutionHandlers(spec);
         _opcodeHandlers = table.GetHandlers<TTracingInst, TCancelable>(spec);
+        PrepareFrameCodeRunner<TTracingInst>(spec);
         if (TTracingInst.IsActive && _txTracer is IInstructionTracingFilter filter)
         {
             UInt256 mask = filter.InstructionMask;
@@ -102,6 +103,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 PrepareFilteredOpcodes(mask, table.GetHandlers<SilentInstructionFlag, TCancelable>(spec));
         }
     }
+
+    /// <summary>Resolves what an attached frame code runner needs for the coming transaction; nothing in builds without one.</summary>
+    partial void PrepareFrameCodeRunner<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag;
 
     private void PrepareFilteredOpcodes(UInt256 mask,
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] silent)

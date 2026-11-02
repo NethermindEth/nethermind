@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using NUnit.Framework;
@@ -49,6 +51,22 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             GetBlockHeadersMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, message, "e8820457e4a000000000000000000000000000000000000000000000000000000000deadc0de050580");
+
+            byte[] bytes = serializer.Serialize(message);
+            using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(bytes).AsDisposable();
+            using GetBlockHeadersMessage decoded = serializer.Deserialize(buffer);
+            Array.Clear(bytes);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.RequestId, Is.EqualTo(message.RequestId));
+                Assert.That(decoded.EthMessage.StartBlockHash, Is.EqualTo(ethMessage.StartBlockHash),
+                    "The decoded selector must own its hash after the input buffer changes.");
+                Assert.That(decoded.EthMessage.MaxHeaders, Is.EqualTo(ethMessage.MaxHeaders));
+                Assert.That(decoded.EthMessage.Skip, Is.EqualTo(ethMessage.Skip));
+                Assert.That(decoded.EthMessage.Reverse, Is.EqualTo(ethMessage.Reverse));
+                Assert.That(buffer.ReadableBytes, Is.Zero);
+            }
         }
     }
 }

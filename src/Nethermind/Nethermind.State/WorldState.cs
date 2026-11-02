@@ -200,6 +200,11 @@ namespace Nethermind.State
         }
 
         public void WarmUp(Address address) => _stateProvider.WarmUp(address);
+
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) =>
+            _currentScope?.Prefetch(accounts, slots, cancellationToken);
+
+        public bool SupportsPrefetch => _currentScope?.SupportsPrefetch ?? false;
         public void ClearStorage(Address address)
         {
             DebugGuardInScope();
@@ -501,6 +506,12 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _stateProvider.SetNonce(address, nonce);
+        }
+
+        public void SubtractFromBalanceAndSetNonce(Address address, in UInt256 balanceChange, ulong nonce, IReleaseSpec spec)
+        {
+            DebugGuardInScope();
+            _stateProvider.SubtractFromBalanceAndSetNonce(address, in balanceChange, nonce);
         }
 
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)

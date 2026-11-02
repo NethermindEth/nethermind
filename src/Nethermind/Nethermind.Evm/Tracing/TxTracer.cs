@@ -44,6 +44,7 @@ public abstract class TxTracer : ITxTracer
     public virtual bool IsTracingCallOutputMemory { get; protected set; }
     public virtual bool IsTracingCode { get; protected set; }
     public virtual bool IsTracingStack { get; protected set; }
+    public virtual bool IsTracingStackPushes => IsTracingInstructions;
     public virtual bool IsTracingBlockHash { get; protected set; }
     public virtual bool IsTracingAccess { get; protected set; }
     public virtual bool IsTracingFees { get; protected set; }
@@ -82,6 +83,7 @@ public abstract class TxTracer : ITxTracer
     public virtual void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
         ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     { }
+    public virtual void ReportActionErrorDetails(string error) { }
     public virtual void ReportActionRemainingGas(ulong gas) { }
     public virtual void ReportPrecompileAccountRead(Address address) { }
     public virtual void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) { }

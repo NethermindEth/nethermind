@@ -5,12 +5,12 @@ using System.Collections.Generic;
 
 namespace Nethermind.Core.Crypto;
 
-/// <summary>Public claim-count accounting for one mixed recursive proof under the prototype native proof envelope.</summary>
+/// <summary>Public claim-count accounting for one recursive proof under the pinned native backend's bounds.</summary>
 /// <remarks>What this node can prove and verify, not what consensus allows: EIP-8288 sets no block dependency quota, so
 /// exceeding this envelope is a local refusal and never excuses an inclusion-list omission.</remarks>
 public static class LeanProofCapacity
 {
-    /// <summary>Checks the distinct required claims against the prototype proof bounds.</summary>
+    /// <summary>Checks the distinct required claims against the pinned proof bounds.</summary>
     public static string? CapacityError(IReadOnlySet<FrameDependency> required) => CapacityError(new HashSet<FrameDependency>(), 0, [.. required]);
 
     /// <summary>Checks additional distinct claims without rescanning the base set.</summary>

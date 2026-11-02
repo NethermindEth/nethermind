@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Globalization;
+using System.Linq;
 using System.Text.Json;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -52,4 +53,15 @@ public class StorageIndexConverterTests
         UInt256 value = index;
         Assert.That(value, Is.EqualTo(new UInt256(42)));
     }
+
+    [Test]
+    public void Storage_keys_keep_request_order_and_duplicates()
+    {
+        StorageKeys keys = JsonSerializer.Deserialize<StorageKeys>("[\"0x2\",\"0x1\",\"0x1\",\"0x0000000000000000000000000000000000000000000000000000000000000001\"]")!;
+        Assert.That(keys.ToArray(), Is.EqualTo(new UInt256[] { 2, 1, 1, 1 }));
+    }
+
+    [Test]
+    public void Storage_keys_read_empty_hex_as_zero() =>
+        Assert.That(JsonSerializer.Deserialize<StorageKeys>("[\"0x\"]")!.ToArray(), Is.EqualTo(new[] { UInt256.Zero }));
 }

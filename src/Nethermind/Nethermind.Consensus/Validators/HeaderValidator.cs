@@ -97,6 +97,7 @@ namespace Nethermind.Consensus.Validators
                    && (orphaned || ValidateTimestamp(header, parent, ref error))
                    && (orphaned || ValidateBlockNumber(header, parent, ref error))
                    && (orphaned || Validate1559(header, parent, spec, ref error))
+                   && ValidateWithdrawalsRoot(header, spec, ref error)
                    && ValidateBlobGasFields(header, spec, ref error)
                    && (orphaned || ValidateExcessBlobGas(header, parent, spec, ref error))
                    && ValidateParentBeaconBlockRoot(header, spec, ref error)
@@ -109,6 +110,31 @@ namespace Nethermind.Consensus.Validators
 
         public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
             Validate<OnFlag>(header, null, false, out error, validateHash: true);
+
+        /// <summary>Checks that the EIP-4895 withdrawals root is present exactly when the fork enables it.</summary>
+        /// <remarks>Parent-independent, so it also runs for orphaned headers and header-only validation.</remarks>
+        protected virtual bool ValidateWithdrawalsRoot(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.WithdrawalsEnabled)
+            {
+                if (header.WithdrawalsRoot is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("WithdrawalsRoot field is not set.");
+                    error = BlockErrorMessages.MissingWithdrawalsRoot;
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.WithdrawalsRoot is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("WithdrawalsRoot field should not have value.");
+                    error = BlockErrorMessages.WithdrawalsRootNotEnabled;
+                    return false;
+                }
+            }
+            return true;
+        }
 
         private static bool ValidateRecursiveStarkFields(BlockHeader header, IReleaseSpec spec, ref string? error)
         {

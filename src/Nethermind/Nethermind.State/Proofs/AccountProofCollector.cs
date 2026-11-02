@@ -95,7 +95,7 @@ namespace Nethermind.State.Proofs
                 _hashedStorageKeys[j] = storageKey;
                 _accountProof.StorageProofs[j] = new StorageProof
                 {
-                    Key = storageKeys?[j].ToHexString(true, true),
+                    Key = storageKeys?[j].WithoutLeadingZeros().ToArray(),
                     Value = Bytes.ZeroByte
                 };
                 j++;
@@ -153,7 +153,7 @@ namespace Nethermind.State.Proofs
             _storageProofItems[index] = [];
             _accountProof.StorageProofs[index] = new StorageProof
             {
-                Key = key.ToHexString(true, true),
+                Key = key.ToArray(),
                 Value = Bytes.ZeroByte
             };
         }

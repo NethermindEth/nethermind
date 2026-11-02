@@ -73,7 +73,8 @@ namespace Nethermind.Facade
         int NewBlockFilter();
         int NewPendingTransactionFilter();
         int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? address = null, IEnumerable<Hash256[]?>? topics = null);
-        void UninstallFilter(int filterId);
+        /// <returns><c>true</c> if the filter existed and was removed; otherwise, <c>false</c>.</returns>
+        bool UninstallFilter(int filterId);
         bool FilterExists(int filterId);
         /// <returns>A pooled list that the caller disposes.</returns>
         ArrayPoolList<Hash256> GetBlockFilterChanges(int filterId);

@@ -4,6 +4,8 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Evm;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.ParityStyle;
@@ -174,7 +176,12 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
     public override void Write(
         Utf8JsonWriter writer,
         ParityVmOperationTrace value,
-        JsonSerializerOptions options)
+        JsonSerializerOptions options) => WriteOperation(writer, value, [], options);
+
+    /// <summary>Writes an operation of the frame running <paramref name="code"/>, named by the opcode at its <c>pc</c>.</summary>
+    /// <remarks>An operation whose <c>pc</c> lies outside the code, such as one heading an EIP-8141 frame in the frame
+    /// transaction's code-less root, has no opcode and is written without <c>op</c>.</remarks>
+    internal static void WriteOperation(Utf8JsonWriter writer, ParityVmOperationTrace value, ReadOnlySpan<byte> code, JsonSerializerOptions options)
     {
         writer.WriteStartObject();
 
@@ -187,6 +194,11 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
         else
         {
             WriteExecuted(writer, value, options);
+        }
+
+        if ((uint)value.Pc < (uint)code.Length)
+        {
+            writer.WriteString("op"u8, OpcodeJsonNames.Get((Instruction)code[value.Pc]));
         }
 
         writer.WriteNumber("pc"u8, value.Pc);

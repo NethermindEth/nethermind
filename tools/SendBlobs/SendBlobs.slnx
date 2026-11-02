@@ -55,5 +55,6 @@
     <File Path="../../src/Nethermind/Directory.Build.props" />
     <File Path="../../src/Nethermind/Directory.Packages.props" />
   </Folder>
-  <Project Path="SendBlobs.csproj" />
+  <Project Path="SendBlobs/SendBlobs.csproj" />
+  <Project Path="SendBlobs.Test/SendBlobs.Test.csproj" />
 </Solution>

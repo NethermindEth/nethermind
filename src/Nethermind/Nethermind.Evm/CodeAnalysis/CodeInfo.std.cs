@@ -26,6 +26,9 @@ public sealed partial class CodeInfo
     private object _code = Array.Empty<byte>();
     private int _codeLength;
 
+    /// <summary>The attached frame code runner's opaque state for this code, shared by every machine that runs it; core never reads it.</summary>
+    internal object? FrameCodeRunnerState;
+
     partial void InitializeCode(ReadOnlyMemory<byte> code)
     {
         _codeLength = code.Length;

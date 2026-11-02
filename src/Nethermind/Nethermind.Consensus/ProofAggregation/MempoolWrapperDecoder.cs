@@ -12,15 +12,24 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>
-/// RLP codec for the EIP-8288 mempool wrapper <c>[transactions, mode, [deps, proof_content]]</c>, the hash-only
-/// wrapper EIP-8437 announces and retrieves. Transaction entries are 32-byte hashes in strictly ascending order; <c>deps</c> lists 96-byte triples; <c>proof_content</c> is one proof
-/// per dependency for mode 0 and the <c>stark_proof</c> for mode 1, whose public input is derived from <c>deps</c>.
+/// RLP codec for the canonical EIP-8288 mempool wrapper <c>[transactions, mode, [deps, proof_content]]</c>. Transactions are
+/// RLP byte strings holding full EIP-8141 transactions in their pooled network form, in strictly ascending transaction-hash
+/// order; <c>deps</c> lists 96-byte triples; <c>proof_content</c> is one proof per dependency for mode 0 and the recursive
+/// STARK for mode 1, whose public input is derived from <c>deps</c>.
 /// </summary>
+/// <remarks>Decoding enforces the encoding rules: <c>MAX_WRAPPER_BYTES</c>, transaction ordering and well-formed 96-byte
+/// dependency triples of a defined scheme. Dependency and proof rules, including the dependency list's order, the mode-0 limits
+/// and witness count, are left to <see cref="MempoolWrapperValidator"/>, so EIP-8437 discards a wrapper breaking them without
+/// penalizing its sender.</remarks>
 public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
 {
     public static readonly MempoolWrapperDecoder Instance = new();
-    /// <summary>Mode-0 dependency and witness count bound: the direct per-scheme limits together.</summary>
-    private const int MaxDirectDependencies = Eip8288Constants.MaxLeanSigDepsPerDirectWrapper + Eip8288Constants.MaxLeanStarkDepsPerDirectWrapper;
+
+    /// <summary>The pooled encoding of a wrapped transaction: its typed envelope, with any blob network wrapper.</summary>
+    public const RlpBehaviors TransactionBehaviors = RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping;
+
+    public const string MalformedTransaction = "Proof wrapper transaction is not a pooled EIP-8141 transaction.";
+    public const string TransactionReference = "Proof wrapper transaction is an unresolved hash reference.";
 
     protected override MempoolWrapper DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -30,18 +39,16 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
             throw new RlpException("Proof wrapper exceeds MAX_WRAPPER_BYTES.");
 
         int txCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
-        List<WrapperTransaction> transactions = [];
+        List<Transaction> transactions = [];
         Hash256? previous = null;
         while (decoderContext.Position < txCheck)
         {
-            if (transactions.Count == LeanProofStore.MaxWrapperTransactions)
-                throw new RlpException("Proof wrapper exceeds the transaction count limit.");
-            Hash256 hash = decoderContext.DecodeKeccak()
-                ?? throw new RlpException("Proof wrapper hash entry must carry 32 bytes.");
-            if (previous is not null && previous.Bytes.SequenceCompareTo(hash.Bytes) >= 0)
+            if (decoderContext.IsSequenceNext()) throw new RlpException(TransactionReference);
+            Transaction transaction = DecodeTransaction(decoderContext.DecodeByteArraySpan());
+            if (previous is not null && previous.Bytes.SequenceCompareTo(transaction.Hash!.Bytes) >= 0)
                 throw new RlpException("Proof wrapper transactions must be in strictly ascending hash order.");
-            previous = hash;
-            transactions.Add(new WrapperTransaction(hash));
+            previous = transaction.Hash;
+            transactions.Add(transaction);
         }
 
         decoderContext.Check(txCheck);
@@ -49,27 +56,21 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
         byte mode = decoderContext.DecodeByte();
         if (mode is not (MempoolWrapper.ModeDirect or MempoolWrapper.ModeRecursive))
             throw new RlpException(MempoolWrapperValidator.UnknownMode);
-        // Counts are bounded per mode before allocation: direct witnesses by the mode-0 limits, aggregates by MAX_DEPS_PER_AGGREGATE_WRAPPER.
-        int maxDependencies = mode == MempoolWrapper.ModeDirect ? MaxDirectDependencies : Eip8288Constants.MaxDepsPerAggregateWrapper;
 
         int contentCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
         int depsCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
         List<FrameDependency> deps = [];
-        byte[]? previousTriple = null;
         while (decoderContext.Position < depsCheck)
         {
-            if (deps.Count == maxDependencies) throw new RlpException("Proof wrapper exceeds the dependency count limit.");
+            // Unreachable within MAX_WRAPPER_BYTES; bounds the list before allocation.
+            if (deps.Count == Eip8288Constants.MaxWrapperDependencies) throw new RlpException("Proof wrapper exceeds MAX_WRAPPER_BYTES.");
             byte[] triple = decoderContext.DecodeByteArray(RlpLimit.For<MempoolWrapper>(Eip8288Constants.DependencyTripleLength, nameof(MempoolWrapper.Deps)));
             if (triple.Length != Eip8288Constants.DependencyTripleLength || !triple.AsSpan(0, 31).IsZero()
-                || !Eip8288Dependencies.IsAcceptedScheme(triple[31]))
+                || !Eip8288Dependencies.IsKnownScheme(triple[31]))
                 throw new RlpException("Invalid dependency encoding.");
-            if (previousTriple is not null && previousTriple.AsSpan().SequenceCompareTo(triple) >= 0)
-                throw new RlpException("Proof wrapper dependencies must be sorted and deduplicated.");
-            previousTriple = triple;
             deps.AddRange(Eip8288Dependencies.Parse(triple));
         }
         decoderContext.Check(depsCheck);
-        if (deps.Count == 0) throw new RlpException(MempoolWrapperValidator.EmptyAggregate);
 
         List<byte[]>? proofs = null;
         RecursiveStark? recursiveStark = null;
@@ -77,22 +78,17 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
         {
             int proofsCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
             proofs = [];
+            // Each witness takes at least one byte of a wrapper within MAX_WRAPPER_BYTES, which bounds the list.
             while (decoderContext.Position < proofsCheck)
             {
-                if (proofs.Count == MaxDirectDependencies)
-                    throw new RlpException("Proof wrapper exceeds the witness count limit.");
                 proofs.Add(decoderContext.DecodeByteArray(RlpLimit.For<RecursiveStark>(Eip8288Constants.MaxProofBytes, nameof(MempoolWrapper.Proofs))));
             }
             decoderContext.Check(proofsCheck);
         }
-        else if (mode == MempoolWrapper.ModeRecursive)
+        else
         {
             byte[] starkProof = decoderContext.DecodeByteArray(RlpLimit.For<RecursiveStark>(Eip8288Constants.MaxAggregateProofBytes, nameof(RecursiveStark.StarkProof)));
             recursiveStark = new RecursiveStark(starkProof, new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)));
-        }
-        else
-        {
-            throw new RlpException(MempoolWrapperValidator.UnknownMode);
         }
         decoderContext.Check(contentCheck);
 
@@ -111,18 +107,38 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
         };
     }
 
+    /// <summary>Decodes one wrapped transaction, with its consensus hash, which excludes any blob network wrapper.</summary>
+    public static Transaction DecodeTransaction(ReadOnlySpan<byte> encoded)
+    {
+        Transaction transaction;
+        try
+        {
+            transaction = TxDecoder.Instance.DecodeCompleteNotNull(encoded, TransactionBehaviors);
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or IndexOutOfRangeException)
+        {
+            throw new RlpException(MalformedTransaction, exception);
+        }
+        if (!transaction.SupportsFrames) throw new RlpException(MempoolWrapperValidator.NotFrameTransaction);
+        transaction.Hash ??= transaction.CalculateHash();
+        return transaction;
+    }
+
+    /// <summary>Encodes one wrapped transaction in its pooled network form.</summary>
+    public static byte[] EncodeTransaction(Transaction transaction) => TxDecoder.Instance.Encode(transaction, TransactionBehaviors).Bytes;
+
     public override void Encode<TWriter>(ref TWriter writer, MempoolWrapper item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        _ = GetLength(item, rlpBehaviors);
-        int txContentLength = GetTransactionsContentLength(item);
+        byte[][] encodedTransactions = EncodeTransactions(item, out int txContentLength);
         byte[] depsBytes = Eip8288Dependencies.Serialize(item.Deps);
         (int contentContentLength, int innerContentLength) = GetContentLengths(item);
+        CheckLength(txContentLength, item.Mode, contentContentLength);
 
         writer.StartSequence(Rlp.LengthOfSequence(txContentLength) + Rlp.LengthOf((ulong)item.Mode) + Rlp.LengthOfSequence(contentContentLength));
 
         writer.StartSequence(txContentLength);
-        foreach (WrapperTransaction transaction in item.Transactions)
-            writer.Encode(GetHash(transaction));
+        foreach (byte[] transaction in encodedTransactions)
+            writer.Encode(transaction);
 
         writer.Encode((ulong)item.Mode);
 
@@ -143,46 +159,48 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
 
     public override int GetLength(MempoolWrapper item, RlpBehaviors rlpBehaviors)
     {
-        int txContentLength = GetTransactionsContentLength(item);
+        _ = EncodeTransactions(item, out int txContentLength);
         (int contentContentLength, _) = GetContentLengths(item);
-
-        int length = Rlp.LengthOfSequence(
-            Rlp.LengthOfSequence(txContentLength)
-            + Rlp.LengthOf((ulong)item.Mode)
-            + Rlp.LengthOfSequence(contentContentLength));
-        if (length > Eip8288Constants.MaxWrapperBytes) throw new RlpException("Proof wrapper exceeds MAX_WRAPPER_BYTES.");
-        return length;
+        return CheckLength(txContentLength, item.Mode, contentContentLength);
     }
 
-    private static int GetTransactionsContentLength(MempoolWrapper item)
+    private static int CheckLength(int txContentLength, byte mode, int contentContentLength)
     {
-        if (item.Transactions.Count is 0 or > Eip8288Constants.MaxTxsPerWrapper)
-            throw new RlpException(MempoolWrapperValidator.TooManyTransactions);
+        long length = Rlp.LengthOfSequence(Rlp.LengthOfSequence(txContentLength) + Rlp.LengthOf((ulong)mode) + Rlp.LengthOfSequence(contentContentLength));
+        if (length > Eip8288Constants.MaxWrapperBytes) throw new RlpException("Proof wrapper exceeds MAX_WRAPPER_BYTES.");
+        return (int)length;
+    }
+
+    private static byte[][] EncodeTransactions(MempoolWrapper item, out int contentLength)
+    {
+        if (item.Transactions.Count == 0) throw new RlpException("Proof wrapper must carry at least one transaction.");
+        byte[][] encoded = new byte[item.Transactions.Count][];
+        long length = 0;
         Hash256? previous = null;
-        foreach (WrapperTransaction transaction in item.Transactions)
+        for (int i = 0; i < encoded.Length; i++)
         {
-            Hash256 hash = GetHash(transaction);
+            Transaction transaction = item.Transactions[i];
+            if (!transaction.SupportsFrames) throw new RlpException(MempoolWrapperValidator.NotFrameTransaction);
+            Hash256 hash = transaction.Hash ?? transaction.CalculateHash();
             if (previous is not null && previous.Bytes.SequenceCompareTo(hash.Bytes) >= 0)
                 throw new RlpException("Proof wrapper transactions must be in strictly ascending hash order.");
             previous = hash;
+            encoded[i] = EncodeTransaction(transaction);
+            length += Rlp.LengthOf(encoded[i]);
+            if (length > Eip8288Constants.MaxWrapperBytes) throw new RlpException("Proof wrapper exceeds MAX_WRAPPER_BYTES.");
         }
-        return item.Transactions.Count * Rlp.LengthOfByteString(Hash256.Size, 0);
+        contentLength = (int)length;
+        return encoded;
     }
-
-    private static Hash256 GetHash(WrapperTransaction transaction) => transaction.Hash
-        ?? transaction.Full?.Hash ?? transaction.Full?.CalculateHash()
-        ?? throw new RlpException("Proof wrapper transaction has no hash.");
 
     private static (int ContentContentLength, int InnerContentLength) GetContentLengths(MempoolWrapper item)
     {
         if (item.Mode is not (MempoolWrapper.ModeDirect or MempoolWrapper.ModeRecursive))
             throw new RlpException(MempoolWrapperValidator.UnknownMode);
-        int maximumDependencies = item.Mode == MempoolWrapper.ModeDirect ? MaxDirectDependencies : Eip8288Constants.MaxDepsPerAggregateWrapper;
-        if (item.Deps.Count > maximumDependencies) throw new RlpException("Proof wrapper exceeds the dependency count limit.");
+        if (item.Deps.Count > Eip8288Constants.MaxWrapperDependencies) throw new RlpException("Proof wrapper exceeds MAX_WRAPPER_BYTES.");
         int depsLength = Rlp.LengthOfSequence(item.Deps.Count * Rlp.LengthOfByteString(Eip8288Constants.DependencyTripleLength, 0));
         if (item.Mode == MempoolWrapper.ModeDirect)
         {
-            if (item.Proofs is { Count: > MaxDirectDependencies }) throw new RlpException("Proof wrapper exceeds the witness count limit.");
             int innerContentLength = 0;
             foreach (byte[] proof in item.Proofs ?? [])
             {

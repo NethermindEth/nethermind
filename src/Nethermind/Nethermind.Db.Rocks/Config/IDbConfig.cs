@@ -90,7 +90,7 @@ public interface IDbConfig : IConfig
     string? CodeDbAdditionalRocksDbOptions { get; set; }
 
 
-    [ConfigItem(Description = "Write buffer size for state db. This should be at least 20% of pruning cache or during persist, persist is not able to be done asynchronously.")]
+    [ConfigItem(Description = "Write buffer size for state db. This should be at least 20% of pruning cache or during persist, persist is not able to be done asynchronously.", DefaultValue = "64000000")]
     ulong StateDbWriteBufferSize { get; set; }
     ulong StateDbWriteBufferNumber { get; set; }
     bool? StateDbVerifyChecksum { get; set; }

@@ -735,7 +735,7 @@ public partial class ParallelUnbalancedWorkTests
             Assert.That(ParallelUnbalancedWork.GetCurrentGroup(), Is.Null);
         }
 
-        static void FailAfterTransactions() => throw new InvalidOperationException("Injected execution failure");
+        static void FailAfterTransactions(Block block) => throw new InvalidOperationException("Injected execution failure");
     }
 
     private static void RunWithOccupiedPool(bool withLocal)

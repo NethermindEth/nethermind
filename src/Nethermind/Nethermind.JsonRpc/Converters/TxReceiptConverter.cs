@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Globalization;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Data;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Converters;
@@ -89,7 +87,7 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
             TypeInfoJsonSerializer.Serialize(writer, receipt.BlockHash ?? Hash256.Zero, options);
 
             writer.WritePropertyName("transactionIndex");
-            TypeInfoJsonSerializer.Serialize(writer, UInt256.Parse(receipt.TransactionIndex.ToString(), NumberStyles.Integer), options);
+            TypeInfoJsonSerializer.Serialize(writer, receipt.TransactionIndex, options);
 
             writer.WriteEndObject();
         }

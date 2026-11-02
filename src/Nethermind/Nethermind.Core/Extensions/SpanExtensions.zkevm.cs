@@ -152,12 +152,8 @@ namespace Nethermind.Core.Extensions
         /// sharing the index keys keeps each map's NH bound.
         /// </remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static ulong MixSlotIndex(ref byte index)
+        internal static ulong MixSlotIndex(ulong i0, ulong i1, ulong i2, ulong i3)
         {
-            ulong i0 = Unsafe.ReadUnaligned<ulong>(ref index);
-            ulong i1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref index, 8));
-            ulong i2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref index, 16));
-            ulong i3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref index, 24));
             ulong indexSum = i0 == LastSlot0 && i1 == LastSlot1 && i2 == LastSlot2 && i3 == LastSlot3
                 ? LastSlotIndexSum
                 : SumIndexLanes(i0, i1, i2, i3);

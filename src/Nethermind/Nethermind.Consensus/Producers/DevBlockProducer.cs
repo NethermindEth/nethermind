@@ -7,6 +7,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -52,6 +53,14 @@ namespace Nethermind.Consensus.Producers
                     Logger.Info(
                         $"Randomized difficulty for {e.Block.ToString(Block.Format.Short)} is {e.Block.Difficulty}");
             }
+        }
+
+        protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        {
+            BlockHeader header = base.PrepareBlockHeader(parent, payloadAttributes);
+            // EIP-4788 requires the field once Cancun is active; there is no beacon chain to supply it
+            if (_specProvider.GetSpec(header).IsBeaconBlockRootAvailable) header.ParentBeaconBlockRoot ??= Hash256.Zero;
+            return header;
         }
 
         public void Dispose() => BlockTree.NewHeadBlock -= OnNewHeadBlock;

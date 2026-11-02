@@ -47,9 +47,13 @@ using BlockBodiesMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.
 using BlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.BlockHeadersMessage;
 using GetBlockBodiesMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockBodiesMessage;
 using GetBlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage;
+using GetBlockBodiesMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockBodiesMessage;
+using GetBlockHeadersMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage;
 using GetPooledTransactionsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage;
 using GetNodeDataMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.GetNodeDataMessage;
+using GetNodeDataMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage;
 using GetReceiptsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.GetReceiptsMessage;
+using GetReceiptsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessage;
 using NodeDataMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.NodeDataMessage;
 using PooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage;
 using ReceiptsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage;
@@ -827,6 +831,74 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             UndecodableResponse.AssertRejectedAsUnrequested(_handler.HandleMessage, messageCode);
         }
 
+        [Test]
+        public async Task Should_discard_expired_undecodable_response_before_decoding(
+            [Values(Eth66MessageCode.BlockHeaders, Eth66MessageCode.BlockBodies, Eth66MessageCode.Receipts, Eth66MessageCode.NodeData)] int messageCode)
+        {
+            HandleIncomingStatusMessage();
+            Task responseTask;
+            long requestId;
+
+            switch (messageCode)
+            {
+                case Eth66MessageCode.BlockHeaders:
+                    Eth66Message<GetBlockHeadersMessage>? headersRequest = null;
+                    _session.When(session => session.DeliverMessage(Arg.Any<Eth66Message<GetBlockHeadersMessage>>()))
+                        .Do(callInfo => headersRequest = (Eth66Message<GetBlockHeadersMessage>)callInfo[0]);
+                    responseTask = ((ISyncPeer)_handler).GetBlockHeaders(1, 1, 1, CancellationToken.None);
+                    Assert.That(SpinWait.SpinUntil(() => headersRequest is not null, 1000), Is.True);
+                    requestId = headersRequest!.RequestId;
+                    Expire(GetDictionary<GetBlockHeadersMessage66, IOwnedReadOnlyList<BlockHeader>>(_handler, "_headersRequests66"), requestId);
+                    break;
+                case Eth66MessageCode.BlockBodies:
+                    Eth66Message<GetBlockBodiesMessage>? bodiesRequest = null;
+                    _session.When(session => session.DeliverMessage(Arg.Any<Eth66Message<GetBlockBodiesMessage>>()))
+                        .Do(callInfo => bodiesRequest = (Eth66Message<GetBlockBodiesMessage>)callInfo[0]);
+                    responseTask = ((ISyncPeer)_handler).GetBlockBodies([Keccak.Zero], CancellationToken.None);
+                    Assert.That(SpinWait.SpinUntil(() => bodiesRequest is not null, 1000), Is.True);
+                    requestId = bodiesRequest!.RequestId;
+                    Expire(GetDictionary<GetBlockBodiesMessage66, (OwnedBlockBodies, long)>(_handler, "_bodiesRequests66"), requestId);
+                    break;
+                case Eth66MessageCode.Receipts:
+                    Eth66Message<GetReceiptsMessage>? receiptsRequest = null;
+                    _session.When(session => session.DeliverMessage(Arg.Any<Eth66Message<GetReceiptsMessage>>()))
+                        .Do(callInfo => receiptsRequest = (Eth66Message<GetReceiptsMessage>)callInfo[0]);
+                    responseTask = ((ISyncPeer)_handler).GetReceipts([Keccak.Zero], CancellationToken.None);
+                    Assert.That(SpinWait.SpinUntil(() => receiptsRequest is not null, 1000), Is.True);
+                    requestId = receiptsRequest!.RequestId;
+                    Expire(GetDictionary<GetReceiptsMessage66, (IOwnedReadOnlyList<TxReceipt[]>, long)>(_handler, "_receiptsRequests66"), requestId);
+                    break;
+                case Eth66MessageCode.NodeData:
+                    Eth66Message<GetNodeDataMessage>? nodeDataRequest = null;
+                    _session.When(session => session.DeliverMessage(Arg.Any<Eth66Message<GetNodeDataMessage>>()))
+                        .Do(callInfo => nodeDataRequest = (Eth66Message<GetNodeDataMessage>)callInfo[0]);
+                    responseTask = ((ISyncPeer)_handler).GetNodeData([Keccak.Zero], CancellationToken.None);
+                    Assert.That(SpinWait.SpinUntil(() => nodeDataRequest is not null, 1000), Is.True);
+                    requestId = nodeDataRequest!.RequestId;
+                    Expire(GetDictionary<GetNodeDataMessage66, IByteArrayList>(_handler, "_nodeDataRequests66"), requestId);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(messageCode), messageCode, null);
+            }
+
+            using PooledBufferLeakDetector detector = new();
+            HandleUndecodableResponse(messageCode, requestId, detector);
+            Assert.That(() => HandleUndecodableResponse(messageCode, requestId, detector), Throws.TypeOf<SubprotocolException>());
+            Assert.That(() => HandleUndecodableResponse(messageCode, requestId + 1, detector), Throws.TypeOf<SubprotocolException>());
+
+            Exception? responseException = null;
+            try
+            {
+                await responseTask;
+            }
+            catch (Exception exception)
+            {
+                responseException = exception;
+            }
+
+            Assert.That(responseException, Is.TypeOf<TimeoutException>());
+        }
+
 
         [TestCase(0, 0)]
         [TestCase(1, 1)]
@@ -888,6 +960,30 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             getBlockHeadersPacket.ReadByte();
             _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
         }
+
+        private static MessageDictionary<TMsg, TData> GetDictionary<TMsg, TData>(Eth66ProtocolHandler handler, string fieldName)
+            where TMsg : P2PMessage, IEth66Message
+        {
+            FieldInfo field = typeof(Eth66ProtocolHandler).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!;
+            return (MessageDictionary<TMsg, TData>)field.GetValue(handler)!;
+        }
+
+        private static void Expire<TMsg, TData>(MessageDictionary<TMsg, TData> dictionary, long requestId)
+            where TMsg : P2PMessage, IEth66Message
+        {
+            FieldInfo thresholdField = typeof(MessageDictionary<TMsg, TData>).GetField("_oldRequestThreshold", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            thresholdField.SetValue(dictionary, TimeSpan.Zero);
+            Assert.That(SpinWait.SpinUntil(() => dictionary.TryExpireRequest(requestId), TimeSpan.FromSeconds(1)), Is.True);
+        }
+
+        private void HandleUndecodableResponse(int messageCode, long requestId, PooledBufferLeakDetector detector)
+        {
+            using DisposableByteBuffer source = UndecodableResponse.Create(requestId).AsDisposable();
+            using DisposableByteBuffer content = detector.Allocator.Buffer(source.ReadableBytes).AsDisposable();
+            content.WriteBytes(source, source.ReaderIndex, source.ReadableBytes);
+            _handler.HandleMessage(new ZeroPacket(content) { PacketType = (byte)messageCode });
+        }
+
         private void HandleIncomingStatusMessage()
         {
             using StatusMessage statusMsg = new();

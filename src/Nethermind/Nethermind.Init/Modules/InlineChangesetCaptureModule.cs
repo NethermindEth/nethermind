@@ -39,7 +39,7 @@ public sealed class InlineCapturePolicy(IBlockTree blockTree, ISpecProvider spec
 
 public sealed class InlineCaptureBlockProcessor(IBlockProcessor inner, InlineChangesetCapture capture) : IBlockProcessor
 {
-    public event Action? TransactionsExecuted
+    public event Action<Block>? TransactionsExecuted
     {
         add => inner.TransactionsExecuted += value;
         remove => inner.TransactionsExecuted -= value;

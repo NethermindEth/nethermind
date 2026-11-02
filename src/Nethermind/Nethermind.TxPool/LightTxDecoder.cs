@@ -17,7 +17,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
     // is unknown; otherwise records keep the foundational consensus size, from which future encodings can be derived.
     private const byte ElidedNetworkEncodingSizeFormatVersion = 2;
 
-    private static int GetLength(Transaction tx, Address? paymaster, int networkSize, int persistedEncodingSize, byte sizeFormatVersion) => Rlp.LengthOf(tx.Timestamp)
+    private static int GetLength(Transaction tx, Address? paymaster, bool dependencyBearing, int networkSize, int persistedEncodingSize, byte sizeFormatVersion) => Rlp.LengthOf(tx.Timestamp)
                + Rlp.LengthOf(tx.SenderAddress)
                + Rlp.LengthOf(tx.Nonce)
                + Rlp.LengthOf(tx.Hash)
@@ -35,7 +35,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(sizeFormatVersion)
                + Rlp.LengthOf((byte)tx.Type)
                + (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline) ? Rlp.LengthOf(expiryDeadline) : 0)
-               + TrailingLength(tx, paymaster);
+               + TrailingLength(tx, paymaster, dependencyBearing);
 
     /// <summary>
     /// Length of the single optional trailing group, or zero when the record needs none.
@@ -44,9 +44,9 @@ public class LightTxDecoder : TxDecoder<Transaction>
     /// One group rather than two adjacent optional sequences: RLP cannot tell a 20-byte integer from an
     /// address, so a two-key <c>nonce_keys</c> list is byte-identical to a payer pair.
     /// </remarks>
-    private static int TrailingLength(Transaction tx, Address? paymaster)
+    private static int TrailingLength(Transaction tx, Address? paymaster, bool dependencyBearing)
     {
-        int content = TrailingContentLength(tx, paymaster);
+        int content = TrailingContentLength(tx, paymaster, dependencyBearing);
         return content == 0
             ? tx.NonceKeys is { } keysOnly ? FrameTxNonceCalldata.KeysLength(keysOnly) : 0
             : Rlp.LengthOfSequence(content);
@@ -58,25 +58,28 @@ public class LightTxDecoder : TxDecoder<Transaction>
     /// transaction reserves nothing but is still summed at the price admission recorded. A zero price is absent
     /// on the read side, so it cannot open the group alone, or the record would pay for a slot decoding discards.
     /// </remarks>
-    private static int TrailingContentLength(Transaction tx, Address? paymaster)
+    private static int TrailingContentLength(Transaction tx, Address? paymaster, bool dependencyBearing)
     {
-        if (tx.PayerAddress is null && paymaster is null && tx.PayerExposure is null or { IsZero: true }) return 0;
+        if (tx.PayerAddress is null && paymaster is null && tx.PayerExposure is null or { IsZero: true } && !dependencyBearing) return 0;
 
         // Slot 0 is always the keys list, so its sequence header is what tells this form from the flat
         // nonce_keys list a groupless record still writes, whose first element is a scalar.
         return (tx.NonceKeys is { } nonceKeys ? FrameTxNonceCalldata.KeysLength(nonceKeys) : Rlp.LengthOfSequence(0))
                + Rlp.LengthOf(tx.PayerAddress)
                + Rlp.LengthOf(tx.PayerExposure ?? default)
-               + (paymaster is null ? 0 : Rlp.LengthOf(paymaster));
+               + (paymaster is not null ? Rlp.LengthOf(paymaster) : dependencyBearing ? Rlp.LengthOf((Address?)null) : 0)
+               + (dependencyBearing ? Rlp.LengthOf((byte)1) : 0);
     }
 
     public static byte[] Encode(Transaction tx)
     {
         // Read once through the pool's own key, so the record and the cap's ledger cannot disagree on the sponsor.
         Address? paymaster = PendingPaymasterCache.KeyFor(tx);
+        // Kept so a reloaded EIP-8288 dependency-bearing record, which has no frames, still takes its eth/73 paths.
+        bool dependencyBearing = Eip8288Dependencies.IsDependencyBearing(tx);
         int networkSize = tx.GetLength();
         (int persistedEncodingSize, byte sizeFormatVersion) = GetPersistedEncodingSize(tx);
-        byte[] bytes = new byte[GetLength(tx, paymaster, networkSize, persistedEncodingSize, sizeFormatVersion)];
+        byte[] bytes = new byte[GetLength(tx, paymaster, dependencyBearing, networkSize, persistedEncodingSize, sizeFormatVersion)];
         RlpWriter writer = new(bytes);
 
         writer.Encode(tx.Timestamp);
@@ -101,7 +104,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         if (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline)) writer.Encode(expiryDeadline);
         // One optional trailing group, a sequence so the decoder tells it from the expiry deadline that only
         // sometimes precedes it. Written whole, so the keys list is present even when empty.
-        int trailingContent = TrailingContentLength(tx, paymaster);
+        int trailingContent = TrailingContentLength(tx, paymaster, dependencyBearing);
         if (trailingContent == 0)
         {
             // Nothing to group: a keys-only record keeps the exact bytes every earlier build writes.
@@ -120,6 +123,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
             // A genuine zero price collapses onto it and costs the same: the fallback's fee terms are zero too.
             writer.Encode(tx.PayerExposure ?? default);
             if (paymaster is not null) writer.Encode(paymaster);
+            else if (dependencyBearing) writer.Encode((Address?)null);
+            if (dependencyBearing) writer.Encode((byte)1);
         }
 
         return bytes;
@@ -170,6 +175,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         Address? payerAddress = null;
         UInt256? payerExposure = null;
         Address? paymaster = null;
+        bool? dependencyBearing = null;
         if (ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1)
         {
             // Legacy records end in a flat nonce_keys list, whose first element is a scalar; the grouped form
@@ -195,6 +201,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
                 // Nullable for the same reason as the payer: once a later slot exists, an absent paymaster
                 // is written as the placeholder rather than omitted.
                 if (ctx.Position < end) paymaster = ctx.DecodeAddressOrNull();
+                // Written only for a dependency-bearing record; a record without the slot is read as unknown.
+                if (ctx.Position < end) dependencyBearing = ctx.DecodeByte() == 1;
                 // Anything a later build appended is skipped, so a new slot costs this one that field
                 // rather than making every grouped record unreadable.
                 ctx.Position = end;
@@ -231,7 +239,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
             nonceKeys,
             payerAddress,
             payerExposure,
-            paymaster);
+            paymaster,
+            dependencyBearing);
     }
 
     private static void EncodeAvailableCellMask(Transaction tx, ref RlpWriter writer)

@@ -158,7 +158,7 @@ public partial class Bloom : IEquatable<Bloom>
 
     public void Accumulate(Bloom? bloom)
     {
-        if (bloom is null)
+        if (bloom is null || ReferenceEquals(bloom, Empty))
         {
             return;
         }

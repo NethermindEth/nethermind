@@ -3,6 +3,8 @@
     <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <GenerateRpcJsonContext>true</GenerateRpcJsonContext>
+    <!-- Loads the experimental read-only query modules (NMEVM0001) into the query environments. -->
+    <NoWarn>$(NoWarn);NMEVM0001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

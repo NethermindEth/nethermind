@@ -58,29 +58,8 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
-        if (Depth == 0)
-        {
-            CaptureStart(input);
-        }
-        else
-        {
-            CaptureEnter(callType, input, to, isPrecompileCall);
-        }
-    }
-
-    private void CaptureStart(ReadOnlyMemory<byte> input)
-    {
-        if (input.Length >= 4)
-        {
-            Store4ByteIds(input, input.Length - 4);
-        }
-    }
-
-    private void CaptureEnter(ExecutionType callType, ReadOnlyMemory<byte> input, Address? to, bool isPrecompileCall)
-    {
         if (input.Length >= 4
-            && callType.IsAnyCall()
-            && to is not null
+            && (callType.IsAnyCall() || callType == ExecutionType.TRANSACTION)
             && !isPrecompileCall)
         {
             Store4ByteIds(input, input.Length - 4);

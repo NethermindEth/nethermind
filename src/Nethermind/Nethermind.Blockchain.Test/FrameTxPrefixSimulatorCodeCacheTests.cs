@@ -48,6 +48,8 @@ public class FrameTxPrefixSimulatorCodeCacheTests
             // Isolated from StaticCodeCache.Instance, whose contents no test in this assembly controls;
             // a shared-cache simulator would still deposit into this instance.
             builder.AddSingleton<ICodeCache>(new StaticCodeCache(Evm.MemoryAllowance.CodeCacheSize));
+            // The first simulation runs cold and can overrun the default timeout on CI.
+            builder.AddSingleton<ITxPoolConfig>(new TxPoolConfig { FrameTxSimulationTimeoutMs = 0 });
             builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
                 new FunctionalGenesisPostProcessor(_ =>
                 {

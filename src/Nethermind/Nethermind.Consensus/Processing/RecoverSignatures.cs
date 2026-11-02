@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.Processing
                 && !(mayDeferToRecoveryInFlight && IsRecoveryInFlight(txs))
                 && !AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
             {
-                RecoverData(txs, releaseSpec);
+                RecoverData(txs, AlignedEncodings(txs, block.EncodedTransactions), releaseSpec, skipErrors: false);
             }
 
             if (block.InclusionListTransactions is not null)
@@ -105,7 +105,12 @@ namespace Nethermind.Consensus.Processing
         /// store equal values through <c>??=</c>, so whichever store lands last is the same address.
         /// </para>
         /// </remarks>
-        public void StartRecovery(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec)
+        /// <param name="encodedTransactions">
+        /// The canonical encodings of <paramref name="txs"/>, index for index, which spare re-encoding each signed
+        /// payload; <see langword="null"/> encodes the transactions instead.
+        /// </param>
+        /// <param name="cancellationToken">Stops recovering the remaining transactions, for a block rejected before processing.</param>
+        public void StartRecovery(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec, byte[][]? encodedTransactions = null, CancellationToken cancellationToken = default)
         {
             ParallelUnbalancedWork.WorkerGroup? group = ParallelUnbalancedWork.GetCurrentGroup();
             if (group?.Concurrency == 1) return;
@@ -117,7 +122,7 @@ namespace Nethermind.Consensus.Processing
             if (current is not null && !current.IsCompleted && current.BlockHash == blockHash)
                 return;
 
-            Recovery recovery = new(this, blockHash, txs, releaseSpec, group?.Concurrency ?? Math.Max(1, Environment.ProcessorCount / 2));
+            Recovery recovery = new(this, blockHash, txs, AlignedEncodings(txs, encodedTransactions), releaseSpec, group?.Concurrency ?? Math.Max(1, Environment.ProcessorCount / 2), cancellationToken);
             Volatile.Write(ref _current, recovery);
             try
             {
@@ -138,7 +143,7 @@ namespace Nethermind.Consensus.Processing
 
         /// <inheritdoc/>
         /// <remarks>
-        /// <see cref="Block"/>'s constructor copies the transaction array, so only the shared transaction objects
+        /// A <see cref="Block"/> may hold a copy of the transaction array, so only the shared transaction objects
         /// can identify the recovery. The test is a heuristic, not an identity: a payload-improvement build reuses
         /// pooled transaction objects, so a different array of the same length starting with the same transaction
         /// matches. A false positive costs <see cref="RecoverDataForQueuedProcessing"/> no more than the inline
@@ -160,7 +165,16 @@ namespace Nethermind.Consensus.Processing
 
         /// <summary>Recovers senders and EIP-7702 authorities for transactions not yet attached to a <see cref="Block"/>.</summary>
         /// <param name="skipErrors">When set, recovery failures leave <see cref="Transaction.SenderAddress"/> null instead of throwing.</param>
-        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors = false)
+        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors = false) =>
+            RecoverData(txs, null, releaseSpec, skipErrors);
+
+        private static byte[][]? AlignedEncodings(Transaction[] txs, byte[][]? encodedTransactions) =>
+            encodedTransactions?.Length == txs.Length ? encodedTransactions : null;
+
+        private static ReadOnlySpan<byte> EncodingAt(byte[][]? encodedTransactions, int i) =>
+            encodedTransactions is null ? default : encodedTransactions[i];
+
+        private void RecoverData(Transaction[] txs, byte[][]? encodedTransactions, IReleaseSpec releaseSpec, bool skipErrors)
         {
             if (txs.Length == 0)
                 return;
@@ -174,35 +188,35 @@ namespace Nethermind.Consensus.Processing
                 ParallelUnbalancedWork.For(
                     0,
                     txs.Length,
-                    (recover: this, txs, releaseSpec, skipErrors),
+                    (recover: this, txs, encodedTransactions, releaseSpec, skipErrors),
                     RecoverSingle);
             }
             else
             {
-                foreach (Transaction tx in txs)
+                for (int i = 0; i < txs.Length; i++)
                 {
-                    if (skipErrors) TryRecover(tx, releaseSpec);
-                    else Recover(tx, releaseSpec);
+                    if (skipErrors) TryRecover(txs[i], EncodingAt(encodedTransactions, i), releaseSpec);
+                    else Recover(txs[i], EncodingAt(encodedTransactions, i), releaseSpec);
                 }
             }
         }
 
-        private static (RecoverSignatures recover, Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors) RecoverSingle(
+        private static (RecoverSignatures recover, Transaction[] txs, byte[][]? encodedTransactions, IReleaseSpec releaseSpec, bool skipErrors) RecoverSingle(
             int i,
-            (RecoverSignatures recover, Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors) state)
+            (RecoverSignatures recover, Transaction[] txs, byte[][]? encodedTransactions, IReleaseSpec releaseSpec, bool skipErrors) state)
         {
-            if (state.skipErrors) state.recover.TryRecover(state.txs[i], state.releaseSpec);
-            else state.recover.Recover(state.txs[i], state.releaseSpec);
+            if (state.skipErrors) state.recover.TryRecover(state.txs[i], EncodingAt(state.encodedTransactions, i), state.releaseSpec);
+            else state.recover.Recover(state.txs[i], EncodingAt(state.encodedTransactions, i), state.releaseSpec);
             return state;
         }
 
         // An inclusion-list tx with valid RLP but an invalid signature is left with a null SenderAddress,
         // which makes it not-appendable, rather than failing the whole block.
-        private void TryRecover(Transaction tx, IReleaseSpec releaseSpec)
+        private void TryRecover(Transaction tx, ReadOnlySpan<byte> encoded, IReleaseSpec releaseSpec)
         {
             try
             {
-                Recover(tx, releaseSpec);
+                Recover(tx, encoded, releaseSpec);
             }
             catch (Exception e) when (e is InvalidDataException or ArgumentException or CryptographicException or RlpException)
             {
@@ -216,10 +230,10 @@ namespace Nethermind.Consensus.Processing
         /// non-null <see cref="Transaction.SenderAddress"/> sees the recovered bytes with it. The only race left
         /// is reading a stale null, which each consumer handles by recovering inline or warming on a later pass.
         /// </remarks>
-        private void Recover(Transaction tx, IReleaseSpec releaseSpec)
+        private void Recover(Transaction tx, ReadOnlySpan<byte> encoded, IReleaseSpec releaseSpec)
         {
             _ = tx.Hash;
-            tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, !releaseSpec.ValidateChainId);
+            tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, encoded, !releaseSpec.ValidateChainId);
             RecoverAuthorities(tx, releaseSpec);
             if (tx.SupportsFrames) FrameTxSignatureValidator.RecoverSecp256k1Signers(tx, _ecdsa);
             if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
@@ -261,7 +275,7 @@ namespace Nethermind.Consensus.Processing
         /// touched a few times per worker rather than once per transaction; completion is pulsed under the gate the
         /// waiters wait on.
         /// </summary>
-        private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec, int concurrency) : IThreadPoolWorkItem, ISenderRecoveryProgress
+        private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, byte[][]? encodedTransactions, IReleaseSpec releaseSpec, int concurrency, CancellationToken cancellationToken) : IThreadPoolWorkItem, ISenderRecoveryProgress
         {
             private readonly object _gate = new();
             private readonly int _progressBatch = Math.Max(1, txs.Length / (concurrency * ProgressPublicationsPerWorker));
@@ -294,12 +308,13 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
-                        foreach (Transaction tx in txs)
+                        int recovered = 0;
+                        for (; recovered < txs.Length && !cancellationToken.IsCancellationRequested; recovered++)
                         {
-                            owner.TryRecover(tx, releaseSpec);
+                            Recover(recovered);
                         }
 
-                        Interlocked.Add(ref _recovered, txs.Length);
+                        Interlocked.Add(ref _recovered, recovered);
                     }
                 }
                 catch (Exception e)
@@ -323,11 +338,15 @@ namespace Nethermind.Consensus.Processing
 
             private Worker StartWorker() => new(this);
 
-            private void Recover(int i) => owner.TryRecover(txs[i], releaseSpec);
+            private bool IsCancellationRequested => cancellationToken.IsCancellationRequested;
+
+            private void Recover(int i) => owner.TryRecover(txs[i], EncodingAt(encodedTransactions, i), releaseSpec);
 
             private static Worker RecoverOne(int i, Worker worker)
             {
                 Recovery recovery = worker.Recovery;
+                // Cancellation skips the remaining indices instead of passing the token to For, which throws.
+                if (recovery.IsCancellationRequested) return worker;
                 recovery.Recover(i);
                 if (++worker.Pending == recovery._progressBatch)
                 {
