@@ -64,13 +64,11 @@ public static partial class Program
         int queueCapacity = int.Parse(Value("queue", "8"), CultureInfo.InvariantCulture);
         int warmups = int.Parse(Value("warmups", "3"), CultureInfo.InvariantCulture);
         int repetitions = int.Parse(Value("repetitions", "5"), CultureInfo.InvariantCulture);
-        double[] rates = Value("rates", "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => double.Parse(s, CultureInfo.InvariantCulture)).ToArray();
+        double[] rates = Value("rates", "1,10,25,50,100").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => double.Parse(s, CultureInfo.InvariantCulture)).ToArray();
         double[] objectRates = Value("object-rates", "1,10,25,50").Split(',').Select(s => double.Parse(s, CultureInfo.InvariantCulture)).ToArray();
         int[] sizes = Value("object-sizes", "1024,65536,1048576").Split(',').Select(s => int.Parse(s, CultureInfo.InvariantCulture)).ToArray();
         int[] blockCounts = Value("block-counts", "64,128").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => int.Parse(s, CultureInfo.InvariantCulture)).ToArray();
         HashSet<string> selected = Value("cases", string.Join(',', Cases.Select(c => c.Name))).Split(',').ToHashSet(StringComparer.Ordinal);
-        // load still sends full-body wrappers; EIP-8437 wrappers carry only tx hashes, so envelopes must be delivered first.
-        if (rates.Length != 0) throw new NotSupportedException("load needs envelope delivery for hash-only EIP-8437 wrappers");
         if (!double.IsFinite(seconds) || seconds <= 0 || queueCapacity < 1 || warmups < 0 || repetitions < 1 || blockCounts.Any(c => c < 1 || c > Eip8288Constants.MaxProofDependencies) || sizes.Any(s => s < 1 || Rlp.LengthOfSequence(Rlp.LengthOfByteString(s, 0)) > LeanProofStore.MaxWrapperBytes) || rates.Any(r => !double.IsFinite(r) || r <= 0) || objectRates.Any(r => !double.IsFinite(r) || r <= 0)) throw new ArgumentException("Positive duration, queue and rates required");
         Directory.CreateDirectory(output);
         Fixtures fixtures = new(fixtureDirectory);
