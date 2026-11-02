@@ -23,7 +23,7 @@ namespace Nethermind.Config.Test
         /// </summary>
         public static readonly IReadOnlySet<string> NonDeterministicDefaults = new HashSet<string>
         {
-            "IJsonRpcConfig.TraceBlockParallelism",       // ProcessorCount
+            "IJsonRpcConfig.TraceBlockParallelism",       // Max(ProcessorCount - 1, 4)
             "ILogIndexConfig.MaxReceiptsParallelism",     // Max(ProcessorCount / 4, 1)
             "ILogIndexConfig.MaxAggregationParallelism",  // Max(ProcessorCount / 4, 1)
             "ILogIndexConfig.MaxCompressionParallelism",  // Max(ProcessorCount / 4, 1)

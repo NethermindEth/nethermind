@@ -9,18 +9,19 @@ namespace Nethermind.Consensus.Tracing;
 /// <summary>Bounds active indexed block-tracing workers across both RPC namespaces.</summary>
 public sealed class ParallelTraceBudget : IDisposable
 {
-    private const int MaxDegree = 16;
+    /// <summary>The largest worker degree any budget allows.</summary>
+    public const int MaxDegree = 16;
 
     private readonly SemaphoreSlim _slots;
 
-    /// <summary>Creates a budget of one to sixteen workers.</summary>
+    /// <summary>Creates a budget of one to <see cref="MaxDegree"/> workers.</summary>
     public ParallelTraceBudget(int degree)
     {
         Degree = Math.Clamp(degree, 1, MaxDegree);
         _slots = new SemaphoreSlim(Degree, Degree);
     }
 
-    /// <summary>A budget of <paramref name="workers"/>, never more than the processors or sixteen; zero or one traces
+    /// <summary>A budget of <paramref name="workers"/>, never more than the processors or <see cref="MaxDegree"/>; zero or one traces
     /// sequentially.</summary>
     public static ParallelTraceBudget Bounded(int workers) =>
         new(workers <= 1 ? 1 : Math.Min(workers, Math.Min(Environment.ProcessorCount, MaxDegree)));

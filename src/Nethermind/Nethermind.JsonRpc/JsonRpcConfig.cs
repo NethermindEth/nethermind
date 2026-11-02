@@ -61,7 +61,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public long MaxBufferedTraceLogSize { get; set; } = 256.MiB;
     public int? DebugModuleConcurrentInstances { get; set; } = null;
     public int? TraceModuleConcurrentInstances { get; set; } = null;
-    public int TraceBlockParallelism { get; set; } = Environment.ProcessorCount;
+    public int TraceBlockParallelism { get; set; } = Math.Max(Environment.ProcessorCount - 1, 4);
     public int? EthModuleConcurrentInstances { get; set; } = null;
     public string JwtSecretFile { get; set; } = null;
     public bool UnsecureDevNoRpcAuthentication { get; set; }
