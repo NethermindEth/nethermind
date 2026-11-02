@@ -280,6 +280,10 @@ public sealed partial class ParallelBlockTracer
             {
                 while (true)
                 {
+                    // With the last transaction taken, a place would only be waited for and given back, holding a
+                    // worker thread that other blocks' helpers queue for.
+                    if (Volatile.Read(ref _cursor) >= transactions - 1) return;
+
                     results.Reserve(stop);
                     int index = Interlocked.Increment(ref _cursor);
                     if (index >= transactions)

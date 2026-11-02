@@ -474,6 +474,53 @@ public class OrderedTraceEmitterTests
         pipe.Reader.AdvanceTo(read.Buffer.End);
     }
 
+    /// <summary>One element far longer than a flush inside an element: the pipe is flushed while the element is
+    /// written, so it never holds the whole element at once.</summary>
+    [Test]
+    public void TraceStreamOutput_WithOneLongElement_FlushesInsideIt()
+    {
+        const int flushThresholdBytes = 16 * 1024;
+        const int pastTheFlushBytes = 64 * 1024;
+        SerializedTraces.Pool pool = new(capacity: 1, chunks: 1);
+        SerializedTraces serialized = pool.Rent(Options);
+        Utf8JsonWriter alone = serialized.Start(Options);
+        alone.WriteStartArray();
+        while (alone.BytesCommitted + alone.BytesPending < TraceStreamOutput.InElementFlushBytes + pastTheFlushBytes) alone.WriteStringValue("0123456789");
+        alone.WriteEndArray();
+        alone.Flush();
+        serialized.Seal();
+        byte[] element = serialized.Written.ToArray();
+
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0));
+        FlushRecordingPipeWriter recording = new(pipe.Writer);
+        using (Utf8JsonWriter writer = new(recording, new JsonWriterOptions { SkipValidation = true }))
+        {
+            writer.WriteStartArray();
+            writer.Flush();
+            recording.Restart();
+
+            TraceStreamOutput output = new(writer, recording, CancellationToken.None, flushThresholdBytes);
+            output.WriteSerialized(serialized.Written);
+            pool.Return(serialized);
+            writer.WriteEndArray();
+        }
+
+        pipe.Writer.Complete();
+        Assert.That(pipe.Reader.TryRead(out ReadResult read), Is.True);
+        byte[] written = read.Buffer.ToArray();
+        pipe.Reader.AdvanceTo(read.Buffer.End);
+        byte[] expected = [.. "["u8, .. element, .. "]"u8];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(element.Length, Is.GreaterThan(TraceStreamOutput.InElementFlushBytes + SerializedTraces.ChunkSize), "precondition: the element is longer than a flush inside it");
+            Assert.That(recording.FirstFlushAt, Is.LessThan(element.Length), "the pipe is flushed before the element ends");
+            Assert.That(recording.MostUnflushed, Is.InRange(TraceStreamOutput.InElementFlushBytes, TraceStreamOutput.InElementFlushBytes + SerializedTraces.ChunkSize),
+                "the element is flushed once per flush inside an element, neither per chunk nor much later");
+            Assert.That(written, Is.EqualTo(expected), "the element reaches the pipe whole and in order");
+        }
+    }
+
     [Test]
     public void Emitter_WhenTheByteBudgetIsSpent_WaitsForTheWriteBeforeTakingAnotherTransaction()
     {
@@ -600,6 +647,50 @@ public class OrderedTraceEmitterTests
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 0) OnDispose?.Invoke();
         }
+    }
+
+    /// <summary>Passes everything to a pipe and records how many bytes each flush finds unflushed.</summary>
+    private sealed class FlushRecordingPipeWriter(PipeWriter inner) : PipeWriter
+    {
+        private long _advanced;
+        private long _flushedAt;
+
+        /// <summary>The bytes advanced past when the first flush came, or -1 before it.</summary>
+        public long FirstFlushAt { get; private set; } = -1;
+
+        /// <summary>The most bytes any one flush found unflushed.</summary>
+        public long MostUnflushed { get; private set; }
+
+        /// <summary>Counts from here, as if everything written before had been flushed.</summary>
+        public void Restart()
+        {
+            _advanced = 0;
+            _flushedAt = 0;
+            FirstFlushAt = -1;
+            MostUnflushed = 0;
+        }
+
+        public override void Advance(int bytes)
+        {
+            _advanced += bytes;
+            inner.Advance(bytes);
+        }
+
+        public override Memory<byte> GetMemory(int sizeHint = 0) => inner.GetMemory(sizeHint);
+
+        public override Span<byte> GetSpan(int sizeHint = 0) => inner.GetSpan(sizeHint);
+
+        public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
+        {
+            if (FirstFlushAt < 0) FirstFlushAt = _advanced;
+            MostUnflushed = Math.Max(MostUnflushed, _advanced - _flushedAt);
+            _flushedAt = _advanced;
+            return inner.FlushAsync(cancellationToken);
+        }
+
+        public override void CancelPendingFlush() => inner.CancelPendingFlush();
+
+        public override void Complete(Exception exception = null) => inner.Complete(exception);
     }
 
     /// <summary>Writes each trace as a number into one JSON array, and counts any two writes that overlap.</summary>

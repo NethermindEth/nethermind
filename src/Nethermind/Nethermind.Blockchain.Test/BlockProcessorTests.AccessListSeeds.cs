@@ -305,7 +305,7 @@ public partial class BlockProcessorTests
     /// <summary>The transaction after the first one waits until the last one is traced, so the workers finish the block
     /// out of order, and the response must still read as it did when every transaction was serialized in its turn.</summary>
     [Test]
-    public async Task AccessListSeed_ParallelStream_WhenTransactionsFinishOutOfOrder_WritesTheBytesOfTheInTurnStream(
+    public async Task AccessListSeed_ParallelStream_WhenTransactionsFinishOutOfOrder_SerializesOnTheWorkersAndWritesTheBytesOfTheInTurnStream(
         [Values("trace_replayBlockTransactions", "trace_block", "trace_filter", "callTracer", "structLogs")] string rpc)
     {
         using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder.AddSingleton<IRewardCalculator>(new ZeroRewardToTheBeneficiary()));
@@ -315,15 +315,19 @@ public partial class BlockProcessorTests
         using ParallelTraceBudget budget = new(3);
         using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
 
-        string inTurn = StreamInParallel(chain, parallel, parent, block, rpc, inTurn: true, out bool inTurnOvertaken);
-        string ahead = StreamInParallel(chain, parallel, parent, block, rpc, inTurn: false, out bool aheadOvertaken);
+        StreamedBlock inTurn = StreamInParallel(chain, parallel, parent, block, rpc, inTurn: true);
+        StreamedBlock ahead = StreamInParallel(chain, parallel, parent, block, rpc, inTurn: false);
+        bool serializedAhead = rpc != "trace_filter";
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(inTurnOvertaken && aheadOvertaken, Is.True, "precondition: the last transaction finishes before the second one starts");
-            Assert.That(JsonDocument.Parse(ahead).RootElement.GetArrayLength(), rpc == "trace_filter" ? Is.EqualTo(FilteredCount) : Is.GreaterThanOrEqualTo(block.Transactions.Length),
+            Assert.That(inTurn.Overtaken && ahead.Overtaken, Is.True, "precondition: the last transaction finishes before the second one starts");
+            Assert.That(JsonDocument.Parse(ahead.Json).RootElement.GetArrayLength(), rpc == "trace_filter" ? Is.EqualTo(FilteredCount) : Is.GreaterThanOrEqualTo(block.Transactions.Length),
                 "precondition: every transaction is in the response, or as many as the filter lets through");
-            Assert.That(ahead, Is.EqualTo(inTurn), "traces serialized on the workers read byte for byte as traces serialized in block order");
+            Assert.That(ahead.SerializedWrites, serializedAhead ? Is.Positive : Is.Zero,
+                "every shape but trace_filter, whose filter depends on the traces before it, is serialized on the workers");
+            Assert.That(ahead.InTurnWrites, serializedAhead ? Is.Zero : Is.Positive, "and only trace_filter is serialized in block order");
+            Assert.That(ahead.Json, Is.EqualTo(inTurn.Json), "traces serialized on the workers read byte for byte as traces serialized in block order");
         }
     }
 
@@ -362,7 +366,7 @@ public partial class BlockProcessorTests
             Assert.That(escaped, failure, "the failure of the response is the failure of the trace");
             Assert.That(JsonDocument.Parse(written + "]").RootElement.GetArrayLength(), Is.EqualTo(failingWrite - 1), "the response holds the transactions written before the failure, in order, and nothing after it");
             Assert.That(stream.WritesAfterFailure, Is.Zero, "nothing is written once a write failed");
-            Assert.That(StreamInParallel(chain, parallel, parent, block, "callTracer", inTurn: false, out _), Is.Not.Empty,
+            Assert.That(StreamInParallel(chain, parallel, parent, block, "callTracer", inTurn: false).Json, Is.Not.Empty,
                 "the failed run gave back every permit and environment: the next block is traced in parallel");
         }
     }
@@ -435,6 +439,83 @@ public partial class BlockProcessorTests
         }
     }
 
+    /// <summary>One place per worker and one worker per transaction after the first: once every transaction is taken,
+    /// the second one is held and the window is full. The workers that finish their transactions then find the cursor
+    /// spent and give their threads back, rather than wait for a place they would give straight back.</summary>
+    [Test]
+    public async Task AccessListSeed_ParallelStream_WhenTheCursorIsSpentAndTheWindowIsFull_GivesTheWorkerThreadsBack()
+    {
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = Historical(await AddSharedStateBlock(chain));
+        IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
+        int workers = block.Transactions.Length - 1;
+        int helperThreads = workers - 1;
+        int otherThreads = 2 * workers - helperThreads;
+        using ParallelTraceBudget budget = new(workers);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance) { StreamedPerWorker = 1 };
+        GethTraceOptions options = new() { Tracer = "callTracer" };
+        using CountdownEvent occupied = new(otherThreads);
+        using CountdownEvent taken = new(workers);
+        using ManualResetEventSlim releaseWorkers = new(false);
+        using ManualResetEventSlim release = new(false);
+        Task[] blockers = new Task[otherThreads];
+
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0));
+        using Utf8JsonWriter writer = new(pipe.Writer, ResponseWriterOptions);
+        writer.WriteStartArray();
+        IParallelTraceStream<GethLikeTxTrace> stream = GethLikeTraceStream.Rent(writer, pipe.Writer, CancellationToken.None);
+
+        Task<bool> run = Task.FromResult(false);
+        bool threadGivenBack;
+        bool traced;
+        try
+        {
+            for (int i = 0; i < blockers.Length; i++)
+                blockers[i] = parallel.QueueWorker(() => { occupied.Signal(); releaseWorkers.Wait(); });
+            Assert.That(occupied.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: every worker thread but one per helper is held");
+
+            run = Task.Run(() => parallel.TryStream(block, parent, (state, txHash) =>
+            {
+                int index = Array.FindIndex(block.Transactions, tx => tx.Hash == txHash);
+                if (index != 0)
+                {
+                    // No worker loops back before the last transaction is taken, so each one takes exactly one.
+                    taken.Signal();
+                    if (index == 1) release.Wait(TimeSpan.FromSeconds(10));
+                    else taken.Wait(TimeSpan.FromSeconds(10));
+                }
+
+                return GethStyleTracer.CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, chain.SpecProvider);
+            }, afterTransactions: null, stream, CancellationToken.None));
+
+            Assert.That(taken.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: every transaction after the first is taken, one by each worker");
+            threadGivenBack = parallel.QueueWorker(static () => { }).Wait(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            release.Set();
+            releaseWorkers.Set();
+            foreach (Task? blocker in blockers)
+            {
+                if (blocker is not null) await blocker;
+            }
+
+            // Awaited before the events the run waits on are disposed, whatever failed above.
+            traced = await run.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        writer.WriteEndArray();
+        writer.Flush();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(threadGivenBack, Is.True, "a helper with nothing left to take gives its thread back while the oldest transaction is held");
+            Assert.That(traced, Is.True, "the block is traced in parallel once the held transaction is released");
+            Assert.That(JsonDocument.Parse(ReadAll(pipe)).RootElement.GetArrayLength(), Is.EqualTo(block.Transactions.Length), "every transaction is written once the held one is");
+        }
+    }
+
     private static readonly JsonWriterOptions ResponseWriterOptions = new()
     {
         SkipValidation = true,
@@ -442,13 +523,21 @@ public partial class BlockProcessorTests
         MaxDepth = EthereumJsonSerializer.JsonOptions.MaxDepth,
     };
 
-    /// <summary>Streams the block in parallel the way the RPC module does, into a pipe, and returns the JSON array.</summary>
-    private static string StreamInParallel(BasicTestBlockchain chain, ParallelBlockTracer parallel, BlockHeader parent, Block block, string rpc, bool inTurn, out bool overtaken)
+    /// <summary>The JSON array a block was streamed into, and how its traces reached it.</summary>
+    /// <param name="Json">The JSON array the block was streamed into.</param>
+    /// <param name="Overtaken">The last transaction finished before the second one started.</param>
+    /// <param name="SerializedWrites">Writes of traces serialized on the workers.</param>
+    /// <param name="InTurnWrites">Writes of traces serialized in block order.</param>
+    private readonly record struct StreamedBlock(string Json, bool Overtaken, int SerializedWrites, int InTurnWrites);
+
+    /// <summary>Streams the block in parallel the way the RPC module does, into a pipe.</summary>
+    private static StreamedBlock StreamInParallel(BasicTestBlockchain chain, ParallelBlockTracer parallel, BlockHeader parent, Block block, string rpc, bool inTurn)
     {
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0));
         using Utf8JsonWriter writer = new(pipe.Writer, ResponseWriterOptions);
         using ManualResetEventSlim lastFinished = new(false);
         bool secondWaited = false;
+        WriteCounts writes = new();
         writer.WriteStartArray();
 
         bool traced = rpc switch
@@ -463,8 +552,7 @@ public partial class BlockProcessorTests
         writer.WriteEndArray();
         writer.Flush();
         Assert.That(traced, Is.True, "a block with a valid access list is streamed in parallel");
-        overtaken = secondWaited;
-        return ReadAll(pipe);
+        return new StreamedBlock(ReadAll(pipe), secondWaited, writes.Serialized, writes.InTurn);
 
         bool StreamParity(ParityTraceTypes types, ParityTraceStreamMode mode, bool includeTxHash, TxTraceFilter? filter = null)
         {
@@ -474,7 +562,7 @@ public partial class BlockProcessorTests
                 : null;
             return parallel.TryStream(block, parent,
                 LastFirst<ParityLikeTxTrace>((_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards, chain.SpecProvider)),
-                rewards, inTurn ? new InTurnStream<ParityLikeTxTrace>(stream) : stream, CancellationToken.None);
+                rewards, Counted<ParityLikeTxTrace>(stream), CancellationToken.None);
         }
 
         bool StreamGeth(GethTraceOptions options)
@@ -482,8 +570,11 @@ public partial class BlockProcessorTests
             GethLikeTraceStream stream = GethLikeTraceStream.Rent(writer, pipe.Writer, CancellationToken.None);
             return parallel.TryStream(block, parent,
                 LastFirst<GethLikeTxTrace>((state, txHash) => GethStyleTracer.CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, chain.SpecProvider)),
-                afterTransactions: null, inTurn ? new InTurnStream<GethLikeTxTrace>(stream) : stream, CancellationToken.None);
+                afterTransactions: null, Counted<GethLikeTxTrace>(stream), CancellationToken.None);
         }
+
+        IParallelTraceStream<TTrace> Counted<TTrace>(IParallelTraceStream<TTrace> stream) =>
+            new CountingStream<TTrace>(inTurn ? new InTurnStream<TTrace>(stream) : stream, writes);
 
         Func<IWorldState, Hash256, IBlockTracer<TTrace>> LastFirst<TTrace>(Func<IWorldState, Hash256, IBlockTracer<TTrace>> inner) => (state, txHash) =>
         {
@@ -514,6 +605,33 @@ public partial class BlockProcessorTests
         public void WriteSerialized(in ReadOnlySequence<byte> elements) => throw new NotSupportedException();
 
         public void Write(IReadOnlyCollection<TTrace> traces) => inner.Write(traces);
+    }
+
+    private sealed class WriteCounts
+    {
+        public int Serialized { get; set; }
+
+        public int InTurn { get; set; }
+    }
+
+    /// <summary>Counts how the traces of a block reach the response: serialized on the workers, or in block order.</summary>
+    private sealed class CountingStream<TTrace>(IParallelTraceStream<TTrace> inner, WriteCounts counts) : IParallelTraceStream<TTrace>
+    {
+        public JsonWriterOptions? SerializeAheadOptions => inner.SerializeAheadOptions;
+
+        public void Serialize(IReadOnlyCollection<TTrace> traces, Utf8JsonWriter writer) => inner.Serialize(traces, writer);
+
+        public void WriteSerialized(in ReadOnlySequence<byte> elements)
+        {
+            counts.Serialized++;
+            inner.WriteSerialized(elements);
+        }
+
+        public void Write(IReadOnlyCollection<TTrace> traces)
+        {
+            counts.InTurn++;
+            inner.Write(traces);
+        }
     }
 
     /// <summary>Fails the given write of serialized traces, and counts any write after it.</summary>
