@@ -613,29 +613,26 @@ public class HistoryPrunerTests
         // Reuses the blockchain's real stores so a pass actually reclaims, but swaps the pruner's blocks DB for a
         // substitute. The pruner deletes blocks through the block tree, not this handle, so the reclaim is unaffected
         // while the one-shot compaction call becomes observable.
-        IDbProvider realDbProvider = testBlockchain.Container.Resolve<IDbProvider>();
-        blocksDb = Substitute.For<IDb>();
-        IDbProvider dbProvider = Substitute.For<IDbProvider>();
-        dbProvider.BlocksDb.Returns(blocksDb);
-        dbProvider.MetadataDb.Returns(realDbProvider.MetadataDb);
-        dbProvider.ReceiptsDb.Returns(realDbProvider.ReceiptsDb);
+        IDb spy = Substitute.For<IDb>();
+        blocksDb = spy;
 
-        return new HistoryPruner(
-            testBlockchain.Container.Resolve<IBlockTree>(),
-            testBlockchain.Container.Resolve<IReceiptStorage>(),
-            testBlockchain.Container.Resolve<IBlockAccessListStore>(),
-            testBlockchain.Container.Resolve<ISpecProvider>(),
-            testBlockchain.Container.Resolve<IChainLevelInfoRepository>(),
-            testBlockchain.Container.Resolve<IHeaderStore>(),
-            dbProvider,
-            historyConfig,
-            testBlockchain.Container.Resolve<IBlocksConfig>(),
-            testBlockchain.Container.Resolve<ISyncConfig>(),
-            testBlockchain.Container.Resolve<IProcessExitSource>(),
-            testBlockchain.Container.Resolve<IBackgroundTaskScheduler>(),
-            testBlockchain.Container.Resolve<IBlockProcessingQueue>(),
-            retention ?? testBlockchain.Container.Resolve<IPrunedReceiptRetention>(),
-            testBlockchain.Container.Resolve<ILogManager>());
+        ILifetimeScope scope = testBlockchain.Container.BeginLifetimeScope(builder =>
+        {
+            builder
+                .AddDecorator<IDbProvider>((_, inner) =>
+                {
+                    IDbProvider decorated = Substitute.For<IDbProvider>();
+                    decorated.BlocksDb.Returns(spy);
+                    decorated.MetadataDb.Returns(inner.MetadataDb);
+                    decorated.ReceiptsDb.Returns(inner.ReceiptsDb);
+                    return decorated;
+                })
+                .AddSingleton<IHistoryConfig>(historyConfig)
+                .AddSingleton<IHistoryPruner, HistoryPruner>();
+            if (retention is not null) builder.AddSingleton<IPrunedReceiptRetention>(retention);
+        });
+
+        return (HistoryPruner)scope.Resolve<IHistoryPruner>();
     }
 
     [TestCase(0UL, 0UL)]
