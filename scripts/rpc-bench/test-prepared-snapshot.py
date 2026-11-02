@@ -201,11 +201,65 @@ class PreparedTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 p.verify(root, 'wrong-pin')
 
+    def ready_manifest(self, root, recovering=False):
+        evidence = root / ('recovery-evidence-123' if recovering else 'evidence')
+        evidence.mkdir()
+        p.atomic(evidence / 'disk.json', [{'sample': 1}])
+        manifest = {'status': 'ready', 'host': p.socket.gethostname(), 'root': str(root), 'source': str(p.SOURCE),
+                    'options': p.OPTIONS, 'flags': p.FLAGS, 'mount': {'options': 'ro'}, 'source_tripwire': 'source',
+                    'prepared_tripwire': 'prepared', 'evidence_sha256': {'disk.json': p.digest((evidence / 'disk.json').read_bytes())}}
+        if recovering:
+            manifest['recovery'] = {'run': '123'}
+        return manifest
+
+    def test_verify_checks_retained_evidence_before_physical_probes(self):
+        for recovering in (False, True):
+            for change in ('none', 'changed', 'missing', 'missing-map', 'empty-map', 'traversal', 'absolute',
+                           'invalid-hash', 'invalid-recovery-run', 'symlink-file', 'symlink-directory', 'non-file'):
+                with self.subTest(recovering=recovering, change=change), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    manifest = self.ready_manifest(root, recovering)
+                    evidence = root / ('recovery-evidence-123' if recovering else 'evidence')
+                    disk = evidence / 'disk.json'
+                    if change == 'changed':
+                        p.atomic(disk, [{'sample': 1}, {'sample': 2}])
+                    elif change in ('missing', 'symlink-file', 'non-file'):
+                        disk.unlink()
+                        if change == 'symlink-file':
+                            (root / 'other.json').write_bytes(p.encoded([{'sample': 1}]))
+                            disk.symlink_to(root / 'other.json')
+                        elif change == 'non-file':
+                            disk.mkdir()
+                    elif change == 'missing-map':
+                        del manifest['evidence_sha256']
+                    elif change == 'empty-map':
+                        manifest['evidence_sha256'] = {}
+                    elif change in ('traversal', 'absolute'):
+                        outside = root / 'other.json'
+                        outside.write_bytes(disk.read_bytes())
+                        manifest['evidence_sha256'] = {'../other.json' if change == 'traversal' else str(outside): p.digest(outside.read_bytes())}
+                    elif change == 'invalid-hash':
+                        manifest['evidence_sha256']['disk.json'] = 'not-a-sha256'
+                    elif change == 'invalid-recovery-run':
+                        manifest['recovery'] = {'run': '../../other'}
+                    elif change == 'symlink-directory':
+                        evidence.rename(root / 'other')
+                        evidence.symlink_to(root / 'other', target_is_directory=True)
+                    p.atomic(root / 'ready.json', manifest)
+                    pin = p.digest((root / 'ready.json').read_bytes())
+                    with patch.object(p, 'guard'), patch.object(p, 'mounted', return_value=manifest['mount']) as mounted, patch.object(p, 'fingerprint', side_effect=['source', 'prepared']) as fingerprint:
+                        if change == 'none':
+                            self.assertEqual(p.verify(root, pin), manifest)
+                        else:
+                            with self.assertRaisesRegex(RuntimeError, 'evidence'):
+                                p.verify(root, pin)
+                            mounted.assert_not_called()
+                            fingerprint.assert_not_called()
+
     def test_verify_rejects_identity_option_mount_and_tripwire_drift(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(p, 'guard'):
             root = Path(directory)
-            manifest = {'status': 'ready', 'host': p.socket.gethostname(), 'root': str(root), 'source': str(p.SOURCE),
-                        'options': p.OPTIONS, 'flags': p.FLAGS, 'mount': {'options': 'ro'}, 'source_tripwire': 'source', 'prepared_tripwire': 'prepared'}
+            manifest = self.ready_manifest(root)
             for key, bad in [('status', 'incomplete'), ('host', 'other-host'), ('root', '/wrong'), ('source', '/wrong'), ('options', 'volatile'), ('flags', [])]:
                 changed = dict(manifest, **{key: bad})
                 p.atomic(root / 'ready.json', changed)

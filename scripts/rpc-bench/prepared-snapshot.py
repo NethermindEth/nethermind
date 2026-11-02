@@ -280,6 +280,25 @@ def verify(root, expected):
     manifest = json.loads(raw)
     if manifest['status'] != 'ready' or manifest['host'] != socket.gethostname() or manifest['root'] != str(root) or manifest['source'] != str(SOURCE) or manifest['options'] != OPTIONS or manifest['flags'] != FLAGS:
         raise RuntimeError('manifest lineage/options mismatch')
+    evidence = root / 'evidence'
+    if 'recovery' in manifest:
+        recovery_run = manifest['recovery']['run']
+        if not isinstance(recovery_run, str) or not re.fullmatch(r'[0-9]+', recovery_run):
+            raise RuntimeError('invalid recovery evidence run')
+        evidence = root / ('recovery-evidence-' + recovery_run)
+    hashes = manifest.get('evidence_sha256')
+    if not isinstance(hashes, dict) or not hashes or evidence.is_symlink() or not evidence.is_dir():
+        raise RuntimeError('missing or unsafe retained evidence')
+    for name, expected_hash in hashes.items():
+        if (not isinstance(name, str) or name in ('', '.', '..') or Path(name).name != name
+                or not isinstance(expected_hash, str) or not re.fullmatch(r'[0-9a-f]{64}', expected_hash)):
+            raise RuntimeError(f'invalid evidence hash entry: {name}')
+        path = evidence / name
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError(f'missing or unsafe retained evidence file: {name}')
+        actual_hash = digest(path.read_bytes())
+        if actual_hash != expected_hash:
+            raise RuntimeError(f'retained evidence hash mismatch: {name}; expected {expected_hash}, got {actual_hash}')
     if 'persistence' in manifest and manifest['persistence']['identity'] != host_mount_identity():
         raise RuntimeError('sealed fixture host boot/mount namespace changed')
     if mounted(root / 'merged', True) != manifest['mount']:
