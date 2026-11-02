@@ -39,7 +39,12 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("[0, 1, 255]", "[0,1,255]")]
     [TestCase("toHex(new Uint8Array([]))", "\"0x\"")]
     [TestCase("toHex(new Uint8Array([0, 1, 255]))", "\"0x0001ff\"")]
-    public void Javascript_byte_results_match_json_stringify(string expression, string expected)
+    [TestCase("({ DUP1: 'a', PUSH1: 'b', LOG2: 'c', Foo: 'd', add: 'e' })", "{\"DUP1\":\"a\",\"PUSH1\":\"b\",\"LOG2\":\"c\",\"Foo\":\"d\",\"add\":\"e\"}")]
+    [TestCase("({ counts: { SSTORE: 'x' } })", "{\"counts\":{\"SSTORE\":\"x\"}}")]
+    [TestCase("[{ DUP1: 1 }]", "[{\"DUP1\":1}]")]
+    [TestCase("({ Foo: [{ BarBaz: 1 }] })", "{\"Foo\":[{\"BarBaz\":1}]}")]
+    [TestCase("({ a: undefined, b: 1, value: undefined, error: undefined })", "{\"b\":1}")]
+    public void Javascript_results_match_json_stringify(string expression, string expected)
     {
         using Engine engine = new(Shanghai.Instance);
         dynamic tracer = engine.CreateTracer("{result:function(){return " + expression + ";}}");
@@ -982,6 +987,17 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         AssertResult(traces, 7);
+    }
+
+    [Test]
+    public void unigram_tracer()
+    {
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer("unigramTracer"),
+                MStore(),
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+        Assert.That(ResultJson(traces), Is.EqualTo("{\"PUSH32\":2,\"PUSH1\":2,\"MSTORE\":2,\"STOP\":1}"));
     }
 
     [Test]
