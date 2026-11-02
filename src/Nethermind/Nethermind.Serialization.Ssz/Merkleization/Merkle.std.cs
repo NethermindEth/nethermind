@@ -30,4 +30,8 @@ public static partial class Merkle
     /// <summary>Writes the parent of two nodes at <paramref name="level"/> into <paramref name="parent"/>, which may alias either child.</summary>
     private static void HashNodes(in UInt256 left, in UInt256 right, int level, out UInt256 parent) =>
         parent = HashConcatenation(left, right, level);
+
+    /// <summary>The host has no specialized tree hashing; <see cref="Merkleize(out UInt256, ReadOnlySpan{UInt256}, ReadOnlySpan{UInt256}, ulong)"/> reduces the tree itself.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryHashTree(ReadOnlySpan<UInt256> leaves, Span<UInt256> nodes, int nodeCount, int depth) => false;
 }

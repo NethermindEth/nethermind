@@ -79,22 +79,41 @@ jobs:
     runs-on: benchmark
     timeout-minutes: 30
     steps:
+      # Sibling checkouts, so neither tree picks up the other's Directory.*.props and both build at once.
       - name: Check out base branch (master)
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.base.sha || 'master' }}
+          path: base
+
+      - name: Check out PR branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          path: pr
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: base/global.json
 
-      - name: Build base branch
-        run: |
-          dotnet restore ${{ env.BENCHMARK_PROJECT }}
-          dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
+      - parallel:
+          - name: Build base branch
+            working-directory: base
+            run: |
+              dotnet restore ${{ env.BENCHMARK_PROJECT }}
+              dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
+
+          - name: Build PR branch
+            working-directory: pr
+            run: |
+              dotnet restore ${{ env.BENCHMARK_PROJECT }}
+              dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
 
       - name: Run benchmark on base branch
         id: run-base
         continue-on-error: true
+        working-directory: base
         shell: bash
         env:
           FILTER: ${{ needs.resolve-inputs.outputs.filter }}
@@ -111,20 +130,10 @@ jobs:
                --exporters json \
                --artifacts "${RUNNER_TEMP}/bdn-base"
 
-      - name: Check out PR branch
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
-          clean: false
-
-      - name: Build PR branch
-        run: |
-          dotnet restore ${{ env.BENCHMARK_PROJECT }}
-          dotnet build ${{ env.BENCHMARK_PROJECT }} -c Release --no-restore
-
       - name: Run benchmark on PR branch
         id: run-pr
         continue-on-error: true
+        working-directory: pr
         shell: bash
         env:
           FILTER: ${{ needs.resolve-inputs.outputs.filter }}

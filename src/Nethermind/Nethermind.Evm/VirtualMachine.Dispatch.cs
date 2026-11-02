@@ -16,7 +16,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     // code is, up to the code (or initcode) size limit in opcodes, each of which may be expensive (an inline
     // precompile STATICCALL, a large KECCAK256 or MCOPY). Gas still bounds the total work; only the
     // cancellation latency grows.
-    private const int CancellationPollInterval = 1024;
+    internal const int CancellationPollInterval = 1024;
 
     /// <summary>The dispatch table the running transaction uses, resolved once by <c>PrepareOpcodes</c>.</summary>
     private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] _opcodeHandlers = null!;
@@ -25,10 +25,29 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]? _filteredTracedSource;
     private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]? _filteredSilentSource;
     private UInt256 _filteredInstructionMask;
+    private bool _useCallDestinations;
 
     private struct SilentInstructionFlag : IFlag
     {
         public static bool IsActive => true;
+    }
+
+    /// <summary>The execution gas a handler carries in its scalar argument, read back from <paramref name="gas"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong GetExecutionGas(ref TGasPolicy gas) => TGasPolicy.GetRemainingGas(in gas);
+
+    /// <summary>A policy that holds only the carried execution <paramref name="gas"/>, for a body that charges nothing else.</summary>
+    /// <remarks>
+    /// Such a body never reads the rest of the policy, so it stays uninitialized, and a local policy can stay in registers.
+    /// A body that may touch the rest runs on the frame's policy instead: the carried gas is written to it with
+    /// <c>SetExecutionGas</c> before the body and read back with <see cref="GetExecutionGas"/> after, and written to it
+    /// once more as the chain leaves.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void LoadFixedGas(out TGasPolicy fixedGas, ulong gas)
+    {
+        Unsafe.SkipInit(out fixedGas);
+        SetExecutionGas(ref fixedGas, gas);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -50,7 +69,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private void PrepareOpcodes<TTracingInst>()
         where TTracingInst : struct, IFlag
     {
-        if (DispatchFlags.Cancelable(_isCancelableCached))
+        if (DispatchFlags.Cancelable(_tracerFlags.IsCancelable))
             PrepareOpcodes<TTracingInst, OnFlag>();
         else
             PrepareOpcodes<TTracingInst, OffFlag>();
@@ -63,6 +82,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         // The fork comes from Spec here and in GetOpcodeTable, so the cache key and the table contents
         // cannot describe different forks.
         IReleaseSpec spec = Spec;
+        _useCallDestinations = spec.IsEip7979Enabled;
         // Per transaction, not per table build: a cached table would otherwise let a later block
         // outside the compiled fork range run against rules that do not describe it.
         SpecFlags.Validate(spec);
@@ -75,6 +95,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         _executionHandlers = table.GetExecutionHandlers(spec);
         _opcodeHandlers = table.GetHandlers<TTracingInst, TCancelable>(spec);
+        PrepareFrameCodeRunner<TTracingInst>(spec);
         if (TTracingInst.IsActive && _txTracer is IInstructionTracingFilter filter)
         {
             UInt256 mask = filter.InstructionMask;
@@ -82,6 +103,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 PrepareFilteredOpcodes(mask, table.GetHandlers<SilentInstructionFlag, TCancelable>(spec));
         }
     }
+
+    /// <summary>Resolves what an attached frame code runner needs for the coming transaction; nothing in builds without one.</summary>
+    partial void PrepareFrameCodeRunner<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag;
 
     private void PrepareFilteredOpcodes(UInt256 mask,
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] silent)

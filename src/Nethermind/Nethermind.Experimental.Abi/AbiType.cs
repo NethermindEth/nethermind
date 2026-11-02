@@ -1,0 +1,279 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Numerics;
+using System.Text;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
+
+namespace Nethermind.Experimental.Abi;
+
+/// <summary>Codecs for the standard ABI types.</summary>
+/// <remarks>See the <see href="https://docs.soliditylang.org/en/latest/abi-spec.html#formal-specification-of-the-encoding">ABI encoding specification</see>.</remarks>
+public static partial class AbiType
+{
+    /// <summary><c>uint256</c>.</summary>
+    public static readonly Abi<UInt256> UInt256 = new()
+    {
+        Name = "uint256",
+        Read = (ref BinarySpanReader r) =>
+        {
+            ReadOnlySpan<byte> bytes = r.ReadBytes(32);
+            return new UInt256(bytes, isBigEndian: true);
+        },
+        Write = (ref BinarySpanWriter w, UInt256 v) =>
+        {
+            Span<byte> output = w.Take(32);
+            v.ToBigEndian(output);
+        },
+    };
+
+    /// <summary><c>int256</c>.</summary>
+    public static readonly Abi<Int256.Int256> Int256 = new()
+    {
+        Name = "int256",
+        Read = (ref BinarySpanReader r) => new Int256.Int256(r.ReadBytes(32), isBigEndian: true),
+        Write = (ref BinarySpanWriter w, Int256.Int256 v) => ((UInt256)v).ToBigEndian(w.Take(32)),
+    };
+
+    /// <summary>Returns the codec for <c>uintN</c>, where <c>N</c> is the bit width of <typeparamref name="T"/>.</summary>
+    public static Abi<T> UIntN<T>() where T : IBinaryInteger<T>, IUnsignedNumber<T>, IMinMaxValue<T> => new()
+    {
+        Name = $"uint{T.Zero.GetByteCount() * 8}",
+        Read = (ref BinarySpanReader r) =>
+        {
+            if (!T.TryReadBigEndian(r.ReadBytes(32), isUnsigned: true, out T value)) throw new AbiException();
+            return value;
+        },
+        Write = (ref BinarySpanWriter w, T value) =>
+        {
+            Span<byte> word = w.Take(32);
+            int size = value.GetByteCount();
+            word[..^size].Clear();
+            value.TryWriteBigEndian(word[^size..], out _);
+        },
+    };
+
+    /// <summary>Returns the codec for <c>intN</c>, where <c>N</c> is the bit width of <typeparamref name="T"/>.</summary>
+    public static Abi<T> IntN<T>() where T : IBinaryInteger<T>, ISignedNumber<T>, IMinMaxValue<T> => new()
+    {
+        Name = $"int{T.Zero.GetByteCount() * 8}",
+        Read = (ref BinarySpanReader r) =>
+        {
+            if (!T.TryReadBigEndian(r.ReadBytes(32), isUnsigned: false, out T value)) throw new AbiException();
+            return value;
+        },
+        Write = (ref BinarySpanWriter w, T value) =>
+        {
+            Span<byte> word = w.Take(32);
+            int size = value.GetByteCount();
+            word[..^size].Fill(T.IsNegative(value) ? (byte)0xff : (byte)0);
+            value.TryWriteBigEndian(word[^size..], out _);
+        },
+    };
+
+    /// <summary><c>uint64</c>.</summary>
+    public static readonly Abi<UInt64> UInt64 = UIntN<UInt64>();
+    /// <summary><c>uint32</c>.</summary>
+    public static readonly Abi<UInt32> UInt32 = UIntN<UInt32>();
+    /// <summary><c>uint16</c>.</summary>
+    public static readonly Abi<UInt16> UInt16 = UIntN<UInt16>();
+    /// <summary><c>uint8</c>.</summary>
+    public static readonly Abi<Byte> UInt8 = UIntN<Byte>();
+
+    /// <summary><c>int64</c>.</summary>
+    public static readonly Abi<Int64> Int64 = IntN<Int64>();
+    /// <summary><c>int32</c>.</summary>
+    public static readonly Abi<Int32> Int32 = IntN<Int32>();
+    /// <summary><c>int16</c>.</summary>
+    public static readonly Abi<Int16> Int16 = IntN<Int16>();
+    /// <summary><c>int8</c>.</summary>
+    public static readonly Abi<SByte> Int8 = IntN<SByte>();
+
+    /// <summary><c>bool</c>.</summary>
+    public static readonly Abi<Boolean> Bool = new()
+    {
+        Name = "bool",
+        Read = (ref BinarySpanReader r) =>
+        {
+            UInt256 value = UInt256.Read(ref r);
+            if (value > 1) throw new AbiException();
+            return !value.IsZero;
+        },
+        Write = (ref BinarySpanWriter w, Boolean v) => UInt256.Write(ref w, v ? 1u : 0u),
+    };
+
+    /// <summary><c>address</c>.</summary>
+    public static readonly Abi<Address> Address = new()
+    {
+        Name = "address",
+        Read = (ref BinarySpanReader r) =>
+        {
+            ReadOnlySpan<byte> word = r.ReadBytes(32);
+            if (word[..12].ContainsAnyExcept((byte)0)) throw new AbiException();
+            return new Address(word[12..]);
+        },
+        Write = (ref BinarySpanWriter w, Address v) =>
+        {
+            Span<byte> word = w.Take(32);
+            word[..12].Clear();
+            v.Bytes.CopyTo(word[12..]);
+        },
+    };
+
+    /// <summary>Returns the codec for the dynamic-length array <c>T[]</c>.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="abi"/> has a zero <see cref="Abi{T}.HeadSize"/>, such as <c>()</c>.</exception>
+    public static Abi<T[]> Array<T>(Abi<T> abi)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(abi.HeadSize);
+
+        return new()
+        {
+            Name = $"{abi.Name}[]",
+            Read = (ref BinarySpanReader r) =>
+            {
+                UInt256 length = UInt256.Read(ref r);
+                return r.ReadArray(abi, (int)length);
+            },
+            Write = (ref BinarySpanWriter w, T[] array) =>
+            {
+                UInt256.Write(ref w, (UInt256)array.Length);
+                w.WriteArray(abi, array);
+            },
+            TailSize = array =>
+            {
+                const int lengthSize = 32;
+                if (!abi.IsDynamic) return checked(lengthSize + array.Length * abi.HeadSize);
+
+                int size = lengthSize;
+                foreach (T e in array)
+                {
+                    size = checked(size + 32 + abi.Size(e));
+                }
+
+                return size;
+            }
+        };
+    }
+
+    /// <summary>Returns the codec for the fixed-length array <c>T[k]</c>, where <c>k</c> is <paramref name="length"/>.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="length"/> is negative.</exception>
+    public static Abi<T[]> Array<T>(Abi<T> abi, int length)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(length);
+        int headSize = checked(length * abi.HeadSize);
+
+        return new()
+        {
+            Name = $"{abi.Name}[{length}]",
+            Read = (ref BinarySpanReader r) => r.ReadArray(abi, length),
+            Write = (ref BinarySpanWriter w, T[] array) =>
+            {
+                if (array.Length != length) throw new AbiException();
+                w.WriteArray(abi, array);
+            },
+            HeadSize = abi.IsDynamic ? 32 : headSize,
+            TailSize = !abi.IsDynamic ? null : array =>
+            {
+                int size = 0;
+                foreach (T e in array)
+                {
+                    size = checked(size + 32 + abi.Size(e));
+                }
+
+                return size;
+            }
+        };
+    }
+
+    /// <summary><c>bytes</c>.</summary>
+    public static readonly Abi<byte[]> Bytes = new()
+    {
+        Name = "bytes",
+        Read = (ref BinarySpanReader r) =>
+        {
+            int length = (int)UInt256.Read(ref r);
+            return r.ReadBytesPadded(length).ToArray();
+        },
+        Write = (ref BinarySpanWriter w, byte[] bytes) =>
+        {
+            int length = bytes.Length;
+
+            UInt256.Write(ref w, (UInt256)length);
+            w.WritePadded(bytes);
+        },
+        TailSize = bytes =>
+        {
+            const int lengthSize = 32;
+            int bytesSize = Padding.To32(bytes.Length);
+
+            return checked(lengthSize + bytesSize);
+        }
+    };
+
+    /// <summary>Returns the codec for <c>bytesM</c>, where <c>M</c> is <paramref name="length"/>.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="length"/> is not between 1 and 32.</exception>
+    public static Abi<byte[]> BytesM(int length)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(length);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, 32);
+
+        return new()
+        {
+            Name = $"bytes{length}",
+            Read = (ref BinarySpanReader r) => r.ReadBytesPadded(length).ToArray(),
+            Write = (ref BinarySpanWriter w, byte[] bytes) =>
+            {
+                if (bytes.Length != length) throw new AbiException();
+                w.WritePadded(bytes);
+            },
+        };
+    }
+
+    /// <summary><c>bytes32</c>, as a <see cref="ValueHash256"/>.</summary>
+    public static readonly Abi<ValueHash256> Bytes32 = new()
+    {
+        Name = "bytes32",
+        Read = (ref BinarySpanReader r) => new ValueHash256(r.ReadBytes(32)),
+        Write = (ref BinarySpanWriter w, ValueHash256 v) => v.Bytes.CopyTo(w.Take(32)),
+    };
+
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
+    /// <summary><c>string</c>, encoded as UTF-8.</summary>
+    public static readonly Abi<String> String = new()
+    {
+        Name = "string",
+        Read = (ref BinarySpanReader r) =>
+        {
+            int length = (int)UInt256.Read(ref r);
+            ReadOnlySpan<byte> bytes = r.ReadBytesPadded(length);
+            return StrictUtf8.GetString(bytes);
+        },
+        Write = (ref BinarySpanWriter w, String v) =>
+        {
+            int byteCount = StrictUtf8.GetByteCount(v);
+            int byteSize = Padding.To32(byteCount);
+
+            UInt256.Write(ref w, (UInt256)byteCount);
+
+            Span<byte> buffer = w.Take(byteSize);
+            StrictUtf8.GetBytes(v, buffer);
+            buffer[byteCount..].Clear();
+        },
+        TailSize = v =>
+        {
+            const int lengthSize = 32;
+            int byteCount = StrictUtf8.GetByteCount(v);
+            int byteSize = Padding.To32(byteCount);
+
+            return checked(lengthSize + byteSize);
+        }
+    };
+
+    /// <summary><c>uint</c>, an alias of <see cref="UInt256"/>.</summary>
+    public static readonly Abi<UInt256> UInt = UInt256;
+    /// <summary><c>int</c>, an alias of <see cref="Int256"/>.</summary>
+    public static readonly Abi<Int256.Int256> Int = Int256;
+}

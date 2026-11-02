@@ -40,6 +40,17 @@ public class FlatStateReader(
         value = slot.GetValueOrDefault();
     }
 
+    public void GetStorage(BlockHeader? baseBlock, Address address, ReadOnlySpan<UInt256> indexes, Span<UInt256> values)
+    {
+        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        int selfDestructSnapshotIdx = reader.DetermineSelfDestructSnapshotIdx(address);
+        for (int i = 0; i < indexes.Length; i++)
+        {
+            reader.GetSlot(address, indexes[i], selfDestructSnapshotIdx, out UInt256? slot);
+            values[i] = slot.GetValueOrDefault();
+        }
+    }
+
     public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);
 
     public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);
@@ -48,22 +59,19 @@ public class FlatStateReader(
     {
         StateId stateId = new(baseBlock);
 
-        ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
-        bool historical = reader.IsHistorical;
-        if (historical) reader.Dispose();
-
-        if (historical)
+        if (flatDbManager.IsHistoricalState(stateId))
         {
-            try
-            {
-                if (historicalTrieVisitor.TryRunTreeVisitor(treeVisitor, stateId, visitingOptions, diagnostics)) return;
-            }
-            catch (StateUnavailableException e)
-            {
-                throw StateUnavailable(baseBlock, $"State proof at historical block {stateId.BlockNumber} is unavailable", e);
-            }
+            RunHistoricalTreeVisitor(treeVisitor, baseBlock, stateId, visitingOptions, diagnostics);
+            return;
+        }
 
-            throw StateUnavailable(baseBlock, $"State proofs at historical block {stateId.BlockNumber} are not supported");
+        ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        if (reader.IsHistorical)
+        {
+            // Persistence moved past the block between the routing check and the gather.
+            reader.Dispose();
+            RunHistoricalTreeVisitor(treeVisitor, baseBlock, stateId, visitingOptions, diagnostics);
+            return;
         }
 
         using (reader)
@@ -72,6 +80,20 @@ public class FlatStateReader(
             PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
             patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
         }
+    }
+
+    private void RunHistoricalTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, in StateId stateId, VisitingOptions? visitingOptions, VisitingStats? diagnostics) where TCtx : struct, INodeContext<TCtx>
+    {
+        try
+        {
+            if (historicalTrieVisitor.TryRunTreeVisitor(treeVisitor, stateId, visitingOptions, diagnostics)) return;
+        }
+        catch (StateUnavailableException e)
+        {
+            throw StateUnavailable(baseBlock, $"State proof at historical block {stateId.BlockNumber} is unavailable", e);
+        }
+
+        throw StateUnavailable(baseBlock, $"State proofs at historical block {stateId.BlockNumber} are not supported");
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));

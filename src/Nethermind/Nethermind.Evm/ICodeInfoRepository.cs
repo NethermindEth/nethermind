@@ -35,6 +35,10 @@ public interface ICodeInfoRepository
     /// </remarks>
     CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec);
     void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
+
+    /// <summary>Installs EIP-8360 <c>TCREATE</c> code, which the world state never writes to the code database.</summary>
+    /// <remarks>Goes through the repository, as <see cref="InsertCode"/> does, so a wrapper sees the code change.</remarks>
+    void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
     void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec);
     bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress);
 

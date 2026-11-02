@@ -12,6 +12,8 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Bls12381PairingCheckPrecompile
 {
+    public static Address Address => field ??= Address.FromNumber(0xf);
+
     private const int StackallocPairCountThreshold = 4;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
@@ -34,7 +36,7 @@ public partial class Bls12381PairingCheckPrecompile
 
             try // Is this really needed on zkVM?
             {
-                return RunInternal(inputData.Span, decoded, pairCount);
+                return RunInternal(inputData.Span, decoded.AsSpan(0, decodedLen), pairCount);
             }
             finally
             {

@@ -20,12 +20,12 @@ namespace Nethermind.Consensus.Processing
     public interface IBlockProcessor
     {
         /// <summary>
-        /// Raised after all transactions in a block have been executed,
+        /// Raised with the executing block after all its transactions have completed,
         /// before blooms, receipts root, and state root are computed.
         /// Subscribers can use this to cancel background work (e.g. prewarmer)
         /// so the thread pool is free for the parallel post-tx computations.
         /// </summary>
-        event Action? TransactionsExecuted;
+        event Action<Block>? TransactionsExecuted;
 
         /// <summary>Processes a block, or a transaction prefix in a compatible read-only tracing environment.</summary>
         /// <remarks>

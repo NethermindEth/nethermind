@@ -71,10 +71,10 @@ public static class Extensions
             systemContracts[Eip8282Constants.BuilderDepositContractAddressKey] = Eip8282Constants.BuilderDepositRequestPredeployAddress;
             systemContracts[Eip8282Constants.BuilderExitContractAddressKey] = Eip8282Constants.BuilderExitRequestPredeployAddress;
         }
-        if (spec.ConsolidationRequestsEnabled) systemContracts[Eip7251Constants.ContractAddressKey] = Eip7251Constants.ConsolidationRequestPredeployAddress;
+        if (spec.ConsolidationRequestsEnabled) systemContracts[Eip7251Constants.ContractAddressKey] = spec.Eip7251ContractAddress!;
         if (spec.DepositsEnabled) systemContracts[Eip6110Constants.ContractAddressKey] = spec.DepositContractAddress!;
         if (spec.IsEip2935Enabled) systemContracts[Eip2935Constants.ContractAddressKey] = Eip2935Constants.BlockHashHistoryAddress;
-        if (spec.WithdrawalRequestsEnabled) systemContracts[Eip7002Constants.ContractAddressKey] = Eip7002Constants.WithdrawalRequestPredeployAddress;
+        if (spec.WithdrawalRequestsEnabled) systemContracts[Eip7002Constants.ContractAddressKey] = spec.Eip7002ContractAddress!;
 
         return systemContracts;
     }

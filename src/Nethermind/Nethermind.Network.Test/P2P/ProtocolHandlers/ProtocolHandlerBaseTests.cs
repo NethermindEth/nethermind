@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
@@ -11,9 +12,11 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Network.Test.P2P.Subprotocols;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -59,6 +62,12 @@ public class ProtocolHandlerBaseTests
         public void ScheduleHandlerSyncServeTask(TestRequestMessage request) =>
             BackgroundTaskScheduler.TryScheduleSyncServe<TestProtocolHandler, TestRequestMessage, TestResponseMessage, TestSyncServeRequestHandler>(this, request);
         public TestRequestMessage Deserialize(byte[] data) => Deserialize<TestRequestMessage>(data);
+        public void HandleProjectionFailure(MessageDictionary<ProjectionRequestMessage, int> requests, IByteBuffer content) =>
+            HandleCorrelatedResponse<ProjectionRequestMessage, ProjectionResponseMessage, int>(
+                requests,
+                content,
+                content.ReadableBytes,
+                static (_, _) => throw new InvalidOperationException("projection failed"));
         public override void Init() { }
         public override void Dispose() { }
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details) { }
@@ -170,6 +179,36 @@ public class ProtocolHandlerBaseTests
         public override string Protocol => "test";
     }
 
+    private sealed class ProjectionRequestMessage : Eth66MessageBase
+    {
+        public ProjectionRequestMessage(long requestId) : base(false) => RequestId = requestId;
+
+        public override int PacketType => 3;
+        public override string Protocol => "eth";
+        public bool IsDisposed { get; private set; }
+
+        public override void Dispose()
+        {
+            IsDisposed = true;
+            base.Dispose();
+        }
+    }
+
+    private sealed class ProjectionResponseMessage : Eth66MessageBase
+    {
+        public ProjectionResponseMessage(long requestId) : base(false) => RequestId = requestId;
+
+        public override int PacketType => 4;
+        public override string Protocol => "eth";
+        public bool IsDisposed { get; private set; }
+
+        public override void Dispose()
+        {
+            IsDisposed = true;
+            base.Dispose();
+        }
+    }
+
     [Test]
     public async Task Late_init_message_after_timeout_does_not_throw()
     {
@@ -224,6 +263,36 @@ public class ProtocolHandlerBaseTests
         {
             Assert.That(firstRunner, Is.Not.Null);
             Assert.That(scheduler.CapturedRunner, Is.SameAs(firstRunner));
+        }
+    }
+
+    [Test]
+    public void Correlated_response_disposes_decoded_message_when_projection_fails()
+    {
+        IMessageSerializationService serializationService = Substitute.For<IMessageSerializationService>();
+        ProjectionResponseMessage response = new(111);
+        serializationService.Deserialize<ProjectionResponseMessage>(Arg.Any<IByteBuffer>()).Returns(callInfo =>
+        {
+            IByteBuffer content = (IByteBuffer)callInfo[0];
+            content.SkipBytes(content.ReadableBytes);
+            return response;
+        });
+        TestProtocolHandler handler = new(
+            Substitute.For<ISession>(),
+            TimeSpan.FromMilliseconds(50),
+            serializationService: serializationService);
+        MessageDictionary<ProjectionRequestMessage, int> requests = new(handler);
+        Request<ProjectionRequestMessage, int> request = new(new ProjectionRequestMessage(111));
+        requests.Send(request);
+
+        using DisposableByteBuffer content = UndecodableResponse.Create(111).AsDisposable();
+        Assert.That(() => handler.HandleProjectionFailure(requests, content), Throws.TypeOf<InvalidOperationException>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.IsDisposed, Is.True);
+            Assert.That(request.Message.IsDisposed, Is.True);
+            Assert.That(request.CompletionSource.Task.IsCanceled, Is.True);
         }
     }
 

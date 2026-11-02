@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -210,6 +211,28 @@ public class InvalidChainTrackerTest
     }
 
     [Test]
+    public void givenAnInvalidBlock_whenParentIsAlreadyInvalid_thenLastValidHashIsTheParents(
+        [Values] bool alreadyLinked, [Values] bool zeroLastValidHash)
+    {
+        Hash256 lastValid = zeroLastValidHash ? Keccak.Zero : Keccak.Compute("A");
+        Hash256 parent = Keccak.Compute("B");
+        Hash256 invalidBlock = Keccak.Compute("C");
+        Hash256 descendant = Keccak.Compute("D");
+
+        _tracker.OnInvalidBlock(parent, lastValid);
+        if (alreadyLinked) _tracker.SetChildParent(invalidBlock, parent);
+        _tracker.SetChildParent(descendant, invalidBlock);
+
+        _tracker.OnInvalidBlock(invalidBlock, parent);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertInvalid(invalidBlock, lastValid);
+            AssertInvalid(descendant, lastValid);
+        }
+    }
+
+    [Test]
     public void queryingValidHashes_shouldNotEvictRecordedInvalidChainNode()
     {
         List<Hash256> hashes = MakeChain(3);
@@ -222,6 +245,25 @@ public class InvalidChainTrackerTest
         }
 
         AssertInvalid(hashes[1]);
+    }
+
+    // EIP-8288: a processed block whose stark_proof does not match stark_proof_hash had the wrong body; it is requested again
+    // and its hash is not marked invalid.
+    [TestCase(null, false)]
+    [TestCase(new byte[] { 2 }, false)]
+    [TestCase(new byte[] { 1 }, true)]
+    public void Processor_invalidation_skips_a_body_with_a_mismatched_stark_proof(byte[]? proof, bool invalid)
+    {
+        IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
+        _tracker.SetupBlockchainProcessorInterceptor(queue);
+        Block block = Build.A.Block.WithParent(Build.A.BlockHeader.TestObject).TestObject;
+        block.Header.RecursiveStark = new(Keccak.Compute(new byte[] { 1 }), Keccak.OfAnEmptyString);
+        block.Header.Hash = block.Header.CalculateHash();
+        block.StarkProof = proof;
+
+        queue.InvalidBlock += Raise.EventWith(new IBlockProcessingQueue.InvalidBlockEventArgs { InvalidBlock = block });
+
+        Assert.That(_tracker.IsOnKnownInvalidChain(block.Hash!, out _), Is.EqualTo(invalid));
     }
 
     private void AssertValid(Hash256 hash) =>

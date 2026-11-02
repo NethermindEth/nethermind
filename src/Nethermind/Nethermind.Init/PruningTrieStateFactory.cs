@@ -132,6 +132,12 @@ public class MainPruningTrieStoreFactory
             pruningConfig.PruningBoundary = 64UL;
         }
 
+        if (pruningConfig.PersistenceInterval < 1)
+        {
+            if (_logger.IsWarn) _logger.Warn($"{nameof(pruningConfig.PersistenceInterval)} must be at least 1. Setting to 1.");
+            pruningConfig.PersistenceInterval = 1;
+        }
+
         IDb stateDb = dbProvider.StateDb;
         IPersistenceStrategy persistenceStrategy;
         if (pruningConfig.Mode.IsMemory())

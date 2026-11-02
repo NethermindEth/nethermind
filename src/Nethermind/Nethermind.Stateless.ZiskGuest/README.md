@@ -1,6 +1,6 @@
 # Stateless Nethermind
 
-For all three zkVM hosts, see the [shared guest guide](../Nethermind.Stateless.Guest.Shared/README.md),
+For all three zkVM hosts, see the [shared guest guide](../Nethermind.Stateless.Guest/README.md),
 including the standard-block commands, expected outputs, and GPU proving limitations.
 `make run` executes the guest; it does not generate a cryptographic proof.
 

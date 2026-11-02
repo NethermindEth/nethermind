@@ -205,12 +205,23 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public virtual Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token) => throw new NotSupportedException("Fast sync not supported by eth62 protocol");
 
+        public virtual Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token) =>
+            GetReceipts(blockHashes, token);
+
         public virtual Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token) => throw new NotSupportedException("Fast sync not supported by eth62 protocol");
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockMode mode);
 
+        /// <remarks>EIP-8437: dependency-bearing transactions travel only inside proof wrappers, never through Transactions or
+        /// NewPooledTransactionHashes, on any <c>eth</c> version, except for the blob-availability announcement of
+        /// <see cref="AnnouncesDependencyBearingCells"/>.</remarks>
         private bool ShouldNotifyTransaction(Transaction tx, bool sendFullTx)
-            => sendFullTx || (tx.Hash is not null && ShouldNotifyTransactionCore(tx));
+            => (!Eip8288Dependencies.IsDependencyBearing(tx) || !sendFullTx && AnnouncesDependencyBearingCells(tx))
+               && (sendFullTx || (tx.Hash is not null && ShouldNotifyTransactionCore(tx)));
+
+        /// <summary>Whether NewPooledTransactionHashes may announce the cells of a pooled dependency-bearing transaction, which
+        /// EIP-8437 permits only for EIP-8070 blob availability on <c>eth/73</c>.</summary>
+        protected virtual bool AnnouncesDependencyBearingCells(Transaction tx) => false;
 
         protected virtual bool ShouldNotifyTransactionCore(Transaction tx)
             => NotifiedTransactions.Set(tx.Hash!.ValueHash256);
@@ -231,20 +242,24 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
         }
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx = false) => SendNewTransactionsCore(TxsToSendAndMarkAsNotified(txs, sendFullTx), sendFullTx);
-
-        private IEnumerable<Transaction> TxsToSendAndMarkAsNotified(IEnumerable<Transaction> txs, bool sendFullTx)
+        public void SendNewTransactions(ReadOnlySpan<Transaction> txs, bool sendFullTx = false)
         {
+            using ArrayPoolListRef<Transaction> txsToSend = new(txs.Length);
             foreach (Transaction tx in txs)
             {
                 if (ShouldNotifyTransaction(tx, sendFullTx))
                 {
-                    yield return tx;
+                    txsToSend.Add(tx);
                 }
+            }
+
+            if (txsToSend.Count > 0)
+            {
+                SendNewTransactionsCore(txsToSend.AsSpan(), sendFullTx);
             }
         }
 
-        protected virtual void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
+        protected virtual void SendNewTransactionsCore(ReadOnlySpan<Transaction> txs, bool sendFullTx)
         {
             int packetSizeLeft = TransactionsMessage.MaxPacketSize;
             ArrayPoolList<Transaction> txsToSend = new(1024);

@@ -12,6 +12,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -23,8 +24,8 @@ public class OptimismCostHelperTests
     public void Setup()
     {
         TransactionForRpc.RegisterTransactionType<DepositTransactionForRpc>();
-        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder<Transaction>());
-        TxDecoder.Instance.RegisterDecoder(new OptimismLegacyTxDecoder());
+        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder());
+        TxDecoder.Instance.RegisterDecoder(new LegacyTxDecoder(allowEmptySignature: true));
     }
 
     [Test]

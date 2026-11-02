@@ -4,12 +4,15 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Exceptions;
+using Nethermind.Core.Messages;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Processing;
@@ -83,7 +86,12 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         _hasAccountWords = hasAccountWords;
     }
 
-    public static BlockAccessListValidationIndex Build(ReadOnlyBlockAccessList blockAccessList, int txCount, AddressIndex addressIndex)
+    /// <summary>Builds the immutable index of a suggested block access list.</summary>
+    /// <exception cref="InvalidBlockException">
+    /// A change has a block access index past <c>txCount + 1</c>. A list reattached from the store skipped the
+    /// pre-execution bounds check, and execution never reads such a change, so it is rejected here before it is applied.
+    /// </exception>
+    public static BlockAccessListValidationIndex Build(ReadOnlyBlockAccessList blockAccessList, BlockHeader header, int txCount, AddressIndex addressIndex)
     {
         uint lastIndex = GetLastIndex(txCount);
         int rowCount = checked((int)lastIndex + 1);
@@ -94,7 +102,7 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         using ArrayPoolListRef<int> counters = new(rowCount * 4, rowCount * 4);
         LaneSpans counts = PartitionInQuarters(counters.AsSpan(), rowCount);
 
-        Count(accounts, counts, lastIndex);
+        Count(accounts, counts, lastIndex, header);
 
         LaneStore lanes = default;
         ulong[]? hasAccountWords = null;
@@ -146,7 +154,7 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
 
             if (accountChanges.CodeChange is { } code)
             {
-                if (TryGetRow(code.Index, _lastIndex, out int row)) RecordIfOverflow(_lanes.TryAddCode(row, accountOrdinal, code.CodeHash), code.Index, accountChanges.Address);
+                if (TryGetRow(code.Index, _lastIndex, out int row)) RecordIfOverflow(_lanes.TryAddCode(row, accountOrdinal, in code), code.Index, accountChanges.Address);
                 else _hasOutOfRangeChange = true;
             }
 
@@ -418,32 +426,38 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
 
     public bool HasAccount(int ordinal) => HasAccountOrdinal(ordinal);
 
-    private static void Count(ReadOnlySpan<ReadOnlyAccountChanges> accounts, LaneSpans counts, uint lastIndex)
+    private static void Count(ReadOnlySpan<ReadOnlyAccountChanges> accounts, LaneSpans counts, uint lastIndex, BlockHeader header)
     {
         foreach (ReadOnlyAccountChanges accountChanges in accounts)
         {
-            Count(accountChanges.BalanceChanges, counts.Balance, lastIndex);
-            Count(accountChanges.NonceChanges, counts.Nonce, lastIndex);
-            Count(accountChanges.CodeChanges, counts.Code, lastIndex);
+            Count(accountChanges.BalanceChanges, counts.Balance, lastIndex, header);
+            Count(accountChanges.NonceChanges, counts.Nonce, lastIndex, header);
+            Count(accountChanges.CodeChanges, counts.Code, lastIndex, header);
 
             foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
             {
-                Count(slotChanges.Changes, counts.Storage, lastIndex);
+                Count(slotChanges.Changes, counts.Storage, lastIndex, header);
             }
         }
     }
 
-    private static void Count<TChange>(ReadOnlySpan<TChange> changes, Span<int> counts, uint lastIndex)
+    private static void Count<TChange>(ReadOnlySpan<TChange> changes, Span<int> counts, uint lastIndex, BlockHeader header)
         where TChange : struct, IIndexedChange
     {
         for (int i = 0; i < changes.Length; i++)
         {
-            if (TryGetRow(changes[i].Index, lastIndex, out int row))
+            if (!TryGetRow(changes[i].Index, lastIndex, out int row))
             {
-                counts[row]++;
+                ThrowIndexOutOfRange(header, changes[i].Index, lastIndex);
             }
+
+            counts[row]++;
         }
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowIndexOutOfRange(BlockHeader header, uint index, uint lastIndex) =>
+        throw new InvalidBlockException(header, BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(index, lastIndex));
 
     private bool HasAccountOrdinal(int accountOrdinal) => TestBit(_hasAccountWords, accountOrdinal);
 

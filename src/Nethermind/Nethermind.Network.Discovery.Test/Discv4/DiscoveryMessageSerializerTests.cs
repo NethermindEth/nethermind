@@ -417,7 +417,7 @@ public class DiscoveryMessageSerializerTests
         EnrResponseMsg msg = BuildEnrResponse(differentKey.CompressedPublicKey);
         using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg, detector.Allocator).AsDisposable();
 
-        Assert.That(() => _messageSerializationService.Deserialize<EnrResponseMsg>(serialized), Throws.TypeOf<NetworkingException>().And.Matches<NetworkingException>(ex => ex.Message.Contains("Invalid ENR signature")));
+        Assert.That(() => _messageSerializationService.Deserialize<EnrResponseMsg>(serialized), Throws.TypeOf<NetworkingException>().And.Matches<NetworkingException>(ex => ex?.Message.Contains("Invalid ENR signature") == true));
     }
 
     [Test]

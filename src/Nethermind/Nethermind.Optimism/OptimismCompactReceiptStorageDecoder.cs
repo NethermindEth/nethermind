@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
@@ -35,6 +37,11 @@ public class OptimismCompactReceiptStorageDecoder :
         }
         else
         {
+            if (firstItem.Length != 0 && firstItem.Length != Hash256.Size)
+            {
+                ThrowUnexpectedPostStateLength(firstItem.Length);
+            }
+
             txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
         }
 
@@ -79,9 +86,11 @@ public class OptimismCompactReceiptStorageDecoder :
             decoderContext.Check(lastCheck);
         }
 
-        txReceipt.Bloom = new Bloom(txReceipt.Logs);
-
         return txReceipt;
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowUnexpectedPostStateLength(int length)
+            => throw new RlpException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
     }
 
     public void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item)

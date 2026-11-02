@@ -16,8 +16,8 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.P2P.Subprotocols.Eth.V73;
 using Nethermind.Network.Rlpx;
-using Nethermind.Network.P2P.Subprotocols.Lean;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
@@ -67,7 +67,7 @@ public class InitializeNetwork : IStep
     private readonly ILogManager _logManager;
 
     private readonly ILogger _logger;
-    private readonly LeanProofGossip? _leanProofGossip;
+    private readonly ProofWrapperGossip? _proofWrapperGossip;
 
     public InitializeNetwork(
         ISyncServer _, // Need to be resolved at least once
@@ -92,7 +92,7 @@ public class InitializeNetwork : IStep
         INodeStorageFactory nodeStorageFactory,
         FlatStateActivationPolicy flatStateActivationPolicy,
         ILogManager logManager,
-        LeanProofGossip? leanProofGossip = null
+        ProofWrapperGossip? proofWrapperGossip = null
     )
     {
         _synchronizer = synchronizer;
@@ -116,7 +116,7 @@ public class InitializeNetwork : IStep
         _nodeStorageFactory = nodeStorageFactory;
         _flatStateActivationPolicy = flatStateActivationPolicy;
         _logManager = logManager;
-        _leanProofGossip = leanProofGossip;
+        _proofWrapperGossip = proofWrapperGossip;
 
         _logger = logManager.GetClassLogger<InitializeNetwork>();
     }
@@ -151,15 +151,16 @@ public class InitializeNetwork : IStep
             return;
         }
 
-        _leanProofGossip?.Start();
+        _proofWrapperGossip?.Start();
 
-        await InitPeer().ContinueWith(initPeerTask =>
+        try
         {
-            if (initPeerTask.IsFaulted)
-            {
-                _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
-            }
-        });
+            await InitPeer();
+        }
+        catch (Exception e) when (e is not ListenerBindException)
+        {
+            _logger.Error("Unable to init the peer manager.", e);
+        }
 
         if (cancellationToken.IsCancellationRequested)
         {
@@ -179,13 +180,14 @@ public class InitializeNetwork : IStep
             return;
         }
 
-        await StartDiscovery().ContinueWith(initDiscoveryTask =>
+        try
         {
-            if (initDiscoveryTask.IsFaulted)
-            {
-                _logger.Error("Unable to start the discovery protocol.", initDiscoveryTask.Exception);
-            }
-        });
+            await StartDiscovery();
+        }
+        catch (Exception e) when (e is not ListenerBindException)
+        {
+            _logger.Error("Unable to start the discovery protocol.", e);
+        }
 
         try
         {
@@ -264,6 +266,7 @@ public class InitializeNetwork : IStep
         if (!_initConfig.PeerManagerEnabled)
         {
             if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false");
+            return;
         }
 
         if (_logger.IsDebug) _logger.Debug("Initializing peer manager");

@@ -298,6 +298,11 @@ public class ForkInfoTests
     // fork) at block 7279999, before Shanghai. Local is incompatible.
     [TestCase(19999999ul, 1667999999ul, "0xf0afd0e3", 1667999999ul, ValidationResult.IncompatibleOrStale, true)]
 
+    // Local is mainnet Petersburg. Remote is Byzantium and announces Petersburg at a wrong block that local has
+    // not reached yet. Remote fork hash is a subset of local forks with a mismatched next: EIP-2124 rule 2
+    // rejects it as stale (geth: ErrRemoteStale).
+    [TestCase(7_300_000ul, 0ul, "0xa00bc324", 7_500_000ul, ValidationResult.RemoteStale)]
+
     //----------------------
     // Timestamp based tests
     //----------------------

@@ -5,7 +5,6 @@ using System.Collections.Concurrent;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.E2Store;
 using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
@@ -102,7 +101,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
                         throw new EraVerificationException($"Mismatched block body against header: {error}. Block {blockNumber}.");
 
                     Hash256 receiptRoot = ReceiptTrie.CalculateRoot(
-                        specProvider.GetReceiptSpec(block.Number), receipts, _fullReceiptDecoder);
+                        specProvider.GetSpec(block.Header), receipts, _fullReceiptDecoder);
                     if (block.Header.ReceiptsRoot != receiptRoot)
                         throw new EraVerificationException($"Mismatched receipt root at block {blockNumber}.");
 

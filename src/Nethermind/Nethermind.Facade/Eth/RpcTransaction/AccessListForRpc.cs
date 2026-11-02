@@ -19,13 +19,15 @@ public class AccessListForRpc
     private readonly IEnumerable<Item> _items;
     private readonly AccessList? _accessList;
 
+    private static readonly AccessListForRpc Empty = new(AccessList.Empty);
+
     public AccessListForRpc() => _items = Array.Empty<Item>();
 
     private AccessListForRpc(IEnumerable<Item> items) => _items = items;
 
     private AccessListForRpc(AccessList accessList) : this() => _accessList = accessList;
 
-    private class Item
+    internal class Item
     {
         public Address Address { get; set; }
 
@@ -41,7 +43,8 @@ public class AccessListForRpc
         }
     }
 
-    public static AccessListForRpc FromAccessList(AccessList? accessList) => new(accessList ?? AccessList.Empty);
+    public static AccessListForRpc FromAccessList(AccessList? accessList) =>
+        accessList is null || accessList.IsEmpty ? Empty : new(accessList);
 
     public AccessList ToAccessList()
     {
@@ -114,7 +117,7 @@ public class AccessListForRpc
 
                     if (isAddress)
                     {
-                        address = JsonSerializer.Deserialize<Address>(ref reader, options);
+                        address = TypeInfoJsonSerializer.Deserialize<Address>(ref reader, options);
                     }
                     else if (isStorageKeys)
                     {
@@ -173,7 +176,7 @@ public class AccessListForRpc
         {
             if (value._accessList is null)
             {
-                JsonSerializer.Serialize(writer, value._items, options);
+                TypeInfoJsonSerializer.Serialize(writer, value._items, options);
                 return;
             }
 

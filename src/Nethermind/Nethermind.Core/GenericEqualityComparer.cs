@@ -21,31 +21,16 @@ public sealed class GenericEqualityComparer<T> : EqualityComparer<T>, GenericEqu
     public override int GetHashCode() => GetType().GetHashCode();
 }
 
-public static class GenericEqualityComparer
+public static partial class GenericEqualityComparer
 {
     internal interface IGenericEqualityComparer;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    public static IEqualityComparer<T>? GetOptimized<T>(IEqualityComparer<T>? comparer) =>
-        comparer switch
-        {
-#if !ZK_EVM
-            IGenericEqualityComparer => null,
-#else
-            // A value-type key calls its own GetHashCode/Equals directly; only reference types need the fallback.
-            IGenericEqualityComparer when typeof(T).IsValueType => null,
-#endif
-            _ => comparer
-        };
+    public static partial IEqualityComparer<T>? GetOptimized<T>(IEqualityComparer<T>? comparer);
 
     // Returns null on JIT/CoreCLR so collection constructors fall back to EqualityComparer<T>.Default
     // (which the JIT recognizes via [Intrinsic] and devirtualizes at its own call sites).
     // On bflat/AOT, returns our reflection-free fallback since EqualityComparer<T>.Default is unavailable.
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    public static IEqualityComparer<T>? GetOptimized<T>() where T : IEquatable<T>? =>
-#if ZK_EVM
-        GenericEqualityComparer<T>.Default;
-#else
-        null;
-#endif
+    public static partial IEqualityComparer<T>? GetOptimized<T>() where T : IEquatable<T>?;
 }

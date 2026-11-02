@@ -10,7 +10,7 @@ namespace Nethermind.Core;
 /// <summary>
 /// A single EIP-8288 dependency triple <c>(scheme, data_hash, verification_key)</c> declared by a
 /// dependency-verification frame. <c>data_hash</c>/<c>verification_key</c> are the message hash and
-/// public-key hash (leanSPHINCS) or the public commitment and bytecode hash (leanSTARK).
+/// 32-byte public key (leanSPHINCS) or the public commitment and program key hash (leanSTARK).
 /// </summary>
 public readonly struct FrameDependency(byte scheme, ValueHash256 dataHash, ValueHash256 verificationKey)
     : IEquatable<FrameDependency>
@@ -50,6 +50,20 @@ public static class Eip8288Dependencies
 {
     public static bool IsDependencyFrame(TxFrame frame) => frame.Mode == FrameMode.DepVerify;
 
+    /// <summary>Whether <paramref name="transaction"/> has at least one dependency verification frame, even one carrying no
+    /// triples, so <c>dependencies(tx) == []</c> alone does not make it dependency-free.</summary>
+    /// <remarks>EIP-8288 and EIP-8437: such transactions are never independently announced or broadcast, are admitted only with
+    /// a fully validated covering wrapper, and an inclusion list obligates them only under a verified covering proof.</remarks>
+    public static bool IsDependencyBearing(Transaction transaction)
+    {
+        if (transaction.PersistedDependencyBearing is { } persisted) return persisted;
+        TxFrame[]? frames = transaction.Frames;
+        if (frames is null) return false;
+        foreach (TxFrame frame in frames)
+            if (IsDependencyFrame(frame)) return true;
+        return false;
+    }
+
     /// <summary>The <c>data_triples</c> of a dependency frame, parsed from its 96·k-byte <c>data</c>.</summary>
     public static IEnumerable<FrameDependency> ParseFrame(TxFrame frame)
     {
@@ -62,28 +76,38 @@ public static class Eip8288Dependencies
         }
     }
 
-    /// <summary>Spec <c>dependencies(tx)</c>: sorted, deduplicated dependency triples.</summary>
-    public static List<FrameDependency> ForTransaction(Transaction tx) => Canonicalize(Declarations(tx));
+    /// <summary>Spec <c>dependencies(tx)</c>: resolves zero data hashes to the containing transaction's signature hash,
+    /// then sorts and deduplicates the triples without changing the frame data.</summary>
+    /// <param name="computeSignatureHash">The EIP-8141 canonical encoder, evaluated once only when a zero hash is declared.</param>
+    public static List<FrameDependency> ForTransaction(Transaction tx, Func<Transaction, ValueHash256> computeSignatureHash) =>
+        Canonicalize(Declarations(tx, computeSignatureHash));
 
-    private static IEnumerable<FrameDependency> Declarations(Transaction tx)
+    private static IEnumerable<FrameDependency> Declarations(Transaction tx, Func<Transaction, ValueHash256> computeSignatureHash)
     {
+        ValueHash256? signatureHash = null;
         TxFrame[]? frames = tx.Frames;
         if (frames is null) yield break;
 
         foreach (TxFrame frame in frames)
         {
             if (!IsDependencyFrame(frame)) continue;
-            foreach (FrameDependency dep in ParseFrame(frame)) yield return dep;
+            foreach (FrameDependency dep in ParseFrame(frame))
+            {
+                yield return dep.DataHash == default
+                    ? new FrameDependency(dep.Scheme, signatureHash ??= computeSignatureHash(tx), dep.VerificationKey)
+                    : dep;
+            }
         }
     }
 
     /// <summary>Spec <c>dependencies(block)</c>: sorted, deduplicated transaction dependencies.</summary>
-    /// <remarks>Walks the frames directly rather than through the iterators, which runs on every block.</remarks>
-    public static List<FrameDependency> ForBlock(Block block)
+    /// <remarks>Walks the frames directly rather than through the iterators, resolving zero data hashes once per transaction.</remarks>
+    public static List<FrameDependency> ForBlock(Block block, Func<Transaction, ValueHash256> computeSignatureHash)
     {
         List<FrameDependency> dependencies = [];
         foreach (Transaction tx in block.Transactions)
         {
+            ValueHash256? signatureHash = null;
             TxFrame[]? frames = tx.Frames;
             if (frames is null) continue;
 
@@ -96,7 +120,9 @@ public static class Eip8288Dependencies
                 for (int i = 0; i < count; i++)
                 {
                     ReadOnlySpan<byte> triple = data.Slice(i * Eip8288Constants.DependencyTripleLength, Eip8288Constants.DependencyTripleLength);
-                    dependencies.Add(new FrameDependency(triple[31], new ValueHash256(triple[32..64]), new ValueHash256(triple[64..96])));
+                    ValueHash256 dataHash = new(triple[32..64]);
+                    if (dataHash == default) dataHash = signatureHash ??= computeSignatureHash(tx);
+                    dependencies.Add(new FrameDependency(triple[31], dataHash, new ValueHash256(triple[64..96])));
                 }
             }
         }
@@ -148,12 +174,76 @@ public static class Eip8288Dependencies
         return dependencies;
     }
 
-    /// <summary>
-    /// Spec <c>block_deps_hash</c>: <c>hash(concat(bytes32_be(scheme) || data_hash || verification_key))</c>.
-    /// The prototype uses Keccak-256 for the dependency commitment.
-    /// </summary>
-    public static ValueHash256 ComputeDepsHash(IReadOnlyList<FrameDependency> dependencies) =>
-        dependencies.Count == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(Serialize(Canonicalize(dependencies)));
+    // Closes the digest of a list holding leanSTARK dependencies: a 96-byte preimage, which no list of 64-byte entries shares.
+    private static ReadOnlySpan<byte> LeanStarkDepsDomain => "eip8288/leanstark-deps\0\0\0\0\0\0\0\0\0\0"u8;
+
+    /// <summary>Spec <c>get_deps_hash</c>, the <c>block_deps_hash</c> and <c>deps_hash</c> a recursive STARK is verified against:
+    /// <c>DEPS_HASH</c> over the canonical dependencies' 64-byte <c>data_hash || key</c> entries, where a leanSPHINCS key is the raw
+    /// public key a triple carries in its <c>verification_key_hash</c> field, not a hash of it.</summary>
+    /// <remarks>EIP-8288 leaves <c>DEPS_HASH</c> TBD; this uses BLAKE2s-256, the hash the pinned aggregation circuit uses for its
+    /// dependency digest. A leanSPHINCS-only list hashes exactly as the EIP specifies. The EIP reserves leanSTARK until
+    /// <c>get_deps_hash</c> is defined for it; as a deviation, a list holding any leanSTARK dependency commits to
+    /// <c>DEPS_HASH(get_deps_hash(leanSPHINCS) || get_deps_hash(leanSTARK) || "eip8288/leanstark-deps")</c>, the domain
+    /// zero-padded to 32 bytes, as the pinned recursive guest does. That 96-byte preimage is never a list of 64-byte entries.</remarks>
+    public static ValueHash256 ComputeDepsHash(IReadOnlyList<FrameDependency> dependencies)
+    {
+        dependencies = Canonicalize(dependencies);
+        int split = 0;
+        while (split < dependencies.Count && dependencies[split].Scheme == Eip8288Constants.LeanSphincsScheme) split++;
+        ValueHash256 sphincs = ListDepsHash(dependencies, 0, split);
+        if (split == dependencies.Count) return sphincs;
+
+        ValueHash256 stark = ListDepsHash(dependencies, split, dependencies.Count);
+        Blake2s hash = Blake2s.Create();
+        hash.Update(sphincs.Bytes);
+        hash.Update(stark.Bytes);
+        hash.Update(LeanStarkDepsDomain);
+        return hash.Finish();
+    }
+
+    private static ValueHash256 ListDepsHash(IReadOnlyList<FrameDependency> dependencies, int start, int end)
+    {
+        Blake2s hash = Blake2s.Create();
+        for (int i = start; i < end; i++)
+        {
+            hash.Update(dependencies[i].DataHash.Bytes);
+            hash.Update(dependencies[i].VerificationKey.Bytes);
+        }
+
+        return hash.Finish();
+    }
+
+    /// <summary>Whether a dependency scheme is enabled: leanSPHINCS, and leanSTARK, which this node enables as a deviation from
+    /// EIP-8288 (see <see cref="ComputeDepsHash"/>).</summary>
+    public static bool IsAcceptedScheme(byte scheme) => scheme is Eip8288Constants.LeanSphincsScheme or Eip8288Constants.LeanStarkScheme;
+
+    /// <summary>Whether a dependency scheme is one EIP-8288 defines.</summary>
+    public static bool IsKnownScheme(byte scheme) => scheme is Eip8288Constants.LeanSphincsScheme or Eip8288Constants.LeanStarkScheme;
+
+    /// <summary>The leanSTARK dependencies in <paramref name="dependencies"/>, repeats included.</summary>
+    public static int CountLeanStark(IEnumerable<FrameDependency> dependencies)
+    {
+        int count = 0;
+        foreach (FrameDependency dependency in dependencies)
+            if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) count++;
+        return count;
+    }
+
+    /// <summary>Whether one dependency list of the pinned recursive guest can hold <paramref name="dependencies"/>: at most
+    /// <see cref="Eip8288Constants.MaxProofDependencies"/>, <see cref="Eip8288Constants.MaxGenericStarkProofs"/> of them
+    /// leanSTARK.</summary>
+    /// <remarks>The circuit's dependency-list limit: a statement over it is split or deferred when built and a mode-1 proof over it
+    /// is invalid when received (EIP-8288).</remarks>
+    public static bool FitsProofList(IReadOnlyCollection<FrameDependency> dependencies) =>
+        dependencies.Count <= Eip8288Constants.MaxProofDependencies && CountLeanStark(dependencies) <= Eip8288Constants.MaxGenericStarkProofs;
+
+    /// <summary>Whether every dependency's scheme is enabled (<see cref="IsAcceptedScheme"/>).</summary>
+    public static bool AreSchemesEnabled(IReadOnlyList<FrameDependency> dependencies)
+    {
+        for (int i = 0; i < dependencies.Count; i++)
+            if (!IsAcceptedScheme(dependencies[i].Scheme)) return false;
+        return true;
+    }
 
     /// <summary>Sorts and deduplicates dependencies for the EIP-8288 commitment.</summary>
     public static List<FrameDependency> Canonicalize(IEnumerable<FrameDependency> dependencies)
@@ -175,6 +265,25 @@ public static class Eip8288Dependencies
         return result;
     }
 
+    /// <summary>
+    /// EIP-8288 <c>discard_dependencies</c>: the dependencies covered by the input proofs that no retained transaction
+    /// declares, in canonical order.
+    /// </summary>
+    /// <remarks>Wrapper pruning, FOCIL merging and block assembly all use this rule, so a dependency shared with any retained
+    /// transaction is kept even when another transaction declaring it is removed.</remarks>
+    /// <param name="inputDeps">The union of the dependencies the input proofs cover, including mode-0 direct witnesses.</param>
+    /// <param name="retainedDeps">The dependency union of the selected transactions.</param>
+    /// <exception cref="ArgumentException">A retained dependency is not covered by the input proofs.</exception>
+    public static List<FrameDependency> DiscardDependencies(IEnumerable<FrameDependency> inputDeps, IEnumerable<FrameDependency> retainedDeps)
+    {
+        HashSet<FrameDependency> inputs = [.. inputDeps];
+        HashSet<FrameDependency> retained = [.. retainedDeps];
+        if (!retained.IsSubsetOf(inputs))
+            throw new ArgumentException("Retained dependencies must be covered by the input proofs.", nameof(retainedDeps));
+        inputs.ExceptWith(retained);
+        return Canonicalize(inputs);
+    }
+
     /// <summary>Counts dependencies per scheme (leanSPHINCS, leanSTARK) for the mempool/tx limits.</summary>
     public static (int Sphincs, int Stark) CountByScheme(IReadOnlyList<FrameDependency> dependencies)
     {
@@ -189,5 +298,6 @@ public static class Eip8288Dependencies
         return (sphincs, stark);
     }
 
-    public static ValueHash256 ComputeBlockDepsHash(Block block) => ComputeDepsHash(ForBlock(block));
+    public static ValueHash256 ComputeBlockDepsHash(Block block, Func<Transaction, ValueHash256> computeSignatureHash) =>
+        ComputeDepsHash(ForBlock(block, computeSignatureHash));
 }

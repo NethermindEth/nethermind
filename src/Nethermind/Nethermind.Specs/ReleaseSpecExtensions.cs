@@ -5,7 +5,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs;
 
-public static class ReleaseSpecExtensions
+public static partial class ReleaseSpecExtensions
 {
     /// <summary>
     /// Returns the spec variant to use when executing a system transaction.
@@ -21,14 +21,6 @@ public static class ReleaseSpecExtensions
             ReleaseSpec releaseSpec => releaseSpec.SystemSpec,
             { IsEip158Enabled: false } => spec,
             _ when isGenesis => spec,
-            _ => new SystemTransactionSpec(spec)
+            _ => WithoutEip158ForSystemTransaction(spec)
         };
-
-    /// <summary>
-    /// Fallback decorator for non-ReleaseSpec implementations (e.g. OverridableReleaseSpec in tests).
-    /// </summary>
-    private sealed class SystemTransactionSpec(IReleaseSpec spec) : ReleaseSpecDecorator(spec)
-    {
-        public override bool IsEip158Enabled => false;
-    }
 }

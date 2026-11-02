@@ -139,7 +139,7 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Disable feeding ENR DNS records to discv4 table")]
     bool DisableDiscV4DnsFeeder { get; set; }
 
-    [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Shutdown timeout when closing TCP port.")]
+    [ConfigItem(DefaultValue = "1000", HiddenFromDocs = true, Description = "[TECHNICAL] Shutdown timeout when closing TCP port.")]
     long RlpxHostShutdownCloseTimeoutMs { get; set; }
 
     [ConfigItem(DefaultValue = ProductInfo.DefaultPublicClientIdFormat, Description = "A template string for the public client id provided to external clients. Allowed placeholders: `{name}` `{version}` `{versionPostfix}` `{os}` `{runtime}`.")]

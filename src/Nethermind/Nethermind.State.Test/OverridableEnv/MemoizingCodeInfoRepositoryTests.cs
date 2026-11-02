@@ -67,6 +67,20 @@ public class MemoizingCodeInfoRepositoryTests
     }
 
     [Test]
+    public void Tcreate_code_is_never_answered_from_the_memo_again_in_the_scope()
+    {
+        (MemoizingCodeInfoRepository repository, _, ICodeInfoRepository inner) = Build([0x60, 0x00]);
+        Lookup(repository, TestItem.AddressA, 2);
+        repository.InsertTransientCode(new byte[] { 0x60, 0x01 }, TestItem.AddressA, Spec);
+        Lookup(repository, TestItem.AddressA, 3);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(InnerLookups(inner), Is.EqualTo(4));
+            inner.Received(1).InsertTransientCode(Arg.Any<ReadOnlyMemory<byte>>(), TestItem.AddressA, Spec);
+        }
+    }
+
+    [Test]
     public void A_delegation_drops_the_authority()
     {
         (MemoizingCodeInfoRepository repository, _, ICodeInfoRepository inner) = Build([0x60, 0x00]);

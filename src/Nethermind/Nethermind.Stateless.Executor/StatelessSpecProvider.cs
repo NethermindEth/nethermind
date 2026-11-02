@@ -5,7 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.GnosisForks;
 using Nethermind.Stateless.Execution.IO;
@@ -21,7 +20,7 @@ namespace Nethermind.Stateless.Execution;
 /// Merge transition metadata (<see cref="MergeBlockNumber"/>, <see cref="TerminalTotalDifficulty"/>)
 /// stays delegated to the base provider, describing the underlying chain rather than the pinned fork.
 /// </remarks>
-internal sealed class StatelessSpecProvider(
+internal sealed partial class StatelessSpecProvider(
     ISpecProvider baseProvider,
     ulong chainId,
     ForkActivation payloadActivation,
@@ -62,7 +61,7 @@ internal sealed class StatelessSpecProvider(
     /// <param name="payloadActivation">The activation of the payload's own block.</param>
     public static StatelessSpecProvider Create(ulong chainId, ProtocolFork protocolFork, ForkActivation payloadActivation)
     {
-        ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainId, out IForkAwareSpecProvider? baseProvider);
+        IForkAwareSpecProvider? baseProvider = GetKnownProvider(chainId);
 
         // Unknown chains (e.g. devnets) fall back to Mainnet — for ProtocolFork.Current, to its schedule too.
         baseProvider ??= MainnetSpecProvider.Instance;

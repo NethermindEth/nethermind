@@ -258,7 +258,7 @@ public class FrameTxPaymasterFilterTests
         (TxDistinctSortedPool standard, TxDistinctSortedPool blob) = tx.CarriesBlobs
             ? (Pool(blobs: false), pool ?? Pool(blobs: true))
             : (pool ?? Pool(blobs: false), Pool(blobs: true));
-        FrameTxPaymasterFilter filter = new(state, standard, blob, cache, LimboLogs.Instance.GetClassLogger<FrameTxPaymasterFilterTests>());
+        FrameTxPaymasterFilter filter = new(state, standard, blob, cache, new TxPoolConfig(), new SenderWidthCache(holdsPaymasters: true), new(), LimboLogs.Instance.GetClassLogger<FrameTxPaymasterFilterTests>());
         TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }

@@ -36,6 +36,7 @@ public class JsonConfigProviderTests
 
     [TestCase(12ul, typeof(BlocksConfig), nameof(BlocksConfig.SecondsPerSlot))]
     [TestCase(false, typeof(BlocksConfig), nameof(BlocksConfig.RandomizedBlocks))]
+    [TestCase(ProducedBlockDumpOptions.None, typeof(BlocksConfig), nameof(BlocksConfig.DumpProducedBlocks))]
     [TestCase("chainspec/foundation.json", typeof(InitConfig), nameof(InitConfig.ChainSpecPath))]
     [TestCase(DumpOptions.Default, typeof(InitConfig), nameof(InitConfig.AutoDump))]
     public void Test_getDefaultValue<T>(T expected, Type type, string propName)
@@ -52,7 +53,8 @@ public class JsonConfigProviderTests
     public void Can_load_config_from_file()
     {
         IKeyStoreConfig? keystoreConfig = _configProvider.GetConfig<IKeyStoreConfig>();
-        IDiscoveryConfig? networkConfig = _configProvider.GetConfig<IDiscoveryConfig>();
+        IDiscoveryConfig? discoveryConfig = _configProvider.GetConfig<IDiscoveryConfig>();
+        INetworkConfig? networkConfig = _configProvider.GetConfig<INetworkConfig>();
         IJsonRpcConfig? jsonRpcConfig = _configProvider.GetConfig<IJsonRpcConfig>();
 
         using (Assert.EnterMultipleScope())
@@ -69,7 +71,7 @@ public class JsonConfigProviderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(networkConfig.Concurrency, Is.EqualTo(4));
+            Assert.That(discoveryConfig.Concurrency, Is.EqualTo(4));
             Assert.That(networkConfig.Bootnodes, Has.Length.EqualTo(2));
             Assert.That(networkConfig.Bootnodes[0].ToString(), Does.StartWith("enode://"));
             Assert.That(networkConfig.Bootnodes[1].ToString(), Does.StartWith("enode://"));

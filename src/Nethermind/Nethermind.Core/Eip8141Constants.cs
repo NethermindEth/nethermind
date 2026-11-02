@@ -20,9 +20,8 @@ public static class Eip8141Constants
     public const ulong P256VerificationGasCost = 6_700;
     public const int ExpiryDataLength = 8;
 
-    // Bounds mempool validation work only, never block execution; ITxPoolConfig.FrameTxMaxVerifyGas is the
-    // operator-configurable mirror.
-    public const ulong MaxVerifyGas = 300_000;
+    // Shared validation-work floor, not the node's configurable headroom or a block-validity limit.
+    public const ulong MaxVerifyGas = 100_000;
 
     /// <summary>
     /// <c>MAX_PENDING_TXS_USING_NON_CANONICAL_PAYMASTER</c>: the public-mempool cap on the pending frame
@@ -31,9 +30,9 @@ public static class Eip8141Constants
     public const int MaxPendingTxsUsingNonCanonicalPaymaster = 1;
 
     public static readonly Address EntryPointAddress = new("0x00000000000000000000000000000000000000aa");
-    public static readonly Address ExpiryVerifierAddress = new("0x0000000000000000000000000000000000008141");
+    public static readonly Address ExpiryVerifierAddress = new("0x81413f0cF12e9b6a49B1D0439E081c577D57FfFf");
 
-    /// <summary>The expiry-verifier runtime code installed at <see cref="ExpiryVerifierAddress"/> when EIP-8141 activates.</summary>
+    /// <summary>The expiry-verifier runtime code that the EIP-8141 deployment transaction creates at <see cref="ExpiryVerifierAddress"/>.</summary>
     public static readonly byte[] ExpiryVerifierCode = Bytes.FromHexString("0x60083614600a575f5ffd5b5f3560c01c4211601657005b5f5ffd");
 
     public static readonly ValueHash256 ExpiryVerifierCodeHash = ValueKeccak.Compute(ExpiryVerifierCode);

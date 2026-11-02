@@ -27,12 +27,9 @@ public sealed class NodeStorageCache
     }
 
     /// <summary>Disables and clears the cache.</summary>
-    /// <returns><see langword="true"/> when the cache was enabled; this does not indicate whether it contained entries.</returns>
-    public bool ClearCaches()
+    public void ClearCaches()
     {
-        bool wasEnabled = _enabled;
         _enabled = false;
         _cache.Clear();
-        return wasEnabled;
     }
 }

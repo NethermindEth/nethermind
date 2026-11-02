@@ -15,7 +15,8 @@ public sealed class ArchiveProofSettings
 
         BuildEnabled = config.ArchiveProofBuildEnabled && supported;
         ServeEnabled = config.ArchiveProofServeEnabled && supported;
-        RetrofitEnabled = BuildEnabled && config.HistoryVerifyEveryBlock;
+        // The walk itself runs only under FlatDb.HistoryVerifyEveryBlock or for a history started at a snap pivot.
+        RetrofitEnabled = BuildEnabled;
         DiscardMismatchedLayout = config.ArchiveProofDiscardMismatchedLayout;
         RecentEpochs = BuildEnabled && config.ArchiveProofRecentEpochs > 0 ? config.ArchiveProofRecentEpochs : 0;
         FineEpochs = BuildEnabled && config.ArchiveProofFineEpochs > 0 ? config.ArchiveProofFineEpochs : 0;
@@ -34,11 +35,11 @@ public sealed class ArchiveProofSettings
                 "retention floor rather than the post-values a proof resolution replays. Nothing is built or served.");
         }
 
-        if (BuildEnabled && !RetrofitEnabled && logger.IsInfo)
+        if (BuildEnabled && !config.HistoryVerifyEveryBlock && logger.IsInfo)
         {
             logger.Info(
                 "Archive proof commitments are built from the tip only (FlatDb.HistoryVerifyEveryBlock is off). That is complete for a " +
-                "node syncing from genesis; an already-synced archive also needs the every-block walk to retrofit the blocks below its watermark.");
+                "node syncing from genesis, and a node snap-syncing builds its pivot's commitments with the walk on its own; an already-synced archive also needs the every-block walk to retrofit the blocks below its watermark.");
         }
     }
 

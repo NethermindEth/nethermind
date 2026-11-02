@@ -58,6 +58,10 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public void HintWarmSlot(Address address, in UInt256 index) => innerScope.HintWarmSlot(address, in index);
 
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) => innerScope.Prefetch(accounts, slots, cancellationToken);
+
+        public bool SupportsPrefetch => innerScope.SupportsPrefetch;
+
         public void Dispose()
         {
             innerScope.Dispose();
@@ -84,6 +88,9 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
             => innerScope.HintBal(bal, sink);
+
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken)
+            => innerScope.ApplyBal(bal, cancellationToken);
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => innerScope.CodeDb;
 

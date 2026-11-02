@@ -4,6 +4,7 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -14,6 +15,8 @@ namespace Nethermind.JsonRpc
 {
     public class ResultWrapper<T> : JsonRpcResponse, IResultWrapper
     {
+        private int _responseContextClaimed;
+
         object? IResultWrapper.Data => Data;
         public T Data { get; init; }
         public Result Result { get; init; } = Result.Success;
@@ -62,7 +65,14 @@ namespace Nethermind.JsonRpc
 
         internal override JsonRpcResponse WithResponseContext(in JsonRpcId id, Action? disposableAction)
         {
+            // Modules may return the same (cached) instance from many requests, so only its first use can take it in place.
+            if (Volatile.Read(ref _responseContextClaimed) == 0 && Interlocked.Exchange(ref _responseContextClaimed, 1) == 0)
+            {
+                return base.WithResponseContext(in id, disposableAction);
+            }
+
             ResultWrapper<T> response = (ResultWrapper<T>)MemberwiseClone();
+            response.ClearResponseContext();
             response._id = id;
             if (disposableAction is not null) response.AddDisposable(disposableAction);
             return response;

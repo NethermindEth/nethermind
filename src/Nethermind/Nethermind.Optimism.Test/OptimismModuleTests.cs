@@ -73,6 +73,21 @@ public class OptimismModuleTests
     }
 
     [Test]
+    public void Payload_transaction_count_guard_is_disabled()
+    {
+        ChainSpec chainSpec = new()
+        {
+            EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters())
+        };
+
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new OptimismModule(chainSpec, new OptimismConfig()));
+        using IContainer container = builder.Build();
+
+        Assert.That(container.Resolve<Merge.Plugin.Data.PayloadTransactionCountGuard>(), Is.SameAs(Merge.Plugin.Data.PayloadTransactionCountGuard.Disabled));
+    }
+
+    [Test]
     public void Proof_rpc_module_is_decorated_with_deposit_receipt_fields()
     {
         ChainSpec chainSpec = new()

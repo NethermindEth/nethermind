@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Evm;
 
 namespace Nethermind.Facade.Proxy.Models.Simulate;
 
+[JsonConverter(typeof(BlockStateCallConverterFactory))]
 public class BlockStateCall<T>
 {
     public BlockOverride? BlockOverrides { get; set; }

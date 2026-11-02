@@ -65,20 +65,27 @@ public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo? ethSyncingInfo) 
         int found = 0;
         bool allRequestedCellsAvailable = true;
         BlobCellsAndProofs?[]? response = null;
+        BlobCellMask[] availableMasks = ArrayPool<BlobCellMask>.Shared.Rent(n);
+        byte[][]?[] availableCellsPerBlob = ArrayPool<byte[][]?>.Shared.Rent(n);
+        byte[][]?[] availableProofsPerBlob = ArrayPool<byte[][]?>.Shared.Rent(n);
+        Array.Clear(availableMasks, 0, n);
+        Array.Clear(availableCellsPerBlob, 0, n);
+        Array.Clear(availableProofsPerBlob, 0, n);
         try
         {
             response = ArrayPool<BlobCellsAndProofs?>.Shared.Rent(n);
             Array.Clear(response, 0, n);
 
+            txPool.TryGetBlobCellsAndProofsV1(request.BlobVersionedHashes, requestedMask, availableMasks, availableCellsPerBlob, availableProofsPerBlob);
             for (int i = 0; i < n; i++)
             {
-                byte[] blobVersionedHash = request.BlobVersionedHashes[i];
-                if (!txPool.TryGetBlobCellsAndProofsV1(blobVersionedHash, requestedMask, out BlobCellMask availableMask, out byte[][]? availableCells, out byte[][]? availableProofs))
+                if (availableCellsPerBlob[i] is not { } availableCells || availableProofsPerBlob[i] is not { } availableProofs)
                 {
                     allRequestedCellsAvailable = false;
                     continue;
                 }
 
+                BlobCellMask availableMask = availableMasks[i];
                 if (!availableMask.IsEmpty)
                 {
                     found++;
@@ -101,6 +108,7 @@ public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo? ethSyncingInfo) 
                 Metrics.GetBlobsRequestsFailureTotal++;
             }
 
+            ReturnAvailable(availableMasks, availableCellsPerBlob, availableProofsPerBlob);
             return ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Success(new BlobsV4DirectResponse(response, n));
         }
         catch
@@ -110,6 +118,7 @@ public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo? ethSyncingInfo) 
                 ReturnResponse(response);
             }
 
+            ReturnAvailable(availableMasks, availableCellsPerBlob, availableProofsPerBlob);
             throw;
         }
     }
@@ -169,6 +178,13 @@ public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo? ethSyncingInfo) 
 
     private static void ReturnResponse(BlobCellsAndProofs?[] response) =>
         ArrayPool<BlobCellsAndProofs?>.Shared.Return(response, clearArray: true);
+
+    private static void ReturnAvailable(BlobCellMask[] availableMasks, byte[][]?[] availableCellsPerBlob, byte[][]?[] availableProofsPerBlob)
+    {
+        ArrayPool<BlobCellMask>.Shared.Return(availableMasks);
+        ArrayPool<byte[][]?>.Shared.Return(availableCellsPerBlob, clearArray: true);
+        ArrayPool<byte[][]?>.Shared.Return(availableProofsPerBlob, clearArray: true);
+    }
 }
 
 /// <summary>Blob hashes and cell indices requested through <c>engine_getBlobsV4</c>.</summary>

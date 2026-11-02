@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -64,8 +63,6 @@ public abstract class KademliaDiscoveryApp(
 
     private async Task StopAsyncInternal()
     {
-        DetachEventHandlers();
-
         await _stopCts.CancelAsync();
 
         try
@@ -97,7 +94,17 @@ public abstract class KademliaDiscoveryApp(
 
     string IStoppableService.Description => _description;
 
-    public abstract void InitializeChannel(IChannel channel);
+    /// <summary>
+    /// Attaches the protocol to the bound discovery socket.
+    /// </summary>
+    /// <param name="socket">The socket shared by all discovery protocols.</param>
+    /// <param name="forward">Passes a received datagram this protocol does not handle on to the next protocol.</param>
+    internal abstract void InitializeChannel(IDatagramSocket socket, Action<PooledUdpReceiveResult> forward);
+
+    /// <summary>
+    /// Handles a datagram received on the discovery socket, taking ownership of it.
+    /// </summary>
+    internal abstract void Receive(PooledUdpReceiveResult datagram);
 
     public virtual void AddNodeToDiscovery(Node node) => Kademlia.AddOrRefresh(node);
 
@@ -153,7 +160,7 @@ public abstract class KademliaDiscoveryApp(
         ThisNodeInfo.AddInfo("Discovery    :", $"udp://{ip.ExternalIp}:{_networkConfig.DiscoveryPort}");
     }
 
-    protected void OnChannelActivated(object? sender, EventArgs e)
+    protected void OnChannelActivated()
     {
         if (Logger.IsDebug) Logger.Debug("Activated discovery channel.");
 
@@ -164,14 +171,6 @@ public abstract class KademliaDiscoveryApp(
 
         Volatile.Write(ref _channelActive, 1);
         TryStartActivation();
-    }
-
-    protected void ActivateIfChannelIsActive(IChannel channel)
-    {
-        if (channel.Active)
-        {
-            OnChannelActivated(channel, EventArgs.Empty);
-        }
     }
 
     private void TryStartActivation()
@@ -190,10 +189,6 @@ public abstract class KademliaDiscoveryApp(
             _activationStarted = true;
             _runningTask = StartActivationAsync(_stopCts.Token);
         }
-    }
-
-    protected virtual void DetachEventHandlers()
-    {
     }
 
     protected virtual Task StopAsyncCore() => Task.CompletedTask;

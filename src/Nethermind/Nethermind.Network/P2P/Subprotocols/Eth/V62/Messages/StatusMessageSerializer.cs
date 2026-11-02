@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers.Binary;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -36,7 +38,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             {
                 ForkId forkId = message.ForkId.Value;
                 writer.StartSequence(forkIdContentLength);
-                writer.Encode(forkId.HashBytes);
+                Span<byte> forkHash = stackalloc byte[sizeof(uint)];
+                BinaryPrimitives.WriteUInt32BigEndian(forkHash, forkId.ForkHash);
+                writer.Encode(forkHash);
                 writer.Encode(forkId.Next);
             }
         }

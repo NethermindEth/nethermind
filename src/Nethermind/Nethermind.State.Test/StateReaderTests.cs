@@ -6,6 +6,7 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -330,7 +331,11 @@ namespace Nethermind.Store.Test
             using (ctx)
             using (scope)
             {
-                Assert.That(ctx.WorldState.IsInvalidContractSender(releaseSpec, TestItem.AddressA), Is.EqualTo(expected));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(ctx.WorldState.IsInvalidContractSender(releaseSpec, TestItem.AddressA), Is.EqualTo(expected));
+                    Assert.That(ctx.WorldState.IsInvalidContractSender(releaseSpec, TestItem.AddressA, new EthereumCodeInfoRepository(ctx.WorldState)), Is.EqualTo(expected));
+                }
             }
         }
 

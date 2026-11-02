@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using Fody;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
@@ -229,6 +231,34 @@ public class OpcodeWeaverTests
         }
     }
 
+    /// <remarks>
+    /// Each rewrite grows its call site by three bytes, so a short branch over three sites that reaches its target
+    /// with a few bytes to spare no longer does once they are rewritten, and must not be written with a wrapped offset.
+    /// </remarks>
+    [Test]
+    public void Guest_dispatch_keeps_short_branches_over_rewritten_calls_on_their_targets()
+    {
+        using ModuleDefinition module = ModuleDefinition.CreateModule("Test", ModuleKind.Dll);
+        (MethodDefinition marker, MethodDefinition caller, _) = SetUpGuestDispatch(module);
+        ILProcessor il = caller.Body.GetILProcessor();
+        CilInstruction[] site = caller.Body.Instructions.ToArray();
+        const int sites = 4;
+        for (int copy = 1; copy < sites; copy++)
+        {
+            foreach (CilInstruction instruction in site)
+                il.Append(instruction.Operand is null ? il.Create(instruction.OpCode) : CloneWithOperand(il, instruction));
+        }
+        CilInstruction target = caller.Body.Instructions[(sites - 1) * site.Length];
+        il.InsertBefore(caller.Body.Instructions[0], il.Create(OpCodes.Br_S, target));
+        int targetIndex = caller.Body.Instructions.IndexOf(target);
+
+        GuestDispatchRewriter.Rewrite(marker.DeclaringType);
+        using ModuleDefinition roundTripped = WriteAndRead(module);
+        MethodDefinition written = roundTripped.GetType(caller.DeclaringType.FullName).Methods.Single(m => m.Name == caller.Name);
+
+        Assert.That(written.Body.Instructions[0].Operand, Is.SameAs(written.Body.Instructions[targetIndex + 2 * (sites - 1)]));
+    }
+
     [Test]
     public void Guest_dispatch_rejects_unsupported_marker_uses(
         [Values("Signature", "Target", "Generic", "Instance", "Pointer", "Result", "WrongLocal", "Exception", "Outside", "Unused")] string invalid)
@@ -262,6 +292,21 @@ public class OpcodeWeaverTests
         }
 
         Assert.That(() => GuestDispatchRewriter.Rewrite(dispatch), Throws.TypeOf<WeavingException>());
+    }
+
+    private static CilInstruction CloneWithOperand(ILProcessor il, CilInstruction instruction) => instruction.Operand switch
+    {
+        ParameterDefinition parameter => il.Create(instruction.OpCode, parameter),
+        MethodReference method => il.Create(instruction.OpCode, method),
+        _ => throw new ArgumentException($"Unexpected operand {instruction.Operand}"),
+    };
+
+    private static ModuleDefinition WriteAndRead(ModuleDefinition module)
+    {
+        MemoryStream stream = new();
+        module.Write(stream);
+        stream.Position = 0;
+        return ModuleDefinition.ReadModule(stream);
     }
 
     private static (MethodDefinition Marker, MethodDefinition Caller, CilInstruction Call) SetUpGuestDispatch(ModuleDefinition module)

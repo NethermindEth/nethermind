@@ -290,6 +290,34 @@ public class LightTxDecoderTests
         }
     }
 
+    // EIP-8437: a reloaded record has no frames, so whether it is EIP-8288 dependency-bearing, which picks its eth/73 paths, is
+    // persisted. A record without the slot, as earlier builds wrote, reads as unknown.
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void Dependency_bearing_flag_survives_a_reload(bool dependencyBearing, bool withPaymaster)
+    {
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, paymaster: withPaymaster ? TestItem.AddressC : null);
+        if (dependencyBearing)
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
+            tx.Frames = [.. tx.Frames!, new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
+        }
+
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+        LightTransaction reencoded = LightTxDecoder.Decode(LightTxDecoder.Encode(decoded));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8288Dependencies.IsDependencyBearing(decoded), Is.EqualTo(dependencyBearing));
+            Assert.That(Eip8288Dependencies.IsDependencyBearing(reencoded), Is.EqualTo(dependencyBearing), "the frameless record keeps it");
+            Assert.That(decoded.PersistedDependencyBearing, Is.EqualTo(dependencyBearing ? true : null));
+            Assert.That(decoded.PersistedPaymaster, Is.EqualTo(withPaymaster ? TestItem.AddressC : null));
+            Assert.That(decoded.NonceKeys, Is.EqualTo(tx.NonceKeys));
+        }
+    }
+
     // A payer that never reached the exposure gate holds no reservation, and the slot cannot tell that from a
     // zero one, so the placeholder reads back as absent. The payer itself must still survive.
     [Test]

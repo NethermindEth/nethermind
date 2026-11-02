@@ -19,6 +19,8 @@ public class FileNameMatchesTypeNameAnalyzerTests
     [TestCase("Foo.Part.One.cs", "partial class Foo { }", TestName = "Partial_with_multi_segment_descriptor")]
     [TestCase("Foo.std.cs", "partial class Foo { }", TestName = "Partial_with_lowercase_descriptor")]
     [TestCase("Foo.Bar.cs", "partial class FooAttribute { }", TestName = "Partial_attribute_stripped_with_descriptor")]
+    [TestCase("Foo.std.cs", "class Foo { }", TestName = "Build_variant_std")]
+    [TestCase("Foo.zkevm.cs", "struct Foo { }", TestName = "Build_variant_zkevm")]
     [TestCase("Bar.cs", "class Foo { } class Baz { }", TestName = "Multiple_types_skipped")]
     [TestCase("Foo.cs", "class Foo { class Nested { } }", TestName = "Nested_type_ignored")]
     [TestCase("Foo.cs", "class Foo<T> { }", TestName = "Generic_type_matching_name")]
@@ -40,6 +42,7 @@ public class FileNameMatchesTypeNameAnalyzerTests
     [TestCase("FooT.cs", "class {|#0:Foo|}<T> { }", "FooT", "Foo", TestName = "Generic_type_T_suffix_mismatch")]
     [TestCase("My.cs", "class {|#0:MyThing|} { }", "My", "MyThing", TestName = "Non_attribute_suffix_mismatch")]
     [TestCase("Foo.Bar.cs", "class {|#0:Foo|} { }", "Foo.Bar", "Foo", TestName = "Non_partial_with_descriptor_suffix")]
+    [TestCase("Bar.std.cs", "class {|#0:Foo|} { }", "Bar.std", "Foo", TestName = "Build_variant_mismatch")]
     [TestCase("Bar.cs", "namespace N { class {|#0:Foo|} { } }", "Bar", "Foo", TestName = "Block_scoped_namespace_mismatch")]
     [TestCase("Bar.cs", "namespace N;\nclass {|#0:Foo|} { }", "Bar", "Foo", TestName = "File_scoped_namespace_mismatch")]
     public async Task Reports_diagnostic(string fileName, string source, string fileBaseName, string typeName) =>

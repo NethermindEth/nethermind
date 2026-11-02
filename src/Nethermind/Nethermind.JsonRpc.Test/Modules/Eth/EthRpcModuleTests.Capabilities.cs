@@ -57,10 +57,11 @@ public partial class EthRpcModuleTests
             historyPruner ?? Substitute.For<IHistoryPruner>()).GetCapabilities();
     }
 
-    private static IHistoryPruner MockHistoryPruner(ulong oldestBlockNumber)
+    private static IHistoryPruner MockHistoryPruner(ulong oldestBlockNumber, ulong retentionEpochs = 0)
     {
         IHistoryPruner pruner = Substitute.For<IHistoryPruner>();
         pruner.OldestBlockHeader.Returns(Build.A.BlockHeader.WithNumber(oldestBlockNumber).TestObject);
+        pruner.RetentionEpochs.Returns(retentionEpochs);
         pruner.GetRetentionBlocks(Arg.Any<ulong>()).Returns(call => (ulong)call[0] * 32UL);
         return pruner;
     }
@@ -263,8 +264,8 @@ public partial class EthRpcModuleTests
             ExpectedReceipts: rollingPruned, ExpectedBlocks: rollingPruned)
         {
             SyncConfig = fullSync,
-            HistoryConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = retentionEpochs },
-            HistoryPruner = MockHistoryPruner(rollingFloor),
+            HistoryConfig = new HistoryConfig { Pruning = PruningModes.Rolling },
+            HistoryPruner = MockHistoryPruner(rollingFloor, retentionEpochs),
         };
 
         const ulong ancientFloor = 500;

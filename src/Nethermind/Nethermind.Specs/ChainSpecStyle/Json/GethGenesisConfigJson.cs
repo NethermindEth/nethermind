@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
@@ -35,7 +36,6 @@ public class GethGenesisConfigJson : IHasNamedForks
 
     public ulong? HomesteadBlock { get => GetBlock(); set => SetBlock(value); }
     public ulong? DaoForkBlock { get => GetBlock(nameof(Dao)); set => SetBlock(value, nameof(Dao)); }
-    public bool? DaoForkSupport { get; set; }
 
     // EIP-level overrides — not fork labels, kept as plain typed properties.
     public ulong? Eip150Block { get; set; }
@@ -64,15 +64,29 @@ public class GethGenesisConfigJson : IHasNamedForks
     // class is Bogota.
     public ulong? BogotaTime { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-8141 frame transactions, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
-    /// <remarks>
-    /// They schedule on their own rather than with Bogota: the expiry-verifier predeploy they install puts a
-    /// code change in the EIP-7928 access list of the first block processed under the fork, which the Bogota
-    /// consensus fixtures pin. Later blocks are unaffected, as the installer skips an install whose code is
-    /// already canonical.
-    /// </remarks>
     public ulong? Eip8141PrototypeTime { get => GetTime(); set => SetTime(value); }
     /// <summary>EIP-8288 prototype activation in Unix timestamp seconds; null leaves it unscheduled.</summary>
     public ulong? Eip8288PrototypeTime { get => GetTime(); set => SetTime(value); }
+
+    /// <summary>Activation time of <see cref="Eip8288AggregatedVk"/>, a fork that changes the EIP-8288 aggregate verifier.</summary>
+    /// <remarks>Devnet-only: EIP-8288 fixes <c>AGGREGATED_VK</c> at the protocol level, so a production network never overrides it; this
+    /// models a verifier-changing fork for testing.</remarks>
+    public ulong? Eip8288AggregatedVkTimestamp { get; set; }
+
+    /// <summary>The EIP-8288 <c>AGGREGATED_VK</c> from <see cref="Eip8288AggregatedVkTimestamp"/>, replacing the pinned one.</summary>
+    /// <remarks>Devnet-only: EIP-8288 fixes <c>AGGREGATED_VK</c> at the protocol level, so a production network never overrides it; this
+    /// models a verifier-changing fork for testing.</remarks>
+    public Hash256? Eip8288AggregatedVk { get; set; }
+    /// <summary>Activation time for EIP-8250 keyed nonces, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
+    public ulong? Eip8250PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for EIP-8272 recent roots, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
+    public ulong? Eip8272PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for EIP-7906 transaction outcome assertions, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
+    public ulong? Eip7906PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for EIP-4758 SENDALL, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
+    public ulong? Eip4758PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for the bogota-devnet-2 EIP set, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
+    public ulong? BogotaDevnet2Time { get => GetTime(); set => SetTime(value); }
 
     // OIC dict matches "Bpo1" (from CallerMemberName-strip) against the BPO1 fork class.
     public ulong? Bpo1Time { get => GetTime(); set => SetTime(value); }
@@ -85,6 +99,9 @@ public class GethGenesisConfigJson : IHasNamedForks
     public bool? TerminalTotalDifficultyPassed { get; set; }
     public Address? DepositContractAddress { get; set; }
 
+    /// <summary>The accounts the EIP-8253 transition sets to nonce 1; <c>null</c> when the chain lists none.</summary>
+    public Address[]? ZeroNonceStorageAccounts { get; set; }
+
     /// <summary>
     /// Unix timestamp, in seconds, of the beacon chain genesis; <c>null</c> when the chain has no beacon chain.
     /// </summary>
@@ -92,6 +109,11 @@ public class GethGenesisConfigJson : IHasNamedForks
     /// Not part of EIP-7949; mirrors <c>params.beaconChainGenesisTimestamp</c> of Parity-style chainspecs.
     /// </remarks>
     public ulong? BeaconChainGenesisTimestamp { get; set; }
+
+    /// <summary>
+    /// Nethermind's minimum history retention, in epochs; <c>null</c> uses <see cref="HistoryRetentionConstants.MinEpochsForBlockRequests"/>.
+    /// </summary>
+    public ulong? MinHistoryRetentionEpochs { get; set; }
 
     public Dictionary<string, GethBlobScheduleEntry>? BlobSchedule { get; set; }
 

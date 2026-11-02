@@ -123,7 +123,37 @@ public class HistoryRowScannerTests
     }
 
     [Test]
-    public void BulkReplay_WhenCheckpointSyncFails_RequiresReopenBeforeAdvancing()
+    public void BulkReplay_WhenBlocksCommitAndStorageIsCleaned_DoesNotSyncTheScratchWal()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using FailingWalScratchDb memory = new();
+        using MemDb code = new();
+        BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
+        using BulkFillSession session = new(new ScratchDbFactory(directory.Path, memory, false), code, TestItem.KeccakA, anchor, false);
+        ImportEmptyState(session);
+        int syncsBeforeReplay = memory.SuccessfulSyncs;
+        BlockHeader first = Build.A.Block.WithNumber(1).WithParentHash(anchor.Hash!).TestObject.Header;
+        CommitScratch(session, first, writer =>
+        {
+            writer.Set(TestItem.AddressA, new Account(1, 100));
+            using IWorldStateScopeProvider.IStorageWriteBatch storage = writer.CreateStorageWriteBatch(TestItem.AddressA, 1);
+            storage.Set(1, 1);
+        });
+        BlockHeader second = Build.A.Block.WithNumber(2).WithParentHash(first.Hash!).TestObject.Header;
+        CommitScratch(session, second, writer => writer.Set(TestItem.AddressA, null));
+        session.CleanStorage(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(memory.SuccessfulSyncs, Is.EqualTo(syncsBeforeReplay), "a lost scratch tail only replays blocks whose index rows were synced, so neither the block nor its cleanup syncs");
+            Assert.That(session.CurrentState.BlockNumber, Is.EqualTo(2UL));
+            Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Clears).GetAllKeys(), Is.Empty, "precondition: the cleanup ran");
+            Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Storage).GetAllKeys(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public void BulkReplay_WhenBlockCommitFails_RequiresReopenBeforeAdvancing()
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using FailingWalScratchDb memory = new();
@@ -136,19 +166,15 @@ public class HistoryRowScannerTests
             ImportEmptyState(session);
             session.BeginBlock(next);
             session.StageFinalState(() => new ScratchSnapshot(writer => writer.Set(TestItem.AddressA, new Account(1, 123))));
-            memory.IsWalFailureEnabled = true;
+            memory.IsCommitFailureEnabled = true;
             Assert.Throws<IOException>(session.CommitBlock);
             Assert.That(session.CurrentState.BlockNumber, Is.Zero);
             Assert.Throws<InvalidOperationException>(() => session.BeginBlock(next));
         }
-        Assert.Throws<IOException>(() => new BulkFillSession(factory, code, TestItem.KeccakA, anchor, false));
-        memory.IsWalFailureEnabled = false;
+        memory.IsCommitFailureEnabled = false;
         using BulkFillSession recovered = new(factory, code, TestItem.KeccakA, anchor, false);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(recovered.CurrentState.BlockNumber, Is.EqualTo(1UL));
-            Assert.That(recovered.CreateReader().GetAccount(TestItem.AddressA)?.Balance, Is.EqualTo(new UInt256(123)));
-        }
+        Assert.That(recovered.CurrentState.BlockNumber, Is.Zero);
+        Assert.That(() => recovered.BeginBlock(next), Throws.Nothing);
     }
 
     [Test]
@@ -233,6 +259,60 @@ public class HistoryRowScannerTests
             Assert.That(oldValue, Is.EqualTo(UInt256.Zero));
             Assert.That(newValue, Is.EqualTo(deleted ? UInt256.Zero : new UInt256(2)));
             Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Storage).GetAllKeys().Count(), Is.EqualTo(deleted ? 0 : 1));
+            Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Clears).GetAllKeys(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public void BulkReplay_WhenSeveralAccountsAreCleared_CleansEveryMarkerInOnePass()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> memory = new();
+        using MemDb code = new();
+        BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
+        using BulkFillSession session = new(new ScratchDbFactory(directory.Path, memory, false), code, TestItem.KeccakA, anchor, false);
+        ImportEmptyState(session);
+        Address[] cleared = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD];
+        BlockHeader first = Build.A.Block.WithNumber(1).WithParentHash(anchor.Hash!).TestObject.Header;
+        CommitScratch(session, first, writer =>
+        {
+            foreach (Address address in cleared.Append(TestItem.AddressE))
+            {
+                writer.Set(address, new Account(1, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = writer.CreateStorageWriteBatch(address, 3);
+                for (uint slot = 0; slot < 3; slot++) storage.Set(slot, 1);
+            }
+        });
+        BlockHeader second = Build.A.Block.WithNumber(2).WithParentHash(first.Hash!).TestObject.Header;
+        CommitScratch(session, second, writer =>
+        {
+            foreach (Address address in cleared)
+            {
+                writer.Set(address, address == TestItem.AddressB ? null : new Account(1, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = writer.CreateStorageWriteBatch(address, 1);
+                storage.Clear();
+                storage.Set(7, 2);
+            }
+        });
+
+        session.CleanStorage(CancellationToken.None);
+
+        BulkFillStateReader reader = session.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Address address in cleared)
+            {
+                UInt256 oldValue = default;
+                UInt256 newValue = default;
+                reader.TryGetSlot(address, 0, ref oldValue);
+                reader.TryGetSlot(address, 7, ref newValue);
+                Assert.That(oldValue, Is.EqualTo(UInt256.Zero), address.ToString());
+                Assert.That(newValue, Is.EqualTo(address == TestItem.AddressB ? UInt256.Zero : new UInt256(2)), address.ToString());
+            }
+            UInt256 untouched = default;
+            reader.TryGetSlot(TestItem.AddressE, 0, ref untouched);
+            Assert.That(untouched, Is.EqualTo(UInt256.One));
+            Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Storage).GetAllKeys().Count(), Is.EqualTo(cleared.Length - 1 + 3));
             Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Clears).GetAllKeys(), Is.Empty);
         }
     }
@@ -408,6 +488,54 @@ public class HistoryRowScannerTests
     }
 
     [Test]
+    public void ScratchVerification_WhenASlotHasNoLiveAccount_RefusesUnlessTheSlotIsDead(
+        [Values] bool rlpWrapped,
+        [Values] bool orphanSortsFirst,
+        [Values] SlotOwner owner)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> source = new();
+        using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> scratch = new();
+        HistoryRowFormat format = HistoryColumnsWriter.CreateSharedFormat(source, new FlatDbConfig()).RowFormat;
+        byte[] liveBytes = Keccak.Compute("scratch account").BytesToArray();
+        liveBytes[0] = 0x80;
+        byte[] orphanBytes = (byte[])liveBytes.Clone();
+        orphanBytes[0] = orphanSortsFirst ? (byte)0x00 : (byte)0xFF;
+        ValueHash256 live = new(liveBytes);
+        ValueHash256 orphan = new(orphanBytes);
+        ValueHash256 slot = Keccak.Compute("scratch slot").ValueHash256;
+        using MemDb storageDb = new();
+        StorageTree storageTree = new(new RawScopedTrieStore(storageDb), LimboLogs.Instance);
+        storageTree.Set(slot.Bytes, new byte[] { 0x81, 0x80 });
+        storageTree.UpdateRootHash();
+        byte[] accountRow = AccountDecoder.Slim.EncodeAsBytes(new Account(1, 2, storageTree.RootHash, Keccak.OfAnEmptyString));
+        RecordScanRow(source.GetColumnDb(FlatHistoryColumns.AccountHistory), FlatHistoryColumns.AccountHistory, live.Bytes, 5, accountRow);
+        RecordScanSlot(source, live, slot, 5, new UInt256(128), rlpWrapped);
+        RecordScanSlot(source, orphan, slot, 3, owner == SlotOwner.NoneWithZeroedSlot ? UInt256.Zero : new UInt256(7), rlpWrapped);
+        if (owner is SlotOwner.DeletedAccount or SlotOwner.DeletedAccountClearedAfterSlot)
+            RecordScanRow(source.GetColumnDb(FlatHistoryColumns.AccountHistory), FlatHistoryColumns.AccountHistory, orphan.Bytes, 4, []);
+        if (owner == SlotOwner.DeletedAccountClearedAfterSlot)
+            RecordScanRow(source.GetColumnDb(FlatHistoryColumns.StorageClears), FlatHistoryColumns.StorageClears, orphan.Bytes, 4, []);
+        using MemDb accountsDb = new();
+        StateTree accountsTree = new(new RawScopedTrieStore(accountsDb), LimboLogs.Instance);
+        AccountRowRlp.Set(accountsTree, live, accountRow);
+        accountsTree.UpdateRootHash();
+        BulkFillScratchState state = new(scratch, Keccak.EmptyTreeHash, 8);
+        foreach (FlatHistoryColumns column in new[] { FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory, FlatHistoryColumns.StorageClears })
+            Assert.That(state.ImportPage(Store(source, column), format, column, 10, CancellationToken.None).Complete, Is.True);
+
+        if (owner is SlotOwner.None or SlotOwner.DeletedAccount)
+            Assert.Throws<ScratchStateUnusableException>(() => state.VerifyAnchor(accountsTree.RootHash, rlpWrapped, CancellationToken.None),
+                "a replay reads a slot without its account, so a re-created account would start from the stale value");
+        else
+        {
+            Assert.DoesNotThrow(() => state.VerifyAnchor(accountsTree.RootHash, rlpWrapped, CancellationToken.None));
+            UInt256 value = UInt256.MaxValue;
+            new BulkFillStateReader(scratch, new StateId(10, accountsTree.RootHash), rlpWrapped).TryGetStorageRaw(orphan, slot, ref value);
+            Assert.That(value, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
     public void SortedStateRoot_WhenKeysSharePrefixes_MatchesPatriciaTree(
         [Values(0, 1, 2, 17, 1024)] int count,
         [Values(0, 16, 30)] int sharedBytes)
@@ -504,6 +632,70 @@ public class HistoryRowScannerTests
             Assert.That(last.Scanned, Is.EqualTo(1), "restart must not reread the committed row");
             Assert.That(scratch.GetColumnDb(target)[key], Is.EqualTo(expected), "resuming within a key must retain the selected version");
             Assert.That(state.ImportPage(Store(source, column), format, column, 1, CancellationToken.None).Scanned, Is.Zero, "completed imports must not restart");
+        }
+    }
+
+    [Test]
+    public void ScratchImport_OfManyPages_SyncsTheWalEveryIntervalAndAtCompletion()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> source = new();
+        using CrashableScratchDb scratch = new();
+        HistoryRowFormat format = HistoryColumnsWriter.CreateSharedFormat(source, new FlatDbConfig()).RowFormat;
+        int rows = 2 * BulkFillScratchState.PagesPerWalSync + 1;
+        for (int index = 0; index < rows; index++)
+            RecordScanRow(source.GetColumnDb(FlatHistoryColumns.AccountHistory), FlatHistoryColumns.AccountHistory, ImportKey(Hash256.Size, index), 0, [1]);
+        BulkFillScratchState state = new(scratch, Keccak.EmptyTreeHash, 0);
+        int syncs = scratch.Syncs;
+        int pages = 1;
+        while (!state.ImportPage(Store(source, FlatHistoryColumns.AccountHistory), format, FlatHistoryColumns.AccountHistory, 1, CancellationToken.None).Complete)
+            pages++;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pages, Is.EqualTo(rows + 1), "precondition: one row per page and a final empty page that completes the column");
+            Assert.That(scratch.Syncs - syncs, Is.EqualTo(3), "two full intervals and the completion, not one sync per page");
+        }
+    }
+
+    [Test]
+    public void ScratchImport_WhenTheUnsyncedTailIsLost_ResumesFromTheDurableCursorToTheSameRows(
+        [Values(FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory, FlatHistoryColumns.StorageClears)] FlatHistoryColumns column)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> source = new();
+        HistoryRowFormat format = HistoryColumnsWriter.CreateSharedFormat(source, new FlatDbConfig()).RowFormat;
+        int keyLength = column == FlatHistoryColumns.StorageHistory ? BaseFlatPersistence.StorageKeyLength : Hash256.Size;
+        int keys = BulkFillScratchState.PagesPerWalSync;
+        for (int index = 0; index < keys; index++)
+        {
+            byte[] key = ImportKey(keyLength, index);
+            foreach (ulong block in new ulong[] { 5, 10, 20 })
+                RecordScanRow(source.GetColumnDb(column), column, key, block, column == FlatHistoryColumns.StorageClears ? [] : [(byte)block]);
+        }
+        int rows = 3 * keys;
+        int lostPages = BulkFillScratchState.PagesPerWalSync / 2 + 1;
+
+        using CrashableScratchDb uninterrupted = new();
+        BulkFillScratchState reference = new(uninterrupted, Keccak.EmptyTreeHash, 10);
+        while (!reference.ImportPage(Store(source, column), format, column, 1, CancellationToken.None).Complete) { }
+
+        using CrashableScratchDb scratch = new();
+        BulkFillScratchState state = new(scratch, Keccak.EmptyTreeHash, 10);
+        for (int page = 0; page < BulkFillScratchState.PagesPerWalSync + lostPages; page++)
+            Assert.That(state.ImportPage(Store(source, column), format, column, 1, CancellationToken.None).Complete, Is.False);
+        using CrashableScratchDb restarted = scratch.Crash();
+        BulkFillScratchState resumed = new(restarted, Keccak.EmptyTreeHash, 10);
+        int rescanned = 0;
+        HistoricalStateScan.Page last;
+        do
+        {
+            last = resumed.ImportPage(Store(source, column), format, column, 1, CancellationToken.None);
+            rescanned += last.Scanned;
+        } while (!last.Complete);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rescanned, Is.EqualTo(rows - BulkFillScratchState.PagesPerWalSync), "the crash loses every page after the last synced cursor, and only those");
+            Assert.That(restarted.Rows(), Is.EqualTo(uninterrupted.Rows()), "re-importing the lost pages stages exactly the rows an uninterrupted import does");
         }
     }
 
@@ -782,6 +974,13 @@ public class HistoryRowScannerTests
         return key;
     }
 
+    private static byte[] ImportKey(int length, int index)
+    {
+        byte[] key = new byte[length];
+        BinaryPrimitives.WriteInt32BigEndian(key, index + 1);
+        return key;
+    }
+
     private static void RecordScanRow(IDb source, FlatHistoryColumns column, ReadOnlySpan<byte> key, ulong block, ReadOnlySpan<byte> value)
     {
         byte[] rowKey = new byte[key.Length + sizeof(ulong)];
@@ -789,6 +988,15 @@ public class HistoryRowScannerTests
         BinaryPrimitives.WriteUInt64BigEndian(rowKey.AsSpan(key.Length), column == FlatHistoryColumns.StorageClears ? block : ~block);
         if (value.IsEmpty) source.Set(rowKey, []);
         else source.PutSpan(rowKey, value);
+    }
+
+    private static void RecordScanSlot(IColumnsDb<FlatHistoryColumns> source, in ValueHash256 address, in ValueHash256 slot, ulong block, in UInt256 value, bool rlpWrapped)
+    {
+        Span<byte> storageKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
+        BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(storageKey, address, slot);
+        Span<byte> encoded = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
+        int length = value.IsZero ? 0 : BaseFlatPersistence.EncodeSlotValue(value, rlpWrapped, encoded);
+        RecordScanRow(source.GetColumnDb(FlatHistoryColumns.StorageHistory), FlatHistoryColumns.StorageHistory, storageKey, block, encoded[..length]);
     }
 
     private static ISortedKeyValueStore Store(IColumnsDb<FlatHistoryColumns> columns, FlatHistoryColumns column) => (ISortedKeyValueStore)columns.GetColumnDb(column);
@@ -806,6 +1014,7 @@ public class HistoryRowScannerTests
     private sealed class FailingWalScratchDb : SnapshotableMemColumnsDb<BulkFillScratchState.Columns>, IColumnsDb<BulkFillScratchState.Columns>
     {
         public bool IsWalFailureEnabled { get; set; }
+        public bool IsCommitFailureEnabled { get; set; }
         public int SuccessfulSyncs { get; private set; }
 
         public void SyncWal()
@@ -813,5 +1022,58 @@ public class HistoryRowScannerTests
             if (IsWalFailureEnabled) throw new IOException("WAL sync failed");
             SuccessfulSyncs++;
         }
+
+        public new IColumnsWriteBatch<BulkFillScratchState.Columns> StartWriteBatch() => new FailingCommitBatch(this, base.StartWriteBatch());
+
+        private sealed class FailingCommitBatch(FailingWalScratchDb db, IColumnsWriteBatch<BulkFillScratchState.Columns> batch) : IColumnsWriteBatch<BulkFillScratchState.Columns>
+        {
+            public IWriteBatch GetColumnBatch(BulkFillScratchState.Columns key) => batch.GetColumnBatch(key);
+
+            public void Clear() => batch.Clear();
+
+            public void Dispose()
+            {
+                if (db.IsCommitFailureEnabled) throw new IOException("Batch commit failed");
+                batch.Dispose();
+            }
+        }
+    }
+
+    /// <summary>Keeps what the last WAL sync made durable; a crash reopens the scratch with only that.</summary>
+    private sealed class CrashableScratchDb : SnapshotableMemColumnsDb<BulkFillScratchState.Columns>, IColumnsDb<BulkFillScratchState.Columns>
+    {
+        private Dictionary<BulkFillScratchState.Columns, KeyValuePair<byte[], byte[]>[]> _durable = [];
+
+        public int Syncs { get; private set; }
+
+        public void SyncWal()
+        {
+            Syncs++;
+            Dictionary<BulkFillScratchState.Columns, KeyValuePair<byte[], byte[]>[]> durable = [];
+            foreach (BulkFillScratchState.Columns column in ColumnKeys) durable[column] = GetColumnDb(column).GetAll().ToArray();
+            _durable = durable;
+        }
+
+        public CrashableScratchDb Crash()
+        {
+            CrashableScratchDb restarted = new() { _durable = _durable };
+            foreach ((BulkFillScratchState.Columns column, KeyValuePair<byte[], byte[]>[] rows) in _durable)
+            {
+                IDb db = restarted.GetColumnDb(column);
+                foreach (KeyValuePair<byte[], byte[]> row in rows) db.Set(row.Key, row.Value);
+            }
+            return restarted;
+        }
+
+        public string[] Rows() => ColumnKeys.SelectMany(column => GetColumnDb(column).GetAll(ordered: true)
+            .Select(row => $"{column}:{Convert.ToHexString(row.Key)}={Convert.ToHexString(row.Value)}")).ToArray();
+    }
+
+    public enum SlotOwner
+    {
+        None,
+        NoneWithZeroedSlot,
+        DeletedAccount,
+        DeletedAccountClearedAfterSlot
     }
 }

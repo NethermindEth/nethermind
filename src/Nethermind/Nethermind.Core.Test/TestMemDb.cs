@@ -128,7 +128,7 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
         return new FakeSortedView(sortedValue);
     }
 
-    private class FakeSortedView(ArrayPoolList<(byte[], byte[]?)> list) : ISortedView
+    private class FakeSortedView(ArrayPoolList<(byte[], byte[]?)> list) : ISeekableSortedView
     {
         private int idx = -1;
 
@@ -152,6 +152,17 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
             // All keys are less than value - position at last element (largest key <= value)
             idx = list.Count - 1;
             return true;
+        }
+
+        public bool SeekTo(ReadOnlySpan<byte> key)
+        {
+            idx = 0;
+            while (idx < list.Count && Bytes.BytesComparer.Compare(list[idx].Item1, key) < 0)
+            {
+                idx++;
+            }
+
+            return idx < list.Count;
         }
 
         public bool MoveNext()

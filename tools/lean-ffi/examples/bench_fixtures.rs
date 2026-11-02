@@ -25,7 +25,7 @@ fn main() {
         std::fs::write(format!("{directory}/{name}"), bytes).unwrap();
     };
     let (_, pk) = sphincs::key_gen_from_seed([42; 32]);
-    save("sphincs-key.bin", &keccak(&pk.flatten()));
+    save("sphincs-key.bin", &pk.flatten());
     let keys: Vec<_> = (0u8..16)
         .map(|index| {
             let mut seed = [42; 32];

@@ -76,8 +76,9 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task FillTransaction_WhenDynamicFeeTxSuppliesOnlyGasPrice_UsesItAsFeeCapAndTip()
+    public async Task FillTransaction_WhenTypedTxSuppliesOnlyGasPrice_FillsLegacyWithIt()
     {
+        // Serializes with type 0x2, which is ignored as in geth: gasPrice alone picks a legacy transaction.
         EIP1559TransactionForRpc rpcTx = new()
         {
             From = TestItem.AddressC,
@@ -86,10 +87,10 @@ public partial class EthRpcModuleTests
             GasPrice = 7,
         };
 
-        EIP1559TransactionForRpc filled = (EIP1559TransactionForRpc)await FillTransactionForResult(rpcTx);
+        TransactionForRpc filled = await FillTransactionForResult(rpcTx);
 
-        Assert.That(filled.MaxFeePerGas, Is.EqualTo((UInt256)7), "gasPrice must become the fee cap instead of being replaced by the oracle");
-        Assert.That(filled.MaxPriorityFeePerGas, Is.EqualTo((UInt256)7), "gasPrice must become the tip instead of being replaced by the oracle");
+        Assert.That(filled, Is.TypeOf<LegacyTransactionForRpc>());
+        Assert.That(((LegacyTransactionForRpc)filled).GasPrice, Is.EqualTo((UInt256)7), "gasPrice must be kept instead of being replaced by the oracle");
     }
 
     private static IEnumerable<TestCaseData> InvalidInputCases()

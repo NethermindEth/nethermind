@@ -125,7 +125,6 @@ public class NonceManagerTests
     }
 
     [Test]
-    [Explicit]
     public void should_increment_own_transaction_nonces_locally_when_requesting_reservations_in_parallel()
     {
         const int reservationsCount = 1000;
@@ -172,11 +171,12 @@ public class NonceManagerTests
 
         Assert.Throws<InvalidOperationException>(() => _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out _));
 
-        Task<ulong> next = Task.Run(() =>
+        // A dedicated thread, so the bounded wait below does not also count how long the thread pool takes to start it.
+        Task<ulong> next = Task.Factory.StartNew(() =>
         {
             using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce);
             return nonce;
-        });
+        }, TaskCreationOptions.LongRunning);
 
         Assert.That(next.Wait(TimeSpan.FromSeconds(5)), Is.True, "a failed reservation must not keep the account locked");
         Assert.That(next.Result, Is.EqualTo(3UL));
@@ -732,13 +732,13 @@ public class NonceManagerTests
         Task<ulong> concurrent;
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
         {
-            concurrent = Task.Run(() =>
+            concurrent = Task.Factory.StartNew(() =>
             {
                 reserving.Set();
                 using NonceLocker concurrentLocker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong concurrentNonce);
                 Accept(concurrentLocker, TestItem.AddressA, concurrentNonce);
                 return concurrentNonce;
-            });
+            }, TaskCreationOptions.LongRunning);
             Assert.That(reserving.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: the concurrent reservation has started");
             Assert.That(concurrent.Wait(100), Is.False, "the concurrent reservation must wait for the in-flight one");
             Assert.That(nonce, Is.EqualTo(0UL));

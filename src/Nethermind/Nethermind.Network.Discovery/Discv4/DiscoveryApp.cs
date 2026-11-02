@@ -4,7 +4,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using Autofac;
-using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -15,7 +14,6 @@ using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
-using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
@@ -25,10 +23,10 @@ public class DiscoveryApp : KademliaDiscoveryApp
     private readonly List<Node> _bootNodes;
     private readonly DiscoveryPersistenceManager _persistenceManager;
     private readonly IKademliaAdapter _discv4Adapter;
-    private readonly Func<IChannel, NettyDiscoveryHandler> _discoveryHandlerFactory;
+    private readonly Func<DiscoveryHandler> _discoveryHandlerFactory;
     private readonly ILifetimeScope _discv4Services;
 
-    private NettyDiscoveryHandler? _discoveryHandler;
+    private DiscoveryHandler? _discoveryHandler;
 
     public DiscoveryApp(
         ILifetimeScope rootScope,
@@ -60,7 +58,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
         DiscV4Services services = _discv4Services.Resolve<DiscV4Services>();
         _persistenceManager = services.PersistenceManager;
         _discv4Adapter = services.Discv4Adapter;
-        _discoveryHandlerFactory = services.NettyDiscoveryHandlerFactory;
+        _discoveryHandlerFactory = services.DiscoveryHandlerFactory;
         UseKademliaServices(services.NodeSource, services.Kademlia);
     }
 
@@ -188,39 +186,32 @@ public class DiscoveryApp : KademliaDiscoveryApp
         DiscoveryPersistenceManager PersistenceManager,
         IKademliaAdapter Discv4Adapter,
         IKademlia<PublicKey, Node> Kademlia,
-        Func<IChannel, NettyDiscoveryHandler> NettyDiscoveryHandlerFactory
+        Func<DiscoveryHandler> DiscoveryHandlerFactory
     )
     {
     }
 
-    protected override void DetachEventHandlers()
+    protected virtual DiscoveryHandler CreateDiscoveryHandler()
     {
-        try
-        {
-            _discoveryHandler?.OnChannelActivated -= OnChannelActivated;
-        }
-        catch (Exception e)
-        {
-            Logger.Error("Error during discovery cleanup", e);
-        }
-    }
-
-    protected virtual NettyDiscoveryHandler CreateDiscoveryHandler(IChannel channel)
-    {
-        NettyDiscoveryHandler discoveryHandler = _discoveryHandlerFactory(channel);
+        DiscoveryHandler discoveryHandler = _discoveryHandlerFactory();
         _discv4Adapter.MsgSender = discoveryHandler;
         return discoveryHandler;
     }
 
-    public override void InitializeChannel(IChannel channel)
+    internal override void InitializeChannel(IDatagramSocket socket, Action<PooledUdpReceiveResult> forward)
     {
-        _discoveryHandler = CreateDiscoveryHandler(channel);
-        _discoveryHandler.OnChannelActivated += OnChannelActivated;
+        _discoveryHandler = CreateDiscoveryHandler();
+        _discoveryHandler.InitializeChannel(socket, forward);
+        OnChannelActivated();
+    }
 
-        channel.Pipeline
-            .AddLast(new DotNetty.Handlers.Logging.LoggingHandler(LogLevel.INFO))
-            .AddLast(_discoveryHandler);
-        ActivateIfChannelIsActive(channel);
+    internal override void Receive(PooledUdpReceiveResult datagram)
+        => (_discoveryHandler ?? throw new InvalidOperationException("Discovery channel is not initialized.")).Receive(datagram);
+
+    protected override Task StopAsyncCore()
+    {
+        _discoveryHandler?.CloseInbound();
+        return Task.CompletedTask;
     }
 
     protected override async Task RunDiscoveryAsync(CancellationToken cancellationToken)

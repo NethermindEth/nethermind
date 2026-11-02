@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
@@ -103,5 +104,40 @@ public class OptimismBaseFeeCalculatorTests
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
 
         Assert.That(actualBaseFee, Is.EqualTo((UInt256)expectedBaseFee));
+    }
+
+    [Test]
+    public void CalculatesBaseFee_AfterJovian_LeavesTheSharedParentHeaderUntouched()
+    {
+        const ulong gasUsed = JovianTest.GasTarget;
+        EIP1559Parameters parameters = new(1, JovianTest.Denominator, JovianTest.Elasticity, 10_000);
+        byte[] extraData = new byte[parameters.ByteLength];
+        parameters.WriteTo(extraData);
+        BlockHeader parent = Build.A.BlockHeader
+            .WithGasLimit(JovianTest.GasLimit)
+            .WithGasUsed(gasUsed)
+            .WithBlobGasUsed(JovianTest.GasTarget + 10_000_000)
+            .WithBaseFee(2_000_000_000)
+            .WithTimestamp(Spec.JovianTimeStamp)
+            .WithExtraData(extraData)
+            .TestObject;
+
+        // Another caller sharing the cached parent header must never observe the DA-footprint override, not even mid-calculation.
+        ulong? parentGasUsedDuringCalculation = null;
+        IBaseFeeCalculator inner = Substitute.For<IBaseFeeCalculator>();
+        inner.Calculate(Arg.Any<BlockHeader>(), Arg.Any<IEip1559Spec>()).Returns(_ =>
+        {
+            parentGasUsedDuringCalculation = parent.GasUsed;
+            return UInt256.One;
+        });
+        OptimismBaseFeeCalculator calculator = new(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp, inner);
+
+        calculator.Calculate(parent, new OptimismReleaseSpec { IsEip1559Enabled = true });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parentGasUsedDuringCalculation, Is.EqualTo(gasUsed));
+            Assert.That(parent.GasUsed, Is.EqualTo(gasUsed));
+        }
     }
 }

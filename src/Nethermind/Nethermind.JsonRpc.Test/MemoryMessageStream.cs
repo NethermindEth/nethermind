@@ -23,9 +23,10 @@ public class MemoryMessageStream : MemoryStream, IMessageBorderPreservingStream
         });
     }
 
-    public ValueTask<int> WriteEndOfMessageAsync()
+    public async ValueTask<int> WriteEndOfMessageAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken)
     {
+        await WriteAsync(data, cancellationToken);
         WriteByte(Delimiter);
-        return ValueTask.FromResult(1);
+        return 1;
     }
 }

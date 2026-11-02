@@ -7,16 +7,14 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
-using Queue = Nethermind.Evm.EvmObjectPool<Nethermind.Evm.ExecutionEnvironment>;
 
 namespace Nethermind.Evm
 {
     /// <summary>
     /// Execution environment for EVM calls. Pooled to avoid allocation and GC write barrier overhead.
     /// </summary>
-    public sealed class ExecutionEnvironment : IDisposable
+    public sealed partial class ExecutionEnvironment : IDisposable
     {
-        private static readonly Queue _pool = new();
         private UInt256 _value;
 
         /// <summary>Owned by a call-frame cache slot, so disposal clears it but never hands it to the pool.</summary>

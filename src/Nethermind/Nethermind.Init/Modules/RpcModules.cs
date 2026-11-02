@@ -27,6 +27,7 @@ using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.LogIndex;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Overlay;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Proof;
@@ -35,6 +36,7 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.JsonRpc.Modules.Web3;
+using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Sockets;
@@ -61,6 +63,9 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
         builder
             .AddSingleton<IEthSyncingInfo, EthSyncingInfo>()
             .AddSingleton<IRpcModuleProvider, RpcModuleProvider>()
+            // Resolved by StartRpc so plugins can decorate it. A decorator sees a request before its method is checked
+            // against the endpoint and authentication; one that answers by itself must check with IRpcModuleProvider first.
+            .AddSingleton<IJsonRpcService, JsonRpcService>()
             .AddSingleton<IJsonRpcLocalStats, JsonRpcLocalStats>()
             .AddSingleton<IWebSocketsManager, WebSocketsManager>()
 
@@ -92,6 +97,8 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 
             // Eth and its dependencies
             .AddSingleton<IBlockForRpcFactory, BlockForRpcFactory>()
+            .AddSingleton<HashesOnlyBlockReader>()
+            .AddSingleton<IBatchConcurrencyStrategy, EthCallBatchConcurrency>()
             .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
                 .AddSingleton<IBlockchainBridgeFactory, ISimulateReadOnlyBlocksProcessingEnvFactory, IOverridableEnvFactory, ILifetimeScope>(
                     (simEnvFactory, overridableEnvFactory, lifetimeScope) =>
@@ -109,8 +116,12 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .RegisterBoundedJsonRpcModule<IProofRpcModule, ProofModuleFactory>(2, jsonRpcConfig.Timeout)
                 .AddScoped<IProofRpcModule, ProofRpcModule>()
 
+            // Overlay
+            .RegisterBoundedJsonRpcModule<IOverlayRpcModule, OverlayModuleFactory>(2, jsonRpcConfig.Timeout)
+                .AddScoped<IOverlayRpcModule, OverlayRpcModule>()
+
             // Trace
-            .AddSingleton<ParallelTraceBudget>()
+            .AddSingleton<ParallelTraceBudget, IFlatDbConfig, ILogManager>(CreateTraceBudget)
             .AddSingleton<ParallelTraceBudgets, ISpecProvider, IFlatDbConfig, ParallelTraceBudget>(CreateParallelTraceBudgets)
             // Each instance holds two full block-processing scopes for the life of the process, and they are built on
             // demand and never released, so the default stays where it was: parallel tracing shares one pool across
@@ -119,7 +130,8 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                 .AddScoped<ITraceRpcModule, TraceRpcModule>()
 
             // Debug
-            .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(jsonRpcConfig.DebugModuleConcurrentInstances ?? Math.Min(Environment.ProcessorCount, 16), jsonRpcConfig.Timeout)
+            .AddSingleton<IBatchConcurrencyStrategy, DebugTraceCallBatchConcurrency>()
+            .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(jsonRpcConfig.GetDebugModuleConcurrentInstances(), jsonRpcConfig.Timeout)
                 .AddScoped<GethStyleTracer.BlockProcessingComponents>()
                 .AddScoped<IDebugBridge, DebugBridge>()
                 .AddScoped<IDebugRpcModule, DebugRpcModule>()
@@ -128,12 +140,25 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             ;
     }
 
+    /// <summary>The one budget every parallel block trace on this node draws on, whichever seed the block takes. The
+    /// deprecated FlatDb key keeps its published <c>int</c> shape, so its default <c>0</c> stands for "not set"; any other
+    /// value an operator still sets sizes the budget and wins over <see cref="IJsonRpcConfig.TraceBlockParallelism"/>.</summary>
+    private ParallelTraceBudget CreateTraceBudget(IFlatDbConfig flatDbConfig, ILogManager logManager)
+    {
+        int legacy = flatDbConfig.HistoryTransactionIndexTraceParallelism;
+        if (legacy == 0)
+            return ParallelTraceBudget.Bounded(jsonRpcConfig.TraceBlockParallelism);
+
+        ILogger logger = logManager.GetClassLogger<RpcModules>();
+        if (logger.IsWarn) logger.Warn($"FlatDb.{nameof(IFlatDbConfig.HistoryTransactionIndexTraceParallelism)} is deprecated, use JsonRpc.{nameof(IJsonRpcConfig.TraceBlockParallelism)} instead. Until it is removed, its value {legacy} sizes the parallel block trace budget in place of JsonRpc.{nameof(IJsonRpcConfig.TraceBlockParallelism)}.");
+        return new ParallelTraceBudget(legacy);
+    }
+
     /// <summary>Changeset seeds exist only where flat history captures the transaction index, the same switch that
-    /// arms them; without it their setting must not start a parallel tracer that could never seed a block.</summary>
-    private ParallelTraceBudgets CreateParallelTraceBudgets(ISpecProvider specProvider, IFlatDbConfig flatDbConfig, ParallelTraceBudget changesets) =>
-        new(specProvider,
-            flatDbConfig.Enabled && flatDbConfig.HistoryEnabled && flatDbConfig.HistoryTransactionIndexEnabled ? changesets : null,
-            ParallelTraceBudget.Bounded(jsonRpcConfig.TraceBlockParallelism));
+    /// arms them; without it a block that carries no access list must not be offered to a parallel tracer that could
+    /// never seed it.</summary>
+    private static ParallelTraceBudgets CreateParallelTraceBudgets(ISpecProvider specProvider, IFlatDbConfig flatDbConfig, ParallelTraceBudget budget) =>
+        new(specProvider, budget, flatDbConfig.Enabled && flatDbConfig.HistoryEnabled && flatDbConfig.HistoryTransactionIndexEnabled);
 
     private IAdminRpcModule CreateAdminRpcModule(IComponentContext ctx) => new AdminRpcModule(
             ctx.Resolve<IBlockTree>(),

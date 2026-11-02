@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using NSubstitute;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -12,8 +13,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State.Proofs;
 using NUnit.Framework;
-
-using NSubstitute;
 
 namespace Nethermind.Blockchain.Test.Validators;
 

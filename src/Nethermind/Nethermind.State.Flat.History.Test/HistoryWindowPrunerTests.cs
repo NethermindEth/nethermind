@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
@@ -10,7 +11,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.History.Changesets;
 using NUnit.Framework;
 
@@ -20,6 +20,11 @@ public class HistoryWindowPrunerTests
 {
     private static readonly Address Address = TestItem.AddressA;
     private static readonly UInt256 Slot = 1;
+    private static readonly Address SlicedAddress = TestItem.AddressB;
+    private static readonly ulong[] LongTailDeadBlocks = [10, 20, 30];
+    private static readonly ulong[] SlicedRowsBelowGeneralFloor = [40, 50];
+    private const ulong LongTailWatermark = 100;
+    private const ulong LongTailGeneralFloor = 60;
 
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
@@ -114,7 +119,7 @@ public class HistoryWindowPrunerTests
         HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
 
         HistoryWindowPruner exhausted = CreatePruner(retentionBlocks: 8);
-        exhausted.RunOnePass(CancellationToken.None, () => new CountdownBudget(rowsBeforeExhaustion: 1));
+        exhausted.RunOnePass(CancellationToken.None, new CountdownBudget(rowsBeforeExhaustion: 1));
         exhausted.Dispose();
 
         HistoryStoreV3 accountHistoryV3 = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory));
@@ -148,14 +153,14 @@ public class HistoryWindowPrunerTests
 
         HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
         HistoryWindowPruner first = CreatePruner(retentionBlocks: 8);
-        first.RunOnePass(CancellationToken.None, () => new CountdownBudget(rowsBeforeExhaustion: 1));
+        first.RunOnePass(CancellationToken.None, new CountdownBudget(rowsBeforeExhaustion: 1));
         first.Dispose();
 
         Assert.That(_reader.IsPrunedBelowFloor(11), Is.True, "precondition: the first pass published floor 12 and yielded mid-column");
 
         HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 60);
         HistoryWindowPruner second = CreatePruner(retentionBlocks: 8);
-        second.RunOnePass(CancellationToken.None, () => new CountdownBudget(rowsBeforeExhaustion: 1));
+        second.RunOnePass(CancellationToken.None, new CountdownBudget(rowsBeforeExhaustion: 1));
         second.Dispose();
 
         using (Assert.EnterMultipleScope())
@@ -245,15 +250,15 @@ public class HistoryWindowPrunerTests
         using HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
 
         bool completed = false;
-        for (int pass = 0; pass < 7 && !completed; pass++)
+        for (int pass = 0; pass < 8 && !completed; pass++)
         {
-            completed = pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(3));
+            completed = pruner.RunOnePass(CancellationToken.None, new CountdownBudget(3));
         }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(completed, Is.True,
-                "a sweep spread over budgeted passes must converge in about max(per-column chunks) passes: a column finished earlier in the cycle stays finished instead of rescanning its live rows from scratch on every pass until the columns happen to align");
+                "23 rows under a shared budget of 3 per pass converge in 8 passes only if a column finished earlier in the cycle stays finished: rescanning its live rows from scratch would spend every later pass budget before storage could progress");
             Assert.That(_reader.IsPrunedBelowFloor(11), Is.True);
         }
     }
@@ -272,15 +277,15 @@ public class HistoryWindowPrunerTests
         HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
 
         using HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
-        bool firstPass = pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(3));
+        bool firstPass = pruner.RunOnePass(CancellationToken.None, new CountdownBudget(3));
 
         HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 30);
-        bool completingPass = pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(100));
+        bool completingPass = pruner.RunOnePass(CancellationToken.None, new CountdownBudget(100));
 
         int accountRowsAfterPinnedCycle = CountRows(FlatHistoryColumns.AccountHistory);
         int storageRowsAfterPinnedCycle = CountRows(FlatHistoryColumns.StorageHistory);
 
-        bool queuedCycle = pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(100));
+        bool queuedCycle = pruner.RunOnePass(CancellationToken.None, new CountdownBudget(100));
 
         using (Assert.EnterMultipleScope())
         {
@@ -301,6 +306,17 @@ public class HistoryWindowPrunerTests
     {
         int count = 0;
         foreach (KeyValuePair<byte[], byte[]> _ in _historyColumns.GetColumnDb(column).GetAll()) count++;
+        return count;
+    }
+
+    private int CountBlockMarkers()
+    {
+        int count = 0;
+        foreach (KeyValuePair<byte[], byte[]> row in _historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks).GetAll())
+        {
+            if (row.Key.Length == sizeof(ulong)) count++;
+        }
+
         return count;
     }
 
@@ -332,27 +348,40 @@ public class HistoryWindowPrunerTests
     }
 
     [Test]
-    public void RunOnePass_StorageColumnMakesProgressEvenWhenAccountColumnDoesNotComplete()
+    public void RunOnePass_WithTheBudgetExhaustedInTheAccountSweep_LeavesTheLaterColumnsToLaterPasses()
     {
         HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
         HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 5, new Account(1, 100));
         HistoryColumnsWriter.RecordStorageV3(_historyColumns, Address, Slot, 5, [0xAA]);
+        HistoryColumnsWriter.MarkBlockV3(_historyColumns, 11, ValueKeccak.Compute("below"u8));
         HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
 
-        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
-        pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(rowsBeforeExhaustion: 1));
-        pruner.Dispose();
+        using HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8); // floor = 12
+        bool firstPass = pruner.RunOnePass(CancellationToken.None, new CountdownBudget(rowsBeforeExhaustion: 1));
 
-        HistoryStoreV3 accountHistoryV3 = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory));
-        HistoryStoreV3 storageHistoryV3 = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory));
+        int accountRowsAfterFirstPass = CountRows(FlatHistoryColumns.AccountHistory);
+        int storageRowsAfterFirstPass = CountRows(FlatHistoryColumns.StorageHistory);
+        int markersAfterFirstPass = CountBlockMarkers();
+
+        int passes = 1;
+        bool completed = firstPass;
+        while (!completed && passes < 10)
+        {
+            completed = pruner.RunOnePass(CancellationToken.None, new CountdownBudget(rowsBeforeExhaustion: 1));
+            passes++;
+        }
+
         using (Assert.EnterMultipleScope())
         {
-            Span<byte> buffer = stackalloc byte[256];
-            Assert.That(accountHistoryV3.TryGetValueBeforeNextChange(4, AccountKey(), buffer, out ulong foundAt), Is.GreaterThan(0));
-            Assert.That(foundAt, Is.EqualTo(5UL), "account needs two checks for its one key and only got one — block 5 must not have been reached yet");
-
-            Assert.That(storageHistoryV3.TryGetValueBeforeNextChange(4, StorageKey(), buffer, out _), Is.EqualTo(-1),
-                "storage needs only one check for its single row — it must complete in the same pass regardless of account's progress");
+            Assert.That(firstPass, Is.False, "the budget runs out on the second account row");
+            Assert.That(accountRowsAfterFirstPass, Is.EqualTo(1), "the one row the budget allowed is deleted, block 5 waits for the next pass");
+            Assert.That(storageRowsAfterFirstPass, Is.EqualTo(1), "the pass budget is shared, so storage must not start once accounts exhausted it");
+            Assert.That(markersAfterFirstPass, Is.EqualTo(1), "nor must the block markers");
+            Assert.That(completed, Is.True, "later passes resume every column from its cursor and finish the cycle");
+            Assert.That(passes, Is.EqualTo(3), "one budgeted row per pass: two accounts, one storage row; the marker range delete takes no budget");
+            Assert.That(CountRows(FlatHistoryColumns.AccountHistory), Is.EqualTo(0));
+            Assert.That(CountRows(FlatHistoryColumns.StorageHistory), Is.EqualTo(0));
+            Assert.That(CountBlockMarkers(), Is.EqualTo(0));
         }
     }
 
@@ -407,13 +436,236 @@ public class HistoryWindowPrunerTests
         }
     }
 
+    [Test]
+    public void RunOnePass_KeysWithLongLiveTails_DeletesExactlyTheDeadRowsAndSeeksPastEachLiveTail()
+    {
+        // 1. A plain and a sliced address each hold dead rows below their floor and 40 live rows above it.
+        // 2. One full pass with an unlimited budget that counts the rows it visits; only the account column has rows.
+        // 3. Exactly the dead rows go, and each key is read only up to the live-row threshold.
+        SeedLongLiveTails();
+        using HistoryWindowPruner pruner = CreateLongLiveTailPruner();
+        CountingBudget budget = new();
+
+        bool completed = pruner.RunOnePass(CancellationToken.None, budget);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.True, "an unlimited budget finishes the cycle in one pass");
+            AssertOnlyLiveTailRowsSurvive();
+            Assert.That(budget.Checks, Is.EqualTo(2 * (LongTailDeadBlocks.Length + HistoryWindowPruner.LiveRowsBeforeSkip)),
+                "the account sweep must read each key's dead rows plus the live-row threshold and seek past the rest of the live tail, not read every live row");
+        }
+    }
+
+    [Test]
+    public void RunOnePass_YieldingInsideALiveTail_ResumesAndDeletesExactlyTheDeadRows()
+    {
+        // 1. Same rows as above; the first pass yields after 10 account rows, inside the first key's live tail.
+        // 2. The next pass resumes from the cursor written there and finishes the sweep.
+        // 3. Exactly the dead rows of both keys are gone and every live row is intact.
+        SeedLongLiveTails();
+        using HistoryWindowPruner pruner = CreateLongLiveTailPruner();
+
+        bool yieldedPass = pruner.RunOnePass(CancellationToken.None, new CountdownBudget(rowsBeforeExhaustion: 10));
+        bool resumedPass = pruner.RunOnePass(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(yieldedPass, Is.False, "precondition: the first pass yields with the account column mid-scan");
+            Assert.That(resumedPass, Is.True, "the resumed pass finishes the cycle");
+            AssertOnlyLiveTailRowsSurvive();
+        }
+    }
+
+    [Test]
+    public void RunOnePass_ViewThatCannotSeek_ReadsEveryLiveRowAndDeletesExactlyTheDeadRows()
+    {
+        SeedLongLiveTails();
+        using HistoryWindowPruner pruner = CreateLongLiveTailPruner(new NonSeekingHistoryColumns(_historyColumns));
+        CountingBudget budget = new();
+
+        bool completed = pruner.RunOnePass(CancellationToken.None, budget);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.True, "an unlimited budget finishes the cycle in one pass");
+            AssertOnlyLiveTailRowsSurvive();
+            Assert.That(budget.Checks, Is.EqualTo(2 * (LongTailDeadBlocks.Length + (int)(LongTailWatermark - LongTailGeneralFloor)) + SlicedRowsBelowGeneralFloor.Length),
+                "a view without ISeekableSortedView falls back to reading every row of the account sweep");
+        }
+    }
+
+    [TestCase(null, 12UL, TestName = "PruneBlockMarkers_WithNoSliceScope_RemovesMarkersBelowTheGlobalFloorOnly")]
+    [TestCase(5UL, 5UL, TestName = "PruneBlockMarkers_WithASliceScopeBelowTheGlobalFloor_KeepsMarkersDownToTheScopeFloor")]
+    public void PruneBlockMarkers_AfterACompletedPass_RemovesOnlyMarkersBelowTheMarkerFloorAndKeepsEveryReservedKey(ulong? scopeFloor, ulong expectedMarkerFloor)
+    {
+        // 1. Markers for blocks 0..20, watermark 20, retention 8: the global floor publishes at 12.
+        // 2. Optionally a slice scope at 5, which must keep its markers down to 5.
+        // 3. A marker sweep cursor left by an older binary that yielded mid-sweep.
+        // 4. One completed pass leaves exactly the markers at or above the marker floor and every reserved key.
+        IDb availableBlocks = _historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
+        for (ulong block = 0; block <= 20; block++)
+        {
+            HistoryColumnsWriter.MarkBlockV3(_historyColumns, block, ValueKeccak.Compute(BlockKey(block)));
+        }
+
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
+        byte[] scopeRecordKey = [.. "history:floor:scope:"u8, .. HistoryColumnsWriter.ScopeKeyOf(TestItem.AddressB)];
+        if (scopeFloor is { } floor)
+        {
+            new HistoryAvailability(availableBlocks).PublishScope(HistoryColumnsWriter.ScopeKeyOf(TestItem.AddressB), floor);
+        }
+
+        byte[] legacyMarkerCursorKey = "history:prune:cursor:blocks"u8.ToArray();
+        availableBlocks.PutSpan(legacyMarkerCursorKey, BlockKey(3));
+
+        using HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
+        bool completed = pruner.RunOnePass(CancellationToken.None);
+
+        List<ulong> markers = [];
+        List<byte[]> reservedKeys = [];
+        foreach (KeyValuePair<byte[], byte[]> entry in availableBlocks.GetAll(ordered: true))
+        {
+            if (entry.Key.Length == sizeof(ulong)) markers.Add(BinaryPrimitives.ReadUInt64BigEndian(entry.Key));
+            else reservedKeys.Add(entry.Key);
+        }
+
+        List<byte[]> expectedReservedKeys =
+        [
+            "history:watermark"u8.ToArray(),
+            "history:format"u8.ToArray(),
+            "history:floor:global"u8.ToArray(),
+            legacyMarkerCursorKey,
+        ];
+        if (scopeFloor is not null) expectedReservedKeys.Add(scopeRecordKey);
+
+        List<ulong> expectedMarkers = [];
+        for (ulong block = expectedMarkerFloor; block <= 20; block++) expectedMarkers.Add(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.True, "precondition: the pass must finish a whole cycle");
+            Assert.That(_reader.IsPrunedBelowFloor(11), Is.True, "precondition: the global floor published at 12");
+            Assert.That(markers, Is.EqualTo(expectedMarkers),
+                "every marker below the marker floor is gone, including those below the stale cursor, and every marker at or above it stays");
+            Assert.That(reservedKeys, Is.EquivalentTo(expectedReservedKeys),
+                "the reserved keys sort above every marker below the floor, so the marker range never reaches them");
+        }
+    }
+
+    [Test]
+    public void PruneBlockMarkers_WithTheMarkerFloorPinnedByASliceScope_DoesNotDeleteTheSameRangeAgain()
+    {
+        // 1. Markers for blocks 0..20, watermark 20, retention 8, a slice scope pinned at 5: the first cycle deletes
+        //    the markers below 5.
+        // 2. A probe marker is put back at block 2, below the pinned marker floor.
+        // 3. The watermark moves to 21, so the global floor advances while the marker floor stays at 5.
+        // 4. The second cycle must not range-delete [0, 5) again, so the probe survives.
+        IDb availableBlocks = _historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
+        for (ulong block = 0; block <= 20; block++)
+        {
+            HistoryColumnsWriter.MarkBlockV3(_historyColumns, block, ValueKeccak.Compute(BlockKey(block)));
+        }
+
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
+        new HistoryAvailability(availableBlocks).PublishScope(HistoryColumnsWriter.ScopeKeyOf(TestItem.AddressB), 5);
+
+        using HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
+        bool firstCycle = pruner.RunOnePass(CancellationToken.None);
+        bool belowScopeFloorDeletedByFirstCycle = availableBlocks.Get(BlockKey(4)) is null;
+
+        availableBlocks.PutSpan(BlockKey(2), ValueKeccak.Compute(BlockKey(2)).Bytes);
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 21);
+        bool secondCycle = pruner.RunOnePass(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstCycle, Is.True, "precondition: the first pass must finish a whole cycle");
+            Assert.That(belowScopeFloorDeletedByFirstCycle, Is.True, "precondition: the first cycle deleted the markers below the scope floor");
+            Assert.That(secondCycle, Is.True, "precondition: the second pass must finish a whole cycle");
+            Assert.That(_reader.IsPrunedBelowFloor(12), Is.True, "precondition: the global floor advanced to 13");
+            Assert.That(availableBlocks.Get(BlockKey(2)), Is.Not.Null,
+                "the marker floor did not move, so the second cycle must not issue the same range delete again");
+        }
+    }
+
+    private void SeedLongLiveTails()
+    {
+        foreach (Address address in new[] { Address, SlicedAddress })
+        {
+            foreach (ulong block in LongTailDeadBlocks)
+            {
+                HistoryColumnsWriter.RecordAccountV3(_historyColumns, address, block, new Account(block, block));
+            }
+
+            for (ulong block = LongTailGeneralFloor + 1; block <= LongTailWatermark; block++)
+            {
+                HistoryColumnsWriter.RecordAccountV3(_historyColumns, address, block, new Account(block, block));
+            }
+        }
+
+        foreach (ulong block in SlicedRowsBelowGeneralFloor)
+        {
+            HistoryColumnsWriter.RecordAccountV3(_historyColumns, SlicedAddress, block, new Account(block, block));
+        }
+
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, LongTailWatermark);
+    }
+
+    // General floor 100 - 40 = 60; the slice keeps 70 blocks, so its own floor is 30.
+    private HistoryWindowPruner CreateLongLiveTailPruner(IColumnsDb<FlatHistoryColumns>? prunerHistory = null)
+    {
+        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: LongTailWatermark - LongTailGeneralFloor,
+            configure: config => config.HistorySliceAddresses = $"{SlicedAddress}:70", prunerHistory: prunerHistory);
+        pruner.ReconcileSliceScopes();
+        return pruner;
+    }
+
+    private void AssertOnlyLiveTailRowsSurvive()
+    {
+        List<ulong> expectedPlain = [];
+        for (ulong block = LongTailGeneralFloor + 1; block <= LongTailWatermark; block++) expectedPlain.Add(block);
+        List<ulong> expectedSliced = [.. SlicedRowsBelowGeneralFloor, .. expectedPlain];
+
+        Assert.That(SurvivingAccountBlocks(Address), Is.EqualTo(expectedPlain),
+            "the plain address keeps exactly its rows above the general floor");
+        Assert.That(SurvivingAccountBlocks(SlicedAddress), Is.EqualTo(expectedSliced),
+            "the sliced address keeps its rows above its own deeper floor, including those below the general floor");
+    }
+
+    private List<ulong> SurvivingAccountBlocks(Address address)
+    {
+        byte[] flatKey = address.ToAccountPath.Bytes.ToArray();
+        List<ulong> blocks = [];
+        foreach (KeyValuePair<byte[], byte[]> row in _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).GetAll())
+        {
+            if (row.Key.Length == flatKey.Length + sizeof(ulong) && row.Key.AsSpan(0, flatKey.Length).SequenceEqual(flatKey))
+            {
+                blocks.Add(BinaryPrimitives.ReadUInt64BigEndian(row.Key.AsSpan(flatKey.Length)));
+            }
+        }
+
+        blocks.Sort();
+        return blocks;
+    }
+
+    private static byte[] BlockKey(ulong block)
+    {
+        byte[] key = new byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(key, block);
+        return key;
+    }
+
     private void RecordClear(StorageClearStore clears, byte[] accountKey, ulong block)
     {
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
         clears.RecordClear(block, accountKey, batch.GetColumnBatch(FlatHistoryColumns.StorageClears));
     }
 
-    private HistoryWindowPruner CreatePruner(ulong retentionBlocks, int passBudgetSeconds = 30, Action<FlatDbConfig>? configure = null, HistoryScopeGate? scopeGate = null)
+    private HistoryWindowPruner CreatePruner(ulong retentionBlocks, int passBudgetSeconds = 30, Action<FlatDbConfig>? configure = null, HistoryScopeGate? scopeGate = null,
+        IColumnsDb<FlatHistoryColumns>? prunerHistory = null)
     {
         FlatDbConfig config = new()
         {
@@ -428,7 +680,7 @@ public class HistoryWindowPrunerTests
         _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
         _reader = new HistoryReader(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         return new HistoryWindowPruner(
-            _writer, _historyColumns, config,
+            _writer, prunerHistory ?? _historyColumns, config,
             scopeGate ?? new HistoryScopeGate(),
             availability, rowFormat,
             LimboLogs.Instance,
@@ -450,17 +702,70 @@ public class HistoryWindowPrunerTests
         }
     }
 
+    private sealed class CountingBudget : IPruneBudget
+    {
+        public int Checks { get; private set; }
+
+        public bool Exhausted
+        {
+            get
+            {
+                Checks++;
+                return false;
+            }
+        }
+    }
+
+    private sealed class NonSeekingHistoryColumns(IColumnsDb<FlatHistoryColumns> inner) : IColumnsDb<FlatHistoryColumns>
+    {
+        public IDb GetColumnDb(FlatHistoryColumns key) => new NonSeekingDb(inner.GetColumnDb(key));
+        public IColumnsWriteBatch<FlatHistoryColumns> StartWriteBatch() => inner.StartWriteBatch();
+        public IEnumerable<FlatHistoryColumns> ColumnKeys => inner.ColumnKeys;
+        public IColumnDbSnapshot<FlatHistoryColumns> CreateSnapshot() => inner.CreateSnapshot();
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+        public void SyncWal() => inner.SyncWal();
+
+        public void Dispose() { }
+    }
+
+    private sealed class NonSeekingDb(IDb inner) : IDb, ISortedKeyValueStore, IRangeRemovableKeyValueStore
+    {
+        private ISortedKeyValueStore Sorted => (ISortedKeyValueStore)inner;
+
+        public byte[]? FirstKey => Sorted.FirstKey;
+        public byte[]? LastKey => Sorted.LastKey;
+
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) =>
+            new ForwardOnlyView(Sorted.GetViewBetween(firstKeyInclusive, lastKeyExclusive, flags));
+
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
+        public void Set(scoped ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => inner.Set(key, value, flags);
+        public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) => ((IRangeRemovableKeyValueStore)inner).RemoveRange(firstKeyInclusive, lastKeyExclusive);
+        public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) => ((IRangeRemovableKeyValueStore)inner).ReclaimRange(firstKeyInclusive, lastKeyExclusive);
+        public string Name => inner.Name;
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => inner[keys];
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => inner.GetAll(ordered);
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => inner.GetAllKeys(ordered);
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => inner.GetAllValues(ordered);
+        public IWriteBatch StartWriteBatch() => inner.StartWriteBatch();
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+
+        public void Dispose() { }
+    }
+
+    /// <summary>A view as implemented before <see cref="ISeekableSortedView"/> existed.</summary>
+    private sealed class ForwardOnlyView(ISortedView inner) : ISortedView
+    {
+        public bool StartBefore(ReadOnlySpan<byte> value) => inner.StartBefore(value);
+        public bool MoveNext() => inner.MoveNext();
+        public ReadOnlySpan<byte> CurrentKey => inner.CurrentKey;
+        public ReadOnlySpan<byte> CurrentValue => inner.CurrentValue;
+        public void Dispose() => inner.Dispose();
+    }
+
     private static byte[] AccountKey()
     {
         Span<byte> buffer = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
         return Address.ToAccountPath.Bytes.ToArray();
-    }
-
-    private static byte[] StorageKey()
-    {
-        ValueHash256 slotHash = ValueKeccak.Zero;
-        StorageTree.ComputeKeyWithLookup(Slot, ref slotHash);
-        Span<byte> buffer = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
-        return BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(buffer, Address.ToAccountPath, slotHash).ToArray();
     }
 }

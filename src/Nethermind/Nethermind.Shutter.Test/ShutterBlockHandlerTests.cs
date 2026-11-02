@@ -82,4 +82,68 @@ class ShutterBlockHandlerTests : BaseEngineModuleTests
         api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(upToDateTimestamp).TestObject));
         Assert.That(api.EonUpdateCalled, Is.EqualTo(1));
     }
+
+    [Test]
+    public void New_head_does_not_deadlock_with_concurrent_timeout()
+    {
+        Random rnd = new(ShutterTestsCommon.Seed);
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 0);
+        ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);
+
+        using CancellationTokenSource source = new();
+        using CancelOnDisposeCts timeoutSource = new();
+        Task<Block?> waitTask = api.BlockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token, _ => timeoutSource);
+        timeoutSource.ArmAfterWaitRegistered();
+
+        Block head = Build.A.Block.WithTimestamp(ShutterTestsCommon.InitialSlotTimestamp).TestObject;
+        Task newHead = Task.Run(() => api.TriggerNewHeadBlock(new(head)));
+
+        Assert.That(newHead.Wait(TimeSpan.FromSeconds(10)), Is.True, "NewHeadBlock handler deadlocked against the timeout callback");
+        Assert.That(waitTask.Result, Is.EqualTo(head));
+    }
+
+    /// <summary>
+    /// Timeout source whose Dispose (called by the handler under its lock without the fix) fires the timeout on
+    /// another thread and returns only once the handler's timeout callback is blocked on that lock, or has finished.
+    /// </summary>
+    private sealed class CancelOnDisposeCts : CancellationTokenSource
+    {
+        private readonly ManualResetEventSlim _callbackStarted = new();
+        private Thread? _cancelThread;
+        private bool _armed;
+
+        public void ArmAfterWaitRegistered()
+        {
+            // Registered after the handler's callback, so it runs first (LIFO) on the cancel thread and the
+            // handler's callback runs next on that same thread.
+            Token.Register(() =>
+            {
+                _cancelThread = Thread.CurrentThread;
+                _callbackStarted.Set();
+            });
+            _armed = true;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (_armed)
+            {
+                _armed = false;
+                Task cancel = Task.Run(Cancel);
+                _callbackStarted.Wait();
+                // Without the fix the handler's callback blocks on the lock held by this thread; with the fix it
+                // finds its entry already removed and the cancel completes.
+                SpinWait.SpinUntil(
+                    () => cancel.IsCompleted || (_cancelThread!.ThreadState & ThreadState.WaitSleepJoin) != 0,
+                    TimeSpan.FromSeconds(10));
+            }
+
+            if (disposing)
+            {
+                _callbackStarted.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
+    }
 }

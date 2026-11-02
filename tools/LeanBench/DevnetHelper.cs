@@ -104,20 +104,20 @@ public static partial class Program
                     {
                         AggregationInput input = new() { Deps = deps, Witnesses = selected.Select(f => (ReadOnlyMemory<byte>)f.Witness).ToArray() };
                         ValueHash256 commitment = Eip8288Dependencies.ComputeDepsHash(deps);
-                        byte[] proof = RecursiveStarkAggregator.Prove(input, verifier, commitment);
+                        byte[] proof = RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, commitment);
                         if (!verifier.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proof))
                             throw new InvalidDataException("Devnet recursive proof did not verify");
                         recursive = new(proof, new Hash256(commitment));
                     }
                     MempoolWrapper wrapper = new()
                     {
-                        Transactions = [new WrapperTransaction(tx)],
+                        Transactions = [tx],
                         Deps = deps,
                         Mode = mode == "direct" ? MempoolWrapper.ModeDirect : MempoolWrapper.ModeRecursive,
                         Proofs = direct,
                         RecursiveStark = recursive
                     };
-                    if (!MempoolWrapperValidator.Validate(wrapper, verifier, out string? validationError))
+                    if (!MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out string? validationError))
                         throw new InvalidDataException(validationError);
                     byte[] bytes = MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes;
                     string name = $"{round:D2}-{scenario.Name}-{mode}-nonce{nonce}";
@@ -134,13 +134,13 @@ public static partial class Program
                     }
                     MempoolWrapper invalid = new()
                     {
-                        Transactions = [new WrapperTransaction(tx)],
+                        Transactions = [tx],
                         Deps = deps,
                         Mode = wrapper.Mode,
                         Proofs = tamperedDirect,
                         RecursiveStark = tamperedRecursive
                     };
-                    if (MempoolWrapperValidator.Validate(invalid, verifier, out _))
+                    if (MempoolWrapperValidator.Validate(invalid, verifier, Eip8288Verifier.Pinned, out _))
                         throw new InvalidDataException("Tampered devnet witness unexpectedly verified");
                     byte[] tampered = MempoolWrapperDecoder.Instance.Encode(invalid).Bytes;
                     string negativeFile = name + "-invalid-proof.json";

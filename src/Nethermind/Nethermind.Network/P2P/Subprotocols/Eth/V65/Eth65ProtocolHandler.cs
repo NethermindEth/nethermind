@@ -98,7 +98,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 case Eth65MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
                     {
-                        PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
+                        if (!TryDeserializeTransactions(message, out PooledTransactionsMessage pooledTxMsg, static txMessage => txMessage, pooledResponse: true))
+                            return true;
                         ReportIn(pooledTxMsg, size);
                         HandlePooledTransactions(pooledTxMsg);
                     }
@@ -162,7 +163,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                         continue;
                     }
 
-                    if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
+                    // EIP-8437: a dependency-bearing transaction is answered as unavailable on every eth version.
+                    if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx)
+                        && !Eip8288Dependencies.IsDependencyBearing(tx))
                     {
                         Transaction responseTx = PreparePooledTransactionForResponse(tx);
                         int txSize = responseTx.GetLength();
@@ -209,7 +212,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         /// <inheritdoc cref="CreatePooledTransactionsMessage" path="/remarks"/>
         protected virtual NewPooledTransactionHashesMessage CreateAnnouncementMessage(IOwnedReadOnlyList<Hash256> hashes) => new(hashes);
 
-        protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
+        protected override void SendNewTransactionsCore(ReadOnlySpan<Transaction> txs, bool sendFullTx)
         {
             void SendNewPooledTransactionMessage(IOwnedReadOnlyList<Hash256> hashes) => Send(CreateAnnouncementMessage(hashes));
 
@@ -250,8 +253,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             where TMessage : P2PMessage, INew<IOwnedReadOnlyList<ValueHash256>, TMessage>
         {
             ReportPooledTransactionRequest(hashes.AsSpan());
-            Send(TMessage.New(hashes));
+            TMessage message = TMessage.New(hashes);
+            TrackPooledTransactionRequest(message);
+            Send(message);
         }
+
+        private protected virtual void TrackPooledTransactionRequest(P2PMessage message) { }
 
         protected void RequestPooledTransactions<TMessage>(IOwnedReadOnlyList<Hash256> hashes, bool registerForRetry = true)
             where TMessage : P2PMessage, INew<IOwnedReadOnlyList<ValueHash256>, TMessage>

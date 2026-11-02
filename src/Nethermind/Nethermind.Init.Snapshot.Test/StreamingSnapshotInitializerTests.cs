@@ -136,12 +136,12 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
-    public void InitializeAsync_NoStrongETagWithoutChecksum_Throws()
+    public async Task InitializeAsync_NoStrongETagWithoutChecksum_Throws()
     {
         _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
         _server.ETag = null;
 
-        Assert.ThrowsAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<InvalidOperationException>(
             () => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None),
             "without an entity tag and without a checksum a snapshot replaced by one of the same size would be undetectable, so streaming must refuse to start");
     }
@@ -170,28 +170,28 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
-    public void InitializeAsync_UnknownLengthWithoutChecksum_Throws()
+    public async Task InitializeAsync_UnknownLengthWithoutChecksum_Throws()
     {
         _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
         _server.SupportsRanges = false;
         _server.OmitContentLength = true;
 
-        Assert.ThrowsAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<InvalidOperationException>(
             () => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None),
             "without a length and without a checksum a truncated download would be undetectable, so streaming must refuse to start");
     }
 
     [Test]
-    public void InitializeAsync_ArchiveNotMatchingStripComponents_DeletesDatabaseAndThrows()
+    public async Task InitializeAsync_ArchiveNotMatchingStripComponents_DeletesDatabaseAndThrows()
     {
         byte[] archive = TestArchive.BuildTarZstWithoutTopLevelDirectory();
         _server.Content = archive;
         _config.Checksum = Convert.ToHexString(SHA256.HashData(archive));
         SnapshotCheckpoint checkpoint = CreateCheckpoint();
 
-        InvalidOperationException exception = Assert.ThrowsAsync<InvalidOperationException>(
+        InvalidOperationException exception = (await Assert.ThrowsAsync<InvalidOperationException>(
             () => CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None),
-            "an extraction that produced no files is a configuration error and must fail startup in both modes")!;
+            "an extraction that produced no files is a configuration error and must fail startup in both modes"))!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -205,11 +205,11 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
-    public void InitializeAsync_ZipArchiveConfigured_Throws()
+    public async Task InitializeAsync_ZipArchiveConfigured_Throws()
     {
         _config.SnapshotFileName = "snapshot.zip";
 
-        Assert.ThrowsAsync<NotSupportedException>(
+        await Assert.ThrowsAsync<NotSupportedException>(
             () => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None),
             "zip archives cannot be extracted from a stream and must be rejected upfront");
     }
@@ -273,16 +273,16 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
-    public void InitializeAsync_InsufficientDiskSpace_Throws()
+    public async Task InitializeAsync_InsufficientDiskSpace_Throws()
     {
         _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
         IDriveInfo drive = Substitute.For<IDriveInfo>();
         drive.AvailableFreeSpace.Returns(10);
         drive.RootDirectory.FullName.Returns("/db-drive");
 
-        IOException exception = Assert.ThrowsAsync<IOException>(
+        IOException exception = (await Assert.ThrowsAsync<IOException>(
             () => CreateInitializer(drives: [drive]).InitializeAsync(CreateCheckpoint(), CancellationToken.None),
-            "the disk space check must fail before any byte is extracted")!;
+            "the disk space check must fail before any byte is extracted"))!;
 
         using (Assert.EnterMultipleScope())
         {

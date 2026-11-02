@@ -23,13 +23,23 @@ namespace Nethermind.Blockchain.Receipts
         private readonly Func<IReceiptsRecovery.IRecoveryContext>? _recoveryContextFactory;
         private readonly Func<IReceiptsRecovery.IRecoveryContext>? _logRecoveryContextFactory;
         private IReceiptsRecovery.IRecoveryContext? _recoveryContext;
+        private IReceiptsRecovery.ISelectiveLogRecoveryContext? _selectiveLogRecoveryContext;
+        private readonly IReceiptsRecovery.IDeferredLogRecoveryContext? _deferredRecoveryContext;
+        private int _logRecoveryReceiptIndex;
+        private Hash256? _logRecoveryTransactionHash;
         private readonly IReceiptRefDecoder _receiptRefDecoder;
         private bool _recoveryContextConfigured;
+        private readonly ReadOnlySpan<byte> _txHashes;
+        private readonly Hash256? _blockHash;
+        private readonly ulong _blockNumber;
 
         public ReceiptsIterator(scoped in Span<byte> receiptsData, IDb blocksDb, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory, IReceiptRefDecoder receiptRefDecoder,
             Func<IReceiptsRecovery.IRecoveryContext?>? logRecoveryContextFactory = null)
         {
-            _reader = new RlpReader(receiptsData);
+            RlpReader reader = new(receiptsData);
+            ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out ReadOnlySpan<byte> txHashes);
+            _reader = reader;
+            _txHashes = txHashes;
             _blocksDb = blocksDb;
             _receipts = null;
             _receiptIndex = 0;
@@ -39,13 +49,18 @@ namespace Nethermind.Blockchain.Receipts
             _recoveryContext = null;
             _receiptRefDecoder = receiptRefDecoder;
 
-            if (_reader.Length > 0 && _reader.PeekByte() == ReceiptArrayStorageDecoder.CompactEncoding)
-            {
-                _reader.ReadByte();
-            }
-
             _startingPosition = _reader.Position;
             _length = receiptsData.Length == 0 ? 0 : _reader.ReadSequenceLength() + _reader.Position;
+        }
+
+        internal ReceiptsIterator(scoped in Span<byte> receiptsData, IDb blocksDb, IReceiptRefDecoder receiptRefDecoder,
+            IReceiptsRecovery.IDeferredLogRecoveryContext recoveryContext, Hash256? blockHash = null, ulong blockNumber = 0)
+            : this(receiptsData, blocksDb, null, receiptRefDecoder)
+        {
+            _deferredRecoveryContext = recoveryContext;
+            _selectiveLogRecoveryContext = recoveryContext;
+            _blockHash = blockHash;
+            _blockNumber = blockNumber;
         }
 
         /// <summary>
@@ -94,20 +109,90 @@ namespace Nethermind.Blockchain.Receipts
             return false;
         }
 
+        /// <summary>Returns how many receipts are left to iterate, reading only their RLP length prefixes.</summary>
+        public readonly int CountRemaining() =>
+            _receipts is null ? _reader.PeekNumberOfItemsRemaining(_length) : _length - _receiptIndex;
+
+        /// <summary>Advances past the next <paramref name="count"/> receipts without decoding them.</summary>
+        /// <remarks>Must not be called once recovery is configured: skipped receipts would not reach the recovery context.</remarks>
+        public void Skip(int count)
+        {
+            if (_recoveryContext is not null) throw new InvalidOperationException("Cannot skip receipts while recovering them.");
+            if (_receipts is null) _reader.SkipItems(count);
+            _receiptIndex += count;
+        }
+
         public void RecoverIfNeeded(ref TxReceiptStructRef current) => RecoverIfNeeded(ref current, _recoveryContextFactory);
 
         /// <summary>
         /// Recovers only the block hash and number, transaction index and transaction hash, which is all a log carries;
         /// the other receipt fields stay as decoded for the rest of the iteration.
         /// </summary>
-        public void RecoverLogFieldsIfNeeded(ref TxReceiptStructRef current) =>
-            RecoverIfNeeded(ref current, _logRecoveryContextFactory);
+        public void RecoverLogFieldsIfNeeded(ref TxReceiptStructRef current)
+        {
+            RecoverLogFieldsIfNeeded(ref current, out Hash256? transactionHash);
+            if (transactionHash is not null) current.TxHash = transactionHash.ToStructRef();
+        }
+
+        public void RecoverLogFieldsIfNeeded(ref TxReceiptStructRef current, out Hash256? transactionHash)
+        {
+            transactionHash = null;
+            if (_recoveryContextConfigured) return;
+            if (_receiptIndex == _logRecoveryReceiptIndex)
+            {
+                transactionHash = _logRecoveryTransactionHash;
+                return;
+            }
+
+            if (_blockHash is not null && !_txHashes.IsEmpty)
+            {
+                transactionHash = _logRecoveryTransactionHash = RecoverStoredLogFields(ref current, _receiptIndex - 1);
+                _logRecoveryReceiptIndex = _receiptIndex;
+                return;
+            }
+
+            if (_selectiveLogRecoveryContext is null)
+            {
+                IReceiptsRecovery.IRecoveryContext? context = _logRecoveryContextFactory?.Invoke();
+                if (context is not IReceiptsRecovery.ISelectiveLogRecoveryContext selective)
+                {
+                    ConfigureRecovery(ref current, context);
+                    return;
+                }
+
+                _selectiveLogRecoveryContext = selective;
+            }
+
+            transactionHash = _logRecoveryTransactionHash = _selectiveLogRecoveryContext!.RecoverReceiptData(ref current, _receiptIndex - 1);
+            _logRecoveryReceiptIndex = _receiptIndex;
+        }
+
+        private readonly Hash256 RecoverStoredLogFields(ref TxReceiptStructRef current, int transactionIndex)
+        {
+            int offset = transactionIndex * Hash256.Size;
+            if ((uint)offset > (uint)(_txHashes.Length - Hash256.Size))
+            {
+                throw new InvalidOperationException($"Receipt {transactionIndex} has no stored transaction hash, the block stores {_txHashes.Length / Hash256.Size}.");
+            }
+
+            current.BlockHash = _blockHash!.ToStructRef();
+            current.BlockNumber = _blockNumber;
+            current.Index = transactionIndex;
+            return new Hash256(_txHashes.Slice(offset, Hash256.Size));
+        }
 
         private void RecoverIfNeeded(ref TxReceiptStructRef current, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory)
         {
             if (_recoveryContextConfigured) return;
 
-            _recoveryContext = recoveryContextFactory?.Invoke();
+            ConfigureRecovery(ref current, _deferredRecoveryContext is null
+                ? recoveryContextFactory?.Invoke()
+                : _deferredRecoveryContext.CreateFullRecoveryContext());
+        }
+
+        private void ConfigureRecovery(ref TxReceiptStructRef current, IReceiptsRecovery.IRecoveryContext? context)
+        {
+            _recoveryContext = context;
             if (_recoveryContext is not null)
             {
                 // Need to replay the context.
@@ -130,6 +215,7 @@ namespace Nethermind.Blockchain.Receipts
                 _blocksDb?.DangerousReleaseMemory(_reader.Data);
             }
             _recoveryContext?.Dispose();
+            _selectiveLogRecoveryContext?.Dispose();
         }
 
         public readonly LogEntriesIterator IterateLogs(TxReceiptStructRef receipt) =>

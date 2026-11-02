@@ -35,10 +35,10 @@ Transactions use a secp256k1 validation prefix and real Lean dependency claims; 
 For a short smoke run:
 
 ```sh
-dotnet run --project tools/LeanBench -c Release -p:BuildLeanFfi=true -- --fixtures=/tmp/lean-bench-vectors --out=/tmp/lean-bench-smoke --seconds=1 --warmups=1 --repetitions=1 --rates=10 --cases=sphincs1,sphincs16,stark1,mixed16 --protocol-rates=10 --object-rates=1 --object-sizes=10485760
+dotnet run --project tools/LeanBench -c Release -p:BuildLeanFfi=true -- --fixtures=/tmp/lean-bench-vectors --out=/tmp/lean-bench-smoke --seconds=1 --warmups=1 --repetitions=1 --rates=10 --cases=sphincs1,sphincs16,stark1,mixed16 --object-rates=1 --object-sizes=1048576
 ```
 
-Controls use `--name=value`: `seconds`, `queue`, `warmups`, `repetitions`, `rates`, `cases`, `block-counts` (1–256), `protocol-cases`, `protocol-rates`, `object-rates`, and `object-sizes`. Empty case lists disable that group. The loopback result is a local CPU/codec/admission baseline, not a prediction of WAN throughput.
+Controls use `--name=value`: `seconds`, `queue`, `warmups`, `repetitions`, `rates`, `cases`, `block-counts` (1–256), `object-rates`, and `object-sizes`. Empty case lists disable that group. The loopback result is a local CPU/codec/admission baseline, not a prediction of WAN throughput.
 
 ## Chunked mixed traffic
 

@@ -18,7 +18,7 @@ namespace Nethermind.Merge.Plugin.Test;
 /// <param name="onFirstDispose">Invoked the first time the context is disposed.</param>
 /// <param name="onCancelling">Invoked before <paramref name="cts"/> is cancelled.</param>
 internal sealed class MockBlockImprovementContext(
-    Block currentBestBlock,
+    Block? currentBestBlock,
     DateTimeOffset startDateTime,
     SharedCancellationTokenSource? cts = null,
     Action? onFirstDispose = null,

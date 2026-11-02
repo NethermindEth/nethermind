@@ -27,6 +27,12 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
     public List<TaikoUnzenZkGasSchedule>? UnzenZkGasSchedules { get; set; }
 
     public bool? UseSurgeGasPriceOracle { get; set; }
+
+    /// <summary>
+    /// Whether the Surge-only <c>anchorV4WithSignalSlots</c> selector is a valid Shasta anchor besides <c>anchorV4</c>.
+    /// </summary>
+    public bool? AnchorV4WithSignalSlotsEnabled { get; set; }
+
     public ulong? Rip7728TransitionTimestamp { get; set; }
     public ulong? L1StaticCallTransitionTimestamp { get; set; }
 

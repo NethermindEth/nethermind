@@ -3,4 +3,4 @@
 
 namespace Nethermind.State.Flat.History.Walk;
 
-internal sealed record StorageGroup(byte[] Prefix, StoragePartitionRows Rows, List<ClearRecord> Clears, bool Overflow);
+internal sealed record StorageGroup(byte[] Prefix, StoragePartitionRows Rows, List<ClearRecord> Clears, ScanOutcome Outcome);

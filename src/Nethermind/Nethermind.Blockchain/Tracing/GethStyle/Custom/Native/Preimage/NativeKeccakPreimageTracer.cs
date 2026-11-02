@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -63,8 +65,13 @@ public sealed class NativeKeccakPreimageTracer : GethLikeNativeTxTracer, IInstru
         // Geth bounds padding against logical EVM memory, not the lazily allocated backing storage.
         if (end > int.MaxValue || (end > _memory.Size && end - _memory.Size > MemorySizes.MiB)) return;
 
-        byte[] preimage = _memory.Slice((int)offset, (int)length, limit: false).ToArray();
-        _preimages[Keccak.Compute(preimage)] = preimage;
+        ReadOnlySpan<byte> preimage = _memory.Slice((int)offset, (int)length, limit: false);
+        Hash256 hash = preimage.IsEmpty ? Keccak.OfAnEmptyString : Keccak.Compute(preimage);
+        ref byte[]? existing = ref CollectionsMarshal.GetValueRefOrAddDefault(_preimages, hash, out bool exists);
+        if (!exists || !preimage.SequenceEqual(existing))
+        {
+            existing = preimage.ToArray();
+        }
     }
 
     /// <inheritdoc/>

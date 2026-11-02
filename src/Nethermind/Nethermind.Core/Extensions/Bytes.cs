@@ -31,10 +31,6 @@ namespace Nethermind.Core.Extensions
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
-        // The ReadOnlyMemory<byte> needs to be initialized = or it will be created each time.
-        public static ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
-        public static ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
-        public static ReadOnlyMemory<byte> TwoByte = new byte[] { 2 };
         // The Jit converts a ReadOnlySpan<byte> => new byte[] to a data section load, no allocation.
         public static ReadOnlySpan<byte> ZeroByteSpan => new byte[] { 0 };
         public static ReadOnlySpan<byte> OneByteSpan => new byte[] { 1 };
@@ -801,7 +797,6 @@ namespace Nethermind.Core.Extensions
             state.Bytes.AsSpan().OutputBytesToCharHexWithEip55Checksum(chars, state.WithZeroX, state.LeadingZeros);
         });
 
-        internal static uint[] Lookup32 = CreateLookup32();
         // Plain arithmetic rather than formatting each byte, which allocated and parsed a string per entry.
         private static uint[] CreateLookup32()
         {
@@ -896,32 +891,65 @@ namespace Nethermind.Core.Extensions
                 data = data[i..];
             }
 
-            // Word-at-a-time tail. This is the whole loop on targets without vector acceleration
-            // (e.g. the zkVM guest), where a byte-at-a-time scan of transaction calldata dominates
-            // intrinsic gas calculation.
-            ref byte tail = ref MemoryMarshal.GetReference(data);
+            return totalZeros + CountZerosWordAtATime(data);
+        }
+
+        /// <summary>Counts the zero bytes in <paramref name="data"/> a word at a time, without vector instructions.</summary>
+        /// <remarks>
+        /// The tail of <see cref="CountZeros(ReadOnlySpan{byte})"/>, and its whole loop on targets without vector
+        /// acceleration (e.g. the zkVM guest), where a byte-at-a-time scan of transaction calldata dominates
+        /// intrinsic gas calculation. Each byte lane of an accumulator counts the non-zero bytes at its position,
+        /// so a word costs a few ALU ops and the lanes are summed once per chunk.
+        /// </remarks>
+        internal static int CountZerosWordAtATime(ReadOnlySpan<byte> data)
+        {
+            // Lanes reach at most 28, so the sum of all eight fits the byte a multiply-fold leaves it in, and a chunk
+            // is a whole number of the four-word steps below.
+            const int maxChunkBytes = 28 * sizeof(ulong);
+            ref byte bytes = ref MemoryMarshal.GetReference(data);
+            int wordBytes = data.Length & ~(sizeof(ulong) - 1);
+            int nonZeros = 0;
             int offset = 0;
-            for (; offset <= data.Length - sizeof(ulong); offset += sizeof(ulong))
+            while (offset < wordBytes)
             {
-                ulong word = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref tail, offset));
-                // Sets 0x80 in every zero byte. The shorter `(w - 0x01..) & ~w & 0x80..` form is not
-                // usable here: it only reports whether *some* byte is zero, because a borrow out of
-                // one byte corrupts its neighbour's flag. This form carries within each byte only.
-                ulong zeroFlags = ~((((word & 0x7F7F7F7F7F7F7F7FUL) + 0x7F7F7F7F7F7F7F7FUL) | word) | 0x7F7F7F7F7F7F7F7FUL);
-                // Sum the flags without PopCount, which lacks a hardware instruction on some targets.
-                totalZeros += (int)((zeroFlags >> 7) * 0x0101010101010101UL >> 56);
+                int chunkEnd = Math.Min(wordBytes, offset + maxChunkBytes);
+                ulong laneCounts = 0;
+                // Four words a step pay for the loop's test and the offset's add once.
+                for (; offset <= chunkEnd - 4 * sizeof(ulong); offset += 4 * sizeof(ulong))
+                {
+                    ref byte words = ref Unsafe.Add(ref bytes, offset);
+                    laneCounts += NonZeroLanes(Unsafe.ReadUnaligned<ulong>(ref words)) +
+                        NonZeroLanes(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref words, sizeof(ulong)))) +
+                        NonZeroLanes(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref words, 2 * sizeof(ulong)))) +
+                        NonZeroLanes(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref words, 3 * sizeof(ulong))));
+                }
+
+                for (; offset < chunkEnd; offset += sizeof(ulong))
+                {
+                    laneCounts += NonZeroLanes(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, offset)));
+                }
+
+                // Sum the lanes without PopCount, which lacks a hardware instruction on some targets.
+                nonZeros += (int)((laneCounts * 0x0101010101010101UL) >> 56);
             }
 
+            int zeros = wordBytes - nonZeros;
             for (; offset < data.Length; offset++)
             {
-                if (Unsafe.Add(ref tail, offset) == 0)
+                if (Unsafe.Add(ref bytes, offset) == 0)
                 {
-                    totalZeros++;
+                    zeros++;
                 }
             }
 
-            return totalZeros;
+            return zeros;
         }
+
+        /// <summary>One in each byte lane of <paramref name="word"/> that holds a non-zero byte.</summary>
+        /// <remarks>Sets 0x80 in every non-zero byte; the add carries within each byte only, so lanes stay apart.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong NonZeroLanes(ulong word) =>
+            ((((word & 0x7F7F7F7F7F7F7F7FUL) + 0x7F7F7F7F7F7F7F7FUL) | word) >> 7) & 0x0101010101010101UL;
 
         [DebuggerStepThrough]
         public static byte[] FromUtf8HexString(scoped ReadOnlySpan<byte> hexString)

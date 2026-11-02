@@ -72,12 +72,18 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .AddDecorator<INetworkConfig>((ctx, networkConfig) =>
             {
                 ChainSpec chainSpec = ctx.Resolve<ChainSpec>();
-                IDiscoveryConfig discoveryConfig = ctx.Resolve<IDiscoveryConfig>();
 
                 if (networkConfig.DiscoveryDns == null)
                 {
                     string chainName = BlockchainIds.GetBlockchainName(chainSpec!.NetworkId).ToLowerInvariant();
                     networkConfig.DiscoveryDns = $"enrtree://{EthDiscoTreeSigner}@all.{chainName}.ethdisco.net";
+                }
+
+                IDiscoveryConfig discoveryConfig = ctx.Resolve<IDiscoveryConfig>();
+                if (discoveryConfig.Bootnodes.Length > 0)
+                {
+                    ILogger logger = ctx.Resolve<ILogManager>().GetClassLogger<DiscoveryModule>();
+                    if (logger.IsWarn) logger.Warn($"Discovery.{nameof(IDiscoveryConfig.Bootnodes)} is deprecated and will be removed. Use Network.{nameof(INetworkConfig.Bootnodes)} instead.");
                 }
 
                 networkConfig.Bootnodes = [.. networkConfig.Bootnodes, .. discoveryConfig.Bootnodes, .. chainSpec.Bootnodes];
@@ -110,6 +116,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             builder
                 .AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>()
                 .AddSingleton<INodeRecordProvider, NodeRecordProvider>()
+                .AddSingleton<SnapEnrAdvertisement>()
 
                 .AddNetworkStorage(DbNames.DiscoveryNodes, DbNames.DiscoveryNodes)
                 .AddNetworkStorage(DbNames.DiscoveryV5Nodes, DbNames.DiscoveryV5Nodes)

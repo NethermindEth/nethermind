@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -44,7 +45,7 @@ public class SlotRlpEncodingTests
     {
         // Raw mode only exists for DBs synced before the feature; pin it to exercise the legacy path.
         if (!rlpWrap) BasePersistence.SetSlotEncoding(db.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
-        return new RocksDbPersistence(db, LimboLogs.Instance);
+        return new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
     }
 
     private static void WriteSlot(IPersistence persistence, in UInt256 value)
@@ -166,7 +167,7 @@ public class SlotRlpEncodingTests
         if (seedLayoutMarker) db.GetColumnDb(FlatDbColumns.Metadata).Set(LayoutKey, new[] { (byte)FlatLayout.Flat });
         WriteRawSlotToDb(db, Bytes.FromHexString("0102"));
 
-        RocksDbPersistence persistence = new(db, LimboLogs.Instance); // no recorded SlotEncoding; raw slots win
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance); // no recorded SlotEncoding; raw slots win
         using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
         {
             UInt256 read = default;
@@ -179,7 +180,7 @@ public class SlotRlpEncodingTests
         Assert.That(db.GetColumnDb(FlatDbColumns.Metadata).Get(SlotEncodingKey), Is.Null);
         Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(Bytes.FromHexString("abcd"))); // raw, not RLP(0x82abcd)
 
-        RocksDbPersistence reopened = new(db, LimboLogs.Instance);
+        RocksDbPersistence reopened = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
         using IPersistence.IPersistenceReader reader2 = reopened.CreateReader();
         UInt256 read2 = default;
         Assert.That(reader2.TryGetSlot(Addr, Slot, ref read2), Is.True);
@@ -193,7 +194,7 @@ public class SlotRlpEncodingTests
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
         db.GetColumnDb(FlatDbColumns.Metadata).Set(LayoutKey, new[] { (byte)FlatLayout.Flat });
 
-        RocksDbPersistence persistence = new(db, LimboLogs.Instance);
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
         WriteSlot(persistence, BaseFlatPersistence.DecodeSlotValue(Bytes.FromHexString("0102")));
 
         Assert.That(db.GetColumnDb(FlatDbColumns.Metadata).Get(SlotEncodingKey),

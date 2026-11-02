@@ -42,7 +42,7 @@ public sealed class EthCapabilitiesProvider(
 
         ulong historyFloor = historyPruner.OldestBlockHeader?.Number ?? 0ul;
         DeleteStrategy? historyWindow = BuildWindow(
-            historyConfig.Pruning == PruningModes.Rolling ? historyPruner.GetRetentionBlocks(historyConfig.RetentionEpochs) : 0UL);
+            historyConfig.Pruning == PruningModes.Rolling ? historyPruner.GetRetentionBlocks(historyPruner.RetentionEpochs) : 0UL);
 
         ulong lowestReceipt = Math.Max(syncPointers.LowestInsertedReceiptBlockNumber ?? 0ul, receiptsBarrier);
         ulong lowestBody = Math.Max(syncPointers.LowestInsertedBodyNumber ?? 0ul, bodiesBarrier);

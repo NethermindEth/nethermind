@@ -22,9 +22,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V72;
 /// <summary>
 /// Coordinates bounded sparse blob state, peer selection, custody changes, and cell-serving capacity across eth/72 peers.
 /// </summary>
-public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, IDisposable
+public sealed partial class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, IDisposable
 {
     internal const int SupernodeCustodyColumnThreshold = 64;
+    internal const int MinSamplerFullProviderAnnouncements = 2;
     private const int MaxTrackedTransactions = 16384;
     private const int MinProviderProbabilityPercent = 15;
     private const int MaxProviderProbabilityPercent = 100;
@@ -82,6 +83,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private int _inFlightCellWork;
     private int _trackedTransactionCount;
     private int _transactionOrderCount;
+    private int _peerCount;
     private double _cellServeTokens = GlobalCellServeTokenCapacity;
     private DateTimeOffset _cellServeTokensUpdatedAt;
     private int _maintenanceScheduled;
@@ -165,6 +167,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         _txPool.EvictedPending -= OnPendingTransactionRemoved;
         _maintenanceTimer.Elapsed -= OnMaintenanceElapsed;
         _maintenanceTimer.Dispose();
+        DisposeWrapped();
         lock (_cellServeLock)
         {
             if (_activeCellServeOperations == 0)
@@ -270,7 +273,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
     private void OnPendingTransactionRemoved(object? sender, TxEventArgs e)
     {
-        if (e.Transaction.SupportsBlobs && e.Transaction.Hash is not null)
+        if (e.Transaction.CarriesBlobs && e.Transaction.Hash is not null)
         {
             Clear(e.Transaction.Hash);
         }
@@ -278,7 +281,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
     private void OnPendingTransactionAdded(object? sender, TxEventArgs e)
     {
-        if (e.Transaction.SupportsBlobs && e.Transaction.Hash is not null)
+        if (e.Transaction.CarriesBlobs && e.Transaction.Hash is not null)
         {
             TryApplyRecordedCells(e.Transaction.Hash);
         }
@@ -305,6 +308,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             }
 
             _peers[peer.Id] = peer;
+            Volatile.Write(ref _peerCount, _peers.Count);
         }
 
         ProcessPeerCleanupActions(cleanupActions, peer.Id);
@@ -321,10 +325,12 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             if (((ICollection<KeyValuePair<PublicKey, ISparseBlobPoolPeer>>)_peers)
                 .Remove(new KeyValuePair<PublicKey, ISparseBlobPoolPeer>(peer.Id, peer)))
             {
+                Volatile.Write(ref _peerCount, _peers.Count);
                 cleanupActions = CollectPeerCleanupActions(peer.Id);
             }
         }
 
+        DropWrapped(peer.Id);
         ProcessPeerCleanupActions(cleanupActions, peer.Id);
     }
 
@@ -449,7 +455,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         for (int i = 0; i < cleanupActions.Count; i++)
         {
             PeerCleanupAction action = cleanupActions[i];
-            action.TransactionRetryPeer?.TrySendPooledTransactionRequest(action.Hash);
+            RequestTransactionBody(action.TransactionRetryPeer, action.Hash);
             if (!action.RetryMask.IsEmpty)
             {
                 TryRequestCells(action.Hash, action.RetryMask, removedPeerId);
@@ -463,7 +469,17 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     }
 
     /// <inheritdoc/>
-    public bool RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask)
+    public bool RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask, TxType? announcedType = null)
+        => RecordAnnouncement(peer, hash, announcementMask, announcedType, unknownIfUnclaimed: false);
+
+    /// <inheritdoc/>
+    public bool RestoreAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask, TxType? announcedType)
+        => RecordAnnouncement(peer, hash, announcementMask, announcedType, unknownIfUnclaimed: true);
+
+    /// <param name="unknownIfUnclaimed">Whether a null <paramref name="announcedType"/> records an unknown claim for a peer without
+    /// one, rather than leaving the type-3 default.</param>
+    private bool RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask, TxType? announcedType,
+        bool unknownIfUnclaimed)
     {
         if (announcementMask.IsEmpty || !IsActivePeer(peer))
         {
@@ -475,11 +491,34 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return false;
         }
 
-        TrackedSparseBlobTx state = GetOrAdd(hash, out bool added);
+        bool added = false;
+        if (!_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
+        {
+            lock (_accountingLock)
+            {
+                if (_peerUsage.TryGetValue(peer.Id, out PeerUsage? usage)
+                    && usage.Announcements >= MaxAnnouncementsPerPeer
+                    && !_transactions.TryGetValue(hash.ValueHash256, out state))
+                {
+                    return false;
+                }
+            }
+
+            state ??= GetOrAdd(hash, out added);
+        }
+
         bool accepted = false;
+        bool mismatched = false;
         lock (state.Lock)
         {
-            if (IsCurrentState(hash, state)
+            if (announcedType is not null || unknownIfUnclaimed && !state.AnnouncedTypes.ContainsKey(peer.Id))
+            {
+                state.AnnouncedTypes[peer.Id] = announcedType;
+            }
+
+            mismatched = state.BodyType is { } bodyType && ClaimedType(state, peer.Id) is { } claimedType && claimedType != bodyType;
+            if (!mismatched
+                && IsCurrentState(hash, state)
                 && IsActivePeer(peer)
                 && !IsCellValidationQuarantined(state)
                 && !state.AmbiguousFailureSources.Contains(peer.Id))
@@ -503,10 +542,22 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             }
         }
 
+        if (mismatched)
+        {
+            CompleteRecord(hash, state, added, false);
+            DisconnectMismatchedAnnouncer(peer.Id, hash);
+            return false;
+        }
+
         accepted = CompleteRecord(hash, state, added, accepted);
         if (!accepted)
         {
             return false;
+        }
+
+        if (ClaimedTypeLocked(state, peer.Id) == TxType.FrameTx)
+        {
+            OnFrameCellAnnouncement(peer, hash);
         }
 
         return true;
@@ -527,7 +578,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
 
         int threshold = Math.Clamp(providerProbabilityPercent, MinProviderProbabilityPercent, MaxProviderProbabilityPercent);
-        if (announcementMask.IsFull && ShouldFetchFull(hash, threshold))
+        // With fewer peers than providers a sampler waits for, sampling never starts.
+        if (announcementMask.IsFull && (Volatile.Read(ref _peerCount) < MinSamplerFullProviderAnnouncements || ShouldFetchFull(hash, threshold)))
         {
             return BlobCellMask.Full;
         }
@@ -589,7 +641,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     /// <inheritdoc/>
     public bool TryRequestCells(Hash256 hash, BlobCellMask requestMask, PublicKey lastResortPeerId)
     {
-        if (requestMask.IsEmpty || !_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
+        if (requestMask.IsEmpty || !_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state)
+            || !MayRequestCells(hash, state, out bool typeThreeClaimersOnly))
         {
             return false;
         }
@@ -631,6 +684,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             {
                 // Everything is already held locally or being fetched.
                 return true;
+            }
+
+            if (typeThreeClaimersOnly)
+            {
+                ExcludeFrameClaimers(state, ref capacityLimitedPeers);
             }
 
             // Requests are trimmed per peer, so keep selecting until the whole mask is placed or
@@ -945,13 +1003,27 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     public AcceptTxResult? RecordTransaction(ISparseBlobPoolPeer peer, Transaction transaction)
     {
         Hash256? hash = transaction.Hash;
-        if (hash is null || !transaction.SupportsBlobs)
+        if (hash is null || !transaction.SupportsBlobs && !transaction.CarriesBlobs)
         {
             return SubmitTransaction(peer, transaction);
         }
 
+        // EIP-8437: a dependency-bearing body is held only once its covering wrapper validated. The body still settles the
+        // announced type, closing cell retrieval opened by type-3 claims.
+        if (Eip8288Dependencies.IsDependencyBearing(transaction) && !IsAwaitingCells(hash))
+        {
+            if (_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? announced))
+            {
+                RecordBodyType(hash, announced, transaction);
+            }
+
+            return AcceptTxResult.MissingDependencyProof;
+        }
+
         if (transaction.NetworkWrapper is ShardBlobNetworkWrapper wrapper && wrapper.HasFullBlobs())
         {
+            // A copy rejected earlier for its sidecar must not shadow this one: the hash does not cover the sidecar.
+            _txPool.ForgetInvalidBlobProofs(hash);
             return SubmitTransaction(peer, transaction);
         }
 
@@ -1031,6 +1103,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return null;
         }
 
+        RecordBodyType(hash, state, transaction);
         return TrySubmit(hash, state);
     }
 
@@ -1833,7 +1906,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return null;
         }
 
-        transactionRetryPeer?.TrySendPooledTransactionRequest(hash);
+        RequestTransactionBody(transactionRetryPeer, hash);
         TryRequestCells(hash, cells.CellMask, retryFallbackPeerId);
         return null;
     }
@@ -1841,7 +1914,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private AcceptTxResult SubmitTransaction(ISparseBlobPoolPeer? peer, Transaction transaction)
     {
         transaction.Timestamp = Timestamper.Default.UnixTime.Seconds;
-        AcceptTxResult result = _txPool.SubmitTx(transaction, TxHandlingOptions.None);
+        AcceptTxResult result = Eip8288Dependencies.IsDependencyBearing(transaction)
+            ? SubmitWrappedTransaction(transaction)
+            : _txPool.SubmitTx(transaction, TxHandlingOptions.None);
         if (_logger.IsTrace)
         {
             _logger.Trace($"{peer?.Id} sent sparse blob tx {transaction.Hash} and it was {result}");
@@ -1941,6 +2016,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
                 MaintainTrackedState(entry.Key.ToHash256(), entry.Value, now);
             }
+
+            MaintainWrapped(now);
 
             TrySchedulePendingCustodyUpdate();
         }
@@ -2674,6 +2751,14 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         public bool Submitting { get; set; }
         public bool RemovalRequested { get; set; }
         public bool ApplyingRecordedCells { get; set; }
+
+        /// <summary>The transaction type each announcer claimed; type-3 when absent.</summary>
+        /// <summary>Each announcer's claimed type; null when a restored announcement's type is unknown, and type 3 when absent.</summary>
+        public Dictionary<PublicKey, TxType?> AnnouncedTypes { get; } = [];
+
+        /// <summary>The recorded body's type, once known; it, not an announcement, decides how cells are gated.</summary>
+        public TxType? BodyType { get; set; }
+        public bool BodyDependencyBearing { get; set; }
         public BlobCellMask InFlightMask { get; set; }
         public DateTimeOffset InFlightUntil { get; set; }
         public long NextInFlightRevision { get; set; }

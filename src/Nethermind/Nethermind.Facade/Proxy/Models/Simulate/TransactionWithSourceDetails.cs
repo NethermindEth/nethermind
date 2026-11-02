@@ -9,5 +9,8 @@ public class TransactionWithSourceDetails
 {
     public bool HadGasLimitInRequest;
     public bool HadNonceInRequest;
+
+    /// <summary>The gas limit the block must still be able to include, or <c>null</c> to skip that check.</summary>
+    public ulong? GasLimitToFitBlock;
     public Transaction Transaction { get; set; }
 }

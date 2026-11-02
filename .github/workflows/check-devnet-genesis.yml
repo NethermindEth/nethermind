@@ -1,0 +1,61 @@
+name: Check devnet genesis files
+
+# Loads the latest geth-style genesis files of the ethpandaops devnets, so a fork label or blob
+# schedule key the node doesn't read fails here before a devnet launches.
+
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Load latest devnet genesis files
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    env:
+      # Official ethpandaops devnet repos only; the newest devnets of each are checked.
+      REPOS: heze-devnets glamsterdam-devnets
+      DEVNETS_PER_REPO: 2
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+
+      - name: Fetch genesis files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: dotnet run --file scripts/ci/fetch-devnet-genesis.cs
+
+      - name: Run devnet genesis tests
+        working-directory: src/Nethermind/Nethermind.Specs.Test
+        run: dotnet test --project Nethermind.Specs.Test.csproj -- --filter "FullyQualifiedName~GethGenesisDevnetTests"
+
+      # Scheduled failures otherwise only reach whoever last edited the cron.
+      - name: Report failure
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Devnet genesis check failing"
+          issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          body="Devnet genesis check failed: $RUN_URL"
+          if [[ -n "$issue" ]]; then
+            gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi

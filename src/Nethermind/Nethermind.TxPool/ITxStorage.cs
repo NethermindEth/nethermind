@@ -36,6 +36,35 @@ internal interface IAtomicBlobTxStorage
     void Replace(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps);
 }
 
+/// <summary>Identifies one processed blob transaction row by block number and stored position.</summary>
+/// <param name="BlockNumber">The number of the block the row was saved for.</param>
+/// <param name="Position">The stored position among the pool-held blob transactions saved for that block, not the transaction's index in the block.</param>
+internal readonly record struct ProcessedBlobTxKey(ulong BlockNumber, int Position);
+
+/// <summary>
+/// Reads single rows of the processed blob transactions saved by <see cref="IBlobTxStorage.AddBlobTransactionsFromBlock"/>.
+/// </summary>
+/// <remarks>
+/// Reads are lock-free: they never wait for a block's blob transactions being saved or read back, so they are safe on
+/// paths that must not stall the head loop. An absent row is a normal miss, not an error, because finalization cleanup
+/// deletes rows asynchronously. Rows in the legacy whole-block layout are not served and read as misses.
+/// </remarks>
+internal interface IProcessedBlobTxStorage
+{
+    /// <summary>Reads one processed blob transaction row.</summary>
+    /// <param name="blockNumber">The number of the block the row was saved for.</param>
+    /// <param name="position">The stored position among the pool-held blob transactions saved for that block, not the transaction's index in the block.</param>
+    /// <param name="transaction">The decoded transaction, or <see langword="null"/> on a miss.</param>
+    /// <returns><see langword="true"/> if the row exists and decodes; <see langword="false"/> on a miss.</returns>
+    bool TryGetProcessedTransaction(ulong blockNumber, int position, [NotNullWhen(true)] out Transaction? transaction);
+
+    /// <summary>Reads several processed blob transaction rows.</summary>
+    /// <param name="keys">The rows to read.</param>
+    /// <param name="results">Receives the decoded transaction for each key, or <see langword="null"/> on a miss. Must be at least as long as <paramref name="keys"/>.</param>
+    /// <returns>The number of rows found.</returns>
+    int TryGetProcessedTransactions(scoped ReadOnlySpan<ProcessedBlobTxKey> keys, scoped Span<Transaction?> results);
+}
+
 internal interface ISpecChangeValidationStorage
 {
     string? GetSpecChangeValidationMarker();

@@ -3,12 +3,12 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Consensus.Decoders;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -34,10 +34,9 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         executionPayload.BlobGasUsed = block.BlobGasUsed;
         executionPayload.ExcessBlobGas = block.ExcessBlobGas;
         executionPayload.InclusionListTransactions = block.InclusionListTransactions is null ? [] : InclusionListDecoder.Encode(block.InclusionListTransactions);
-        if (block.Header.RecursiveStark is { } recursiveStark)
+        if (block.Header.RecursiveStark is not null)
         {
-            executionPayload.RecursiveStarkProof = recursiveStark.StarkProof;
-            executionPayload.RecursiveStarkBlockDepsHash = recursiveStark.BlockDepsHash.Bytes.ToArray();
+            executionPayload.StarkProof = block.StarkProof ?? throw new System.InvalidOperationException("Missing block proof body");
         }
 
         return executionPayload;
@@ -47,17 +46,6 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
 
     public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
-        if (InclusionListRecursiveStark is { } inclusionProof
-            && (InclusionListTransactions is null || !inclusionProof.HasValidShape))
-        {
-            return Result<Block>.Fail("Invalid inclusion-list recursive STARK");
-        }
-
-        if (InclusionListProvenDependencies is { } dependencies
-            && (InclusionListRecursiveStark is null || InclusionListTransactions is null
-                || !Nethermind.Consensus.ProofAggregation.InclusionListProofValidator.HasValidMetadataLength(dependencies)))
-            return Result<Block>.Fail("Invalid inclusion-list proven dependencies");
-
         Result<Block> baseResult = base.TryGetBlock(totalDifficulty);
         if (baseResult.IsError)
         {
@@ -69,27 +57,27 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         block.Header.BlobGasUsed = BlobGasUsed;
         block.Header.ExcessBlobGas = ExcessBlobGas;
         block.Header.RequestsHash = ExecutionRequests is not null ? ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequests) : null;
-        block.InclusionListTransactions = InclusionListTransactions is not null ? TxsDecoder.DecodeTxs(InclusionListTransactions, true).Transactions : null;
-        block.InclusionListRecursiveStark = InclusionListRecursiveStark;
-        block.InclusionListProvenDependencies = InclusionListProvenDependencies;
-        if (RecursiveStarkProof is null && RecursiveStarkBlockDepsHash is not null)
+        if (InclusionLists is not null)
         {
-            return Result<Block>.Fail($"Missing {nameof(RecursiveStarkProof)}");
+            // ValidateParams has already checked each list's shape. Each list is decoded on its own, so its proof stays
+            // with exactly its transactions.
+            CommitteeInclusionList[] lists = InclusionListV1.Decode(InclusionLists);
+            block.InclusionLists = lists;
+            block.InclusionListTransactions = CommitteeInclusionList.Flatten(lists);
         }
-
-        if (RecursiveStarkProof is not null)
+        else
         {
-            if (RecursiveStarkProof.Length > NativeLeanProofVerifier.MaxProofBytes)
+            block.InclusionListTransactions = InclusionListTransactions is not null ? TxsDecoder.DecodeTxsBorrowingBuffers(InclusionListTransactions, skipErrors: true).Transactions : null;
+        }
+        if (StarkProof is not null)
+        {
+            if (StarkProof.Length > Eip8288Constants.MaxAggregateProofBytes)
             {
-                return Result<Block>.Fail($"{nameof(RecursiveStarkProof)} exceeds the proof size limit");
+                return Result<Block>.Fail($"{nameof(StarkProof)} exceeds the proof size limit");
             }
 
-            if (RecursiveStarkBlockDepsHash is not { Length: Hash256.Size })
-            {
-                return Result<Block>.Fail($"Invalid {nameof(RecursiveStarkBlockDepsHash)}: expected {Hash256.Size} bytes, got {RecursiveStarkBlockDepsHash?.Length.ToString() ?? "none"}");
-            }
-
-            block.Header.RecursiveStark = new RecursiveStark(RecursiveStarkProof, new Hash256(RecursiveStarkBlockDepsHash));
+            block.StarkProof = StarkProof;
+            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
         }
 
         return baseResult;
@@ -117,12 +105,8 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
     public sealed override ulong? ExcessBlobGas { get; set => field = Bind(value, PayloadFields.ExcessBlobGas); }
 
     /// <summary>
-    /// EIP-8288 <c>recursive_stark</c> proof and its <c>block_deps_hash</c>, present on every block once
-    /// the fork is active, so payloads for forks without EIP-8288 are byte-identical.
+    /// The EIP-8288 block proof. Its dependency commitment is derived from the payload transactions.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public byte[]? RecursiveStarkProof { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public byte[]? RecursiveStarkBlockDepsHash { get; set; }
+    public byte[]? StarkProof { get; set; }
 }

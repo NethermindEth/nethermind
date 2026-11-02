@@ -81,7 +81,7 @@ public class ReorgTests
         _blockTree = blockTreeBuilder.TestObject;
 
         BlockhashCache blockhashCache = new(blockTreeBuilder.HeaderStore, LimboLogs.Instance);
-        BlockhashProvider blockhashProvider = new(blockhashCache, stateProvider, LimboLogs.Instance);
+        BlockhashProvider blockhashProvider = new(blockhashCache, LimboLogs.Instance);
         EthereumVirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
@@ -116,13 +116,13 @@ public class ReorgTests
             MainnetSpecProvider.Instance,
             stateProvider,
             blockhashProvider,
-            new InclusionListSatisfactionChecker(MainnetSpecProvider.Instance, Substitute.For<ITxValidator>(), Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>()),
-            LimboLogs.Instance);
+            new InclusionListSatisfactionChecker(MainnetSpecProvider.Instance, Substitute.For<ITxValidator>()),
+            LimboLogs.Instance,
+            Substitute.For<IWorldStateManager>());
 
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,
             branchProcessor,
-            specProvider,
             [new RecoverSignatures(
                 ecdsa,
                 specProvider,

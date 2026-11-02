@@ -19,11 +19,11 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class StateTree : PatriciaTree
+    public partial class StateTree : PatriciaTree
     {
         private static readonly AccountDecoder _decoder = new();
 
-        public static readonly Rlp EmptyAccountRlp = _decoder.Encode(Account.TotallyEmpty);
+        public static Rlp EmptyAccountRlp => field ??= _decoder.Encode(Account.TotallyEmpty);
 
         [DebuggerStepThrough]
         public StateTree(ICappedArrayPool? bufferPool = null)
@@ -39,6 +39,7 @@ namespace Nethermind.State
         }
 
         [DebuggerStepThrough]
+        [SkipLocalsInit]
         public Account? Get(Address address, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> bytes = Get(KeccakCache.Compute(address.Bytes).BytesAsSpan, rootHash);
@@ -80,7 +81,8 @@ namespace Nethermind.State
         public void Set(Address address, Account? account)
         {
             KeccakCache.ComputeTo(address.Bytes, out ValueHash256 keccak);
-            Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account));
+            Set(keccak.BytesAsSpan, account is null ? CappedArray<byte>.Empty
+                : new CappedArray<byte>(account.IsTotallyEmpty ? EmptyAccountRlp.Bytes : _decoder.EncodeAsBytes(account)));
         }
 
         [SkipLocalsInit]
@@ -100,6 +102,9 @@ namespace Nethermind.State
             batch.Flush(entries.AsSpan());
             BulkSet(entries);
         }
+
+        /// <summary>Writes the changed accounts into the tree.</summary>
+        internal partial void WriteAccounts(Dictionary<AddressAsKey, Account?> accounts);
 
         public StateTreeBulkSetter BeginSet(int estimatedEntries) => new(estimatedEntries, this);
 

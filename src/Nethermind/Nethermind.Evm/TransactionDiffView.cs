@@ -11,7 +11,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-/// <summary>EIP-7906: ordered view of a transaction's state diff and logs, shared by its POST_TX frames.</summary>
+/// <summary>EIP-7906: ordered view of a transaction's state diff and logs, shared by its ASSERT frames.</summary>
 /// <remarks>The BAL slice already net-collapses writes and holds the prestate; this adds only the spec's
 /// enumeration order and the per-address indexes that make keyed TXDIFF lookups O(1).</remarks>
 internal sealed class TransactionDiffView

@@ -20,7 +20,6 @@ using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Lean;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats.Model;
 
@@ -33,16 +32,14 @@ namespace Nethermind.Network.P2P
         void OnSessionDisconnected(Session session, DisconnectEventArgs args);
     }
 
-    internal interface ILeanBulkSession
+    internal interface IMessageLimitSession
     {
-        bool EnableLeanBulk();
-        ValueTask<int> DeliverLeanChunkAsync<T>(T message, CancellationToken cancellationToken) where T : P2PMessage;
-
-        /// <summary>Whether a packet exceeds the EIP-8437 <c>MAX_MESSAGE_BYTES</c> ceiling of its protocol, checked before decompression.</summary>
+        /// <summary>Whether a packet exceeds its protocol's message-data ceiling, checked against the advertised uncompressed
+        /// size before decompression.</summary>
         bool ExceedsMessageLimit(int adaptivePacketType, int uncompressedLength);
     }
 
-    public class Session : ISession, ILeanBulkSession
+    public class Session : ISession, IMessageLimitSession
     {
         private static readonly ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new();
         private readonly ConcurrentDictionary<string, IProtocolHandler> _protocols = new(concurrencyLevel: 1, capacity: 4);
@@ -289,39 +286,15 @@ namespace Nethermind.Network.P2P
             void TraceDeliverMessage(T msg) => _logger.Trace($"P2P to deliver {msg.Protocol}.{msg.PacketType} on {this}");
         }
 
-        bool ILeanBulkSession.ExceedsMessageLimit(int adaptivePacketType, int uncompressedLength) =>
-            uncompressedLength > LeanProtocol.MaxMessageBytes && _resolver?.ResolveProtocol(adaptivePacketType).Item1 == LeanProtocol.Code;
-
-        bool ILeanBulkSession.EnableLeanBulk()
+        /// <remarks>Caps on the <c>eth/73</c> wrapper messages: NewProofWrapperHashes and GetProofWrappers by their largest valid
+        /// encodings, ProofWrappers by this client's allowance for a whole wrapper of <c>MAX_WRAPPER_BYTES</c> under the soft
+        /// response limit. Data within the smallest cap needs no protocol lookup.</remarks>
+        bool IMessageLimitSession.ExceedsMessageLimit(int adaptivePacketType, int uncompressedLength)
         {
-            if (!HasAgreedCapability(new Capability(LeanProtocol.Code, LeanProtocol.Version)) || _packetSender is not PacketSender sender) return false;
-            sender.EnableLeanBulk();
-            return true;
-        }
-
-        async ValueTask<int> ILeanBulkSession.DeliverLeanChunkAsync<T>(T message, CancellationToken cancellationToken)
-        {
-            try
-            {
-                lock (_sessionStateLock)
-                {
-                    if (State < SessionState.Initialized) ThrowInvalidSessionState();
-                    if (IsClosed) return 0;
-                }
-                if (message is not ChunkMessage
-                    || !HasAgreedCapability(new Capability(LeanProtocol.Code, LeanProtocol.Version)) || _packetSender is not PacketSender sender) return 0;
-                message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
-                int size = await sender.EnqueueAsync(message, cancellationToken).ConfigureAwait(false);
-                if (size != 0)
-                {
-                    _activityObserver?.OnSessionActivity(this);
-                    MsgDelivered?.Invoke(this, new PeerEventArgs(_node, message.Protocol, message.PacketType, size));
-                    RecordOutgoingMessageMetric(message, size);
-                    Interlocked.Add(ref Metrics.P2PBytesSent, size);
-                }
-                return size;
-            }
-            finally { message.Dispose(); }
+            if (uncompressedLength <= Subprotocols.Eth.V73.Eth73Protocol.MaxGetProofWrappersBytes || _resolver is null) return false;
+            (string? protocol, int messageId) = _resolver.ResolveProtocol(adaptivePacketType);
+            return protocol == Protocol.Eth && _protocols.TryGetValue(Protocol.Eth, out IProtocolHandler? eth)
+                && eth.ProtocolVersion >= EthVersions.Eth73 && Subprotocols.Eth.V73.Eth73Protocol.ExceedsMessageLimit(messageId, uncompressedLength);
         }
 
         public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler) => _protocols.TryGetValue(protocolCode, out handler);

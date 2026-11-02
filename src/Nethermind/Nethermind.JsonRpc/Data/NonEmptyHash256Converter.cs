@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Data;
 
@@ -18,9 +19,9 @@ namespace Nethermind.JsonRpc.Data;
 internal sealed class NonEmptyHash256Converter : JsonConverter<Hash256>
 {
     public override Hash256 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        ((JsonConverter<Hash256>)options.GetConverter(typeof(Hash256))).Read(ref reader, typeToConvert, options)
+        ((JsonConverter<Hash256>)TypeInfoJsonSerializer.GetTypeInfo<Hash256>(options).Converter).Read(ref reader, typeToConvert, options)
         ?? throw new SafePublicMessageFormatException("empty hash");
 
     public override void Write(Utf8JsonWriter writer, Hash256 value, JsonSerializerOptions options) =>
-        JsonSerializer.Serialize(writer, value, options);
+        TypeInfoJsonSerializer.Serialize(writer, value, options);
 }

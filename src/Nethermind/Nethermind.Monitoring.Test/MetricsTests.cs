@@ -12,14 +12,13 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api.Monitoring;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Init.Modules;
-using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -325,7 +324,7 @@ public class MetricsTests
                 EnableDetailedMetric = true
             };
             await using IContainer container = new ContainerBuilder()
-                .AddModule(new MonitoringModule(metricsConfig))
+                .AddModule(new MonitoringModule())
                 .AddSingleton<IMetricsConfig>(metricsConfig)
                 .AddSingleton<ISyncConfig>(new SyncConfig())
                 .AddSingleton<IPruningConfig>(new PruningConfig())
@@ -394,7 +393,7 @@ public class MetricsTests
     }
 
     [Test]
-    public void UpdateAllMetrics_does_not_throw_when_registration_is_concurrent()
+    public async Task UpdateAllMetrics_does_not_throw_when_registration_is_concurrent()
     {
         MetricsConfig metricsConfig = new() { Enabled = true };
         MetricsController metricsController = new(metricsConfig);
@@ -429,7 +428,7 @@ public class MetricsTests
             }
         });
 
-        Assert.DoesNotThrowAsync(() => Task.WhenAll(updater, registrar));
+        await Assert.DoesNotThrowAsync(() => Task.WhenAll(updater, registrar));
     }
 
     [Test]

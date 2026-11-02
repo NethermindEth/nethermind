@@ -43,7 +43,6 @@ namespace Nethermind.Core
         // Field indicating if this transaction is exempt from the L2 gas limit.
         public bool IsOPSystemTransaction { get; set; }
 
-        private UInt256 _gasPrice;
         public ulong Nonce { get; set; }
         public UInt256 GasPrice { get => _gasPrice; set => _gasPrice = value; }
         public UInt256? GasBottleneck { get; set; }
@@ -72,6 +71,7 @@ namespace Nethermind.Core
         [JsonIgnore]
         public ulong BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
         public Address? To { get; set; }
+        private UInt256 _gasPrice;
         private UInt256 _value;
         public UInt256 Value { get => _value; set => _value = value; }
         [JsonIgnore]
@@ -101,7 +101,7 @@ namespace Nethermind.Core
 
         [JsonIgnore]
         internal bool IsHashCalculated => _hash is not null;
-        internal Hash256 CalculateHashInternal()
+        private Hash256 CalculateHashInternal()
         {
             Hash256? hash = _hash;
             if (hash is not null) return hash;
@@ -267,6 +267,10 @@ namespace Nethermind.Core
         /// in-memory transaction, which derives it from the frames, and after a reload: it is not encoded.</summary>
         public virtual Address? PersistedPaymaster => null;
 
+        /// <summary>Whether a pool record held without its frames had an EIP-8288 dependency verification frame. Null for an
+        /// in-memory transaction, which derives it from the frames, and after a reload: it is not encoded.</summary>
+        public virtual bool? PersistedDependencyBearing => null;
+
         /// <summary>
         /// Nonce keys selected by a frame transaction, sharing the sequence number held by <see cref="Nonce"/>.
         /// https://eips.ethereum.org/EIPS/eip-8250
@@ -274,18 +278,6 @@ namespace Nethermind.Core
         /// <remarks><see langword="null"/> for the EIP-8141 envelope, whose single nonce is the sender's
         /// linear account nonce — the same domain EIP-8250 addresses as the key <c>0</c>.</remarks>
         public UInt256[]? NonceKeys { get; set; }
-
-        /// <summary>
-        /// Recent-root references declared by a frame transaction.
-        /// https://eips.ethereum.org/EIPS/eip-8272
-        /// </summary>
-        /// <remarks><see langword="null"/> for an envelope that predates EIP-8272, which is a different
-        /// signing payload from one carrying an empty reference list.</remarks>
-        public RecentRootReference[]? RecentRootReferences { get; set; }
-
-        /// <summary>Zero and non-zero byte counts of the EIP-8272 recent-root reference calldata, priced in addition to
-        /// frame and signature data. In-memory only; set from the canonical encoding rather than recomputed.</summary>
-        public (int ZeroBytes, int NonZeroBytes) ReferenceCalldataStats { get; set; }
 
         /// <summary>Zero and non-zero byte counts of EIP-8250's <c>nonce_calldata</c>, priced in addition to frame and
         /// signature data. In-memory only; set from the canonical encoding rather than recomputed.</summary>
@@ -308,7 +300,7 @@ namespace Nethermind.Core
         /// <summary>
         /// Encoded transaction length
         /// </summary>
-        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs) => shouldCountBlobs
+        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs) => shouldCountBlobs || !MayHaveNetworkForm
               ? _size ??= sizeCalculator.GetLength(this, true)
               : sizeCalculator.GetLength(this, false);
 
@@ -419,8 +411,6 @@ namespace Nethermind.Core
                 obj.PayerAddress = default;
                 obj.PayerExposure = default;
                 obj.NonceKeys = default;
-                obj.RecentRootReferences = default;
-                obj.ReferenceCalldataStats = default;
                 obj.FrameCalldataStats = default;
 
                 return true;
@@ -477,8 +467,6 @@ namespace Nethermind.Core
             tx.PayerAddress = PayerAddress;
             tx.PayerExposure = PayerExposure;
             tx.NonceKeys = NonceKeys;
-            tx.RecentRootReferences = RecentRootReferences;
-            tx.ReferenceCalldataStats = ReferenceCalldataStats;
             tx.FrameCalldataStats = FrameCalldataStats;
         }
 

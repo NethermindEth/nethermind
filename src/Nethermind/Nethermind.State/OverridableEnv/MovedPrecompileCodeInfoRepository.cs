@@ -32,7 +32,7 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
         {
             worldState.AddAccountRead(codeSource);
             worldState.RecordAccountAccess(codeSource);
-            if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress))
+            if (vmSpec.IsEip7702Enabled && !codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress))
             {
                 return followDelegation ? GetDelegatedCodeInfo(delegationAddress, vmSpec) : codeInfo;
             }
@@ -61,6 +61,9 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         codeInfoRepository.InsertCode(code, codeOwner, spec);
+
+    public void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        codeInfoRepository.InsertTransientCode(code, codeOwner, spec);
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
         codeInfoRepository.SetDelegation(codeSource, authority, spec);

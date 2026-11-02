@@ -16,7 +16,7 @@ using Level = NLog.LogLevel;
 
 namespace Nethermind.Logging.NLog;
 
-public class NLogManager : ILogManager, IDisposable
+public partial class NLogManager : ILogManager, IDisposable
 {
     private const string DefaultFileTargetName = "file-async_wrapped";
     private const string DefaultFolder = "logs";
@@ -76,13 +76,10 @@ public class NLogManager : ILogManager, IDisposable
     private static ILogger BuildNamedLogger(string loggerName)
         => new(new NLogLogger(loggerName));
 
-#if !ZK_EVM
-    public ILogger GetClassLogger<T>() => TypedLogger<T>.Logger;
-#endif
-
     public ILogger GetLogger(string loggerName) => s_namedLoggers.GetOrAdd(loggerName, s_namedLoggerBuilder);
 
-    public void SetGlobalVariable(string name, object? value) => GlobalDiagnosticsContext.Set(name, value);
+    public void SetGlobalVariable(string name, object? value) =>
+        GlobalDiagnosticsContext.Set(name, value is string text ? IpMasker.MaskIfEnabled(text) : value);
 
     private static void SetupLogRules(string? logRules)
     {

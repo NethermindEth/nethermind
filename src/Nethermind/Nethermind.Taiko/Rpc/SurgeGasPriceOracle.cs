@@ -4,6 +4,7 @@
 using System;
 using System.Globalization;
 using System.Linq;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -288,11 +289,14 @@ public class SurgeGasPriceOracle : GasPriceOracle
     {
         try
         {
-            return await _l1RpcClient.Post<string>("eth_call", new
+            JsonObject call = [];
+            if (_surgeConfig.TaikoInboxAddress is { } to)
             {
-                to = _surgeConfig.TaikoInboxAddress,
-                data
-            }, "latest");
+                call["to"] = to;
+            }
+
+            call["data"] = data;
+            return await _l1RpcClient.Post<string>("eth_call", call, "latest");
         }
         catch (Exception ex)
         {

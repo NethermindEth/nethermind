@@ -20,6 +20,7 @@ tar -czf "$package_path/$PACKAGE_PREFIX-linux-arm64.tar.gz" -C linux-arm64 .
 tar -czf "$package_path/$PACKAGE_PREFIX-linux-x64.tar.gz" -C linux-x64 .
 tar -czf "$package_path/$PACKAGE_PREFIX-macos-arm64.tar.gz" -C osx-arm64 .
 tar -czf "$package_path/$PACKAGE_PREFIX-macos-x64.tar.gz" -C osx-x64 .
+cd win-arm64 && zip -r "$package_path/$PACKAGE_PREFIX-windows-arm64.zip" . && cd ..
 cd win-x64 && zip -r "$package_path/$PACKAGE_PREFIX-windows-x64.zip" . && cd ..
 
 cd "$package_path"

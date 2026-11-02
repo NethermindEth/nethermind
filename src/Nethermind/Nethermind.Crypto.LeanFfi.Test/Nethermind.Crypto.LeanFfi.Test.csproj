@@ -15,6 +15,8 @@
 
   <Target Name="GenerateLeanFixtures" BeforeTargets="BeforeBuild" DependsOnTargets="ResolveProjectReferences" Condition="'$(BuildLeanFfi)' == 'true'">
     <PropertyGroup>
+      <LeanFixturesExecutableName Condition="$([MSBuild]::IsOSPlatform('Windows'))">fixtures.exe</LeanFixturesExecutableName>
+      <LeanFixturesExecutableName Condition="'$(LeanFixturesExecutableName)' == ''">fixtures</LeanFixturesExecutableName>
       <LeanStartupStubName Condition="$([MSBuild]::IsOSPlatform('Windows'))">lean_startup_stub.dll</LeanStartupStubName>
       <LeanStartupStubName Condition="$([MSBuild]::IsOSPlatform('OSX'))">liblean_startup_stub.dylib</LeanStartupStubName>
       <LeanStartupStubName Condition="'$(LeanStartupStubName)' == ''">liblean_startup_stub.so</LeanStartupStubName>
@@ -23,6 +25,7 @@
     <Exec WorkingDirectory="$(MSBuildThisFileDirectory)../../../tools/lean-ffi" Command="cargo run --release --locked --manifest-path &quot;$(MSBuildThisFileDirectory)../../../tools/lean-ffi/Cargo.toml&quot; --example fixtures -- &quot;$(MSBuildThisFileDirectory)../../../tools/lean-ffi/target/test-vectors&quot;" />
     <ItemGroup>
       <LeanVectors Include="$(MSBuildThisFileDirectory)../../../tools/lean-ffi/target/test-vectors/*.bin" />
+      <LeanVectors Include="$(MSBuildThisFileDirectory)../../../tools/lean-ffi/target/release/examples/$(LeanFixturesExecutableName)" />
       <LeanVectors Include="$(MSBuildThisFileDirectory)../../../tools/lean-ffi/target/release/examples/$(LeanStartupStubName)" />
     </ItemGroup>
     <Copy SourceFiles="@(LeanVectors)" DestinationFolder="$(OutDir)lean-vectors" SkipUnchangedFiles="true" />

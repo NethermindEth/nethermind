@@ -151,7 +151,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(foundPrecompileCall, Is.True);
-            Assert.That(precompileCallGas, Is.EqualTo(954_604));
+            Assert.That(precompileCallGas, Is.EqualTo(951_749));
         }
     }
 
@@ -452,6 +452,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Address contractAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
 
         TestAllTracerWithOutput tracer = CreateTracer();
+        tracer.IsTracingAccess = true;
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
         using (Assert.EnterMultipleScope())
@@ -530,6 +531,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestState.CreateAccount(contractAddress, 0, 1);
 
         TestAllTracerWithOutput tracer = CreateTracer();
+        tracer.IsTracingAccess = true;
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
         using (Assert.EnterMultipleScope())
@@ -562,6 +564,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Address contractAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
 
         TestAllTracerWithOutput tracer = CreateTracer();
+        tracer.IsTracingAccess = true;
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
         using (Assert.EnterMultipleScope())
@@ -608,6 +611,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         TestAllTracerWithOutput tracer = CreateTracer();
+        tracer.IsTracingAccess = true;
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
         using (Assert.EnterMultipleScope())
@@ -631,6 +635,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         transaction.GasLimit = intrinsicGas.Standard + Eip8038Constants.ColdAccountAccess - 1;
 
         TestAllTracerWithOutput tracer = CreateTracer();
+        tracer.IsTracingAccess = true;
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
         using (Assert.EnterMultipleScope())
@@ -916,14 +921,14 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(false, false, true, 431_207UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_fresh_CREATE")]
-    [TestCase(false, true, true, 431_207UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_empty_existing_CREATE")]
-    [TestCase(true, false, true, 431_207UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_fresh_CREATE2")]
-    [TestCase(true, true, true, 431_207UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_empty_existing_CREATE2")]
-    [TestCase(false, false, false, 216_748UL, TestName = "Eip8037_successful_create_charges_state_gas_fresh_CREATE")]
-    [TestCase(false, true, false, 216_748UL, TestName = "Eip8037_successful_create_charges_state_gas_empty_existing_CREATE")]
-    [TestCase(true, false, false, 216_757UL, TestName = "Eip8037_successful_create_charges_state_gas_fresh_CREATE2")]
-    [TestCase(true, true, false, 216_757UL, TestName = "Eip8037_successful_create_charges_state_gas_empty_existing_CREATE2")]
+    [TestCase(false, false, true, 434_107UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_fresh_CREATE")]
+    [TestCase(false, true, true, 434_107UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_empty_existing_CREATE")]
+    [TestCase(true, false, true, 434_107UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_fresh_CREATE2")]
+    [TestCase(true, true, true, 434_107UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_empty_existing_CREATE2")]
+    [TestCase(false, false, false, 219_648UL, TestName = "Eip8037_successful_create_charges_state_gas_fresh_CREATE")]
+    [TestCase(false, true, false, 219_648UL, TestName = "Eip8037_successful_create_charges_state_gas_empty_existing_CREATE")]
+    [TestCase(true, false, false, 219_657UL, TestName = "Eip8037_successful_create_charges_state_gas_fresh_CREATE2")]
+    [TestCase(true, true, false, 219_657UL, TestName = "Eip8037_successful_create_charges_state_gas_empty_existing_CREATE2")]
     public void Eip8037_create_state_gas_matches_reference(
         bool create2,
         bool emptyExistingTarget,
@@ -1011,8 +1016,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(false, 479_030L, TestName = "Eip8037_failed_create_burns_child_execution_gas_CREATE")]
-    [TestCase(true, 479_039L, TestName = "Eip8037_failed_create_burns_child_execution_gas_CREATE2")]
+    [TestCase(false, 483_930L, TestName = "Eip8037_failed_create_burns_child_execution_gas_CREATE")]
+    [TestCase(true, 483_939L, TestName = "Eip8037_failed_create_burns_child_execution_gas_CREATE2")]
     public void Eip8037_failed_create_burns_child_execution_gas(bool create2, long expectedGas)
     {
         Address factory = TestItem.AddressC;
@@ -1387,8 +1392,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = Execute(Activation, 500_000, outerCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(327_634));
-        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(241_330));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(334_534));
+        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(248_230));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
         AssertStorage(UInt256.Zero, UInt256.Zero);
         AssertStorage(UInt256.One, UInt256.One);
@@ -1590,7 +1595,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Op(Instruction.REVERT)
             .Done;
 
-        const long gasLimit = 130_000;
+        const long gasLimit = 140_000;
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
@@ -1705,7 +1710,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         AssertStorage(new StorageCell(TestItem.AddressC, 1), UInt256.Zero);
         // The child halt burns its spilled state gas, which is then attributed to the block
         // execution dimension; only the parent's two committed SSTOREs contribute state gas.
-        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(541_335));
+        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(548_235));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(2 * GasCostOf.SSetState));
     }
 
@@ -2109,7 +2114,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, outerCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
-        const long expectedExecutionGas = 31_340;
+        const long expectedExecutionGas = 36_240;
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(expectedExecutionGas));
         Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(expectedExecutionGas));

@@ -43,12 +43,7 @@ public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeT
         {
             foreach (GethLikeTxTrace trace in traces)
             {
-                jsonWriter.WriteStartObject();
-                jsonWriter.WritePropertyName("result"u8);
-                JsonSerializer.Serialize(jsonWriter, trace, EthereumJsonSerializer.JsonOptions);
-                jsonWriter.WritePropertyName("txHash"u8);
-                JsonSerializer.Serialize(jsonWriter, trace.TxHash, EthereumJsonSerializer.JsonOptions);
-                jsonWriter.WriteEndObject();
+                GethLikeTxTraceCollectionConverter.WriteEntry(jsonWriter, trace, EthereumJsonSerializer.JsonOptions);
                 jsonWriter.Flush();
 
                 FlushResult flushResult = await writer.FlushAsync(cancellationToken);
@@ -71,6 +66,6 @@ public class GethLikeTxTraceStreamingResultConverter : JsonConverter<GethLikeTxT
     public override void Write(Utf8JsonWriter writer, GethLikeTxTraceStreamingResult? value, JsonSerializerOptions options)
     {
         if (value is null) { writer.WriteNullValue(); return; }
-        JsonSerializer.Serialize(writer, new GethLikeTxTraceCollection(value), options);
+        TypeInfoJsonSerializer.Serialize(writer, new GethLikeTxTraceCollection(value), options);
     }
 }

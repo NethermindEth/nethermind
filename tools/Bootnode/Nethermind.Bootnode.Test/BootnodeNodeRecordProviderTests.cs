@@ -124,7 +124,7 @@ public class BootnodeNodeRecordProviderTests
             LimboLogs.Instance,
             dataDir);
 
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await provider.GetCurrentAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await provider.GetCurrentAsync());
         listenerState.SetDiscoveryAddress(IPAddress.Any);
 
         NodeRecord nodeRecord = await provider.GetCurrentAsync();
@@ -214,7 +214,7 @@ public class BootnodeNodeRecordProviderTests
         NodeRecord changedRecord = await CreateProvider(protectedPrivateKey, dataDir, networkConfig, IPAddress.Parse("127.0.0.2")).GetCurrentAsync();
         await File.WriteAllTextAsync(statePath, "{");
 
-        InvalidDataException? exception = Assert.ThrowsAsync<InvalidDataException>(async () =>
+        InvalidDataException? exception = await Assert.ThrowsAsync<InvalidDataException>(async () =>
             await CreateProvider(protectedPrivateKey, dataDir, networkConfig, IPAddress.Parse("127.0.0.3")).GetCurrentAsync());
 
         using (Assert.EnterMultipleScope())
@@ -247,7 +247,7 @@ public class BootnodeNodeRecordProviderTests
         };
         await using FileStream lockedState = File.Open(statePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
 
-        IOException? exception = Assert.ThrowsAsync<IOException>(async () =>
+        IOException? exception = await Assert.ThrowsAsync<IOException>(async () =>
             await CreateProvider(protectedPrivateKey, dataDir, networkConfig, IPAddress.Loopback).GetCurrentAsync());
 
         using (Assert.EnterMultipleScope())

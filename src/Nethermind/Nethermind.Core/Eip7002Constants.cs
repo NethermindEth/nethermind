@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core;
@@ -9,8 +10,10 @@ public static class Eip7002Constants
 {
     public const string ContractAddressKey = "WITHDRAWAL_REQUEST_PREDEPLOY_ADDRESS";
 
-    public static readonly Address WithdrawalRequestPredeployAddress = new("0x00000961Ef480Eb55e80D19ad83579A64c007002");
+    // 0x00000961Ef480Eb55e80D19ad83579A64c007002
+    public static readonly Address WithdrawalRequestPredeployAddress = new((ReadOnlySpan<byte>)[0x00, 0x00, 0x09, 0x61, 0xef, 0x48, 0x0e, 0xb5, 0x5e, 0x80, 0xd1, 0x9a, 0xd8, 0x35, 0x79, 0xa6, 0x4c, 0x00, 0x70, 0x02]);
 
     /// <summary> Keccak-256 of the canonical withdrawal request predeploy bytecode. </summary>
-    public static readonly ValueHash256 CodeHash = new("0x0345a365d2f4c5975b9f1599abe0a2ee76b7a3a731bc68781bd04c84e4858f50");
+    // 0x0345a365d2f4c5975b9f1599abe0a2ee76b7a3a731bc68781bd04c84e4858f50
+    public static readonly ValueHash256 CodeHash = new((ReadOnlySpan<byte>)[0x03, 0x45, 0xa3, 0x65, 0xd2, 0xf4, 0xc5, 0x97, 0x5b, 0x9f, 0x15, 0x99, 0xab, 0xe0, 0xa2, 0xee, 0x76, 0xb7, 0xa3, 0xa7, 0x31, 0xbc, 0x68, 0x78, 0x1b, 0xd0, 0x4c, 0x84, 0xe4, 0x85, 0x8f, 0x50]);
 }

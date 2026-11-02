@@ -3,6 +3,7 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -27,12 +28,13 @@ public class InitializeAuRaMergePlugin(
     IBlocksConfig blocksConfig,
     ISpecProvider specProvider,
     IJsonRpcConfig jsonRpcConfig,
+    IInitConfig initConfig,
     ILogManager logManager,
     IPoSSwitcher poSSwitcher) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)
     {
-        InitializeMergePlugin.Configure(mergeConfig, blocksConfig, specProvider, jsonRpcConfig, logManager);
+        InitializeMergePlugin.Configure(mergeConfig, blocksConfig, specProvider, jsonRpcConfig, initConfig, logManager);
 
         TxAuRaFilterBuilders.CreateFilter = (originalFilter, fallbackFilter) =>
             originalFilter is MinGasPriceContractTxFilter ? originalFilter

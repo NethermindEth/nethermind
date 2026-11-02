@@ -273,8 +273,8 @@ public class BlockhashCacheTests
 
         Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(depth, 1, 5)));
         await cache.Prefetch(tree.FindHeader(depth - 1ul, BlockTreeLookupOptions.RequireCanonical)!);
-        await Task.Delay(100);
-        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(BlockhashCache.MaxDepth * 2ul + 1ul, 1, 3)));
+        // The old forks are pruned by a background task, which a fixed delay may not outlast.
+        Assert.That(() => cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(BlockhashCache.MaxDepth * 2ul + 1ul, 1, 3)).After(5000, 10));
     }
 
     [Test]

@@ -45,7 +45,7 @@ namespace Nethermind.Network.Benchmarks
             _frameMacProcessor?.Dispose();
             _frameMacProcessor = new(TestItem.IgnoredPublicKey, secrets.A);
             _zeroSplitter = new TestZeroSplitter(frameCipher, _frameMacProcessor);
-            _zeroSplitter.EnableSnappy(LimboLogs.Instance);
+            _zeroSplitter.EnableSnappy(NullLogManager.Instance);
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
             _block = Build.A.Block.WithTransactions(a, b).TestObject;
@@ -73,7 +73,7 @@ namespace Nethermind.Network.Benchmarks
             EmbeddedChannel oracle = new(
                 new ZeroFrameEncoder(new FrameCipher(secrets.AesSecret), mac),
                 splitter,
-                new ZeroSnappyEncoder(LimboLogs.Instance));
+                new ZeroSnappyEncoder(NullLogManager.Instance));
             try
             {
                 IByteBuffer input = Unpooled.Buffer();

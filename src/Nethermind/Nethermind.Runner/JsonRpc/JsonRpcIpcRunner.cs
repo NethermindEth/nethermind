@@ -26,6 +26,7 @@ namespace Nethermind.Runner.JsonRpc
         IFileSystem fileSystem) : IDisposable
     {
         private const int OperationCancelledError = 125;
+        private static readonly TimeSpan AcceptRetryDelay = TimeSpan.FromMilliseconds(100);
         private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcIpcRunner>();
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats = jsonRpcLocalStats;
         private readonly IJsonSerializer _jsonSerializer = jsonSerializer;
@@ -65,16 +66,71 @@ namespace Nethermind.Runner.JsonRpc
                 return;
             }
 
-            while (true)
+            try
             {
-                if (_logger.IsInfo) _logger.Info($"Waiting for an IPC connection...");
+                await AcceptConnectionsAsync(_server.AcceptAsync, OnAccepted, _logger, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // The task from Task.Factory.StartNew is discarded, so this is the only place the failure surfaces
+                if (_logger.IsError) _logger.Error("IPC server stopped accepting connections.", ex);
+            }
 
-                Socket socket = await _server.AcceptAsync(cancellationToken);
-
+            void OnAccepted(Socket socket)
+            {
                 socket.ReceiveTimeout = _jsonRpcConfig.Timeout;
                 socket.SendTimeout = _jsonRpcConfig.Timeout;
 
                 _ = Task.Run(async () => await HandleIpcConnection(socket, cancellationToken));
+            }
+        }
+
+        internal static async Task AcceptConnectionsAsync(
+            Func<CancellationToken, ValueTask<Socket>> accept,
+            Action<Socket> onAccepted,
+            ILogger logger,
+            CancellationToken cancellationToken)
+        {
+            // Set while accept keeps failing, so a persistent error is logged once instead of on every retry
+            SocketError? acceptError = null;
+            while (true)
+            {
+                if (acceptError is null && logger.IsInfo) logger.Info($"Waiting for an IPC connection...");
+
+                Socket socket;
+                try
+                {
+                    socket = await accept(cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                // The listener was disposed on shutdown
+                catch (Exception ex) when (ex is ObjectDisposedException or SocketException { SocketErrorCode: SocketError.OperationAborted })
+                {
+                    return;
+                }
+                catch (SocketException ex)
+                {
+                    if (ex.SocketErrorCode != acceptError && logger.IsWarn) logger.Warn($"Failed to accept an IPC connection ({ex.SocketErrorCode}), retrying.");
+                    acceptError = ex.SocketErrorCode;
+
+                    // Avoids a busy loop while the error persists, e.g. when out of file descriptors
+                    try
+                    {
+                        await Task.Delay(AcceptRetryDelay, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+
+                    continue;
+                }
+
+                acceptError = null;
+                onAccepted(socket);
             }
         }
 
@@ -112,6 +168,12 @@ namespace Nethermind.Runner.JsonRpc
 
         internal async Task HandleIpcConnection(Socket socket, CancellationToken cancellationToken)
         {
+            // The message stream does not own the socket, so the connection closes only here.
+            using Socket connection = socket;
+            JsonRpcUrl? url = _jsonRpcConfig.IpcEnabledModules is { Length: > 0 } enabledModules
+                ? new("ipc", _jsonRpcConfig.IpcUnixDomainSocketPath, 0, RpcEndpoint.IPC, isAuthenticated: true, enabledModules)
+                : null;
+
             using JsonRpcSocketsClient<IpcSocketMessageStream>? socketsClient = new(
                 string.Empty,
                 new IpcSocketMessageStream(socket),
@@ -119,8 +181,9 @@ namespace Nethermind.Runner.JsonRpc
                 _jsonRpcProcessor,
                 _jsonRpcLocalStats,
                 _jsonSerializer,
+                url,
                 maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize,
-                concurrency: _jsonRpcConfig.IpcProcessingConcurrency);
+                concurrency: JsonRpcProcessingConcurrency.ForModules(url is null ? _jsonRpcConfig.EnabledModules : url.EnabledModules, _jsonRpcConfig.IpcProcessingConcurrency));
 
             try
             {
@@ -130,7 +193,7 @@ namespace Nethermind.Runner.JsonRpc
             {
                 if (_logger.IsDebug) _logger.Debug("Connection was cancelled.");
             }
-            catch (IOException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset })
+            catch (IOException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset or SocketError.Shutdown or SocketError.ConnectionAborted })
             {
                 if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
             }

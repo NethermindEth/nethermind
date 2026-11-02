@@ -35,6 +35,7 @@ public class TaikoChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.UnzenOpcodeZkGasMultipliers = ZkGasSchedule.BuildOpcodeTable(activeSchedule?.OpcodeMultipliers);
         releaseSpec.UnzenPrecompileZkGasMultipliers = ZkGasSchedule.BuildPrecompileTable(activeSchedule?.PrecompileMultipliers);
         releaseSpec.UseSurgeGasPriceOracle = chainSpecEngineParameters.UseSurgeGasPriceOracle ?? false;
+        releaseSpec.IsAnchorV4WithSignalSlotsEnabled = chainSpecEngineParameters.AnchorV4WithSignalSlotsEnabled ?? false;
         releaseSpec.TaikoL2Address = chainSpecEngineParameters.TaikoL2Address;
         releaseSpec.IsRip7728Enabled = (chainSpecEngineParameters.Rip7728TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
         releaseSpec.IsL1StaticCallEnabled = (chainSpecEngineParameters.L1StaticCallTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;

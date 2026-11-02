@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -15,40 +15,41 @@ using Nethermind.TxPool;
 namespace Nethermind.Consensus.Processing;
 
 /// <inheritdoc cref="IInclusionListSatisfactionChecker"/>
+/// <remarks>Lists whose proofs were never resolved, as for a block cached or inserted before its newPayload request reached them,
+/// are resolved here, so an unresolved list is never read as one without a verified proof.</remarks>
 public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider, ITxValidator txValidator,
-    ILeanProofVerifier proofVerifier, ITransactionProcessor? transactionProcessor = null)
+    ITransactionProcessor? transactionProcessor = null, InclusionListProofService? inclusionListProofs = null)
     : IInclusionListSatisfactionChecker
 {
-    public bool IsSatisfied(Block processedBlock, Block suggestedBlock, IWorldState worldState)
+    public bool IsSatisfied(Block processedBlock, Block suggestedBlock, IReadOnlyStateProvider worldState)
     {
         IReleaseSpec spec = specProvider.GetSpec(processedBlock.Header);
+        inclusionListProofs?.ResolveUnresolved(suggestedBlock.InclusionLists, spec);
         return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions,
-            worldState, spec, txValidator, suggestedBlock.InclusionListRecursiveStark,
-            proofVerifier, CouldAppendFrame);
+            worldState, spec, txValidator, suggestedBlock.InclusionLists, CouldAppendFrame);
 
         bool CouldAppendFrame(Transaction tx)
         {
             ITransactionProcessor processor = transactionProcessor
                 ?? throw new InvalidOperationException("Frame inclusion lists require a transaction processor.");
-            IBlockAccessListSource? recorder = worldState as IBlockAccessListSource;
+            IWorldState mutableState = worldState as IWorldState
+                ?? throw new InvalidOperationException("Frame inclusion lists require transaction-boundary execution state.");
+            IBlockAccessListSource? recorder = mutableState as IBlockAccessListSource;
             BlockAccessListAtIndex? recordedAccesses = recorder?.GeneratedBlockAccessList;
             recorder?.SetGeneratingBlockAccessList(null);
-            Snapshot snapshot = worldState.TakeSnapshot();
+            Snapshot snapshot = mutableState.TakeSnapshot();
             try
             {
-                // Transaction appendability precedes withdrawals, even though this state includes them.
-                foreach (Withdrawal withdrawal in processedBlock.Withdrawals ?? [])
-                    worldState.SubtractFromBalance(withdrawal.Address, withdrawal.AmountInWei, spec, out _);
                 Address sender = tx.SenderAddress!;
                 if (tx.NonceKeys is { } keys
-                    ? !KeyedNonceManager.IsNonceSetValid(worldState, sender, keys, tx.Nonce)
+                    ? !KeyedNonceManager.IsNonceSetValid(mutableState, sender, keys, tx.Nonce)
                     : worldState.GetNonce(sender) != tx.Nonce) return false;
 
-                FrameTxValidationTracer tracer = new(sender, Eip8141Constants.ExpiryVerifierAddress, worldState, spec);
+                FrameTxValidationTracer tracer = new(sender, Eip8141Constants.ExpiryVerifierAddress, mutableState, spec);
                 processor.SetBlockExecutionContext(processedBlock.Header.Clone());
                 try
                 {
-                    return processor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly | ExecutionOptions.FramePrefixAtExecutionBlock)
+                    return processor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly)
                         && !tracer.Violated && tracer.Payer is not null;
                 }
                 catch (OperationCanceledException) when (tracer.Violated)
@@ -58,7 +59,7 @@ public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider,
             }
             finally
             {
-                worldState.Restore(snapshot);
+                mutableState.Restore(snapshot);
                 recorder?.SetGeneratingBlockAccessList(recordedAccesses);
                 processor.SetBlockExecutionContext(processedBlock.Header);
             }

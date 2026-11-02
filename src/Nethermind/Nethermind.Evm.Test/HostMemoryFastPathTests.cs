@@ -9,8 +9,10 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -56,6 +58,7 @@ public class HostMemoryFastPathTests
     private const byte DUP1 = (byte)Instruction.DUP1;
     private const byte DUP2 = (byte)Instruction.DUP2;
     private const byte SWAP1 = (byte)Instruction.SWAP1;
+    private const byte SSTORE = (byte)Instruction.SSTORE;
     private const byte RETURN = (byte)Instruction.RETURN;
     private const byte REVERT = (byte)Instruction.REVERT;
 
@@ -63,8 +66,13 @@ public class HostMemoryFastPathTests
     /// <summary>The most gas a random program gets: enough to grow memory far, little enough to bound its loops.</summary>
     private const ulong ProgramGas = 200_000;
     private const int ProgramsPerFork = 4000;
+    private const long InitialStateReservoir = GasCostOf.SSetState + 17;
+    private const ulong BoundaryGasCost = 2 * GasCostOf.Base + 2 * GasCostOf.VeryLow;
+    private const ulong StatePoolOogGas = GasCostOf.Base + GasCostOf.VeryLow
+        + Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite + 1;
 
     private static readonly IReleaseSpec ReleaseSpec = Osaka.Instance;
+    private static readonly IReleaseSpec StateGasSpec = Amsterdam.Instance;
     private static readonly BlockHeader Header = new(Hash256.Zero, Hash256.Zero, Address.Zero, UInt256.Zero, 1, 30_000_000, 1, []);
     private static readonly FieldInfo ThreadCacheField = typeof(EvmPooledMemory).GetField("_threadCache", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("EvmPooledMemory's thread cache was renamed or removed.");
@@ -96,6 +104,8 @@ public class HostMemoryFastPathTests
     {
         /// <summary>A new frame's: zeroed inline memory, all of it initialized.</summary>
         Fresh,
+        /// <summary>As <see cref="Fresh"/>, with its first word already active.</summary>
+        ActiveWord,
         /// <summary>A reused frame's: inline memory full of stale bytes, none of it initialized.</summary>
         DirtyInline,
         /// <summary>As <see cref="DirtyInline"/>, and the pooled array memory spills into holds stale bytes too.</summary>
@@ -107,7 +117,8 @@ public class HostMemoryFastPathTests
     private static readonly Table[] Tables = Enum.GetValues<Table>();
 
     private readonly record struct Outcome(
-        EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize, nint OpCodeCount);
+        EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize, nint OpCodeCount,
+        EthereumGasPolicy Policy);
 
     private static IEnumerable<TestCaseData> Cases()
     {
@@ -229,6 +240,115 @@ public class HostMemoryFastPathTests
             Assert.That(outcome.Exception, Is.EqualTo(EvmExceptionType.Stop));
             Assert.That(outcome.Stack, Is.EqualTo(new string('0', 2 * 2 * EvmStack.WordSize)));
             Assert.That(outcome.MemorySize, Is.EqualTo(4096UL));
+        }
+    }
+
+    [Test]
+    public void Jump_counts_landed_destination_once_across_tables_and_runs()
+    {
+        Harness harness = new();
+        byte[] code = [PUSH1, 3, JUMP, JUMPDEST, STOP];
+
+        foreach (Table table in Tables)
+        {
+            Outcome first = harness.Run(code, AmpleGas, table, Setup.Fresh);
+            Outcome second = harness.Run(code, AmpleGas, table, Setup.DirtyInline);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first.OpCodeCount, Is.EqualTo((nint)4), $"{table} first run");
+                Assert.That(second.OpCodeCount, Is.EqualTo((nint)4), $"{table} second run");
+            }
+        }
+    }
+
+    [Test]
+    public void Fast_slow_fast_chain_preserves_state_policy()
+    {
+        // MLOAD is a host fast path on either side of SSTORE's state-charging slow body.
+        byte[] code = [PUSH0, MLOAD, PUSH1, 1, PUSH0, SSTORE, PUSH0, MLOAD, STOP];
+        EthereumGasPolicy initial = SentinelPolicy(ulong.MaxValue, outOfGas: false);
+
+        (Outcome fast, Outcome plain) = RunFastAndPlain(code, initial, withWorldState: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fast, Is.EqualTo(plain));
+            Assert.That(fast.Exception, Is.EqualTo(EvmExceptionType.Stop));
+            Assert.That(fast.Policy.StateReservoir, Is.EqualTo(InitialStateReservoir - GasCostOf.SSetState));
+            Assert.That(fast.Policy.StateGasUsed, Is.EqualTo(initial.StateGasUsed + (long)GasCostOf.SSetState));
+            Assert.That(fast.Policy.StateGasSpill, Is.EqualTo(initial.StateGasSpill));
+            Assert.That(fast.Policy.StateGasSpillRefunded, Is.EqualTo(initial.StateGasSpillRefunded));
+            Assert.That(fast.Policy.IndependentStatePool, Is.True);
+            Assert.That(fast.Policy.OutOfGas, Is.False);
+        }
+    }
+
+    [Test]
+    public void Fast_dispatch_preserves_full_policy_at_execution_gas_boundaries([Values(0UL, 1UL, ulong.MaxValue)] ulong value)
+    {
+        byte[] code = [PUSH0, MLOAD, PUSH0, MLOAD, STOP];
+        EthereumGasPolicy initial = SentinelPolicy(value, outOfGas: true);
+
+        (Outcome fast, Outcome plain) = RunFastAndPlain(code, initial, withWorldState: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fast, Is.EqualTo(plain));
+            Assert.That(fast.Exception, Is.EqualTo(value <= 1 ? EvmExceptionType.OutOfGas : EvmExceptionType.Stop));
+            Assert.That(fast.Policy, Is.EqualTo(initial with { Value = value <= 1 ? 0UL : ulong.MaxValue - BoundaryGasCost }));
+        }
+    }
+
+    [Test]
+    public void State_charge_out_of_gas_preserves_policy_on_terminal_fault()
+    {
+        // The execution component is affordable, while the independent state pool is not.
+        byte[] code = [PUSH1, 1, PUSH0, SSTORE, STOP];
+        EthereumGasPolicy initial = SentinelPolicy(StatePoolOogGas, outOfGas: false) with { StateReservoir = 1 };
+
+        (Outcome fast, Outcome plain) = RunFastAndPlain(code, initial, withWorldState: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fast, Is.EqualTo(plain));
+            Assert.That(fast.Exception, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(fast.Policy, Is.EqualTo(initial with { Value = 1, OutOfGas = true }));
+        }
+    }
+
+    private static EthereumGasPolicy SentinelPolicy(ulong value, bool outOfGas) => new()
+    {
+        Value = value,
+        StateReservoir = InitialStateReservoir,
+        StateGasUsed = 23,
+        StateGasSpill = 31,
+        StateGasSpillRefunded = 7,
+        IndependentStatePool = true,
+        OutOfGas = outOfGas,
+    };
+
+    /// <summary>Runs <paramref name="code"/> on an EIP-8037 fork through the untraced table and through its plain handlers.</summary>
+    private static (Outcome Fast, Outcome Plain) RunFastAndPlain(byte[] code, EthereumGasPolicy initial, bool withWorldState)
+    {
+        Assert.That(StateGasSpec.IsEip8037Enabled, Is.True);
+        Harness harness = new(StateGasSpec);
+        return (Run(Table.NoTrace), Run(Table.PlainNoTrace));
+
+        Outcome Run(Table table)
+        {
+            IWorldState worldState = TestWorldStateFactory.CreateForTest();
+            using IDisposable worldScope = worldState.BeginScope(IWorldState.PreGenesis);
+            if (withWorldState)
+            {
+                // A non-empty account with an untouched slot: SSTORE sees current = original = zero, the EIP-8037
+                // fresh-slot state charge.
+                worldState.CreateAccountIfNotExists(Address.Zero, 1);
+                worldState.Commit(StateGasSpec);
+            }
+
+            // ActiveWord keeps every MLOAD of word 0 on the fast path.
+            return harness.Run(code, initial, table, Setup.ActiveWord, worldState: worldState);
         }
     }
 
@@ -425,19 +545,19 @@ public class HostMemoryFastPathTests
     private static byte[] Repeated(int times, params byte[] ops) => Enumerable.Repeat(ops, times).SelectMany(static o => o).ToArray();
 
     private static unsafe EvmExceptionType CountingLoadFallback(
-        ref EvmStack stack, ref EthereumGasPolicy gas, ref DispatchState state, nint pc, nint opCodeCount)
+        ref EvmStack stack, ulong gas, ref DispatchState state, nint pc, nint opCodeCount)
     {
         _fallbacks++;
-        return ((delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)_plainLoad)(
-            ref stack, ref gas, ref state, pc, opCodeCount);
+        return ((delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType>)_plainLoad)(
+            ref stack, gas, ref state, pc, opCodeCount);
     }
 
     private static unsafe EvmExceptionType CountingStoreFallback(
-        ref EvmStack stack, ref EthereumGasPolicy gas, ref DispatchState state, nint pc, nint opCodeCount)
+        ref EvmStack stack, ulong gas, ref DispatchState state, nint pc, nint opCodeCount)
     {
         _fallbacks++;
-        return ((delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)_plainStore)(
-            ref stack, ref gas, ref state, pc, opCodeCount);
+        return ((delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType>)_plainStore)(
+            ref stack, gas, ref state, pc, opCodeCount);
     }
 
     /// <summary>Runs code through the dispatch tables of one virtual machine and one aligned stack.</summary>
@@ -466,9 +586,9 @@ public class HostMemoryFastPathTests
             {
                 if (table == Table.PlainNoTrace) continue;
                 Outcome outcome = Run(code, gas, table, setup, input, stack);
-                // Untraced dispatch skips opcodes the traced table runs, such as the JUMPDEST after a taken JUMPI, so it
-                // counts fewer. It also leaves out a push that ends the code, and a checked body that faults reports its
-                // program counter one short; nothing can read either.
+                // Untraced dispatch skips handler calls for markers after taken jumps, but the aggregate count still
+                // includes those logical opcodes. It also leaves out a push that ends the code, and a checked body that
+                // faults reports its program counter one short; nothing can read either.
                 if (table == Table.Traced)
                 {
                     outcome = outcome with { OpCodeCount = plain.OpCodeCount };
@@ -483,6 +603,11 @@ public class HostMemoryFastPathTests
 
         public Outcome Run(byte[] code, ulong gas, Table table, Setup setup, byte[]? input = null, byte[]? stack = null,
             bool countFallbacks = false, EvmPooledMemoryInspector? inspect = null)
+            => Run(code, EthereumGasPolicy.FromULong(gas), table, setup, input, stack, countFallbacks, inspect);
+
+        /// <summary>Runs <paramref name="code"/> from the full <paramref name="initial"/> policy, over <paramref name="worldState"/> if given.</summary>
+        public Outcome Run(byte[] code, EthereumGasPolicy initial, Table table, Setup setup, byte[]? input = null, byte[]? stack = null,
+            bool countFallbacks = false, EvmPooledMemoryInspector? inspect = null, IWorldState? worldState = null)
         {
             input ??= [];
             stack ??= [];
@@ -490,9 +615,10 @@ public class HostMemoryFastPathTests
             using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, 0, UInt256.Zero, input);
             using StackAccessTracker accessTracker = new();
             using VmState<EthereumGasPolicy> frame = VmState<EthereumGasPolicy>.RentTopLevel(
-                EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, env, accessTracker, default);
+                initial, ExecutionType.TRANSACTION, env, accessTracker, default);
             frame.Memory = CreateMemory(setup);
-            _vm.Enter(frame);
+            _vm.Enter(frame, worldState);
+            int vmOpCodeCountBefore = _vm.OpCodeCount;
 
             Array.Clear(_stackBytes);
             stack.CopyTo(_stackBytes, _stackStart);
@@ -510,13 +636,17 @@ public class HostMemoryFastPathTests
                 handlers = (delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[])handlers.Clone();
                 _plainLoad = (nint)handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MLOAD];
                 _plainStore = (nint)handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MSTORE];
-                handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MLOAD] = &CountingLoadFallback;
-                handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MSTORE] = &CountingStoreFallback;
+                handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MLOAD] =
+                    (delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)(
+                        delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType>)&CountingLoadFallback;
+                handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MSTORE] =
+                    (delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)(
+                        delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType>)&CountingStoreFallback;
                 _fallbacks = 0;
             }
 
             bool cancelable = table is Table.NoTraceCancelable or Table.PlainNoTraceCancelable;
-            EthereumGasPolicy gasPolicy = EthereumGasPolicy.FromULong(gas);
+            EthereumGasPolicy gasPolicy = initial;
             EvmExceptionType exception;
             nint pc;
             nint finalHead;
@@ -528,12 +658,19 @@ public class HostMemoryFastPathTests
 
                 EvmStack evmStack = new(head, _vm.Tracer, ref _stackBytes[_stackStart], codeInfo.ExecutionCodeSpan, codeInfo);
                 evmStack.HoistInputData(input);
-                DispatchState state = new() { OpcodeHandlers = dispatch, Vm = _vm, CancellationPollAt = CancellationPollInterval };
+                DispatchState state = new()
+                {
+                    Gas = ref Unsafe.AsRef(in gasPolicy),
+                    OpcodeHandlers = dispatch,
+                    Vm = _vm,
+                    CancellationPollAt = CancellationPollInterval,
+                };
                 pc = 0;
                 opCodeCount = 0;
                 while (true)
                 {
-                    exception = dispatch[code[pc]](ref evmStack, ref gasPolicy, ref state, pc, opCodeCount);
+                    exception = ((delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType>)(nint)dispatch[code[pc]])(
+                        ref evmStack, table == Table.Traced ? 0 : gasPolicy.Value, ref state, pc, opCodeCount);
                     // The cancelable loop's re-entry after a poll, as RunDispatchLoop makes it.
                     if (!cancelable || exception != EvmExceptionType.None || state.OpCodeCount < state.CancellationPollAt ||
                         (nuint)state.FinalProgramCounter >= (nuint)code.Length)
@@ -557,6 +694,9 @@ public class HostMemoryFastPathTests
                 opCodeCount--;
             }
 
+            // Match RunDispatchLoop's aggregate and keep successive Harness.Run calls independent.
+            opCodeCount += _vm.OpCodeCount - vmOpCodeCountBefore;
+
             _vm.ReturnData = null;
             inspect?.Invoke(ref frame.Memory);
             string stackHex = Convert.ToHexString(_stackBytes, _stackStart, (int)Math.Clamp(finalHead, 0, EvmStack.MaxStackSize) * EvmStack.WordSize);
@@ -568,13 +708,20 @@ public class HostMemoryFastPathTests
                 memoryHex = Convert.ToHexString(memory);
             }
 
-            return new Outcome(exception, gasPolicy.Value, pc, finalHead, stackHex, memoryHex, size, opCodeCount);
+            return new Outcome(exception, gasPolicy.Value, pc, finalHead, stackHex, memoryHex, size, opCodeCount, gasPolicy);
         }
 
         private static EvmPooledMemory CreateMemory(Setup setup)
         {
             if (setup == Setup.Fresh)
                 return new EvmPooledMemory(new EvmFrameMemory(), isFresh: true);
+
+            if (setup == Setup.ActiveWord)
+            {
+                EvmPooledMemory active = new(new EvmFrameMemory(), isFresh: true);
+                Assert.That(active.TrySave(UInt256.Zero, new byte[EvmStack.WordSize]), Is.True);
+                return active;
+            }
 
             EvmFrameMemory frameMemory = new();
             EvmPooledMemory stale = new(frameMemory, isFresh: true);
@@ -616,7 +763,11 @@ public class HostMemoryFastPathTests
         /// <summary>The tracer the traced table reports to, which records nothing.</summary>
         public ITxTracer Tracer => _txTracer;
 
-        public void Enter(VmState<EthereumGasPolicy> frame) => VmState = frame;
+        public void Enter(VmState<EthereumGasPolicy> frame, IWorldState? worldState)
+        {
+            VmState = frame;
+            _worldState = worldState!;
+        }
     }
 
     private sealed class SilentTracer : TxTracer;

@@ -32,6 +32,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V71;
 public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProtocolInfo
 {
     private readonly MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage> _balRequests;
+    private static readonly Func<BlockAccessListsMessage, int, BlockAccessListsMessage> SelectBlockAccessLists =
+        static (message, _) => message;
 
     /// <summary>
     /// Recommended soft limit for BlockAccessLists responses (2 MiB per EIP-8159).
@@ -73,18 +75,12 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
                 HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
                 return true;
             case Eth71MessageCode.BlockAccessLists:
-                _balRequests.ThrowIfNotRequested(message.Content);
-                BlockAccessListsMessage balMsg = Deserialize<BlockAccessListsMessage>(message.Content);
-                ReportIn(balMsg, size);
-                Handle(balMsg, size);
+                HandleCorrelatedResponse(_balRequests, message.Content, size, SelectBlockAccessLists);
                 return true;
             default:
                 return base.HandleMessageCore(message);
         }
     }
-
-    private void Handle(BlockAccessListsMessage msg, long size) =>
-        _balRequests.Handle(msg.RequestId, msg, size);
 
     private Task<BlockAccessListsMessage> Handle(GetBlockAccessListsMessage request, CancellationToken cancellationToken)
     {

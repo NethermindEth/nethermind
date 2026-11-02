@@ -1091,6 +1091,82 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
+    [TestCase(false, TestName = "EIP7928_slot_wiped_by_an_earlier_transaction_records_the_later_write_when_committing")]
+    [TestCase(true, TestName = "EIP7928_slot_wiped_by_an_earlier_transaction_records_the_later_write_when_building_up")]
+    public void Eip7928_slot_wiped_by_an_earlier_transaction_records_the_later_write(bool buildUp)
+    {
+        UInt256 slot = 7;
+        byte[] runtimeCode = Prepare.EvmCode.PushData(0).Op(Instruction.CALLDATALOAD).PushData(slot).Op(Instruction.SSTORE).Done;
+        byte[] childInitCode = Prepare.EvmCode.ForInitOf(runtimeCode).Done;
+        byte[] salt = new byte[32];
+        Address createdAddress = ContractAddress.From(_callTargetAddress, salt, childInitCode);
+        InitWorldState(TestState, BuildCreateThenPopCode(Instruction.CREATE2, childInitCode, salt, UInt256.Zero));
+        TestState.CreateAccount(createdAddress, UInt256.One);
+        TestState.Set(new StorageCell(createdAddress, slot), (UInt256)5);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
+        TestState.RecalculateStateRoot();
+
+        byte[] callData = new byte[32];
+        callData[31] = 5;
+        Transaction create = BuildCallTx(_callTargetAddress);
+        Transaction store = Build.A.Transaction
+            .To(createdAddress)
+            .WithNonce(1)
+            .WithData(callData)
+            .WithGasLimit(1_000_000)
+            .WithGasPrice(1)
+            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        BlockHeader header = Build.A.BlockHeader.WithGasLimit(120_000_000).WithBaseFee(1).TestObject;
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+        TransactionResult createResult = buildUp ? processor.BuildUp(create, NullTxTracer.Instance) : processor.Execute(create, NullTxTracer.Instance);
+        tracedState.Clear();
+        tracedState.IncrementIndex();
+        TransactionResult storeResult = buildUp ? processor.BuildUp(store, NullTxTracer.Instance) : processor.Execute(store, NullTxTracer.Instance);
+        AccountChangesAtIndex? createdChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(createdAddress);
+
+        Assert.That(createdChanges, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(createResult.TransactionExecuted, Is.True, createResult.ToString());
+            Assert.That(storeResult.TransactionExecuted, Is.True, storeResult.ToString());
+            Assert.That(createdChanges!.StorageChanges.TryGetValue(slot, out StorageChange change), Is.True, "the wipe zeroed the slot before this transaction");
+            Assert.That(change, Is.EqualTo(new StorageChange(1, 5)));
+            Assert.That(createdChanges.StorageReads, Does.Not.Contain(slot));
+        }
+    }
+
+    [Test]
+    public void Eip7928_slot_wiped_by_creation_and_rewritten_to_its_prestate_is_a_read()
+    {
+        UInt256 slot = 7;
+        byte[] childInitCode = Prepare.EvmCode.PushData(5).PushData(slot).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+        byte[] salt = new byte[32];
+        Address createdAddress = ContractAddress.From(_callTargetAddress, salt, childInitCode);
+        InitWorldState(TestState, BuildCreateThenPopCode(Instruction.CREATE2, childInitCode, salt, UInt256.Zero));
+        TestState.CreateAccount(createdAddress, UInt256.One);
+        TestState.Set(new StorageCell(createdAddress, slot), (UInt256)5);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
+        TestState.RecalculateStateRoot();
+
+        BlockAccessListAtIndex bal = ExecuteCallTx(_callTargetAddress);
+        AccountChangesAtIndex? createdChanges = bal.GetAccountChanges(createdAddress);
+        TestState.Get(new StorageCell(createdAddress, slot), out UInt256 stored);
+
+        Assert.That(createdChanges, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(createdChanges!.NonceChange, Is.Not.Null, "the creation went through, so the wipe happened");
+            Assert.That(createdChanges.StorageReads, Does.Contain(slot));
+            Assert.That(createdChanges.StorageChangeCount, Is.Zero);
+            Assert.That(stored, Is.EqualTo((UInt256)5));
+        }
+    }
+
     [TestCaseSource(nameof(SelfdestructSendToSenderTestSource))]
     public void Eip7928_selfdestruct_to_sender_coalesces_sender_changes(IReleaseSpec spec, int victimBalance)
     {
@@ -1357,18 +1433,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .TestObject;
         processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
 
-        SystemCall systemCall = new()
-        {
-            Data = parentHash.BytesToArray(),
-            GasLimit = systemCallGasLimit,
-            GasPrice = header.BaseFeePerGas,
-            SenderAddress = Address.SystemUser,
-            To = Eip2935Constants.BlockHashHistoryAddress,
-            Value = 0ul,
-        };
-        systemCall.Hash = systemCall.CalculateHash();
-
-        processor.Execute(systemCall, NullTxTracer.Instance);
+        processor.Execute(BuildSystemCall(Eip2935Constants.BlockHashHistoryAddress, parentHash.BytesToArray(), systemCallGasLimit, header), NullTxTracer.Instance);
 
         AccountChangesAtIndex? accountChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Eip2935Constants.BlockHashHistoryAddress);
         Assert.That(accountChanges, Is.Not.Null);
@@ -1395,6 +1460,59 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 Assert.That(accountChanges.StorageReads, Is.Empty);
             }
         }
+    }
+
+    /// <summary>
+    /// EIP-7928: SYSTEM_ADDRESS stays out of the BAL unless the system contract's own code accesses it.
+    /// Canonical predeploy bytecode only uses <c>CALLER</c>; non-canonical code may read the caller's account.
+    /// </summary>
+    [Test]
+    public void System_call_records_system_address_only_when_code_reads_it([Values] bool codeReadsCaller)
+    {
+        InitWorldState(TestState);
+        Address predeploy = Eip7251Constants.ConsolidationRequestPredeployAddress;
+        if (codeReadsCaller)
+        {
+            byte[] readCallerBalance = Prepare.EvmCode
+                .Op(Instruction.CALLER)
+                .Op(Instruction.BALANCE)
+                .Op(Instruction.POP)
+                .Op(Instruction.STOP)
+                .Done;
+            TestState.InsertCode(predeploy, ValueKeccak.Compute(readCallerBalance), readCallerBalance, SpecProvider.GenesisSpec);
+        }
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithGasLimit(120_000_000ul)
+            .WithBaseFee(1.GWei)
+            .TestObject;
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+
+        processor.Execute(BuildSystemCall(predeploy, [], 30_000_000ul, header), NullTxTracer.Instance);
+
+        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bal.GetAccountChanges(predeploy), Is.Not.Null);
+            Assert.That(bal.GetAccountChanges(Address.SystemUser), codeReadsCaller ? Is.Not.Null : Is.Null);
+        }
+    }
+
+    private static SystemCall BuildSystemCall(Address to, byte[] data, ulong gasLimit, BlockHeader header)
+    {
+        SystemCall systemCall = new()
+        {
+            Data = data,
+            GasLimit = gasLimit,
+            GasPrice = header.BaseFeePerGas,
+            SenderAddress = Address.SystemUser,
+            To = to,
+            Value = 0ul,
+        };
+        systemCall.Hash = systemCall.CalculateHash();
+        return systemCall;
     }
 
     private static IEnumerable<TestCaseData> CodeTestSource

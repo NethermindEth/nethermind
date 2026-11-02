@@ -103,6 +103,13 @@ public class SignatureTests
         Assert.That(minS.HasLowS(), Is.True);
     }
 
+    [Test]
+    public void Curve_half_order_constants_derive_from_N()
+    {
+        Assert.That(SecP256k1Curve.HalfN, Is.EqualTo(SecP256k1Curve.N / 2));
+        Assert.That(SecP256k1Curve.HalfNPlusOne, Is.EqualTo(SecP256k1Curve.HalfN + 1));
+    }
+
     private static Signature FlipSignature(Signature original)
     {
         ReadOnlySpan<byte> bytes = original.Bytes;

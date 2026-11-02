@@ -50,7 +50,7 @@ jobs:
 
       - name: Build DocGen
         working-directory: n
-        run: dotnet build tools/DocGen/DocGen.csproj -c release -o DocGen
+        run: dotnet build tools/DocGen/DocGen/DocGen.csproj -c release -o DocGen
 
       - name: Generate docs
         run: n/DocGen/DocGen $GITHUB_WORKSPACE/d --config --jsonrpc --metrics

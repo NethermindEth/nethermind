@@ -17,17 +17,18 @@ public partial class EthRpcModule
     /// <remarks>An omitted limit is resolved only when its frame can succeed, so a frame that always reverts fails the
     /// call with <see cref="ErrorCodes.ExecutionReverted"/> instead of returning a result as explicit limits would.</remarks>
     private ResultWrapper<TResult> ExecuteWithFrameGas<TResult>(TxExecutor<TResult> executor, SignableTransactionForRpc request,
-        BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride = null)
+        BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride = null,
+        SearchResult<BlockHeader>? searchResult = null)
     {
         // Requests the executor rejects before execution get its errors, as they would with explicit limits.
         if (request is not FrameTransactionForRpc frameTx || !NeedsFrameGas(frameTx) || blockOverride?.GasLimit > _rpcConfig.GasCap.EffectiveGasCap())
-            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride);
+            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, searchResult: searchResult);
 
-        SearchResult<BlockHeader> search = _blockFinder.SearchForHeader(blockParameter);
+        SearchResult<BlockHeader> search = searchResult ?? _blockFinder.SearchForHeader(blockParameter);
         if (search.IsError) return ResultWrapper<TResult>.Fail(search);
         if (!_blockchainBridge.HasStateForBlock(search.Object!))
             return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, searchResult: search);
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = _rpcConfig.RentTimeout();
         Result<FrameForRpc[]> result = FillFrameGas(frameTx, search.Object!, timeout.Token, out int errorCode, stateOverride, blockOverride);
         if (!result) return ResultWrapper<TResult>.Fail(result.Error!, errorCode);
 
@@ -52,18 +53,29 @@ public partial class EthRpcModule
 
     /// <returns>The filled frames, or the failure with <see cref="ErrorCodes.ExecutionReverted"/> when a frame reverted.</returns>
     private Result<FrameForRpc[]> FillFrameGas(FrameTransactionForRpc request, BlockHeader header, CancellationToken token, out int errorCode,
-        Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null)
+        Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null, bool checksFork = true)
     {
         errorCode = ErrorCodes.InvalidInput;
         if (!_blockchainBridge.HasStateForBlock(header)) return Result<FrameForRpc[]>.Fail("No state available for block");
-        IReleaseSpec spec = _specProvider.GetSpec(header);
-        Result<Transaction> converted = request.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);
+        IReleaseSpec spec = _specProvider.GetSpec(blockOverride?.ApplyTo(header) ?? header);
+        FrameForRpc[]? requested = request.Frames;
+        FrameForRpc[]? input = WithDependencyFrameGas(requested);
+        Result<Transaction> converted;
+        request.Frames = input;
+        try
+        {
+            converted = request.ToCallTransaction(spec, _rpcConfig.GasCap, validateFeeCapOrder: false, checksFork: checksFork);
+        }
+        finally
+        {
+            request.Frames = requested;
+        }
+
         if (!converted.Success(out Transaction? tx, out string? error)) return Result<FrameForRpc[]>.Fail(error);
         tx.ChainId = _blockchainBridge.GetChainId();
-        if (!FrameTxValidation.IsWellFormed(tx, spec.IsEip7906Enabled, out error)) return Result<FrameForRpc[]>.Fail(error!);
+        if (!FrameTxValidation.IsWellFormed(tx, spec, out error)) return Result<FrameForRpc[]>.Fail(error!);
 
-        FrameForRpc[] input = request.Frames!;
-        bool[] fillExecution = new bool[input.Length];
+        bool[] fillExecution = new bool[input!.Length];
         bool[] fillState = new bool[input.Length];
         for (int i = 0; i < input.Length; i++)
         {
@@ -81,5 +93,35 @@ public partial class EthRpcModule
         if (executionReverted) errorCode = ErrorCodes.ExecutionReverted;
         if (!result.Success(out TxFrame[]? frames, out error)) return Result<FrameForRpc[]>.Fail(error!);
         return FrameForRpc.FromFrames(frames);
+    }
+
+    /// <summary>Copies <paramref name="frames"/> with each dependency frame's omitted limits set to the only values
+    /// EIP-8288 admits: the per-scheme verification gas of its triples, and zero state gas.</summary>
+    /// <remarks>Explicit limits are kept, so validation still rejects wrong ones.</remarks>
+    private static FrameForRpc[]? WithDependencyFrameGas(FrameForRpc[]? frames)
+    {
+        if (frames is null) return null;
+        FrameForRpc[] resolved = (FrameForRpc[])frames.Clone();
+        for (int i = 0; i < resolved.Length; i++)
+        {
+            FrameForRpc? frame = resolved[i];
+            if (frame?.Mode != (byte)FrameMode.DepVerify || frame.ExecutionGas is not null && frame.StateGas is not null) continue;
+
+            ulong verificationGas = 0;
+            foreach (FrameDependency dependency in Eip8288Dependencies.Parse(frame.Data.Span))
+                verificationGas += dependency.VerificationGas;
+            resolved[i] = new FrameForRpc
+            {
+                Mode = frame.Mode,
+                Flags = frame.Flags,
+                Target = frame.Target,
+                ExecutionGas = frame.ExecutionGas ?? verificationGas,
+                StateGas = frame.StateGas ?? 0,
+                Value = frame.Value,
+                Data = frame.Data,
+            };
+        }
+
+        return resolved;
     }
 }

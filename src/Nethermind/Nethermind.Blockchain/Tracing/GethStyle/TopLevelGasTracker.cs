@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -19,10 +20,11 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// <param name="standardIntrinsicGas">
 /// Standard transaction intrinsic gas used when execution ends before a top-level action is traced.
 /// </param>
+[StructLayout(LayoutKind.Auto)]
 public struct TopLevelGasTracker(ulong? standardIntrinsicGas)
 {
-    private int _actionDepth;
     private ulong _topLevelActionGas;
+    private int _actionDepth;
     private bool _hasTopLevelActionResult;
 
     /// <summary>Calculates standard intrinsic gas when available for the active specification.</summary>

@@ -14,7 +14,8 @@ namespace Nethermind.Blockchain.Tracing;
 
 /// <summary>The error text the JSON-RPC API reports when a transaction's outermost frame fails.</summary>
 /// <remarks>
-/// A failure the EVM describes the same way is reported as is. An invalid opcode, a stack underflow and a stack
+/// A failure the EVM describes the same way is reported as is, and a precompile that rejects its input by the
+/// precompile's own reason. An invalid opcode, a stack underflow and a stack
 /// overflow name the failing operation and the stack depth, which a rerun with an operation tracer recovers, so a
 /// transaction that succeeds pays nothing for them. Every other failure has no such text and keeps its own, as does
 /// an invalid opcode the active spec defines and a rerun cut short by cancellation.
@@ -212,6 +213,9 @@ public static class ExecutionFailureText
         out string text)
     {
         text = error;
+        if (failure == EvmExceptionType.PrecompileFailure)
+            return true;
+
         if (error != failure.GetEvmExceptionDescription())
             return false;
 

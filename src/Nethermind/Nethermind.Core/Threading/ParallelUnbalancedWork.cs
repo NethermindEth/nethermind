@@ -70,8 +70,6 @@ public partial class ParallelUnbalancedWork
 
     internal static partial int GetWorkerCount(int fromInclusive, int toExclusive, ParallelOptions parallelOptions);
 
-    public static readonly ParallelOptions DefaultOptions = new() { MaxDegreeOfParallelism = Cpu.RuntimeInformation.ProcessorCount };
-
     /// <summary>
     /// Executes a parallel for loop over a range of integers.
     /// </summary>

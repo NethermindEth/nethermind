@@ -7,10 +7,8 @@ using Nethermind.Specs.Forks;
 using System;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
@@ -38,41 +36,6 @@ public class FrameTxSimulationFilterTests
             Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressA));
             simulator.DidNotReceiveWithAnyArgs().Simulate(default!);
-        }
-    }
-
-    [TestCase(0UL, 0UL, true, true)]
-    [TestCase(8190UL, 0UL, true, true)]
-    [TestCase(8191UL, 0UL, false, true)]
-    [TestCase(10UL, 10UL, true, true)]
-    [TestCase(10UL, 11UL, false, true)]
-    [TestCase(10UL, 12UL, false, true)]
-    [TestCase(ulong.MaxValue, 0UL, false, true)]
-    [TestCase(null, 0UL, false, true)]
-    [TestCase(10UL, 10UL, true, false)]
-    public void Recent_roots_are_checked_even_for_legible_prefixes(ulong? headSlot, ulong referenceSlot, bool usable,
-        bool commitmentMatches)
-    {
-        TestReadOnlyStateProvider state = new();
-        state.CreateAccount(TestItem.AddressA, Unit.Ether);
-        Transaction tx = SelfVerifyTx(TestItem.AddressA);
-        ValueHash256 source = TestItem.KeccakA.ValueHash256;
-        ValueHash256 root = TestItem.KeccakB.ValueHash256;
-        tx.RecentRootReferences = [new(source, referenceSlot, root)];
-        state.Set(RecentRootStore.ReferenceCell(source, referenceSlot),
-            RecentRootStore.EntryHash(source, referenceSlot, commitmentMatches ? root : TestItem.KeccakC.ValueHash256).ToUInt256());
-        RunPayerFilter(state, tx);
-        TestChainHeadInfoProvider head = new() { HeadSlotNumber = headSlot, ReadOnlyStateProvider = state };
-        RecentRootFilter filter = new(head);
-        TxFilteringState filteringState = new(tx, state, Eip8288Prototype.Instance);
-
-        AcceptTxResult result = filter.Accept(tx, ref filteringState, TxHandlingOptions.PersistentBroadcast);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressA));
-            Assert.That(result, Is.EqualTo(usable && commitmentMatches
-                ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxRecentRootUnmet));
         }
     }
 
@@ -232,14 +195,17 @@ public class FrameTxSimulationFilterTests
         simulator.Received(1).Simulate(tx, Arg.Any<bool>(), local: expected, token: Arg.Any<CancellationToken>());
     }
 
-    [TestCase(TxHandlingOptions.None, true)]
-    [TestCase(TxHandlingOptions.PersistentBroadcast, false)]
-    public void Accept_WhileProcessingABlock_PreemptsOnlyGossipedSimulation(TxHandlingOptions options, bool deferred)
+    [TestCase(false, TxHandlingOptions.None, true)]
+    [TestCase(false, TxHandlingOptions.PersistentBroadcast, false)]
+    [TestCase(true, TxHandlingOptions.None, true)]
+    [TestCase(true, TxHandlingOptions.PersistentBroadcast, false)]
+    public void Accept_WhileProcessingOrBuildingABlock_PreemptsOnlyGossipedSimulation(bool building, TxHandlingOptions options, bool deferred)
     {
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
-        headInfo.IsProcessingBlock.Returns(true);
+        headInfo.IsProcessingBlock.Returns(!building);
+        headInfo.IsBuildingBlock.Returns(building);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
         simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>?>())
             .Returns(static call => call.ArgAt<Func<bool>?>(4)?.Invoke() == true
@@ -249,6 +215,24 @@ public class FrameTxSimulationFilterTests
         AcceptTxResult result = Accept(state, simulator, tx, options: options, headInfo: headInfo);
 
         Assert.That(result, Is.EqualTo(deferred ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.Accepted));
+    }
+
+    [Test]
+    public void Accept_WhileProcessingABlock_NeverPreemptsATxReAddedFromAReorg()
+    {
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
+        headInfo.IsProcessingBlock.Returns(true);
+        headInfo.IsBuildingBlock.Returns(true);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>?>())
+            .Returns(FrameTxSimulationResult.Accept(TestItem.AddressB));
+        FrameTxSimulationFilter filter = new(simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>(), headInfo);
+        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance) { ReAddedFromReorg = true };
+
+        Assert.That(filter.Accept(tx, ref filteringState, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        simulator.Received(1).Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), null);
     }
 
     [TestCase(true, TxHandlingOptions.None, false, true)]
@@ -273,7 +257,7 @@ public class FrameTxSimulationFilterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
-            Assert.That(filteringState.FrameSimulationYielded, Is.EqualTo(expected));
+            Assert.That(filteringState.FrameValidationYielded, Is.EqualTo(expected));
         }
     }
 

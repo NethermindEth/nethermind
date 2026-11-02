@@ -99,6 +99,10 @@ public class SnapshotTests
     }
 
     [Test]
+    public void CompactedEstimateDoesNotOverflowForLargeCounts() =>
+        Assert.That(new SnapshotContentCounts(0, 16_000_000, 0, 0, 0).EstimateCompactedMemory(), Is.EqualTo(2_176_000_000L));
+
+    [Test]
     public void ArenaSizingUsesLiveCountsNotSealedCounts()
     {
         // The arena writer throws if the persisted write overruns the extent sized from EstimateSize,

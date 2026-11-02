@@ -144,7 +144,7 @@ internal static class EngineBenchmarkHost
                     try
                     {
                         await ctx.Request.Body.ReadExactlyAsync(body.AsMemory(0, length), ctx.RequestAborted);
-                        using JsonRpcContext rpcContext = JsonRpcContext.Http(url);
+                        JsonRpcContext rpcContext = JsonRpcContext.Http(url);
                         BenchmarkJsonRpcResponseSink sink = new(ctx);
                         await processor.ProcessAsync(
                             body.AsMemory(0, length),

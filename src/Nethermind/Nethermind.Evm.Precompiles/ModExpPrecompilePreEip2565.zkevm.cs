@@ -9,6 +9,8 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class ModExpPrecompilePreEip2565
 {
+    public static Address Address => field ??= Address.FromNumber(5);
+
     /// <inheritdoc/>
     /// <remarks>
     /// EIP-2565 has been active since Berlin and the guest is built for later forks, so this cannot

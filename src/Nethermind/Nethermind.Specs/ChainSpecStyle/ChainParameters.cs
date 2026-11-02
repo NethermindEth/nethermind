@@ -147,6 +147,7 @@ public class ChainParameters
     public ulong? Eip7594TransitionTimestamp { get; set; }
     public ulong? Eip7623Transition { get; set; }
     public ulong? Eip7623TransitionTimestamp { get; set; }
+    public ulong? Eip7668TransitionTimestamp { get; set; }
     public ulong? Eip7778TransitionTimestamp { get; set; }
     public ulong? Eip7823TransitionTimestamp { get; set; }
     public ulong? Eip7825TransitionTimestamp { get; set; }
@@ -188,16 +189,40 @@ public class ChainParameters
     public ulong? Eip7708TransitionTimestamp { get; set; }
     public ulong? Eip8024TransitionTimestamp { get; set; }
     public ulong? Eip8246TransitionTimestamp { get; set; }
+    public ulong? Eip8253TransitionTimestamp { get; set; }
+    public Address[]? ZeroNonceStorageAccounts { get; set; }
+    public ulong? Eip7709TransitionTimestamp { get; set; }
     public ulong? Eip8038TransitionTimestamp { get; set; }
     public ulong? Eip8282TransitionTimestamp { get; set; }
     public ulong? Eip8141TransitionTimestamp { get; set; }
     public ulong? Eip8288TransitionTimestamp { get; set; }
+
+    /// <summary>Activation of <see cref="Eip8288AggregatedVk"/>, a fork that changes the EIP-8288 aggregate verifier.</summary>
+    /// <remarks>Devnet-only: EIP-8288 fixes <c>AGGREGATED_VK</c> at the protocol level, so a production network never overrides it; this
+    /// models a verifier-changing fork for testing.</remarks>
+    public ulong? Eip8288AggregatedVkTransitionTimestamp { get; set; }
+
+    /// <summary>The EIP-8288 <c>AGGREGATED_VK</c> from <see cref="Eip8288AggregatedVkTransitionTimestamp"/>, replacing the pinned one.</summary>
+    /// <remarks>Devnet-only: EIP-8288 fixes <c>AGGREGATED_VK</c> at the protocol level, so a production network never overrides it; this
+    /// models a verifier-changing fork for testing.</remarks>
+    public Hash256? Eip8288AggregatedVk { get; set; }
     public ulong? Eip8250TransitionTimestamp { get; set; }
 
     public ulong? Eip8272TransitionTimestamp { get; set; }
     public ulong? Eip7906TransitionTimestamp { get; set; }
+    public ulong? Eip8151TransitionTimestamp { get; set; }
+    public ulong? Eip7979TransitionTimestamp { get; set; }
     public ulong? Eip7843TransitionTimestamp { get; set; }
     public ulong? Eip7954TransitionTimestamp { get; set; }
     public ulong? Eip2780TransitionTimestamp { get; set; }
+    public ulong? Eip5920TransitionTimestamp { get; set; }
+    public ulong? Eip8116TransitionTimestamp { get; set; }
+    public ulong? Eip8360TransitionTimestamp { get; set; }
+    public ulong? Eip3298TransitionTimestamp { get; set; }
+    public ulong? Eip8131TransitionTimestamp { get; set; }
+    public ulong? Eip8279TransitionTimestamp { get; set; }
     public ulong? Eip7805TransitionTimestamp { get; set; }
+    public ulong? Eip8298TransitionTimestamp { get; set; }
+    /// <summary>Activation time for EIP-4758 SENDALL, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
+    public ulong? Eip4758TransitionTimestamp { get; set; }
 }

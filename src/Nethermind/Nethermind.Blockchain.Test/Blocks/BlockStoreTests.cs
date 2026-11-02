@@ -3,12 +3,16 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -83,6 +87,37 @@ public class BlockStoreTests
     }
 
     [Test]
+    public async Task Get_WhenBlockIsCachedOrPending_PreservesEncodedSize([Values] bool deferred)
+    {
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new TestNethermindModule());
+        builder.RegisterInstance(writer).As<IDeferredBlockDataWriter>().ExternallyOwned();
+        using IContainer container = builder.Build();
+        IBlockStore store = container.Resolve<IBlockStore>();
+        Block block = Build.A.Block.WithNumber(1).WithEncodedSize(1234).TestObject;
+
+        if (deferred)
+        {
+            store.InsertDeferred(block);
+        }
+        else
+        {
+            store.Cache(block);
+        }
+
+        Block? retrieved = store.Get(block.Number, block.Hash!);
+
+        Assert.That(retrieved, Is.Not.Null, "The stored snapshot must be available before a deferred write is flushed.");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retrieved, Is.Not.SameAs(block), "The store must return a snapshot rather than the live block.");
+            Assert.That(retrieved!.EncodedSize, Is.EqualTo(1234), "The snapshot must retain the size computed before storage.");
+            Assert.That(writer.QueuedCount, Is.EqualTo(deferred ? 1 : 0), "The pending block must remain queued until the writer is pumped.");
+        }
+    }
+
+    [Test]
     public void Test_can_set_and_get_metadata()
     {
         TestMemDb db = new();
@@ -120,7 +155,8 @@ public class BlockStoreTests
         using TestMemDb db = new();
         BlockStore store = new(db);
         Block block = Build.A.Block.WithNumber(1).TestObject;
-        block.Header.RecursiveStark = new(new byte[128 * 1024], TestItem.KeccakA);
+        block.StarkProof = new byte[128 * 1024];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), TestItem.KeccakA);
         store.Insert(block);
         Assert.That(store.Get(block.Number, block.Hash!, shouldCache: true), Is.Not.Null);
 
@@ -152,9 +188,10 @@ public class BlockStoreTests
         for (int i = 0; i < proofs.Length; i++)
         {
             Block block = Build.A.Block.WithNumber((ulong)i + 1).TestObject;
-            byte[] proof = new byte[Eip8288Constants.MaxProofBytes];
+            byte[] proof = new byte[Eip8288Constants.MaxAggregateProofBytes];
             proofs[i] = new(proof);
-            block.Header.RecursiveStark = new(proof, TestItem.KeccakA);
+            block.StarkProof = proof;
+            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), TestItem.KeccakA);
             store.Cache(block);
         }
         return proofs;

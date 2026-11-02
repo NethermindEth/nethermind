@@ -16,40 +16,8 @@ permissions:
   contents: read
 
 jobs:
-  build-image:
-    name: Build PR image
-    if: github.event.pull_request.head.repo.fork == false
-    runs-on: ubuntu-arm64-8-core
-    timeout-minutes: 60
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-
-      - name: Build Docker image
-        run: |
-          docker build -t nethermind:pr-local \
-            --build-arg BUILD_CONFIG=release \
-            --build-arg CI=true \
-            --build-arg COMMIT_HASH=${{ github.event.pull_request.head.sha }} \
-            .
-
-      - name: Save image
-        run: docker save nethermind:pr-local | gzip > /tmp/nethermind-pr-local.tar.gz
-
-      - name: Upload image artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: nethermind-pr-local-image
-          path: /tmp/nethermind-pr-local.tar.gz
-          retention-days: 1
-          if-no-files-found: error
-
   sync-hoodi:
     name: "Sync hoodi (${{ matrix.mode }})"
-    needs: build-image
     if: github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-arm64-8-core
     timeout-minutes: 180
@@ -78,6 +46,17 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
+      - name: Build PR image
+        # Builds while the tooling below is set up; Sedge waits for it.
+        id: build-image
+        background: true
+        run: |
+          docker build -t nethermind:pr-local \
+            --build-arg BUILD_CONFIG=release \
+            --build-arg CI=true \
+            --build-arg COMMIT_HASH=${{ github.event.pull_request.head.sha }} \
+            .
+
       - name: Checkout tests repository
         uses: actions/checkout@v6
         with:
@@ -100,6 +79,11 @@ jobs:
           go-version: '1.26'
           check-latest: true
           cache: true
+
+      - name: Set up .NET for CI scripts
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.402
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -124,14 +108,8 @@ jobs:
           cd sedge
           make compile-sedge
 
-      - name: Download PR image
-        uses: actions/download-artifact@v8
-        with:
-          name: nethermind-pr-local-image
-          path: /tmp
-
-      - name: Load PR image
-        run: docker load < /tmp/nethermind-pr-local.tar.gz
+      - name: Wait for PR image
+        wait: build-image
 
       - name: Generate and run Sedge
         working-directory: sedge
@@ -190,7 +168,7 @@ jobs:
         env:
           NETWORK: hoodi
           SYNC_MODE: ${{ matrix.mode }}
-        run: python scripts/wait-for-sync.py
+        run: dotnet run --file scripts/wait-for-sync.cs
 
       - name: Get Nethermind Debug Logs
         if: failure() || cancelled()

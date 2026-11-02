@@ -11,10 +11,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Abi;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Test;
-using Autofac;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Headers;
-using Nethermind.Core.Caching;
 
 namespace Nethermind.Shutter.Test;
 
@@ -113,8 +110,6 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
         using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd).Build(ShutterTestsCommon.SpecProvider);
         await ProduceBranchV1(chain.EngineRpcModule, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
 
-        // A lookup that misses the header cache during a concurrent write caches a freshly decoded copy.
-        ((IClearableCache)chain.Container.Resolve<IHeaderStore>()).ClearCache();
         Block head = chain.BlockTree.Head!;
         Assert.That(chain.BlockTree.FindHeader(head.Hash!, BlockTreeLookupOptions.None), Is.Not.SameAs(head.Header));
 

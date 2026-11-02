@@ -27,7 +27,7 @@ public class LeanProofVerifierWiringTests
     public async Task Startup_checks_a_decorated_backend_through_its_interface()
     {
         ILeanProofVerifier backend = Substitute.For<ILeanProofVerifier>();
-        InclusionListProofVerifier decorator = new(backend);
+        ProductionProofCache decorator = new(backend);
         InitializeLeanBackend step = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), decorator);
 
         await step.Execute(CancellationToken.None);
@@ -40,7 +40,7 @@ public class LeanProofVerifierWiringTests
     {
         ILeanProofVerifier backend = Substitute.For<ILeanProofVerifier>();
         backend.When(verifier => verifier.EnsureAvailable()).Do(_ => throw new DllNotFoundException("lean backend missing"));
-        InitializeLeanBackend step = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), new InclusionListProofVerifier(backend));
+        InitializeLeanBackend step = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), new ProductionProofCache(backend));
 
         Assert.That(() => step.Execute(CancellationToken.None), Throws.TypeOf<DllNotFoundException>());
     }
@@ -108,7 +108,7 @@ public class LeanProofVerifierWiringTests
             AssertSharedVerifier(chain);
             Assert.That(block.Header.RecursiveStark is not null, Is.EqualTo(enabled));
             // EIP-8288: a block without dependencies carries an empty proof, so neither side runs the backend.
-            Assert.That(block.Header.RecursiveStark?.StarkProof, enabled ? Is.Empty : Is.Null);
+            Assert.That(block.StarkProof, Is.EqualTo(enabled ? System.Array.Empty<byte>() : null));
             Assert.That(verifier.ProofCalls, Is.Zero);
             Assert.That(verifier.VerificationCalls, Is.Zero);
         }

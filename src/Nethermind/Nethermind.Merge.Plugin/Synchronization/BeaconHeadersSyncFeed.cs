@@ -9,7 +9,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -138,9 +137,9 @@ public sealed class BeaconHeadersSyncFeed(
         for (int i = 0; i < batchResponse.Count; i++)
         {
             BlockHeader? header = batchResponse[i];
-            if (header is not null && HeaderValidator.ValidateHash(header))
+            if (header?.Hash is not null)
             {
-                _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
+                _invalidChainTracker.SetChildParent(header.Hash, header.ParentHash!);
             }
         }
     }
@@ -161,8 +160,11 @@ public sealed class BeaconHeadersSyncFeed(
         {
             BlockHeader header = headersToAdd[i];
 
-            // Found existing block in the block tree
-            if (!_syncConfig.StrictMode && _blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
+            // Found existing block in the block tree. The header must be readable too: after a crash a chain level
+            // can outlive a lost deferred header write, and joining there would leave forward sync without the header.
+            if (!_syncConfig.StrictMode
+                && _blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash())
+                && _blockTree.FindHeader(header.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number) is not null)
             {
                 mergeWhenInserted = true;
                 if (_logger.IsTrace)

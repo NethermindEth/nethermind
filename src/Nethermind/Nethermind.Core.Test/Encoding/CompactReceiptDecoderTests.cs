@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -143,6 +144,36 @@ namespace Nethermind.Core.Test.Encoding
                 Assert.That(deserialized.Bloom.Bytes.Length, Is.EqualTo(0));
                 Assert.That(deserialized.Recipient.Bytes.Length, Is.EqualTo(0));
                 Assert.That(deserialized.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
+            }
+        }
+
+        [Test]
+        public void Decode_defers_bloom_unless_eip7668([Values] bool eip7668, [Values] bool withLogs)
+        {
+            ReceiptBuilder builder = Build.A.Receipt.WithAllFieldsFilled;
+            if (!withLogs)
+            {
+                builder.WithLogs();
+            }
+
+            TxReceipt txReceipt = builder.WithCalculatedBloom().TestObject;
+            CompactReceiptStorageDecoder decoder = new();
+            RlpReader ctx = new(decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes);
+            RlpBehaviors behaviors = eip7668 ? RlpBehaviors.Storage | RlpBehaviors.Eip7668Receipts : RlpBehaviors.Storage;
+
+            AssertDecodedBloom(decoder.DecodeGuardNotNull(ref ctx, behaviors), eip7668 ? Bloom.ZeroLength : null, eip7668 ? Bloom.ZeroLength : txReceipt.Bloom);
+        }
+
+        /// <param name="decoded">The receipt returned by the decoder.</param>
+        /// <param name="expectedSetOnDecode">The bloom the decoder itself sets, or <c>null</c> when it is left for a later reader to compute.</param>
+        /// <param name="expected">The bloom the receipt exposes.</param>
+        public static void AssertDecodedBloom(TxReceipt decoded, Bloom? expectedSetOnDecode, Bloom expected)
+        {
+            FieldInfo bloomField = typeof(TxReceipt).GetField("_bloom", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bloomField.GetValue(decoded), Is.SameAs(expectedSetOnDecode));
+                Assert.That(decoded.Bloom, Is.EqualTo(expected));
             }
         }
 

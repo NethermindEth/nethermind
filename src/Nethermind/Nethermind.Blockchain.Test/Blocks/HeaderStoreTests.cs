@@ -8,10 +8,14 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
@@ -58,69 +62,6 @@ public class HeaderStoreTests
         using HeaderStoreFixture context = new(cached: true);
         Assert.That(context.Store.Get(context.Header.Hash!), Is.SameAs(context.Header));
         context.AssertReads(() => Assert.That(context.Store.GetBlockNumber(context.Header.Hash!), Is.EqualTo(100)), numberReads: 1);
-    }
-
-    [Test]
-    public void Large_proof_cache_hits_skip_database_reads_and_isolate_mutable_proofs([Values] bool explicitCache)
-    {
-        using MemDb headerDb = new();
-        using MemDb numberDb = new();
-        HeaderStore store = new(headerDb, numberDb);
-        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
-        header.RecursiveStark = new RecursiveStark(new byte[128 * 1024], TestItem.KeccakA);
-        header.RecursiveStark.StarkProof[0] = 1;
-        header.Hash = Keccak.Compute(Rlp.Encode(header).Bytes);
-        store.Insert(header);
-        if (explicitCache) store.Cache(header);
-        BlockHeader decoded = store.Get(header.Hash!, shouldCache: true)!;
-        long headerReads = headerDb.ReadsCount;
-        long numberReads = numberDb.ReadsCount;
-        decoded.RecursiveStark!.StarkProof[0] = 2;
-        header.RecursiveStark.StarkProof[0] = 3;
-        BlockHeader again = store.Get(header.Hash!)!;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(again.RecursiveStark!.StarkProof[0], Is.EqualTo(1));
-            Assert.That(again, Is.Not.SameAs(decoded));
-            Assert.That(headerDb.ReadsCount, Is.EqualTo(headerReads));
-            Assert.That(numberDb.ReadsCount, Is.EqualTo(numberReads));
-        }
-    }
-
-    [Test]
-    public void Large_proof_cache_evicts_by_bytes_and_count_preserving_recent_headers(
-        [Values(Eip8288Constants.MaxProofBytes, 65 * 1024)] int proofBytes)
-    {
-        HeaderStore store = new(new MemDb(), new MemDb());
-        int capacity = Math.Min(HeaderStore.MaxLargeProofHeaders, HeaderStore.MaxLargeProofCacheBytes / proofBytes);
-        BlockHeader[] headers = new BlockHeader[capacity + 1];
-        byte[] proof = new byte[proofBytes];
-        for (int i = 0; i < headers.Length; i++)
-        {
-            headers[i] = Build.A.BlockHeader.WithNumber((ulong)i).TestObject;
-            headers[i].RecursiveStark = new RecursiveStark(proof, TestItem.KeccakA);
-            if (i < capacity) store.Cache(headers[i]);
-        }
-        Assert.That(store.Get(headers[0].Hash!), Is.Not.Null);
-        store.Cache(headers[^1]);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.Get(headers[0].Hash!), Is.Not.Null);
-            Assert.That(store.Get(headers[1].Hash!), Is.Null);
-            Assert.That(store.Get(headers[^1].Hash!), Is.Not.Null);
-        }
-    }
-
-    [Test]
-    public void Large_proof_cache_clear_and_delete_release_cached_headers([Values] bool delete)
-    {
-        HeaderStore store = new(new MemDb(), new MemDb());
-        BlockHeader header = Build.A.BlockHeader.TestObject;
-        header.RecursiveStark = new RecursiveStark(new byte[128 * 1024], TestItem.KeccakA);
-        store.Cache(header);
-        if (delete) store.Delete(header.Hash!);
-        else ((IClearableCache)store).ClearCache();
-        Assert.That(store.Get(header.Hash!), Is.Null);
     }
 
     [Test]
@@ -212,6 +153,77 @@ public class HeaderStoreTests
         Assert.That(context.Store.GetBlockNumber(context.Header.Hash!), Is.EqualTo(200));
         context.Header.Number = 300;
         Assert.That(context.Store.GetBlockNumber(context.Header.Hash!), Is.EqualTo(200));
+    }
+
+    [Test]
+    public void GetIfBloomMatches_decodes_only_a_header_whose_bloom_matches(
+        [Values] bool cached, [Values] bool legacyKey, [Values] bool matches)
+    {
+        CountingHeaderDecoder decoder = new();
+        MemDb headerDb = new();
+        HeaderStore store = new(headerDb, new MemDb(), decoder);
+        Bloom bloom = new();
+        bloom.Set(TestItem.AddressA.Bytes);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithBloom(bloom).TestObject;
+        if (legacyKey) headerDb.Set(header.Hash!, decoder.Encode(header).Bytes);
+        else store.Insert(header);
+        if (cached) store.Cache(header);
+        Address address = matches ? TestItem.AddressA : TestItem.AddressB;
+
+        BlockHeader? result = store.GetIfBloomMatches(header.Hash!, header.Number, b => new BloomStructRef(b).Matches(address.Bytes), out bool found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(result?.Hash, Is.EqualTo(matches ? header.Hash : null));
+            Assert.That(result?.Bloom, Is.EqualTo(matches ? bloom : null));
+            Assert.That(decoder.Decodes, Is.EqualTo(matches && !cached ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public void GetIfBloomMatches_reports_a_missing_header()
+    {
+        HeaderStore store = new(new MemDb(), new MemDb());
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        bool tested = false;
+
+        BlockHeader? result = store.GetIfBloomMatches(header.Hash!, header.Number, _ => tested = true, out bool found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(found, Is.False);
+            Assert.That(tested, Is.False);
+        }
+    }
+
+    [Test]
+    public void GetIfBloomMatches_passes_a_zero_length_bloom_as_empty()
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true };
+        HeaderStore store = new(new MemDb(), new MemDb(), new HeaderDecoder(new TestSingleReleaseSpecProvider(spec)));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithBloom(Bloom.ZeroLength).TestObject;
+        store.Insert(header);
+
+        BlockHeader? result = store.GetIfBloomMatches(header.Hash!, header.Number, static b => b.IsEmpty, out bool found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(result?.Bloom, Is.SameAs(Bloom.ZeroLength));
+        }
+    }
+
+    private sealed class CountingHeaderDecoder : HeaderDecoder
+    {
+        public int Decodes { get; private set; }
+
+        protected override BlockHeader? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            Decodes++;
+            return base.DecodeInternal(ref decoderContext, rlpBehaviors);
+        }
     }
 
     private sealed class HeaderStoreFixture : IDisposable

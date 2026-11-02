@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -49,6 +50,10 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
         public void HintWarmSlot(Address address, in UInt256 index) => inner.HintWarmSlot(address, in index);
 
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) => inner.Prefetch(accounts, slots, cancellationToken);
+
+        public bool SupportsPrefetch => inner.SupportsPrefetch;
+
         public Account? Get(Address address)
         {
             IStateReadOverlay? overlay = slot.Current;
@@ -82,6 +87,7 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
         public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) => inner.WriteBackCommittedState(takeSnapshot);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => inner.HintBal(bal, sink);
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken) => inner.ApplyBal(bal, cancellationToken);
 
         public void Dispose() => inner.Dispose();
     }
@@ -112,11 +118,14 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
             get
             {
                 Hash256 root = inner.RootHash;
-                return slot.Current is { } overlay && overlay.HasStorage(address) && root == Keccak.EmptyTreeHash
+                return OverlayHoldsStorage() && root == Keccak.EmptyTreeHash
                     ? IStateReadOverlay.NonEmptyStorageRoot
                     : root;
             }
         }
+
+        private bool OverlayHoldsStorage() =>
+            (slot.Current is { } overlay && overlay.HasStorage(address)) || (slot.ParentState is { } parent && parent.HasStorage(address));
 
         public void Get(in UInt256 index, out UInt256 value)
         {
@@ -124,14 +133,21 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
             if (slot.Cache is not { } cache)
             {
-                inner.Get(in index, out value);
+                GetParent(in index, out value);
                 return;
             }
 
             if (cache.TryGetSlot(address, in index, out value)) return;
 
-            inner.Get(in index, out value);
+            GetParent(in index, out value);
             cache.SetSlot(address, in index, in value);
+        }
+
+        private void GetParent(in UInt256 index, out UInt256 value)
+        {
+            if (slot.ParentState is { } parent && parent.TryGetStorage(address, in index, out value)) return;
+
+            inner.Get(in index, out value);
         }
 
         public void HintSet(in UInt256 index) => inner.HintSet(in index);

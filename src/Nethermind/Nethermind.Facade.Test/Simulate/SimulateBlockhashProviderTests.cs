@@ -58,82 +58,50 @@ public class SimulateBlockhashProviderTests
     }
 
     [Test]
-    public void TryGetBlockhash_on_the_7709_path_bypasses_the_inner_memo()
+    public void TryGetBlockhash_delegates_to_the_inner_provider()
     {
-        RecordingInner inner = new() { StateHash = TestItem.KeccakA };
+        RecordingInner inner = new() { Hash = TestItem.KeccakA };
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.BestKnownNumber.Returns(100ul);
         BlockHeader current = Build.A.BlockHeader.WithNumber(50).TestObject;
-        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.IsBlockHashInStateAvailable.Returns(true);
 
         SimulateBlockhashProvider sut = new(inner, blockTree);
 
-        Assert.That(sut.TryGetBlockhash(current, 40, spec, out ReadOnlySpan<byte> hash), Is.True);
+        Assert.That(sut.TryGetBlockhash(current, 40, Substitute.For<IReleaseSpec>(), out ReadOnlySpan<byte> hash), Is.True);
         Assert.That(hash, Is.SequenceEqualTo(TestItem.KeccakA.Bytes));
-        // The memo-bearing overload must never be consulted: the simulate scope reuses one provider across
-        // virtual blocks whose overridden states differ, so a memoized value would leak between them. The
-        // allocating overload reads the same store with no memo, which is why it is the one used here.
-        Assert.That(inner.TryGetBlockhashCalled, Is.False);
-        Assert.That(inner.GetBlockhashCalledWith, Is.EqualTo((current, 40ul)));
+        Assert.That(inner.TryGetBlockhashCalledWith, Is.EqualTo((current, 40ul)));
     }
 
     [Test]
-    public void TryGetBlockhash_off_the_7709_path_delegates_to_the_inner_provider()
+    public void TryGetBlockhash_clamps_to_best_known_when_requesting_block_beyond_head()
     {
-        RecordingInner inner = new();
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.BestKnownNumber.Returns(100ul);
-        BlockHeader current = Build.A.BlockHeader.WithNumber(50).TestObject;
-        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.IsBlockHashInStateAvailable.Returns(false);
-
-        SimulateBlockhashProvider sut = new(inner, blockTree);
-
-        sut.TryGetBlockhash(current, 40, spec, out _);
-
-        Assert.That(inner.TryGetBlockhashCalled, Is.True, "the off-path must delegate to the inner provider");
-        Assert.That(inner.GetBlockhashCalledWith, Is.Null);
-    }
-
-    [Test]
-    public void TryGetBlockhash_clamps_to_best_known_on_the_7709_path()
-    {
-        RecordingInner inner = new() { StateHash = TestItem.KeccakB };
+        RecordingInner inner = new() { Hash = TestItem.KeccakB };
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.BestKnownNumber.Returns(100ul);
         BlockHeader bestSuggested = Build.A.BlockHeader.WithNumber(100).TestObject;
         blockTree.BestSuggestedHeader.Returns(bestSuggested);
-        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.IsBlockHashInStateAvailable.Returns(true);
 
         SimulateBlockhashProvider sut = new(inner, blockTree);
 
-        // 150 > best-known 100 clamps to (BestSuggestedHeader, BestKnownNumber) on this overload too.
-        Assert.That(sut.TryGetBlockhash(Build.A.BlockHeader.WithNumber(151).TestObject, 150, spec, out ReadOnlySpan<byte> hash), Is.True);
+        Assert.That(sut.TryGetBlockhash(Build.A.BlockHeader.WithNumber(151).TestObject, 150, Substitute.For<IReleaseSpec>(), out ReadOnlySpan<byte> hash), Is.True);
         Assert.That(hash, Is.SequenceEqualTo(TestItem.KeccakB.Bytes));
-        Assert.That(inner.GetBlockhashCalledWith, Is.EqualTo((bestSuggested, 100ul)));
+        Assert.That(inner.TryGetBlockhashCalledWith, Is.EqualTo((bestSuggested, 100ul)));
     }
 
     /// <summary>Concrete inner: NSubstitute cannot proxy the <c>out ReadOnlySpan&lt;byte&gt;</c> default
     /// interface method (a ref struct), so the tests that touch it use this instead.</summary>
     private sealed class RecordingInner : IBlockhashProvider
     {
-        public bool TryGetBlockhashCalled;
-        public (BlockHeader Header, ulong Number)? GetBlockhashCalledWith;
-        public Hash256? StateHash;
+        public (BlockHeader Header, ulong Number)? TryGetBlockhashCalledWith;
+        public Hash256? Hash;
 
-        public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)
-        {
-            GetBlockhashCalledWith = (currentBlock, number);
-            return StateHash;
-        }
+        public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec) => Hash;
 
         public bool TryGetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec, out ReadOnlySpan<byte> hash)
         {
-            TryGetBlockhashCalled = true;
-            hash = default;
-            return false;
+            TryGetBlockhashCalledWith = (currentBlock, number);
+            hash = Hash is null ? default : Hash.Bytes;
+            return Hash is not null;
         }
 
         public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => Task.CompletedTask;

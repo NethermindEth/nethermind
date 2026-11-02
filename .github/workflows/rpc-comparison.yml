@@ -175,7 +175,7 @@ jobs:
           "allowed_ips": "${{ inputs.allowed_ips }}"
         }
       non_validator_mode: true
-      additional_nethermind_flags: Sync.SnapSync=true JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 log=INFO
+      additional_nethermind_flags: Sync.SnapSync=true JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 JsonRpc.EnableEthSignTransaction=true log=INFO
       nethermind_repo_ref: ${{ github.ref }}
       custom_run_id: ${{ github.run_id }}
       network: ${{ inputs.network }}
@@ -216,7 +216,7 @@ jobs:
           "allowed_ips": "${{ inputs.allowed_ips }}"
         }
       non_validator_mode: true
-      additional_nethermind_flags: Sync.SnapSync=true JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 log=INFO
+      additional_nethermind_flags: Sync.SnapSync=true JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 JsonRpc.EnableEthSignTransaction=true log=INFO
       nethermind_repo_ref: ${{ inputs.reference_ref }}
       custom_run_id: ${{ github.run_id }}-ref
       network: ${{ inputs.network }}

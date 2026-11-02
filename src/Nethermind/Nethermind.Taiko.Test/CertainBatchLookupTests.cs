@@ -19,6 +19,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Taiko.Config;
 using Nethermind.Taiko.Rpc;
+using Nethermind.Taiko.TaikoSpec;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -260,25 +261,7 @@ public class CertainBatchLookupTests
     {
         UInt256 batchId = 1;
         ulong blockNumber = BatchLookupThresholds.TaikoMainnetBatchLookupThreshold - 1;
-
-        // Shasta extraData layout: [basefeeSharingPctg=0][proposalId=batchId, 6 bytes big-endian].
-        byte[] extraData = new byte[TaikoHeaderHelper.ShastaExtraDataLen];
-        extraData[TaikoHeaderHelper.ShastaExtraDataLen - 1] = 1;
-
-        BlockHeader header = Build.A.BlockHeader
-            .WithNumber(blockNumber)
-            .WithExtraData(extraData)
-            .TestObject;
-        Transaction anchorTx = Build.A.Transaction
-            .WithData(TaikoBlockValidator.AnchorV4Selector)
-            .TestObject;
-        Block block = Build.A.Block
-            .WithHeader(header)
-            .WithTransactions(anchorTx)
-            .TestObject;
-
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.Head.Returns(block);
+        IBlockFinder blockFinder = CreateBlockFinderWithShastaHead(blockNumber, TaikoBlockValidator.AnchorV4Selector);
 
         // Write the L1Origin so a missing gate would yield a non-null Data on lastL1OriginByBatchID,
         // proving the gate (not a missing record) is what produces the null result.
@@ -293,6 +276,46 @@ public class CertainBatchLookupTests
         // before the threshold gate is reached and would not prove the gate fired.
         Assert.That(rpc.taikoAuth_lastL1OriginByBatchID(batchId).Result.Data, Is.Null);
         Assert.That(rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result.Data, Is.Null);
+    }
+
+    [Test]
+    public void TestBatchLookup_ScanPathAcceptsSignalSlotsAnchorOnlyWhenEnabled([Values] bool signalSlotsEnabled)
+    {
+        UInt256 batchId = 1;
+        ulong blockNumber = 10;
+        IBlockFinder blockFinder = CreateBlockFinderWithShastaHead(blockNumber, TaikoBlockValidator.AnchorV4WithSignalSlotsSelector);
+
+        ITaikoReleaseSpec spec = Substitute.For<ITaikoReleaseSpec>();
+        spec.IsAnchorV4WithSignalSlotsEnabled.Returns(signalSlotsEnabled);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        TaikoEngineRpcModule rpc = CreateRpcModuleInternal(_store, specProvider, blockFinder);
+
+        Assert.That(rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result.Data, Is.EqualTo(signalSlotsEnabled ? (UInt256?)blockNumber : null));
+    }
+
+    private static IBlockFinder CreateBlockFinderWithShastaHead(ulong blockNumber, byte[] anchorSelector)
+    {
+        // Shasta extraData layout: [basefeeSharingPctg=0][proposalId=1, 6 bytes big-endian].
+        byte[] extraData = new byte[TaikoHeaderHelper.ShastaExtraDataLen];
+        extraData[TaikoHeaderHelper.ShastaExtraDataLen - 1] = 1;
+
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(blockNumber)
+            .WithExtraData(extraData)
+            .TestObject;
+        Transaction anchorTx = Build.A.Transaction
+            .WithData(anchorSelector)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithHeader(header)
+            .WithTransactions(anchorTx)
+            .TestObject;
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(block);
+        return blockFinder;
     }
 
     /// <summary>

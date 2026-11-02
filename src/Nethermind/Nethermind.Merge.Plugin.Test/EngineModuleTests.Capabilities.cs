@@ -1,15 +1,22 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.HealthChecks;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
 using NUnit.Framework;
+using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -20,7 +27,7 @@ public partial class EngineModuleTests
     [TestCase(true, true, false, false, true)]
     [TestCase(true, true, true, false, false)]
     [TestCase(false, false, true, false, false)]
-    public void GetPayloadV3AndV4_fork_windows_follow_execution_requests(
+    public async Task GetPayloadV3AndV4_fork_windows_follow_execution_requests(
         bool eip7623Enabled, bool requestsEnabled, bool eip7594Enabled,
         bool expectedV3Valid, bool expectedV4Valid)
     {
@@ -34,16 +41,27 @@ public partial class EngineModuleTests
             IsEip7594Enabled = eip7594Enabled,
         };
         ISpecProvider specProvider = new TestSingleReleaseSpecProvider(releaseSpec);
-        EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
         Block block = Build.A.Block.TestObject;
-        GetPayloadV3Result v3Result = new(block, UInt256.Zero, new BlobsBundleV1(block), shouldOverrideBuilder: false);
-        GetPayloadV4Result v4Result = new(block, UInt256.Zero, new BlobsBundleV1(block), executionRequests: [], shouldOverrideBuilder: false);
+        IPayloadPreparationService payloadService = Substitute.For<IPayloadPreparationService>();
+        payloadService.GetPayload(Arg.Any<string>()).Returns(new BlockProductionSnapshot(block, UInt256.Zero));
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(releaseSpec))
+            .AddModule(new TestMergeModule())
+            .AddSingleton<ISpecProvider>(specProvider)
+            .AddSingleton<IPayloadPreparationService>(payloadService)
+            .Build();
+        IAsyncHandler<byte[], GetPayloadV3Result?> v3Handler = container.Resolve<IAsyncHandler<byte[], GetPayloadV3Result?>>();
+        IAsyncHandler<byte[], GetPayloadV4Result?> v4Handler = container.Resolve<IAsyncHandler<byte[], GetPayloadV4Result?>>();
+        IRpcCapabilitiesProvider engineRpcCapabilitiesProvider = container.Resolve<IRpcCapabilitiesProvider>();
+
+        ResultWrapper<GetPayloadV3Result?> v3Result = await v3Handler.HandleAsync(new byte[8]);
+        ResultWrapper<GetPayloadV4Result?> v4Result = await v4Handler.HandleAsync(new byte[8]);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(v3Result.ValidateFork(specProvider), Is.EqualTo(expectedV3Valid), "getPayloadV3 fork window");
-            Assert.That(v4Result.ValidateFork(specProvider), Is.EqualTo(expectedV4Valid), "getPayloadV4 fork window");
-            Assert.That(engineRpcCapabilitiesProvider.GetJsonRpcCapabilities()[nameof(IEngineRpcModule.engine_getPayloadV4)].IsEnabled(), Is.EqualTo(requestsEnabled), "getPayloadV4 capability");
+            Assert.That(v3Result.ErrorCode, Is.EqualTo(expectedV3Valid ? 0 : MergeErrorCodes.UnsupportedFork), "getPayloadV3 fork window");
+            Assert.That(v4Result.ErrorCode, Is.EqualTo(expectedV4Valid ? 0 : MergeErrorCodes.UnsupportedFork), "getPayloadV4 fork window");
+            Assert.That(engineRpcCapabilitiesProvider.GetEngineCapabilities()[nameof(IEngineRpcModule.engine_getPayloadV4)].IsEnabled(), Is.EqualTo(requestsEnabled), "getPayloadV4 capability");
         }
     }
 

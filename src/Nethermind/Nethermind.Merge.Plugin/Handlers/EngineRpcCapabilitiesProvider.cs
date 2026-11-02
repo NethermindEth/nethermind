@@ -128,6 +128,8 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2), SszRestPaths.PostBodiesByHash, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.GetBodiesByRange, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5), SszRestPaths.PostPayloadsWitness, Gate(spec.IsEip7928Enabled));
+        // SSZ-only: GET payloads/{payloadId}/witness has no JSON-RPC counterpart.
+        sszLocal[SszRestPaths.GetPayloadsWitness] = Gate(spec.IsEip7928Enabled);
         Configure(nameof(IEngineRpcModule.engine_getBlobsV4), SszRestPaths.PostBlobsV4, Gate(spec.IsEip7843Enabled));
 
         // Bogota
@@ -135,6 +137,13 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_getInclusionListV1), SszRestPaths.GetInclusionList, GateWithWarn(spec.IsEip7805Enabled));
         Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV5), SszRestPaths.PostForkchoice, GateWithWarn(spec.IsEip7805Enabled));
         Configure(nameof(IEngineRpcModule.engine_newPayloadWithWitnessV6), SszRestPaths.PostPayloadsWitness, Gate(spec.IsEip7805Enabled));
+
+        // Bogota with EIP-8288 per-list inclusion lists: JSON only, as the SSZ transport has no per-list encoding.
+        bool perListInclusionLists = spec.IsEip7805Enabled && spec.IsEip8288Enabled;
+        jsonLocal[nameof(IEngineRpcModule.engine_newPayloadV7)] = Gate(perListInclusionLists);
+        jsonLocal[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV6)] = Gate(perListInclusionLists);
+        jsonLocal[nameof(IEngineRpcModule.engine_newPayloadWithWitnessV7)] = Gate(perListInclusionLists);
+        jsonLocal[nameof(IEngineRpcModule.engine_getInclusionListV2)] = Gate(perListInclusionLists);
 
         json = jsonLocal;
         ssz = sszLocal;

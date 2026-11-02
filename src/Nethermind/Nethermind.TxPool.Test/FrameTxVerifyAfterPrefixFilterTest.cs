@@ -21,10 +21,10 @@ internal class FrameTxVerifyAfterPrefixFilterTest
     {
         yield return new TestCaseData(new[] { SelfVerify(), Execution() }, AcceptTxResult.Accepted)
             .SetName("a self relay prefix followed by a user op is admissible");
-        yield return new TestCaseData(new[] { Deploy(), OnlyVerify(), Pay(), Execution(), PostTx() }, AcceptTxResult.Accepted)
+        yield return new TestCaseData(new[] { Deploy(), OnlyVerify(), Pay(), Execution(), AssertFrame() }, AcceptTxResult.Accepted)
             .SetName("the longest recognized prefix followed by a body is admissible");
-        yield return new TestCaseData(new[] { SelfVerify(), Execution(), PostTx() }, AcceptTxResult.Accepted)
-            .SetName("a POST_TX frame behind the prefix is admissible");
+        yield return new TestCaseData(new[] { SelfVerify(), Execution(), AssertFrame() }, AcceptTxResult.Accepted)
+            .SetName("an ASSERT frame behind the prefix is admissible");
         yield return new TestCaseData(new[] { Expiry(), SelfVerify(), Execution() }, AcceptTxResult.Accepted)
             .SetName("a leading expiry frame joins the prefix rather than ending it");
         yield return new TestCaseData(new[] { Expiry(), Deploy(), OnlyVerify(), Pay(), Execution() }, AcceptTxResult.Accepted)

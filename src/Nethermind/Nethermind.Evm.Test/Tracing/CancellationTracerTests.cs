@@ -127,5 +127,38 @@ namespace Nethermind.Evm.Test.Tracing
             Transaction transaction = Build.A.Transaction.TestObject;
             Assert.That(blockTracer.StartNewTxTrace(transaction), Is.TypeOf<CancellationTxTracer>());
         }
+
+        [Test]
+        public void Reuses_tx_cancellation_tracer_rewrapped_around_each_transactions_tracer()
+        {
+            ITxTracer first = Substitute.For<ITxTracer, IFrameTxReceiptTracer>();
+            ITxTracer second = Substitute.For<ITxTracer, IFrameTxReceiptTracer>();
+            second.IsTracingActions.Returns(true);
+            IBlockTracer inner = Substitute.For<IBlockTracer>();
+            inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(first, second);
+            using CancellationTokenSource cancellationTokenSource = new();
+            CancellationBlockTracer blockTracer = new(inner, cancellationTokenSource.Token);
+            Transaction transaction = Build.A.Transaction.TestObject;
+
+            ITxTracer firstTracer = blockTracer.StartNewTxTrace(transaction);
+            blockTracer.EndTxTrace();
+            ITxTracer secondTracer = blockTracer.StartNewTxTrace(transaction);
+            secondTracer.ReportActionRemainingGas(1);
+            ((IFrameTxReceiptTracer)secondTracer).ReportFrameEnd(0, null);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(secondTracer, Is.SameAs(firstTracer));
+                Assert.That(((CancellationTxTracer)secondTracer).InnerTracer, Is.SameAs(second));
+                Assert.That(secondTracer.IsTracingActions, Is.True);
+            }
+            second.Received(1).ReportActionRemainingGas(1);
+            first.DidNotReceive().ReportActionRemainingGas(Arg.Any<ulong>());
+            ((IFrameTxReceiptTracer)second).Received(1).ReportFrameEnd(0, null);
+            ((IFrameTxReceiptTracer)first).DidNotReceive().ReportFrameEnd(Arg.Any<int>(), Arg.Any<EvmExceptionType?>());
+
+            cancellationTokenSource.Cancel();
+            Assert.Throws<OperationCanceledException>(() => secondTracer.ReportActionRemainingGas(1));
+        }
     }
 }

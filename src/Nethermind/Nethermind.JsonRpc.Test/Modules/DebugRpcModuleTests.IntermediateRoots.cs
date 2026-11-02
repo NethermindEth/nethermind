@@ -3,14 +3,38 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [Test]
+    public async Task Diagnostic_replay_rejects_header_only_child_of_processed_head(
+        [Values("debug_intermediateRoots", "debug_standardTraceBlockToFile")] string method,
+        [Values(BlockTreeInsertHeaderOptions.None, BlockTreeInsertHeaderOptions.BeaconHeaderInsert)] BlockTreeInsertHeaderOptions insertOptions)
+    {
+        using Context context = await Context.Create();
+        TestRpcBlockchain chain = context.Blockchain;
+        BlockHeader head = chain.BlockTree.Head!.Header;
+        BlockHeader child = Build.A.BlockHeader.WithParent(head).WithStateRoot(TestItem.KeccakH).TestObject;
+        Assert.That(chain.BlockTree.Insert(child, insertOptions), Is.EqualTo(AddBlockResult.Added));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.FindBlock(child.Hash!, BlockTreeLookupOptions.None), Is.Null, "body is not stored");
+            Assert.That(chain.WorldStateManager.GlobalStateReader.HasStateForBlock(head), Is.True, "processed parent has state");
+        }
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, child.Hash!);
+
+        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
+    }
+
     [Test]
     public async Task Debug_intermediateRoots_returns_one_root_per_transaction()
     {

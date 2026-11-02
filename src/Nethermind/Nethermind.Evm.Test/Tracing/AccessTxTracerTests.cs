@@ -110,6 +110,53 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
+        public void ReportAccess_MixedAddressAndStorageAccess_PreservesAddressesAndDeduplicatesSlots()
+        {
+            AccessTxTracer sut = new(TestItem.AddressA, TestItem.AddressB);
+
+            sut.ReportAccess(
+                [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC],
+                [new StorageCell(TestItem.AddressB, 7), new StorageCell(TestItem.AddressD, 9),
+                    new StorageCell(TestItem.AddressB, 7), new StorageCell(TestItem.AddressB, 3)]);
+
+            (Address Address, UInt256[] StorageKeys)[] entries = sut.AccessList!
+                .Select(static entry => (entry.Address, entry.StorageKeys.ToArray())).ToArray();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entries.Select(static entry => entry.Address),
+                    Is.EqualTo(new[] { TestItem.AddressB, TestItem.AddressC, TestItem.AddressD }.Order()),
+                    "address-only optimized entries are removed and the rest stay ordered by address");
+                Assert.That(entries.Single(static entry => entry.Address == TestItem.AddressB).StorageKeys,
+                    Is.EqualTo(new UInt256[] { 3, 7 }), "repeated slots are included once, in ascending order");
+                Assert.That(entries.Single(static entry => entry.Address == TestItem.AddressC).StorageKeys,
+                    Is.Empty, "unoptimized address-only entries remain in the access list");
+                Assert.That(entries.Single(static entry => entry.Address == TestItem.AddressD).StorageKeys,
+                    Is.EqualTo(new UInt256[] { 9 }), "storage access includes addresses missing from the address input");
+            }
+        }
+
+        [Test]
+        public void ReportAccess_orders_addresses_and_storage_keys_ascending()
+        {
+            Address[] accessed = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
+            JournalSet<Address> accessedAddresses = new(Address.EqualityComparer) { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC };
+            JournalSet<StorageCell> accessedStorageCells = new(StorageCell.EqualityComparer)
+            {
+                new StorageCell(TestItem.AddressA, 7), new StorageCell(TestItem.AddressA, 1), new StorageCell(TestItem.AddressA, 3)
+            };
+            Assert.That(accessed, Is.Not.EqualTo(accessed.Order()), "precondition: the addresses are accessed out of order");
+            AccessTxTracer sut = new();
+
+            sut.ReportAccess(accessedAddresses, accessedStorageCells);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sut.AccessList!.Select(static x => x.Address), Is.EqualTo(accessed.Order()));
+                Assert.That(sut.AccessList!.Single(static x => x.Address == TestItem.AddressA).StorageKeys, Is.EqualTo(new UInt256[] { 1, 3, 7 }));
+            }
+        }
+
+        [Test]
         public void Reverted_call_target_address_is_still_captured_in_access_list()
         {
             // Code deployed at recipient: CALL AddressC, then REVERT

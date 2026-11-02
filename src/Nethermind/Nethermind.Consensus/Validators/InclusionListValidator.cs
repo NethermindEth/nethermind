@@ -13,6 +13,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Validators;
@@ -21,8 +22,14 @@ public static class InclusionListValidator
 {
     private const int StackAllocEntries = 256;
 
+    public static bool IsSatisfied(Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator)
+        => IsSatisfied(block, block.InclusionListTransactions, state, spec, txValidator, block.InclusionLists);
+
+    /// <summary>Checks appendability against state after transactions, before withdrawals and request system calls.</summary>
+    /// <param name="lists">The counted lists with their resolved EIP-8288 proofs, or <c>null</c> when only the flattened
+    /// <paramref name="il"/> was supplied, which then binds only its transactions without dependencies.</param>
     public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator,
-        RecursiveStark? proof, ILeanProofVerifier verifier, Func<Transaction, bool>? frameCanInclude = null)
+        IReadOnlyList<CommitteeInclusionList>? lists, Func<Transaction, bool>? frameCanInclude = null)
     {
         if (!spec.InclusionListsEnabled) return true;
         // No IL attached = non-engine-API path (genesis, RLP import); IL doesn't apply.
@@ -32,8 +39,7 @@ public static class InclusionListValidator
 
         if (spec.IsEip8288Enabled)
         {
-            il = InclusionListProofValidator.SelectEligible(il, proof, block.InclusionListProvenDependencies,
-                verifier, spec, out _, out _);
+            il = InclusionListProofValidator.SelectEligible(il, lists, spec);
         }
 
         // A conforming aggregate runs to tens of thousands of entries, far past what the stack can hold.
@@ -74,18 +80,17 @@ public static class InclusionListValidator
                 included[idx] = true;
         }
 
-        HashSet<FrameDependency> dependencies = spec.IsEip8288Enabled ? [.. Eip8288Dependencies.ForBlock(block)] : [];
-        LeanProofCapacity.AppendBudget capacity = LeanProofCapacity.CreateAppendBudget(dependencies);
         Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
         for (int i = 0; i < il.Length; i++)
         {
             if (included[i] || il[i].SupportsFrames && il[i].Hash is { } hash && ilByHash.TryGetValue(hash, out int first) && included[first]) continue;
+            // EIP-7805 excludes blob transactions from the appendability check.
+            if (il[i].SupportsBlobs) continue;
             if (il[i].SupportsFrames)
             {
+                // EIP-8288 adds no omission grounds: no block dependency quota, local proving or wrapper limits.
                 if (!spec.IsEip8288Enabled || !CouldIncludeFrameTx(il[i], block, spec, txValidator)) continue;
-                List<FrameDependency> appended = Eip8288Dependencies.ForTransaction(il[i]);
-                if (capacity.CapacityError(appended) is null
-                    && (frameCanInclude ?? throw new InvalidOperationException("Frame inclusion lists require prefix simulation."))(il[i])) return false;
+                if ((frameCanInclude ?? throw new InvalidOperationException("Frame inclusion lists require prefix simulation."))(il[i])) return false;
                 continue;
             }
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref senderCache)) return false;
@@ -107,11 +112,6 @@ public static class InclusionListValidator
         // Appendability must match normal execution, so reuse the full well-formedness check, not a subset.
         if (!txValidator.IsWellFormed(tx, spec, block.GasLimit)) return false;
         if (tx.MaxFeePerGas < block.BaseFeePerGas) return false;
-        if (tx.SupportsBlobs
-            && (BlobGasCalculator.CalculateBlobGas(tx) > spec.GasCosts.MaxBlobGasPerBlock - (block.Header.BlobGasUsed ?? 0)
-                || !BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee)
-                || (tx.MaxFeePerBlobGas ?? UInt256.Zero) < blobBaseFee))
-            return false;
 
         senderCache ??= [];
         ref AccountStruct account = ref CollectionsMarshal.GetValueRefOrAddDefault(senderCache, tx.SenderAddress, out bool cached);
@@ -119,20 +119,14 @@ public static class InclusionListValidator
         if (!cached) state.TryGetAccount(tx.SenderAddress, out account);
 
         // EIP-3607: a sender with non-delegated code cannot send a tx.
-        if (account.HasCode && !state.IsDelegatedCode(tx.SenderAddress)) return false;
+        if (account.HasCode && !state.IsDelegatedCode(account.CodeHash)) return false;
 
         // Overflow-checked like TransactionProcessor.BuyGas: an adversarial MaxFeePerGas must not wrap the cost.
         if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 txCost)
             || UInt256.AddOverflow(txCost, tx.Value, out txCost))
             return false;
 
-        // A blob tx must also cover maxFeePerBlobGas × blob gas up front, or it could never have executed.
-        if (tx.SupportsBlobs
-            && (!BlobGasCalculator.TryCalculateBlobMaxFee(tx.BlobVersionedHashes?.Length ?? 0, tx.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobFee)
-                || UInt256.AddOverflow(txCost, blobFee, out txCost)))
-            return false;
-
-        return SpendableBalance(block, tx.SenderAddress, in account) >= txCost && account.Nonce == tx.Nonce;
+        return account.Balance >= txCost && account.Nonce == tx.Nonce;
     }
 
     /// <summary>Whether an appended transaction's worst-case block gas still fits.</summary>
@@ -152,20 +146,4 @@ public static class InclusionListValidator
                 == Eip8037BlockGasInclusionCheck.Outcome.Ok;
     }
 
-    /// <summary>Balance the sender would have had when an appended transaction executed.</summary>
-    /// <remarks>Withdrawals are the only post-merge credit applied after the block's transactions, so counting
-    /// them into the post-block balance would make an honest proposer look like a censor.</remarks>
-    private static UInt256 SpendableBalance(Block block, Address sender, ref readonly AccountStruct account)
-    {
-        UInt256 balance = account.Balance;
-        if (block.Withdrawals is not { Length: > 0 }) return balance;
-
-        foreach (Withdrawal withdrawal in block.Withdrawals)
-        {
-            if (withdrawal.Address != sender) continue;
-            if (UInt256.SubtractUnderflow(balance, withdrawal.AmountInWei, out balance)) return UInt256.Zero;
-        }
-
-        return balance;
-    }
 }

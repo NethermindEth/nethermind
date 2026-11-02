@@ -29,6 +29,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -237,8 +238,9 @@ namespace Nethermind.AuRa.Test
                 GnosisSpecProvider.Instance,
                 stateProvider,
                 blockhashProvider,
-                new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>(), Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>()),
-                LimboLogs.Instance);
+                new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>()),
+                LimboLogs.Instance,
+                Substitute.For<IWorldStateManager>());
 
             return (branchProcessor, stateProvider, blockTree, stateHeaderProvider);
         }

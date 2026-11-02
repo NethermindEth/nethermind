@@ -2,10 +2,12 @@
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>enable</Nullable>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.Evm.Test" />
+    <InternalsVisibleTo Include="Nethermind.Evm.ZkEvm.Test" />
   </ItemGroup>
 
   <ItemGroup>

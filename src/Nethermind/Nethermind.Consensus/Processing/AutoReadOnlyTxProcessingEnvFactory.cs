@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -22,13 +23,21 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
     // cache at all would re-copy the whole bytecode on every EXTCODE*/CALL* the prefix runs.
     private const int IsolatedCodeCacheCapacity = 512;
 
-    public IReadOnlyTxProcessorSource Create()
+    public IReadOnlyTxProcessorSource Create() => Create(forReadOnlyQueries: false);
+
+    /// <param name="forReadOnlyQueries">When true the envs read state through
+    /// <see cref="IWorldStateManager.CreateReadOnlyQueryWorldState"/> and load the <see cref="ReadOnlyQueryKind.Call"/>
+    /// <see cref="IReadOnlyQueryModule"/>s registered in the parent scope.</param>
+    public IReadOnlyTxProcessorSource Create(bool forReadOnlyQueries)
     {
-        IWorldStateScopeProvider worldState = worldStateManager.CreateResettableWorldState();
+        IWorldStateScopeProvider worldState = forReadOnlyQueries
+            ? worldStateManager.CreateReadOnlyQueryWorldState()
+            : worldStateManager.CreateResettableWorldState();
         // Mempool admission and the parallel BAL parent readers share these envs, so only add a recorder
         // where a diff can actually be read.
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
         bool recordsTransactionDiffs = finalSpec.IsEip7906Enabled && finalSpec.BlockLevelAccessListsEnabled;
+        IReadOnlyQueryModule[]? readOnlyQueryModules = forReadOnlyQueries ? parentLifetime.Resolve<IReadOnlyQueryModule[]>() : null;
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {
             builder
@@ -44,6 +53,8 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
                 // At scope level so the tx processor and the code repository share one slice.
                 builder.AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false));
             }
+
+            builder.AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Call);
         });
 
         return childScope.Resolve<AutoReadOnlyTxProcessingEnv>();

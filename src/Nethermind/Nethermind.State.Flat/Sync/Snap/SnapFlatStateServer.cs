@@ -95,11 +95,10 @@ public class SnapFlatStateServer(
                                 requestedPath[0].Length == Hash256.Size
                                     ? requestedPath[0]
                                     : requestedPath[0].PadRight(Hash256.Size));
-                            Account? account = GetAccountByPath(tree, stateId.StateRoot.ToCommitment(), requestedPath[0]);
+                            Hash256? storageRoot = GetStorageRootByPath(tree, stateId.StateRoot.ToCommitment(), requestedPath[0]);
                             lookups++;
-                            if (account is not null)
+                            if (storageRoot is not null)
                             {
-                                Hash256? storageRoot = account.StorageRoot;
                                 StorageTree sTree = new(trieStore.GetStorageTrieStore(storagePath), storageRoot, logManager);
 
                                 for (int reqStorage = 1; reqStorage < requestedPath.Length && responseSize < byteLimit && lookups < ISnapStateServer.MaxTrieNodeLookups && !cancellationToken.IsCancellationRequested; reqStorage++)
@@ -196,8 +195,8 @@ public class SnapFlatStateServer(
                     break;
                 }
 
-                Account? account = GetAccountByPath(tree, stateId.StateRoot.ToCommitment(), accounts[i].Path.Bytes);
-                if (account is null)
+                Hash256? storageRoot = GetStorageRootByPath(tree, stateId.StateRoot.ToCommitment(), accounts[i].Path.Bytes);
+                if (storageRoot is null)
                 {
                     break;
                 }
@@ -212,7 +211,7 @@ public class SnapFlatStateServer(
                     limitHash1,
                     byteLimit - responseSize,
                     storagePath,
-                    account.StorageRoot,
+                    storageRoot,
                     pathWithStorageCollector,
                     cancellationToken);
 
@@ -257,13 +256,29 @@ public class SnapFlatStateServer(
         return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);
     }
 
-    private static Account? GetAccountByPath(StateTree tree, in ValueHash256 rootHash, ReadOnlySpan<byte> accountPath)
+    private static Hash256? GetStorageRootByPath(StateTree tree, in ValueHash256 rootHash, ReadOnlySpan<byte> accountPath)
     {
         try
         {
             ReadOnlySpan<byte> bytes = tree.Get(accountPath, rootHash.ToCommitment());
-            RlpReader reader = new(bytes);
-            return bytes.IsNullOrEmpty() ? null : AccountDecoder.Instance.Decode(ref reader);
+            if (bytes.IsNullOrEmpty())
+            {
+                return null;
+            }
+
+            try
+            {
+                if (!AccountDecoder.Instance.TryDecodeStruct(bytes, out AccountStruct account))
+                {
+                    return null;
+                }
+
+                return account.HasStorage ? account.StorageRoot.ToCommitment() : Keccak.EmptyTreeHash;
+            }
+            catch (Exception exception) when (exception is RlpException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+            {
+                return AccountDecoder.Instance.Decode(bytes)?.StorageRoot;
+            }
         }
         catch (TrieNodeException)
         {

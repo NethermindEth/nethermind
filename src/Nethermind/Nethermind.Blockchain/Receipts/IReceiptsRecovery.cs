@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
@@ -25,6 +26,21 @@ namespace Nethermind.Blockchain.Receipts
         {
             void RecoverReceiptData(TxReceipt receipt);
             void RecoverReceiptData(ref TxReceiptStructRef receipt);
+        }
+
+        internal interface ISelectiveLogRecoveryContext : IRecoveryContext
+        {
+            Hash256 RecoverReceiptData(ref TxReceiptStructRef receipt, int transactionIndex);
+        }
+
+        internal interface IDeferredLogRecoveryContext : ISelectiveLogRecoveryContext
+        {
+            IRecoveryContext CreateFullRecoveryContext();
+        }
+
+        internal interface IRecoveryBlockSource
+        {
+            ReceiptRecoveryBlock GetBlock();
         }
     }
 }

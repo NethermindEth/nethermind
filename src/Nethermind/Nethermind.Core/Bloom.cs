@@ -15,7 +15,7 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Core;
 
 [JsonConverter(typeof(BloomConverter))]
-public class Bloom : IEquatable<Bloom>
+public partial class Bloom : IEquatable<Bloom>
 {
     public static readonly Bloom Empty = new();
     public const int BitLength = 2048;
@@ -48,12 +48,22 @@ public class Bloom : IEquatable<Bloom>
         Add(logEntries, blockBloom);
     }
 
-    public Bloom(ReadOnlySpan<byte> bytes) => bytes.CopyTo(Bytes);
+    public Bloom(ReadOnlySpan<byte> bytes) => bytes.CopyTo(_bloomData.AsSpan());
+
+    private static Bloom CreateZeroLength()
+    {
+        Bloom bloom = new();
+        bloom._bloomData.AsSpan().Fill(byte.MaxValue);
+        return bloom;
+    }
 
     [JsonIgnore]
-    public Span<byte> Bytes => _bloomData.AsSpan();
+    public Span<byte> Bytes => IsZeroLength ? default : _bloomData.AsSpan();
     [JsonIgnore]
-    public ReadOnlySpan<byte> ReadOnlyBytes => _bloomData.AsReadOnlySpan();
+    public ReadOnlySpan<byte> ReadOnlyBytes => IsZeroLength ? default : _bloomData.AsReadOnlySpan();
+    /// <summary>Whether this is the zero-length <see cref="ZeroLength"/> bloom.</summary>
+    [JsonIgnore]
+    public bool IsZeroLength => ReferenceEquals(this, ZeroLength);
     private Span<ulong> ULongs => _bloomData.AsULongs();
 
     [SkipLocalsInit]
@@ -99,7 +109,9 @@ public class Bloom : IEquatable<Bloom>
         if (other is null) return false;
         if (ReferenceEquals(this, other)) return true;
 
-        return Nethermind.Core.Extensions.Bytes.AreEqual(ReadOnlyBytes, other.ReadOnlyBytes);
+        // Raw data keeps the getters' EIP-7668 check off this path; ZeroLength's storage could equal a full bloom's.
+        return Nethermind.Core.Extensions.Bytes.AreEqual(_bloomData.AsReadOnlySpan(), other._bloomData.AsReadOnlySpan())
+               && !IsZeroLength && !other.IsZeroLength;
     }
 
     public override bool Equals(object? obj)
@@ -146,12 +158,13 @@ public class Bloom : IEquatable<Bloom>
 
     public void Accumulate(Bloom? bloom)
     {
-        if (bloom is null)
+        if (bloom is null || ReferenceEquals(bloom, Empty))
         {
             return;
         }
 
-        Bytes.Or(bloom.Bytes);
+        Debug.Assert(!bloom.IsZeroLength || IsZeroLength, "EIP-7668: Bloom.ZeroLength must not be accumulated into a real bloom.");
+        _bloomData.AsSpan().Or(bloom._bloomData.AsReadOnlySpan());
     }
 
     public bool Matches(LogEntry logEntry)
@@ -241,6 +254,8 @@ public class Bloom : IEquatable<Bloom>
 
     public Bloom Clone()
     {
+        if (IsZeroLength) return this;
+
         Bloom clone = new();
         ReadOnlyBytes.CopyTo(clone.Bytes);
         return clone;

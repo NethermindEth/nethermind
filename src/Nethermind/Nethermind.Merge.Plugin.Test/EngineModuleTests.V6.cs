@@ -4,6 +4,7 @@
 using System.Buffers;
 using System.Collections;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -11,12 +12,14 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -362,6 +365,8 @@ public partial class EngineModuleTests
     [TestCase("0xff", "Error decoding block access list: Must be a complete RLP list")]
     [TestCase("0xc0c0", "Error decoding block access list: Must be a complete RLP list")]
     [TestCase("0xf6da940000000000000000000000000000000000000000c0c0c0c0c0da940000000000000000000000000000000000000000c0c0c0c0c0", "Error decoding block access list:")]
+    [TestCase("0xf83cdd940000000000000000000000000000000000000001c0c0c3c20101c0c0dd940000000000000000000000000000000000000001c0c0c3c20102c0c0", "Error decoding block access list: Account changes were in incorrect order.")]
+    [TestCase("0xf822e1940000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "Error decoding block access list:")]
     public async Task NewPayloadV5_rejects_malformed_block_access_list(string encodedBlockAccessList, string expectedValidationError)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
@@ -403,7 +408,67 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.NoEip8037Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block block = CreateBlockWithInvalidBal(chain, blockHash, stateRoot, customWithdrawalContractAddress);
 
+        string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
+            chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
+        JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(successResponse, Is.Not.Null);
+            Assert.That(response, Does.Contain("\"status\":\"INVALID\""));
+            Assert.That(response, Does.Contain($"\"latestValidHash\":\"{Keccak.Zero.ToString(true)}\""));
+            Assert.That(response,
+                Does.Contain($"InvalidBlockLevelAccessListHash: Expected {expectedBalHash}, got {invalidBalHash}")
+                .Or.Contain("InvalidBlockLevelAccessList: Account-set size mismatch"));
+        }
+    }
+
+    [TestCase(
+        "0x9d101a431b3af94e5ee308d6a29151bdcd58880470890f74b92bec3d55861767",
+        "0xb7cd7ecf731166baf69674234dc243d3f8931976b0f1a379beafe0981d01bd2e",
+        "0x7e1753f77e6e83be83cbe533f587d2660f683af828a4ce2fea4883a7af2444a6",
+        null)]
+    public virtual async Task NewPayloadV5_invalid_BAL_keeps_both_access_lists_in_bad_blocks(string blockHash, string stateRoot, string generatedBalHash, string? customWithdrawalContractAddress)
+    {
+        List<Block> inserted = [];
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.NoEip8037Instance, configurer: builder => builder
+            .AddDecorator<IBadBlockStore>((_, inner) =>
+            {
+                IBadBlockStore store = Substitute.For<IBadBlockStore>();
+                store.When(static s => s.Insert(Arg.Any<Block>(), Arg.Any<WriteFlags>())).Do(c =>
+                {
+                    inserted.Add(c.Arg<Block>());
+                    inner.Insert(c.Arg<Block>(), c.Arg<WriteFlags>());
+                });
+                store.GetAll().Returns(_ => inner.GetAll());
+                return store;
+            }));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block block = CreateBlockWithInvalidBal(chain, blockHash, stateRoot, customWithdrawalContractAddress);
+
+        string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
+            chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
+        Assert.That(response, Does.Contain("\"status\":\"INVALID\""));
+
+        IDebugRpcModule debug = chain.Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+        JsonNode badBlock = JsonNode.Parse(chain.JsonSerializer.Serialize(debug.debug_getBadBlocks().Data))!.AsArray().Single()!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(badBlock["hash"]!.GetValue<string>(), Is.EqualTo(blockHash));
+            Assert.That(badBlock["blockAccessList"]!.GetValue<string>(), Is.EqualTo(BlockAccessListDecoder.EncodeToBytes(block.BlockAccessList!).ToHexString(true)));
+            // Parallel execution only checks the suggested access list and does not build one.
+            string? generated = badBlock["generatedBlockAccessList"]?.GetValue<string>();
+            Assert.That(generated is null ? null : Keccak.Compute(Bytes.FromHexString(generated)),
+                Parallel ? Is.Null : Is.EqualTo(new Hash256(generatedBalHash)));
+            // The manager reuses its generated access list for the next block, so the bad block must keep its own copy.
+            Assert.That(inserted.Single().EncodedGeneratedBlockAccessList?.ToHexString(true), Is.EqualTo(badBlock["generatedBlockAccessList"]?.GetValue<string>()));
+        }
+    }
+
+    private static Block CreateBlockWithInvalidBal(MergeTestBlockchain chain, string blockHash, string stateRoot, string? customWithdrawalContractAddress)
+    {
         const ulong timestamp = 1000000;
         const ulong slotNumber = 1;
         Hash256 parentHash = new(chain.BlockTree.HeadHash);
@@ -446,19 +511,7 @@ public partial class EngineModuleTests
             [],
             invalidBal);
 
-        string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
-            chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
-        JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response)!;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(successResponse, Is.Not.Null);
-            Assert.That(response, Does.Contain("\"status\":\"INVALID\""));
-            Assert.That(response, Does.Contain($"\"latestValidHash\":\"{Keccak.Zero.ToString(true)}\""));
-            Assert.That(response,
-                Does.Contain($"InvalidBlockLevelAccessListHash: Expected {expectedBalHash}, got {invalidBalHash}")
-                .Or.Contain("InvalidBlockLevelAccessList: Account-set size mismatch"));
-        }
+        return block;
     }
 
     protected static IEnumerable<TestCaseData> InvalidBalEarlyTestCases()
@@ -737,6 +790,68 @@ public partial class EngineModuleTests
             Assert.That(proofs[0]!.AsSpan(0, expectedProofs[0].Length), Is.SequenceEqualTo(expectedProofs[0]));
             Assert.That(blobCells[1], Is.Null);
             Assert.That(proofs[1], Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task GetBlobsV4_should_return_cells_of_a_transaction_included_in_the_head()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            releaseSpec: Amsterdam.Instance,
+            mergeConfig: new MergeConfig()
+            {
+                NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
+            },
+            configurer: ConfigureBlobPoolAvailable);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(2, spec: Amsterdam.Instance)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+        Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        byte[][] blobVersionedHashes = blobTx.BlobVersionedHashes!.Select(static h => h!).ToArray();
+
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = parent.Timestamp + 1,
+            PrevRandao = TestItem.KeccakH,
+            SuggestedFeeRecipient = TestItem.AddressF,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = TestItem.KeccakE,
+            SlotNumber = parent.SlotNumber + 1,
+            TargetGasLimit = parent.GasLimit
+        };
+        Task blockImprovementWait = chain.WaitForImprovedBlock(parent.Hash!, 1);
+        string payloadId = (await rpcModule.engine_forkchoiceUpdatedV4(new ForkchoiceStateV1(parent.Hash!, parent.Hash!, parent.Hash!), payloadAttributes)).Data.PayloadId!;
+        await blockImprovementWait;
+        GetPayloadV6Result payload = (await rpcModule.engine_getPayloadV6(Bytes.FromHexString(payloadId))).Data!;
+        Hash256 blockHash = payload.ExecutionPayload.BlockHash;
+
+        ResultWrapper<PayloadStatusV1> newPayloadResult = await rpcModule.engine_newPayloadV5(
+            payload.ExecutionPayload, blobVersionedHashes.Select(static h => new Hash256(h)).ToArray(), TestItem.KeccakE, payload.ExecutionRequests);
+        Assert.That(newPayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Task txPoolHeadWait = chain.WaitForTxPoolHead(blockHash);
+        // Not finalized: the blobs of finalized blocks are no longer served.
+        await rpcModule.engine_forkchoiceUpdatedV4(new ForkchoiceStateV1(blockHash, Keccak.Zero, Keccak.Zero), null);
+        await txPoolHeadWait;
+        Assert.That(chain.TxPool.GetPendingBlobTransactionsCount(), Is.Zero, "precondition: the transaction left the blob pool");
+
+        BlobCellMask requestedMask = BlobCellMask.FromIndices([0, 5, 127]);
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await rpcModule.engine_getBlobsV4(blobVersionedHashes, ToBitArray(requestedMask));
+
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, requestedMask, out byte[][] expectedCells), Is.True);
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        BlobCellsAndProofs?[] blobsAndProofs = result.Data!.ToArray();
+        Assert.That(blobsAndProofs, Has.Length.EqualTo(2).And.None.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            AssertBlobCellsAndProofs(blobsAndProofs[0]!, requestedMask, expectedCells, 0, BlobCellsHelper.SelectProofs(wrapper, 0, requestedMask));
+            AssertBlobCellsAndProofs(blobsAndProofs[1]!, requestedMask, expectedCells, requestedMask.Count, BlobCellsHelper.SelectProofs(wrapper, 1, requestedMask));
         }
     }
 

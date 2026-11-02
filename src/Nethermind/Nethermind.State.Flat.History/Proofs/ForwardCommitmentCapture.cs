@@ -114,6 +114,15 @@ public sealed class ForwardCommitmentCapture : IDisposable
         }
     }
 
+    /// <summary>Drops everything captured so far, rows and series included, for a history restarting at a snap pivot.</summary>
+    public void DiscardForPivot()
+    {
+        _emitter?.Dispose();
+        _emitter = null;
+        Discard();
+        _metadata.DiscardForPivot();
+    }
+
     public void Discard()
     {
         _roundOverflowed = false;

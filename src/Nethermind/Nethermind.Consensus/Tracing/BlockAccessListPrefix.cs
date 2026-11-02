@@ -133,7 +133,8 @@ internal sealed class BlockAccessListPrefix
     {
         foreach (CodeChange change in changes)
         {
-            if (change.Index < FirstTransactionIndex) continue;
+            // EIP-8298: an adoption declares no bytecode.
+            if (change.Index < FirstTransactionIndex || change.IsAdopted) continue;
 
             ValueHash256 hash = change.CodeHash;
             if (_deployedCode.ContainsKey(hash)) continue;
@@ -143,7 +144,7 @@ internal sealed class BlockAccessListPrefix
         }
     }
 
-    /// <summary>Code changes only on creation and delegation, so an account carries very few of them.</summary>
+    /// <summary>Code changes only on creation, delegation and adoption, so an account carries very few of them.</summary>
     private Hash256? LastCodeHash(CodeChange[] changes, uint transactionIndex)
     {
         for (int i = changes.Length - 1; i >= 0; i--)
@@ -152,7 +153,8 @@ internal sealed class BlockAccessListPrefix
             if (index > transactionIndex) continue;
             if (index < FirstTransactionIndex) return null;
 
-            return _deployedCode[changes[i].CodeHash].Hash;
+            ValueHash256 hash = changes[i].CodeHash;
+            return _deployedCode.TryGetValue(hash, out DeployedCode deployed) ? deployed.Hash : new Hash256(in hash);
         }
 
         return null;

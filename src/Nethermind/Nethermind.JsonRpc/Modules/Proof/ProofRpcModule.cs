@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Tracing;
@@ -116,8 +115,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             ReceiptWithProof receiptWithProof = new();
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
+            if (spec.IsEip8116Enabled)
+            {
+                tracedReceipts.SetEip8116GasUsed();
+            }
 
-            int logIndexStart = GetLogIndexStart(txs, storedReceipts, txIndex);
+            int logIndexStart = spec.IsEip8116Enabled ? 0 : GetLogIndexStart(txs, storedReceipts, txIndex);
 
             TxReceipt provenReceipt = new(receipt) { Index = txIndex, BlockHash = block.Hash, BlockNumber = block.Number };
             receiptWithProof.Receipt = new ReceiptForRpc(
@@ -161,14 +164,14 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     ErrorCodes.ResourceUnavailable);
             }
 
-            using CancellationTokenSource timeout = jsonRpcConfig.BuildTimeoutCancellationToken();
+            using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
             AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
             VisitingStats diagnostics = new();
             blockchainBridge.RunTreeVisitor(accountProofCollector, header!, diagnostics: diagnostics);
 
             return ResultWrapper<AccountProofWithMeta>.Success(new AccountProofWithMeta
             {
-                Proof = accountProofCollector.BuildResult(),
+                Proof = EthRpcModule.EchoStorageKeys(accountProofCollector.BuildResult(), storageKeys),
                 Meta = new ProofMeta
                 {
                     NodeLookups = diagnostics.NodeLookups,

@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Tools.LeanBench;
@@ -38,34 +39,37 @@ public static partial class Program
         Block block = decoded.Data!;
         Hash256 calculated = block.Header.CalculateHash();
         if (calculated != payload.BlockHash) throw new InvalidDataException("Original payload header hash does not match the complete Engine parameters");
-        RecursiveStark proof = block.Header.RecursiveStark ?? throw new InvalidDataException("Payload has no recursive proof");
-        ValueHash256 expected = Eip8288Dependencies.ComputeBlockDepsHash(block);
+        RecursiveStarkCommitment proof = block.Header.RecursiveStark ?? throw new InvalidDataException("Payload has no recursive proof");
+        byte[] starkProof = block.StarkProof ?? throw new InvalidDataException("Payload has no recursive proof body");
+        ValueHash256 expected = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue);
         if (new Hash256(expected) != proof.BlockDepsHash) throw new InvalidDataException("Original dependency commitment does not match transactions");
         NativeLeanProofVerifier verifier = NativeLeanProofVerifier.Instance;
         verifier.EnsureAvailable();
-        if (!verifier.VerifyRecursiveStark(expected, Eip8288Constants.AggregatedVk, proof.StarkProof))
+        if (!verifier.VerifyRecursiveStark(expected, Eip8288Constants.AggregatedVk, starkProof))
             throw new InvalidDataException("Original native block proof failed verification");
         if (mutation == "proof")
         {
-            proof.StarkProof[^1] ^= 1;
-            payloadJson["recursiveStarkProof"] = "0x" + Convert.ToHexString(proof.StarkProof).ToLowerInvariant();
+            // Recommit the header to the tampered body so the payload fails proof verification, not the body commitment.
+            starkProof[^1] ^= 1;
+            block.Header.RecursiveStark = new(Keccak.Compute(starkProof), proof.BlockDepsHash);
+            payloadJson["recursiveStarkProof"] = "0x" + Convert.ToHexString(starkProof).ToLowerInvariant();
         }
         else if (mutation == "commitment")
         {
             byte[] commitment = proof.BlockDepsHash.Bytes.ToArray();
             commitment[^1] ^= 1;
-            block.Header.RecursiveStark = new(proof.StarkProof, new Hash256(commitment));
+            block.Header.RecursiveStark = new(proof.StarkProofHash, new Hash256(commitment));
             payloadJson["recursiveStarkBlockDepsHash"] = "0x" + Convert.ToHexString(commitment).ToLowerInvariant();
         }
         Hash256 updatedHash = block.Header.CalculateHash();
         payloadJson["blockHash"] = updatedHash.ToString();
-        RecursiveStark updatedProof = block.Header.RecursiveStark!;
+        RecursiveStarkCommitment updatedProof = block.Header.RecursiveStark!;
         bool verified = verifier.VerifyRecursiveStark(new ValueHash256(updatedProof.BlockDepsHash.Bytes),
-            Eip8288Constants.AggregatedVk, updatedProof.StarkProof);
+            Eip8288Constants.AggregatedVk, starkProof);
         if (verified != (mutation == "none")) throw new InvalidDataException("Payload mutation did not produce the intended proof result");
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         File.WriteAllText(output, request.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        (int signatures, int starks) = Eip8288Dependencies.CountByScheme(Eip8288Dependencies.ForBlock(block));
+        (int signatures, int starks) = Eip8288Dependencies.CountByScheme(Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue));
         object inspection = new
         {
             method,
@@ -77,7 +81,7 @@ public static partial class Program
             resultingNativeProofValid = verified,
             signatures,
             starks,
-            proofBytes = proof.StarkProof.Length,
+            proofBytes = starkProof.Length,
             blockDepsHash = updatedProof.BlockDepsHash.ToString(),
             transactionHashes = block.Transactions.Select(tx => tx.Hash?.ToString())
         };

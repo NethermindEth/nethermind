@@ -32,6 +32,10 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
 
     private readonly ConcurrentDictionary<Hash256AsKey, AddressNodes> _byAddress = new();
     private IEnumerator<KeyValuePair<Hash256AsKey, AddressNodes>>? _cachedAddressEnumerator;
+    // Set before any insert and cleared only by NoLockClear, so it is never false while addresses remain.
+    private bool _mayHaveAddresses;
+
+    internal bool MayHaveAddresses => _mayHaveAddresses;
 
     public int Count
     {
@@ -60,17 +64,21 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
     {
         if (_byAddress.TryGetValue(address, out AddressNodes? nodes)) return nodes;
 
+        _mayHaveAddresses = true;
         AddressNodes candidate = AddressNodesPool.Rent();
         nodes = _byAddress.GetOrAdd(address, candidate);
         if (!ReferenceEquals(nodes, candidate)) AddressNodesPool.Return(candidate);
         return nodes;
     }
 
-    public bool TryGetValue(HashedKey<(Hash256, TreePath)> key, out TrieNode node)
+    public bool TryGetValue(HashedKey<(Hash256, TreePath)> key, out TrieNode node) => TryGetValue(key.Key.Item1, key.Key.Item2, out node);
+
+    /// <summary>Looks a node up without the combined key, whose hash this dictionary does not use.</summary>
+    public bool TryGetValue(Hash256 address, in TreePath path, out TrieNode node)
     {
-        if (_byAddress.TryGetValue(key.Key.Item1, out AddressNodes? nodes))
+        if (_byAddress.TryGetValue(address, out AddressNodes? nodes))
         {
-            return nodes.Nodes.TryGetValue(key.Key.Item2, out node!);
+            return nodes.Nodes.TryGetValue(path, out node!);
         }
 
         node = null!;
@@ -94,6 +102,7 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
         }
 
         _byAddress.NoLockClear();
+        _mayHaveAddresses = false;
     }
 
     public Enumerator GetEnumerator() => new(this, RentAddressEnumerator());

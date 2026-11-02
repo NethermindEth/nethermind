@@ -18,6 +18,9 @@ public sealed partial class JumpDestinationAnalyzer
     // at the same time each build it, and the bitmaps are identical.
     private volatile long[]? _jumpDestinationBitmap = (codeInfo.CodeLength == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
+    /// <summary>The bitmap jumps are checked against when EIP-7979 adds no destination.</summary>
+    private long[] PlainJumpBitmap => JumpDestinationBitmap;
+
     private const int BytesPerUInt64 = sizeof(ulong);
     private const int ScalarWordThreshold = 64;
     private const ulong ByteHighBits = 0x8080808080808080UL;

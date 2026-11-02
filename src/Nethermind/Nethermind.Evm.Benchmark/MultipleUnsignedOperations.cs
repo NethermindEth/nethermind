@@ -70,7 +70,7 @@ public class MultipleUnsignedOperations
     [GlobalSetup]
     public void GlobalSetup()
     {
-        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _stateProvider = TestWorldStateFactory.CreateForTest(logManager: NullLogManager.Instance);
         _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
         _stateProvider.CreateAccount(Address.Zero, 1000.Ether);
         _stateProvider.Commit(_spec);

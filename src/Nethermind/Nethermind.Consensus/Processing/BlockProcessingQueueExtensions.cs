@@ -30,16 +30,17 @@ public static class BlockProcessingQueueExtensions
     /// Waits, for at most <paramref name="bound"/>, for the copy of the block that has had its verdict to leave the
     /// queue, which is when a block answered VALID is committed and readable through the chain.
     /// </summary>
+    /// <param name="timeProvider">The clock <paramref name="bound"/> is measured on; the system clock when null.</param>
     /// <returns><c>false</c> when that copy was still in the queue at the bound; <c>true</c> otherwise, at once when
     /// no copy of the block has had its verdict.</returns>
-    public static async ValueTask<bool> WaitForExecutedCopyAsync(this IBlockProcessingQueue queue, Hash256 blockHash, TimeSpan bound)
+    public static async ValueTask<bool> WaitForExecutedCopyAsync(this IBlockProcessingQueue queue, Hash256 blockHash, TimeSpan bound, TimeProvider? timeProvider = null)
     {
         ValueTask removed = queue.WaitUntilExecutedCopyRemovedAsync(blockHash);
         if (removed.IsCompleted) return true;
 
         Task committed = removed.AsTask();
         using CancellationTokenSource timer = new();
-        if (await Task.WhenAny(committed, Task.Delay(bound, timer.Token)) != committed) return false;
+        if (await Task.WhenAny(committed, Task.Delay(bound, timeProvider ?? TimeProvider.System, timer.Token)) != committed) return false;
 
         timer.Cancel();
         return true;

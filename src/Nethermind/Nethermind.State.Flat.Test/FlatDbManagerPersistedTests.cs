@@ -117,7 +117,7 @@ public class FlatDbManagerPersistedTests
     }
 
     [Test]
-    public void DisposeAsync_CompletesPromptlyAndIsIdempotent()
+    public async Task DisposeAsync_CompletesPromptlyAndIsIdempotent()
     {
         using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
         SnapshotRepository repo = tier.Repository;
@@ -143,10 +143,10 @@ public class FlatDbManagerPersistedTests
 
         // WaitAsync bounds only the wait, not the drain. A wedged worker-channel drain
         // causes a fast TimeoutException here instead of a stalled test host.
-        Assert.DoesNotThrowAsync(async () => await manager.DisposeAsync().AsTask().WaitAsync(DisposeWaitLimit));
+        await Assert.DoesNotThrowAsync(async () => await manager.DisposeAsync().AsTask().WaitAsync(DisposeWaitLimit));
 
         // A second disposal must be a no-op. A completed channel throws on Complete().
-        Assert.DoesNotThrowAsync(async () => await manager.DisposeAsync().AsTask().WaitAsync(DisposeWaitLimit));
+        await Assert.DoesNotThrowAsync(async () => await manager.DisposeAsync().AsTask().WaitAsync(DisposeWaitLimit));
     }
 
     [TestCase(0, TestName = "DisposeAsync_WhenPersistenceSucceeds_DrainsQueuedCompactions")]

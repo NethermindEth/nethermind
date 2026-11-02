@@ -325,6 +325,8 @@ public class HealingTreeTests
         ISyncPeerPool clientSyncPeerPool = client.Resolve<ISyncPeerPool>();
         clientSyncPeerPool.Start();
         clientSyncPeerPool.AddPeer(server.Resolve<SyncPeerMock>());
+        // Each missing node gets a fixed 3 s to be recovered, which must not be spent waiting for the peer to initialize.
+        Assert.That(() => clientSyncPeerPool.InitializedPeersCount, Is.EqualTo(1).After(10_000, 10));
 
         // Make sure that the client have the same data.
         AssertStorage(client);

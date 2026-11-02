@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -232,14 +233,14 @@ public class LongFinalityIntegrationTests
         Hash256 storageAddr = Keccak.Compute("addr");
         TreePath storagePath = new(Keccak.Compute("stor_path"), 6);
 
-        Snapshot snap1 = CreateSnapshot(s0, s1, c =>
+        using Snapshot snap1 = CreateSnapshot(s0, s1, c =>
         {
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
             c.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC0]);
             c.StorageNodes[(storageAddr, storagePath)] = new TrieNode(NodeType.Branch, [0xC1, 0x80]);
         });
 
-        Snapshot snap2 = CreateSnapshot(s1, s2, c =>
+        using Snapshot snap2 = CreateSnapshot(s1, s2, c =>
         {
             c.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
             c.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]); // Override
@@ -249,10 +250,10 @@ public class LongFinalityIntegrationTests
         byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2, _helperBlobs);
         PersistedSnapshot baseSnap1 = CreatePersistedSnapshot(s0, s1, data1);
         PersistedSnapshot baseSnap2 = CreatePersistedSnapshot(s1, s2, data2);
-        PersistedSnapshotList toMerge = new(2) { baseSnap1, baseSnap2 };
+        using PersistedSnapshotList toMerge = new(2) { baseSnap1, baseSnap2 };
         byte[] merged = PersistedSnapshotBuilderTestExtensions.NWayMergeSnapshots(toMerge);
 
-        PersistedSnapshot mergedSnap = CreatePersistedSnapshot(s0, s2, merged);
+        using PersistedSnapshot mergedSnap = CreatePersistedSnapshot(s0, s2, merged);
 
         // State node should have newer value
         Assert.That(mergedSnap.TryLoadStateNodeRlp(statePath, out byte[]? stateRlpResult), Is.True);
@@ -361,6 +362,77 @@ public class LongFinalityIntegrationTests
         {
             SnapshotRepository repo = tier3.Repository;
             Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1));
+        }
+    }
+
+    // Regression for #12764: a large compaction is clamped to the persisted block, so recompacting it after a
+    // restart (the re-executed tail, with RocksDB further along) yields a different depth at the same To. The
+    // replaced snapshot's catalog row must not survive it: the next restart reloaded its reclaimed (zeroed)
+    // region, and the empty bloom rebuilt from it was shared across its range, hiding every snapshot inside.
+    [Test]
+    public void Large_recompaction_after_restart_keeps_persisted_tier_readable([Values] bool upgradeFromLegacyCatalog)
+    {
+        const ulong largeBoundary = 256;
+        MemDb catalogDb = new();
+        CatalogEntry[] LargeCompactedRowsAtBoundary() => [.. new SnapshotCatalog(catalogDb).Load()
+            .Where(e => e.To == BlockState(largeBoundary) && e.Tier == SnapshotTier.PersistedLargeCompacted)];
+
+        using (FlatTestContainer session = new(new FlatDbConfig { CompactSize = 32, CompactionOffset = 0 }, baseDbPath: _testDir, catalogDb: catalogDb))
+            ConvertAndCompact(session, 65, largeBoundary, persistedBlock: 64);
+        CatalogEntry replaced = LargeCompactedRowsAtBoundary().Single();
+
+        using (FlatTestContainer session = new(new FlatDbConfig { CompactSize = 32, CompactionOffset = 0 }, baseDbPath: _testDir, catalogDb: catalogDb))
+        {
+            session.Repository.RemovePersistedStatesUntil(97);
+            ConvertAndCompact(session, 97, largeBoundary, persistedBlock: 96);
+            session.Repository.RemovePersistedStatesUntil(129);
+        }
+
+        Assert.That(LargeCompactedRowsAtBoundary().Select(e => e.From), Is.EqualTo(new[] { BlockState(96) }));
+
+        if (upgradeFromLegacyCatalog)
+        {
+            // The depth-keyed catalog once the replacement is pruned: the replaced snapshot's row is the only one
+            // left at its To, while the other snapshots keep its arena file alive.
+            CatalogEntry[] rows = [.. new SnapshotCatalog(catalogDb).Load().Except(LargeCompactedRowsAtBoundary())];
+            catalogDb.Clear();
+            foreach (CatalogEntry row in rows.Append(replaced))
+                FlatTestHelpers.PutLegacyCatalogRow(catalogDb, row);
+        }
+
+        // Which row the load keeps is order-dependent, so the reads below catch a stray row only some of the time.
+        using FlatTestContainer restarted = new(new FlatDbConfig { CompactSize = 32, CompactionOffset = 0 }, baseDbPath: _testDir, catalogDb: catalogDb);
+        for (ulong block = 129; block <= largeBoundary; block++)
+        {
+            AssembledSnapshotResult assembled = restarted.Repository.AssembleSnapshots(BlockState(block), BlockState(128), estimatedSize: 16);
+            assembled.InMemory.Dispose();
+            using PersistedSnapshotStack stack = new(assembled.Persisted, recordDetailedMetrics: false);
+            Assert.That(stack.TryGetAccount(TestItem.AddressA, out Account? account), Is.True, $"block {block}");
+            Assert.That(account!.Nonce, Is.EqualTo(block), $"block {block}");
+        }
+    }
+
+    private static StateId BlockState(ulong block) => new(block, Keccak.Compute(block.ToString()));
+
+    // Converts each block like PersistenceManager and compacts it like PersistedSnapshotCompactor's batch worker.
+    private void ConvertAndCompact(FlatTestContainer session, ulong firstBlock, ulong lastBlock, ulong persistedBlock)
+    {
+        ICompactionSchedule schedule = session.Resolve<ICompactionSchedule>();
+        for (ulong block = firstBlock; block <= lastBlock; block++)
+        {
+            using (Snapshot snapshot = CreateSnapshot(BlockState(block - 1), BlockState(block), c =>
+            {
+                c.Accounts[TestItem.AddressA] = Build.An.Account.WithNonce(block).TestObject;
+                // Filler so a reclaimed compaction spans whole pages, which is what a hole punch actually zeroes.
+                for (int i = 0; i < 40; i++)
+                    c.Accounts[new Address(Keccak.Compute($"{block}_{i}"))] = Build.An.Account.WithBalance(block).TestObject;
+            }))
+                session.ConvertToPersistedBase(snapshot).Dispose();
+
+            if (schedule.IsCompactSizeBoundary(block) || schedule.IsLargeCompactionBoundary(block))
+                session.Compactor.DoCompactCompactSized(BlockState(block));
+            if (!schedule.IsCompactSizeBoundary(block))
+                session.Compactor.DoCompactSnapshot(BlockState(block), persistedBlock);
         }
     }
 
