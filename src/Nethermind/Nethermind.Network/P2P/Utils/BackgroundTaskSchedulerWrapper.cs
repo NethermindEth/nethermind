@@ -48,7 +48,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
     /// request type. Nethermind with the default <c>ISyncConfig.AllocationSlots</c> has at most 9 sync requests on eth and 4 on snap,
     /// plus the transaction requests. The extra requests are dropped, the same as when the scheduler queue is full.
     /// </remarks>
-    internal const int MaxSyncServeRequestsInFlight = 64;
+    internal const int MaxSyncServeRequestsInFlight = 32;
 
     private int _syncServeRequestsInFlight;
 
