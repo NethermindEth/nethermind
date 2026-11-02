@@ -57,7 +57,8 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
     /// lowest one at which no nested call frame runs out of gas. Under EIP-8037 that limit can be above
     /// <see cref="Eip7825Constants.DefaultTxGasLimitCap"/>, where a state-gas reservoir pays the state charges of a
     /// call with a fixed gas limit. A nested out-of-gas that the highest gas limit also has, for example a callee
-    /// that uses all the gas it gets, does not change the result.
+    /// that uses all the gas it gets, does not change the result. This also holds when another nested call runs out
+    /// of gas only at lower gas limits, because a run records only whether any nested call frame ran out of gas.
     /// </remarks>
     public GasEstimation Estimate(
         Transaction tx,
