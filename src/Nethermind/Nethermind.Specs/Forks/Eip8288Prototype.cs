@@ -13,7 +13,6 @@ public class Eip8288Prototype() : NamedReleaseSpec<Eip8288Prototype>(Eip8141Prot
     public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Eip8288Prototype";
-        spec.IsEip8141Enabled = true;
         spec.IsEip8288Enabled = true;
         spec.IsEip8250Enabled = true;
         spec.IsEip8272Enabled = true;
