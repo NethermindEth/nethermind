@@ -228,35 +228,32 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private IEnumerable<JsonRpcResult> GetLogMessages(ReceiptsEventArgs e)
         {
-            if (_filter.Matches(e.BlockHeader.Bloom!))
+            EventPayloads payloads = _payloads.ForEvent(e);
+            int position = 0;
+            int logIndex = 0;
+            for (int i = 0; i < e.TxReceipts.Length; i++)
             {
-                EventPayloads payloads = _payloads.ForEvent(e);
-                int position = 0;
-                int logIndex = 0;
-                for (int i = 0; i < e.TxReceipts.Length; i++)
+                TxReceipt receipt = e.TxReceipts[i];
+                if (e.LogIndexPerReceipt) logIndex = 0;
+                if (_filter.Matches(receipt.Bloom!))
                 {
-                    TxReceipt receipt = e.TxReceipts[i];
-                    if (e.LogIndexPerReceipt) logIndex = 0;
-                    if (_filter.Matches(receipt.Bloom!))
+                    for (int j = 0; j < receipt.Logs!.Length; j++)
                     {
-                        for (int j = 0; j < receipt.Logs!.Length; j++)
+                        LogEntry receiptLog = receipt.Logs[j];
+                        if (_filter.Accepts(receiptLog))
                         {
-                            LogEntry receiptLog = receipt.Logs[j];
-                            if (_filter.Accepts(receiptLog))
-                            {
-                                yield return CreateLogMessage(payloads, position + j, e, logIndex, receipt, receiptLog);
-                            }
-
-                            logIndex++;
+                            yield return CreateLogMessage(payloads, position + j, e, logIndex, receipt, receiptLog);
                         }
-                    }
-                    else
-                    {
-                        logIndex += receipt.Logs.Length;
-                    }
 
-                    position += receipt.Logs.Length;
+                        logIndex++;
+                    }
                 }
+                else
+                {
+                    logIndex += receipt.Logs.Length;
+                }
+
+                position += receipt.Logs.Length;
             }
         }
 
