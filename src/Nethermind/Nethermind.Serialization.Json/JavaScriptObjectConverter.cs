@@ -226,7 +226,3 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
 
     public override IJavaScriptObject? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => throw new NotSupportedException();
 }
-
-/// <summary>A script value nests deeper than the serializer's maximum depth, or holds itself.</summary>
-public sealed class JavaScriptResultDepthException(int maxDepth)
-    : JsonException($"JavaScript tracer result exceeds the maximum depth of {maxDepth} (possibly cyclic)");
