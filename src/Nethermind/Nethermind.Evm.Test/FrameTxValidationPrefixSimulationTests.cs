@@ -479,7 +479,8 @@ public class FrameTxValidationPrefixSimulationTests
             inputData: ReadOnlyMemory<byte>.Empty);
         byte[] words = new byte[5 * 32];
         words.AsSpan().Fill(0xff);
-        UInt256 mask = new FrameTxValidationTracer(Sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec).InstructionMask;
+        IInstructionTracingFilter filter = new FrameTxValidationTracer(Sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec);
+        UInt256 mask = filter.InstructionMask;
 
         List<Instruction> reacted = [];
         for (int op = 0; op <= byte.MaxValue; op++)

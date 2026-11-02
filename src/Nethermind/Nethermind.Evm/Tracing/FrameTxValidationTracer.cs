@@ -35,28 +35,7 @@ public sealed class FrameTxValidationTracer(
     /// <summary>The opcodes that reach <see cref="StartOperation"/>; every other opcode runs untraced.</summary>
     /// <remarks>Must cover every opcode the <c>switch</c> in <see cref="StartOperation"/> handles, otherwise the rule for a missing opcode is silently skipped.
     /// <see cref="Instruction.SLOAD"/> is included only so <c>_inRecentRootCode</c> is current before <c>LoadOperationStorage</c> reads it.</remarks>
-    public UInt256 InstructionMask => InspectedInstructions;
-
-    private static readonly UInt256 InspectedInstructions = CreateInspectedInstructions();
-
-    private static UInt256 CreateInspectedInstructions()
-    {
-        UInt256 mask = UInt256.Zero;
-        foreach (Instruction instruction in (ReadOnlySpan<Instruction>)[
-            Instruction.GAS, Instruction.TIMESTAMP, Instruction.SLOTNUM,
-            Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL,
-            Instruction.EXTCODESIZE, Instruction.EXTCODEHASH, Instruction.EXTCODECOPY,
-            Instruction.GASPRICE, Instruction.BLOCKHASH, Instruction.COINBASE, Instruction.NUMBER,
-            Instruction.PREVRANDAO, Instruction.GASLIMIT, Instruction.BASEFEE, Instruction.BLOBBASEFEE,
-            Instruction.INVALID, Instruction.SELFDESTRUCT, Instruction.PAY, Instruction.BALANCE,
-            Instruction.SELFBALANCE, Instruction.SETCODEFROM, Instruction.CREATE, Instruction.TCREATE,
-            Instruction.CREATE2, Instruction.SSTORE, Instruction.SLOAD])
-        {
-            mask |= UInt256.One << (int)instruction;
-        }
-
-        return mask;
-    }
+    public UInt256 InstructionMask => new(0x9C02_0000_0000_0000, 0x0000_0000_0430_0DBF, 0x0000_0080_0000_0000, 0xD477_0000_0000_0000);
 
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
 
