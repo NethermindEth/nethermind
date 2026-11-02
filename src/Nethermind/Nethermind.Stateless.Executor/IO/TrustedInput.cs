@@ -570,10 +570,6 @@ public static partial class TrustedInput
     }
 }
 
-/// <param name="EncodedTransactions">The block's transactions as sent on the wire, which sender recovery hashes.</param>
-/// <param name="SenderHints">The sender hints, empty or <see cref="TrustedInput.SenderHintLength"/> bytes per transaction.</param>
-/// <param name="RecoveryHints">The recovery hints, <see cref="TrustedInput.RecoveryHintLength"/> bytes per recovery.</param>
-/// <param name="GetBlock">Builds the block. Deferred, as it decodes attacker-controlled transactions and can throw.</param>
 /// <summary>A field of a recovery hint, each held in a column of its own.</summary>
 internal enum RecoveryHintField
 {
@@ -584,6 +580,10 @@ internal enum RecoveryHintField
     RecoveryId
 }
 
+/// <param name="EncodedTransactions">The block's transactions as sent on the wire, which sender recovery hashes.</param>
+/// <param name="SenderHints">The sender hints, empty or <see cref="TrustedInput.SenderHintLength"/> bytes per transaction.</param>
+/// <param name="RecoveryHints">The recovery hints, <see cref="TrustedInput.RecoveryHintLength"/> bytes per recovery.</param>
+/// <param name="GetBlock">Builds the block. Deferred, as it decodes attacker-controlled transactions and can throw.</param>
 internal readonly record struct TrustedPayload(
     Func<Block> GetBlock,
     Witness Witness,

@@ -101,6 +101,9 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
     /// <remarks>
     /// Airbender only. A <see langword="false"/> says nothing about the signatures, as a key or a y may be what is wrong,
     /// so the caller then recovers the senders instead, and every other recovery is computed when it is needed.
+    /// libairbender's batch fails, as a recovery would, unless each recovery id is at most 3, r and s lie in [1, n - 1],
+    /// R's x (r, plus n for ids 2 and 3), R's y and the key's coordinates are below p, R's y has the parity of the id,
+    /// and R and the key are on the curve. A served key therefore never stands in for a recovery that fails.
     /// </remarks>
     public static unsafe bool TryVerifyInBatch(Transaction[] transactions, byte[][] encodedTransactions, IEthereumEcdsa ecdsa,
         bool useSignatureChainId, ReadOnlySpan<byte> senderKeys, ReadOnlySpan<byte> senderYs, in RecoveryHints others,

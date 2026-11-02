@@ -167,9 +167,9 @@ public partial struct EvmPooledMemory
     /// Copies a source range to memory and fills any bytes beyond the source with zeroes.
     /// The caller must have already charged for and expanded the destination range.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     /// <param name="sourceInMemoryLayout">Whether <paramref name="source"/> is laid out as memory, as a call's input is in
     /// swizzled memory (see <see cref="LoadInputAfterGas"/>), rather than in natural order.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void CopyFromZeroExtendedAfterGas(
         in UInt256 destination,
         ReadOnlySpan<byte> source,
