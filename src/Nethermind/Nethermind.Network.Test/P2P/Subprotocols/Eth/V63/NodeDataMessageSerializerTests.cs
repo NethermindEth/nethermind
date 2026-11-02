@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
@@ -47,7 +48,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 shouldThrow);
 
         [Test]
-        public void Deserializing_from_a_packet_keeps_the_entries_in_it([Values] bool eth66)
+        public void Deserializing_from_a_packet_keeps_the_entries_in_it([Values] bool eth66, [Values] bool trailingByte)
         {
             byte[] entry = TestItem.KeccakA.BytesToArray();
             IMessageSerializationService service = new SerializationBuilder()
@@ -58,9 +59,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 ? Serialize(new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1, NodeData(entry)))
                 : Serialize(NodeData(entry));
 
-            NodeDataMessage deserialized = eth66
-                ? service.Deserialize<Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage>(packet).EthMessage
-                : service.Deserialize<NodeDataMessage>(packet);
+            if (trailingByte)
+            {
+                packet.WriteByte(0);
+                Assert.Throws<RlpException>(() => Deserialize());
+                Assert.That(packet.ReferenceCount, Is.EqualTo(1), "packet released with the rejected message");
+                packet.Release();
+                return;
+            }
+
+            NodeDataMessage deserialized = Deserialize();
 
             using (Assert.EnterMultipleScope())
             {
@@ -74,6 +82,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             packet.Release();
 
             static NodeDataMessage NodeData(byte[] entry) => new(new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { entry }));
+
+            NodeDataMessage Deserialize() => eth66
+                ? service.Deserialize<Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage>(packet).EthMessage
+                : service.Deserialize<NodeDataMessage>(packet);
 
             IByteBuffer Serialize<T>(T message) where T : P2PMessage
             {
