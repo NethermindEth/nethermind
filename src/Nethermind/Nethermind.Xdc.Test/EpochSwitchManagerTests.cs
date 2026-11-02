@@ -174,9 +174,12 @@ internal class EpochSwitchManagerTests
         // Act
         bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader);
         // Assert
-        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.LessThan(extraFieldsV2.BlockRound));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.LessThan(extraFieldsV2.BlockRound));
 
-        Assert.That(result, Is.True);
+            Assert.That(result, Is.True);
+        }
     }
 
     [Test]
@@ -206,9 +209,12 @@ internal class EpochSwitchManagerTests
         // Act
         bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader);
         // Assert
-        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.GreaterThan(extraFieldsV2.BlockRound));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.GreaterThan(extraFieldsV2.BlockRound));
 
-        Assert.That(result, Is.False);
+            Assert.That(result, Is.False);
+        }
     }
 
     [Test]
@@ -238,9 +244,12 @@ internal class EpochSwitchManagerTests
         // Act
         bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader);
         // Assert
-        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.EqualTo(extraFieldsV2.BlockRound));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.EqualTo(extraFieldsV2.BlockRound));
 
-        Assert.That(result, Is.False);
+            Assert.That(result, Is.False);
+        }
     }
 
     [Test]
@@ -310,8 +319,11 @@ internal class EpochSwitchManagerTests
 
         bool result = _epochSwitchManager.IsEpochSwitchAtRound(currRound, chainHead);
         // Assert
-        Assert.That(result, Is.False);
-        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.GreaterThan(currRound));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.GreaterThan(currRound));
+        }
     }
 
     [Test]
@@ -347,10 +359,16 @@ internal class EpochSwitchManagerTests
         bool result = _epochSwitchManager.IsEpochSwitchAtRound(extraFieldsV2.BlockRound, chainHead);
 
         // Assert
-        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.EqualTo(extraFieldsV2.BlockRound - 1));
-        Assert.That(currentEpochStartRound, Is.GreaterThan(chainHead.ExtraConsensusData!.BlockRound));
-        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.LessThan(extraFieldsV2.BlockRound));
-        Assert.That(result, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.EqualTo(extraFieldsV2.BlockRound - 1));
+            Assert.That(currentEpochStartRound, Is.GreaterThan(chainHead.ExtraConsensusData!.BlockRound));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.LessThan(extraFieldsV2.BlockRound));
+            Assert.That(result, Is.True);
+        }
     }
 
     [Test]
@@ -386,10 +404,16 @@ internal class EpochSwitchManagerTests
         bool result = _epochSwitchManager.IsEpochSwitchAtRound(extraFieldsV2.BlockRound, chainHead);
 
         // Assert
-        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.EqualTo(extraFieldsV2.BlockRound - 1));
-        Assert.That(currentEpochStartRound, Is.EqualTo(chainHead.ExtraConsensusData!.BlockRound));
-        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.LessThan(extraFieldsV2.BlockRound));
-        Assert.That(result, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.EqualTo(extraFieldsV2.BlockRound - 1));
+            Assert.That(currentEpochStartRound, Is.EqualTo(chainHead.ExtraConsensusData!.BlockRound));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.LessThan(extraFieldsV2.BlockRound));
+            Assert.That(result, Is.False);
+        }
     }
 
     [Test]
@@ -425,10 +449,16 @@ internal class EpochSwitchManagerTests
         bool result = _epochSwitchManager.IsEpochSwitchAtRound(extraFieldsV2.BlockRound, chainHead);
 
         // Assert
-        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.EqualTo(extraFieldsV2.BlockRound - 1));
-        Assert.That(currentEpochStartRound, Is.LessThan(chainHead.ExtraConsensusData!.BlockRound));
-        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.LessThan(extraFieldsV2.BlockRound));
-        Assert.That(result, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.EqualTo(extraFieldsV2.BlockRound - 1));
+            Assert.That(currentEpochStartRound, Is.LessThan(chainHead.ExtraConsensusData!.BlockRound));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.LessThan(extraFieldsV2.BlockRound));
+            Assert.That(result, Is.False);
+        }
     }
 
     [Test]

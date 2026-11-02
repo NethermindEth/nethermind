@@ -86,7 +86,9 @@ public class FrameTxPoolRetentionMeasurement
     public async Task Control_included_frame_transaction_leaves_the_pool()
     {
         Transaction tx = BuildFrameTx(nonce: 0, deadline: null);
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
         Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the sample never entered the pool");
 
         await AdvanceHead(tx);

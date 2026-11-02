@@ -35,8 +35,11 @@ public class HistoricalSummariesRpcProviderTests
         HistoricalSummary? result = await sut.GetHistoricalSummary(0);
 
         Assert.That(result, Is.Not.Null);
-        Assert.That(result!.Value.BlockSummaryRoot.ToByteArray()[0], Is.EqualTo(0xaa));
-        Assert.That(result.Value.StateSummaryRoot.ToByteArray()[0], Is.EqualTo(0x11));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result!.Value.BlockSummaryRoot.ToByteArray()[0], Is.EqualTo(0xaa));
+            Assert.That(result.Value.StateSummaryRoot.ToByteArray()[0], Is.EqualTo(0x11));
+        }
     }
 
     [Test]

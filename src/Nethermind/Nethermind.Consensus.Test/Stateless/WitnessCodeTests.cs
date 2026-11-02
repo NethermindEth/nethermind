@@ -99,9 +99,12 @@ public class WitnessCodeTests
     private static void AssertPlacedAt(SszWitnessCodes code, byte[] input, int offset, byte[] expected)
     {
         ReadOnlyMemory<byte> placed = code.Bytes.Code;
-        Assert.That(ExecutableCodeMemory.IsPlaced(placed), Is.True);
-        Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(placed.Span), ref input[offset]), Is.True);
-        Assert.That(placed.ToArray(), Is.EqualTo(expected));
-        Assert.That(input.AsSpan(offset + expected.Length, Padding).ToArray(), Is.All.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ExecutableCodeMemory.IsPlaced(placed), Is.True);
+            Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(placed.Span), ref input[offset]), Is.True);
+            Assert.That(placed.ToArray(), Is.EqualTo(expected));
+            Assert.That(input.AsSpan(offset + expected.Length, Padding).ToArray(), Is.All.EqualTo(0));
+        }
     }
 }

@@ -105,15 +105,21 @@ namespace Nethermind.Core.Test.Collections
 
             int emptySnapshot = journalSet.TakeSnapshot();
             Assert.That(journalSet.Add(7), Is.True);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(journalSet.Add(7), Is.False);
+#pragma warning restore NUnit2045
             Assert.That(journalSet.Add(8), Is.True);
             journalSet.Restore(emptySnapshot);
             Assert.That(journalSet, Is.Empty);
 
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(journalSet.Add(7), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(journalSet.Add(8), Is.True);
             int nonemptySnapshot = journalSet.TakeSnapshot();
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(journalSet.Add(9), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(journalSet.Add(7), Is.False);
             journalSet.Restore(nonemptySnapshot);
 
@@ -141,7 +147,9 @@ namespace Nethermind.Core.Test.Collections
             journalSet.Clear();
 
             string item = new('x', 1);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(journalSet.Add(item), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(journalSet.Add(new string('x', 1)), Is.False);
             journalSet.Clear();
 

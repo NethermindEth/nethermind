@@ -1463,13 +1463,19 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
         if (outcome == CreateOutcome.Success)
         {
-            Assert.That(frame.Error, Is.Null, "expected no error on successful CREATE");
-            Assert.That(frame.To, Is.Not.Null, "expected deployed contract address");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(frame.Error, Is.Null, "expected no error on successful CREATE");
+                Assert.That(frame.To, Is.Not.Null, "expected deployed contract address");
+            }
         }
         else
         {
-            Assert.That(frame.Error, Is.Not.Null, "expected error description on a halted CREATE");
-            Assert.That(frame.To, Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(frame.Error, Is.Not.Null, "expected error description on a halted CREATE");
+                Assert.That(frame.To, Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
+            }
         }
     }
 
@@ -1505,8 +1511,11 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         using GethLikeTxTrace trace = tracer.BuildResult();
         NativeCallTracerCallFrame? frame = trace.CustomTracerResult?.Value as NativeCallTracerCallFrame;
         Assert.That(frame, Is.Not.Null, "expected a top-level call frame (ReportAction populated _callStack)");
-        Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
-        Assert.That(frame.Error, Is.Null, "no EVM exception fired; Error must stay null when _error is null");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
+            Assert.That(frame.Error, Is.Null, "no EVM exception fired; Error must stay null when _error is null");
+        }
     }
 
     [Test]
@@ -1646,6 +1655,125 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Test_CallTrace_NestedBytesBeyondOneChunk_KeepTheirValues()
+    {
+        // Enough bytes to fill several chunks, and one input larger than any chunk grown so far.
+        const int FrameCount = 300;
+        const int LargeInputLength = 64 * 1024;
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+        byte[] callerMemory = new byte[LargeInputLength];
+
+        tracer.ReportAction(100000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.TRANSACTION);
+        for (int i = 0; i < FrameCount; i++)
+        {
+            int inputLength = i == FrameCount / 2 ? LargeInputLength : 68;
+            callerMemory.AsSpan(0, inputLength).Fill((byte)i);
+            tracer.ReportAction(50000, 0, TestItem.AddressB, TestItem.AddressC, callerMemory.AsMemory(0, inputLength), ExecutionType.CALL);
+            callerMemory.AsSpan(0, 32).Fill((byte)~i);
+            tracer.ReportActionEnd(40000, callerMemory.AsMemory(0, 32));
+        }
+        callerMemory.AsSpan().Clear();
+        tracer.ReportActionEnd(10000, ReadOnlyMemory<byte>.Empty);
+        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 21000), [], []);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        ReadOnlySpan<NativeCallTracerCallFrame> children = ((NativeCallTracerCallFrame)trace.CustomTracerResult!.Value).Calls.AsSpan();
+
+        Assert.That(children.Length, Is.EqualTo(FrameCount));
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < FrameCount; i++)
+            {
+                int inputLength = i == FrameCount / 2 ? LargeInputLength : 68;
+                Assert.That(children[i].Input.Length, Is.EqualTo(inputLength), $"frame {i} input length");
+                Assert.That(children[i].Input.Span.IndexOfAnyExcept((byte)i), Is.EqualTo(-1), $"frame {i} input");
+                Assert.That(children[i].Output.Span.IndexOfAnyExcept((byte)~i), Is.EqualTo(-1), $"frame {i} output");
+                Assert.That(children[i].Output.Length, Is.EqualTo(32), $"frame {i} output length");
+            }
+        }
+    }
+
+    [Test]
+    public void Test_CallTrace_NestedBytes_OutliveTheTracer()
+    {
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+        byte[] input = [1, 2, 3, 4];
+
+        tracer.ReportAction(100000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.TRANSACTION);
+        tracer.ReportAction(50000, 0, TestItem.AddressB, TestItem.AddressC, input, ExecutionType.CALL);
+        tracer.ReportActionEnd(40000, input);
+        tracer.ReportActionEnd(10000, ReadOnlyMemory<byte>.Empty);
+        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 21000), [], []);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+
+        // A parallel block trace disposes the transaction tracer before the response is written, so the trace must
+        // own the bytes: anything the tracer handed back would be rented again and overwritten here.
+        tracer.Dispose();
+        byte[][] rented = new byte[8][];
+        for (int i = 0; i < rented.Length; i++)
+        {
+            rented[i] = ArrayPool<byte>.Shared.Rent(4 * 1024);
+            rented[i].AsSpan().Fill(0xff);
+        }
+
+        NativeCallTracerCallFrame child = ((NativeCallTracerCallFrame)trace.CustomTracerResult!.Value).Calls[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(child.Input.ToArray(), Is.EqualTo(input));
+            Assert.That(child.Output.ToArray(), Is.EqualTo(input));
+        }
+
+        foreach (byte[] array in rented) ArrayPool<byte>.Shared.Return(array);
+    }
+
+    [Test]
+    public void Test_CallTrace_NestedFrames_AllocateNothingButTheFrames()
+    {
+        // More frames than the shared pool keeps per array size on most machines, so per-frame rentals would miss it.
+        const int FrameCount = 4096;
+        const int Runs = 5;
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        byte[] callerMemory = new byte[68];
+        NativeCallTracerCallFrame[] bareFrames = new NativeCallTracerCallFrame[FrameCount];
+
+        long traced = long.MaxValue;
+        long bare = long.MaxValue;
+        for (int run = 0; run < Runs; run++)
+        {
+            using (NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null)))
+            {
+                tracer.ReportAction(100000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.TRANSACTION);
+
+                long tracedBefore = GC.GetAllocatedBytesForCurrentThread();
+                for (int i = 0; i < FrameCount; i++)
+                {
+                    tracer.ReportAction(50000, 0, TestItem.AddressB, TestItem.AddressC, callerMemory, ExecutionType.CALL);
+                    tracer.ReportActionEnd(40000, callerMemory.AsMemory(0, 32));
+                }
+                traced = Math.Min(traced, GC.GetAllocatedBytesForCurrentThread() - tracedBefore);
+
+                tracer.ReportActionEnd(10000, ReadOnlyMemory<byte>.Empty);
+                tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 21000), [], []);
+                using GethLikeTxTrace trace = tracer.BuildResult();
+            }
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < FrameCount; i++)
+            {
+                bareFrames[i] = new NativeCallTracerCallFrame();
+            }
+            bare = Math.Min(bare, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        // Renting per frame cost about 200 bytes a frame. The slack covers per-trace lists, such as the root's child
+        // list and the chunk list, which some builds and runtimes do not serve from the shared pool.
+        Assert.That(traced, Is.LessThanOrEqualTo(bare + FrameCount * 8),
+            $"tracing {FrameCount} frames allocated {traced} bytes, {bare} of them for the frames themselves");
+    }
+
     private static GethLikeTxTrace TraceAmsterdamTopCall(bool withSubFrame)
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
@@ -1719,8 +1847,11 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
         string json = JsonSerializer.Serialize(frame, EthereumJsonSerializer.JsonOptions);
 
-        Assert.That(json, Is.EqualTo("""{"type":"CALL","from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","gas":"0x186a0","gasUsed":"0xc350","input":"0x"}"""));
-        Assert.That(frame.HasCalls, Is.EqualTo(callsTouched), "serializing a leaf frame must not allocate its calls list");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json, Is.EqualTo("""{"type":"CALL","from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","gas":"0x186a0","gasUsed":"0xc350","input":"0x"}"""));
+            Assert.That(frame.HasCalls, Is.EqualTo(callsTouched), "serializing a leaf frame must not allocate its calls list");
+        }
     }
 
     [Test]

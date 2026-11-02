@@ -56,8 +56,11 @@ public class XdcPoolTests
         };
 
         // Same content and same signer, but not equal since signature is different
-        Assert.That(vote1.PoolKey(), Is.EqualTo(vote2.PoolKey()));
-        Assert.That(vote1, Is.Not.EqualTo(vote2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(vote1.PoolKey(), Is.EqualTo(vote2.PoolKey()));
+            Assert.That(vote1, Is.Not.EqualTo(vote2));
+        }
 
         pool.Add(vote1);
         pool.Add(vote2);
@@ -91,8 +94,11 @@ public class XdcPoolTests
         pool.Add(voteRound2);
         pool.EndRound(1UL);
 
-        Assert.That(pool.GetCount(voteRound1), Is.EqualTo(0));
-        Assert.That(pool.GetCount(voteRound2), Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.GetCount(voteRound1), Is.EqualTo(0));
+            Assert.That(pool.GetCount(voteRound2), Is.EqualTo(1));
+        }
     }
 
     [Test]

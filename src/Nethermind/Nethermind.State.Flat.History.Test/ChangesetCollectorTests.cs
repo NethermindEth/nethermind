@@ -77,7 +77,9 @@ public class ChangesetCollectorTests
         collector.Reset();
         collector.Code(TestItem.AddressD, Code);
         ChangesetCodec.Enumerator code = ChangesetCodec.Read(collector.Pack());
+#pragma warning disable NUnit2045 // The assertions advance or mutate the same state before checking it; preserve fail-fast ordering.
         Assert.That(code.MoveNext(), Is.True, "precondition: the code change is packed");
+#pragma warning restore NUnit2045
         Assert.That(code.CodeHash.ToArray(), Is.EqualTo(ValueKeccak.Compute(Code).ToByteArray()), "the code is carried as its hash");
         collector.Release();
     }

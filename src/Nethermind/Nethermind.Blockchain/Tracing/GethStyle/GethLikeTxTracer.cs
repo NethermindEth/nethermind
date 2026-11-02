@@ -125,11 +125,13 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
     public virtual GethLikeTxTrace BuildResult() => Trace;
 }
 
-public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? destroyRefund = null) : GethLikeTxTracer(options, destroyRefund), ITraceOperationGasCost where TEntry : GethTxTraceEntry, new()
+public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? destroyRefund = null) : GethLikeTxTracer(options, destroyRefund), ITraceOperationGasCost, ITraceOperationStart where TEntry : GethTxTraceEntry, new()
 {
     protected TEntry? CurrentTraceEntry { get; set; }
 
     private bool _gasCostAlreadySetForCurrentOp;
+    private bool _gasCostReportedForCurrentOp;
+    private ulong? _calculatedGasCost;
     private byte[]? _lastReturnData;
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
@@ -146,7 +148,15 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
         CurrentTraceEntry.ProgramCounter = pc;
         CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
         _gasCostAlreadySetForCurrentOp = false;
+        _gasCostReportedForCurrentOp = false;
+        _calculatedGasCost = null;
     }
+
+    /// <inheritdoc/>
+    public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth) => _calculatedGasCost = gasCost;
+
+    /// <inheritdoc/>
+    public void ReportOperationReady(ulong gasCost, string? error) => _calculatedGasCost = gasCost;
 
     /// <inheritdoc/>
     public void ReportOperationGasCost(ulong gasCost)
@@ -155,6 +165,7 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
         {
             CurrentTraceEntry.GasCost = gasCost;
             _gasCostAlreadySetForCurrentOp = true;
+            _gasCostReportedForCurrentOp = true;
         }
     }
 
@@ -167,8 +178,13 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
 
     public override void ReportOperationError(EvmExceptionType error)
     {
-        if (CurrentTraceEntry is not null)
-            CurrentTraceEntry.Error ??= GetErrorDescription(error);
+        if (CurrentTraceEntry is null)
+            return;
+
+        CurrentTraceEntry.Error ??= GetErrorDescription(error);
+        // As in Geth, an opcode that runs out of gas reports the cost it could not pay rather than the gas it had.
+        if (error == EvmExceptionType.OutOfGas && !_gasCostReportedForCurrentOp && _calculatedGasCost is ulong gasCost)
+            CurrentTraceEntry.GasCost = gasCost;
     }
 
     public override void ReportOperationRemainingGas(ulong gas)

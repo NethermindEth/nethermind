@@ -126,7 +126,7 @@ public class PowForwardHeaderProvider(
 
         if (!ReferenceEquals(syncPeerPool.GetPeer(owner.SyncPeer.Node), owner)
             || !owner.IsInitialized
-            || owner.IsAsleep(AllocationContexts.ForwardHeader | AllocationContexts.Blocks)
+            || owner.IsAsleep(AllocationContexts.ForwardHeader)
             || !ImprovementRequirementSatisfied(owner))
         {
             LastResponseBatch = null;

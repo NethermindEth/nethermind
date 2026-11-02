@@ -4,21 +4,26 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using Nethermind.Core.Crypto;
@@ -29,10 +34,43 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public partial class DebugRpcModuleTests
 {
     [Test]
-    public async Task Debug_traceTransaction_validates_timeout_after_prefix_before_stream_commit(
-        [Values("valid", "bad", "prefix-error")] string scenario)
+    public async Task Debug_traceTransaction_missing_body_returns_top_level_error(
+        [Values] bool streamMode, [Values("5s", "bad")] string timeout)
     {
-        bool invalidTimeout = scenario != "valid";
+        ExecutionCount counter = new();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter>(
+                (_, inner) => new BudgetCountingAdapter(inner, counter)));
+        Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressC)
+            .WithNonce(chain.ReadOnlyState.GetNonce(TestItem.AddressB)).WithValue(1).WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await chain.AddBlock(transaction);
+        Assert.That(block.Transactions, Has.Length.EqualTo(1));
+        chain.BlockTree.DeleteOldBlock(block.Number, block.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.FindHeader(block.Hash!), Is.Not.Null);
+            Assert.That(chain.BlockTree.FindBlock(block.Hash!), Is.Null);
+        }
+        counter.Enabled = true;
+        FlushRecordingPipeWriter pipe = new(keepOutput: true);
+        using JsonRpcResponse rpcResponse = await RpcTest.TestRequest(chain.DebugRpcModule, "debug_traceTransaction", transaction.Hash!,
+            new { timeout, streamMode });
+        await JsonRpcResponseWriter.WriteAsync(pipe, rpcResponse, EthereumJsonSerializer.JsonOptions,
+            CancellationToken.None);
+        string response = Encoding.UTF8.GetString(pipe.WrittenSpan);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counter.Calls, Is.Zero);
+            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"transaction not found\"},\"id\":67}"));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceTransaction_validates_timeout_after_prefix_before_stream_commit(
+        [Values("valid", "bad", "prefix-error", "failed-target")] string scenario)
+    {
+        bool invalidTimeout = scenario is "bad" or "prefix-error";
         ExecutionCount counter = new();
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(builder => builder.AddDecorator<Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter>(
@@ -44,6 +82,9 @@ public partial class DebugRpcModuleTests
             transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i).WithValue(1)
                 .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         }
+        if (scenario == "failed-target")
+            transactions[1] = Build.A.Transaction.WithCode(Prepare.EvmCode.Revert(0, 0).Done).WithNonce(nonce + 1)
+                .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         Block block = await chain.AddBlock(transactions);
         Assert.That(block.Transactions, Has.Length.EqualTo(3));
         System.IO.Pipelines.Pipe pipe = new(new System.IO.Pipelines.PipeOptions(pauseWriterThreshold: 0));
@@ -78,6 +119,13 @@ public partial class DebugRpcModuleTests
                     Assert.That(parsed["result"]?["failed"]?.Value<bool>(), Is.True);
                     Assert.That(parsed["result"]?["error"]?.Value<string>(), Does.Contain("prefix failure"));
                     Assert.That(parsed["result"]?["errorCode"]?.Value<int>(), Is.EqualTo(-32603));
+                }
+                else if (scenario == "failed-target")
+                {
+                    Assert.That(parsed["error"], Is.Null);
+                    Assert.That(parsed["result"]?["failed"]?.Value<bool>(), Is.True);
+                    Assert.That(parsed["result"]?["error"], Is.Null);
+                    Assert.That(parsed["result"]?["structLogs"], Is.Not.Empty);
                 }
                 else if (invalidTimeout)
                 {
@@ -145,7 +193,7 @@ public partial class DebugRpcModuleTests
         int expectedCode = scenario switch
         {
             "unknown" => ErrorCodes.ResourceNotFound,
-            "native" => ErrorCodes.InvalidInput,
+            "native" or "config" or "config-valid-timeout" => ErrorCodes.InvalidInput,
             _ => ErrorCodes.InvalidParams
         };
         string? diagnostic = scenario switch
@@ -185,7 +233,7 @@ public partial class DebugRpcModuleTests
                         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction",
                             known ? transaction.Hash! : TestItem.KeccakD, new { timeout, streamMode, tracer });
                         string expected = duration is "type" or "oversized"
-                            ? """{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params"},"id":67}"""
+                            ? """{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid argument 1"},"id":67}"""
                             : !known
                                 ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"transaction not found"},"id":67}"""
                                 : duration == "bad"
@@ -255,17 +303,72 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase(null)]
-    [TestCase("missingTracer")]
-    public async Task Debug_traceTransaction_unknown_hash_returns_geth_error_before_tracer_validation(string? tracer)
+    [TestCase(null, "{}")]
+    [TestCase("missingTracer", "{}")]
+    [TestCase("prestateTracer", "{\"diffMode\":[]}")]
+    public async Task Debug_traceTransaction_unknown_hash_returns_geth_error_before_tracer_validation(string? tracer, string configuration)
     {
         using Context context = await Context.Create();
+        using JsonDocument config = JsonDocument.Parse(configuration);
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction",
-            TestItem.KeccakA, new GethTraceOptions { Tracer = tracer! });
+            TestItem.KeccakA, new { tracer, tracerConfig = config.RootElement, timeout = "5s" });
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(
             """{"jsonrpc":"2.0","error":{"code":-32000,"message":"transaction not found"},"id":67}"""))
             .Using(JToken.EqualityComparer));
+    }
+
+    [TestCase("{\"diffMode\":[]}", true)]
+    [TestCase("{}", false)]
+    public async Task Debug_traceTransaction_native_config_errors_are_execution_input_errors(string configuration, bool invalid)
+    {
+        using Context context = await Context.Create();
+        Transaction transaction = await AddBlockWithTransfer(context);
+        using JsonDocument config = JsonDocument.Parse(configuration);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash!,
+            new { tracer = "prestateTracer", tracerConfig = config.RootElement, timeout = "5s" });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            if (invalid)
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Does.Contain("Cannot convert"), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+            else
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That(json["result"], Is.TypeOf<JObject>(), response);
+                Assert.That(json["result"]?[transaction.SenderAddress!.ToString()], Is.Not.Null, response);
+            }
+        }
+    }
+
+    [TestCase("json", ErrorCodes.InvalidParams)]
+    [TestCase("format", ErrorCodes.InternalError)]
+    [TestCase("cancellation", ErrorCodes.Timeout)]
+    [NonParallelizable]
+    public async Task Debug_traceTransaction_native_host_errors_keep_existing_classification(string failureKind, int expectedError)
+    {
+        string tracer = $"{nameof(Debug_traceTransaction_native_host_errors_keep_existing_classification)}-{failureKind}-{Guid.NewGuid():N}";
+        Exception failure = failureKind switch
+        {
+            "json" => new JsonException("host construction failure"),
+            "format" => new FormatException("host construction failure"),
+            _ => new OperationCanceledException("host construction failure")
+        };
+        GethLikeNativeTracerFactory.RegisterTracer(tracer, (_, _, _, _) => throw failure);
+        using Context context = await Context.Create();
+        Transaction transaction = await AddBlockWithTransfer(context);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash!,
+            new { tracer, timeout = "5s" });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedError), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]

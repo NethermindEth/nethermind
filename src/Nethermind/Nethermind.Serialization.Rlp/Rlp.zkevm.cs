@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
@@ -28,6 +29,21 @@ public partial class Rlp
     internal static Rlp OfEmptyStringHash => field ??= Encode(Keccak.OfAnEmptyString.Bytes);
 
     internal static Rlp EmptyBloom => field ??= Encode(Bloom.Empty.Bytes);
+
+    /// <summary>Writes <paramref name="hash"/> to the 32 bytes at <paramref name="destination"/>.</summary>
+    /// <remarks>
+    /// Where <see cref="StrictAlignmentFlag"/> is on, a 32-byte copy to a misaligned destination is 32 byte loads and
+    /// stores, so <see cref="Core.Extensions.Bytes.WriteMisalignedWords"/> writes it. A hash is a field of its object, so its words
+    /// are aligned. See <c>Rlp.std.cs</c> for the host form.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void WriteHash(ref byte destination, Hash256 hash)
+    {
+        if (StrictAlignmentFlag.IsActive && ((nuint)Unsafe.AsPointer(ref destination) & (sizeof(ulong) - 1)) != 0)
+            Core.Extensions.Bytes.WriteMisalignedWords((byte*)Unsafe.AsPointer(ref destination), (ulong*)Unsafe.AsPointer(ref Unsafe.AsRef(in hash.ValueHash256)));
+        else
+            Unsafe.As<byte, ValueHash256>(ref destination) = hash.ValueHash256;
+    }
 
     private static Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder
     {

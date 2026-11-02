@@ -301,6 +301,17 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void Subscription_id_is_a_uint_quantity()
+        {
+            // A random id would start with a zero one time in 16, which a uint quantity must not.
+            for (int i = 0; i < 256; i++)
+            {
+                using DroppedPendingTransactionsSubscription subscription = new(_jsonRpcDuplexClient, _txPool, _logManager);
+                Assert.That(subscription.Id, Does.Match("^0x[1-9a-f][0-9a-f]{31}$"));
+            }
+        }
+
+        [Test]
         public async Task NewHeadSubscription_with_includeTransactions_arg()
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads", "{\"includeTransactions\":true}");
@@ -399,13 +410,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(manualResetEvent.WaitOne(AllDeliveriesTimeout), Is.True);
             manualResetEvent.Reset();
             blockTree.ForceMainChainForTest(new Block[] { block1B, block2B });
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
             Assert.That(manualResetEvent.WaitOne(AllDeliveriesTimeout), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(jsonRpcResult.Count, Is.EqualTo(5));
             Assert.That(blockTree.Head, Is.EqualTo(block2B));
 
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Last().Response);
-            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", newHeadSubscription.Id, "\",\"result\":{\"difficulty\":\"0x5\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x13f51c304a84742a660b0327c003765af51cb255f7cfa8d1d6c41c99c1c3ecd4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x2\",\"parentHash\":\"0xd07062cc54724bd878b1b826bfa59f24cac986a11a151f2239b16f2a4436f9b2\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x1fe\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x9\",\"timestamp\":\"0xf4242\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}");
+            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", newHeadSubscription.Id, "\",\"result\":{\"difficulty\":\"0x5\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x13f51c304a84742a660b0327c003765af51cb255f7cfa8d1d6c41c99c1c3ecd4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x2\",\"parentHash\":\"0xd07062cc54724bd878b1b826bfa59f24cac986a11a151f2239b16f2a4436f9b2\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x1fe\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"timestamp\":\"0xf4242\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}");
             Assert.That(serialized, Is.EqualTo(expectedResult));
         }
 
@@ -452,7 +465,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             // genesis without re-moving it, so move exactly the supplied blocks to fire all 21 events.
             blockTree.ForceMainChainForTest(blocks);
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
             Assert.That(manualResetEvent.WaitOne(AllDeliveriesTimeout), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(jsonRpcResult.Count, Is.EqualTo(21));
             Assert.That(blockTree.Head, Is.EqualTo(blocks[20]));
@@ -504,6 +519,25 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(expectedResult, Is.EqualTo(serialized), "malformed eth_subscribe/logs args should map to InvalidParams, not InternalError");
         }
 
+        [TestCase("{\"address\":\"0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda\"}", "invalid address: hex has invalid length 19 after decoding; expected 20 for address")]
+        [TestCase("{\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b7\"]}", "hex has invalid length 31 after decoding; expected 32 for topic")]
+        public async Task LogsSubscription_with_malformed_args_returns_invalid_params_with_reason(string args, string reason)
+        {
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", args);
+            string expectedResult = $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32602,\"message\":\"invalid argument 1: {reason}\"}},\"id\":67}}";
+            Assert.That(serialized, Is.EqualTo(expectedResult));
+        }
+
+        [TestCase("0x12")]
+        [TestCase("0x")]
+        [TestCase("0x00000000000000000000000000000000000000000000000000000000000000")]
+        [TestCase("0x000000000000000000000000000000000000000000000000000000000000000000")]
+        public async Task TransactionReceiptsSubscription_with_hash_of_wrong_length_returns_invalid_params(string hash)
+        {
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "transactionReceipts", $$"""{"transactionHashes":["{{hash}}"]}""");
+            Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params"},"id":67}"""));
+        }
+
         [Test]
         public async Task LogsSubscription_with_too_long_string_arguments_returns_invalid_params()
         {
@@ -544,7 +578,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(22222).TestObject),
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(33333).TestObject));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x8235\""));
         }
 
@@ -558,7 +594,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(null, expectedResults: 1,
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x63\"").And.Contain("\"removed\":false"));
         }
 
@@ -571,7 +609,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).WithExtraData([1]).TestObject, removed: true),
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"removed\":true"));
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"removed\":false"));
         }
@@ -603,7 +643,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 MatchingLogEvent(sibling),
                 MatchingLogEvent(wanted));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain($"\"blockHash\":\"{wanted.Hash}\""));
         }
 
@@ -618,7 +660,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject),
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(100).TestObject));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x63\""));
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"blockNumber\":\"0x64\""));
         }
@@ -635,7 +679,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(100).WithExtraData([1]).TestObject),
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(101).TestObject));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x64\""));
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"blockNumber\":\"0x65\""));
         }
@@ -1359,7 +1405,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
-            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x2728\",\"highestBlock\":\"0x273a\"}}}");
+            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"startingBlock\":\"0x2728\",\"currentBlock\":\"0x2728\",\"highestBlock\":\"0x273a\"}}}");
             Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
@@ -1377,7 +1423,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
-            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x2738\",\"highestBlock\":\"0x2773\"}}}");
+            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"startingBlock\":\"0x2738\",\"currentBlock\":\"0x2738\",\"highestBlock\":\"0x2773\"}}}");
             Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 

@@ -50,8 +50,11 @@ public class EraStoreTests
         (Block? block, TxReceipt[]? receipts) = await env.EraStore.FindBlockAndReceipts(
             env.EraStore.BlockRange.First, ensureValidated: false);
 
-        Assert.That(block, Is.Not.Null);
-        Assert.That(receipts, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block, Is.Not.Null);
+            Assert.That(receipts, Is.Not.Null);
+        }
     }
 
     [Test]
@@ -61,8 +64,11 @@ public class EraStoreTests
 
         (Block? block, TxReceipt[]? receipts) = await env.EraStore.FindBlockAndReceipts(99999, ensureValidated: false);
 
-        Assert.That(block, Is.Null);
-        Assert.That(receipts, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block, Is.Null);
+            Assert.That(receipts, Is.Null);
+        }
     }
 
     [Test]
@@ -83,8 +89,11 @@ public class EraStoreTests
 
         (Block? block, TxReceipt[]? receipts) = await env.EraStore.FindBlockAndReceipts(ulong.MaxValue, ensureValidated: false);
 
-        Assert.That(block, Is.Null);
-        Assert.That(receipts, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block, Is.Null);
+            Assert.That(receipts, Is.Null);
+        }
     }
 
     [Test]

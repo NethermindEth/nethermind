@@ -113,8 +113,11 @@ public class FundsDistributorTests
         await Assert.ThrowsAsync<IOException>(async () =>
             await distributor.DistributeFunds(_funder, keysToMake: 1, maxFee: OneGwei, maxPriorityFee: OneGwei));
 
-        Assert.That(File.ReadAllText(_pendingPath), Is.EqualTo("0xrecovery-candidate\n"));
-        Assert.That(File.ReadAllText(_keyFilePath), Is.EqualTo(originalContents));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.ReadAllText(_pendingPath), Is.EqualTo("0xrecovery-candidate\n"));
+            Assert.That(File.ReadAllText(_keyFilePath), Is.EqualTo(originalContents));
+        }
         await rpcClient.DidNotReceive().Post<string>(Arg.Any<string>(), Arg.Any<object?[]>());
     }
 

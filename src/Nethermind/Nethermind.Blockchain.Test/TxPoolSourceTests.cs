@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Logging;
@@ -14,6 +17,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Eip2930;
 using Nethermind.Consensus.Validators;
 using Nethermind.Specs;
+using Nethermind.Specs.Test;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using System.Linq;
@@ -422,8 +426,8 @@ public class TxPoolSourceTests
             Nonce = 0,
             GasLimit = 1_000_000,
             GasPrice = 1,
+            MaxFee = 1.Ether,
             DecodedMaxFeePerGas = 100.GWei,
-            MaxFeePerBlobGas = 1000,
             Frames =
             [
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
@@ -434,6 +438,79 @@ public class TxPoolSourceTests
         };
         tx.Hash = tx.CalculateHash();
         return tx;
+    }
+
+    // EIP-7999: the pool's per-gas view of a max_fee leaves out intrinsic gas, so it can clear the base fee while the
+    // budget does not cover required_max_fee. Block building checks the budget execution checks.
+    [Test]
+    public void GetTransactions_selects_max_fee_frame_tx_only_when_it_covers_the_required_max_fee([Values] bool blobs, [Values] bool coversBudget)
+    {
+        Transaction tx = BuildMaxFeeFrameTx(blobs, coversBudget, out UInt256 baseFee);
+        ITxPool txPool = Substitute.For<ITxPool>();
+        Dictionary<AddressAsKey, Transaction[]> pending = new() { { tx.SenderAddress!, [tx] } };
+        SetPendingForProduction(txPool, transactions: blobs ? null : pending, blobTransactions: blobs ? pending : null);
+
+        Transaction[] result = GetMaxFeeFrameTxSelection(txPool);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.CanPayBaseFee(baseFee), Is.True, "the per-gas view clears the base fee either way");
+            Assert.That(result.Contains(tx), Is.EqualTo(coversBudget));
+        }
+    }
+
+    // A revalidated pool hands block building frameless blob records, which bound max_gas only from below.
+    [Test]
+    public void GetTransactions_checks_the_required_max_fee_of_a_revalidated_light_blob_record([Values] bool coversBudget)
+    {
+        Transaction tx = BuildMaxFeeFrameTx(blobs: true, coversBudget, out _);
+        ITxPool txPool = Substitute.For<ITxPool>();
+        SetPendingForProduction(txPool,
+            blobTransactions: new Dictionary<AddressAsKey, Transaction[]> { { tx.SenderAddress!, [new LightTransaction(tx)] } },
+            isRevalidated: true);
+        txPool.TryGetPendingBlobTransaction(tx.Hash!, out Arg.Any<Transaction?>())
+            .Returns(callInfo =>
+            {
+                callInfo[1] = tx;
+                return true;
+            });
+
+        Transaction[] result = GetMaxFeeFrameTxSelection(txPool);
+
+        Assert.That(result.Contains(tx), Is.EqualTo(coversBudget));
+    }
+
+    private static readonly OverridableReleaseSpec BogotaFrames = new(Bogota.Instance) { IsEip8141Enabled = true };
+    private static readonly BlockHeader MaxFeeParent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).WithBaseFee(1.GWei).TestObject;
+
+    /// <summary>A max_fee frame tx one wei short of <c>required_max_fee</c> at <see cref="MaxFeeParent"/>'s child, or exactly at it.</summary>
+    private static Transaction BuildMaxFeeFrameTx(bool blobs, bool coversBudget, out UInt256 baseFee)
+    {
+        baseFee = BaseFeeCalculator.Calculate(MaxFeeParent, BogotaFrames);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(0, BogotaFrames.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
+
+        Transaction tx = BuildFrameBlobTxWithSidecar(senderByte: 1, blobCount: blobs ? 1 : 0);
+        if (!blobs) tx.NetworkWrapper = null;
+        tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
+        FrameTxValidation.TryCalculateGasBudget(tx, BogotaFrames, out _, out _, out ulong maxGas);
+        UInt256 requiredMaxFee = (UInt256)maxGas * baseFee + (UInt256)tx.GetBlobGas() * feePerBlobGas;
+        UInt256 maxFee = coversBudget ? requiredMaxFee : requiredMaxFee - 1;
+        tx.MaxFee = maxFee;
+        tx.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(maxFee, tx.GasLimit);
+        tx.Hash = tx.CalculateHash();
+        return tx;
+    }
+
+    private static Transaction[] GetMaxFeeFrameTxSelection(ITxPool txPool)
+    {
+        TestSingleReleaseSpecProvider specProvider = new(BogotaFrames);
+        txPool.SupportsBlobs.Returns(true);
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        TxPoolTxSource txSource = new(txPool, specProvider, new TransactionComparerProvider(specProvider, Build.A.BlockTree().TestObject),
+            LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12 }, CreateSpecChangeTxValidator(specProvider));
+
+        return txSource.GetTransactions(MaxFeeParent, Build.A.BlockHeader.WithNumber(1).TestObject, long.MaxValue).ToArray();
     }
 
     [Test]
@@ -721,6 +798,8 @@ public class TxPoolSourceTests
                 .SignedAndResolved(TestItem.PrivateKeyA)
                 .TestObject)
             .ToArray();
+        // The first two ran in an earlier build and used their whole gas limit, so they count at it.
+        transactions[0].BlockGasUsed = transactions[1].BlockGasUsed = 16_000_000;
         ITxPool txPool = Substitute.For<ITxPool>();
         SetPendingForProduction(txPool, new Dictionary<AddressAsKey, Transaction[]>
         {
@@ -737,6 +816,139 @@ public class TxPoolSourceTests
         Transaction[] result = txSource.GetTransactions(parent, targetBlock, BlockGasLimit).ToArray();
 
         Assert.That(result, Is.EqualTo(eip8037 ? transactions : transactions[..2]));
+    }
+
+    [Test]
+    public void GetTransactions_should_count_a_transaction_that_has_not_run_at_its_base_cost_against_later_nonces([Values] bool eip8037)
+    {
+        const ulong BlockGasLimit = 4_000_000;
+        IReleaseSpec spec = eip8037 ? Amsterdam.Instance : Osaka.Instance;
+        TestSingleReleaseSpecProvider specProvider = new(spec);
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+        // Ten transfers whose gas limits add up to 10M: each must fit at its 1M limit, none has run yet.
+        Transaction[] transactions = Enumerable.Range(0, 10)
+            .Select(nonce => Build.A.Transaction
+                .WithNonce((ulong)nonce)
+                .WithGasLimit(1_000_000)
+                .WithGasPrice(2.GWei)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject)
+            .ToArray();
+        ITxPool txPool = Substitute.For<ITxPool>();
+        SetPendingForProduction(txPool, new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { new AddressAsKey(TestItem.AddressA), transactions }
+        }, isRevalidated: true);
+
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
+            txFilterPipeline, new BlocksConfig(), CreateSpecChangeTxValidator(specProvider));
+
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithGasLimit(BlockGasLimit).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithGasLimit(BlockGasLimit).TestObject;
+        Transaction[] result = txSource.GetTransactions(parent, targetBlock, BlockGasLimit).ToArray();
+
+        Assert.That(result, Is.EqualTo(transactions));
+    }
+
+    [Test]
+    public void Ordering_counts_what_a_transaction_used_in_an_earlier_build_against_later_nonces(
+        [Values(0UL, 21_000UL, 900_000UL, 1_000_000UL)] ulong usedGas,
+        [Values] bool eip8037)
+    {
+        // Zero leaves BlockGasUsed unset: the transaction has not run.
+        Transaction[] transactions = Enumerable.Range(0, 10)
+            .Select(nonce => new Transaction
+            {
+                SenderAddress = TestItem.AddressA,
+                Nonce = (ulong)nonce,
+                GasLimit = 1_000_000,
+                BlockGasUsed = usedGas
+            })
+            .ToArray();
+        Dictionary<AddressAsKey, Transaction[]> buckets = new() { [TestItem.AddressA] = transactions };
+        IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
+
+        Transaction[] selected = TxPoolTxSource.Order(buckets, comparer, _ => true, 4_000_000UL,
+            eip8037 ? Amsterdam.Instance : Osaka.Instance).ToArray();
+
+        int expected = usedGas switch { 900_000 or 1_000_000 => 4, _ => 10 };
+        Assert.That(selected, Is.EqualTo(transactions[..expected]));
+    }
+
+    [Test]
+    public void Ordering_counts_a_frame_transaction_that_has_not_run_at_its_intrinsic_cost_against_later_nonces()
+    {
+        Transaction[] transactions = Enumerable.Range(0, 10)
+            .Select(nonce =>
+            {
+                TxFrame[] frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, 1_000_000, 0, UInt256.Zero, default)];
+                return new Transaction
+                {
+                    Type = TxType.FrameTx,
+                    ChainId = 1,
+                    Nonce = (ulong)nonce,
+                    SenderAddress = TestItem.AddressA,
+                    Frames = frames,
+                    FrameSignatures = [],
+                    GasLimit = FrameTxValidation.TotalGasLimit(frames),
+                    GasPrice = 1,
+                    DecodedMaxFeePerGas = 1,
+                };
+            })
+            .ToArray();
+        Dictionary<AddressAsKey, Transaction[]> buckets = new() { [TestItem.AddressA] = transactions };
+        IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
+
+        Transaction[] selected = TxPoolTxSource.Order(buckets, comparer, _ => true, 4_000_000UL, Eip8141Prototype.Instance).ToArray();
+
+        Assert.That(selected, Is.EqualTo(transactions));
+    }
+
+    [Test]
+    public void Ordering_counts_a_transaction_that_has_not_run_at_the_base_cost_of_its_fork_against_later_nonces([Values] bool eip2780)
+    {
+        // Each later nonce must fit at its 100,000 gas limit on top of the base costs of the earlier ones:
+        // 21,000 each leaves room for four of them, 12,000 under EIP-2780 for seven.
+        const ulong GasLimit = 100_000;
+        Transaction[] transactions = Enumerable.Range(0, 10)
+            .Select(nonce => new Transaction { SenderAddress = TestItem.AddressA, Nonce = (ulong)nonce, GasLimit = GasLimit })
+            .ToArray();
+        Dictionary<AddressAsKey, Transaction[]> buckets = new() { [TestItem.AddressA] = transactions };
+        IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
+
+        Transaction[] selected = TxPoolTxSource.Order(buckets, comparer, _ => true, GasLimit + 4 * GasCostOf.Transaction,
+            eip2780 ? Amsterdam.Instance : Osaka.Instance).ToArray();
+
+        Assert.That(selected, Is.EqualTo(transactions[..(eip2780 ? 8 : 5)]));
+    }
+
+    [Test]
+    public async Task First_build_includes_every_transaction_of_a_sender_whose_gas_limits_add_up_above_the_block_gas_limit([Values] bool eip8037)
+    {
+        const ulong BlockGasLimit = 4_000_000;
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(eip8037 ? Amsterdam.Instance : Osaka.Instance))
+            .WithGenesisPostProcessor((genesis, _) => { genesis.Header.GasLimit = BlockGasLimit; }));
+        Transaction[] transfers = Enumerable.Range(0, 10)
+            .Select(nonce => Build.A.Transaction
+                .WithNonce((ulong)nonce)
+                .WithTo(TestItem.AddressD)
+                .WithValue(UInt256.One)
+                .WithGasLimit(1_000_000)
+                .SignedAndResolved(TestItem.PrivateKeyB)
+                .TestObject)
+            .ToArray();
+
+        // MayMissTx takes the first block built, so the transactions it leaves out are not picked up by a retry.
+        Block block = await chain.AddBlock(TestBlockchainUtil.AddBlockFlags.MayMissTx, transfers);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Header.GasLimit, Is.EqualTo(BlockGasLimit));
+            Assert.That(block.Transactions.Select(static tx => tx.Hash).ToArray(), Is.EqualTo(transfers.Select(static tx => tx.Hash).ToArray()));
+        }
     }
 
     [Test]
@@ -788,7 +1000,9 @@ public class TxPoolSourceTests
     {
         Transaction sparseBlobTx = CreateSparseBlobTransaction(new BlobCellMask((UInt128)ulong.MaxValue));
         ShardBlobNetworkWrapper sparseWrapper = (ShardBlobNetworkWrapper)sparseBlobTx.NetworkWrapper!;
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(BlobCellsHelper.ValidateCells(sparseWrapper), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(BlobCellsHelper.TryRecoverBlobsFromVerifiedCells(sparseWrapper, out ShardBlobNetworkWrapper recoveredWrapper), Is.True);
         sparseBlobTx.NetworkWrapper = recoveredWrapper;
 

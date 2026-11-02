@@ -128,6 +128,9 @@ public class EraImporter(
             suggestFromBlock = ulong.MaxValue;
         }
 
+        await KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(blockTree, from, to,
+            async number => (await eraStore.FindBlockAndReceipts(number, cancellation: cancellation)).Item1, cancellation);
+
         // I wish I could say that EraStore can be run used in parallel in any way you like but I could not make it so.
         // This makes the `blockNumber` aligned to era file boundary so that when running parallel, each thread does not
         // work on the same era file as other thread.
@@ -202,6 +205,8 @@ public class EraImporter(
             {
                 throw new EraImportException($"Unexpected block without a body found for block number {blockNumber}. Archive might be corrupted.");
             }
+
+            KnownHeaders.EnsureMatch(blockTree, block);
 
             if (suggestFromBlock <= block.Number)
             {
