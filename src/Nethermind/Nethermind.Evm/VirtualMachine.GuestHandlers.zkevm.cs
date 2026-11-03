@@ -979,9 +979,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, following);
                     }
 
-                    // The shared handler takes the other operands, so this handler makes no call.
+                    // The full compare takes the other operands, so this handler makes no call.
                     gas += MidGasCost.GasCost;
-                    nint general = Entry(&ExecuteOpcode<Math3Opcode<TOperation, OffFlag>, OffFlag, OffFlag, OnFlag>);
+                    nint general = Entry(&ExecuteAddModOfAddendsBelowModulus);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, general);
                 }
 
@@ -1041,7 +1041,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// conditional subtract, with no call.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool TryAddModInSlots(ref ulong modulus)
+        private static bool TryAddModOfAddendsBelowModulus(ref ulong modulus)
         {
             ref ulong b = ref Unsafe.Add(ref modulus, LimbsPerWord);
             ref ulong a = ref Unsafe.Add(ref modulus, 2 * LimbsPerWord);
@@ -1081,6 +1081,84 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return true;
         }
 
+        /// <summary>ADDMOD of the slots above <paramref name="modulus"/>, whose result replaces the modulus, when both addends' top
+        /// limbs are below the modulus's.</summary>
+        /// <param name="modulus">The modulus, with the second addend in the slot above and the first in the slot above that.</param>
+        /// <returns><see langword="false"/>, with the slots unchanged, when an addend's top limb is not below the
+        /// modulus's; a zero modulus is one such case.</returns>
+        /// <remarks>
+        /// Two addends below the modulus, as field arithmetic gives, have a sum below twice the modulus: one add and one
+        /// conditional subtract, with no call. Testing the top limbs alone proves them below it for all but a sliver of
+        /// field elements, which <see cref="ExecuteAddModOfAddendsBelowModulus"/> takes. The sum goes to the second
+        /// addend's slot and its difference with the modulus to the modulus's, a limb at a time, so few values are live
+        /// at once and the handler saves no registers.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryAddModInSlots(ref ulong modulus)
+        {
+            ref ulong b = ref Unsafe.Add(ref modulus, LimbsPerWord);
+            ref ulong a = ref Unsafe.Add(ref modulus, 2 * LimbsPerWord);
+            ulong m3 = Unsafe.Add(ref modulus, 3);
+            if (!((Unsafe.Add(ref a, 3) < m3) & (Unsafe.Add(ref b, 3) < m3))) return false;
+
+            ulong carry = 0, borrow = 0;
+            AddModLimbInSlots(ref a, ref b, ref modulus, 0, ref carry, ref borrow);
+            AddModLimbInSlots(ref a, ref b, ref modulus, 1, ref carry, ref borrow);
+            AddModLimbInSlots(ref a, ref b, ref modulus, 2, ref carry, ref borrow);
+            AddModLimbInSlots(ref a, ref b, ref modulus, 3, ref carry, ref borrow);
+
+            // The 257-bit sum is below the modulus when it did not carry out and its difference borrowed.
+            if ((carry | (borrow ^ 1)) == 0)
+                Unsafe.As<ulong, UInt256>(ref modulus) = Unsafe.As<ulong, UInt256>(ref b);
+
+            return true;
+        }
+
+        /// <summary>Adds limb <paramref name="limb"/> of the addends into <paramref name="b"/>, and subtracts the modulus's
+        /// from that sum into <paramref name="modulus"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void AddModLimbInSlots(ref ulong a, ref ulong b, ref ulong modulus, nint limb, ref ulong carry, ref ulong borrow)
+        {
+            ulong sum = AddWithCarry(Unsafe.Add(ref a, limb), Unsafe.Add(ref b, limb), ref carry);
+            Unsafe.Add(ref b, limb) = sum;
+            Unsafe.Add(ref modulus, limb) = SubtractWithBorrow(sum, Unsafe.Add(ref modulus, limb), ref borrow);
+        }
+
+        /// <summary>ADDMOD of addends below the modulus whose top limbs <see cref="TryAddModInSlots"/> could not place below it.</summary>
+        /// <remarks>
+        /// A handler of its own, so the full compare's registers stay out of the common one. Every other case - a short
+        /// stack or gas, an addend at or above the modulus, a zero modulus - runs the shared handler instead.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteAddModOfAddendsBelowModulus(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            if (head > 2 && TryCharge(ref gas, MidGasCost.GasCost))
+            {
+                if (TryAddModOfAddendsBelowModulus(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 3))))
+                {
+                    head -= 2;
+                    sp = ref Moved(ref sp, -2);
+                    ip = ref Unsafe.Add(ref ip, 1);
+                    nint next = HandlerAt(handlers, PairAt(ref ip));
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                }
+
+                gas += MidGasCost.GasCost;
+            }
+
+            nint shared = Entry(&ExecuteOpcode<Math3Opcode<EvmInstructions.OpAddMod, OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong AddWithCarry(ulong x, ulong y, ref ulong carry)
         {
@@ -1103,20 +1181,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <param name="modulus">The modulus, not zero, with the second factor in the slot above and the first in the slot above that.</param>
         /// <remarks>
         /// The precompile overwrites its multiplicand with the product and takes the multiplier and the modulus side by
-        /// side. The second factor's slot takes the product, so only the first factor and the modulus are copied in and
-        /// the product out. The stack is pinned and its slots are 8-byte aligned, as the precompile needs.
+        /// side. The modulus moves to the free slot above the first factor, and the second factor to the modulus's slot,
+        /// where the precompile leaves the product. The stack keeps a slot above its deepest word, so the free slot is
+        /// always there. The stack is pinned and its slots are 8-byte aligned, as the precompile needs.
         /// </remarks>
-        [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Sp1MulModInSlots(ref ulong modulus)
         {
             ref UInt256 m = ref Unsafe.As<ulong, UInt256>(ref modulus);
-            ref UInt256 b = ref Unsafe.Add(ref m, 1);
-            EvmInstructions.Sp1MulModOperands operands;
-            operands.Multiplier = Unsafe.Add(ref m, 2);
-            operands.Modulus = m;
-            Accelerators.UInt256MulMod((ulong*)Unsafe.AsPointer(ref b), (ulong*)&operands);
-            m = b;
+            ref UInt256 a = ref Unsafe.Add(ref m, 2);
+            Unsafe.Add(ref m, 3) = m;
+            m = Unsafe.Add(ref m, 1);
+            Accelerators.UInt256MulMod((ulong*)Unsafe.AsPointer(ref m), (ulong*)Unsafe.AsPointer(ref a));
         }
 
         /// <summary>
