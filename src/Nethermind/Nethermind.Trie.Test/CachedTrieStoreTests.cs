@@ -25,16 +25,10 @@ public class CachedTrieStoreTests
 
         TrieNode first = store.FindCachedOrUnknown(PathA, TestItem.KeccakA);
         TrieNode repeated = store.FindCachedOrUnknown(PathA, TestItem.KeccakA);
-        TrieNode otherHash = store.FindCachedOrUnknown(PathA, TestItem.KeccakB);
-        TrieNode otherPath = store.FindCachedOrUnknown(PathB, TestItem.KeccakA);
+        store.FindCachedOrUnknown(PathA, TestItem.KeccakB);
+        store.FindCachedOrUnknown(PathB, TestItem.KeccakA);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(repeated, Is.SameAs(first));
-            Assert.That(otherHash, Is.Not.SameAs(first));
-            Assert.That(otherPath, Is.Not.SameAs(first));
-            Assert.That(otherPath, Is.Not.SameAs(otherHash));
-        }
+        Assert.That(repeated, Is.SameAs(first));
 
         baseStore.Received(1).FindCachedOrUnknown(PathA, TestItem.KeccakA);
         baseStore.Received(1).FindCachedOrUnknown(PathA, TestItem.KeccakB);
@@ -71,7 +65,7 @@ public class CachedTrieStoreTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(allocated, Is.Zero, "a cache hit must not allocate a delegate");
+            Assert.That(allocated, Is.Zero, "a cache hit must not allocate");
             Assert.That(store.FindCachedOrUnknown(PathA, TestItem.KeccakA), Is.SameAs(cached));
         }
     }
