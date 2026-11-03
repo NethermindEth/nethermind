@@ -786,6 +786,85 @@ namespace Nethermind.Db.Test
             Assert.That(db.NativeCloses, Is.EqualTo(1), "the last release must close the database once");
         }
 
+        // Each pinned slice count lives on the core that took it, and a slice is often released on another thread.
+        [Test]
+        public void Hit_and_miss_slices_released_on_other_threads_leave_nothing_pinned()
+        {
+            byte[] key = [1, 2, 3];
+            byte[] missing = [4, 5, 6];
+            NativeCloseTrackingDbOnTheRocks db = OpenNativeCloseTrackingDb();
+            db.PutSpan(key, new byte[64], WriteFlags.None);
+
+            nint[] handles = new nint[64];
+            Parallel.For(0, handles.Length, i => _ = db.GetNativeSlice(i % 2 == 0 ? key : missing, out handles[i], ReadFlags.None));
+            Parallel.For(0, handles.Length, i => db.DangerousReleaseHandle(handles[handles.Length - 1 - i]));
+
+            Assert.That(Task.Run(db.Dispose).Wait(TimeSpan.FromSeconds(10)), "a read left a slice pinned");
+            Assert.That(db.NativeCloses, Is.EqualTo(1));
+        }
+
+        // Reads that start while dispose waits must neither hide the slice still held nor keep the database open after it is released.
+        [Test]
+        public void Dispose_waits_for_a_held_slice_while_other_threads_read_hits_and_misses()
+        {
+            byte[] key = [1, 2, 3];
+            byte[] missing = [4, 5, 6];
+            NativeCloseTrackingDbOnTheRocks db = OpenNativeCloseTrackingDb();
+            db.PutSpan(key, new byte[64], WriteFlags.None);
+            nint held = Task.Run(() =>
+            {
+                _ = db.GetNativeSlice(key, out nint handle, ReadFlags.None);
+                return handle;
+            }).Result;
+
+            int reads = 0;
+            Task[] readers = new Task[4];
+            for (int i = 0; i < readers.Length; i++)
+            {
+                byte[] probe = i % 2 == 0 ? key : missing;
+                readers[i] = Task.Factory.StartNew(() => ReadUntilDisposed(db, probe, ref reads), TaskCreationOptions.LongRunning);
+            }
+
+            Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref reads) > 1000, TimeSpan.FromSeconds(10)), "the readers did not start");
+            Task disposing = Task.Run(db.Dispose);
+            Assert.That(disposing.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the database closed under a pinned slice");
+            Assert.That(db.NativeCloses, Is.Zero, "the database closed under a pinned slice");
+
+            db.DangerousReleaseHandle(held);
+            Assert.That(disposing.Wait(TimeSpan.FromSeconds(10)), "dispose never finished after the slice was released");
+            Assert.That(Task.WaitAll(readers, TimeSpan.FromSeconds(10)), "a reader kept reading after dispose");
+            Assert.That(db.NativeCloses, Is.EqualTo(1));
+        }
+
+        private static void ReadUntilDisposed(DbOnTheRocks db, byte[] key, ref int reads)
+        {
+            while (true)
+            {
+                try
+                {
+                    _ = db.GetNativeSlice(key, out nint handle, ReadFlags.None);
+                    db.DangerousReleaseHandle(handle);
+                }
+                catch (ObjectDisposedException)
+                {
+                    return;
+                }
+
+                Interlocked.Increment(ref reads);
+            }
+        }
+
+        private NativeCloseTrackingDbOnTheRocks OpenNativeCloseTrackingDb()
+        {
+            IRocksDbConfig config = _rocksdbConfigFactory.GetForDatabase("Blocks", null);
+            using RocksDbInstance instance = new TestRocksDbFactory(_rocksdbConfigFactory, new DbConfig(), LimboLogs.Instance, DbPath, new RealFileSystem())
+                .Open(GetRocksDbSettings(DbPath, "Blocks"), config, null);
+            return new NativeCloseTrackingDbOnTheRocks(instance, config, LimboLogs.Instance)
+            {
+                PinnedSliceDrainTimeout = TimeSpan.FromMinutes(1)
+            };
+        }
+
         /// <summary>Runs an action on every warning.</summary>
         private sealed class WarnHookLogger(Action onWarn) : InterfaceLogger
         {
