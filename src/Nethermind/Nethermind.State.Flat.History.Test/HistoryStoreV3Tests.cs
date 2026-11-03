@@ -144,7 +144,12 @@ public class HistoryStoreV3Tests
         {
             Assert.That(() => store.TryGetValueBeforeNextChange(block, KeyA, new byte[bufferLength], out _),
                 Throws.TypeOf<StateUnavailableException>());
-            Assert.That(observed.CeilingReads, Is.EqualTo(1), "the capability handles the first lookup even when its row is corrupt");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(observed.CeilingReads, Is.EqualTo(block == 19 && !empty ? 0 : 1),
+                    "a corrupt row at the next block fails on the point read, any other first lookup uses the capability");
+                Assert.That(observed.UnreleasedSpans, Is.Zero, "the point read releases its native value when it throws");
+            }
             return;
         }
         byte[] output = new byte[bufferLength];
@@ -160,7 +165,7 @@ public class HistoryStoreV3Tests
     }
 
     [Test]
-    public void TryGetValueBeforeNextChange_ChangeAtTheNextBlock_IsFoundWithoutAnIterator([Values] bool scoped, [Values] bool flush)
+    public void TryGetValueBeforeNextChange_ChangeAtTheNextBlock_IsReadByExactKey([Values] bool scoped, [Values] bool flush)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using DbOnTheRocks db = RocksHistoryTestDb.CreateDb(directory.Path);
@@ -183,6 +188,7 @@ public class HistoryStoreV3Tests
             Assert.That(output.AsSpan(0, written), Is.SequenceEqualTo(new byte[] { 0xBB, 0xCC }));
             Assert.That(next, Is.EqualTo(30UL));
             Assert.That(observed.CeilingReads, Is.Zero, "a change at the next block is read by its exact key, so no unscoped seek runs");
+            Assert.That(observed.UnreleasedSpans, Is.Zero, "the point read releases its native value");
         }
     }
 
@@ -221,11 +227,24 @@ public class HistoryStoreV3Tests
     {
         internal int CeilingReads { get; private set; }
 
-        int IReadOnlyKeyValueStore.Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags) => inner.Get(key, output, flags);
+        internal int UnreleasedSpans { get; private set; }
+
+        Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags)
+        {
+            Span<byte> span = inner.GetSpan(key, flags);
+            if (!span.IsEmpty) UnreleasedSpans++;
+            return span;
+        }
+
+        void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> span)
+        {
+            if (!span.IsEmpty) UnreleasedSpans--;
+            inner.DangerousReleaseMemory(span);
+        }
         public byte[]? FirstKey => throw new NotSupportedException();
         public byte[]? LastKey => throw new NotSupportedException();
         public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) =>
-            throw new InvalidOperationException("An unscoped read must use the snapshot capability.");
+            throw new InvalidOperationException("No read in these tests may seek: unscoped reads use the snapshot capability, next-block changes the exact key.");
 
         public bool TryGetCeilingInSnapshot(
             scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive,
