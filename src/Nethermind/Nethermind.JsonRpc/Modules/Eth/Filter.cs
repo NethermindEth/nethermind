@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Facade.Filters;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
@@ -113,7 +114,7 @@ public class Filter : IJsonRpcParam
                     throw new JsonException($"Too many addresses ({addressCount}). Max is {MaxAddressCount}.");
                 }
 
-                HashSet<AddressAsKey> result = new(addressCount);
+                HashSet<AddressAsKey> result = AddressFilter.CreateAddressSet(addressCount);
                 int index = 0;
                 foreach (JsonElement element in token.EnumerateArray())
                 {
