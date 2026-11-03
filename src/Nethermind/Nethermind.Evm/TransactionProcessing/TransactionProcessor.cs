@@ -1889,7 +1889,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // n.b. destroyed accounts already set to zero balance
             // EIP-8037: always pay coinbase — deferred finalization will burn the balance
-            if (statusCode == StatusCode.Failure || !substate.DestroyListContains(header.GasBeneficiary) || spec.IsEip8037Enabled)
+            if (statusCode == StatusCode.Failure || spec.IsEip8037Enabled || !substate.DestroyListContains(header.GasBeneficiary))
             {
                 WorldState.AddToBalanceAndCreateIfNotEmpty(header.GasBeneficiary!, fees, spec);
             }
