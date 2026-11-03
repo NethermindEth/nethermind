@@ -115,13 +115,13 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
             {
                 HexWriter.WriteFixed32HexRawValue(writer, buffer);
             }
-
-            return;
         }
-
-        foreach (Hash256 topic in log.Topics ?? iterator.DecodeTopics(new RlpReader(log.TopicsRlp)))
+        else
         {
-            HexWriter.WriteFixed32HexRawValue(writer, topic.Bytes);
+            foreach (Hash256 topic in log.Topics ?? iterator.DecodeTopics(new RlpReader(log.TopicsRlp)))
+            {
+                HexWriter.WriteFixed32HexRawValue(writer, topic.Bytes);
+            }
         }
     }
 
