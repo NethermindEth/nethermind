@@ -2365,8 +2365,7 @@ namespace Nethermind.TxPool
             // A sender's drops are adjacent and its transactions sit in one pool only (TxTypeTxFilter),
             // so its account nonce is read once.
             Address? nonceSender = null;
-            ulong headNonce = 0;
-            bool headNonceKnown = false;
+            ulong? headNonce = null;
             foreach (Transaction tx in _bucketUpdateDrops)
             {
                 bool nonceSpent;
@@ -2381,14 +2380,13 @@ namespace Nethermind.TxPool
                         if (nonceSender != tx.SenderAddress)
                         {
                             nonceSender = tx.SenderAddress;
-                            headNonceKnown = false;
+                            headNonce = null;
                             headNonce = state.GetNonce(nonceSender!);
-                            headNonceKnown = true;
                         }
 
                         // An unreadable nonce was already skipped for this sender's first drop.
-                        if (!headNonceKnown) continue;
-                        nonceSpent = tx.Nonce < headNonce;
+                        if (headNonce is not ulong nonce) continue;
+                        nonceSpent = tx.Nonce < nonce;
                     }
                 }
                 catch (MissingTrieNodeException)
