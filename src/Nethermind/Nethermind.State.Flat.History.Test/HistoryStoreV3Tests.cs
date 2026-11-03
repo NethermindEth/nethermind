@@ -148,7 +148,7 @@ public class HistoryStoreV3Tests
             {
                 Assert.That(observed.CeilingReads, Is.EqualTo(block == 19 && !empty ? 0 : 1),
                     "a corrupt row at the next block fails on the point read, any other first lookup uses the capability");
-                Assert.That(observed.UnreleasedSlices, Is.Zero, "the point read releases its native slice when it throws");
+                Assert.That(observed.UnreleasedSpans, Is.Zero, "the point read releases its native value when it throws");
             }
             return;
         }
@@ -188,8 +188,8 @@ public class HistoryStoreV3Tests
             Assert.That(output.AsSpan(0, written), Is.SequenceEqualTo(new byte[] { 0xBB, 0xCC }));
             Assert.That(next, Is.EqualTo(30UL));
             Assert.That(observed.CeilingReads, Is.Zero, "a change at the next block is read by its exact key, so no unscoped seek runs");
-            Assert.That(observed.SliceReads, Is.EqualTo(1), "the point read borrows the native slice");
-            Assert.That(observed.UnreleasedSlices, Is.Zero, "the point read releases its native slice");
+            Assert.That(observed.SpanReads, Is.EqualTo(1), "the change is found by one point read");
+            Assert.That(observed.UnreleasedSpans, Is.Zero, "the point read releases its native value");
         }
     }
 
@@ -224,29 +224,26 @@ public class HistoryStoreV3Tests
         Assert.That(() => store.TryGetValueBeforeNextChange(5, KeyA, new byte[64], out _, scope, generation: 1), Throws.TypeOf<ObjectDisposedException>());
     }
 
-    private sealed class SnapshotCeilingDb(DbOnTheRocks inner) : MemDb, ISnapshotSortedKeyValueStore, IReadOnlyNativeKeyValueStore
+    private sealed class SnapshotCeilingDb(ISnapshotSortedKeyValueStore inner) : MemDb, ISnapshotSortedKeyValueStore
     {
         internal int CeilingReads { get; private set; }
 
-        internal int SliceReads { get; private set; }
+        internal int SpanReads { get; private set; }
 
-        internal int UnreleasedSlices { get; private set; }
+        internal int UnreleasedSpans { get; private set; }
 
-        Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags) =>
-            throw new InvalidOperationException("A native history column must be read by slice, not by a copied span.");
-
-        public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out nint handle, ReadFlags flags = ReadFlags.None)
+        Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags)
         {
-            ReadOnlySpan<byte> slice = inner.GetNativeSlice(key, out handle, flags);
-            SliceReads++;
-            if (handle != 0) UnreleasedSlices++;
-            return slice;
+            Span<byte> span = inner.GetSpan(key, flags);
+            SpanReads++;
+            if (!span.IsEmpty) UnreleasedSpans++;
+            return span;
         }
 
-        public void DangerousReleaseHandle(nint handle)
+        void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> span)
         {
-            if (handle != 0) UnreleasedSlices--;
-            inner.DangerousReleaseHandle(handle);
+            if (!span.IsEmpty) UnreleasedSpans--;
+            inner.DangerousReleaseMemory(span);
         }
         public byte[]? FirstKey => throw new NotSupportedException();
         public byte[]? LastKey => throw new NotSupportedException();
