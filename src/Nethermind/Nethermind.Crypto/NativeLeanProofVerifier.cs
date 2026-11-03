@@ -66,13 +66,15 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     private static bool HasRequiredCpuFeatures() => RuntimeInformation.ProcessArchitecture switch
     {
         Architecture.X64 => Sse3.IsSupported && Ssse3.IsSupported && Sse41.IsSupported && Sse42.IsSupported
-            && Popcnt.IsSupported && Pclmulqdq.IsSupported && HasCmpxchg16b(),
+            && Popcnt.IsSupported && Pclmulqdq.IsSupported && HasCmpxchg16bAndLahfSahf(),
         Architecture.Arm64 => System.Runtime.Intrinsics.Arm.Aes.IsSupported,
         _ => true,
     };
 
-    /// <remarks>CPUID leaf 1, ECX bit 13; no intrinsic class reports it.</remarks>
-    private static bool HasCmpxchg16b() => (X86Base.CpuId(1, 0).Ecx & (1 << 13)) != 0;
+    /// <remarks>CMPXCHG16B is CPUID leaf 1, ECX bit 13, and LAHF/SAHF in 64-bit mode leaf 0x80000001, ECX bit 0; no intrinsic class
+    /// reports either.</remarks>
+    private static bool HasCmpxchg16bAndLahfSahf() =>
+        (X86Base.CpuId(1, 0).Ecx & (1 << 13)) != 0 && (X86Base.CpuId(unchecked((int)0x80000001), 0).Ecx & 1) != 0;
 
     /// <summary>Native library ABI version.</summary>
     public static uint AbiVersion => nlean_abi_version();

@@ -5,6 +5,8 @@
 # platform for a fixed CPU baseline: tools/lean-ffi's target-cpu=native would tie the image to the builder's CPU.
 # leanVM needs carry-less multiply (pclmulqdq on x86-64, aes on aarch64; src/lib.rs fails the build without it) and has
 # no runtime fallback, so NativeLeanProofVerifier checks these baselines at startup and the two must stay in step.
+# x86-64-v2 keeps the EIP-8288 floor at the oldest CPUs with carry-less multiply; x86-64-v3 would add leanVM's AVX2 hash
+# path, proving and verifying faster, but exclude CPUs without AVX2, BMI2 and FMA.
 FROM --platform=$BUILDPLATFORM rust:1.99.0-slim-trixie@sha256:2752b332db73fdbb7dc576f06c82ed1f312005784ef913d7e04a28f5f55dc581 AS lean
 
 ARG BUILDARCH
