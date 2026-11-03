@@ -104,7 +104,7 @@ internal class Program
             new("--match-exceptions") { Description = "Also fail an engine test whose payload is rejected with an error that does not match the fixture's expected exception; by default a rejected payload passes whenever a rejection was expected. [Only for Engine Test]" };
 
         public static Option<bool> BalReport { get; } =
-            new("--bal-report") { Description = "Print a JSON line on stderr naming the executor (parallel or sequential) that ran each block, and one when a block the parallel executor rejected is re-run sequentially. [Only for Blockchain/Engine Test]" };
+            new("--bal-report") { Description = "Print a JSON line on stderr naming the executor (parallel or sequential) that ran each block, and one when a block the parallel executor rejected is re-run sequentially. Ignored with --trace, which keeps stderr for the trace. [Only for Blockchain/Engine Test]" };
 
         public static Option<string[]> ForkAlias { get; } =
             new("--forkAlias") { Description = "Resolve a fixture's declared fork name as another fork, e.g. 'Bogota=Eip8141Prototype'. Repeat the option for more than one alias; needed where separate fixture releases give one fork name incompatible meanings." };
@@ -278,7 +278,7 @@ internal class Program
                     WithholdBlockAccessLists: parseResult.GetValue(Options.BalWithhold),
                     MatchExpectedExceptions: parseResult.GetValue(Options.MatchExceptions),
                     PreWarming: preWarming,
-                    BlockAccessListExecutionObserver: balReport ? new BlockAccessListExecutionReport(Console.Error) : null);
+                    BlockAccessListExecutionObserver: balReport && !trace ? new BlockAccessListExecutionReport(Console.Error) : null);
                 (List<EthereumTestResult> results, bool allFilesLoaded) = await RunBlockTestFiles(files, runnerOptions, workers);
                 resultsOut.Write(_serializer.Serialize(results, true));
                 if (!allFilesLoaded) exitCode = IncompleteInputExitCode;

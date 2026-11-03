@@ -133,6 +133,22 @@ public class BlockchainTestJsonOutputTests
         }
     }
 
+    // Consumers parse a traced run's stderr line by line as the JSONL trace, so the execution report stays out of it.
+    [Test]
+    public async Task A_traced_run_leaves_the_execution_report_out_of_the_trace()
+    {
+        (string fixture, _) = WriteOneBlockFixture();
+        (string stdout, string stderr) = await RunNethtestWithArgs("blocktest", fixture, "--trace", "--bal-report");
+
+        string[] lines = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SingleResult(stdout).GetProperty("pass").GetBoolean(), Is.True, $"stdout was: {Trim(stdout)}");
+            Assert.That(EventLines(stderr), Is.Empty, $"stderr was: {Trim(stderr)}");
+            Assert.That(lines, Has.Some.StartsWith("{\"testEnd\":"), $"stderr was: {Trim(stderr)}");
+        }
+    }
+
     [Test]
     public async Task Every_path_argument_runs_in_one_results_array([Values("blocktest", "enginetest")] string command)
     {
