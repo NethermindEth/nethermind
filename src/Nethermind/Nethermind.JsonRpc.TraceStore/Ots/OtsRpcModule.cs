@@ -134,9 +134,9 @@ public sealed class OtsRpcModule(
 
     private static SearchResult<bool[]> MatchTransactions(Block block, List<ParityLikeTxTrace> traces, Address address, CancellationToken ct)
     {
-        if (OtsTraceReader.Validate(block, traces, ct) is { } error)
+        if (OtsTraceReader.Validate(block, traces, ct, out bool[] matches) is { } error)
             return new(error, ErrorCodes.ResourceUnavailable);
-        bool[] matches = new bool[block.Transactions.Length];
+        Array.Clear(matches);
         Stack<ParityTraceAction> actions = new();
         foreach (ParityLikeTxTrace trace in traces)
         {

@@ -116,6 +116,28 @@ public class OtsRpcModuleTests
         Assert.That(page.Txs.Select(t => t.Hash), Is.EqualTo(new[] { f.Blocks[4].Transactions[0].Hash }));
     }
 
+    [TestCase(1, true)]
+    [TestCase(1, false)]
+    [TestCase(17, true)]
+    [TestCase(17, false)]
+    public void Search_does_not_treat_validated_positions_as_address_matches(int transactionCount, bool backwards)
+    {
+        using Fixture f = new();
+        ParityTraceAction[] actions = new ParityTraceAction[transactionCount];
+        for (int i = 0; i < actions.Length; i++) actions[i] = Call(TestItem.AddressC);
+        actions[^1] = Call(TestItem.AddressA);
+        f.AddBlock(actions);
+        f.AddBlock(Call(TestItem.AddressC));
+
+        using ResultWrapper<OtsSearchResult> response = f.Search(backwards, backwards ? 0ul : 3ul, 1);
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Data.Txs.Select(t => t.Hash), Is.EqualTo(new[] { f.Blocks[4].Transactions[^1].Hash }));
+            Assert.That(response.Data.Receipts.Select(r => r.TransactionHash), Is.EqualTo(response.Data.Txs.Select(t => t.Hash)));
+        }
+    }
+
     [Test]
     public void Search_uses_each_scanned_blocks_precompile_spec([Values] bool backwards)
     {
@@ -176,7 +198,8 @@ public class OtsRpcModuleTests
 
     [Test]
     public void Incomplete_or_mismatched_traces_are_not_silent_omissions(
-        [Values("missing", "duplicate", "wrong-hash", "wrong-block", "no-action", "null-position", "negative-position", "position", "number")] string corruption)
+        [Values("missing", "duplicate", "wrong-hash", "wrong-block", "no-action", "null-position", "negative-position", "position", "number")] string corruption,
+        [Values] bool backwards)
     {
         using Fixture f = new();
         switch (corruption)
@@ -192,7 +215,7 @@ public class OtsRpcModuleTests
             case "number": f.Traces[3][0].BlockNumber = 1; break;
         }
         f.Save(3);
-        using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, 25);
+        using ResultWrapper<OtsSearchResult> response = f.Search(backwards, 0, 25);
         Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
     }
 
