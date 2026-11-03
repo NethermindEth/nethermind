@@ -14,12 +14,16 @@ namespace Nethermind.Db.Rocks;
 /// contend on a shared counter word. Slots use the same 128-byte spacing as <see cref="StripedLong"/>.
 /// </summary>
 /// <remarks>
-/// <see cref="Count"/> is not a snapshot: it reads the slots one by one. It never reads lower than the leases still
-/// held when each of them was taken before the full fence that precedes the read (for example, before the owner set a
-/// closed flag with an interlocked write), because the read then sees every such increment. A lease taken and
-/// returned while the slots are read must not add a lone decrement, so <see cref="Acquire"/> returns its slot for
-/// <see cref="Release"/> on the same call path. A lease kept past its call can be returned from
-/// <see cref="CurrentSlot"/>.
+/// <see cref="Count"/> is not a snapshot: it reads the slots one by one. It follows three rules:
+/// <list type="number">
+/// <item><description><see cref="Count"/> reads every increment made before a full fence on the reading thread, for
+/// example an interlocked write of a closed flag.</description></item>
+/// <item><description>A lease taken and returned on one call path goes back to the slot <see cref="Acquire"/> gave, so
+/// <see cref="Count"/> never reads a lone decrement.</description></item>
+/// <item><description>A lease returned through <see cref="CurrentSlot"/> must have been taken before that fence;
+/// otherwise its decrement can cancel a lease that is still held.</description></item>
+/// </list>
+/// <see cref="StripedLong"/> picks the slot again on each update and is for metrics only, so it cannot keep these rules.
 /// </remarks>
 internal sealed class StripedLeaseCount
 {
@@ -45,9 +49,11 @@ internal sealed class StripedLeaseCount
         return slot;
     }
 
+    /// <summary>Returns a lease to <paramref name="slot"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Release(int slot) => Interlocked.Decrement(ref _slots[slot]);
 
+    /// <summary>The leases taken and not returned, read slot by slot.</summary>
     public long Count
     {
         get

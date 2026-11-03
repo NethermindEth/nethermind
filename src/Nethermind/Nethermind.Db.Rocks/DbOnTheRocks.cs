@@ -819,7 +819,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private void ReleasePinnedSlice(int slot)
     {
         _pinnedSlices.Release(slot);
-        if (Volatile.Read(ref _nativeCloseDeferred) && _pinnedSlices.Count == 0) CloseNative();
+        if (!Volatile.Read(ref _nativeCloseDeferred)) return;
+
+        // Two last releases decrement different slots; the fence makes at least one of them read the other's decrement.
+        Interlocked.MemoryBarrier();
+        if (_pinnedSlices.Count == 0) CloseNative();
     }
 
     /// <summary>Waits for the slices <see cref="GetNativeSlice(ReadOnlySpan{byte}, out nint, ReadFlags)"/> handed out to be released.</summary>

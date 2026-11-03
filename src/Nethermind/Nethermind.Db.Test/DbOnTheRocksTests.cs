@@ -792,7 +792,7 @@ namespace Nethermind.Db.Test
         {
             byte[] key = [1, 2, 3];
             byte[] missing = [4, 5, 6];
-            NativeCloseTrackingDbOnTheRocks db = OpenNativeCloseTrackingDb();
+            using NativeCloseTrackingDbOnTheRocks db = OpenNativeCloseTrackingDb();
             db.PutSpan(key, new byte[64], WriteFlags.None);
 
             nint[] handles = new nint[64];
@@ -809,7 +809,7 @@ namespace Nethermind.Db.Test
         {
             byte[] key = [1, 2, 3];
             byte[] missing = [4, 5, 6];
-            NativeCloseTrackingDbOnTheRocks db = OpenNativeCloseTrackingDb();
+            using NativeCloseTrackingDbOnTheRocks db = OpenNativeCloseTrackingDb();
             db.PutSpan(key, new byte[64], WriteFlags.None);
             nint held = Task.Run(() =>
             {
