@@ -22,28 +22,78 @@ namespace Nethermind.Facade.Filters;
 /// </summary>
 public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, int fromBlock, int toBlock) : IEnumerable<int>
 {
-    internal sealed class IntersectEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : IEnumerator<int>
+    internal sealed class IntersectEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : ILogIndexEnumerator
     {
+        private readonly ILogIndexEnumerator? _seekable1 = e1 as ILogIndexEnumerator;
+        private readonly ILogIndexEnumerator? _seekable2 = e2 as ILogIndexEnumerator;
+
         public bool MoveNext()
         {
             bool has1 = e1.MoveNext();
             bool has2 = e2.MoveNext();
 
-            while (has1 && has2)
-            {
-                int c1 = e1.Current;
-                int c2 = e2.Current;
-                if (c1 == c2)
-                {
-                    Current = c1;
-                    return true;
-                }
+            return has1 && has2 && Leapfrog();
+        }
 
-                if (c1 < c2) has1 = e1.MoveNext();
-                else has2 = e2.MoveNext();
+        public bool MoveTo(int target)
+        {
+            if (Current >= target)
+                return true;
+
+            bool has1 = MoveTo(e1, _seekable1, target);
+            bool has2 = MoveTo(e2, _seekable2, target);
+
+            return has1 && has2 && Leapfrog();
+        }
+
+        // One plain step comes before any seek, so dense postings, where the next value usually matches, stay sequential
+        private bool Leapfrog()
+        {
+            int c1 = e1.Current;
+            int c2 = e2.Current;
+
+            while (c1 != c2)
+            {
+                if (c1 < c2)
+                {
+                    if (!e1.MoveNext()) return false;
+                    c1 = e1.Current;
+
+                    if (c1 < c2 && _seekable1 is not null)
+                    {
+                        if (!_seekable1.MoveTo(c2)) return false;
+                        c1 = e1.Current;
+                    }
+                }
+                else
+                {
+                    if (!e2.MoveNext()) return false;
+                    c2 = e2.Current;
+
+                    if (c2 < c1 && _seekable2 is not null)
+                    {
+                        if (!_seekable2.MoveTo(c1)) return false;
+                        c2 = e2.Current;
+                    }
+                }
             }
 
-            return false;
+            Current = c1;
+            return true;
+        }
+
+        private static bool MoveTo(IEnumerator<int> enumerator, ILogIndexEnumerator? seekable, int target)
+        {
+            if (seekable is not null)
+                return seekable.MoveTo(target);
+
+            while (enumerator.Current < target)
+            {
+                if (!enumerator.MoveNext())
+                    return false;
+            }
+
+            return true;
         }
 
         public void Reset()

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 
@@ -16,7 +16,7 @@ public partial class LogIndexStorage
     /// Enumerates block numbers from <see cref="LogIndexStorage"/> for the given <c>key</c>,
     /// within the specified <c>from</c>/<c>to</c> range.
     /// </summary>
-    public sealed class LogIndexEnumerator : IEnumerator<int>
+    public sealed class LogIndexEnumerator : ILogIndexEnumerator
     {
         private const int CompletedIndex = int.MinValue;
 
@@ -100,6 +100,132 @@ public partial class LogIndexStorage
             }
 
             return true;
+        }
+
+        public bool MoveTo(int target)
+        {
+            if (_index >= 0 && _value is not null)
+            {
+                ReadOnlySpan<int> blocks = _value.AsSpan();
+                int index = _index;
+
+                if (blocks[index] >= target)
+                    return true;
+
+                if (target <= blocks[^1])
+                {
+                    index++;
+                    if (blocks[index] < target)
+                        index = LowerBound(blocks, index + 1, target);
+
+                    if (blocks[index] <= _to)
+                    {
+                        _index = index;
+                        return true;
+                    }
+
+                    _index = CompletedIndex;
+                    return false;
+                }
+            }
+
+            return MoveToLaterChunk(target);
+        }
+
+        private bool MoveToLaterChunk(int target)
+        {
+            if (_index == CompletedIndex)
+                return false;
+
+            if (_value is null)
+                throw new InvalidOperationException($"{nameof(MoveNext)} must return true before {nameof(MoveTo)} is called.");
+
+            if (target > _to)
+            {
+                _index = CompletedIndex;
+                return false;
+            }
+
+            // The adjacent chunk first keeps dense postings on the sequential path
+            if (!_view.MoveNext())
+            {
+                _index = CompletedIndex;
+                return false;
+            }
+
+            SetValue();
+
+            if (_value.Count == 0 || _value[^1] < target)
+            {
+                ReadOnlySpan<byte> skippedKey = _view.CurrentKey;
+
+                if (skippedKey.EndsWith(Postfix.ForwardMerge))
+                {
+                    _index = CompletedIndex;
+                    return false;
+                }
+
+                int skippedKeySuffix = ReadKeySuffix(skippedKey);
+
+                // Lands on the last finalized chunk starting at or before target, which is never behind the current one
+                if (!_view.StartBefore(CreateDbKey(_key, target, stackalloc byte[MaxDbKeyLength])))
+                {
+                    _index = CompletedIndex;
+                    return false;
+                }
+
+                if (ReadKeySuffix(_view.CurrentKey) != skippedKeySuffix)
+                    SetValue();
+            }
+
+            _index = BinarySearch(_value.AsSpan(), target);
+
+            // The forward-merge key does not encode its first block, so its values can still start below target
+            while (_index >= _value.Count && _view.MoveNext())
+            {
+                SetValue();
+                _index = BinarySearch(_value.AsSpan(), target);
+            }
+
+            return CheckWithinRange();
+        }
+
+        private bool CheckWithinRange()
+        {
+            if (IsWithinRange())
+                return true;
+
+            _index = CompletedIndex;
+            return false;
+        }
+
+        private static int ReadKeySuffix(ReadOnlySpan<byte> dbKey) => BinaryPrimitives.ReadInt32BigEndian(dbKey[^BlockNumberSize..]);
+
+        /// <summary>
+        /// Finds the first index at or after <paramref name="start"/> with a value not less than <paramref name="target"/>,
+        /// probing exponentially growing steps so that close targets cost a few comparisons.
+        /// The value before <paramref name="start"/> must be less than <paramref name="target"/>.
+        /// </summary>
+        private static int LowerBound(ReadOnlySpan<int> blocks, int start, int target)
+        {
+            int low = start - 1;
+            int step = 1;
+            int high;
+
+            while (true)
+            {
+                int probe = low + step;
+                if (probe >= blocks.Length || blocks[probe] >= target)
+                {
+                    high = Math.Min(probe, blocks.Length);
+                    break;
+                }
+
+                low = probe;
+                step <<= 1;
+            }
+
+            return low + 1 + BinarySearch(blocks[(low + 1)..high], target);
         }
 
         private bool TryStartView()

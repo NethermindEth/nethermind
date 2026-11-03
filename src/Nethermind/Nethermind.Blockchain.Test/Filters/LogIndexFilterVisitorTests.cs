@@ -89,6 +89,87 @@ public class LogIndexFilterVisitorTests
         VerifyEnumerator<LogIndexFilterVisitor.IntersectEnumerator>(s2, s1, []);
     }
 
+    public sealed class SeekableEnumerator(int[] array) : ILogIndexEnumerator
+    {
+        private int _index = -1;
+
+        public bool MoveNext() => ++_index < array.Length;
+
+        public bool MoveTo(int target)
+        {
+            if (Current >= target)
+                return true;
+
+            int found = Array.BinarySearch(array, _index, array.Length - _index, target);
+            _index = found >= 0 ? found : ~found;
+            return _index < array.Length;
+        }
+
+        public void Reset() => _index = -1;
+        public int Current => array[_index];
+        object IEnumerator.Current => Current;
+        public void Dispose() { }
+    }
+
+    [TestCase(1, 1, 1)]
+    [TestCase(5, 5_000, 1)]
+    [TestCase(50, 5_000, 1)]
+    [TestCase(5_000, 5_000, 1)]
+    [TestCase(5_000, 5_000, 2)]
+    [TestCase(20, 100, 3)]
+    public void IntersectEnumerator_Seekable_Random(int len1, int len2, int seed)
+    {
+        Random random = new(seed);
+        int[] s1 = RandomAscending(random, len1, Math.Max(1, 10_000 / len1));
+        int[] s2 = RandomAscending(random, len2, Math.Max(1, 10_000 / len2));
+        int[] expected = s1.Intersect(s2).Order().ToArray();
+
+        foreach ((bool seekable1, bool seekable2) in new[] { (true, true), (true, false), (false, true) })
+        {
+            using LogIndexFilterVisitor.IntersectEnumerator forward = new(Create(s1, seekable1), Create(s2, seekable2));
+            Assert.That(EnumerateOnce(forward), Is.EqualTo(expected));
+
+            using LogIndexFilterVisitor.IntersectEnumerator backward = new(Create(s2, seekable2), Create(s1, seekable1));
+            Assert.That(EnumerateOnce(backward), Is.EqualTo(expected));
+        }
+
+        static IEnumerator<int> Create(int[] array, bool seekable) =>
+            seekable ? new SeekableEnumerator(array) : array.Cast<int>().GetEnumerator();
+    }
+
+    [TestCase(0, 0)]
+    [TestCase(0, 10)]
+    [TestCase(10, 0)]
+    public void IntersectEnumerator_Seekable_SomeEmpty(int len1, int len2)
+    {
+        using LogIndexFilterVisitor.IntersectEnumerator enumerator = new(
+            new SeekableEnumerator(Enumerable.Range(0, len1).ToArray()),
+            new SeekableEnumerator(Enumerable.Range(0, len2).ToArray()));
+
+        Assert.That(EnumerateOnce(enumerator), Is.Empty);
+    }
+
+    [TestCase(100, 3_000, 3_000)]
+    [TestCase(3_000, 3_000, 3_000)]
+    [TestCase(3_000, 100, 50)]
+    public void IntersectEnumerator_Nested_Seekable_Random(int len1, int len2, int len3)
+    {
+        Random random = new(7);
+        int[] s1 = RandomAscending(random, len1, Math.Max(1, 6_000 / len1));
+        int[] s2 = RandomAscending(random, len2, Math.Max(1, 6_000 / len2));
+        int[] s3 = RandomAscending(random, len3, Math.Max(1, 6_000 / len3));
+        int[] expected = s1.Intersect(s2).Intersect(s3).Order().ToArray();
+
+        foreach (bool seekableInnerChild in new[] { true, false })
+        {
+            IEnumerator<int> innerChild = seekableInnerChild ? new SeekableEnumerator(s3) : s3.Cast<int>().GetEnumerator();
+            using LogIndexFilterVisitor.IntersectEnumerator inner = new(new SeekableEnumerator(s2), innerChild);
+            using LogIndexFilterVisitor.IntersectEnumerator outer = new(new SeekableEnumerator(s1), inner);
+
+            Assert.That(EnumerateOnce(outer), Is.EqualTo(expected));
+        }
+    }
+
     [TestCase(
         new[] { 1, 2, 3, 4, 5, },
         new[] { 2, 3, 4 },
