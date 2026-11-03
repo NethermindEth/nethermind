@@ -224,11 +224,18 @@ public class ReadOnlySnapshotBundlePersistedTests
         }
 
         const int reads = 64;
+        const int windows = 5;
         Hash256 expectedHash = Keccak.Compute("hash");
-        MeasureReads(owned: true);
-        MeasureReads(owned: false);
-        long ownedBytes = MeasureReads(owned: true);
-        long borrowedBytes = MeasureReads(owned: false);
+        // The cheapest of several identical windows: a per-read array survives the minimum, while a one-off chunk
+        // the runtime charges to this thread lands in one window only.
+        long ownedBytes = long.MaxValue;
+        long borrowedBytes = long.MaxValue;
+        for (int window = 0; window < windows; window++)
+        {
+            ownedBytes = Math.Min(ownedBytes, MeasureReads(owned: true));
+            borrowedBytes = Math.Min(borrowedBytes, MeasureReads(owned: false));
+        }
+
         Assert.That(ownedBytes - borrowedBytes, Is.GreaterThanOrEqualTo(reads * persistedRlp.Length),
             "callback reads must avoid the owned RLP array, not merely hide it behind the callback API");
 
