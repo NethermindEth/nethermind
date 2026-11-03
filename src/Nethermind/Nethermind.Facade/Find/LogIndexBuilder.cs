@@ -276,7 +276,10 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             return false;
 
         number = Math.Max(MinTargetBlockNumber, number);
-        number = Math.Min(MaxTargetBlockNumber, number);
+        // MaxTargetBlockNumber stays at 0 while fast sync holds the head at genesis and the finalized header is not canonical yet,
+        // but the blocks below the sync pivot are already canonical history.
+        ulong maxTarget = MaxTargetBlockNumber;
+        number = Math.Min(maxTarget is 0 && _syncConfig.FastSync ? _blockTree.SyncPivot.BlockNumber : maxTarget, number);
 
         if (number is 0)
             return false;
@@ -456,7 +459,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                 int end = isForward ? start + batchSize - 1 : start - batchSize + 1;
                 if (!isForward)
                     end = Math.Max(end, backwardFloor);
-                end = Math.Min(end, (int)MaxTargetBlockNumber);
+                else
+                    end = Math.Min(end, (int)MaxTargetBlockNumber);
 
                 // from - inclusive, to - exclusive
                 (int from, int to) = isForward

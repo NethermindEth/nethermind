@@ -373,6 +373,45 @@ public class LogIndexBuilderTests
         await builder.StopAsync();
     }
 
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_SetThePivotFromInsertedReceiptsAndSyncBackward_WhileFastSyncHoldsTheHeadAtGenesis(CancellationToken cancellation)
+    {
+        const int inserted = MaxBlock / 2;
+        int downloadedTo = 0;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        tree.SyncPivot.Returns(realTree.SyncPivot);
+        tree.Head.Returns(realTree.FindBlock(0UL, BlockTreeLookupOptions.None));
+        // A beacon header that is not on the main chain yet, so the canonical lookup of it fails.
+        tree.FinalizedHash.Returns(TestItem.KeccakA);
+        tree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci => ci.ArgAt<ulong>(0) <= (ulong)Volatile.Read(ref downloadedTo)
+                ? realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1))
+                : null);
+
+        TestLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(storage, tree);
+
+        Task start = builder.StartAsync();
+        Volatile.Write(ref downloadedTo, inserted);
+        _receiptStorage.ReceiptsInserted += Raise.EventWith(new ReceiptsEventArgs(realTree.FindHeader(inserted)!, []));
+        await start.WaitAsync(cancellation);
+        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MinBlockNumber, Is.Zero);
+            Assert.That(storage.MaxBlockNumber, Is.EqualTo(inserted - 1));
+            _receiptStorage.Received(1).ReceiptsInserted -= Arg.Any<EventHandler<ReceiptsEventArgs>>();
+        }
+
+        await builder.StopAsync();
+    }
+
     [TestCase(-1, TestName = "Should_ForwardError_FromQueueingLoop")]
     [TestCase(0, TestName = "Should_ForwardError_FromStorage_Immediately")]
     [TestCase(1, TestName = "Should_ForwardError_FromStorage_AfterOneBatch")]
