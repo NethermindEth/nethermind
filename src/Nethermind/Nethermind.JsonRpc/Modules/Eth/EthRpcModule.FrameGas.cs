@@ -60,7 +60,7 @@ public partial class EthRpcModule
     {
         errorCode = ErrorCodes.InvalidInput;
         if (!_blockchainBridge.HasStateForBlock(header)) return Result<FrameForRpc[]>.Fail("No state available for block");
-        if (BlockchainBridge.GetUnsupportedBlockOverrideError(blockOverride) is { } overrideError)
+        if ((BlockchainBridge.GetUnsupportedBlockOverrideError(blockOverride) ?? StateOverrideValidation.GetStorageConflictError(stateOverride)) is { } overrideError)
             return Result<FrameForRpc[]>.Fail(overrideError);
         IReleaseSpec spec = _specProvider.GetSpec(blockOverride?.ApplyTo(header) ?? header);
         Result<Transaction> converted = request.ToCallTransaction(spec, _rpcConfig.GasCap, validateFeeCapOrder: false, checksFork: checksFork);
