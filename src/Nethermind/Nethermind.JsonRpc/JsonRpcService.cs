@@ -658,6 +658,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 GetErrorResponse(methodName, ErrorCodes.Timeout,
                     $"{methodName} request was canceled due to enabled timeout.", null, in request.IdRef, returnAction),
 
+            RpcErrorException error =>
+                GetErrorResponse(methodName, error.Code, error.Message, null, in request.IdRef, returnAction),
+
+            TargetInvocationException { InnerException: RpcErrorException error } =>
+                GetErrorResponse(methodName, error.Code, error.Message, null, in request.IdRef, returnAction),
+
             // suppressWarning doubles as the overload-shedding marker: GetErrorResponse counts
             // suppressed LimitExceeded/ModuleTimeout responses in Metrics.JsonRpcOverloadRejections.
             ModuleRentalTimeoutException or { InnerException: ModuleRentalTimeoutException } =>
@@ -1217,14 +1223,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         /// <summary>Maps a deferred error to its JSON-RPC response.</summary>
         /// <remarks>The original response owns the module rental; the replacement must not return it twice.</remarks>
-        internal JsonRpcErrorResponse MapException(Exception exception)
-        {
-            if (methodName == nameof(Modules.DebugModule.IDebugRpcModule.debug_traceTransaction)
-                && exception is Modules.DebugModule.DebugRpcModule.TransactionTraceNotFoundException)
-                return service.GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, exception.Message, null, in request.IdRef, null);
-
-            return service.HandleInvocationException(exception, methodName, request, returnAction: null, isStreaming: true);
-        }
+        internal JsonRpcErrorResponse MapException(Exception exception) =>
+            service.HandleInvocationException(exception, methodName, request, returnAction: null, isStreaming: true);
 
         /// <summary>Reports one completed execution, excluding an unwritten or request-cancelled response.</summary>
         /// <remarks>A failure without request cancellation, including a transport exception, counts as an error.</remarks>

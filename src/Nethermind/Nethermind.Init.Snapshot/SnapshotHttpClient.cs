@@ -110,6 +110,7 @@ internal sealed class SnapshotHttpClient : IDisposable
 
     public static bool IsPermanentHttpError(HttpRequestException e) =>
         e.StatusCode is >= HttpStatusCode.BadRequest and < HttpStatusCode.InternalServerError
+            and not HttpStatusCode.RequestTimeout
             and not HttpStatusCode.TooManyRequests
             and not HttpStatusCode.RequestedRangeNotSatisfiable;
 
