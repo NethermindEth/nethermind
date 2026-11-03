@@ -588,12 +588,6 @@ public class SnapshotBundleWarmerTests
             return Load(path);
         }
 
-        bool IPersistence.IPersistenceReader.TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
-            Load(path, action, arg);
-
-        bool IPersistence.IPersistenceReader.TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
-            Load(path, action, arg);
-
         byte[]? IPersistence.IPersistenceReader.TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => LoadOwned(path);
 
         byte[]? IPersistence.IPersistenceReader.TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) => LoadOwned(path);

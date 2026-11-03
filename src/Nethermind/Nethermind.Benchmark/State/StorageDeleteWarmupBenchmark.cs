@@ -283,18 +283,6 @@ public class StorageDeleteWarmupBenchmark
             return inner.TryLoadStorageRlp(address, path, flags);
         }
 
-        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
-        {
-            Read();
-            return inner.TryLoadStateRlp(path, flags, action, arg);
-        }
-
-        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
-        {
-            Read();
-            return inner.TryLoadStorageRlp(address, path, flags, action, arg);
-        }
-
         public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags)
         {
             Read();

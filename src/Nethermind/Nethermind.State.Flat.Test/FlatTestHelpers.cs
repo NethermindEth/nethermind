@@ -301,12 +301,6 @@ public abstract class SubstitutablePersistenceReader : IPersistence.IPersistence
     public abstract bool IsPreimageMode { get; }
     public abstract void Dispose();
 
-    bool IPersistence.IPersistenceReader.TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
-        Pass(TryLoadStateRlp(path, flags), action, arg);
-
-    bool IPersistence.IPersistenceReader.TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
-        Pass(TryLoadStorageRlp(address, path, flags), action, arg);
-
     byte[]? IPersistence.IPersistenceReader.TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
         TryLoadStateRlp(path, flags);
 

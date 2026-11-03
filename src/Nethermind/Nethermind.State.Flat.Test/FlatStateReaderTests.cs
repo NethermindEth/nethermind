@@ -225,7 +225,7 @@ public class FlatStateReaderTests
             return StorageAvailable && address == addressHash ? storageTree.GetNodeByPath(path.ToNibble()) : null;
         }
 
-        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             byte[]? rlp = TryLoadStateRlp(path, flags);
             if (rlp is null) return false;
@@ -233,7 +233,7 @@ public class FlatStateReaderTests
             return true;
         }
 
-        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             byte[]? rlp = TryLoadStorageRlp(address, path, flags);
             if (rlp is null) return false;
@@ -243,8 +243,6 @@ public class FlatStateReaderTests
 
         public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => TryLoadStateRlp(path, flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) => TryLoadStorageRlp(address, path, flags);
-        public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => TryLoadStateRlp(path, flags, action, arg);
-        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => TryLoadStorageRlp(address, path, flags, action, arg);
 
         public Account? GetAccount(Address address) => null;
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
