@@ -373,7 +373,11 @@ public static partial class EvmInstructions
 
         // SELFDESTRUCT is forbidden during static calls.
         if (vmState.IsStatic)
+        {
+            if (DispatchFlags.ConstTracing && vm.IsTracingOperationStart)
+                TraceSelfDestructStaticCall(vm, TGasPolicy.GetRemainingGas(in gas));
             goto StaticCallViolation;
+        }
 
         // If Shanghai DDoS protection is active, charge the appropriate gas cost.
         if (TSpec.UseShanghaiDDosProtection)
@@ -392,7 +396,7 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         if (DispatchFlags.ConstTracing && vm.IsTracingOperationStart)
-            vm.TraceOperationReady(GetSelfDestructTraceGasCost<TGasPolicy, TEip8037, TSpec>(vm, inheritor));
+            TraceSelfDestructGasCost<TGasPolicy, TEip8037, TSpec>(vm, inheritor, TGasPolicy.GetRemainingGas(in gas));
 
         // Charge gas for SELFDESTRUCT beneficiary access; if insufficient, signal out-of-gas.
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, inheritor, AccountAccessKind.SelfDestructBeneficiary))
@@ -513,6 +517,41 @@ public static partial class EvmInstructions
         }
 
         return cost;
+    }
+
+    /// <summary>Reports the cost of a SELFDESTRUCT to <paramref name="inheritor"/> that has paid its base cost.</summary>
+    /// <remarks>
+    /// A cold access the frame cannot pay ends Geth's dynamic pricing early, so the step reports the base cost
+    /// alone, or with the access since Amsterdam.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceSelfDestructGasCost<TGasPolicy, TEip8037, TSpec>(VirtualMachine<TGasPolicy> vm, Address inheritor, ulong gasAfterBaseCost)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TEip8037 : struct, IFlag
+        where TSpec : struct, ISelfDestructSpec
+    {
+        ulong accessCost = vm.GetAccountAccessTraceGasCost(inheritor, 0, warmCost: 0);
+        if (gasAfterBaseCost < accessCost)
+        {
+            ulong baseCost = TSpec.UseShanghaiDDosProtection ? GasCostOf.SelfDestructEip150 : 0;
+            vm.TraceOperationReady(TSpec.IsEip8038Enabled ? baseCost + accessCost : baseCost, "out of gas: out of gas");
+            return;
+        }
+
+        vm.TraceOperationReady(GetSelfDestructTraceGasCost<TGasPolicy, TEip8037, TSpec>(vm, inheritor));
+    }
+
+    /// <summary>Reports a SELFDESTRUCT in a static frame that has <paramref name="gas"/> left.</summary>
+    /// <remarks>
+    /// Geth raises write protection while pricing the dynamic cost, after charging the constant gas (the base cost
+    /// since Berlin), so the step reports the constant gas alone.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceSelfDestructStaticCall<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ulong gas)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        ulong constantGas = vm.Spec.UseHotAndColdStorage ? GasCostOf.SelfDestructEip150 : 0;
+        vm.TraceOperationReady(constantGas, gas < constantGas ? null : "out of gas: write protection");
     }
 
     /// <summary>Reports the cost of a SELFDESTRUCT that cannot pay its base cost.</summary>

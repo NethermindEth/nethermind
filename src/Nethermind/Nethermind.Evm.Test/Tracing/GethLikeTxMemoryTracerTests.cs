@@ -170,7 +170,8 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
     /// <remarks>
     /// Geth charges the warm access of EXTCODECOPY and the base cost of SELFDESTRUCT as constant gas, so a step that
-    /// cannot pay them reports them alone; any other shortfall reports the constant and the whole dynamic cost.
+    /// cannot pay them reports them alone; any other shortfall reports the constant and the whole dynamic cost, except
+    /// that SELFDESTRUCT stops pricing at a cold access it cannot pay.
     /// </remarks>
     private static TestCaseData[] CancunOutOfGasOperations()
     {
@@ -186,7 +187,7 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
             new TestCaseData(mcopy, 11UL, GasCostOf.VeryLow).SetArgDisplayNames("MCOPY base"),
             new TestCaseData(mcopy, 17UL, GasCostOf.VeryLow + GasCostOf.VeryLow + GasCostOf.Memory).SetArgDisplayNames("MCOPY"),
             new TestCaseData(selfDestruct, 5002UL, GasCostOf.SelfDestructEip150).SetArgDisplayNames("SELFDESTRUCT base"),
-            new TestCaseData(selfDestruct, 7602UL, GasCostOf.SelfDestructEip150 + GasCostOf.ColdAccountAccess + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT cold"),
+            new TestCaseData(selfDestruct, 7602UL, GasCostOf.SelfDestructEip150).SetArgDisplayNames("SELFDESTRUCT cold"),
             new TestCaseData(selfDestruct, 32602UL, GasCostOf.SelfDestructEip150 + GasCostOf.ColdAccountAccess + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT new account"),
         ];
     }
@@ -196,8 +197,11 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         byte[] sstore = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done;
         byte[] create = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE).Done;
         byte[] create2 = Prepare.EvmCode.PushData(0).PushData(32).PushData(0).PushData(0).Op(Instruction.CREATE2).Done;
+        byte[] selfDestruct = Prepare.EvmCode.PushData(TestItem.AddressF).Op(Instruction.SELFDESTRUCT).Done;
         return
         [
+            new TestCaseData(selfDestruct, 6003UL, GasCostOf.SelfDestructEip150 + Eip8038Constants.ColdAccountAccess).SetArgDisplayNames("SELFDESTRUCT cold"),
+            new TestCaseData(selfDestruct, 9003UL, GasCostOf.SelfDestructEip150 + Eip8038Constants.ColdAccountAccess + Eip8038Constants.AccountWrite).SetArgDisplayNames("SELFDESTRUCT new account"),
             new TestCaseData(sstore, 3000UL, Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite).SetArgDisplayNames("SSTORE execution"),
             new TestCaseData(sstore, 14000UL, Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite).SetArgDisplayNames("SSTORE state"),
             new TestCaseData(create, 1000UL, Eip8038Constants.CreateAccess).SetArgDisplayNames("CREATE execution"),

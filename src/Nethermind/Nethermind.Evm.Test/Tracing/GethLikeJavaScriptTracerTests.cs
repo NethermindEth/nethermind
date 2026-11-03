@@ -270,6 +270,11 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("6001600360003e", 100000UL, "step:RETURNDATACOPY:9::3:0,3,1:0", "fault:RETURNDATACOPY:9:return data out of bounds:3:0,4,1:0")]
     [TestCase("60006801000000000000000060003e", 100000UL, "step:RETURNDATACOPY:3::3:0,18446744073709551616,0:0", "fault:RETURNDATACOPY:3:return data out of bounds:3:0,18446744073709551616,0:0")]
     [TestCase("600167ffffffffffffffff60003e", 100000UL, "step:RETURNDATACOPY:9::3:0,18446744073709551615,1:0", "fault:RETURNDATACOPY:9:return data out of bounds:3:0,18446744073709551616,1:0")]
+    [TestCase("61beefff", 26002UL, "step:SELFDESTRUCT:5000:out of gas:1:48879:0", null)]
+    // Geth stops pricing SELFDESTRUCT at a cold access it cannot pay.
+    [TestCase("61beefff", 27003UL, "step:SELFDESTRUCT:5000:out of gas: out of gas:1:48879:0", null)]
+    [TestCase("61beefff", 29003UL, "step:SELFDESTRUCT:32600:out of gas:1:48879:0", null)]
+    [TestCase("61beefff", 100000UL, "step:SELFDESTRUCT:32600::1:48879:0", null)]
     public void Jump_and_memory_boundaries_preserve_geth_callback_order_and_state(string code, ulong gasLimit, string step, string? fault)
     {
         const string userTracer = """
@@ -384,6 +389,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("5f5f5ff0", "step:32000:write protection", null)]
     [TestCase("5f5f5f5ff5", "step:32000:write protection", null)]
     [TestCase("5f5f5f5fa2", "step:0:", "fault:0:write protection")]
+    [TestCase("61beefff", "step:5000:out of gas: write protection", null)]
     public void Static_context_preserves_precondition_and_execution_failure_callbacks(string childCode, string step, string? fault)
     {
         const string userTracer = """
