@@ -72,17 +72,19 @@ public class NativeBackendStartupTests
     [TestCase("key", "recursive guest key does not match")]
     [TestCase("old-key", "recursive guest key does not match")]
     [TestCase("bounds", "acceptance bounds do not match")]
-    // The runtime switch hides carry-less multiply (on x64, EnableAES also covers PCLMULQDQ) as a CPU without it would;
-    // the check must fail before any native call.
-    [TestCase("cpu", "needs carry-less multiply", "EIP-8288 requires a CPU the native Lean backend supports")]
+    // The runtime switches hide features as a CPU without them would, and the check must fail before any native call. On x64,
+    // EnableAES also covers PCLMULQDQ and EnableAVX2 the rest of x86-64-v3 (BMI1/2, FMA, LZCNT); arm64 has no v3 counterpart.
+    [TestCase("cpu", "needs x86-64-v3 with PCLMULQDQ", "EIP-8288 requires a CPU the native Lean backend supports", "DOTNET_EnableAES", "DOTNET_EnableArm64Aes")]
+    [TestCase("cpu-v3", "needs x86-64-v3 with PCLMULQDQ", "EIP-8288 requires a CPU the native Lean backend supports", "DOTNET_EnableAVX2", null)]
     public async Task Actual_backend_startup_fails_closed_in_a_fresh_process(string mode, string expected,
-        string reason = "EIP-8288 requires the pinned native Lean backend")
+        string reason = "EIP-8288 requires the pinned native Lean backend", string x64Switch = null, string arm64Switch = null)
     {
+        string cpuSwitch = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? arm64Switch : x64Switch;
+        if (mode.StartsWith("cpu", StringComparison.Ordinal) && cpuSwitch is null) Assert.Ignore("No such CPU feature on this architecture.");
         ProcessStartInfo start = new("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         start.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
         start.Environment[NativeStartupProbe.Variable] = mode;
-        if (mode == "cpu")
-            start.Environment[RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "DOTNET_EnableArm64Aes" : "DOTNET_EnableAES"] = "0";
+        if (cpuSwitch is not null) start.Environment[cpuSwitch] = "0";
         using Process process = Process.Start(start);
         Assert.That(process, Is.Not.Null);
         Task<string> output = process.StandardOutput.ReadToEndAsync();
