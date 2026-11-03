@@ -27,7 +27,7 @@ jobs:
           dotnet --info > "$RUNNER_TEMP/ots-results/runtime.txt"
           lscpu > "$RUNNER_TEMP/ots-results/cpu.txt"
           git rev-parse HEAD > "$RUNNER_TEMP/ots-results/probe-commit.txt"
-          for pair in baseline:eddcb9c3e42ac545791bec2eb5b350d2f3cd132d candidate:b5db9ed22f61b3c22e675e2a7edf5ef7f67ffddc; do
+          for pair in baseline:eddcb9c3e42ac545791bec2eb5b350d2f3cd132d candidate:b7a9ea2c80817482728dd994b9cf525764905f3f; do
             label=${pair%%:*}; source=${pair#*:}
             echo "$label $source" >> "$RUNNER_TEMP/ots-results/source-pins.txt"
             for file in OtsTraceReader.cs OtsRpcModule.cs; do
