@@ -15,14 +15,15 @@ namespace Nethermind.State.Flat.NodeBuffer;
 /// <summary>The part of <see cref="NodeRecordBufferVisitor{TNodeContext}"/> that does not depend on the node context, so it is compiled once.</summary>
 internal abstract class NodeRecordBufferVisitor(
     ReadOnlySnapshotBundle bundle,
-    SnapshotPooledList overlaySnapshots,
+    INodeRecordBuffer nodeRecordBuffer,
     VisitingStats? diagnostics,
     ReadFlags readFlags)
 {
-    /// <summary>Finds a trie's root record pointer in the newest overlay snapshot holding that trie, otherwise as <see cref="ReadOnlySnapshotBundle.FindRoot"/> does.</summary>
-    /// <remarks>Each snapshot's records resolve in the buffer of its own pin: an overlay buffer would take a bundle snapshot's pointers newer than its own pin for private ones.</remarks>
-    protected INodeRecordBuffer? FindRoot(Hash256? address, out ulong pointer) =>
-        ReadOnlySnapshotBundle.TryFindRoot(overlaySnapshots, address, out pointer, out INodeRecordBuffer? buffer) ? buffer : bundle.FindRoot(address, out pointer);
+    /// <summary>The trie node buffer the walk starts in.</summary>
+    protected INodeRecordBuffer NodeRecordBuffer => nodeRecordBuffer;
+
+    /// <summary>Finds a trie's root record pointer by hash in the buffer's root index, as block processing does; zero when it is not indexed.</summary>
+    protected ulong FindRoot(Hash256? address, Hash256 rootHash) => nodeRecordBuffer.ResolveRoot(address, rootHash.ValueHash256).Pointer;
 
     protected TrieNode Reference(Hash256 hash, in TreePath path)
     {
@@ -95,19 +96,19 @@ internal abstract class NodeRecordBufferVisitor(
 
 /// <summary>Runs a tree visitor over the tries of a <see cref="ReadOnlySnapshotBundle"/> by following trie node buffer record pointers.</summary>
 /// <remarks>
-/// Calls the visitor as <see cref="PatriciaTree.Accept{TNodeContext}"/> does. Each trie starts at the root record of the newest in-memory
-/// snapshot holding it, overlay snapshots first, and each child at the record its parent points at. A node no pointer resolves, and every
-/// node below it, is loaded by path from the persisted snapshots and persistence instead.
-/// Records are borrowed under the bundle's and the overlay snapshots' pins, so every parallel worker joins before <see cref="Accept"/> returns.
+/// Calls the visitor as <see cref="PatriciaTree.Accept{TNodeContext}"/> does. Each trie starts at the root record block processing finds
+/// by hash in the buffer's root index, and each child at the record its parent points at. A node no pointer resolves, and every node below
+/// it, is loaded by path from the persisted snapshots and persistence instead.
+/// Records are borrowed under the caller's pins, so every parallel worker joins before <see cref="Accept"/> returns.
 /// </remarks>
-/// <param name="overlaySnapshots">Snapshots stacked on top of the bundle's, oldest first, such as an overridable world scope's.</param>
+/// <param name="nodeRecordBuffer">The buffer block processing reads the bundle's tries from: the global one, or an overridable world scope's overlay.</param>
 internal sealed class NodeRecordBufferVisitor<TNodeContext>(
     ReadOnlySnapshotBundle bundle,
-    SnapshotPooledList overlaySnapshots,
+    INodeRecordBuffer nodeRecordBuffer,
     ITreeVisitor<TNodeContext> visitor,
     VisitingOptions options,
     VisitingStats? diagnostics)
-    : NodeRecordBufferVisitor(bundle, overlaySnapshots, diagnostics, visitor.ExtraReadFlag | (visitor.IsFullDbScan ? ReadFlags.HintReadAhead : ReadFlags.None))
+    : NodeRecordBufferVisitor(bundle, nodeRecordBuffer, diagnostics, visitor.ExtraReadFlag | (visitor.IsFullDbScan ? ReadFlags.HintReadAhead : ReadFlags.None))
     where TNodeContext : struct, INodeContext<TNodeContext>
 {
     private const long SubtreeSizeThreshold = 256 * 1024;
@@ -122,8 +123,7 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
             return;
         }
 
-        INodeRecordBuffer? buffer = FindRoot(null, out ulong pointer);
-        if (!TryResolve(Reference(rootHash, TreePath.Empty), pointer, buffer, null, TreePath.Empty, default, out Resolved root)) return;
+        if (!TryResolve(Reference(rootHash, TreePath.Empty), FindRoot(null, rootHash), NodeRecordBuffer, null, TreePath.Empty, default, out Resolved root)) return;
 
         if (visitor.IsFullDbScan) visitor.VisitTree(default, rootHash);
         Visit(root, default, null, TreePath.Empty, long.MaxValue);
@@ -186,8 +186,8 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
 
         path.AppendMut(leaf.Key!);
         Hash256 address = path.Path.ToCommitment();
-        INodeRecordBuffer? buffer = FindRoot(address, out ulong pointer);
-        return TryResolve(Reference(account.StorageRoot.ToCommitment(), TreePath.Empty), pointer, buffer, address, TreePath.Empty, leafContext, out Resolved storageRoot)
+        Hash256 storageRootHash = account.StorageRoot.ToCommitment();
+        return TryResolve(Reference(storageRootHash, TreePath.Empty), FindRoot(address, storageRootHash), NodeRecordBuffer, address, TreePath.Empty, leafContext, out Resolved storageRoot)
             ? Visit(storageRoot, leafContext.AddStorage(address), address, TreePath.Empty, sizeHint)
             : 0;
     }

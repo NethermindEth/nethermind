@@ -20,7 +20,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -49,9 +48,6 @@ public class FlatOverridableWorldScopeTests
         public List<(Snapshot Snapshot, TransientResource Resource)> FlatDbManagerAddSnapshotCalls { get; } = [];
         public ForwardingNodeRecordBuffer GlobalNodeRecordBuffer { get; } = new(FlatTestHelpers.NewTestBuffer());
 
-        /// <summary>An in-memory snapshot of the main world state that the read-only bundle gathered for its state includes.</summary>
-        public Snapshot? GlobalSnapshot { get; set; }
-
         public TestContext(FlatDbConfig? config = null)
         {
             config ??= new FlatDbConfig();
@@ -73,11 +69,9 @@ public class FlatOverridableWorldScopeTests
                         });
 
                     flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
-                        .Returns(call =>
+                        .Returns(_ =>
                         {
                             SnapshotPooledList snapshotList = new(0);
-                            if (GlobalSnapshot is { } globalSnapshot && globalSnapshot.To == call.Arg<StateId>() && globalSnapshot.TryAcquire())
-                                snapshotList.Add(globalSnapshot);
                             return new ReadOnlySnapshotBundle(snapshotList, Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty(), bufferPin: null);
                         });
 
@@ -319,7 +313,7 @@ public class FlatOverridableWorldScopeTests
     }
 
     [Test]
-    public void RunTreeVisitor_FollowsOverlayAndGlobalSnapshotRecords([Values(1, 4)] int parallelism)
+    public void RunTreeVisitor_FollowsOverlaySnapshotRecords([Values(1, 4)] int parallelism)
     {
         using TestContext ctx = new();
         FlatOverridableWorldScope overridableScope = ctx.OverridableScope;
@@ -341,45 +335,19 @@ public class FlatOverridableWorldScopeTests
             return Build.A.BlockHeader.WithNumber(number).WithStateRoot(scope.RootHash).TestObject;
         }
 
-        TrieStats Visit(BlockHeader block)
-        {
-            TrieStatsCollector collector = new(new TestMemDb(), LimboLogs.Instance);
-            overridableScope.GlobalStateReader.RunTreeVisitor(collector, block, new VisitingOptions { MaxDegreeOfParallelism = parallelism });
-            return collector.Stats;
-        }
-
         // Block 2 adds D beside A and C, so its root points at their leaves from block 1, and only block 1's snapshot holds their storage roots.
-        BlockHeader overlayBlock = CommitAccountsWithSlot(CommitAccountsWithSlot(null, TestItem.AddressA, TestItem.AddressC), TestItem.AddressD);
+        // The bundle under the overlay is empty, so a node read from persistence instead of a record is missing.
+        BlockHeader block2 = CommitAccountsWithSlot(CommitAccountsWithSlot(null, TestItem.AddressA, TestItem.AddressC), TestItem.AddressD);
+        TrieStatsCollector collector = new(new TestMemDb(), LimboLogs.Instance);
 
-        // Written after the overlay pinned the global buffer, so the overlay buffer would take these pointers for its own records.
-        Hash256 addressHash = Keccak.Compute(TestItem.AddressB.Bytes);
-        TestMemDb trieDb = new();
-        StorageTree storageTree = new(new RawScopedTrieStore(trieDb, addressHash), LimboLogs.Instance);
-        storageTree.Set(1, [0x01]);
-        storageTree.Commit();
-        StateTree stateTree = new(new RawScopedTrieStore(trieDb), LimboLogs.Instance);
-        stateTree.Set(TestItem.AddressB, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
-        stateTree.Commit();
-        BlockHeader globalBlock = Build.A.BlockHeader.WithNumber(3).WithStateRoot(stateTree.RootHash).TestObject;
-        using Snapshot globalSnapshot = new ResourcePool(new FlatDbConfig()).CreateSnapshot(
-            StateId.PreGenesis, new StateId(globalBlock), ResourcePool.Usage.MainBlockProcessing, ctx.GlobalNodeRecordBuffer);
-        globalSnapshot.Content.SetStateNodeRlp(ctx.GlobalNodeRecordBuffer, TreePath.Empty, stateTree.GetNodeByPath([])!);
-        globalSnapshot.Content.SetStorageNodeRlp(ctx.GlobalNodeRecordBuffer, addressHash, TreePath.Empty, storageTree.GetNodeByPath([])!);
-        ctx.GlobalSnapshot = globalSnapshot;
-
-        // Persistence holds no node, so a node read from it instead of a record is missing.
-        TrieStats overlayStats = Visit(overlayBlock);
-        TrieStats globalStats = Visit(globalBlock);
+        overridableScope.GlobalStateReader.RunTreeVisitor(collector, block2, new VisitingOptions { MaxDegreeOfParallelism = parallelism });
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(overlayStats.StateBranchCount, Is.EqualTo(1));
-            Assert.That(overlayStats.AccountCount, Is.EqualTo(3));
-            Assert.That(overlayStats.StorageLeafCount, Is.EqualTo(3));
-            Assert.That(overlayStats.MissingNodes, Is.Zero);
-            Assert.That(globalStats.AccountCount, Is.EqualTo(1));
-            Assert.That(globalStats.StorageLeafCount, Is.EqualTo(1));
-            Assert.That(globalStats.MissingNodes, Is.Zero);
+            Assert.That(collector.Stats.StateBranchCount, Is.EqualTo(1));
+            Assert.That(collector.Stats.AccountCount, Is.EqualTo(3));
+            Assert.That(collector.Stats.StorageLeafCount, Is.EqualTo(3));
+            Assert.That(collector.Stats.MissingNodes, Is.Zero);
         }
     }
 
