@@ -14,16 +14,15 @@ namespace Nethermind.Facade.Filters.Topics
         private const int MinTopicsForLookup = 16;
 
         private readonly TopicExpression[] _subexpressions;
-        private readonly HashSet<Hash256AsKey>? _topics;
-        private readonly HashSet<Hash256AsKey>.AlternateLookup<ValueHash256> _topicsByValue;
+        private readonly HashSet<Hash256AsKey>.AlternateLookup<ValueHash256> _topics;
 
         public OrExpression(params TopicExpression[] subexpressions)
         {
             _subexpressions = subexpressions;
-            _topics = BuildTopicsLookup(subexpressions);
-            if (_topics is not null)
+            HashSet<Hash256AsKey>? topics = BuildTopicsLookup(subexpressions);
+            if (topics is not null)
             {
-                _topicsByValue = _topics.GetAlternateLookup<ValueHash256>();
+                _topics = topics.GetAlternateLookup<ValueHash256>();
             }
         }
 
@@ -32,9 +31,9 @@ namespace Nethermind.Facade.Filters.Topics
 
         public override bool Accepts(Hash256 topic)
         {
-            if (_topics is not null)
+            if (_topics.Set is { } topics)
             {
-                return _topics.Contains(topic);
+                return topics.Contains(topic);
             }
 
             for (int i = 0; i < _subexpressions.Length; i++)
@@ -50,9 +49,9 @@ namespace Nethermind.Facade.Filters.Topics
 
         public override bool Accepts(ref Hash256StructRef topic)
         {
-            if (_topics is not null)
+            if (_topics.Set is not null)
             {
-                return _topicsByValue.Contains(new ValueHash256(topic.Bytes));
+                return _topics.Contains(new ValueHash256(topic.Bytes));
             }
 
             for (int i = 0; i < _subexpressions.Length; i++)
