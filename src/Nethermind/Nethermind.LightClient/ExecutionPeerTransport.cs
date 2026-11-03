@@ -245,25 +245,24 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             while (await timer.WaitForNextTickAsync(_stop.Token))
             {
                 int availableSnap = 0;
-                bool slowPeer = false;
                 foreach (PeerInfo peer in pool.InitializedPeers)
                 {
-                    slowPeer |= IsSlow(peer);
-                    if (!IsCooling(peer, AllocationContexts.Snap) && !IsSlow(peer)
+                    if (!IsCooling(peer, AllocationContexts.Snap) && !IsSlow(peer, AllocationContexts.Snap)
                         && peer.SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out _)) availableSnap++;
                 }
-                if (availableSnap >= 8 && !slowPeer || pool.InitializedPeersCount < 30) continue;
+                if (availableSnap >= 8 || pool.InitializedPeersCount < 30) continue;
                 PeerInfo? victim = null;
                 foreach (PeerInfo peer in pool.InitializedPeers)
                 {
                     bool snap = peer.SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out _);
-                    if (peer.SyncPeer.IsPriority || !IsSlow(peer) && (availableSnap >= 8 || snap && !IsCooling(peer, AllocationContexts.Snap))) continue;
+                    if (peer.SyncPeer.IsPriority || snap && !IsCooling(peer, AllocationContexts.Snap)
+                        && !IsSlow(peer, AllocationContexts.Snap)) continue;
                     if (!snap)
                     {
                         victim = peer;
                         break;
                     }
-                    if (victim is null || PeerLatency(peer) > PeerLatency(victim)) victim = peer;
+                    if (victim is null || PeerLatency(peer, AllocationContexts.Snap) > PeerLatency(victim, AllocationContexts.Snap)) victim = peer;
                 }
                 victim?.SyncPeer.Disconnect(DisconnectReason.DropWorstPeer, "Reserving light-client connection capacity for SNAP peers");
             }
@@ -445,7 +444,37 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         ISyncPeerPool pool = _services.Resolve<ISyncPeerPool>();
         try
         {
-            return await HostedStorageDownload.DownloadAsync(account.StorageRoot, async (start, token) =>
+            return await DownloadFromAsync(null);
+        }
+        catch (InvalidDataException exception)
+        {
+            if (suppliers.Count == 1)
+            {
+                PeerInfo supplier = suppliers.Single();
+                RecordPeerFailure(pool, AllocationContexts.Snap, supplier, exception);
+            }
+        }
+
+        foreach (PeerInfo supplier in pool.InitializedPeers.ToArray())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (IsCooling(supplier, AllocationContexts.Snap)
+                || !supplier.SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out _)) continue;
+            try { return await DownloadFromAsync(supplier); }
+            catch (InvalidDataException exception)
+            {
+                RecordPeerFailure(pool, AllocationContexts.Snap, supplier, exception);
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested && !_stop.IsCancellationRequested
+                && exception is ExecutionDataUnavailableException or NotSupportedException or RpcException { Code: -32000 })
+            {
+                if (_logger.IsDebug) _logger.Debug($"Storage snapshot supplier is unavailable: {exception.Message}");
+            }
+        }
+        throw new ExecutionDataUnavailableException("No execution peer supplied a complete authenticated storage snapshot.");
+
+        Task<IReadOnlyDictionary<ValueHash256, UInt256>> DownloadFromAsync(PeerInfo? pinned) =>
+            HostedStorageDownload.DownloadAsync(account.StorageRoot, async (start, token) =>
             {
                 (HostedStorageDownload.Page page, PeerInfo? supplier) = await RequestExecutionAsync(AllocationContexts.Snap,
                     async (peer, peerToken) =>
@@ -462,22 +491,15 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                         HostedStorageDownload.Page verified = HostedStorageDownload.VerifyPage(accountPath, start, response, _logManager);
                         PeerInfo? current = pool.GetPeer(peer.Node);
                         return (verified, current is not null && ReferenceEquals(current.SyncPeer, peer) ? current : null);
-                    }, token, static peer => peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out _));
-                suppliers.RemoveWhere(previous => !ReferenceEquals(pool.GetPeer(previous.SyncPeer.Node), previous));
-                if (supplier is not null) suppliers.Add(supplier);
+                    }, token, peer => (pinned is null || ReferenceEquals(pinned.SyncPeer, peer))
+                        && peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out _));
+                if (pinned is null)
+                {
+                    suppliers.RemoveWhere(previous => !ReferenceEquals(pool.GetPeer(previous.SyncPeer.Node), previous));
+                    if (supplier is not null) suppliers.Add(supplier);
+                }
                 return page;
             }, cancellationToken);
-        }
-        catch (InvalidDataException)
-        {
-            foreach (PeerInfo supplier in suppliers)
-            {
-                if (!ReferenceEquals(pool.GetPeer(supplier.SyncPeer.Node), supplier)) continue;
-                CoolPeer(AllocationContexts.Snap, supplier, TimeSpan.FromMinutes(1));
-                pool.ReportWeakPeer(supplier, AllocationContexts.Snap);
-            }
-            throw;
-        }
     }
 
     public async Task<ExecutionAccountProof> GetProofAsync(VerifiedHead head, Address address, UInt256[] storageKeys,
@@ -693,25 +715,30 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                 int count = Math.Min(128, hashes.Length - offset);
                 using IOwnedReadOnlyList<BlockHeader>? headers = await peer.GetBlockHeaders(firstNumber + (ulong)offset,
                     count, 0, token);
-                if (headers is null || headers.Count < count)
-                    throw new ExecutionDataUnavailableException("Execution peer does not have the complete ancestor header page.");
+                if (headers is null || headers.Count == 0)
+                    throw new ExecutionDataUnavailableException("Execution peer does not have the next ancestor header page.");
                 if (headers.Count > count)
                     throw new InvalidDataException("Execution peer supplied too many ancestor headers.");
-                for (int i = 0; i < count; i++)
+                for (int i = 0; i < headers.Count; i++)
                 {
                     BlockHeader header = headers[i];
                     int index = offset + i;
-                    if (header.Hash is null || header.Number != firstNumber + (ulong)index
-                        || (index > 0 && header.ParentHash != hashes[index - 1]))
+                    if (header?.Hash is null)
+                        throw new InvalidDataException("Execution peer returned an invalid ancestor header.");
+                    VerifiedLogHeaders.Verify(header, firstNumber + (ulong)index, header.Hash);
+                    if (index > 0 && header.ParentHash != hashes[index - 1])
+                    {
+                        if (i == 0) throw new ExecutionDataUnavailableException("Execution peer changed its canonical chain between ancestor pages.");
                         throw new InvalidDataException("Execution peer returned an inconsistent ancestor header chain.");
+                    }
                     hashes[index] = header.Hash;
                 }
-                offset += count;
+                offset += headers.Count;
             }
             if (hashes[^1] != head.BlockHash)
-                throw new InvalidDataException("Execution peer returned an ancestor chain outside the verified head.");
+                throw new ExecutionDataUnavailableException("Execution peer's canonical ancestor chain does not reach the selected head.");
             return hashes;
-        }, cancellationToken, failureMessage: "No execution peer supplied an authenticated header chain.", trackLatency: false);
+        }, cancellationToken, failureMessage: "No execution peer supplied an authenticated header chain.");
     }
 
     public async Task<BlockHeader> GetCanonicalHeaderAsync(VerifiedHead head, ulong number, CancellationToken cancellationToken)
@@ -749,8 +776,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     }
 
     private Task<BlockHeader[]> FetchLogHeaderPageAsync(BlockHeader cursor, int count, CancellationToken cancellationToken) =>
-        RequestExecutionAsync(AllocationContexts.Headers, (peer, token) => ReadLogHeaderPageAsync(peer, cursor, count, token), cancellationToken,
-            trackLatency: false);
+        RequestExecutionAsync(AllocationContexts.Headers, (peer, token) => ReadLogHeaderPageAsync(peer, cursor, count, token), cancellationToken);
 
     private VerifiedHeaderHistory.PageRequest[] BeginLogHeaderPages(ulong number, int count, CancellationToken cancellationToken)
     {
@@ -812,9 +838,9 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                 {
                     BlockHeader[] headers = await ReadUnverifiedLogHeaderPageAsync(peer, pageNumber, pageCount,
                         cancellation, Prefix(peer, batch));
-                    VerifiedHeaderHistory.VerifyPage(cursor, pageCount, headers);
+                    VerifyLogHeaderPage(cursor, pageCount, headers);
                     return headers;
-                }, token, trackLatency: false);
+                }, token);
             }
 
             async Task<BlockHeader[]> AuthenticateAsync(BlockHeader cursor, CancellationToken token)
@@ -849,7 +875,11 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                 deadline.Token.ThrowIfCancellationRequested();
                 PeerInfo supplier = page.Supplier;
                 bool CanPrefer(PeerInfo peer) => IsCurrent(peer) && !IsCooling(peer, AllocationContexts.Headers);
-                try { VerifiedHeaderHistory.VerifyPage(cursor, pageCount, headers); }
+                try { VerifyLogHeaderPage(cursor, pageCount, headers); }
+                catch (ExecutionDataUnavailableException)
+                {
+                    return await ReadLeadingAsync(cursor, deadline.Token);
+                }
                 catch (InvalidDataException exception)
                 {
                     deadline.Token.ThrowIfCancellationRequested();
@@ -879,8 +909,21 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         CancellationToken cancellationToken)
     {
         BlockHeader[] result = await ReadUnverifiedLogHeaderPageAsync(peer, cursor.Number, count, cancellationToken);
-        VerifiedHeaderHistory.VerifyPage(cursor, count, result);
+        VerifyLogHeaderPage(cursor, count, result);
         return result;
+    }
+
+    private static void VerifyLogHeaderPage(BlockHeader cursor, int count, BlockHeader[] headers)
+    {
+        if (headers.Length != 0 && headers[^1]?.Hash is { } last && last != cursor.ParentHash)
+        {
+            // Numbered replies may follow another internally consistent canonical branch.
+            BlockHeader branch = cursor.Clone();
+            branch.ParentHash = last;
+            VerifiedHeaderHistory.VerifyPage(branch, count, headers);
+            throw new ExecutionDataUnavailableException("Execution peer's canonical log page does not reach the selected head.");
+        }
+        VerifiedHeaderHistory.VerifyPage(cursor, count, headers);
     }
 
     private static async Task<BlockHeader[]> ReadUnverifiedLogHeaderPageAsync(ISyncPeer peer, ulong number, int count,
@@ -901,9 +944,27 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                 throw new ExecutionDataUnavailableException("Execution peer does not have the requested log header page.");
             if (headers.Count > requested) throw new InvalidDataException("Execution peer supplied too many log headers.");
             CopyLogHeaders(headers, result.AsSpan(received), first + (ulong)received);
+            if (received > 0 && result[received].ParentHash != result[received - 1].Hash)
+            {
+                VerifySegment(result.AsSpan(0, received), first);
+                VerifySegment(result.AsSpan(received, headers.Count), first + (ulong)received);
+                throw new ExecutionDataUnavailableException("Execution peer changed its canonical chain between log header pages.");
+            }
             received += headers.Count;
         }
         return result;
+
+        static void VerifySegment(ReadOnlySpan<BlockHeader> segment, ulong firstNumber)
+        {
+            for (int i = 0; i < segment.Length; i++)
+            {
+                BlockHeader header = segment[i];
+                if (header?.Hash is not { } hash) throw new InvalidDataException("Execution peer supplied an invalid log header.");
+                VerifiedLogHeaders.Verify(header, firstNumber + (ulong)i, hash);
+                if (i > 0 && header.ParentHash != segment[i - 1].Hash)
+                    throw new InvalidDataException("Execution peer supplied an inconsistent log header segment.");
+            }
+        }
     }
 
     private static void CopyLogHeaders(IOwnedReadOnlyList<BlockHeader> headers, Span<BlockHeader> result, ulong first)
@@ -1170,9 +1231,9 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 
     private Task<T> RequestExecutionAsync<T>(AllocationContexts context, Func<ISyncPeer, CancellationToken, Task<T>> request,
         CancellationToken cancellationToken, Func<ISyncPeer, bool>? canServe = null,
-        string failureMessage = "No execution peer supplied authenticated block data.", HeaderPrefetch? prefetch = null, bool trackLatency = true) =>
+        string failureMessage = "No execution peer supplied authenticated block data.", HeaderPrefetch? prefetch = null) =>
         RequestFromPeersAsync(context, static peer => peer, request, cancellationToken, canServe, failureMessage,
-            prefetch: prefetch, trackLatency: trackLatency);
+            prefetch: prefetch);
 
     private Task<T> RequestAsync<T>(Func<ISnapSyncPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken,
         string operation = "proof") =>
@@ -1183,9 +1244,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     private async Task<T> RequestFromPeersAsync<TPeer, T>(AllocationContexts context, Func<ISyncPeer, TPeer?> selectPeer,
         Func<TPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken,
         Func<ISyncPeer, bool>? canServe, string failureMessage, string? operation = null,
-        HeaderPrefetch? prefetch = null, bool trackLatency = true) where TPeer : class
+        HeaderPrefetch? prefetch = null) where TPeer : class
     {
-        trackLatency &= prefetch is null;
         bool trace = _logger.IsDebug;
         using Activity? diagnostic = trace
             ? new Activity("LightClientPeerRequest").SetIdFormat(ActivityIdFormat.W3C).Start() : null;
@@ -1328,12 +1388,13 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                     foreach ((PeerInfo losingPeer, Task<(T Result, Exception? Error)> pendingRequest) in pending)
                     {
                         (_, Exception? error) = await pendingRequest;
-                        if (trackLatency && selected && error is OperationCanceledException && IsCurrent(losingPeer)
+                        if (prefetch is null && selected && ReferenceEquals(losingPeer, preferred)
+                            && error is OperationCanceledException && IsCurrent(losingPeer)
                             && !deadline.IsCancellationRequested)
                         {
-                            int losses = _peerPerformance.GetValue(losingPeer, static _ => new()).HedgeLosses
-                                .AddOrUpdate(context, 1, static (_, count) => count + 1);
-                            if (losses >= 3) CoolPeer(context, losingPeer, TimeSpan.FromSeconds(15));
+                            int losses = CountRecentSample(_peerPerformance.GetValue(losingPeer, static _ => new()).HedgeLosses, context);
+                            if (losses >= 3)
+                                _preferredPeers.TryRemove(new KeyValuePair<AllocationContexts, PeerInfo>(context, losingPeer));
                         }
                         else if (selected && error is not (null or OperationCanceledException or ExecutionDataUnavailableException or ConcurrencyLimitReachedException)
                             && !deadline.IsCancellationRequested) RecordPeerFailure(pool, context, losingPeer, error);
@@ -1363,14 +1424,23 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                     using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(roundToken, peerTimeout.Token);
                     T result = await request(peer, attempt.Token);
                     attempt.Token.ThrowIfCancellationRequested();
-                    if (trackLatency)
+                    if (prefetch is null)
                     {
                         TimeSpan elapsed = _clock.GetElapsedTime(attemptStart);
                         _peerStats.ReportTransferSpeedEvent(info.SyncPeer.Node, TransferSpeedType.Latency, (long)elapsed.TotalMilliseconds);
                         PeerPerformance performance = _peerPerformance.GetValue(info, static _ => new());
-                        Volatile.Write(ref performance.LatencyMilliseconds, (long)elapsed.TotalMilliseconds);
+                        performance.Latencies[context] = (long)elapsed.TotalMilliseconds;
                         performance.HedgeLosses.TryRemove(context, out _);
-                        if (elapsed >= TimeSpan.FromMilliseconds(SlowResponseMilliseconds)) CoolPeer(context, info, TimeSpan.FromSeconds(15));
+                        if (context == AllocationContexts.Headers && result is BlockHeader
+                            || context == AllocationContexts.Snap && operation is not null && result is not byte[])
+                        {
+                            if (elapsed >= TimeSpan.FromMilliseconds(SlowResponseMilliseconds))
+                            {
+                                if (CountRecentSample(performance.SlowResponses, context) >= 3)
+                                    _preferredPeers.TryRemove(new KeyValuePair<AllocationContexts, PeerInfo>(context, info));
+                            }
+                            else performance.SlowResponses.TryRemove(context, out _);
+                        }
                     }
                     outcome = "completed";
                     return (result, null);
@@ -1427,26 +1497,36 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 
     private void PromotePeer(AllocationContexts context, PeerInfo supplier, Func<PeerInfo, bool> canPrefer)
     {
-        while (canPrefer(supplier))
+        while (canPrefer(supplier) && !IsSlow(supplier, context))
         {
             if (_preferredPeers.TryAdd(context, supplier)) break;
             if (_preferredPeers.TryGetValue(context, out PeerInfo? current)
-                && (canPrefer(current) && PeerLatency(current) <= PeerLatency(supplier)
+                && (canPrefer(current) && !IsSlow(current, context) && PeerLatency(current, context) <= PeerLatency(supplier, context)
                     || _preferredPeers.TryUpdate(context, supplier, current))) break;
         }
     }
 
     private sealed class PeerPerformance
     {
-        internal readonly ConcurrentDictionary<AllocationContexts, int> HedgeLosses = new();
-        internal long LatencyMilliseconds = -1;
+        internal readonly ConcurrentDictionary<AllocationContexts, (long Timestamp, int Count)> HedgeLosses = new();
+        internal readonly ConcurrentDictionary<AllocationContexts, (long Timestamp, int Count)> SlowResponses = new();
+        internal readonly ConcurrentDictionary<AllocationContexts, long> Latencies = new();
     }
 
-    private bool IsSlow(PeerInfo peer) => _peerPerformance.TryGetValue(peer, out PeerPerformance? performance)
-        && Volatile.Read(ref performance.LatencyMilliseconds) >= SlowResponseMilliseconds;
+    private int CountRecentSample(ConcurrentDictionary<AllocationContexts, (long Timestamp, int Count)> samples, AllocationContexts context)
+    {
+        long now = _clock.GetTimestamp();
+        return samples.AddOrUpdate(context, (now, 1), (_, previous) =>
+            _clock.GetElapsedTime(previous.Timestamp, now) < TimeSpan.FromMinutes(1)
+                ? (previous.Timestamp, Math.Min(3, previous.Count + 1)) : (now, 1)).Count;
+    }
 
-    private long PeerLatency(PeerInfo peer) => _peerPerformance.TryGetValue(peer, out PeerPerformance? performance)
-        ? Volatile.Read(ref performance.LatencyMilliseconds) : long.MaxValue;
+    private bool IsSlow(PeerInfo peer, AllocationContexts context) => _peerPerformance.TryGetValue(peer, out PeerPerformance? performance)
+        && performance.SlowResponses.TryGetValue(context, out (long Timestamp, int Count) sample)
+        && sample.Count >= 3 && _clock.GetElapsedTime(sample.Timestamp) < TimeSpan.FromMinutes(1);
+
+    private long PeerLatency(PeerInfo peer, AllocationContexts context) => _peerPerformance.TryGetValue(peer, out PeerPerformance? performance)
+        && performance.Latencies.TryGetValue(context, out long latency) ? latency : long.MaxValue;
 
     private void RecordPeerFailure(ISyncPeerPool pool, AllocationContexts context, PeerInfo supplier, Exception error)
     {

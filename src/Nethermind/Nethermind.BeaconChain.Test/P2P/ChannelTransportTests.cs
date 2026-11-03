@@ -42,44 +42,75 @@ public class ChannelTransportTests
     }
 
     [Test]
-    public void Production_stack_offers_only_yamux_for_tcp([Values] bool quic)
+    public void Production_stack_offers_mplex_only_when_opted_in([Values] bool quic, [Values] bool mplex)
     {
-        using ServiceProvider services = new ServiceCollection().AddLibp2p(builder => quic ? builder.WithQuic() : builder).BuildServiceProvider();
+        using ServiceProvider services = new ServiceCollection().AddLibp2p(builder =>
+        {
+            if (quic) builder.WithQuic();
+            if (mplex) builder.WithMplex();
+            return builder;
+        }).BuildServiceProvider();
         services.GetRequiredService<IPeerFactory>();
         MultiplexerSettings multiplexers = services.GetRequiredService<MultiplexerSettings>();
-        Assert.That(multiplexers.Multiplexers.Select(protocol => protocol.Id), Is.EqualTo(new[] { "/yamux/1.0.0" }));
+        string[] expected = mplex ? ["/yamux/1.0.0", "/mplex/6.7.0"] : ["/yamux/1.0.0"];
+        Assert.That(multiplexers.Multiplexers.Select(protocol => protocol.Id), Is.EqualTo(expected));
         IProtocolStackSettings stack = services.GetRequiredService<IProtocolStackSettings>();
         Assert.That(stack.Protocols!.Values.Any(protocols => protocols.Select(protocol => protocol.Protocol.Id)
-            .SequenceEqual(new[] { "/yamux/1.0.0" })), Is.True);
+            .SequenceEqual(expected)), Is.True);
         AssertMultistreamSelectors(services);
     }
 
     public enum ApplicationTransport
     {
         Yamux,
+        Mplex,
         Quic,
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Peer_disposal_releases_the_listener_without_cancelling_its_start_token(
+        [Values] ApplicationTransport transport, CancellationToken token)
+    {
+        RequireSupportedTransport(transport);
+        await using ServiceProvider services = new ServiceCollection().AddLibp2p(builder => ConfigureTransport(builder, transport))
+            .BuildServiceProvider();
+        IPeerFactory factory = services.GetRequiredService<IPeerFactory>();
+        await using ILocalPeer first = factory.Create();
+        string endpoint = transport == ApplicationTransport.Quic
+            ? $"/ip4/127.0.0.1/udp/{PeerSessionNodes.FreeUdpPort()}/quic-v1" : "/ip4/127.0.0.1/tcp/0";
+        await first.StartListenAsync([Multiaddress.Decode(endpoint)], CancellationToken.None).WaitAsync(token);
+        Multiaddress bound = Multiaddress.Decode(first.ListenAddresses.Single().ToString().Split("/p2p/")[0]);
+
+        await first.DisposeAsync();
+
+        Assert.That(first.ListenAddresses, Is.Empty);
+        await using ILocalPeer next = factory.Create();
+        await next.StartListenAsync([bound], token);
+        Assert.That(next.ListenAddresses, Has.Count.EqualTo(1));
     }
 
     [Test]
     [CancelAfter(30_000)]
     public async Task Unsupported_typed_request_fails_promptly_and_preserves_the_session([Values] ApplicationTransport transport, CancellationToken token)
     {
-        if (transport == ApplicationTransport.Quic)
-        {
-            if (OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
-                Assert.That(QuicListener.IsSupported && QuicConnection.IsSupported, Is.True, "Windows CI must exercise QUIC with the bundled MsQuic runtime.");
-            if (!QuicListener.IsSupported || !QuicConnection.IsSupported) Assert.Ignore("MsQuic is unavailable on this runner.");
-        }
+        RequireSupportedTransport(transport);
         await using ServiceProvider clientServices = new ServiceCollection().AddLibp2p(builder =>
-            (transport == ApplicationTransport.Quic ? builder.WithQuic() : builder)
+            ConfigureTransport(builder, transport)
                 .AddProtocol<TypedRequestProtocol>().AddProtocol<UnsupportedTypedProtocol>()).BuildServiceProvider();
         await using ServiceProvider serverServices = new ServiceCollection().AddLibp2p(builder =>
-            (transport == ApplicationTransport.Quic ? builder.WithQuic() : builder)
+            ConfigureTransport(builder, transport)
                 .AddProtocol<TypedRequestProtocol>()).BuildServiceProvider();
         await using ILocalPeer client = clientServices.GetRequiredService<IPeerFactory>().Create();
         await using ILocalPeer server = serverServices.GetRequiredService<IPeerFactory>().Create();
         AssertMultistreamSelectors(clientServices);
         AssertMultistreamSelectors(serverServices);
+        if (transport == ApplicationTransport.Mplex)
+        {
+            IProtocolStackSettings stack = serverServices.GetRequiredService<IProtocolStackSettings>();
+            foreach (ProtocolRef selector in stack.Protocols!.Keys.ToArray())
+                stack.Protocols[selector] = stack.Protocols[selector].Where(protocol => protocol.Protocol is not YamuxProtocol).ToArray();
+        }
         string address = transport == ApplicationTransport.Quic
             ? $"/ip4/127.0.0.1/udp/{PeerSessionNodes.FreeUdpPort()}/quic-v1" : "/ip4/127.0.0.1/tcp/0";
         await server.StartListenAsync([Multiaddress.Decode(address)], token);
@@ -89,8 +120,7 @@ public class ChannelTransportTests
         Task<ulong> refused = session.DialAsync<UnsupportedTypedProtocol, ulong, ulong>(7, request.Token);
         try
         {
-            Assert.That(async () => await refused.WaitAsync(TimeSpan.FromSeconds(2), token), Throws.TypeOf<EndOfStreamException>());
-            Assert.That(PeerFailureClassifier.Classify(refused.Exception!), Is.EqualTo(PeerFailureReason.RequestFailed));
+            Assert.That(async () => await refused.WaitAsync(TimeSpan.FromSeconds(2), token), Throws.TypeOf<ChannelClosedException>());
             Assert.That(session.Closed.IsCancellationRequested, Is.False);
             Assert.That(request.IsCancellationRequested, Is.False, "protocol rejection must complete before the caller's deadline");
         }
@@ -104,6 +134,21 @@ public class ChannelTransportTests
         await session.DialAsync<PingProtocol>(token);
     }
 
+    private static Libp2pStackBuilder ConfigureTransport(Libp2pStackBuilder builder, ApplicationTransport transport) => transport switch
+    {
+        ApplicationTransport.Quic => builder.WithQuic(),
+        ApplicationTransport.Mplex => builder.WithMplex(),
+        _ => builder,
+    };
+
+    private static void RequireSupportedTransport(ApplicationTransport transport)
+    {
+        if (transport != ApplicationTransport.Quic) return;
+        if (OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+            Assert.That(QuicListener.IsSupported && QuicConnection.IsSupported, Is.True, "Windows CI must exercise QUIC with the bundled MsQuic runtime.");
+        if (!QuicListener.IsSupported || !QuicConnection.IsSupported) Assert.Ignore("MsQuic is unavailable on this runner.");
+    }
+
     private static void AssertMultistreamSelectors(ServiceProvider services)
     {
         IProtocolStackSettings stack = services.GetRequiredService<IProtocolStackSettings>();
@@ -112,20 +157,26 @@ public class ChannelTransportTests
         using IDisposable assertions = Assert.EnterMultipleScope();
         Assert.That(selectors, Is.Not.Empty);
         Assert.That(selectors.Select(static selector => selector.GetType()), Is.All.EqualTo(typeof(MultistreamProtocol)));
-        Assert.That(typeof(MultistreamProtocol).Assembly, Is.SameAs(typeof(Libp2pStackBuilder).Assembly));
+        Assert.That(typeof(MultistreamProtocol).Assembly.GetName().Name, Is.EqualTo("Nethermind.Libp2p.Protocols.Multistream"));
     }
 
     private sealed class TypedRequestProtocol : ISessionProtocol<ulong, ulong>
     {
+        private const int PayloadLength = 40_000;
         public string Id => "/test/multistream/typed/1";
         public async Task<ulong> DialAsync(IChannel channel, ISessionContext context, ulong request)
         {
-            await channel.WriteAsync(new ReadOnlySequence<byte>(new[] { checked((byte)request) })).OrThrow();
-            return (await channel.ReadAsync(1).OrThrow()).ToArray()[0];
+            byte first = checked((byte)request);
+            byte[] payload = new byte[PayloadLength];
+            for (int i = 0; i < payload.Length; i++) payload[i] = (byte)((first + i) & byte.MaxValue);
+            await channel.WriteAsync(new ReadOnlySequence<byte>(payload)).OrThrow();
+            byte[] response = (await channel.ReadAsync(PayloadLength).OrThrow()).ToArray();
+            Assert.That(response, Is.EqualTo(payload));
+            return response[0];
         }
         public async Task ListenAsync(IChannel channel, ISessionContext context)
         {
-            ReadOnlySequence<byte> request = await channel.ReadAsync(1).OrThrow();
+            ReadOnlySequence<byte> request = await channel.ReadAsync(PayloadLength).OrThrow();
             await channel.WriteAsync(request).OrThrow();
         }
     }
@@ -177,7 +228,7 @@ public class ChannelTransportTests
             else
             {
                 Assert.That(completion.Task.IsFaulted, Is.True, "negotiation rejection must fail the pending request before its caller times out");
-                Assert.That(completion.Task.Exception!.InnerException, Is.TypeOf<EndOfStreamException>());
+                Assert.That(completion.Task.Exception!.InnerException, Is.TypeOf<ChannelClosedException>());
             }
             await context.DidNotReceiveWithAnyArgs().Upgrade(default!, default(IProtocol)!);
         }

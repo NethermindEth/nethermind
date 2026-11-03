@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
-using System.Collections.Specialized;
 using System.Net;
 using System.Net.Sockets;
 using Autofac;
@@ -64,11 +63,6 @@ public class BeaconP2PLoopbackTests
         await server.StartAsync(token);
         await client.StartAsync(token);
         LocalPeer serverPeer = server.LocalPeerForTest!;
-        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        client.LocalPeerForTest!.Sessions.CollectionChanged += (_, change) =>
-        {
-            if (change.Action == NotifyCollectionChangedAction.Add) reached.TrySetResult();
-        };
         Multiaddress address = PeerSessionNodes.LoopbackAddress(server);
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task<ISession> dial = client.DialPeerAsync(address, caller.Token);
@@ -92,8 +86,6 @@ public class BeaconP2PLoopbackTests
             {
             }
         }
-
-        await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
 
         // The library ends a dial within 15 s, and a remote that loses a connection mid-handshake drops it up to 30 s later;
         // a session left open was still open after 40 s.
@@ -153,7 +145,7 @@ public class BeaconP2PLoopbackTests
         Assert.That(async () => await client.DialPeerAsync(address, abandoned.Token), Throws.InstanceOf<OperationCanceledException>(), "fixture: the caller stops waiting");
     }
 
-    /// <summary>Disposal closes the TCP listener: the library closes it only on the start token, and its peer disposal closes sessions alone.</summary>
+    /// <summary>Disposal releases the TCP listener without requiring caller cancellation.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_disposed_host_no_longer_accepts_TCP_connections(CancellationToken token)

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
-using Microsoft.Extensions.Caching.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Collections;
@@ -24,7 +23,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
 {
     private const int LogPrefetchLimit = 4;
     private readonly EthereumEcdsa _ecdsa = new(chainId);
-    private readonly MemoryCache _transactionIndex = new(new MemoryCacheOptions { SizeLimit = 32_768 });
+    private readonly VerifiedMemoryCache _transactionIndex = new();
 
     internal JsonElement GetHeader(BlockHeader header)
     {
@@ -233,6 +232,8 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
     internal async Task<JsonElement?> FindTransactionAsync(BlockHeader header, Hash256 hash, bool receipt,
         CancellationToken cancellationToken)
     {
+        if (_transactionIndex.TryGetValue((header.Hash!, "transactions"), out HashSet<Hash256>? indexed) && !indexed!.Contains(hash))
+            return null;
         Block block = await source.GetBlockAsync(header, cancellationToken);
         Index(block);
         for (int i = 0; i < block.Transactions.Length; i++)
@@ -257,16 +258,15 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
 
     private void Index(Block block)
     {
+        HashSet<Hash256> hashes = [];
         for (int i = 0; i < block.Transactions.Length; i++)
         {
             Transaction transaction = block.Transactions[i];
             transaction.Hash ??= transaction.CalculateHash();
-            _transactionIndex.Set(transaction.Hash!, block.Header, new MemoryCacheEntryOptions
-            {
-                Size = 1,
-                SlidingExpiration = TimeSpan.FromMinutes(20),
-            });
+            hashes.Add(transaction.Hash!);
+            _transactionIndex.Set(transaction.Hash!, block.Header, 512);
         }
+        _transactionIndex.Set((block.Hash!, "transactions"), hashes, 1024L + 128L * hashes.Count);
     }
 
     internal async Task<string> SendRawTransactionAsync(VerifiedHead head, byte[] raw, VerifiedCall? frameVerifier,
@@ -449,7 +449,10 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
             if (transaction.CreatesTopLevelContract)
                 receipt.ContractAddress = ContractAddress.From(transaction.SenderAddress, (Nethermind.Int256.UInt256)transaction.Nonce);
             result[i] = new ReceiptForRpc(transaction.Hash!, receipt, block.Timestamp,
-                transaction.GetGasInfo(releaseSpec, block.Header), logIndex);
+                transaction.GetGasInfo(releaseSpec, block.Header), logIndex)
+            {
+                LogsBloom = releaseSpec.IsEip7668Enabled ? Bloom.ZeroLength : receipt.Bloom,
+            };
             previousGas = receipt.GasUsedTotal;
             logIndex = checked(logIndex + (receipt.Logs?.Length ?? 0));
         }

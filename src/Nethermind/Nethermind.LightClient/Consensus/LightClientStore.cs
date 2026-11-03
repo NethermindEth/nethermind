@@ -11,7 +11,12 @@ using Nethermind.Serialization.Ssz;
 namespace Nethermind.LightClient.Consensus;
 
 internal sealed class IrrelevantLightClientUpdateException() : IOException("Update is not relevant to the current sync period.");
-internal sealed class LightClientLocalStateException(string message) : IOException(message);
+internal class LightClientLocalStateException(string message) : IOException(message);
+internal sealed class LightClientFutureSlotException(ulong signatureSlot)
+    : LightClientLocalStateException("Authenticated update is waiting for its signature slot.")
+{
+    internal ulong SignatureSlot { get; } = signatureSlot;
+}
 
 /// <summary>Authenticates finalized and optimistic headers from a trusted beacon checkpoint.</summary>
 /// <remarks>
@@ -212,6 +217,9 @@ internal sealed class LightClientStore
         ulong storePeriod = PeriodAtSlot(snapshot.SyncHeader.Beacon!.Slot);
         ulong signaturePeriod = PeriodAtSlot(signatureSlot);
         ulong attestedPeriod = PeriodAtSlot(attestedSlot);
+        Require(signaturePeriod <= PeriodAtSlot(currentSlot) ||
+            signatureSlot > currentSlot && signatureSlot - currentSlot == 1,
+            "Update signature period is implausibly ahead of the local clock.");
         if (signaturePeriod < storePeriod) throw new IrrelevantLightClientUpdateException();
         RequireLocal(signaturePeriod == storePeriod || signaturePeriod == storePeriod + 1 && snapshot.NextCommittee is not null,
             "Update skips a known sync committee period.");
@@ -256,6 +264,8 @@ internal sealed class LightClientStore
 
         SyncCommittee signingCommittee = signaturePeriod == storePeriod ? snapshot.CurrentCommittee : snapshot.NextCommittee!;
         int participants = VerifySignature(signingCommittee, aggregate, signatureSlot, attested.Beacon);
+        if (currentSlot < signatureSlot && signatureSlot - currentSlot == 1 && attestedSlot == currentSlot)
+            throw new LightClientFutureSlotException(signatureSlot);
         RequireLocal(currentSlot >= signatureSlot, "Update signature slot is ahead of the local clock.");
         LightClientUpdate candidate = CloneUpdate(new LightClientUpdate
         {

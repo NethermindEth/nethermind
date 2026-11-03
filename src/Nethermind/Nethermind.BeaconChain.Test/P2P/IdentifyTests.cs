@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
-using System.Collections.Concurrent;
+using System.Collections.Specialized;
+using System.Diagnostics;
+using System.IO;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using Google.Protobuf;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
@@ -418,12 +422,12 @@ public class IdentifyTests
     public async Task<bool> A_failed_dial_returns_only_a_raced_session_whose_identify_completes(TaskStatus? slotStatus, TaskStatus? laterStatus)
     {
         ISession session = Substitute.For<ISession>();
-        ConcurrentDictionary<ISession, TaskCompletionSource<BeaconP2P.SessionInfo>> sessionInfo = new();
+        ConditionalWeakTable<ISession, TaskCompletionSource<BeaconP2P.SessionInfo>> sessionInfo = [];
         TaskCompletionSource<BeaconP2P.SessionInfo> slot = new(TaskCreationOptions.RunContinuationsAsynchronously);
         if (slotStatus is { } status)
         {
             Complete(slot, status);
-            sessionInfo[session] = slot;
+            sessionInfo.Add(session, slot);
         }
 
         Task<ISession?> raced = BeaconP2P.WhenIdentifiedAsync(sessionInfo, session, CancellationToken.None);
@@ -444,6 +448,99 @@ public class IdentifyTests
             else if (status == TaskStatus.RanToCompletion)
                 slot.SetResult(new BeaconP2P.SessionInfo(PeerDirection.Inbound, ServerAgent));
         }
+    }
+
+    [Test]
+    public async Task Identify_completes_before_publication_and_publication_reuses_its_slot([Values] bool isDialer)
+    {
+        await using BeaconP2P host = PeerSessionNodes.Create().P2P;
+        await using LocalPeer peer = CreateBeaconLocalPeer(host);
+        TaskCompletionSource<IdentifyResult> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ISession session = new UnpublishedSession(answer.Task);
+        IdentifyResult expected = new() { PeerId = session.RemotePeerId, AgentVersion = ServerAgent };
+        Task identifying = IdentifyAsync(peer, session, isDialer);
+        try
+        {
+            Task<BeaconP2P.SessionInfo> pending = host.GetSessionInfoAsync(session, CancellationToken.None);
+            Assert.That(pending.IsCompleted, Is.False, "identify must create its slot before the library publishes the candidate");
+            answer.SetResult(expected);
+            await identifying.WaitAsync(TimeSpan.FromSeconds(2));
+            BeaconP2P.SessionInfo identified = await pending.WaitAsync(TimeSpan.FromSeconds(2));
+            ConditionalWeakTable<ISession, TaskCompletionSource<BeaconP2P.SessionInfo>> slots =
+                (ConditionalWeakTable<ISession, TaskCompletionSource<BeaconP2P.SessionInfo>>)typeof(BeaconP2P)
+                    .GetField("_sessionInfo", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
+            Assert.That(slots.TryGetValue(session, out TaskCompletionSource<BeaconP2P.SessionInfo>? before), Is.True);
+
+            typeof(BeaconP2P).GetMethod("OnSessionsChanged", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(host, [null, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, session)]);
+
+            BeaconP2P.SessionInfo published = await host.GetSessionInfoAsync(session, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(slots.TryGetValue(session, out TaskCompletionSource<BeaconP2P.SessionInfo>? after), Is.True);
+                Assert.That(after, Is.SameAs(before));
+                Assert.That(published, Is.EqualTo(identified));
+                Assert.That(published.Direction, Is.EqualTo(isDialer ? PeerDirection.Outbound : PeerDirection.Inbound));
+                Assert.That(published.Identify, Is.SameAs(expected));
+            }
+        }
+        finally
+        {
+            answer.TrySetCanceled();
+            await identifying.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    public async Task Failed_unpublished_identify_candidates_are_not_retained_by_the_host()
+    {
+        await using BeaconP2P host = PeerSessionNodes.Create().P2P;
+        await using LocalPeer peer = CreateBeaconLocalPeer(host);
+        WeakReference<ISession> candidate = RejectUnpublishedCandidate(peer);
+
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+
+        Assert.That(candidate.TryGetTarget(out _), Is.False, "a candidate rejected before Sessions.Add must not require a removal notification for collection");
+        GC.KeepAlive(host);
+        GC.KeepAlive(peer);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference<ISession> RejectUnpublishedCandidate(LocalPeer peer)
+    {
+        ISession session = new UnpublishedSession(Task.FromException<IdentifyResult>(new IOException("Identify was refused.")));
+        Task identifying = IdentifyAsync(peer, session, isDialer: false);
+        Assert.That(() => identifying.GetAwaiter().GetResult(), Throws.TypeOf<IOException>());
+        return new(session);
+    }
+
+    private static LocalPeer CreateBeaconLocalPeer(BeaconP2P host)
+    {
+        IServiceProvider services = (IServiceProvider)typeof(BeaconP2P)
+            .GetField("_serviceProvider", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
+        return (LocalPeer)services.GetRequiredService<IPeerFactory>().Create();
+    }
+
+    private static Task IdentifyAsync(LocalPeer peer, ISession session, bool isDialer) =>
+        (Task)peer.GetType().GetMethod("ConnectedTo", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(peer, [session, isDialer])!;
+
+    private sealed class UnpublishedSession(Task<IdentifyResult> identify) : ISession
+    {
+        public Multiaddress RemoteAddress { get; } = AddressOf(new Identity());
+        public Activity? Activity => null;
+        public Task DisconnectAsync() => Task.CompletedTask;
+        public Task DialAsync<TProtocol>(CancellationToken token = default) where TProtocol : ISessionProtocol =>
+            throw new NotSupportedException();
+        public Task<TResponse> DialAsync<TProtocol, TResponse>(CancellationToken token = default)
+            where TProtocol : ISessionProtocol<TResponse> =>
+            typeof(TProtocol) == typeof(IdentifyProtocol)
+                ? ((Task<TResponse>)(object)identify).WaitAsync(token)
+                : throw new NotSupportedException();
+        public Task<TResponse> DialAsync<TProtocol, TRequest, TResponse>(TRequest request, CancellationToken token = default)
+            where TProtocol : ISessionProtocol<TRequest, TResponse> => throw new NotSupportedException();
     }
 
     private static async Task<string?> VerifyAndRecord(IdentifyMessage message, Libp2p.Core.State session, IdentifyProtocolSettings settings, PeerStore peerStore)

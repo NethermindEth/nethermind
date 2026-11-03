@@ -237,6 +237,55 @@ public class LightClientGossipTests
     }
 
     [Test]
+    public async Task Next_slot_gossip_can_advance_locally_after_waiting_without_forwarding_early_data([Values] bool finality)
+    {
+        ConsensusTests.RepairClock clock = new(DateTimeOffset.FromUnixTimeSeconds(
+            (long)(ConsensusTests.Spec.GenesisTime + 3 * ConsensusTests.Spec.SecondsPerSlot + 6)));
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        LightClientStore store = new(ConsensusTests.Spec, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, 3);
+        await using LightClientGossip gossip = new(ConsensusTests.Spec, LimboLogs.Instance, clock);
+        List<ulong> credited = [];
+        int attempts = 0;
+        gossip.ValidatedUpdate = (_, slot) => credited.Add(slot);
+        gossip.Start(static _ => new FakeTopic(), (update, token) => ProcessAsync(() => store.Process(update, CurrentSlot()), token),
+            (update, token) => ProcessAsync(() => store.Process(update, CurrentSlot()), token), CancellationToken.None);
+        LightClientUpdate signed = ConsensusTests.Update(2, 3, 4, 1);
+        string topic = GossipTopics.Topic(ForkDigest.Compute(ConsensusTests.Spec, 0),
+            finality ? GossipTopics.LightClientFinalityUpdate : GossipTopics.LightClientOptimisticUpdate);
+        byte[] ssz = finality ? LightClientWireCodec.EncodeFinality(Finality(signed), ConsensusTests.Spec)
+            : LightClientWireCodec.EncodeOptimistic(Optimistic(signed), ConsensusTests.Spec);
+
+        Task<MessageValidity> pending = gossip.HandleAsync(topic, Snappy.CompressToArray(ssz), static _ => true,
+            CancellationToken.None, new Nethermind.Libp2p.Core.Identity().PeerId);
+        await clock.WaitForTimersAsync(2).WaitAsync(TimeSpan.FromSeconds(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pending.IsCompleted, Is.False);
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(1));
+            Assert.That(credited, Is.Empty);
+        }
+        clock.Advance(TimeSpan.FromSeconds(6));
+
+        Assert.That(await pending.WaitAsync(TimeSpan.FromSeconds(2)), Is.EqualTo(MessageValidity.Ignored));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attempts, Is.EqualTo(2));
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(3));
+            Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(finality ? 2 : 1));
+            Assert.That(credited, Is.EqualTo(new[] { 3UL }));
+        }
+
+        ulong CurrentSlot() => ConsensusTests.Spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds());
+        Task<bool> ProcessAsync(Action process, CancellationToken token) =>
+            ConsensusSync.ProcessWithTimeRetryAsync(ConsensusTests.Spec, clock, () =>
+            {
+                attempts++;
+                process();
+                return Task.FromResult(true);
+            }, token);
+    }
+
+    [Test]
     public async Task Wrong_fork_digest_is_rejected_without_processing()
     {
         await using Fixture fixture = new();

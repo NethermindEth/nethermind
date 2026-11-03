@@ -163,7 +163,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                     if (_history.Count == 0 || _history[^1].Sequence < overflow.Sequence)
                     {
                         _history.Clear();
-                        _history.Add(new(overflow.Head, overflow.Sequence, default, default, 0));
+                        _history.Add(new(overflow.Head, overflow.Sequence, default, null));
                     }
                     if (sequence <= overflow.Sequence) continue;
                 }
@@ -177,7 +177,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                     {
                         if (_history.Count > 0 && _history[^1].Head.BlockHash == head.BlockHash) continue;
                         if (_history.Count > 0 && head.Number <= _history[^1].Head.Number) _history.Clear();
-                        _history.Add(new(head, sequence, default, default, 0));
+                        _history.Add(new(head, sequence, default, null));
                         if (_history.Count > MaxHistory) _history.RemoveAt(0);
                         continue;
                     }
@@ -190,7 +190,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                     _logger.LogWarning(exception, "Unable to maintain an authenticated subscription stream");
                     CloseClients("Verified history or execution data is unavailable; reconnect and resubscribe.");
                     _history.Clear();
-                    _history.Add(new(head, sequence, default, default, 0));
+                    _history.Add(new(head, sequence, default, null));
                 }
             }
         }
@@ -223,58 +223,12 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
             ValidateHeader(current, parent, number);
         }
         List<Snapshot> added = new(branch.Count);
-        List<Subscription> filters = [];
-        if (needsLogs)
-            foreach (Client client in clients) client.CollectLogFilters(sequence, filters);
-        int encodedBytes = 0;
         for (int i = branch.Count - 1; i >= 0; i--)
         {
             BlockHeader header = branch[i];
             VerifiedHead anchor = new(header.Hash == head.BlockHash ? head.Slot : 0, header.Number, header.Hash!, header.StateRoot!);
-            JsonElement rendered = default;
-            if (needsHeads && i == 0)
-                rendered = _rpc.GetHeader(header);
-            JsonElement logs = default;
-            if (needsLogs)
-            {
-                try
-                {
-                    logs = await _rpc.GetSubscriptionLogsAsync(header, MatchesAnyLog, cancellationToken);
-                    if (encodedBytes + Size(rendered) + Size(logs) > MaxHistoryBytes)
-                        throw new InvalidDataException("Subscription history exceeds its 16 MiB encoded-data budget.");
-                }
-                catch (Exception exception) when (!_stopping.IsCancellationRequested)
-                {
-                    _logger.LogWarning(exception, "Closing log subscriptions because authenticated log data is unavailable");
-                    foreach (Client client in clients) client.CloseLogStream(sequence);
-                    logs = default;
-                    for (int j = 0; j < _history.Count; j++)
-                        _history[j] = _history[j] with { Logs = null, Bytes = Size(_history[j].Header) };
-                    encodedBytes = 0;
-                    for (int j = 0; j < added.Count; j++)
-                    {
-                        added[j] = added[j] with { Logs = null, Bytes = Size(added[j].Header) };
-                        encodedBytes += added[j].Bytes;
-                    }
-                    needsLogs = false;
-                    cancellationToken = _stopping.Token;
-                }
-            }
-            int bytes = Size(rendered) + Size(logs);
-            encodedBytes = checked(encodedBytes + bytes);
-            if (encodedBytes > MaxHistoryBytes) throw new InvalidDataException("Subscription history exceeds its 16 MiB encoded-data budget.");
-            added.Add(new(anchor, sequence, rendered, ParseLogs(logs), bytes));
-        }
-        int retained = 0;
-        for (int i = Math.Max(0, common + 1 + added.Count - MaxHistory); i <= common; i++) retained += _history[i].Bytes;
-        if (retained + encodedBytes > MaxHistoryBytes)
-        {
-            _logger.LogWarning("Closing log subscriptions because authenticated log history exceeds its 16 MiB encoded-data budget");
-            foreach (Client client in clients) client.CloseLogStream(sequence);
-            for (int i = 0; i < _history.Count; i++)
-                _history[i] = _history[i] with { Logs = null, Bytes = Size(_history[i].Header) };
-            for (int i = 0; i < added.Count; i++)
-                added[i] = added[i] with { Logs = null, Bytes = Size(added[i].Header) };
+            JsonElement rendered = needsHeads && i == 0 ? _rpc.GetHeader(header) : default;
+            added.Add(new(anchor, sequence, rendered, needsLogs ? header : null));
         }
         List<Snapshot> removed = [];
         for (int i = _history.Count - 1; i > common; i--) removed.Add(_history[i]);
@@ -292,13 +246,6 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
         Task[] deliveries = new Task[clients.Length];
         for (int i = 0; i < clients.Length; i++) deliveries[i] = clients[i].DeliverAsync(removed, added, tip, cancellationToken);
         await Task.WhenAll(deliveries);
-
-        bool MatchesAnyLog(Address address, Hash256[] topics)
-        {
-            foreach (Subscription filter in filters)
-                if (Matches(address, topics, filter)) return true;
-            return false;
-        }
     }
 
     private static void ValidateHeader(BlockHeader header, Hash256 hash, ulong number)
@@ -324,7 +271,8 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
         return result;
     }
 
-    private sealed record Snapshot(VerifiedHead Head, long Sequence, JsonElement Header, LogData[]? Logs, int Bytes);
+    private sealed record Snapshot(VerifiedHead Head, long Sequence, JsonElement Header, BlockHeader? ExecutionHeader);
+    private sealed record RetainedLogs(Snapshot Snapshot, LogData[] Logs, int Bytes);
     private sealed record Publication(long Sequence, VerifiedHead Head);
     private readonly record struct LogData(JsonElement Json, Address Address, Hash256[] Topics);
     private static bool Matches(Address address, Hash256[] topics, Subscription subscription)
@@ -347,6 +295,10 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
         private readonly WebSocket _socket;
         private readonly Lock _lock = new();
         private readonly Dictionary<string, Subscription> _subscriptions = [];
+        private readonly Dictionary<Hash256, RetainedLogs> _logHistory = [];
+        private int _historyBytes;
+        private int _filterGeneration;
+        private int _retainedFilterGeneration;
         private readonly Channel<byte[]> _outgoing = Channel.CreateBounded<byte[]>(
             new BoundedChannelOptions(128) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
         private readonly CancellationTokenSource _cancellation;
@@ -354,6 +306,8 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
         private readonly TaskCompletionSource _terminated = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private TaskCompletionSource? _space;
         private int _closing;
+        private int _finished;
+        private string? _closeReason;
         private int _queuedBytes;
 
         internal Client(VerifiedSubscriptions owner, WebSocket socket, CancellationToken requestAborted)
@@ -364,12 +318,15 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
             _token = _cancellation.Token;
         }
 
-        internal void Terminate()
+        internal void Terminate() => Finish(abort: true);
+
+        private void Finish(bool abort)
         {
-            if (Interlocked.Exchange(ref _closing, 1) != 0) return;
+            if (Interlocked.Exchange(ref _finished, 1) != 0) return;
+            Interlocked.Exchange(ref _closing, 1);
             try
             {
-                _socket.Abort();
+                if (abort) _socket.Abort();
                 _cancellation.Cancel();
             }
             finally { _terminated.TrySetResult(); }
@@ -386,7 +343,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
             }
             finally
             {
-                Terminate();
+                if (Volatile.Read(ref _closing) == 0) Terminate();
                 _outgoing.Writer.TryComplete();
                 await _terminated.Task;
                 await sender;
@@ -409,6 +366,11 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                     }
                     space?.TrySetResult();
                     await _socket.SendAsync(message, WebSocketMessageType.Text, true, _token);
+                }
+                if (_closeReason is { } reason)
+                {
+                    await _socket.CloseOutputAsync((WebSocketCloseStatus)1013, reason, _token);
+                    Finish(abort: false);
                 }
             }
             catch (Exception exception) when (exception is OperationCanceledException or WebSocketException)
@@ -463,34 +425,10 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                             response = JsonSerializer.SerializeToUtf8Bytes(RpcEndpoint.Error(null, -32600, "Batch must contain at least one request"));
                         else
                         {
-                            try
-                            {
-                                using BoundedJsonBuffer batch = new(MaxMessageBytes, JsonReservationSlack);
-                                using Utf8JsonWriter writer = new(batch);
-                                writer.WriteStartArray();
-                                bool hasResponses = false;
-                                int admitted = 0;
-                                foreach (JsonElement item in request.EnumerateArray())
-                                {
-                                    _token.ThrowIfCancellationRequested();
-                                    object? result = await RpcEndpoint.InvokeAsync(item,
-                                        admitted++ >= RpcEndpoint.MaxBatchCount ? RpcEndpoint.RejectExcessBatchItem : InvokeAsync,
-                                        _owner._logger, cancellation.Token);
-                                    if (result is null) continue;
-                                    JsonSerializer.Serialize(writer, result);
-                                    writer.Flush();
-                                    hasResponses = true;
-                                }
-                                writer.WriteEndArray();
-                                writer.Flush();
-                                response = hasResponses ? batch.WrittenMemory.ToArray() : null;
-                            }
-                            catch (RpcException)
-                            {
-                                DiscardPending();
-                                response = JsonSerializer.SerializeToUtf8Bytes(new[]
-                                    { RpcEndpoint.Error(null, -32005, "WebSocket batch exceeds the 256 KiB response limit; submit requests separately.") });
-                            }
+                            using BoundedJsonBuffer batch = new(MaxMessageBytes, JsonReservationSlack);
+                            bool hasResponses = await RpcEndpoint.WriteBatchAsync(batch, MaxMessageBytes, request,
+                                InvokeAsync, _owner._logger, cancellation.Token);
+                            response = hasResponses ? batch.WrittenMemory.ToArray() : null;
                         }
                     }
                     else
@@ -542,7 +480,9 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                 if (method == "eth_unsubscribe")
                 {
                     if (parameters.GetArrayLength() != 1) throw new RpcException(-32602, "Invalid unsubscribe parameters.");
-                    return Task.FromResult<object>(_subscriptions.Remove(name));
+                    bool removed = _subscriptions.Remove(name, out Subscription? subscription);
+                    if (removed && subscription!.Logs) _filterGeneration++;
+                    return Task.FromResult<object>(removed);
                 }
                 if (name is not ("newHeads" or "logs")) throw new RpcException(-32602, "Only authenticated newHeads and logs subscriptions are available.");
                 HashSet<Address>? addresses = null;
@@ -581,40 +521,112 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
             }
         }
 
-        internal void CollectLogFilters(long sequence, List<Subscription> filters)
+        private int CollectLogFilters(long sequence, List<Subscription> filters)
         {
             lock (_lock)
+            {
                 foreach (Subscription subscription in _subscriptions.Values)
                     if (subscription.Active && subscription.Logs && sequence > subscription.StartSequence) filters.Add(subscription);
+                return _filterGeneration;
+            }
         }
 
-        internal void CloseLogStream(long sequence)
+        private async Task CloseAsync(string reason)
         {
-            bool heads = false;
-            bool logs = false;
-            Interests(sequence, ref heads, ref logs);
-            if (logs) Terminate();
+            if (Interlocked.Exchange(ref _closing, 1) != 0) return;
+            _closeReason = reason;
+            _outgoing.Writer.TryComplete();
+            try { await _terminated.Task.WaitAsync(TimeSpan.FromSeconds(2), _owner._clock, _owner._stopping.Token); }
+            catch (Exception exception) when (exception is TimeoutException or OperationCanceledException)
+            {
+                _owner._logger.LogDebug("Closing stalled log subscription transport: {Reason}", reason);
+                Terminate();
+            }
         }
 
         internal async Task DeliverAsync(IReadOnlyList<Snapshot> removed, IReadOnlyList<Snapshot> added,
             Snapshot? tip, CancellationToken cancellationToken)
         {
-            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10), _owner._clock);
+            if (Volatile.Read(ref _closing) != 0) return;
+            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(90), _owner._clock);
             using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, _token, cancellationToken);
             try
             {
-                foreach (Snapshot snapshot in removed) await LogsAsync(snapshot, removed: true, cancellation.Token);
-                foreach (Snapshot snapshot in added) await LogsAsync(snapshot, removed: false, cancellation.Token);
+                List<Subscription> filters = [];
+                long sequence = added.Count != 0 ? added[^1].Sequence : tip?.Sequence ?? 0;
+                int generation = CollectLogFilters(sequence, filters);
+                foreach (Snapshot snapshot in removed)
+                    if (_logHistory.TryGetValue(snapshot.Head.BlockHash, out RetainedLogs? previous))
+                        await LogsAsync(previous.Snapshot, previous.Logs, removed: true, cancellation.Token);
+                PruneLogs(filters, generation);
+                foreach (Snapshot snapshot in added)
+                {
+                    if (filters.Count == 0 || snapshot.ExecutionHeader is null) continue;
+                    JsonElement rendered = await _owner._rpc.GetSubscriptionLogsAsync(snapshot.ExecutionHeader, MatchesAnyLog, cancellation.Token);
+                    int bytes = Size(rendered);
+                    if (bytes > MaxHistoryBytes - _historyBytes)
+                        throw new RpcException(-32005, "Connection log history exceeds its 16 MiB budget.");
+                    LogData[] logs = ParseLogs(rendered)!;
+                    _logHistory.Add(snapshot.Head.BlockHash, new(snapshot, logs, bytes));
+                    _historyBytes += bytes;
+                    await LogsAsync(snapshot, logs, removed: false, cancellation.Token);
+                }
                 if (tip is not null && tip.Header.ValueKind != JsonValueKind.Undefined)
                     await NotifyAsync(tip.Sequence, tip.Header, null, removed: false, cancellation.Token);
+
+                bool MatchesAnyLog(Address address, Hash256[] topics)
+                {
+                    foreach (Subscription filter in filters)
+                        if (Matches(address, topics, filter)) return true;
+                    return false;
+                }
             }
-            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { Terminate(); }
+            catch (OperationCanceledException) when (_token.IsCancellationRequested || _owner._stopping.IsCancellationRequested) { Terminate(); }
+            catch (Exception exception)
+            {
+                _owner._logger.LogWarning(exception, "Closing this connection because its authenticated log stream is unavailable");
+                await CloseAsync("Authenticated log data is unavailable or this connection exceeded its history budget.");
+            }
         }
 
-        private async Task LogsAsync(Snapshot snapshot, bool removed, CancellationToken cancellationToken)
+        private void PruneLogs(List<Subscription> filters, int generation)
         {
-            if (snapshot.Logs is null) return;
-            foreach (LogData log in snapshot.Logs) await NotifyAsync(snapshot.Sequence, log.Json, log, removed, cancellationToken);
+            HashSet<Hash256> canonical = [];
+            foreach (Snapshot snapshot in _owner._history) canonical.Add(snapshot.Head.BlockHash);
+            foreach ((Hash256 hash, RetainedLogs previous) in _logHistory)
+            {
+                if (!canonical.Contains(hash) || filters.Count == 0)
+                {
+                    _logHistory.Remove(hash);
+                    _historyBytes -= previous.Bytes;
+                    continue;
+                }
+                if (generation == _retainedFilterGeneration) continue;
+                List<LogData> retained = [];
+                foreach (LogData log in previous.Logs)
+                    foreach (Subscription filter in filters)
+                        if (previous.Snapshot.Sequence > filter.StartSequence && Matches(log.Address, log.Topics, filter))
+                        {
+                            retained.Add(log);
+                            break;
+                        }
+                if (retained.Count == previous.Logs.Length) continue;
+                int bytes = 2;
+                for (int i = 0; i < retained.Count; i++)
+                {
+                    LogData log = retained[i];
+                    retained[i] = log with { Json = log.Json.Clone() };
+                    bytes += Size(log.Json) + 1;
+                }
+                _logHistory[hash] = previous with { Logs = [.. retained], Bytes = bytes };
+                _historyBytes += bytes - previous.Bytes;
+            }
+            _retainedFilterGeneration = generation;
+        }
+
+        private async Task LogsAsync(Snapshot snapshot, LogData[] logs, bool removed, CancellationToken cancellationToken)
+        {
+            foreach (LogData log in logs) await NotifyAsync(snapshot.Sequence, log.Json, log, removed, cancellationToken);
         }
 
         private async Task NotifyAsync(long sequence, JsonElement result, LogData? log, bool removed, CancellationToken cancellationToken)
@@ -628,7 +640,10 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                 lock (_lock) eligible = subscription.Active && subscription.Logs == logs && sequence > subscription.StartSequence;
                 if (!eligible || log is { } entry && !Matches(entry.Address, entry.Topics, subscription)) continue;
                 byte[] message = Notification(subscription.Id, result, logs, removed);
-                if (!await EnqueueAsync(message, subscription.Id, cancellationToken)) return;
+                using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10), _owner._clock);
+                using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, _token, cancellationToken);
+                try { if (!await EnqueueAsync(message, subscription.Id, cancellation.Token)) return; }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { Terminate(); return; }
             }
         }
 
@@ -671,6 +686,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                 if (subscription.Active) continue;
                 subscription.StartSequence = Volatile.Read(ref _owner._sequence);
                 subscription.Active = true;
+                if (subscription.Logs) _filterGeneration++;
             }
         }
 

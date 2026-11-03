@@ -409,6 +409,59 @@ public class VerifiedHeaderHistoryTests
         yield return new(new[] { 17, 31, 1 });
     }
 
+    [Test]
+    public async Task Numbered_log_pages_distinguish_a_reorg_between_replies_from_malformed_segments(
+        [Values("none", "prefix-hash", "prefix-link", "suffix-hash", "suffix-link")] string corruption,
+        [Values] bool prefetchedPrefix)
+    {
+        Chain chain = new(200);
+        BlockHeader[] fork = chain.Headers.Select(header => header.Clone()).ToArray();
+        for (int i = 70; i < fork.Length; i++)
+        {
+            fork[i].ExtraData = [0x61];
+            fork[i].ParentHash = fork[i - 1].Hash!;
+            fork[i].Hash = fork[i].CalculateHash();
+        }
+        BlockHeader[] prefix = chain.Headers[72..89];
+        if (corruption.StartsWith("prefix", StringComparison.Ordinal)) Corrupt(prefix);
+        List<TrackedHeaders> responses = [];
+        List<ulong> requested = [];
+        HeaderPeer peer = new((number, count, _) =>
+        {
+            Assert.That(responses, Is.All.Matches<TrackedHeaders>(response => response is { Disposed: true }));
+            requested.Add(number);
+            BlockHeader[] headers = number == 72 ? prefix : fork.AsSpan((int)number, Math.Min(17, count)).ToArray();
+            if (number != 72 && corruption.StartsWith("suffix", StringComparison.Ordinal)) Corrupt(headers);
+            TrackedHeaders response = new(headers);
+            responses.Add(response);
+            return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(response);
+        });
+        Task<BlockHeader[]> request = prefetchedPrefix
+            ? (Task<BlockHeader[]>)typeof(ExecutionPeerTransport).GetMethod("ReadUnverifiedLogHeaderPageAsync",
+                BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null,
+                [peer, 200UL, 128, CancellationToken.None, new ReadOnlyMemory<BlockHeader>(prefix)])!
+            : ExecutionPeerTransport.ReadLogHeaderPageAsync(peer, chain.Headers[200], 128, CancellationToken.None);
+
+        Assert.That(async () => await request, corruption == "none"
+            ? Throws.TypeOf<ExecutionDataUnavailableException>() : Throws.TypeOf<InvalidDataException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requested, Is.EqualTo(prefetchedPrefix ? new[] { 89UL } : new[] { 72UL, 89UL }));
+            Assert.That(responses, Is.All.Matches<TrackedHeaders>(response => response is { Disposed: true }));
+        }
+
+        void Corrupt(BlockHeader[] headers)
+        {
+            headers[3] = headers[3].Clone();
+            if (corruption.EndsWith("hash", StringComparison.Ordinal)) headers[3].ExtraData = [0xff];
+            else
+            {
+                headers[3].ParentHash = Keccak.Zero;
+                headers[3].Hash = headers[3].CalculateHash();
+            }
+        }
+    }
+
     [TestCaseSource(nameof(HeaderPageFailures))]
     public async Task Native_header_pages_reject_invalid_segments_and_release_every_owner(string failure, bool afterPrefix)
     {
@@ -449,7 +502,7 @@ public class VerifiedHeaderHistoryTests
 
         Task<BlockHeader[]> request = ExecutionPeerTransport.ReadLogHeaderPageAsync(peer, cursor, 128, stop.Token);
         if (failure == "cancel") Assert.That(async () => await request, Throws.InstanceOf<OperationCanceledException>());
-        else if (failure is "null" or "empty") Assert.That(async () => await request, Throws.TypeOf<ExecutionDataUnavailableException>());
+        else if (failure is "null" or "empty" or "anchor") Assert.That(async () => await request, Throws.TypeOf<ExecutionDataUnavailableException>());
         else Assert.That(async () => await request, Throws.TypeOf<InvalidDataException>());
 
         Assert.That(requests.Count, Is.GreaterThanOrEqualTo(afterPrefix ? 2 : 1));

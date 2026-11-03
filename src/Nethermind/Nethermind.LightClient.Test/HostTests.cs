@@ -5,7 +5,9 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using DotNetty.Buffers;
@@ -19,6 +21,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using NSubstitute;
 
 namespace Nethermind.LightClient.Test;
@@ -199,6 +202,59 @@ public class HostTests
     }
 
     [Test]
+    public void Gloas_checkpoint_does_not_initialize_rpc_before_the_execution_header_is_authenticated()
+    {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        Type program = typeof(LightClientHost).Assembly.EntryPoint!.DeclaringType!;
+        (Type Type, MethodInfo Method) initializer = program.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)
+            .SelectMany(type => type.GetMethods(flags).Where(method => method.Name.Contains("g__InitializeRpc", StringComparison.Ordinal)),
+                (type, method) => (type, method)).Single();
+        object closure = Activator.CreateInstance(initializer.Type, nonPublic: true)!;
+        Nethermind.BeaconChain.Types.LightClientHeader header = ConsensusTests.Bootstrap(32, 1).Header!;
+        header.ExecutionBlockHash = header.Execution!.BlockHash;
+        header.Execution = null;
+        header.IsGloas = true;
+        Consensus.ConsensusPublisher publisher = new(() => header, () => header,
+            static (_, _) => throw new AssertionException("Execution resolution has not started."),
+            static (_, _) => throw new AssertionException("No execution head has been authenticated."), TimeProvider.System);
+        initializer.Type.GetFields(flags).Single(field => field.FieldType == typeof(Consensus.ConsensusPublisher)).SetValue(closure, publisher);
+
+        Assert.That(() => initializer.Method.Invoke(closure, null), Throws.Nothing);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(publisher.Heads.Finalized, Is.Null);
+            Assert.That(initializer.Type.GetField("rpcInitialized", flags)!.GetValue(closure), Is.False);
+        }
+    }
+
+    [Test]
+    public void Program_interrupt_callback_cancels_startup_and_tolerates_late_dispatch([Values] bool disposed)
+    {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        Type program = typeof(LightClientHost).Assembly.EntryPoint!.DeclaringType!;
+        (Type Type, MethodInfo Method) handler = program.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)
+            .SelectMany(type => type.GetMethods(flags).Where(method => method.ReturnType == typeof(void)
+                && method.GetParameters() is [{ ParameterType: var parameter }] && parameter == typeof(PosixSignalContext)
+                && type.GetFields(flags).Any(field => field.FieldType == typeof(CancellationTokenSource))),
+                (type, method) => (type, method)).Single();
+        object closure = Activator.CreateInstance(handler.Type, nonPublic: true)!;
+        using CancellationTokenSource shutdown = new();
+        handler.Type.GetFields(flags).Single(field => field.FieldType == typeof(CancellationTokenSource)).SetValue(closure, shutdown);
+        PosixSignalContext context = (PosixSignalContext)typeof(PosixSignalContext)
+            .GetConstructor(flags, binder: null, [typeof(PosixSignal)], modifiers: null)!.Invoke([PosixSignal.SIGINT]);
+        if (disposed) shutdown.Dispose();
+
+        Assert.That(() => handler.Method.Invoke(closure, [context]), Throws.Nothing);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Cancel, Is.True);
+            Assert.That(shutdown.IsCancellationRequested, Is.EqualTo(!disposed));
+        }
+    }
+
+    [Test]
     [NonParallelizable]
     public async Task Console_signal_cancels_checkpoint_fetch_while_the_status_listener_is_running()
     {
@@ -287,6 +343,91 @@ public class HostTests
     }
 
     [Test]
+    public async Task Malformed_large_method_strings_are_rejected_before_invocation([Values("\\ud800", "\\ud800A")] string method)
+    {
+        byte[] payload = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_" + method
+            + "\",\"params\":[\"" + new string('a', 65_536) + "\"]}");
+        int calls = 0;
+
+        (int status, _) = await InvokeHttpAsync(payload, (_, _, _) =>
+        {
+            calls++;
+            return Task.FromResult<object>(true);
+        });
+
+        Assert.That(status, Is.EqualTo(StatusCodes.Status413PayloadTooLarge));
+        Assert.That(calls, Is.Zero);
+    }
+
+    [Test]
+    public async Task Malformed_parameter_strings_are_invalid_parameters_without_peer_warnings(
+        [Values("eth_getBalance", "address", "topics")] string parameter, [Values] bool invalidUtf8)
+    {
+        string method = parameter == "eth_getBalance" ? parameter : "eth_getLogs";
+        string parameters = parameter switch
+        {
+            "eth_getBalance" => "[\"INVALID\",\"latest\"]",
+            "address" => "[{\"address\":\"INVALID\"}]",
+            _ => "[{\"topics\":[\"INVALID\"]}]",
+        };
+        string[] parts = ("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"" + method + "\",\"params\":" + parameters + "}").Split("INVALID");
+        byte[] invalid = invalidUtf8 ? [0xff] : Encoding.UTF8.GetBytes("\\ud800");
+        byte[] payload = [.. Encoding.UTF8.GetBytes(parts[0]), .. invalid, .. Encoding.UTF8.GetBytes(parts[1])];
+        using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Parameters must be checked before fetching a head."), 1,
+            specProvider: MainnetSpecProvider.Instance);
+        ILogger logger = Substitute.For<ILogger>();
+
+        (int status, JsonElement response) = await InvokeHttpAsync(payload, rpc.InvokeAsync, logger);
+
+        Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(response.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32602));
+        Assert.That(logger.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(ILogger.Log)
+            && (LogLevel)call.GetArguments()[0]! == LogLevel.Warning), Is.False);
+    }
+
+    [Test]
+    public async Task Authenticated_data_unavailability_is_a_quiet_retryable_rpc_error()
+    {
+        ILogger logger = Substitute.For<ILogger>();
+        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(new { jsonrpc = "2.0", id = 1, method = "eth_getBalance" });
+
+        (int status, JsonElement response) = await InvokeHttpAsync(payload,
+            static (_, _, _) => Task.FromException<object>(new ExecutionDataUnavailableException("The pinned root is not retained.")), logger);
+
+        Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(response.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32001));
+        Assert.That(logger.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(ILogger.Log)
+            && (LogLevel)call.GetArguments()[0]! == LogLevel.Warning), Is.False);
+    }
+
+    [Test]
+    public async Task A_large_successful_batch_keeps_a_bounded_error_tail()
+    {
+        object[] requests = [new { jsonrpc = "2.0", id = 1, method = "eth_chainId" },
+            new { jsonrpc = "2.0", id = 2, method = "eth_chainId" }, .. Enumerable.Repeat<object>(0, 10_000)];
+        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(requests);
+        JsonElement result = JsonSerializer.SerializeToElement(Enumerable.Repeat(new string('x', 4096), 1977).ToArray());
+        int calls = 0;
+
+        (int status, JsonElement response) = await InvokeHttpAsync(payload, (_, _, _) =>
+        {
+            calls++;
+            return Task.FromResult<object>(result);
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(calls, Is.EqualTo(2));
+            Assert.That(response[0].GetProperty("result").GetArrayLength(), Is.EqualTo(1977));
+            Assert.That(response[1].GetProperty("result").GetArrayLength(), Is.EqualTo(1977));
+            Assert.That(response.GetArrayLength(), Is.LessThan(requests.Length));
+            Assert.That(response[response.GetArrayLength() - 1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+            Assert.That(Encoding.UTF8.GetByteCount(response.GetRawText()), Is.LessThanOrEqualTo(RpcEndpoint.BatchResponseLimit));
+        }
+    }
+
+    [Test]
     public async Task Large_single_call_and_submission_requests_reach_their_handler(
         [Values("eth_call", "eth_estimateGas", "eth_sendRawTransaction")] string method)
     {
@@ -338,14 +479,15 @@ public class HostTests
     }
 
     private static async Task<(int, JsonElement)> InvokeHttpAsync(byte[] request,
-        Func<string, JsonElement, CancellationToken, Task<object>> invoke)
+        Func<string, JsonElement, CancellationToken, Task<object>> invoke, ILogger? logger = null)
     {
         DefaultHttpContext context = new();
         using MemoryStream input = new(request);
         using MemoryStream output = new();
         context.Request.Body = input;
         context.Response.Body = output;
-        await RpcEndpoint.HandleAsync(context, invoke, NullLogger.Instance);
+        await RpcEndpoint.HandleAsync(context, invoke, logger ?? NullLogger.Instance);
+        if (output.Length == 0) return (context.Response.StatusCode, default);
         using JsonDocument response = JsonDocument.Parse(output.ToArray());
         return (context.Response.StatusCode, response.RootElement.Clone());
     }

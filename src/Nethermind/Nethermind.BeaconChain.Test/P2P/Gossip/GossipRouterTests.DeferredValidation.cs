@@ -297,6 +297,7 @@ public partial class GossipRouterTests
         Assert.That(forwarded.SelectMany(static rpc => rpc.Publish), Is.Empty, "pending messages are not forwarded");
         await validate(deferred);
         await pubsub.Heartbeat();
+        FlushOutbound(pubsub);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(given, Is.EqualTo(expected), "the worker must distinguish invalid input from unavailable local data");
@@ -367,13 +368,17 @@ public partial class GossipRouterTests
         }
 
         public void ReceiveRpc(PeerId from, Rpc rpc) => (from == Sender ? sender.Receive : neighbor.Receive)(rpc);
-        public IReadOnlyList<Rpc> SentTo(PeerId peer) => peer == Sender ? sender.Sent : neighbor.Sent;
+        public IReadOnlyList<Rpc> SentTo(PeerId peer)
+        {
+            FlushOutbound(Pubsub);
+            return peer == Sender ? sender.Sent : neighbor.Sent;
+        }
 
         public IEnumerable<MessageId> IdontwantsTo(PeerId peer) =>
             SentTo(peer).SelectMany(static rpc => rpc.Control?.Idontwant ?? []).SelectMany(static idontwant => idontwant.MessageIDs).Select(static id => new MessageId(id.ToByteArray()));
 
         public bool SentToNeighbor(byte[] data) =>
-            neighbor.Sent.SelectMany(static rpc => rpc.Publish).Any(message => message.Topic == BlockTopic && message.Data.Span.SequenceEqual(data));
+            SentTo(Neighbor).SelectMany(static rpc => rpc.Publish).Any(message => message.Topic == BlockTopic && message.Data.Span.SequenceEqual(data));
 
         public ValueTask DisposeAsync()
         {

@@ -253,8 +253,9 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         while (true)
         {
             token.ThrowIfCancellationRequested();
-            (T? response, _) = await requests.RequestAsync(_peers.GetBestPeers(0), request, validateAndAccept, token);
+            (T? response, bool sawInapplicable) = await requests.RequestAsync(_peers.GetBestPeers(0), request, validateAndAccept, token);
             if (response is not null) return response;
+            if (sawInapplicable) throw new IrrelevantLightClientUpdateException();
 
             if (Stopwatch.GetElapsedTime(lastStatus) >= TimeSpan.FromSeconds(10))
             {
@@ -329,19 +330,23 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                     token.ThrowIfCancellationRequested();
                     if (failure is not null)
                     {
-                        providers?.Failed<T>(peer);
                         failedCount++;
                         if (timedOut)
+                        {
+                            providers?.Failed<T>(peer);
                             peer.ReportFailure(PeerFailureReason.RequestFailed, "Light-client request timed out.");
+                        }
                         else if (failure is Eth2ReqRespException { ResponseCode: ReqRespFraming.ResponseCode.ResourceUnavailable } ||
                             failure is AggregateException aggregate && aggregate.Flatten().InnerExceptions is [Eth2ReqRespException { ResponseCode: ReqRespFraming.ResponseCode.ResourceUnavailable }])
                         {
                             unavailableCount++;
+                            if (typeof(T) != typeof(LightClientUpdate)) providers?.Failed<T>(peer);
                             if (_logger.IsDebug) _logger.Debug($"Beacon peer {peer.Id} has no {typeof(T).Name} available");
                             if (unavailable is not null) await unavailable(peer, token);
                         }
                         else
                         {
+                            providers?.Failed<T>(peer);
                             if (_logger.IsDebug) _logger.Debug($"Beacon {typeof(T).Name} request to {peer.Id} failed: {failure.GetType().Name}: {failure.Message}");
                             peer.ReportFailure(PeerFailureReason.RequestFailed, failure.Message);
                         }
@@ -413,8 +418,12 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             {
                 await owner.CancelAsync();
                 await Task.WhenAll(pending);
-                if (_logger.IsInfo && attempted > 0 && !token.IsCancellationRequested)
-                    _logger.Info($"Beacon {typeof(T).Name} round: asked {attempted}, accepted {accepted}, unavailable {unavailableCount}, failed {failedCount - unavailableCount}, inapplicable {inapplicableCount}, unused {pending.Count}");
+                if (attempted > 0 && !token.IsCancellationRequested && (accepted == 0 && _logger.IsInfo || _logger.IsDebug))
+                {
+                    string summary = $"Beacon {typeof(T).Name} round: asked {attempted}, accepted {accepted}, unavailable {unavailableCount}, failed {failedCount - unavailableCount}, inapplicable {inapplicableCount}, unused {pending.Count}";
+                    if (accepted == 0 && _logger.IsInfo) _logger.Info(summary);
+                    else if (_logger.IsDebug) _logger.Debug(summary);
+                }
             }
         }
 
@@ -618,27 +627,39 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                 if (retired.Count > 0) _hintGeneration++;
 
                 fresh = 0;
-                int updateSuppliers = 0;
-                Supplier? replacement = null;
+                int optimisticSuppliers = 0, finalitySuppliers = 0, updateSuppliers = 0;
                 foreach (Supplier supplier in _sessions.Values)
                 {
                     if (!admitted.Contains(Identity(supplier.Peer.Id))) continue;
-                    if (IsFresh(supplier.UpdateSlot)) updateSuppliers++;
                     if (IsFresh(supplier)) fresh++;
-                    bool missingCommittee = needsCommitteeSupplier && !IsFresh(supplier.UpdateSlot);
-                    bool unavailable = supplier.FailedProtocols?.Contains(typeof(LightClientUpdate)) == true ||
-                        supplier.FailedProtocols?.Contains(typeof(LightClientOptimisticUpdate)) == true ||
-                        supplier.FailedProtocols?.Contains(typeof(LightClientFinalityUpdate)) == true;
-                    if (IsFresh(supplier) && !missingCommittee) continue;
-                    if (!unavailable && time.GetElapsedTime(supplier.Admitted, now) < AdmissionGrace) continue;
-                    bool previousUnavailable = replacement?.FailedProtocols?.Count > 0;
-                    if (replacement is null || unavailable && !previousUnavailable || unavailable == previousUnavailable &&
-                        (IsCandidate(replacement) && !IsCandidate(supplier) ||
-                         IsCandidate(replacement) == IsCandidate(supplier) && supplier.Admitted < replacement.Admitted))
-                        replacement = supplier;
+                    if (IsFresh(supplier.OptimisticSlot) && supplier.FailedProtocols?.Contains(typeof(LightClientOptimisticUpdate)) != true) optimisticSuppliers++;
+                    if (IsFresh(supplier.FinalitySlot) && supplier.FailedProtocols?.Contains(typeof(LightClientFinalityUpdate)) != true) finalitySuppliers++;
+                    if (IsFresh(supplier.UpdateSlot) && supplier.FailedProtocols?.Contains(typeof(LightClientUpdate)) != true) updateSuppliers++;
                 }
-                if (fresh < MinFreshSuppliers || needsCommitteeSupplier && updateSuppliers == 0)
+                bool needsOptimistic = optimisticSuppliers < MinFreshSuppliers;
+                bool needsFinality = finalitySuppliers < MinFreshSuppliers;
+                bool needsCommittee = needsCommitteeSupplier && updateSuppliers == 0;
+                if (needsOptimistic || needsFinality || needsCommittee)
                 {
+                    Supplier? replacement = null;
+                    bool replacementUnavailable = false;
+                    foreach (Supplier supplier in _sessions.Values)
+                    {
+                        if (!admitted.Contains(Identity(supplier.Peer.Id)) || time.GetElapsedTime(supplier.Admitted, now) < AdmissionGrace) continue;
+                        bool unavailable = needsOptimistic && supplier.FailedProtocols?.Contains(typeof(LightClientOptimisticUpdate)) == true ||
+                            needsFinality && supplier.FailedProtocols?.Contains(typeof(LightClientFinalityUpdate)) == true ||
+                            needsCommittee && supplier.FailedProtocols?.Contains(typeof(LightClientUpdate)) == true;
+                        bool useful = needsOptimistic && IsFresh(supplier.OptimisticSlot) || needsFinality && IsFresh(supplier.FinalitySlot) ||
+                            needsCommittee && IsFresh(supplier.UpdateSlot);
+                        if (useful && !unavailable) continue;
+                        if (replacement is null || IsFresh(replacement) && !IsFresh(supplier) || IsFresh(replacement) == IsFresh(supplier) &&
+                            (unavailable && !replacementUnavailable || unavailable == replacementUnavailable &&
+                             (IsCandidate(replacement) && !IsCandidate(supplier) || IsCandidate(replacement) == IsCandidate(supplier) && supplier.Admitted < replacement.Admitted)))
+                        {
+                            replacement = supplier;
+                            replacementUnavailable = unavailable;
+                        }
+                    }
                     Remembered? reconnect = null;
                     foreach ((string id, Remembered remembered) in _remembered)
                     {
@@ -649,9 +670,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                             reconnect = remembered;
                     }
                     if (reconnect is not null) reconnect.LastDial = now;
-                    bool unavailableReplacement = replacement?.FailedProtocols?.Count > 0;
-                    recycle = connected.Count >= TargetPeers || unavailableReplacement &&
-                        (fresh == 0 || needsCommitteeSupplier && updateSuppliers == 0) ? replacement?.Peer : null;
+                    recycle = admitted.Count >= TargetPeers ? replacement?.Peer : null;
                     redialAddress = reconnect?.Address;
                 }
                 connectedCount = admitted.Count;
@@ -679,8 +698,10 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             return false;
         }
 
-        private bool IsFresh(Supplier supplier) => IsFresh(supplier.OptimisticSlot) || IsFresh(supplier.FinalitySlot) ||
-            IsFresh(supplier.UpdateSlot) || IsFresh(supplier.GossipSlot);
+        private bool IsFresh(Supplier supplier) =>
+            supplier.FailedProtocols?.Contains(typeof(LightClientOptimisticUpdate)) != true && IsFresh(supplier.OptimisticSlot) ||
+            supplier.FailedProtocols?.Contains(typeof(LightClientFinalityUpdate)) != true && IsFresh(supplier.FinalitySlot) ||
+            supplier.FailedProtocols?.Contains(typeof(LightClientUpdate)) != true && IsFresh(supplier.UpdateSlot) || IsFresh(supplier.GossipSlot);
 
         private bool IsCandidate(Supplier supplier) => supplier.CandidateAt is { } candidate && time.GetElapsedTime(candidate) <= Retention;
 

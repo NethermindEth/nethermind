@@ -666,48 +666,58 @@
   },
   {
     "pname": "Nethermind.Libp2p.Core",
-    "version": "1.1.0",
-    "hash": "sha256-wWf91NX7Dnjt+O0swEnMR1TBQyUL7sMOGeEfpJ/yxMM="
+    "version": "1.1.1",
+    "hash": "sha256-Tf6vYgDG35l97FE18XgL+Sk5Q/PBjHNnDnud0tEyD6s="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.Identify",
-    "version": "1.1.0",
-    "hash": "sha256-5ODR4WZ+tGyqwsV6zoNVC8SMkWVzJtQ/yr32kF8lCKA="
+    "version": "1.1.1",
+    "hash": "sha256-zEZP2d/2FOApLpsM8jQlu9HXQXR7tLprMjVCUH4tytA="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.IpTcp",
-    "version": "1.1.0",
-    "hash": "sha256-XvNw7WWKQYoDAOmBWpk41Pd9PPMEkSyaJLm4NHGpWc8="
+    "version": "1.1.1",
+    "hash": "sha256-Ay/yTgTl26NqVpVbAKr3UC1aLdP6yy5PB3NBOcms2Rs="
+  },
+  {
+    "pname": "Nethermind.Libp2p.Protocols.Mplex",
+    "version": "1.1.1",
+    "hash": "sha256-ckrQkTFGtJnJtC+wCO0GB2YUGyj6+FxvamiFhB3uxoU="
+  },
+  {
+    "pname": "Nethermind.Libp2p.Protocols.Multistream",
+    "version": "1.1.1",
+    "hash": "sha256-PWRgYu/Ntvwf5IdgWiO8CsgCKHxLodMHL/14wYsP+70="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.Noise",
-    "version": "1.1.0",
-    "hash": "sha256-1eWiqRmUHcJqEyt9psb5HfEyUTAAWBrbq/uhzgP6Sjs="
+    "version": "1.1.1",
+    "hash": "sha256-aWIIg5bzrJijsI1oZbSCl1WDMfbfpZCJE6d2cHsn2oM="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.Ping",
-    "version": "1.1.0",
-    "hash": "sha256-xK7sosz6l4k36Ts2hGU/mKc9lowua5C8WeGySsY3tDk="
+    "version": "1.1.1",
+    "hash": "sha256-7XdqeOqI0Y45KTvge8YewbkqyhBg1xw58SN7CoqZk9A="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.Pubsub",
-    "version": "1.1.0",
-    "hash": "sha256-jpJ8YfWvmH/BfPyggpwq1lynv0577XE90WeNi/iTtyc="
+    "version": "1.1.1",
+    "hash": "sha256-fMqsYPe5UgeUbLYhu4tx98BV0RqRqu8s2aKH9N10sMw="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery",
-    "version": "1.1.0",
-    "hash": "sha256-PYbmS/1saNZZS7BvPeo3Yu8w6tffQPme2WtXPB1wj0Q="
+    "version": "1.1.1",
+    "hash": "sha256-sDZy7ntq+6eojqvaG2LL8KxN+vyRsvcGSJyrWakNZe8="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.Quic",
-    "version": "1.1.0",
-    "hash": "sha256-36+Q0AlXXLagb5GBwvdYBccHZkZrDiQhw9caKSurw7Y="
+    "version": "1.1.1",
+    "hash": "sha256-g0sIiJ5BJmQbSKEqtqfon7TB2jt3WmdkKQhbljzOOiA="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.Yamux",
-    "version": "1.1.0",
-    "hash": "sha256-PUrQEhQRZv56g6TW2UzZwpJmIYHqoXNVF65LBRgwN5I="
+    "version": "1.1.1",
+    "hash": "sha256-v1KVpv/zqJ3MPhumQralJe+DFzSuuYxal/IVBpT+lXw="
   },
   {
     "pname": "Nethermind.MclBindings",

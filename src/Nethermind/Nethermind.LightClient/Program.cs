@@ -70,6 +70,9 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     loggingConfiguration.AddRule(logLevel, NLog.LogLevel.Fatal, consoleTarget, "LightClient.*");
     if (logLevel == NLog.LogLevel.Debug || logLevel == NLog.LogLevel.Trace)
     {
+        loggingConfiguration.LoggingRules.Add(new LoggingRule("Libp2p.Protocols.MultistreamProtocol", NLog.LogLevel.Trace,
+            NLog.LogLevel.Fatal, consoleTarget)
+        { Final = true });
         string[] categories =
         [
             "BeaconChain.P2P.PeerManager",
@@ -300,12 +303,16 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             ProcessConsensusAsync(() => store.Process(update, CurrentSlot()), () => store.OptimisticHeader.Beacon!.Slot,
                 stopping => journal.AppendAsync(update, store, stopping), token);
 
-        async Task<bool> ProcessConsensusAsync(Action process, Func<ulong> slot, Func<CancellationToken, Task> persist, CancellationToken token)
+        Task<bool> ProcessConsensusAsync(Action process, Func<ulong> slot, Func<CancellationToken, Task> persist, CancellationToken token) =>
+            ConsensusSync.ProcessWithTimeRetryAsync(spec, clock, () => ProcessConsensusOnceAsync(process, slot, persist, token), token);
+
+        async Task<bool> ProcessConsensusOnceAsync(Action process, Func<ulong> slot, Func<CancellationToken, Task> persist, CancellationToken token)
         {
             await consensusGate.WaitAsync(token);
             try
             {
                 token.ThrowIfCancellationRequested();
+                ConsensusSync.RequireLiveState(store, CurrentSlot(), app.Lifetime.StopApplication);
                 ulong before = slot();
                 if (logger.IsEnabled(LogLevel.Debug))
                 {
@@ -434,6 +441,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
                 {
                     LightClientUpdate? bestUpdate = store.BestUpdate;
                     ulong slot = CurrentSlot();
+                    ConsensusSync.RequireLiveState(store, slot, app.Lifetime.StopApplication);
                     if (bestUpdate is not null && store.ForceUpdate(slot))
                     {
                         await PersistAsync(journal.AppendForcedAsync(bestUpdate, slot, store, app.Lifetime.ApplicationStopping),
@@ -452,11 +460,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             {
                 using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 attempt.CancelAfter(TimeSpan.FromSeconds(15));
-                await beacon.PollFinalityAsync(async (update, token) =>
-                {
-                    await ProcessFinalityAsync(update, token);
-                    return true;
-                }, attempt.Token);
+                await beacon.PollFinalityAsync(ProcessFinalityAsync, attempt.Token);
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {

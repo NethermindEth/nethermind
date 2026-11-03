@@ -1717,12 +1717,13 @@ public class ConsensusTests
         }
     }
 
-    private sealed class RepairClock(DateTimeOffset? utcOrigin = null) : TimeProvider
+    internal sealed class RepairClock(DateTimeOffset? utcOrigin = null) : TimeProvider
     {
         private readonly object _gate = new();
         private readonly List<Timer> _timers = [];
         private readonly Channel<TimeSpan> _created = Channel.CreateUnbounded<TimeSpan>();
         private long _ticks;
+        private long _utcAdjustment;
         internal Action? BeforeUtcRead;
         internal int ActiveTimers { get { lock (_gate) return _timers.Count; } }
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
@@ -1730,8 +1731,9 @@ public class ConsensusTests
         public override DateTimeOffset GetUtcNow()
         {
             Interlocked.Exchange(ref BeforeUtcRead, null)?.Invoke();
-            return (utcOrigin ?? DateTimeOffset.UnixEpoch).AddTicks(GetTimestamp());
+            return (utcOrigin ?? DateTimeOffset.UnixEpoch).AddTicks(GetTimestamp() + Interlocked.Read(ref _utcAdjustment));
         }
+        internal void ShiftUtc(TimeSpan elapsed) => Interlocked.Add(ref _utcAdjustment, elapsed.Ticks);
         internal async Task NextTimerAsync() => await _created.Reader.ReadAsync();
         internal async Task WaitForTimersAsync(int count)
         {
@@ -1815,8 +1817,216 @@ public class ConsensusTests
     }
 
     [Test]
-    public void Genesis_finality_authenticates_the_zero_root([Values] bool malformed, [Values] bool gloas)
+    public async Task An_authenticated_bootstrap_at_an_unsupported_slot_is_a_terminal_local_failure()
     {
+        LightClientBootstrap bootstrap = Bootstrap(1, 1);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
+        using BootstrapFixture fixture = new(checkpoint);
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.Id.Returns("authenticated-unsupported-checkpoint");
+        BeaconChainSpec spec = Spec with { ElectraForkEpoch = 1 };
+
+        Task Initialize() => ConsensusSync.BootstrapAsync(spec, checkpoint, fixture.OpenJournal(),
+            (_, validate, token) => BootstrapFromPeersAsync(fixture.Clock, [peer], (_, _) => Task.FromResult(bootstrap), validate, token),
+            fixture.Clock, CancellationToken.None);
+
+        Assert.That(async () => await Initialize(),
+            Throws.TypeOf<InvalidOperationException>().With.InnerException.TypeOf<LightClientLocalStateException>());
+        peer.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string?>());
+    }
+
+    [Test]
+    public void Live_processing_stops_on_the_same_recency_bound_as_replay([Values(8193UL, 8194UL)] ulong slot)
+    {
+        LightClientStore store = Store(Bootstrap(1, 1));
+        bool stopped = false;
+        void Check() => ConsensusSync.RequireLiveState(store, slot, () => stopped = true);
+
+        if (slot == 8193) Check();
+        else Assert.That(Check, Throws.TypeOf<InvalidOperationException>().With.InnerException.TypeOf<LightClientLocalStateException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stopped, Is.EqualTo(slot > 8193));
+            Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Future_signature_periods_allow_only_one_slot_of_boundary_clock_skew(
+        [Values(8191UL, 8192UL)] ulong currentSlot, [Values(1UL, 2UL)] ulong ahead, [Values] bool valid)
+    {
+        LightClientStore store = Store(Bootstrap(8190, 1));
+        store.Process(Update(8190, 8190, 8191, 1, nextKey: 2), 8191);
+        LightClientUpdate update = Update(8190, currentSlot, currentSlot + ahead, 2);
+        if (!valid) update.SyncAggregate!.SyncCommitteeSignature = new BlsSignature(new byte[96]);
+
+        if (!valid || currentSlot == 8191 && ahead == 2)
+            Assert.That(() => store.Process(update, currentSlot), Throws.TypeOf<InvalidDataException>());
+        else if (ahead == 1)
+        {
+            LightClientFutureSlotException exception = Assert.Throws<LightClientFutureSlotException>(() => store.Process(update, currentSlot))!;
+            Assert.That(exception.SignatureSlot, Is.EqualTo(currentSlot + 1));
+        }
+        else Assert.That(() => store.Process(update, currentSlot), Throws.TypeOf<LightClientLocalStateException>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Period, Is.Zero);
+            Assert.That(store.NextSyncCommitteeKnown, Is.True);
+            Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(8190));
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(8190));
+            Assert.That(store.CurrentMaxParticipants, Is.EqualTo(342));
+        }
+    }
+
+    [Test]
+    public void Only_authenticated_current_attestations_can_wait_for_exactly_the_next_slot(
+        [Values(9UL, 10UL)] ulong attestedSlot, [Values(11UL, 12UL)] ulong signatureSlot, [Values] bool valid)
+    {
+        LightClientStore store = Store(Bootstrap(1, 1));
+        LightClientUpdate update = Update(2, attestedSlot, signatureSlot, 1);
+        if (!valid) update.SyncAggregate!.SyncCommitteeSignature = new BlsSignature(new byte[96]);
+
+        if (!valid) Assert.That(() => store.Process(update, 10), Throws.TypeOf<InvalidDataException>());
+        else if (attestedSlot == 10 && signatureSlot == 11)
+        {
+            LightClientFutureSlotException exception = Assert.Throws<LightClientFutureSlotException>(() => store.Process(update, 10))!;
+            Assert.That(exception.SignatureSlot, Is.EqualTo(11));
+        }
+        else Assert.That(() => store.Process(update, 10), Throws.TypeOf<LightClientLocalStateException>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(1));
+            Assert.That(store.CurrentMaxParticipants, Is.Zero);
+            Assert.That(store.BestUpdate, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task An_authenticated_next_slot_update_waits_outside_the_gate_and_revalidates_before_persistence([Values] bool cancel)
+    {
+        RepairClock clock = new(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + 3 * Spec.SecondsPerSlot + 6)));
+        LightClientStore store = Store(Bootstrap(1, 1));
+        LightClientUpdate update = Update(2, 3, 4, 1);
+        using SemaphoreSlim gate = new(1, 1);
+        using CancellationTokenSource stop = new();
+        int attempts = 0, persisted = 0;
+        Task<bool> pending = ConsensusSync.ProcessWithTimeRetryAsync(Spec, clock, ProcessAsync, stop.Token);
+        await clock.WaitForTimersAsync(1).WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.That(await gate.WaitAsync(0), Is.True, "waiting for time must release the consensus gate");
+        gate.Release();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pending.IsCompleted, Is.False);
+            Assert.That(persisted, Is.Zero);
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(1));
+        }
+        if (cancel)
+        {
+            await stop.CancelAsync();
+            Assert.That(async () => await pending, Throws.InstanceOf<OperationCanceledException>());
+        }
+        else
+        {
+            clock.Advance(TimeSpan.FromSeconds(5.999));
+            Assert.That(pending.IsCompleted, Is.False);
+            clock.Advance(TimeSpan.FromMilliseconds(1));
+            Assert.That(await pending.WaitAsync(TimeSpan.FromSeconds(2)), Is.True);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attempts, Is.EqualTo(cancel ? 1 : 2));
+            Assert.That(persisted, Is.EqualTo(cancel ? 0 : 1));
+            Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(cancel ? 1 : 2));
+            Assert.That(clock.ActiveTimers, Is.Zero);
+        }
+
+        async Task<bool> ProcessAsync()
+        {
+            await gate.WaitAsync(stop.Token);
+            try
+            {
+                attempts++;
+                store.Process(update, Spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds()));
+                persisted++;
+                return true;
+            }
+            finally { gate.Release(); }
+        }
+    }
+
+    [Test]
+    public async Task A_near_future_peer_response_is_not_credited_or_penalized_before_revalidation()
+    {
+        RepairClock clock = new(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + 3 * Spec.SecondsPerSlot + 6)));
+        LightClientStore store = Store(Bootstrap(1, 1));
+        LightClientUpdate update = Update(2, 3, 4, 1);
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.Id.Returns("waiting-for-signature-slot");
+        BeaconPeerTransport.PeerRequests requests = new(clock);
+        Task<LightClientUpdate?> pending = requests.PollAsync(() => [peer], (_, _) => Task.FromResult(update),
+            (value, token) => ConsensusSync.ProcessWithTimeRetryAsync(Spec, clock, () =>
+            {
+                store.Process(value, Spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds()));
+                return Task.FromResult(true);
+            }, token), CancellationToken.None);
+        await clock.WaitForTimersAsync(1).WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.That(pending.IsCompleted, Is.False);
+        peer.DidNotReceiveWithAnyArgs().ReportFailure(default, default!);
+        clock.Advance(TimeSpan.FromSeconds(6));
+
+        Assert.That(await pending.WaitAsync(TimeSpan.FromSeconds(2)), Is.SameAs(update));
+        peer.DidNotReceiveWithAnyArgs().ReportFailure(default, default!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(2));
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(3));
+            Assert.That(clock.ActiveTimers, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task A_clock_rollback_never_extends_the_wait_or_creates_a_retry_loop([Values] bool beforeWait)
+    {
+        RepairClock clock = new(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + 3 * Spec.SecondsPerSlot + 6)));
+        LightClientStore store = Store(Bootstrap(1, 1));
+        LightClientUpdate update = Update(2, 3, 4, 1);
+        int attempts = 0;
+        Task<bool> pending = ConsensusSync.ProcessWithTimeRetryAsync(Spec, clock, ProcessAsync, CancellationToken.None);
+        if (!beforeWait)
+        {
+            await clock.WaitForTimersAsync(1).WaitAsync(TimeSpan.FromSeconds(2));
+            clock.ShiftUtc(TimeSpan.FromSeconds(-6));
+            clock.Advance(TimeSpan.FromSeconds(6));
+        }
+
+        Assert.That(async () => await pending.WaitAsync(TimeSpan.FromSeconds(2)), Throws.TypeOf<LightClientFutureSlotException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attempts, Is.EqualTo(beforeWait ? 1 : 2));
+            Assert.That(clock.ActiveTimers, Is.Zero);
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(1));
+        }
+
+        Task<bool> ProcessAsync()
+        {
+            attempts++;
+            ulong currentSlot = Spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds());
+            if (beforeWait) clock.BeforeUtcRead = () => clock.ShiftUtc(TimeSpan.FromSeconds(-13));
+            store.Process(update, currentSlot);
+            return Task.FromResult(true);
+        }
+    }
+
+    public enum EmptyHeaderField { None, ProposerIndex, ParentRoot, StateRoot, BodyRoot, ExecutionHeader, ExecutionBlockHash, ExecutionBranch }
+
+    [Test]
+    public void Genesis_finality_authenticates_the_zero_root([Values] EmptyHeaderField changed, [Values] bool gloas)
+    {
+        bool malformed = changed != EmptyHeaderField.None;
         BeaconChainSpec spec = gloas ? Spec with { GloasForkEpoch = 1 } : Spec;
         LightClientBootstrap bootstrap = Bootstrap(0, 1);
         LightClientStore store = new(spec, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, 0);
@@ -1825,12 +2035,22 @@ public class ConsensusTests
             : Update(0, attestedSlot, attestedSlot + 1, 1, nextKey: 2);
         update.FinalizedHeader = new()
         {
-            Beacon = new BeaconBlockHeader { ParentRoot = Hash256.Zero, StateRoot = malformed ? Hash(0x42) : Hash256.Zero, BodyRoot = Hash256.Zero },
+            Beacon = new BeaconBlockHeader { ParentRoot = Hash256.Zero, StateRoot = Hash256.Zero, BodyRoot = Hash256.Zero },
             Execution = gloas ? null : new ExecutionPayloadHeader { ExtraData = [] },
             ExecutionBlockHash = gloas ? Hash256.Zero : null,
             ExecutionBranch = Enumerable.Repeat(Hash256.Zero, gloas ? 11 : 4).ToArray(),
             IsGloas = gloas,
         };
+        switch (changed)
+        {
+            case EmptyHeaderField.ProposerIndex: update.FinalizedHeader.Beacon.ProposerIndex = 1; break;
+            case EmptyHeaderField.ParentRoot: update.FinalizedHeader.Beacon.ParentRoot = Hash(0x42); break;
+            case EmptyHeaderField.StateRoot: update.FinalizedHeader.Beacon.StateRoot = Hash(0x42); break;
+            case EmptyHeaderField.BodyRoot: update.FinalizedHeader.Beacon.BodyRoot = Hash(0x42); break;
+            case EmptyHeaderField.ExecutionHeader: update.FinalizedHeader.Execution = new ExecutionPayloadHeader { ExtraData = [], BlockNumber = 1 }; break;
+            case EmptyHeaderField.ExecutionBlockHash: update.FinalizedHeader.ExecutionBlockHash = Hash(0x42); break;
+            case EmptyHeaderField.ExecutionBranch: update.FinalizedHeader.ExecutionBranch![0] = Hash(0x42); break;
+        }
         int finalityIndex = gloas ? 735 : 169, committeeIndex = gloas ? 2946 : 87;
         Hash256[] tree = Tree(new Dictionary<int, Hash256> { [finalityIndex] = Hash256.Zero, [committeeIndex] = SszRoots.HashTreeRoot(update.NextSyncCommittee!) });
         update.AttestedHeader!.Beacon!.StateRoot = tree[1];
@@ -1849,11 +2069,11 @@ public class ConsensusTests
     }
 
     [Test]
-    public void Forced_progress_keeps_latest_below_the_participation_safety_threshold()
+    public void Forced_progress_keeps_latest_at_or_below_the_participation_safety_threshold([Values(170, 171)] int participants)
     {
         LightClientStore store = Store(Bootstrap(1, 1));
         store.Process(Update(2, 3, 4, 1), 4);
-        store.Process(Update(19, 20, 21, 1, participants: 100), 21);
+        store.Process(Update(19, 20, 21, 1, participants), 21);
 
         Assert.That(store.ForceUpdate(8195), Is.True);
         using (Assert.EnterMultipleScope())

@@ -59,7 +59,7 @@ public class VerifiedConsensusJournalTests
     }
 
     [Test]
-    public async Task Participation_increases_compact_on_rotation_without_replacing_the_trusted_checkpoint()
+    public async Task Participation_history_compacts_at_capacity_without_replaying_every_rotation()
     {
         BeaconChainSpec spec = ConsensusTests.Spec with { GloasForkEpoch = ulong.MaxValue };
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
@@ -96,9 +96,25 @@ public class VerifiedConsensusJournalTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.AsSpan(7, Hash256.Size).ToArray(), Is.EqualTo(checkpoint.Bytes.ToArray()));
-            Assert.That(count, Is.LessThanOrEqualTo(16));
+            Assert.That(count, Is.EqualTo(24), "period rotation does not repeatedly replay the retained prefix");
             Assert.That(store.PreviousMaxParticipants, Is.EqualTo(512));
             Assert.That(store.CurrentMaxParticipants, Is.Zero);
+        }
+
+        List<(byte Kind, byte[] Data)> records = (List<(byte, byte[])>)typeof(VerifiedConsensusJournal)
+            .GetField("_updates", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(journal)!;
+        LightClientFinalityUpdate repeated = LightClientWireCodec.DecodeFinality(records[^1].Data, spec);
+        store.Process(repeated, repeated.SignatureSlot);
+        while (records.Count < 4096) records.Add(records[^1]);
+        LightClientOptimisticUpdate latest = AsOptimistic(ConsensusTests.Update(32768, 32771, 32772, 5, participants: 512));
+        store.Process(latest, latest.SignatureSlot);
+        await journal.AppendAsync(latest, store, CancellationToken.None);
+        LightClientStore compacted = (await Journal(spec, checkpoint).LoadAsync(latest.SignatureSlot, CancellationToken.None))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.HasSameAuthenticatedState(store), Is.True);
+            Assert.That(records.Count, Is.LessThanOrEqualTo(10), "participation peaks older than the previous period are obsolete");
+            Assert.That(_logger.Entries, Is.Empty);
         }
     }
 
@@ -139,6 +155,38 @@ public class VerifiedConsensusJournalTests
         await File.WriteAllBytesAsync(path, chain);
         Assert.That(async () => await Journal(ConsensusTests.Spec, checkpoint).LoadAsync(8194, CancellationToken.None),
             Throws.TypeOf<InvalidDataException>().With.Message.Contains("future"));
+    }
+
+    [Test]
+    public async Task Capacity_compaction_keeps_the_last_finality_advance_with_unchanged_participation()
+    {
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
+        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
+        await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
+        LightClientUpdate initial = ConsensusTests.Update(2, 3, 4, 1);
+        store.Process(initial, 4);
+        await journal.AppendAsync(initial, store, CancellationToken.None);
+        LightClientFinalityUpdate finality = AsFinality(ConsensusTests.Update(5, 6, 7, 1));
+        store.Process(finality, 7);
+        await journal.AppendAsync(finality, store, CancellationToken.None);
+        List<(byte Kind, byte[] Data)> records = (List<(byte, byte[])>)typeof(VerifiedConsensusJournal)
+            .GetField("_updates", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(journal)!;
+        while (records.Count < 4096) records.Add(records[0]);
+        LightClientOptimisticUpdate peak = AsOptimistic(ConsensusTests.Update(1, 8, 9, 1, participants: 512));
+        store.Process(peak, 9);
+
+        await journal.AppendAsync(peak, store, CancellationToken.None);
+        LightClientStore resumed = (await Journal(ConsensusTests.Spec, checkpoint).LoadAsync(9, CancellationToken.None))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resumed.HasSameAuthenticatedState(store), Is.True);
+            Assert.That(resumed.FinalizedHeader.Beacon!.Slot, Is.EqualTo(5));
+            Assert.That(records.Count, Is.LessThan(8));
+            Assert.That(_logger.Entries, Is.Empty);
+        }
     }
 
     [Test]

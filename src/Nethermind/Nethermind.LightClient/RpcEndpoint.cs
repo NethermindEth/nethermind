@@ -11,7 +11,6 @@ internal static class RpcEndpoint
     internal const int StandardRequestBodySize = 64 * 1024;
     internal const int MaxRequestBodySize = 4 * 1024 * 1024 + StandardRequestBodySize;
     internal const int BatchResponseLimit = 16 * 1024 * 1024;
-    internal const int BatchErrorReserve = 512 * 1024;
     internal const int MaxBatchCount = 32;
     private const int MaxActiveRequests = 64;
     private static readonly TimeSpan RequestDeadline = TimeSpan.FromSeconds(90);
@@ -91,9 +90,7 @@ internal static class RpcEndpoint
             using (document)
             {
                 JsonElement request = document.RootElement;
-                if (large && (request.ValueKind != JsonValueKind.Object || !request.TryGetProperty("method", out JsonElement largeMethod)
-                    || largeMethod.ValueKind != JsonValueKind.String || !largeMethod.ValueEquals("eth_sendRawTransaction")
-                    && !largeMethod.ValueEquals("eth_call") && !largeMethod.ValueEquals("eth_estimateGas")))
+                if (large && !AllowsLargeBody(request))
                 {
                     context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
                     logger.LogInformation("RPC request -> body too large in {ElapsedMs:F1} ms", Stopwatch.GetElapsedTime(started).TotalMilliseconds);
@@ -126,30 +123,58 @@ internal static class RpcEndpoint
         Func<string, JsonElement, CancellationToken, Task<object>> invoke, ILogger logger, CancellationToken cancellationToken)
     {
         using BoundedJsonBuffer output = new(BatchResponseLimit);
+        bool responses = await WriteBatchAsync(output, BatchResponseLimit, requests, invoke, logger, cancellationToken);
+        if (!responses) context.Response.StatusCode = StatusCodes.Status204NoContent;
+        else
+        {
+            context.Response.ContentType = "application/json; charset=utf-8";
+            await context.Response.Body.WriteAsync(output.WrittenMemory, cancellationToken);
+        }
+    }
+
+    private static bool AllowsLargeBody(JsonElement request)
+    {
+        try
+        {
+            return request.ValueKind == JsonValueKind.Object && request.TryGetProperty("method", out JsonElement method)
+                && method.ValueKind == JsonValueKind.String && (method.ValueEquals("eth_sendRawTransaction")
+                    || method.ValueEquals("eth_call") || method.ValueEquals("eth_estimateGas"));
+        }
+        catch (InvalidOperationException) { return false; }
+    }
+
+    internal static async Task<bool> WriteBatchAsync(BoundedJsonBuffer output, int limit, JsonElement requests,
+        Func<string, JsonElement, CancellationToken, Task<object>> invoke, ILogger logger, CancellationToken cancellationToken)
+    {
         output.GetSpan(1)[0] = (byte)'[';
         output.Advance(1);
         int responses = 0;
         int admitted = 0;
         bool exhausted = false;
+        string limitMessage = limit == BatchResponseLimit ? BatchLimitMessage
+            : "WebSocket batch exceeds the 256 KiB response limit; submit remaining requests separately.";
+        byte[] finalError = JsonSerializer.SerializeToUtf8Bytes(Error(null, -32005, limitMessage));
         foreach (JsonElement item in requests.EnumerateArray())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await InvokeAsync(item, exhausted ? RejectBatchItem : admitted++ >= MaxBatchCount ? RejectExcessBatchItem : invoke,
+            // Leave a final limit response when a large error tail cannot fit, before executing another item.
+            if ((long)output.WrittenMemory.Length + ErrorSizeBound(item) + finalError.Length + 3 > limit)
+            {
+                Copy(finalError);
+                break;
+            }
+            await InvokeAsync(item, exhausted ? Reject : admitted++ >= MaxBatchCount ? RejectExcessBatchItem : invoke,
                 logger, cancellationToken, Append);
 
             bool Append(object response, bool success)
             {
-                int remaining = BatchResponseLimit - BatchErrorReserve - output.WrittenMemory.Length - (responses == 0 ? 0 : 1) - 1;
-                using BoundedJsonBuffer encoded = new(success ? Math.Max(1, remaining) : BatchErrorReserve);
+                int remaining = limit - finalError.Length - output.WrittenMemory.Length - (responses == 0 ? 0 : 1) - 2;
+                using BoundedJsonBuffer encoded = new(Math.Max(1, remaining), 6 * limit);
                 bool unchanged = true;
                 try
                 {
-                    using (Utf8JsonWriter writer = new(encoded)) JsonSerializer.Serialize(writer, response);
-                    if (encoded.WrittenMemory.Length > remaining)
-                    {
-                        exhausted = true;
-                        if (success) throw BatchTooLarge();
-                    }
+                    using Utf8JsonWriter writer = new(encoded);
+                    JsonSerializer.Serialize(writer, response);
                 }
                 catch (RpcException)
                 {
@@ -157,8 +182,8 @@ internal static class RpcEndpoint
                     unchanged = false;
                     object? id = item.ValueKind == JsonValueKind.Object && item.TryGetProperty("id", out JsonElement value)
                         && value.ValueKind is JsonValueKind.Null or JsonValueKind.Number or JsonValueKind.String ? value : null;
-                    using BoundedJsonBuffer error = new(BatchErrorReserve);
-                    using (Utf8JsonWriter writer = new(error)) JsonSerializer.Serialize(writer, Error(id, -32005, BatchLimitMessage));
+                    using BoundedJsonBuffer error = new(remaining, 6 * limit);
+                    using (Utf8JsonWriter writer = new(error)) JsonSerializer.Serialize(writer, Error(id, -32005, limitMessage));
                     Copy(error.WrittenMemory.Span);
                     return unchanged;
                 }
@@ -167,14 +192,12 @@ internal static class RpcEndpoint
             }
         }
         cancellationToken.ThrowIfCancellationRequested();
-        if (responses == 0) context.Response.StatusCode = StatusCodes.Status204NoContent;
-        else
-        {
-            output.GetSpan(1)[0] = (byte)']';
-            output.Advance(1);
-            context.Response.ContentType = "application/json; charset=utf-8";
-            await context.Response.Body.WriteAsync(output.WrittenMemory, cancellationToken);
-        }
+        output.GetSpan(1)[0] = (byte)']';
+        output.Advance(1);
+        return responses != 0;
+
+        Task<object> Reject(string method, JsonElement parameters, CancellationToken token) =>
+            Task.FromException<object>(new RpcException(-32005, limitMessage));
 
         void Copy(ReadOnlySpan<byte> encoded)
         {
@@ -184,14 +207,20 @@ internal static class RpcEndpoint
             encoded.CopyTo(destination[separator..]);
             output.Advance(encoded.Length + separator);
             responses++;
-            if (output.WrittenMemory.Length + 1 >= BatchResponseLimit - BatchErrorReserve) exhausted = true;
         }
     }
 
+    private static long ErrorSizeBound(JsonElement item)
+    {
+        try
+        {
+            return item.ValueKind == JsonValueKind.Object && item.TryGetProperty("id", out JsonElement id)
+                ? 192L + 6L * id.GetRawText().Length : 192;
+        }
+        catch (InvalidOperationException) { return 192; }
+    }
+
     private const string BatchLimitMessage = "HTTP batch exceeds the 16 MiB response budget; submit remaining requests separately.";
-    private static RpcException BatchTooLarge() => new(-32005, BatchLimitMessage);
-    private static Task<object> RejectBatchItem(string method, JsonElement parameters, CancellationToken cancellationToken) =>
-        Task.FromException<object>(BatchTooLarge());
     internal static Task<object> RejectExcessBatchItem(string method, JsonElement parameters, CancellationToken cancellationToken) =>
         Task.FromException<object>(new RpcException(-32005, "A batch may execute at most 32 requests; submit remaining requests separately."));
 
@@ -231,6 +260,17 @@ internal static class RpcEndpoint
             {
                 outcome = "error -32002";
                 return hasId ? Respond(Error(responseId, -32002, "RPC request timed out."), false) : null;
+            }
+            catch (ExecutionDataUnavailableException exception)
+            {
+                outcome = "error -32001";
+                logger.LogDebug("Authenticated RPC data is unavailable: {Reason}", exception.Message);
+                return hasId ? Respond(Error(responseId, -32001, "Requested authenticated data is unavailable."), false) : null;
+            }
+            catch (InvalidOperationException)
+            {
+                outcome = "error -32602";
+                return hasId ? Respond(Error(responseId, -32602, "Invalid parameters."), false) : null;
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {

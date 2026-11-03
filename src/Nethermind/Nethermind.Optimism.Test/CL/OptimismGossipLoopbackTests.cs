@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.Specialized;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -33,6 +32,7 @@ public class OptimismGossipLoopbackTests
     [TestCase(64, TestName = "A small block message reaches the other host")]
     [TestCase(280 * 1024, TestName = "A block message over one yamux window reaches the other host")]
     [TestCase(1024 * 1024 + 4096, TestName = "A block message over one mebibyte reaches the other host")]
+    [TestCase(6 * 1024 * 1024, TestName = "A block message over the default outbound queue budget reaches the other host")]
     [CancelAfter(60_000)]
     public Task A_block_message_reaches_the_other_host(int size, CancellationToken token) => PublishAndReceiveAsync(size, token);
 
@@ -448,19 +448,14 @@ public class OptimismGossipLoopbackTests
 
     private static async Task AssertNoSessionAfterShutdownAsync(ILocalPeer dialer, Host remote, Func<ValueTask> shutdown, bool callerStopsWaiting, CancellationToken token)
     {
+        LocalPeer localPeer = (LocalPeer)dialer;
         LocalPeer remotePeer = (LocalPeer)remote.Peer;
-        // The dialer's own session: closed as soon as it is added after disposal, so the remote may never list it.
-        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        ((LocalPeer)dialer).Sessions.CollectionChanged += (_, change) =>
-        {
-            if (change.Action == NotifyCollectionChangedAction.Add) reached.TrySetResult();
-        };
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task<ISession> dial = dialer.DialAsync(remote.Address, caller.Token);
         Task<ISession> remaining = dial;
         if (callerStopsWaiting)
         {
-            remaining = ((LocalPeer)dialer).DialAsync(remote.Address, token);
+            remaining = localPeer.DialAsync(remote.Address, token);
             await caller.CancelAsync();
         }
 
@@ -478,17 +473,19 @@ public class OptimismGossipLoopbackTests
             }
         }
 
-        await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
-
         // Dial timeout is 15 s; a remote losing the connection mid-handshake can take another 30 s to drop it.
         using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
         bounded.CancelAfter(TimeSpan.FromSeconds(45));
-        while (remotePeer.Sessions.Count > 0 && !bounded.IsCancellationRequested)
+        while ((localPeer.Sessions.Count > 0 || remotePeer.Sessions.Count > 0) && !bounded.IsCancellationRequested)
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.That(remotePeer.Sessions, Is.Empty, "the dial finished after shutdown and its session stayed open");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(localPeer.Sessions, Is.Empty, "the disposed dialer left a session open");
+            Assert.That(remotePeer.Sessions, Is.Empty, "the dial finished after shutdown and its session stayed open");
+        }
     }
 
     [Test]

@@ -332,10 +332,10 @@ internal sealed class VerifiedConsensusJournal
     {
         byte[] bootstrap = _bootstrap ?? throw new InvalidOperationException("The consensus journal is not initialized.");
         List<(byte Kind, byte[] Data)> updates = [.. _updates];
-        if (_latestHead is { } head && (head.Kind != kind || !head.Data.AsSpan().SequenceEqual(encoded))) updates.Add(head);
-        if (_latestOptimistic is { } optimistic && (optimistic.Kind != kind || !optimistic.Data.AsSpan().SequenceEqual(encoded))) updates.Add(optimistic);
+        if (_latestHead is { } head) updates.Add(head);
+        if (_latestOptimistic is { } optimistic) updates.Add(optimistic);
         updates.Add((kind, encoded));
-        if (store.Period != _period || updates.Count > MaxUpdates) updates = Compact(bootstrap, updates, store, cancellationToken);
+        if (updates.Count > MaxUpdates) updates = Compact(bootstrap, updates, store, cancellationToken);
         if (updates.Count > MaxUpdates)
             throw new InvalidDataException("Saved committee chain reached its update limit; supply a newer trusted checkpoint.");
         byte[] chain = BuildChain(bootstrap, updates);
@@ -381,7 +381,9 @@ internal sealed class VerifiedConsensusJournal
         }
         if (!replay.HasSameAuthenticatedState(expected))
             throw new InvalidDataException("Saved consensus records do not reproduce the authenticated state.");
-        foreach ((int _, int index) in maxima.Values) keep[index] = true;
+        ulong oldestParticipationPeriod = expected.Period == 0 ? 0 : expected.Period - 1;
+        foreach ((ulong period, (int _, int index)) in maxima)
+            if (period >= oldestParticipationPeriod) keep[index] = true;
         if (finalized >= 0) keep[finalized] = true;
         if (optimistic >= 0) keep[optimistic] = true;
         List<(byte Kind, byte[] Data)> compacted = [];

@@ -366,14 +366,15 @@ public class VerifiedSubscriptionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(calls, Is.EqualTo(2));
-            Assert.That(response[0].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+            Assert.That(response[0].GetProperty("result").GetString()!.Length, Is.EqualTo(200_002));
+            Assert.That(response[1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
             Assert.That(socket.State, Is.EqualTo(WebSocketState.Open));
         }
         Assert.That((await socket.Request("eth_chainId")).GetProperty("result").GetString(), Is.EqualTo("0x1"));
     }
 
     [Test]
-    public async Task Discarded_batch_acknowledgements_do_not_activate_or_retain_subscriptions()
+    public async Task Batch_limit_errors_preserve_subscription_acknowledgements()
     {
         await using Harness harness = new();
         FakeSocket socket = harness.Connect();
@@ -382,8 +383,10 @@ public class VerifiedSubscriptionsTests
         socket.Push(new[] { Request("eth_subscribe", "newHeads"), Request("eth_getCode", Address.ToString(), "latest") });
 
         JsonElement failed = await socket.Next();
-        Assert.That(failed[0].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
-        for (int i = 1; i < VerifiedSubscriptions.MaxSubscriptions; i++)
+        acknowledged.Add(failed[0].GetProperty("result").GetString()!);
+        Assert.That(failed[1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+        Assert.That(failed[1].GetProperty("id").GetInt32(), Is.EqualTo(1));
+        for (int i = 2; i < VerifiedSubscriptions.MaxSubscriptions; i++)
             acknowledged.Add((await socket.Request("eth_subscribe", "newHeads")).GetProperty("result").GetString()!);
 
         Block next = harness.Source.Add(11, harness.Source.Current, 1);
@@ -394,6 +397,60 @@ public class VerifiedSubscriptionsTests
         Assert.That(acknowledged, Is.Empty);
         Assert.That(socket.Output.Reader.TryRead(out _), Is.False);
         Assert.That(socket.State, Is.EqualTo(WebSocketState.Open));
+    }
+
+    [Test]
+    public async Task Websocket_batch_execution_caps_keep_per_item_ids([Values(32, 33)] int count)
+    {
+        await using Harness harness = new();
+        FakeSocket socket = harness.Connect();
+        int calls = 0;
+        harness.Source.BeforeCodeResponse = value => calls = value;
+        socket.Push(Enumerable.Range(0, count).Select(id => new
+        {
+            jsonrpc = "2.0",
+            id,
+            method = "eth_getCode",
+            @params = new[] { Address.ToString(), "latest" },
+        }).ToArray());
+
+        JsonElement responses = await socket.Next();
+
+        Assert.That(calls, Is.EqualTo(Math.Min(count, RpcEndpoint.MaxBatchCount)));
+        Assert.That(responses.GetArrayLength(), Is.EqualTo(count));
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(responses[i].GetProperty("id").GetInt32(), Is.EqualTo(i));
+            if (i < RpcEndpoint.MaxBatchCount) Assert.That(responses[i].GetProperty("result").GetString(), Is.EqualTo("0x"));
+            else Assert.That(responses[i].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+        }
+    }
+
+    [Test]
+    public async Task A_broad_log_client_cannot_close_filtered_clients([Values] bool singleBlock)
+    {
+        await using Harness harness = new();
+        FakeSocket broad = harness.Connect();
+        await broad.Request("eth_subscribe", "logs");
+        FakeSocket narrow = harness.Connect();
+        await narrow.Request("eth_subscribe", "logs", new { address = Address.Zero.ToString() });
+        await narrow.Request("eth_subscribe", "newHeads");
+        FakeSocket heads = harness.Connect();
+        await heads.Request("eth_subscribe", "newHeads");
+        Block parent = harness.Source.Current;
+        for (ulong number = 11; number < (singleBlock ? 12UL : 51UL); number++)
+        {
+            Block next = harness.Source.Add(number, parent, 1, logCount: singleBlock ? 10_001 : 1_500);
+            harness.Publish(next);
+            Assert.That((await narrow.Next()).GetProperty("params").GetProperty("result").GetProperty("hash").GetString(), Is.EqualTo(next.Hash!.ToString()));
+            Assert.That((await heads.Next()).GetProperty("params").GetProperty("result").GetProperty("hash").GetString(), Is.EqualTo(next.Hash!.ToString()));
+            parent = next;
+        }
+
+        await broad.CloseFrame.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(broad.CloseStatus, Is.EqualTo((WebSocketCloseStatus)1013));
+        Assert.That(narrow.State, Is.EqualTo(WebSocketState.Open));
+        Assert.That(heads.State, Is.EqualTo(WebSocketState.Open));
     }
 
     [Test]
@@ -696,17 +753,20 @@ public class VerifiedSubscriptionsTests
         private readonly Channel<byte[]> _input = Channel.CreateUnbounded<byte[]>();
         internal Channel<byte[]> Output { get; } = Channel.CreateUnbounded<byte[]>();
         internal TaskCompletionSource Aborted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource CloseFrame { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _resume = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private byte[]? _pending;
         private int _offset;
         private WebSocketState _state = WebSocketState.Open;
+        private WebSocketCloseStatus? _closeStatus;
+        private string? _closeDescription;
         internal bool Accepted { get; set; }
         internal bool Disposed { get; private set; }
         internal int StallAfter { get; set; } = int.MaxValue;
         internal int Sends { get; private set; }
         internal WebSocketMessageType MessageType { get; set; } = WebSocketMessageType.Text;
-        public override WebSocketCloseStatus? CloseStatus => null;
-        public override string? CloseStatusDescription => null;
+        public override WebSocketCloseStatus? CloseStatus => _closeStatus;
+        public override string? CloseStatusDescription => _closeDescription;
         public override WebSocketState State => _state;
         public override string? SubProtocol => null;
 
@@ -729,7 +789,14 @@ public class VerifiedSubscriptionsTests
             Aborted.TrySetResult();
         }
         public override Task CloseAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken) { Abort(); return Task.CompletedTask; }
-        public override Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken) { Abort(); return Task.CompletedTask; }
+        public override Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken)
+        {
+            _closeStatus = closeStatus;
+            _closeDescription = statusDescription;
+            _state = WebSocketState.CloseSent;
+            CloseFrame.TrySetResult();
+            return Task.CompletedTask;
+        }
         public override void Dispose() { Disposed = true; Abort(); }
         public override async Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
         {

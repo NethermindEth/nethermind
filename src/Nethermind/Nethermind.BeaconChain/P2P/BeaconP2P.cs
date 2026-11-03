@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Net;
 using System.Net.Quic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
@@ -38,7 +39,7 @@ using ILoggerFactory = Microsoft.Extensions.Logging.ILoggerFactory;
 
 namespace Nethermind.BeaconChain.P2P;
 
-/// <summary>Hosts beacon libp2p TCP/Noise/yamux, optional QUIC, eth2 req/resp and gossipsub, exposing typed requests and topics.</summary>
+/// <summary>Hosts beacon libp2p TCP/Noise with yamux or mplex, optional QUIC, eth2 req/resp and gossipsub, exposing typed requests and topics.</summary>
 /// <remarks>Persisted secp256k1 identity survives restarts and supplies the discv5 ENR key. Uses eth2 StrictNoSign, Eth2MessageId,
 /// D=8/D_low=6/D_high=12/D_lazy=6, 700 ms heartbeat and two-epoch seen TTL (p2p-interface.md).</remarks>
 public sealed class BeaconP2P : IAsyncDisposable
@@ -57,16 +58,12 @@ public sealed class BeaconP2P : IAsyncDisposable
     // Lazy because the pool's implementation is built from this host.
     private readonly Lazy<IBeaconSyncPeerPool>? _peerPool;
 
-    // What the libp2p layer learns about each session that the session object itself does not tell:
-    // which side dialed, and the identify agent string. A slot opens the moment the library adds the
-    // session, completes once identify is done (see BeaconLocalPeer), and is cancelled when the
-    // library drops the session. It is a slot and not a value because a dial returns as soon as the
-    // identify dial completes, before the slot is filled.
-    private readonly ConcurrentDictionary<ISession, TaskCompletionSource<SessionInfo>> _sessionInfo = new();
+    // Identify may initialize a simultaneous-dial replacement before it appears in Sessions.
+    // Weak keys allow unpublished candidates to be collected if the library rejects them.
+    private readonly ConditionalWeakTable<ISession, TaskCompletionSource<SessionInfo>> _sessionInfo = [];
 
     private readonly ConcurrentDictionary<SessionWatch, byte> _sessionWatches = new();
     private int _identifyTimeouts;
-    private int _disposed;
 
     private LocalPeer? _localPeer;
     private CancellationTokenSource? _startCts;
@@ -136,6 +133,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton(new ExecutionPayloadEnvelopesByRootProtocol(spec, executionPayloadEnvelopePool) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1, IsAdmitted = IsAdmittedPeer })
             .AddLibp2p(builder =>
             {
+                builder.WithMplex();
                 if (config.QuicPort > 0) builder.WithQuic();
                 if (lightClientRequests)
                     builder.AddProtocol<LightClientBootstrapProtocol>(isExposed: false)
@@ -192,6 +190,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                 // phase0 p2p "Gossipsub size limits": an encoded RPC, an IWANT answer included, may reach max_message_size().
                 MaxRpcBytes = Eth2MessageId.MaxMessageSize,
                 MaxIwantResponseBytes = Eth2MessageId.MaxMessageSize,
+                MaxOutboundRpcBytesPerPeer = Eth2MessageId.MaxMessageSize + 5L,
                 // The router would redial closed gossip peers past PeerManager's bans, band and backoff; PeerManager owns redials.
                 ReconnectionAttempts = 0,
                 // fulu/das-core.md "Reconstruction and cross-seeding": this node publishes only reconstructed columns, which go to the topic mesh neighbors.
@@ -531,7 +530,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// cancelled and then removed when the library drops it, which can happen between the session snapshot and this
     /// read, so a missing slot means dropped too. A slot is always cancelled on removal, so the wait ends.
     /// </remarks>
-    internal static async Task<ISession?> WhenIdentifiedAsync(ConcurrentDictionary<ISession, TaskCompletionSource<SessionInfo>> sessionInfo, ISession session, CancellationToken token)
+    internal static async Task<ISession?> WhenIdentifiedAsync(ConditionalWeakTable<ISession, TaskCompletionSource<SessionInfo>> sessionInfo, ISession session, CancellationToken token)
     {
         if (!sessionInfo.TryGetValue(session, out TaskCompletionSource<SessionInfo>? slot)) return null;
         try
@@ -866,8 +865,7 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     private void OnSessionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        // Raised inside the library's Sessions lock, before ConnectedTo starts and before any dial can
-        // observe the session: every session a caller can see has a slot, so a missing one means dropped.
+        // A preferred simultaneous-dial replacement may already own a completed identify slot.
         switch (e.Action)
         {
             case NotifyCollectionChangedAction.Add when e.NewItems is not null:
@@ -875,13 +873,8 @@ public sealed class BeaconP2P : IAsyncDisposable
                 {
                     if (added is ISession session)
                     {
-                        _sessionInfo.TryAdd(session, new TaskCompletionSource<SessionInfo>(TaskCreationOptions.RunContinuationsAsynchronously));
+                        _sessionInfo.GetValue(session, static _ => new(TaskCreationOptions.RunContinuationsAsynchronously));
                         CountSession(session.RemotePeerId);
-                        // Disposal closes only the sessions it sees, so one a dial completes afterwards is closed here, off the library's lock.
-                        if (Volatile.Read(ref _disposed) == 1)
-                        {
-                            _ = Task.Run(session.DisconnectAsync);
-                        }
                     }
                 }
 
@@ -889,7 +882,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             case NotifyCollectionChangedAction.Remove when e.OldItems is not null:
                 foreach (object? removed in e.OldItems)
                 {
-                    if (removed is ISession session && _sessionInfo.TryRemove(session, out TaskCompletionSource<SessionInfo>? slot))
+                    if (removed is ISession session && _sessionInfo.Remove(session, out TaskCompletionSource<SessionInfo>? slot))
                     {
                         slot.TrySetCanceled();
                     }
@@ -920,18 +913,6 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        // Under the Sessions lock: a session added before this is in the library's disposal snapshot, one added after sees the flag.
-        if (_localPeer is { } localPeer)
-        {
-            lock (localPeer.Sessions)
-            {
-                Volatile.Write(ref _disposed, 1);
-            }
-        }
-        else
-        {
-            Volatile.Write(ref _disposed, 1);
-        }
         if (_startCts is not null)
         {
             await _startCts.CancelAsync();
@@ -964,7 +945,8 @@ public sealed class BeaconP2P : IAsyncDisposable
         protected override async Task ConnectedTo(ISession session, bool isDialer)
         {
             // One identify exchange verifies the remote identity and reads the agent string.
-            _owner._sessionInfo.TryGetValue(session, out TaskCompletionSource<SessionInfo>? slot);
+            TaskCompletionSource<SessionInfo> slot = _owner._sessionInfo.GetValue(session,
+                static _ => new(TaskCreationOptions.RunContinuationsAsynchronously));
             IdentifyResult answer;
             using CancellationTokenSource cts = new(IdentifyTimeout);
             try
@@ -973,7 +955,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             }
             catch (Exception e)
             {
-                slot?.TrySetCanceled();
+                slot.TrySetCanceled();
                 // Only our negotiation-and-read deadline is a timeout; closing the session cancels its dial too.
                 if (cts.IsCancellationRequested)
                 {
@@ -984,7 +966,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                 throw;
             }
 
-            slot?.TrySetResult(new SessionInfo(isDialer ? PeerDirection.Outbound : PeerDirection.Inbound, answer.AgentVersion, answer));
+            slot.TrySetResult(new SessionInfo(isDialer ? PeerDirection.Outbound : PeerDirection.Inbound, answer.AgentVersion, answer));
         }
     }
 

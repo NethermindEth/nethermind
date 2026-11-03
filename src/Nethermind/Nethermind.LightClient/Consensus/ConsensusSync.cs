@@ -131,12 +131,44 @@ internal static class ConsensusSync
             ulong requestedPeriod = before + (knewNext ? 1UL : 0UL);
             using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(15));
-            await fetchUpdate(requestedPeriod, async (update, token) =>
+            try
             {
-                await processUpdate(update, token);
-                if (store.SyncProgress == (before, knewNext)) throw new IrrelevantLightClientUpdateException();
-            }, timeout.Token);
+                await fetchUpdate(requestedPeriod, async (update, token) =>
+                {
+                    await processUpdate(update, token);
+                    if (store.SyncProgress == (before, knewNext)) throw new IrrelevantLightClientUpdateException();
+                }, timeout.Token);
+            }
+            catch (IrrelevantLightClientUpdateException) { break; }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested) { break; }
             if (store.SyncProgress == (before, knewNext)) break;
         }
+    }
+
+    internal static void RequireLiveState(LightClientStore store, ulong currentSlot, Action stopApplication)
+    {
+        try { store.RequireRecent(currentSlot); }
+        catch (LightClientLocalStateException exception)
+        {
+            stopApplication();
+            throw new InvalidOperationException("Authenticated light-client state is too old to resume; restart with a recent trusted checkpoint.", exception);
+        }
+    }
+
+    internal static async Task<bool> ProcessWithTimeRetryAsync(BeaconChainSpec spec, TimeProvider clock,
+        Func<Task<bool>> process, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        try { return await process(); }
+        catch (LightClientFutureSlotException exception)
+        {
+            DateTimeOffset boundary = DateTimeOffset.FromUnixTimeSeconds(
+                checked((long)(spec.GenesisTime + exception.SignatureSlot * spec.SecondsPerSlot)));
+            TimeSpan delay = boundary - clock.GetUtcNow();
+            if (delay > TimeSpan.FromSeconds(spec.SecondsPerSlot)) throw;
+            if (delay > TimeSpan.Zero) await Task.Delay(delay, clock, cancellationToken);
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        return await process();
     }
 }

@@ -20,6 +20,24 @@ namespace Nethermind.LightClient.Test;
 [TestFixture]
 public class SnapProofTests
 {
+    [Test]
+    public void Transport_proof_node_limit_precedes_reconstruction_of_a_valid_absence_witness([Values(65, 66)] int count)
+    {
+        UInt256 existing = 1;
+        byte[] leaf = Leaf(ValueKeccak.Compute(existing.ToBigEndian()).ToCommitment(), Rlp.Encode((UInt256)42).Bytes);
+        Account account = new(1, 2, Keccak.Compute(leaf), Keccak.OfAnEmptyString);
+        using SlotsAndProofs response = new()
+        {
+            Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(Enumerable.Repeat(leaf, count).ToArray())),
+        };
+
+        if (count > 65)
+            Assert.That(() => ExecutionPeerTransport.VerifyStorageRange(account, ValueKeccak.Zero, 2, response, NullLogManager.Instance),
+                Throws.TypeOf<InvalidDataException>());
+        else
+            Assert.That(ExecutionPeerTransport.VerifyStorageRange(account, ValueKeccak.Zero, 2, response, NullLogManager.Instance), Is.EqualTo(UInt256.Zero));
+    }
+
     private static readonly Address Address = new("0x1234567890123456789012345678901234567890");
 
     [Test]
