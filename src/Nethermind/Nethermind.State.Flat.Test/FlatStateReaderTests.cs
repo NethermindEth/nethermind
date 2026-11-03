@@ -74,7 +74,7 @@ public class FlatStateReaderTests
     [Test]
     public void RunTreeVisitor_LoadsTrieRootsFromBundle([Values] bool fullScan)
     {
-        CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(1, out Hash256 stateRoot, TestItem.AddressA);
+        CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(out Hash256 stateRoot, TestItem.AddressA);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
         FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot: null, persisted: null));
 
@@ -91,12 +91,12 @@ public class FlatStateReaderTests
     [Test]
     public void RunTreeVisitor_ReadsSnapshotsBeforeBasePersistence([Values] bool fullScan, [Values] bool persistedSnapshot)
     {
-        CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(1, out Hash256 stateRoot, TestItem.AddressA);
+        CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(out Hash256 stateRoot, TestItem.AddressA);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
         ResourcePool pool = new(new FlatDbConfig());
         using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
         // A persisted snapshot stands for one whose records left the buffer, so only an in-memory snapshot's roots are indexed.
-        trieReader.AddNodesTo(snapshot, _buffer, indexRoots: !persistedSnapshot, TestItem.AddressA, TreePath.Empty);
+        trieReader.AddNodesTo(snapshot, indexRoots: !persistedSnapshot, TestItem.AddressA, TreePath.Empty);
         using TempPath arenaPath = TempPath.GetTempDirectory();
         using TempPath blobsPath = TempPath.GetTempDirectory();
         using ArenaManager arena = TestFixtureHelpers.CreateArenaManager(arenaPath.Path);
@@ -120,12 +120,12 @@ public class FlatStateReaderTests
     [Test]
     public void RunTreeVisitor_FollowsBufferRecordsAndLoadsTheRestFromPersistence([Values(1, 4)] int parallelism)
     {
-        CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(1, out Hash256 stateRoot, TestItem.AddressA, TestItem.AddressC);
+        CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(out Hash256 stateRoot, TestItem.AddressA, TestItem.AddressC);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
         ResourcePool pool = new(new FlatDbConfig());
         using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
         // The buffer holds the branch root, A's leaf below it and A's storage root; only persistence holds C's leaf and storage root.
-        trieReader.AddNodesTo(snapshot, _buffer, indexRoots: true, TestItem.AddressA, TreePath.Empty, FlatTestHelpers.CanonicalPath(Keccak.Compute(TestItem.AddressA.Bytes), 1));
+        trieReader.AddNodesTo(snapshot, indexRoots: true, TestItem.AddressA, TreePath.Empty, FlatTestHelpers.CanonicalPath(Keccak.Compute(TestItem.AddressA.Bytes), 1));
         FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot, persisted: null));
         TrieStatsCollector collector = new(new MemDb(), LimboLogs.Instance);
         VisitingStats diagnostics = new();
@@ -221,8 +221,8 @@ public class FlatStateReaderTests
         public bool StateAvailable { get; set; } = true;
         public bool StorageAvailable { get; set; } = true;
 
-        /// <summary>A reader over a state trie of <paramref name="addresses"/>, each with a balance of 1 and <paramref name="slot"/> set to 1.</summary>
-        public static CountingTrieReader WithAccountsAndSlot(UInt256 slot, out Hash256 stateRoot, params Address[] addresses)
+        /// <summary>A reader over a state trie of <paramref name="addresses"/>, each with a balance of 1 and slot 1 set to 1.</summary>
+        public static CountingTrieReader WithAccountsAndSlot(out Hash256 stateRoot, params Address[] addresses)
         {
             MemDb trieDb = new();
             StateTree stateTree = new(new RawScopedTrieStore(trieDb), LimboLogs.Instance);
@@ -231,7 +231,7 @@ public class FlatStateReaderTests
             {
                 Hash256 addressHash = Keccak.Compute(address.Bytes);
                 StorageTree storageTree = new(new RawScopedTrieStore(trieDb, addressHash), LimboLogs.Instance);
-                storageTree.Set(slot, [0x01]);
+                storageTree.Set(1, [0x01]);
                 storageTree.Commit();
                 storageTrees[addressHash] = storageTree;
                 stateTree.Set(address, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
@@ -243,9 +243,10 @@ public class FlatStateReaderTests
         }
 
         /// <summary>Records the state nodes at <paramref name="statePaths"/> and the storage root of <paramref name="address"/> in <paramref name="snapshot"/>.</summary>
-        /// <param name="indexRoots">Indexes both roots in <paramref name="buffer"/>, as block processing publishes them.</param>
-        public void AddNodesTo(Snapshot snapshot, INodeRecordBuffer buffer, bool indexRoots, Address address, params TreePath[] statePaths)
+        /// <param name="indexRoots">Indexes both roots in the snapshot's buffer, as block processing publishes them.</param>
+        public void AddNodesTo(Snapshot snapshot, bool indexRoots, Address address, params TreePath[] statePaths)
         {
+            INodeRecordBuffer buffer = snapshot.BufferPin!.Buffer;
             foreach (TreePath path in statePaths) snapshot.Content.SetStateNodeRlp(buffer, path, stateTree.GetNodeByPath(path.ToNibble())!);
             Hash256 addressHash = Keccak.Compute(address.Bytes);
             snapshot.Content.SetStorageNodeRlp(buffer, addressHash, TreePath.Empty, storageTrees[addressHash].GetNodeByPath([])!);

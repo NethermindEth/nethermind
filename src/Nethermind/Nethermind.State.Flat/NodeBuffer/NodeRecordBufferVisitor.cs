@@ -19,42 +19,36 @@ internal abstract class NodeRecordBufferVisitor(
     VisitingStats? diagnostics,
     ReadFlags readFlags)
 {
-    /// <summary>The trie node buffer the walk starts in.</summary>
-    protected INodeRecordBuffer NodeRecordBuffer => nodeRecordBuffer;
-
     /// <summary>Finds a trie's root record pointer by hash in the buffer's root index, as block processing does; zero when it is not indexed.</summary>
     protected ulong FindRoot(Hash256? address, Hash256 rootHash) => nodeRecordBuffer.ResolveRoot(address, rootHash.ValueHash256).Pointer;
 
-    protected TrieNode Reference(Hash256 hash, in TreePath path)
+    protected TrieNode RootReference(Hash256 hash)
     {
-        RecordLookup(path);
+        RecordLookup(TreePath.Empty);
         return new TrieNode(NodeType.Unknown, hash);
     }
 
     /// <summary>Decodes the node <paramref name="reference"/> names from the record at <paramref name="pointer"/>, otherwise from its RLP, embedded in the parent or loaded by path from persistence.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     /// <returns>False when persistence does not hold it either.</returns>
-    protected bool TryLoad(TrieNode reference, ulong pointer, INodeRecordBuffer? buffer, Hash256? address, in TreePath path, out Resolved resolved)
+    protected bool TryLoad(TrieNode reference, ulong pointer, Hash256? address, in TreePath path, out Resolved resolved)
     {
         resolved = default;
         TrieNode node = reference;
-        NodeRecord record = default;
-        if (buffer is not null && buffer.TryLocate(pointer, out record))
+        NodeRecord? record = null;
+        if (pointer != 0 && nodeRecordBuffer.TryLocate(pointer, out NodeRecord located))
         {
-            node = new TrieNode(NodeType.Unknown, reference.Keccak!, new CappedArray<byte>(record.Rlp.ToArray()));
+            record = located;
+            node = new TrieNode(NodeType.Unknown, reference.Keccak!, new CappedArray<byte>(located.Rlp.ToArray()));
         }
-        else
+        else if (reference.FullRlp.IsNull)
         {
-            buffer = null;
-            if (reference.FullRlp.IsNull)
-            {
-                diagnostics?.RecordCacheMiss();
-                byte[]? rlp = address is null
-                    ? bundle.TryLoadStateRlp(path, reference.Keccak!, readFlags)
-                    : bundle.TryLoadStorageRlp(address, path, reference.Keccak!, readFlags);
-                if (rlp is null) return false;
-                node = new TrieNode(NodeType.Unknown, reference.Keccak!, new CappedArray<byte>(rlp));
-            }
+            diagnostics?.RecordCacheMiss();
+            byte[]? rlp = address is null
+                ? bundle.TryLoadStateRlp(path, reference.Keccak!, readFlags)
+                : bundle.TryLoadStorageRlp(address, path, reference.Keccak!, readFlags);
+            if (rlp is null) return false;
+            node = new TrieNode(NodeType.Unknown, reference.Keccak!, new CappedArray<byte>(rlp));
         }
 
         try
@@ -66,7 +60,7 @@ internal abstract class NodeRecordBufferVisitor(
             return false;
         }
 
-        resolved = new Resolved(node, record, buffer);
+        resolved = new Resolved(node, record);
         return true;
     }
 
@@ -86,11 +80,11 @@ internal abstract class NodeRecordBufferVisitor(
         diagnostics?.ObserveDepth(path.Length);
     }
 
-    /// <summary>A decoded node, with the record it was decoded from while <see cref="Buffer"/> is set.</summary>
-    protected readonly record struct Resolved(TrieNode Node, NodeRecord Record, INodeRecordBuffer? Buffer)
+    /// <summary>A decoded node, with the record it was decoded from unless it was loaded from persistence or embedded in its parent.</summary>
+    protected readonly record struct Resolved(TrieNode Node, NodeRecord? Record)
     {
         /// <summary>The record pointer of the hashed child at <paramref name="index"/>; zero when unknown, which loads the child from persistence.</summary>
-        public ulong ChildPointer(int index) => Buffer is null ? 0 : Record.View.Child(index).Pointer;
+        public ulong ChildPointer(int index) => Record is { } nodeRecord ? nodeRecord.View.Child(index).Pointer : 0;
     }
 }
 
@@ -123,25 +117,23 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
             return;
         }
 
-        if (!TryResolve(Reference(rootHash, TreePath.Empty), FindRoot(null, rootHash), NodeRecordBuffer, null, TreePath.Empty, default, out Resolved root)) return;
+        if (!TryResolve(RootReference(rootHash), FindRoot(null, rootHash), null, TreePath.Empty, default, out Resolved root)) return;
 
         if (visitor.IsFullDbScan) visitor.VisitTree(default, rootHash);
         Visit(root, default, null, TreePath.Empty, long.MaxValue);
     }
 
     /// <summary>Loads a node as <see cref="NodeRecordBufferVisitor.TryLoad"/> does, visiting it as missing when that fails.</summary>
-    private bool TryResolve(TrieNode reference, ulong pointer, INodeRecordBuffer? buffer, Hash256? address, in TreePath path,
-        in TNodeContext context, out Resolved resolved)
+    private bool TryResolve(TrieNode reference, ulong pointer, Hash256? address, in TreePath path, in TNodeContext context, out Resolved resolved)
     {
-        if (TryLoad(reference, pointer, buffer, address, path, out resolved)) return true;
+        if (TryLoad(reference, pointer, address, path, out resolved)) return true;
 
         visitor.VisitMissingNode(context, reference.Keccak);
         return false;
     }
 
-    private long Descend(TrieNode reference, ulong pointer, INodeRecordBuffer? buffer, in TNodeContext context, Hash256? address,
-        in TreePath path, long sizeHint) =>
-        TryResolve(reference, pointer, buffer, address, path, context, out Resolved node)
+    private long Descend(TrieNode reference, ulong pointer, in TNodeContext context, Hash256? address, in TreePath path, long sizeHint) =>
+        TryResolve(reference, pointer, address, path, context, out Resolved node)
             ? Visit(node, context, address, path, sizeHint)
             : 1;
 
@@ -162,7 +154,7 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
                     ?? throw new InvalidDataException($"Child of an extension {node.Key} should not be null.");
                 TNodeContext childContext = context.Add(node.Key!);
                 if (visitor.ShouldVisit(childContext, child.Keccak!))
-                    size += Descend(child, resolved.ChildPointer(0), resolved.Buffer, childContext, address, childPath, sizeHint);
+                    size += Descend(child, resolved.ChildPointer(0), childContext, address, childPath, sizeHint);
                 break;
             case NodeType.Leaf:
                 visitor.VisitLeaf(context, node);
@@ -187,7 +179,7 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
         path.AppendMut(leaf.Key!);
         Hash256 address = path.Path.ToCommitment();
         Hash256 storageRootHash = account.StorageRoot.ToCommitment();
-        return TryResolve(Reference(storageRootHash, TreePath.Empty), FindRoot(address, storageRootHash), NodeRecordBuffer, address, TreePath.Empty, leafContext, out Resolved storageRoot)
+        return TryResolve(RootReference(storageRootHash), FindRoot(address, storageRootHash), address, TreePath.Empty, leafContext, out Resolved storageRoot)
             ? Visit(storageRoot, leafContext.AddStorage(address), address, TreePath.Empty, sizeHint)
             : 0;
     }
@@ -197,7 +189,6 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
         sizeHint /= TrieNode.BranchesCount;
         // As in TrieNodeTraverser, fanning out only over the top state levels and the top storage level.
         bool parallel = options.MaxDegreeOfParallelism != 1 && path.Length <= (address is null ? 2 : 1);
-        INodeRecordBuffer? buffer = resolved.Buffer;
         List<Task<long>>? tasks = null;
         long size = 0;
         try
@@ -217,13 +208,13 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
                     tasks.Add(Task.Run(() =>
                     {
                         using ConcurrencyController.Slot worker = slot;
-                        return Descend(child, pointer, buffer, childContext, address, childPath, childSizeHint);
+                        return Descend(child, pointer, childContext, address, childPath, childSizeHint);
                     }));
                 }
                 else
                 {
                     // Changing the size hint mid-iteration is deliberate, as in TrieNodeTraverser.
-                    sizeHint = Descend(child, pointer, buffer, childContext, address, childPath, sizeHint);
+                    sizeHint = Descend(child, pointer, childContext, address, childPath, sizeHint);
                     size += sizeHint;
                 }
             }
