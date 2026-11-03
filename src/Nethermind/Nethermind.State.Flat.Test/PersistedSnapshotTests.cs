@@ -14,9 +14,11 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using Nethermind.State.Flat.Test.Io;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 using NUnit.Framework;
@@ -1201,5 +1203,97 @@ public class PersistedSnapshotTests
 
         // Fresh miss for an unrelated address still works after AdviseDontNeed.
         Assert.That(persisted.TryGetAccount(TestItem.AddressB, out _), Is.False);
+    }
+
+    [Test]
+    public void Merge_of_random_sources_matches_reference_bytes_and_bloom_adds(
+        [Values(2, 3, 6, 70)] int sourceCount, [Values(1, 2, 3)] int seed)
+    {
+        Random random = new(seed * 1000 + sourceCount);
+        using PersistedSnapshotList sources = new(sourceCount);
+        for (int i = 0; i < sourceCount; i++)
+        {
+            StateId from = new((ulong)i, i == 0 ? Keccak.EmptyTreeHash : Keccak.Compute(i.ToString()));
+            StateId to = new((ulong)i + 1, Keccak.Compute((i + 1).ToString()));
+            INodeRecordBufferPin pin = _buffer.PinHead();
+            SnapshotContent content = new();
+            Populate(content, random, i);
+            using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing, pin);
+            sources.Add(TestFixtureHelpers.CreatePersistedSnapshot(
+                _memArena, _blobs, from, to, PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs)));
+        }
+
+        (byte[] actual, long actualBloomAdds) = Merge(sources, reference: false);
+        (byte[] expected, long expectedBloomAdds) = Merge(sources, reference: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(actualBloomAdds, Is.EqualTo(expectedBloomAdds));
+        }
+    }
+
+    private void Populate(SnapshotContent content, Random random, int source)
+    {
+        Address[] addresses = TestItem.Addresses;
+        const int addressPool = 6;
+        for (int a = 0; a < addressPool; a++)
+        {
+            Address address = addresses[a];
+            if (random.Next(2) == 0)
+                content.Accounts[address] = random.Next(4) == 0 ? null : new Account((ulong)source, (UInt256)random.Next(1000));
+            if (random.Next(4) == 0)
+                content.SelfDestructedStorageAddresses[address] = random.Next(2) == 0;
+            for (int slot = 0; slot < 8; slot++)
+            {
+                if (random.Next(3) != 0) continue;
+                content.Storages[(address, (UInt256)slot)] = random.Next(5) == 0 ? null : (UInt256?)(source * 100 + random.Next(100) + 1);
+            }
+        }
+
+        content.SetStateNodeRlp(_buffer, FlatTestHelpers.CanonicalPath(Keccak.Compute("shared"), 4), FlatTestHelpers.LeafRlp(0xC1, (byte)source));
+
+        for (int p = 0; p < 12; p++)
+        {
+            if (random.Next(2) == 0) continue;
+            TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute($"state{p}"), 1 + p % 9);
+            content.SetStateNodeRlp(_buffer, path, FlatTestHelpers.LeafRlp(0xC1, (byte)source, (byte)p));
+        }
+
+        for (int p = 0; p < 12; p++)
+        {
+            if (random.Next(2) == 0) continue;
+            Hash256 owner = Keccak.Compute($"owner{p % 3}");
+            TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute($"storage{p}"), 1 + p % 7);
+            content.SetStorageNodeRlp(_buffer, owner, path, FlatTestHelpers.LeafRlp(0xC2, (byte)source, (byte)p));
+        }
+    }
+
+    private static (byte[] Data, long BloomAdds) Merge(PersistedSnapshotList snapshots, bool reference)
+    {
+        long totalSize = 4096;
+        for (int i = 0; i < snapshots.Count; i++) totalSize += snapshots[i].Size;
+
+        int n = snapshots.Count;
+        using PooledByteBufferWriter pooled = new(checked((int)totalSize));
+        using BloomFilter bloom = new(1024, 10);
+        using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
+        WholeReadSession[] sessionArr = sessionsList.UnsafeGetInternalArray();
+        try
+        {
+            for (int i = 0; i < n; i++)
+                sessionArr[i] = snapshots[i].BeginWholeReadSession();
+            if (reference)
+                PersistedSnapshotMergerReference.NWayMergeSnapshots<PooledByteBufferWriter.Writer, WholeReadSession, WholeReadSessionReader, NoOpPin>(
+                    sessionsList.AsSpan(), ref pooled.GetWriter(), bloom);
+            else
+                PersistedSnapshotMerger.NWayMergeSnapshots<PooledByteBufferWriter.Writer, WholeReadSession, WholeReadSessionReader, NoOpPin>(
+                    sessionsList.AsSpan(), ref pooled.GetWriter(), bloom);
+        }
+        finally
+        {
+            for (int i = 0; i < n; i++) sessionArr[i]?.Dispose();
+        }
+        return (pooled.WrittenSpan.ToArray(), bloom.Count);
     }
 }
