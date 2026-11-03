@@ -1054,25 +1054,6 @@ jobs:
             exit 1
           fi
 
-      - name: Build pinned master baseline
-        shell: bash
-        run: |
-          set -euo pipefail
-          baseline_sha=5302886bf889ef9fc2cae976c8f0cba8a0d17d4e
-          baseline_image=nethermindeth/nethermind:master-5302886
-          revision="$(docker image inspect "$baseline_image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)"
-          if [[ "$revision" != "$baseline_sha" ]]; then
-            git fetch --depth=1 origin "$baseline_sha"
-            baseline_context="$(mktemp -d "${RUNNER_TEMP}/master-baseline.XXXXXX")"
-            git archive "$baseline_sha" | tar -x -C "$baseline_context"
-            source_date_epoch="$(git log -1 --format=%ct "$baseline_sha")"
-            docker build "$baseline_context" -f "$baseline_context/Dockerfile" -t "$baseline_image" \
-              --build-arg BUILD_CONFIG=release --build-arg CI=true \
-              --build-arg COMMIT_HASH="$baseline_sha" --build-arg SOURCE_DATE_EPOCH="$source_date_epoch"
-          fi
-          docker image inspect "$baseline_image" --format '{{ .Id }} {{ index .Config.Labels "org.opencontainers.image.revision" }}'
-          [[ "$(docker image inspect "$baseline_image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" == "$baseline_sha" ]]
-
       - name: Prepare Docker image
         env:
           IMAGE_MODE: ${{ needs.resolve.outputs.image_mode }}
@@ -1091,21 +1072,30 @@ jobs:
             *) echo "Unknown image mode '${IMAGE_MODE}'."; exit 1 ;;
           esac
 
-      - name: Build log baselines
-        if: needs.resolve.outputs.benchmark_tool == 'jsonbench-sweep'
+      - name: Build exact-commit images
         shell: bash
+        env:
+          IMAGE_REF: ${{ needs.resolve.outputs.image_ref }}
+          REF_IMAGE: ${{ needs.resolve.outputs.ref_image_ref }}
+          TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
         run: |
           set -euo pipefail
-          for pair in 667047990c05a34b575ced8fe1bc60b6059f23f9:log-txhashes-only-6670479; do
-            sha="${pair%%:*}"
-            image="nethermind-rpcbench:${pair#*:}"
-            git fetch --depth=1 origin "$sha"
-            context="$(mktemp -d "${RUNNER_TEMP}/log-baseline.XXXXXX")"
-            git archive "$sha" | tar -x -C "$context"
-            source_date_epoch="$(git log -1 --format=%ct "$sha")"
-            docker build "$context" -f "$context/Dockerfile" -t "$image" \
-              --build-arg BUILD_CONFIG=release --build-arg CI=true \
-              --build-arg COMMIT_HASH="$sha" --build-arg SOURCE_DATE_EPOCH="$source_date_epoch"
+          # Every image tagged nethermind-rpcbench:gl-<40-hex commit> is built from that exact commit.
+          mapfile -t shas < <(printf '%s\n%s\n%s\n' "$IMAGE_REF" "$REF_IMAGE" "$TOOL_CONFIG" \
+            | grep -oE 'nethermind-rpcbench:gl-[0-9a-f]{40}' | sed 's/.*:gl-//' | sort -u)
+          for sha in "${shas[@]}"; do
+            image="nethermind-rpcbench:gl-${sha}"
+            if [[ "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)" != "$sha" ]]; then
+              git fetch --depth=1 origin "$sha"
+              context="$(mktemp -d "${RUNNER_TEMP}/gl-image.XXXXXX")"
+              git archive "$sha" | tar -x -C "$context"
+              source_date_epoch="$(git log -1 --format=%ct "$sha")"
+              docker build "$context" -f "$context/Dockerfile" -t "$image" \
+                --build-arg BUILD_CONFIG=release --build-arg CI=true \
+                --build-arg COMMIT_HASH="$sha" --build-arg SOURCE_DATE_EPOCH="$source_date_epoch"
+              rm -rf "$context"
+            fi
+            docker image inspect "$image" --format "$image {{ .Id }} {{ index .Config.Labels \"org.opencontainers.image.revision\" }}"
             [[ "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" == "$sha" ]]
           done
 
@@ -1189,7 +1179,7 @@ jobs:
           SNAPSHOT_BLOCK: ${{ inputs.snapshot_block }}
         run: |
           set -euo pipefail
-          printf '%s' "$TOOL_CONFIG" | jq -e '(.compare_config // "" | test("^config/compare/log-data-(filtering|huge|receipts)\\.yaml$")) or (.benchmark_config // "" | test("^config/benchmark/log-data-(filtering|huge|receipts)\\.yaml$"))' > /dev/null
+          printf '%s' "$TOOL_CONFIG" | jq -e '(.compare_config // "" | test("^config/compare/log-data-(filtering|huge|receipts|shapes)\\.yaml$")) or (.benchmark_config // "" | test("^config/benchmark/log-data-(filtering|huge|receipts|shapes)\\.yaml$"))' > /dev/null
           bash scripts/rpc-bench/prepare-log-index.sh "$CONTAINER_NAME" http://localhost:8545 "$SNAPSHOT_BLOCK" \
             25390001 25406300 "$OUT_DIR/index-preparation/primary"
           if [[ "$COMPARISON" == "true" ]]; then
