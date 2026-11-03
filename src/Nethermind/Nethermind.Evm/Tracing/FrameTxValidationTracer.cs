@@ -30,8 +30,13 @@ public sealed class FrameTxValidationTracer(
     CancellationToken token = default,
     Func<bool>? preempt = null,
     ulong maxVerifyGas = Eip8141Constants.MaxVerifyGas)
-    : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
+    : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer, IInstructionTracingFilter
 {
+    /// <summary>The opcodes that reach <see cref="StartOperation"/>; every other opcode runs untraced.</summary>
+    /// <remarks>Must cover every opcode the <c>switch</c> in <see cref="StartOperation"/> handles, otherwise the rule for a missing opcode is silently skipped.
+    /// <see cref="Instruction.SLOAD"/> is included only so <c>_inRecentRootCode</c> is current before <c>LoadOperationStorage</c> reads it.</remarks>
+    public UInt256 InstructionMask => new(0x9C02_0000_0000_0000, 0x0000_0000_0430_0DBF, 0x0000_0080_0000_0000, 0xD477_0000_0000_0000);
+
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
 
     private readonly long _deadline = Deadline(timeProvider ?? TimeProvider.System, timeout);
@@ -65,6 +70,7 @@ public sealed class FrameTxValidationTracer(
     public override bool IsTracingInstructions => true;
     public override bool IsTracingOpLevelStorage => true;
     public override bool IsTracingStack => true;
+    public override bool IsTracingStackPushes => false;
     public override bool IsTracingReceipt => true;
 
     // Explicit: ITxTracer declares these as default members, so the mapping must be made on this type
@@ -289,6 +295,14 @@ public sealed class FrameTxValidationTracer(
         // state write whose result the prefix would silently depend on.
         if (!Violated && to != sender) Violate("CREATE outside tx.sender");
     }
+
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => SettleCreate();
+
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => SettleCreate();
+
+    public override void ReportActionError(EvmExceptionType evmExceptionType) => SettleCreate();
+
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => SettleCreate();
 
     /// <inheritdoc/>
     /// <remarks>EIP-8151 ecRecover returns the recovered account only while its code is empty or an EIP-7702 delegation,

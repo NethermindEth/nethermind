@@ -73,7 +73,7 @@ public class GethStyleTracerTests
         inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(firstInner, secondInner);
         inner.BuildResult().Returns(Array.Empty<GethLikeTxTrace>());
         using (GethLikeBlockDeadlineTracer tracer = new(inner,
-            new() { Timeout = TimeSpan.FromSeconds(1), DeadlineClock = clock }, external.Token))
+            new() { Timeout = TimeSpan.FromSeconds(1), DeadlineClock = clock }, external.Token, new()))
         {
             ITxTracer first = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
             using (first)

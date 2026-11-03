@@ -280,6 +280,10 @@ public sealed partial class ParallelBlockTracer
             {
                 while (true)
                 {
+                    // With the last transaction taken, a place would only be waited for and given back, holding a
+                    // worker thread that other blocks' helpers queue for.
+                    if (Volatile.Read(ref _cursor) >= transactions - 1) return;
+
                     results.Reserve(stop);
                     int index = Interlocked.Increment(ref _cursor);
                     if (index >= transactions)
@@ -287,6 +291,9 @@ public sealed partial class ParallelBlockTracer
                         results.Unreserve();
                         return;
                     }
+
+                    // The workers already waiting for a place would otherwise hold their threads until the next write.
+                    if (index == transactions - 1) results.LastTaken(_workers - 1);
 
                     if (!TraceOne(index, seeds, stop))
                         throw new InvalidOperationException("The tracer bounded the first transaction and refused a later one.");

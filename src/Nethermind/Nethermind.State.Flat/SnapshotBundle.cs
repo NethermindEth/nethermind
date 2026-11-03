@@ -371,7 +371,7 @@ public sealed class SnapshotBundle : IDisposable
 
         try
         {
-            BufferWarmUp.WarmUp(CreateCacheableNodeRecordBuffer(transientResource)!, transientResource.WarmedNodeBuffer, _readOnlySnapshotBundle, address, root, key, forDelete);
+            BufferWarmUp.WarmUp(_nodeRecordBuffer!, transientResource.WarmedNodeBuffer, _readOnlySnapshotBundle, address, root, key, forDelete);
         }
         finally
         {
