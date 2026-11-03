@@ -466,47 +466,8 @@ jobs:
             exit 1
           fi
 
-          echo "version=$RESOLVED_EEST_VERSION" >> "$GITHUB_OUTPUT"
-          echo "version_input=$VERSION_INPUT" >> "$GITHUB_OUTPUT"
-          echo "archive=$EEST_ARCHIVE" >> "$GITHUB_OUTPUT"
-          echo "Using $EEST_ARCHIVE @ $RESOLVED_EEST_VERSION"
-
-      - name: Cache EEST fixtures
-        uses: actions/cache@v5
-        with:
-          path: ${{ runner.temp }}/eest-fixtures
-          key: eest-${{ env.EEST_REPOSITORY }}-${{ steps.eest_release.outputs.version }}-${{ steps.eest_release.outputs.archive }}
-
-      - name: Download EEST fixtures
-        env:
-          RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
-          EEST_ARCHIVE: ${{ steps.eest_release.outputs.archive }}
-        run: |
-          RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
-          if command -v cygpath >/dev/null 2>&1; then
-            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
-          fi
-          EEST_DIR="$RUNNER_TMP/eest-fixtures/$RESOLVED_EEST_VERSION"
-          if [ ! -d "$EEST_DIR" ]; then
-            mkdir -p "$EEST_DIR"
-            ARCHIVE_URL="https://github.com/$EEST_REPOSITORY/releases/download/$RESOLVED_EEST_VERSION/$EEST_ARCHIVE"
-            echo "Downloading EEST fixtures from $ARCHIVE_URL"
-            curl -fsSL --max-time 300 --retry 3 --retry-delay 5 "$ARCHIVE_URL" | tar -xz -C "$EEST_DIR"
-          else
-            echo "EEST fixtures already cached at $EEST_DIR"
-          fi
-
-      - name: Resolve fixture path
-        id: fixtures
-        env:
-          RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
-        run: |
-          RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
-          if command -v cygpath >/dev/null 2>&1; then
-            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
-          fi
-          EEST_DIR="$RUNNER_TMP/eest-fixtures/$RESOLVED_EEST_VERSION"
-
+          # Each job reads one fixture directory of the archive, so only that directory is
+          # extracted and cached: the full v21 archive unpacks to about 15 GB.
           case "$TEST_TYPE" in
             engineTest) FIXTURE_NAME=blockchain_tests_engine; RUNNER_FLAG=--engineTest ;;
             blockTest)  FIXTURE_NAME=blockchain_tests;        RUNNER_FLAG=--blockTest ;;
@@ -527,6 +488,50 @@ jobs:
             *) echo "::error::Unknown test type: '$TEST_TYPE'"; exit 1 ;;
           esac
 
+          echo "version=$RESOLVED_EEST_VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_input=$VERSION_INPUT" >> "$GITHUB_OUTPUT"
+          echo "archive=$EEST_ARCHIVE" >> "$GITHUB_OUTPUT"
+          echo "fixture_name=$FIXTURE_NAME" >> "$GITHUB_OUTPUT"
+          echo "runner_flag=$RUNNER_FLAG" >> "$GITHUB_OUTPUT"
+          echo "Using $FIXTURE_NAME from $EEST_ARCHIVE @ $RESOLVED_EEST_VERSION"
+
+      - name: Cache EEST fixtures
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/eest-fixtures
+          key: eest-${{ env.EEST_REPOSITORY }}-${{ steps.eest_release.outputs.version }}-${{ steps.eest_release.outputs.archive }}-${{ steps.eest_release.outputs.fixture_name }}
+
+      - name: Download EEST fixtures
+        env:
+          RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
+          EEST_ARCHIVE: ${{ steps.eest_release.outputs.archive }}
+          FIXTURE_NAME: ${{ steps.eest_release.outputs.fixture_name }}
+        run: |
+          RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
+          if command -v cygpath >/dev/null 2>&1; then
+            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
+          fi
+          EEST_DIR="$RUNNER_TMP/eest-fixtures/$RESOLVED_EEST_VERSION"
+          if [ ! -d "$EEST_DIR" ]; then
+            mkdir -p "$EEST_DIR"
+            ARCHIVE_URL="https://github.com/$EEST_REPOSITORY/releases/download/$RESOLVED_EEST_VERSION/$EEST_ARCHIVE"
+            echo "Downloading EEST fixtures from $ARCHIVE_URL"
+            curl -fsSL --max-time 300 --retry 3 --retry-delay 5 "$ARCHIVE_URL" | tar -xz -C "$EEST_DIR" --wildcards "*/$FIXTURE_NAME/*"
+          else
+            echo "EEST fixtures already cached at $EEST_DIR"
+          fi
+
+      - name: Resolve fixture path
+        id: fixtures
+        env:
+          RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
+          FIXTURE_NAME: ${{ steps.eest_release.outputs.fixture_name }}
+        run: |
+          RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
+          if command -v cygpath >/dev/null 2>&1; then
+            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
+          fi
+          EEST_DIR="$RUNNER_TMP/eest-fixtures/$RESOLVED_EEST_VERSION"
           FIXTURE_DIR="$(find "$EEST_DIR" -type d -name "$FIXTURE_NAME" | head -1)"
           if [ -z "$FIXTURE_DIR" ] || [ ! -d "$FIXTURE_DIR" ]; then
             echo "::error::Could not find fixture directory for $TEST_TYPE in $EEST_DIR"
@@ -621,7 +626,6 @@ jobs:
           fi
 
           echo "fixture_dir=$FIXTURE_DIR" >> "$GITHUB_OUTPUT"
-          echo "runner_flag=$RUNNER_FLAG" >> "$GITHUB_OUTPUT"
           echo "Found fixture directory: $FIXTURE_DIR"
           echo "Fixture count: $(find -L "$FIXTURE_DIR" -name '*.json' | wc -l) JSON files"
 
@@ -632,7 +636,7 @@ jobs:
           RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
           EEST_VERSION: ${{ steps.eest_release.outputs.version_input }}
           EEST_ARCHIVE: ${{ steps.eest_release.outputs.archive }}
-          RUNNER_FLAG: ${{ steps.fixtures.outputs.runner_flag }}
+          RUNNER_FLAG: ${{ steps.eest_release.outputs.runner_flag }}
           EXTRA_FILTER: ${{ steps.fixtures.outputs.extra_filter }}
           FORK_ALIAS: ${{ steps.fixtures.outputs.fork_alias }}
         run: |
