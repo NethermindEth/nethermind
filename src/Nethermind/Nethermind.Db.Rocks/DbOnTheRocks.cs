@@ -34,6 +34,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private readonly StripedLeaseCount _pinnedSlices = new();
     private readonly InFlightOperations _prefetches = new();
     private bool _nativeCloseDeferred;
+    private int _deferredCloseChecks;
     private int _nativeClosed;
     private bool _isDisposed;
 
@@ -819,10 +820,17 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private void ReleasePinnedSlice(int slot)
     {
         _pinnedSlices.Release(slot);
-        if (!Volatile.Read(ref _nativeCloseDeferred)) return;
+        if (Volatile.Read(ref _nativeCloseDeferred)) CloseIfNoPinnedSlices();
+    }
 
-        // Two last releases decrement different slots; the fence makes at least one of them read the other's decrement.
-        Interlocked.MemoryBarrier();
+    /// <summary>Closes the native database after <see cref="Dispose"/> deferred the close, if no slice is pinned.</summary>
+    /// <remarks>
+    /// The last releases can return their counts to different slots. Each check first increments one shared field, so
+    /// the last check reads every release made before an earlier check.
+    /// </remarks>
+    private void CloseIfNoPinnedSlices()
+    {
+        Interlocked.Increment(ref _deferredCloseChecks);
         if (_pinnedSlices.Count == 0) CloseNative();
     }
 
@@ -1470,8 +1478,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         {
             // A slice still pinned would read freed memory, so the last release closes the database.
             if (_logger.IsWarn) _logger.Warn($"DB {LogName} closes when its {_pinnedSlices.Count} pinned slices are released");
-            Interlocked.Exchange(ref _nativeCloseDeferred, true);
-            if (_pinnedSlices.Count == 0) CloseNative();
+            Volatile.Write(ref _nativeCloseDeferred, true);
+            // A release that did not read the flag returned its count before this barrier, so the check below reads it.
+            Interlocked.MemoryBarrierProcessWide();
+            CloseIfNoPinnedSlices();
         }
 
         _isDisposed = true;

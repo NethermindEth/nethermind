@@ -737,23 +737,6 @@ namespace Nethermind.Db.Test
             Assert.That(() => ReadBy(db, path, key, 64), Throws.InstanceOf<ObjectDisposedException>());
         }
 
-        // A background code read can still hold a pinned slice when shutdown disposes the database; the slice must be
-        // released before RocksDB closes, or releasing it afterwards touches freed native memory.
-        [Test]
-        public void Dispose_waits_for_a_pinned_slice_to_be_released_before_closing_the_db()
-        {
-            byte[] key = [1, 2, 3];
-            DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
-            db.PutSpan(key, new byte[64], WriteFlags.None);
-            _ = db.GetNativeSlice(key, out nint handle, ReadFlags.HintCacheMiss);
-
-            Task disposing = Task.Run(db.Dispose);
-            Assert.That(disposing.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the database closed under a pinned slice");
-
-            db.DangerousReleaseHandle(handle);
-            Assert.That(disposing.Wait(TimeSpan.FromSeconds(10)), "dispose never finished after the slice was released");
-        }
-
         // Shutdown cannot wait forever for a slow reader, but closing under its slice frees memory the reader still uses.
         // A release between the timeout and the hand-off must still close the database, as neither side would otherwise.
         [Test]
@@ -764,15 +747,7 @@ namespace Nethermind.Db.Test
             NativeCloseTrackingDbOnTheRocks? db = null;
             // The timeout warning is logged just before dispose hands the close to the last release.
             WarnHookLogger logger = new(() => { if (releasedAsDisposeTimesOut) db!.DangerousReleaseHandle(handle); });
-            IRocksDbConfig config = _rocksdbConfigFactory.GetForDatabase("Blocks", null);
-            using (RocksDbInstance instance = new TestRocksDbFactory(_rocksdbConfigFactory, new DbConfig(), LimboLogs.Instance, DbPath, new RealFileSystem())
-                       .Open(GetRocksDbSettings(DbPath, "Blocks"), config, null))
-            {
-                db = new(instance, config, new OneLoggerLogManager(new ILogger(logger)))
-                {
-                    PinnedSliceDrainTimeout = TimeSpan.FromMilliseconds(50)
-                };
-            }
+            db = OpenNativeCloseTrackingDb(TimeSpan.FromMilliseconds(50), new OneLoggerLogManager(new ILogger(logger)));
             db.PutSpan(key, new byte[64], WriteFlags.None);
             _ = db.GetNativeSlice(key, out handle, ReadFlags.HintCacheMiss);
 
@@ -786,13 +761,48 @@ namespace Nethermind.Db.Test
             Assert.That(db.NativeCloses, Is.EqualTo(1), "the last release must close the database once");
         }
 
+        // After the dispose timeout, the last slices can be released at the same time on different cores, so each release
+        // returns its count to a different slot. The database must stay open until the last release and then close once.
+        [Test]
+        public void Slices_held_past_the_dispose_timeout_and_released_together_close_the_db_once()
+        {
+            byte[] key = [1, 2, 3];
+            using NativeCloseTrackingDbOnTheRocks db = OpenNativeCloseTrackingDb(TimeSpan.FromMilliseconds(50));
+            db.PutSpan(key, new byte[64], WriteFlags.None);
+            nint[] handles = new nint[16];
+            Parallel.For(0, handles.Length, i => _ = db.GetNativeSlice(key, out handles[i], ReadFlags.None));
+            Assert.That(Task.Run(db.Dispose).Wait(TimeSpan.FromSeconds(10)), "dispose waited past its timeout");
+
+            const int lastReleases = 4;
+            Parallel.For(lastReleases, handles.Length, i => db.DangerousReleaseHandle(handles[i]));
+            Assert.That(db.NativeCloses, Is.Zero, "the database closed under a pinned slice");
+
+            using Barrier together = new(lastReleases);
+            Task[] releases = new Task[lastReleases];
+            for (int i = 0; i < releases.Length; i++)
+            {
+                nint handle = handles[i];
+                releases[i] = Task.Factory.StartNew(() =>
+                {
+                    together.SignalAndWait();
+                    db.DangerousReleaseHandle(handle);
+                }, TaskCreationOptions.LongRunning);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Task.WaitAll(releases, TimeSpan.FromSeconds(10)), "a release did not finish");
+                Assert.That(db.NativeCloses, Is.EqualTo(1), "the last release must close the database once");
+            }
+        }
+
         // Each pinned slice count lives on the core that took it, and a slice is often released on another thread.
         [Test]
         public void Hit_and_miss_slices_released_on_other_threads_leave_nothing_pinned()
         {
             byte[] key = [1, 2, 3];
             byte[] missing = [4, 5, 6];
-            using NativeCloseTrackingDbOnTheRocks db = OpenNativeCloseTrackingDb();
+            using NativeCloseTrackingDbOnTheRocks db = OpenNativeCloseTrackingDb(TimeSpan.FromMinutes(1));
             db.PutSpan(key, new byte[64], WriteFlags.None);
 
             nint[] handles = new nint[64];
@@ -807,13 +817,15 @@ namespace Nethermind.Db.Test
             }
         }
 
-        // Reads that start while dispose waits must neither hide the slice still held nor keep the database open after it is released.
+        // A background code read can still hold a pinned slice when shutdown disposes the database; the slice must be
+        // released before RocksDB closes, or releasing it afterwards touches freed native memory. Reads that start while
+        // dispose waits must neither hide the slice still held nor keep the database open after it is released.
         [Test]
-        public void Dispose_waits_for_a_held_slice_while_other_threads_read_hits_and_misses()
+        public void Dispose_waits_for_a_held_slice_while_other_threads_read_hits_and_misses([Values(0, 4)] int readerCount)
         {
             byte[] key = [1, 2, 3];
             byte[] missing = [4, 5, 6];
-            using NativeCloseTrackingDbOnTheRocks db = OpenNativeCloseTrackingDb();
+            using NativeCloseTrackingDbOnTheRocks db = OpenNativeCloseTrackingDb(TimeSpan.FromMinutes(1));
             db.PutSpan(key, new byte[64], WriteFlags.None);
             nint held = Task.Run(() =>
             {
@@ -822,14 +834,14 @@ namespace Nethermind.Db.Test
             }).Result;
 
             int reads = 0;
-            Task[] readers = new Task[4];
+            Task[] readers = new Task[readerCount];
             for (int i = 0; i < readers.Length; i++)
             {
                 byte[] probe = i % 2 == 0 ? key : missing;
                 readers[i] = Task.Factory.StartNew(() => ReadUntilDisposed(db, probe, ref reads), TaskCreationOptions.LongRunning);
             }
 
-            Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref reads) > 1000, TimeSpan.FromSeconds(10)), "the readers did not start");
+            Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref reads) >= readerCount * 250, TimeSpan.FromSeconds(10)), "the readers did not start");
             Task disposing = Task.Run(db.Dispose);
             using (Assert.EnterMultipleScope())
             {
@@ -864,14 +876,14 @@ namespace Nethermind.Db.Test
             }
         }
 
-        private NativeCloseTrackingDbOnTheRocks OpenNativeCloseTrackingDb()
+        private NativeCloseTrackingDbOnTheRocks OpenNativeCloseTrackingDb(TimeSpan pinnedSliceDrainTimeout, ILogManager? logManager = null)
         {
             IRocksDbConfig config = _rocksdbConfigFactory.GetForDatabase("Blocks", null);
             using RocksDbInstance instance = new TestRocksDbFactory(_rocksdbConfigFactory, new DbConfig(), LimboLogs.Instance, DbPath, new RealFileSystem())
                 .Open(GetRocksDbSettings(DbPath, "Blocks"), config, null);
-            return new NativeCloseTrackingDbOnTheRocks(instance, config, LimboLogs.Instance)
+            return new NativeCloseTrackingDbOnTheRocks(instance, config, logManager ?? LimboLogs.Instance)
             {
-                PinnedSliceDrainTimeout = TimeSpan.FromMinutes(1)
+                PinnedSliceDrainTimeout = pinnedSliceDrainTimeout
             };
         }
 

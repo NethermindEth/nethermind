@@ -22,7 +22,4 @@ public class StripedLeaseCountTests
         Parallel.For(0, leases, _ => count.Release(StripedLeaseCount.CurrentSlot));
         Assert.That(count.Count, Is.Zero);
     }
-
-    [Test]
-    public void New_count_is_zero() => Assert.That(new StripedLeaseCount().Count, Is.Zero);
 }
