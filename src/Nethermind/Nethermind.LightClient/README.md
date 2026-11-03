@@ -684,8 +684,8 @@ On 2026-10-10, with discv5-only execution discovery, a mainnet run reached
 253.6 ms and 382.5 ms for those requests, respectively.
 
 On 2026-11-03, three cold 15-minute Sepolia trials exercised libp2p 1.1.1,
-yamux/mplex negotiation, QUIC, authenticated head advancement and eight RPC
-methods on a fixed schedule. A diagnostic trial exposed a slow-host-clock
+yamux/mplex negotiation, QUIC, authenticated head advancement and fixed rounds
+of eight RPC requests across seven methods. A diagnostic trial exposed a slow-host-clock
 integration problem; authenticated next-slot retry fixed that path. The next
 trial had 172/172 fresh head samples and 221/224 successful requests. The final
 candidate had 134/151 fresh samples, including an 85-second stale interval
