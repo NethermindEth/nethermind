@@ -293,7 +293,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree prunedTree = Substitute.For<IBlockTree>();
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
-        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.Head.Returns(realTree.Head);
         int emptyPolls = 0;
         TaskCompletionSource polledTwice = new(TaskCreationOptions.RunContinuationsAsynchronously);
         // Read once per empty forward batch, right after the warning decision.
@@ -328,6 +328,48 @@ public class LogIndexBuilderTests
                 "forward progress must count from the first block the forward walk indexes, not from the pivot");
         }
 
+        await builder.StopAsync();
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_NotIndexNonCanonicalBlocks_WhenTheHeadIsAheadOfTheMainChain(CancellationToken cancellation)
+    {
+        IBlockTree realTree = Build.A.BlockTree().OfChainLength(MaxBlock / 2 + 1).BlockTree;
+        Block sideHead = realTree.Head!;
+        while (sideHead.Number < MaxBlock)
+        {
+            sideHead = Build.A.Block.WithParent(sideHead).TestObject;
+            realTree.SuggestBlock(sideHead);
+        }
+
+        ConcurrentBag<ulong> nonCanonicalReads = [];
+        TaskCompletionSource polledEmptyBatch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        // A reorg to a shorter chain can land between reading the head and loading the blocks below it.
+        tree.Head.Returns(sideHead);
+        tree.GetLowestBlock().Returns(_ =>
+        {
+            polledEmptyBatch.TrySetResult();
+            return 0UL;
+        });
+        tree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                Block? block = realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1));
+                if (block is not null && !realTree.IsMainChain(block.Header))
+                    nonCanonicalReads.Add(block.Number);
+                return block;
+            });
+
+        TestLogIndexStorage storage = new() { MinBlockNumber = 0, MaxBlockNumber = BatchSize };
+        LogIndexBuilder builder = GetService(storage, tree);
+
+        await builder.StartAsync();
+        await polledEmptyBatch.Task.WaitAsync(cancellation);
+
+        Assert.That(nonCanonicalReads, Is.Empty);
         await builder.StopAsync();
     }
 
@@ -392,7 +434,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree prunedTree = Substitute.For<IBlockTree>();
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
-        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
         prunedTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -435,7 +477,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree tree = Substitute.For<IBlockTree>();
         tree.SyncPivot.Returns(realTree.SyncPivot);
-        tree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        tree.Head.Returns(realTree.Head);
         tree.GetLowestBlock().Returns(_syncConfig.AncientBodiesBarrierCalc);
         tree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -484,7 +526,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree prunedTree = Substitute.For<IBlockTree>();
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
-        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
         prunedTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -538,7 +580,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree prunedTree = Substitute.For<IBlockTree>();
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
-        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
         prunedTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -597,7 +639,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree prunedTree = Substitute.For<IBlockTree>();
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
-        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
         prunedTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -644,7 +686,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree downloadingTree = Substitute.For<IBlockTree>();
         downloadingTree.SyncPivot.Returns(realTree.SyncPivot);
-        downloadingTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        downloadingTree.Head.Returns(realTree.Head);
         downloadingTree.GetLowestBlock().Returns(_ => (ulong)Volatile.Read(ref publishedBoundary));
         downloadingTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -704,7 +746,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree latchedTree = Substitute.For<IBlockTree>();
         latchedTree.SyncPivot.Returns(realTree.SyncPivot);
-        latchedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        latchedTree.Head.Returns(realTree.Head);
         latchedTree.GetLowestBlock().Returns((ulong)latchedBoundary);
         latchedTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -749,7 +791,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree prunedTree = Substitute.For<IBlockTree>();
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
-        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
         prunedTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -792,7 +834,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree prunedTree = Substitute.For<IBlockTree>();
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
-        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
         prunedTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -836,7 +878,7 @@ public class LogIndexBuilderTests
 
         IBlockTree throwingTree = Substitute.For<IBlockTree>();
         throwingTree.SyncPivot.Returns(realTree.SyncPivot);
-        throwingTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        throwingTree.Head.Returns(realTree.Head);
         throwingTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
             .Returns(ci => Interlocked.Increment(ref findCalls) == 1
