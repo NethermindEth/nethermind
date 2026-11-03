@@ -6,6 +6,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
@@ -22,8 +23,9 @@ namespace Nethermind.State.Flat.Migration;
 /// are those readers of that state already see.
 /// </para>
 /// <para>
-/// Chunks run on <see cref="IBackgroundTaskScheduler"/>, which cancels them when block processing starts. A cancelled chunk, a persist
-/// holding the lock or a persist since the walk drops the chunk, which is walked again a little later.
+/// Chunks run on <see cref="IBackgroundTaskScheduler"/>, which cancels them when block processing starts, except while the node is
+/// syncing, when they run alongside it. A cancelled chunk, a persist holding the lock or a persist since the walk drops the chunk,
+/// which is walked again a little later.
 /// </para>
 /// </remarks>
 public sealed class HalfPathMigrator(
@@ -31,8 +33,9 @@ public sealed class HalfPathMigrator(
     HalfPathMigrationCursor cursor,
     IFlatDbConfig flatDbConfig,
     IBackgroundTaskScheduler scheduler,
+    ITimerFactory timerFactory,
     IProcessExitSource processExitSource,
-    ILogManager logManager)
+    ILogManager logManager) : IDisposable
 {
     private static readonly TimeSpan ChunkTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(1);
@@ -40,6 +43,7 @@ public sealed class HalfPathMigrator(
     private static readonly VisitingOptions InOrder = new() { MaxDegreeOfParallelism = 1 };
 
     private readonly ILogger _logger = logManager.GetClassLogger<HalfPathMigrator>();
+    private readonly Core.Timers.ITimer _retryTimer = timerFactory.CreateTimer(RetryDelay);
     private long _nextProgressLog;
 
     private readonly record struct ChunkRequest : IBackgroundTaskRequest<ChunkRequest>;
@@ -49,28 +53,22 @@ public sealed class HalfPathMigrator(
     {
         if (cursor.Current is null) return;
         if (_logger.IsInfo) _logger.Info("Copying the HalfPath trie state into the flat DB in the background.");
+        _retryTimer.AutoReset = false;
+        _retryTimer.Elapsed += (_, _) => Schedule();
         Schedule();
     }
+
+    /// <inheritdoc/>
+    public void Dispose() => _retryTimer.Dispose();
 
     private void Schedule()
     {
         if (processExitSource.Token.IsCancellationRequested) return;
-        if (!scheduler.TryScheduleTask(default(ChunkRequest), RunChunk, ChunkTimeout)) _ = ScheduleLater();
+        if (!scheduler.TryScheduleTask(default(ChunkRequest), RunChunk, ChunkTimeout)) ScheduleLater();
     }
 
-    private async Task ScheduleLater()
-    {
-        try
-        {
-            await Task.Delay(RetryDelay, processExitSource.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-
-        Schedule();
-    }
+    /// <summary>Schedules the next chunk after <see cref="RetryDelay"/>; chunks run one at a time, so one timer serves them all.</summary>
+    private void ScheduleLater() => _retryTimer.Start();
 
     private Task RunChunk(ChunkRequest request, CancellationToken token)
     {
@@ -111,11 +109,12 @@ public sealed class HalfPathMigrator(
                 written = true;
             }))
         {
-            _ = ScheduleLater();
+            ScheduleLater();
             return false;
         }
 
         if (!written) return false;
+        Metrics.HalfPathMigratedNodes += visitor.Nodes.Count;
 
         if (visitor.IsComplete)
         {

@@ -27,6 +27,7 @@ namespace Nethermind.State.Flat.Migration;
 /// </remarks>
 public sealed class HalfPathFallbackPersistence(IPersistence inner, INodeStorage halfPath, HalfPathMigrationCursor cursor) : IPersistence
 {
+    /// <inheritdoc/>
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
         // Read before the inner snapshot is taken, so the cursor never covers data that snapshot lacks.
@@ -35,11 +36,14 @@ public sealed class HalfPathFallbackPersistence(IPersistence inner, INodeStorage
         return copied is { } position ? new Reader(reader, halfPath, position) : reader;
     }
 
+    /// <inheritdoc/>
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) =>
         inner.CreateWriteBatch(from, to, flags);
 
+    /// <inheritdoc/>
     public void Flush() => inner.Flush();
 
+    /// <inheritdoc/>
     /// <remarks>The wipe deletes the cursor too, so the migration is over.</remarks>
     public void Clear()
     {
@@ -62,6 +66,7 @@ public sealed class HalfPathFallbackPersistence(IPersistence inner, INodeStorage
             ValueHash256 accountPath = address.ToAccountPath;
             if (copied.IsCopied(accountPath) || CurrentState.StateRoot == ValueKeccak.EmptyTreeHash) return null;
 
+            Metrics.IncrementHalfPathFallbackWalks();
             ReadOnlySpan<byte> rlp = Tree(null).Get(accountPath.Bytes, CurrentState.StateRoot.ToCommitment());
             if (rlp.IsEmpty) return null;
             RlpReader reader = new(rlp);
@@ -77,6 +82,7 @@ public sealed class HalfPathFallbackPersistence(IPersistence inner, INodeStorage
             StorageTree.ComputeKeyWithLookup(slot, ref slotPath);
             if (copied.IsCopied(accountPath, slotPath) || GetAccount(address) is not { HasStorage: true } account) return false;
 
+            Metrics.IncrementHalfPathFallbackWalks();
             ReadOnlySpan<byte> rlp = Tree(accountPath.ToCommitment()).Get(slotPath.Bytes, account.StorageRoot);
             if (rlp.IsEmpty) return false;
             RlpReader reader = new(rlp);

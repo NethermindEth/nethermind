@@ -128,6 +128,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<FlatInTriePersistence>()
             .AddSingleton<HalfPathMigrationCursor>()
             .Add<CarryForwardCachingPersistence>()
+            .Add<HalfPathFallbackPersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
 
             .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
@@ -142,9 +143,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 };
 
                 // Below the reader caches, so what they cache already includes the fallback.
-                HalfPathMigrationCursor migrationCursor = ctx.Resolve<HalfPathMigrationCursor>();
-                if (migrationCursor.Current is not null)
-                    persistence = new HalfPathFallbackPersistence(persistence, ctx.Resolve<INodeStorage>(), migrationCursor);
+                if (ctx.Resolve<HalfPathMigrationCursor>().Current is not null)
+                    persistence = ctx.Resolve<HalfPathFallbackPersistence>(TypedParameter.From<IPersistence>(persistence));
 
                 IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
                 return flatDbConfig.EnableCarryForwardCache
