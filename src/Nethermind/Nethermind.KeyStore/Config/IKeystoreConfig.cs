@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
 
@@ -74,9 +73,19 @@ public interface IKeyStoreConfig : IConfig
 
 public static class KeyStoreConfigExtensions
 {
-    public static int FindUnlockAccountIndex(this IKeyStoreConfig keyStoreConfig, Address address) => Array.IndexOf(
-            (keyStoreConfig.UnlockAccounts ?? [])
-            .Select(static a => a.ToUpperInvariant())
-            .ToArray(),
-            address.ToString().ToUpperInvariant());
+    public static int FindUnlockAccountIndex(this IKeyStoreConfig keyStoreConfig, Address address) =>
+        Array.FindIndex(keyStoreConfig.UnlockAccounts ?? [], account => IsAddress(account, address));
+
+    private static bool IsAddress(string account, Address address)
+    {
+        // Address.TryParse throws on non-hex input, and one malformed entry must not hide the others.
+        try
+        {
+            return Address.TryParse(account, out Address parsed) && parsed == address;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
 }

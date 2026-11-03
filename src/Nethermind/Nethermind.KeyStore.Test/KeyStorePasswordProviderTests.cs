@@ -139,6 +139,15 @@ public class KeyStorePasswordProviderTests
             Assert.That(blockAuthorPassword.Unsecure(), Is.EqualTo(test.ExpectedBlockAuthorAccountPassword), test.TestName);
         }
     }
+
+    [Test]
+    public void Unlock_account_matches_by_value([Values] bool withZeroX)
+    {
+        IKeyStoreConfig keyStoreConfig = Substitute.For<IKeyStoreConfig>();
+        keyStoreConfig.UnlockAccounts.Returns(["not an address", TestItem.AddressA.ToString(withZeroX, withEip55Checksum: true)]);
+
+        Assert.That(keyStoreConfig.FindUnlockAccountIndex(TestItem.AddressA), Is.EqualTo(1));
+    }
 }
 
 public class KeyStorePasswordProviderTest
