@@ -17,6 +17,7 @@ using Nethermind.Int256;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Test.Io;
 using Nethermind.Trie;
@@ -1206,7 +1207,7 @@ public class PersistedSnapshotTests
     }
 
     [Test]
-    public void Merge_of_random_sources_matches_reference_bytes_and_bloom_adds(
+    public void Merge_of_random_sources_matches_model_bytes_and_bloom_adds(
         [Values(2, 3, 6, 70)] int sourceCount, [Values(1, 2, 3)] int seed)
     {
         Random random = new(seed * 1000 + sourceCount);
@@ -1223,8 +1224,8 @@ public class PersistedSnapshotTests
                 _memArena, _blobs, from, to, PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs)));
         }
 
-        (byte[] actual, long actualBloomAdds) = Merge(sources, reference: false);
-        (byte[] expected, long expectedBloomAdds) = Merge(sources, reference: true);
+        (byte[] actual, long actualBloomAdds) = Merge(sources);
+        (byte[] expected, long expectedBloomAdds) = ModelMerge(sources);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1269,13 +1270,10 @@ public class PersistedSnapshotTests
         }
     }
 
-    private static (byte[] Data, long BloomAdds) Merge(PersistedSnapshotList snapshots, bool reference)
+    private static (byte[] Data, long BloomAdds) Merge(PersistedSnapshotList snapshots)
     {
-        long totalSize = 4096;
-        for (int i = 0; i < snapshots.Count; i++) totalSize += snapshots[i].Size;
-
         int n = snapshots.Count;
-        using PooledByteBufferWriter pooled = new(checked((int)totalSize));
+        using PooledByteBufferWriter pooled = new(MergeCapacity(snapshots));
         using BloomFilter bloom = new(1024, 10);
         using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
         WholeReadSession[] sessionArr = sessionsList.UnsafeGetInternalArray();
@@ -1283,17 +1281,137 @@ public class PersistedSnapshotTests
         {
             for (int i = 0; i < n; i++)
                 sessionArr[i] = snapshots[i].BeginWholeReadSession();
-            if (reference)
-                PersistedSnapshotMergerReference.NWayMergeSnapshots<PooledByteBufferWriter.Writer, WholeReadSession, WholeReadSessionReader, NoOpPin>(
-                    sessionsList.AsSpan(), ref pooled.GetWriter(), bloom);
-            else
-                PersistedSnapshotMerger.NWayMergeSnapshots<PooledByteBufferWriter.Writer, WholeReadSession, WholeReadSessionReader, NoOpPin>(
-                    sessionsList.AsSpan(), ref pooled.GetWriter(), bloom);
+            PersistedSnapshotMerger.NWayMergeSnapshots<PooledByteBufferWriter.Writer, WholeReadSession, WholeReadSessionReader, NoOpPin>(
+                sessionsList.AsSpan(), ref pooled.GetWriter(), bloom);
         }
         finally
         {
             for (int i = 0; i < n; i++) sessionArr[i]?.Dispose();
         }
         return (pooled.WrittenSpan.ToArray(), bloom.Count);
+    }
+
+    /// <summary>
+    /// Independent model of the merge: per key the newest source wins, a self-destruct is destructed when
+    /// any source destructed, and a slot is dropped when its newest source is older than the newest
+    /// destruct of its address. The model writes its entries with the production table builder, so the
+    /// bytes must match exactly. The bloom gets one key per address, per kept slot and per trie node.
+    /// </summary>
+    private static (byte[] Data, long BloomAdds) ModelMerge(PersistedSnapshotList snapshots)
+    {
+        int n = snapshots.Count;
+        SortedDictionary<byte[], (int Source, byte[] Value)> entries =
+            new(Comparer<byte[]>.Create(static (x, y) => x.AsSpan().SequenceCompareTo(y)));
+        Dictionary<Address, int> barriers = [];
+        List<(byte[] Key, byte[] Value)> oldest = [];
+        List<(byte[] Key, byte[] Value)> newest = [];
+        for (int i = 0; i < n; i++)
+        {
+            List<(byte[] Key, byte[] Value)> source = ReadEntries(snapshots[i]);
+            if (i == 0) oldest = source;
+            if (i == n - 1) newest = source;
+            foreach ((byte[] key, byte[] value) in source)
+            {
+                if (key[0] == PersistedSnapshotKey.MetadataColumn) continue;
+                entries[key] = (i, value);
+                if (key[0] == PersistedSnapshotKey.AccountColumn
+                    && PersistedSnapshotKey.PerAddressSubColumn(key) == PersistedSnapshotKey.SelfDestructSub
+                    && value[0] == PersistedSnapshotTags.SelfDestructDestructedMarkerByte)
+                    barriers[new Address(PersistedSnapshotKey.PerAddressAddress(key))] = i;
+            }
+        }
+
+        using PooledByteBufferWriter pooled = new(MergeCapacity(snapshots));
+        long bloomAdds = 0;
+        Address? group = null;
+        SortedTableBuilder<PooledByteBufferWriter.Writer> table = new(ref pooled.GetWriter());
+        try
+        {
+            foreach (KeyValuePair<byte[], (int Source, byte[] Value)> entry in entries)
+            {
+                byte[] key = entry.Key;
+                byte[] value = entry.Value.Value;
+                if (key[0] == PersistedSnapshotKey.AccountColumn)
+                {
+                    Address address = new(PersistedSnapshotKey.PerAddressAddress(key));
+                    if (address != group)
+                    {
+                        group = address;
+                        bloomAdds++;
+                    }
+
+                    int barrier = barriers.GetValueOrDefault(address, -1);
+                    byte sub = PersistedSnapshotKey.PerAddressSubColumn(key);
+                    if (sub == PersistedSnapshotKey.SelfDestructSub)
+                    {
+                        value = barrier >= 0 ? PersistedSnapshotTags.SelfDestructDestructedMarker : PersistedSnapshotTags.SelfDestructNewMarker;
+                    }
+                    else if (sub == PersistedSnapshotKey.SlotSub)
+                    {
+                        if (entry.Value.Source < barrier) continue;
+                        bloomAdds++;
+                    }
+                }
+                else if (key[0] != PersistedSnapshotKey.RefIdColumn)
+                {
+                    bloomAdds++;
+                }
+
+                table.Add(key, value);
+            }
+
+            AddMetadata(ref table, oldest, PersistedSnapshotTags.MetadataFromBlockKey);
+            AddMetadata(ref table, oldest, PersistedSnapshotTags.MetadataFromHashKey);
+            table.Add([PersistedSnapshotKey.MetadataColumn, .. PersistedSnapshotTags.MetadataNodeRefsKey], PersistedSnapshotTags.MetadataNodeRefsPresentMarker);
+            AddMetadata(ref table, newest, PersistedSnapshotTags.MetadataToBlockKey);
+            AddMetadata(ref table, newest, PersistedSnapshotTags.MetadataToHashKey);
+            table.Build();
+        }
+        finally
+        {
+            table.Dispose();
+        }
+        return (pooled.WrittenSpan.ToArray(), bloomAdds);
+    }
+
+    private static void AddMetadata(ref SortedTableBuilder<PooledByteBufferWriter.Writer> table, List<(byte[] Key, byte[] Value)> source, byte[] name)
+    {
+        byte[] metadataKey = [PersistedSnapshotKey.MetadataColumn, .. name];
+        foreach ((byte[] key, byte[] value) in source)
+        {
+            if (key.AsSpan().SequenceEqual(metadataKey))
+            {
+                table.Add(key, value);
+                return;
+            }
+        }
+    }
+
+    private static List<(byte[] Key, byte[] Value)> ReadEntries(PersistedSnapshot snapshot)
+    {
+        List<(byte[] Key, byte[] Value)> result = [];
+        using WholeReadSession session = snapshot.BeginWholeReadSession();
+        WholeReadSessionReader reader = session.CreateReader();
+        SortedTableEnumerator<WholeReadSessionReader, NoOpPin> enumerator = new(in reader, new Bound(0, reader.Length));
+        try
+        {
+            while (enumerator.MoveNext(in reader))
+            {
+                using NoOpPin pin = reader.PinBuffer(enumerator.CurrentValue);
+                result.Add((enumerator.CurrentKey.ToArray(), pin.Buffer.ToArray()));
+            }
+        }
+        finally
+        {
+            enumerator.Dispose();
+        }
+        return result;
+    }
+
+    private static int MergeCapacity(PersistedSnapshotList snapshots)
+    {
+        long totalSize = 4096;
+        for (int i = 0; i < snapshots.Count; i++) totalSize += snapshots[i].Size;
+        return checked((int)totalSize);
     }
 }
