@@ -573,7 +573,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
-                gas += (nuint)(fusedGas);
+                gas += (nuint)fusedGas;
             }
 
             nint alone = TFirst.Handler;
@@ -632,7 +632,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                gas += (nuint)(VeryLowGasCost.GasCost);
+                gas += (nuint)VeryLowGasCost.GasCost;
                 nint store = Entry(&ExecuteMStoreInsideBacking);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, store);
             }
@@ -680,7 +680,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                gas += (nuint)(VeryLowGasCost.GasCost);
+                gas += (nuint)VeryLowGasCost.GasCost;
                 nint load = Entry(&ExecuteMLoadFromActiveMemory);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, load);
             }
@@ -809,7 +809,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!stack.IsAnalyzedJumpDestination(destination))
                     {
                         // The analysis charges the jump itself.
-                        gas += (nuint)(jumpGas);
+                        gas += (nuint)jumpGas;
                         SetWord(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), destination);
                         ip = ref Unsafe.Add(ref ip, 2);
                         head++;
