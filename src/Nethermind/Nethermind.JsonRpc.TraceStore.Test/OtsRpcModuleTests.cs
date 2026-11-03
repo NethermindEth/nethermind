@@ -821,7 +821,8 @@ public class OtsRpcModuleTests
             }
         }
 
-        Run(50);
+        Run(200);
+        int iterations = scenario == "busy" ? 20000 : 2000;
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
@@ -832,14 +833,14 @@ public class OtsRpcModuleTests
         int gen2 = GC.CollectionCount(2);
         long allocated = GC.GetAllocatedBytesForCurrentThread();
         long start = Stopwatch.GetTimestamp();
-        Run(200);
+        Run(iterations);
         double milliseconds = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
         double cpuMilliseconds = (process.TotalProcessorTime - cpu).TotalMilliseconds;
         string record = JsonSerializer.Serialize(new
         {
-            scenario, blockCount, transactionCount, iterations = 200,
-            milliseconds, allocatedBytes = allocated, bytesPerQuery = allocated / 200.0,
+            scenario, blockCount, transactionCount, iterations,
+            milliseconds, allocatedBytes = allocated, bytesPerQuery = (double)allocated / iterations,
             cpuMilliseconds, gen0 = GC.CollectionCount(0) - gen0,
             gen1 = GC.CollectionCount(1) - gen1, gen2 = GC.CollectionCount(2) - gen2,
             resultCount = expected.Length
