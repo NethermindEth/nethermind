@@ -85,6 +85,7 @@ jobs:
             # at the field's first letter (most fields start with T, for Transaction).
             # engine-(auth|[^acw]) catches exchange-capabilities and any future engine suites.
             # The suites that finish in seconds share a job, as most of a job is image builds.
+            # ethereum/graphql is left to manual runs: Nethermind serves no GraphQL, so it can only fail.
             {
               echo 'matrix<<MATRIX_END'
               echo '[
@@ -99,7 +100,7 @@ jobs:
                 {"suite":"ethereum/engine", "limit":"engine-withdrawals/^[SG]", "parallelism":2, "name":"engine-withdrawals-sync-bodies"},
                 {"suite":"ethereum/engine", "limit":"engine-withdrawals/^[^SG]", "parallelism":2, "name":"engine-withdrawals-other"},
                 {"suite":"ethereum/engine", "limit":"engine-(auth|[^acw])", "parallelism":2, "name":"engine-auth-other"},
-                {"suite":"ethereum/(graphql|rpc-compat|sync)", "name":"graphql-rpc-compat-sync"}
+                {"suite":"ethereum/(rpc-compat|sync)", "name":"rpc-compat-sync"}
               ]'
               echo 'MATRIX_END'
             } >> "$GITHUB_OUTPUT"
@@ -111,7 +112,9 @@ jobs:
   build-image:
     name: Build Nethermind image
     needs: setup
-    runs-on: ubuntu-latest
+    # Hive runs on arm64: the x64 hosted pool is the one PR jobs queue for, and the suites take
+    # no longer there. The image build and the tests must share an architecture.
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v6
@@ -142,7 +145,7 @@ jobs:
   test:
     name: Run Hive (${{ matrix.name || matrix.suite }})
     needs: [setup, build-image]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     strategy:
       fail-fast: false
