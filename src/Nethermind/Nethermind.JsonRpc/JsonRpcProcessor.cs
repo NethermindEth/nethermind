@@ -402,7 +402,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         /// <summary>Answered in full - one request, or a whole batch.</summary>
         Handled,
 
-        /// <summary>Undecodable; the returned entry is the parse error to write.</summary>
+        /// <summary>Undecodable or not a valid request object; the returned entry is the error to write.</summary>
         ParseError,
     }
 
@@ -431,6 +431,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             {
                 isBatch = JsonRpcRequestDecoder.TryGetBatchBody(body, out batchBody, out batchCount);
             }
+        }
+        catch (JsonRpcInvalidRequestException)
+        {
+            return (CompleteBodyOutcome.ParseError, CreateInvalidRequestEntry(startTime));
         }
         catch (Exception ex) when (JsonRpcRequestDecoder.IsRequestDecodingException(ex))
         {
@@ -492,6 +496,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     {
                         JsonRpcRequestDecoder.TryReadSingleObjectRequest(document, out request);
                     }
+                    catch (JsonRpcInvalidRequestException)
+                    {
+                        await WriteInvalidRequestAsync(sink, startTime, cancellationToken);
+                        break;
+                    }
                     catch (Exception ex) when (JsonRpcRequestDecoder.IsRequestDecodingException(ex))
                     {
                         // The value itself is well-formed, so it is answered alone and the next one is still read.
@@ -549,6 +558,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     {
                         // Decode only; see JsonRpcRequestDecoder.IsRequestDecodingException.
                         request = JsonRpcRequestDecoder.CreateRequest(rootElement);
+                    }
+                    catch (JsonRpcInvalidRequestException)
+                    {
+                        await WriteInvalidRequestAsync(sink, startTime, cancellationToken);
+                        break;
                     }
                     catch (Exception ex) when (JsonRpcRequestDecoder.IsRequestDecodingException(ex))
                     {
