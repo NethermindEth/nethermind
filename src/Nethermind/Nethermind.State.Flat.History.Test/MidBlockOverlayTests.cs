@@ -173,11 +173,9 @@ public class MidBlockOverlayTests
         FoldAndReset(_overlay, rows);
         FoldAndReset(_overlay, rows);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        FoldAndReset(_overlay, rows);
-        long warm = GC.GetAllocatedBytesForCurrentThread() - before;
+        long warm = AllocationWindows.AllocatedBytes(() => FoldAndReset(_overlay, rows));
 
-        before = GC.GetAllocatedBytesForCurrentThread();
+        long before = GC.GetAllocatedBytesForCurrentThread();
         MidBlockOverlay fresh = new();
         fresh.Reset(100);
         FoldAndReset(fresh, rows);
