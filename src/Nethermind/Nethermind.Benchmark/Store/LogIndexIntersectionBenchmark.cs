@@ -18,8 +18,9 @@ using Nethermind.Facade.Filters.Topics;
 namespace Nethermind.Benchmarks.Store;
 
 /// <summary>
-/// Intersects the log index postings of an address and a topic over RocksDB-backed storage.
-/// <see cref="Sequential"/> hides <see cref="ILogIndexEnumerator.MoveTo"/>, so both sides only step forward.
+/// Intersects the log index postings of an address and a topic over warm RocksDB-backed storage.
+/// Both methods wrap each posting enumerator in one pass-through call. <see cref="Sequential"/> hides
+/// <see cref="ILogIndexEnumerator.MoveTo"/>, so both sides only step forward; <see cref="Leapfrog"/> forwards it.
 /// Keep the default out-of-process toolchain: each method then runs in its own process, so the optimizations
 /// profiled for one method do not favour the other.
 /// </summary>
@@ -37,15 +38,24 @@ public class LogIndexIntersectionBenchmark
     private static readonly Hash256 OtherTopic = TestItem.KeccakC;
 
     private ChunkedLogIndexStorage _index = null!;
-    private SequentialLogIndexStorage _sequential = null!;
+    private PassThroughLogIndexStorage _sequential = null!;
+    private PassThroughLogIndexStorage _leapfrog = null!;
     private LogFilter _filter = null!;
 
     /// <summary>Blocks per merged batch: 256 gives many small chunks per key, half the blocks gives one chunk per half.</summary>
     [Params(256, BlockCount / 2)]
     public int ChunkBlocks { get; set; }
 
-    [Params("sparse-dense", "medium-dense", "dense-dense", "sparse-sparse")]
-    public string Query { get; set; } = "";
+    public enum Postings
+    {
+        SparseDense,
+        MediumDense,
+        DenseDense,
+        SparseSparse
+    }
+
+    [Params(Postings.SparseDense, Postings.MediumDense, Postings.DenseDense, Postings.SparseSparse)]
+    public Postings Query { get; set; }
 
     [GlobalSetup]
     public void Setup()
@@ -56,14 +66,14 @@ public class LogIndexIntersectionBenchmark
             logs[block] = CreateLogs(random);
 
         _index = ChunkedLogIndexStorage.CreateAsync(BlockCount, ChunkBlocks, block => logs[block]).GetAwaiter().GetResult();
-        _sequential = new SequentialLogIndexStorage(_index.Storage);
+        _sequential = new PassThroughLogIndexStorage(_index.Storage, seekable: false);
+        _leapfrog = new PassThroughLogIndexStorage(_index.Storage, seekable: true);
         _filter = Query switch
         {
-            "sparse-dense" => Filter(SparseAddress, new SpecificTopic(DenseTopic), AnyTopic.Instance),
-            "medium-dense" => Filter(MediumAddress, new SpecificTopic(DenseTopic), AnyTopic.Instance),
-            "dense-dense" => Filter(DenseAddress, new SpecificTopic(DenseTopic), AnyTopic.Instance),
-            "sparse-sparse" => Filter(SparseAddress, AnyTopic.Instance, new SpecificTopic(SparseTopic)),
-            _ => throw new ArgumentOutOfRangeException(nameof(Query), Query, null)
+            Postings.SparseDense => Filter(SparseAddress, new SpecificTopic(DenseTopic), AnyTopic.Instance),
+            Postings.MediumDense => Filter(MediumAddress, new SpecificTopic(DenseTopic), AnyTopic.Instance),
+            Postings.DenseDense => Filter(DenseAddress, new SpecificTopic(DenseTopic), AnyTopic.Instance),
+            _ => Filter(SparseAddress, AnyTopic.Instance, new SpecificTopic(SparseTopic))
         };
     }
 
@@ -74,7 +84,7 @@ public class LogIndexIntersectionBenchmark
     public long Sequential() => SumMatches(_sequential);
 
     [Benchmark]
-    public long Leapfrog() => SumMatches(_index.Storage);
+    public long Leapfrog() => SumMatches(_leapfrog);
 
     private long SumMatches(ILogIndexStorage storage)
     {
@@ -99,31 +109,44 @@ public class LogIndexIntersectionBenchmark
     private static LogFilter Filter(Address address, TopicExpression topic0, TopicExpression topic1) =>
         new(0, BlockParameter.Earliest, BlockParameter.Latest, new AddressFilter(address), new SequenceTopicsFilter(topic0, topic1));
 
-    private sealed class SequentialLogIndexStorage(ILogIndexStorage storage) : ILogIndexStorage
+    private sealed class PassThroughLogIndexStorage(ILogIndexStorage storage, bool seekable) : ILogIndexStorage
     {
         public bool Enabled => storage.Enabled;
         public int? MaxBlockNumber => storage.MaxBlockNumber;
         public int? MinBlockNumber => storage.MinBlockNumber;
 
         public IEnumerator<int> GetEnumerator(Address address, int from, int to) =>
-            new SequentialEnumerator(storage.GetEnumerator(address, from, to));
+            Wrap(storage.GetEnumerator(address, from, to));
 
         public IEnumerator<int> GetEnumerator(int topicIndex, Hash256 topic, int from, int to) =>
-            new SequentialEnumerator(storage.GetEnumerator(topicIndex, topic, from, to));
+            Wrap(storage.GetEnumerator(topicIndex, topic, from, to));
 
-        public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
+        public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats stats = null) =>
             storage.Aggregate(batch, isBackwardSync, stats);
 
-        public Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null) => storage.AddReceiptsAsync(aggregate, stats);
+        public Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats stats = null) => storage.AddReceiptsAsync(aggregate, stats);
         public Task RemoveReorgedAsync(BlockReceipts block) => storage.RemoveReorgedAsync(block);
         public string GetDbSize() => storage.GetDbSize();
         public Task StopAsync() => storage.StopAsync();
-        public ValueTask DisposeAsync() => storage.DisposeAsync();
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        private IEnumerator<int> Wrap(IEnumerator<int> enumerator) =>
+            seekable ? new SeekableEnumerator((ILogIndexEnumerator)enumerator) : new SequentialEnumerator(enumerator);
     }
 
     private sealed class SequentialEnumerator(IEnumerator<int> enumerator) : IEnumerator<int>
     {
         public bool MoveNext() => enumerator.MoveNext();
+        public void Reset() => enumerator.Reset();
+        public int Current => enumerator.Current;
+        object IEnumerator.Current => Current;
+        public void Dispose() => enumerator.Dispose();
+    }
+
+    private sealed class SeekableEnumerator(ILogIndexEnumerator enumerator) : ILogIndexEnumerator
+    {
+        public bool MoveNext() => enumerator.MoveNext();
+        public bool MoveTo(int target) => enumerator.MoveTo(target);
         public void Reset() => enumerator.Reset();
         public int Current => enumerator.Current;
         object IEnumerator.Current => Current;

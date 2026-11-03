@@ -118,6 +118,16 @@ public class LogIndexEnumeratorTests
         Assert.That((enumerator.MoveNext(), seekable.MoveTo(1_001), enumerator.MoveNext()), Is.EqualTo((true, false, false)));
     }
 
+    [Test]
+    public void MoveTo_range_end_inside_chunk_returns_it()
+    {
+        int to = _denseBlocks[10];
+        using IEnumerator<int> enumerator = Storage.GetEnumerator(DenseAddress, 0, to);
+        ILogIndexEnumerator seekable = (ILogIndexEnumerator)enumerator;
+
+        Assert.That((enumerator.MoveNext(), seekable.MoveTo(to), enumerator.Current, enumerator.MoveNext()), Is.EqualTo((true, true, to, false)));
+    }
+
     // The forward-merge key holds the last MaxReorgDepth blocks and does not encode its first block in the key
     [Test]
     public void MoveTo_into_forward_merge_chunk([Values(5_850, 5_900, 5_950, BlockCount - 1)] int target)

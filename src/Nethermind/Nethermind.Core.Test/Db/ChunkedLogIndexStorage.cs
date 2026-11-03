@@ -16,7 +16,7 @@ namespace Nethermind.Core.Test.Db;
 
 /// <summary>
 /// A RocksDB-backed <see cref="ILogIndexStorage"/> from the production modules in a temporary directory,
-/// filled so that the postings of each key span many compressed chunks.
+/// filled batch by batch so that each batch of a key's postings becomes its own compressed chunk.
 /// </summary>
 public sealed class ChunkedLogIndexStorage : IAsyncDisposable
 {
@@ -41,16 +41,19 @@ public sealed class ChunkedLogIndexStorage : IAsyncDisposable
     public static async Task<ChunkedLogIndexStorage> CreateAsync(int blockCount, int batchSize, Func<int, LogEntry[]> logsAt)
     {
         TempPath dbPath = TempPath.GetTempDirectory();
-        IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(
-                new InitConfig { BaseDbPath = dbPath.Path },
-                new LogIndexConfig { Enabled = true, CompressionDistance = 16, MaxReorgDepth = 200 }))
-            .AddSingleton<IDbFactory, RocksDbFactory>()
-            .Build();
-
-        ChunkedLogIndexStorage index = new(dbPath, container);
+        IContainer? container = null;
+        ChunkedLogIndexStorage index;
         try
         {
+            container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(
+                    new InitConfig { BaseDbPath = dbPath.Path },
+                    new LogIndexConfig { Enabled = true, CompressionDistance = 16, MaxReorgDepth = 200 }))
+                .AddSingleton<IDbFactory, RocksDbFactory>()
+                .Build();
+
+            index = new(dbPath, container);
+
             for (int start = blockCount / 2; start < blockCount; start += batchSize)
                 await index.AddBatchAsync(start, Math.Min(batchSize, blockCount - start), logsAt, isBackwardSync: false);
 
@@ -62,7 +65,16 @@ public sealed class ChunkedLogIndexStorage : IAsyncDisposable
         }
         catch
         {
-            await index.DisposeAsync();
+            try
+            {
+                if (container is not null)
+                    await container.DisposeAsync();
+            }
+            finally
+            {
+                dbPath.Dispose();
+            }
+
             throw;
         }
 
@@ -84,7 +96,13 @@ public sealed class ChunkedLogIndexStorage : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await _container.DisposeAsync();
-        _dbPath.Dispose();
+        try
+        {
+            await _container.DisposeAsync();
+        }
+        finally
+        {
+            _dbPath.Dispose();
+        }
     }
 }

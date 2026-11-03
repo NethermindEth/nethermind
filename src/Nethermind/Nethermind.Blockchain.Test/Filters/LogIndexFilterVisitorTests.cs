@@ -30,14 +30,16 @@ public class LogIndexFilterVisitorTests
     private static readonly Hash256 DenseTopic = TestItem.KeccakA;
     private static readonly Hash256 SparseTopic = TestItem.KeccakB;
 
-    private ChunkedLogIndexStorage _chunkedIndex = null!;
     private HashSet<int> _sparseAddressBlocks = null!;
     private HashSet<int> _denseAddressBlocks = null!;
     private HashSet<int> _denseTopicBlocks = null!;
     private HashSet<int> _sparseTopicBlocks = null!;
 
+    // Built on first use, so the in-memory tests do not wait for RocksDB
+    private Lazy<Task<ChunkedLogIndexStorage>> _chunkedIndex = null!;
+
     [OneTimeSetUp]
-    public async Task OneTimeSetUp()
+    public void OneTimeSetUp()
     {
         Random random = new(42);
         _sparseAddressBlocks = RandomBlocks(random, 100);
@@ -45,11 +47,15 @@ public class LogIndexFilterVisitorTests
         _denseTopicBlocks = RandomBlocks(random, 1);
         _sparseTopicBlocks = RandomBlocks(random, 30);
 
-        _chunkedIndex = await ChunkedLogIndexStorage.CreateAsync(StorageBlockCount, StorageBatchSize, StorageLogsAt);
+        _chunkedIndex = new(() => ChunkedLogIndexStorage.CreateAsync(StorageBlockCount, StorageBatchSize, StorageLogsAt));
     }
 
     [OneTimeTearDown]
-    public async Task OneTimeTearDown() => await _chunkedIndex.DisposeAsync();
+    public async Task OneTimeTearDown()
+    {
+        if (_chunkedIndex.IsValueCreated)
+            await (await _chunkedIndex.Value).DisposeAsync();
+    }
 
     private record Ranges(Dictionary<Address, List<int>> Address, Dictionary<Hash256, List<int>>[] Topic)
     {
@@ -180,7 +186,7 @@ public class LogIndexFilterVisitorTests
     }
 
     [Test]
-    public void FilterEnumerator_OverChunkedStorage(
+    public async Task FilterEnumerator_OverChunkedStorage(
         [Values("sparse-dense", "dense-dense", "sparse-sparse", "missing-dense", "dense-dense-sparse", "two-addresses-dense", "sparse-or-topics-sparse")] string query,
         [Values(0, 777, StorageBlockCount / 2 - 5)] int from,
         [Values(StorageBlockCount / 2 + 5, 4_321, StorageBlockCount - 1)] int to)
@@ -208,7 +214,8 @@ public class LogIndexFilterVisitorTests
 
         long[] expected = testCase.Blocks.Where(b => b >= from && b <= to).Order().Select(static b => (long)b).ToArray();
 
-        Assert.That(_chunkedIndex.Storage.EnumerateBlockNumbersFor(testCase.Filter, (ulong)from, (ulong)to).ToArray(), Is.EqualTo(expected));
+        ChunkedLogIndexStorage index = await _chunkedIndex.Value;
+        Assert.That(index.Storage.EnumerateBlockNumbersFor(testCase.Filter, (ulong)from, (ulong)to).ToArray(), Is.EqualTo(expected));
     }
 
     [TestCase(
