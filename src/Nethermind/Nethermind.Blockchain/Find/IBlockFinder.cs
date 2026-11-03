@@ -75,7 +75,12 @@ namespace Nethermind.Blockchain.Find
 
         public Block? FindHeadBlock() => Head;
 
-        public Block? FindEarliestBlock() => FindGenesisBlock();
+        /// <summary>Finds the lowest block this node serves, which the <c>earliest</c> block tag resolves to.</summary>
+        public Block? FindEarliestBlock() => EarliestBlockNumber switch
+        {
+            0 => FindGenesisBlock(),
+            var number => FindBlock(number, BlockTreeLookupOptions.RequireCanonical)
+        };
 
         public Block? FindLatestBlock() => FindHeadBlock();
 
@@ -91,7 +96,15 @@ namespace Nethermind.Blockchain.Find
 
         public BlockHeader FindGenesisHeader() => FindHeader(GenesisHash, BlockTreeLookupOptions.RequireCanonical) ?? throw new Exception("Genesis header could not be found");
 
-        public BlockHeader FindEarliestHeader() => FindGenesisHeader();
+        /// <summary>Finds the header of <see cref="FindEarliestBlock"/>.</summary>
+        public BlockHeader FindEarliestHeader() => EarliestBlockNumber switch
+        {
+            0 => FindGenesisHeader(),
+            var number => FindHeader(number, BlockTreeLookupOptions.RequireCanonical) ?? throw new Exception($"Earliest header {number} could not be found")
+        };
+
+        /// <remarks>The served floor is clamped to at least 1 because genesis is never synced, so a floor of 1 means no history is pruned.</remarks>
+        private ulong EarliestBlockNumber => LowestServedBlock is > 1 and var lowest ? lowest : 0;
 
         public BlockHeader? FindLatestHeader() => Head?.Header;
 

@@ -127,6 +127,23 @@ public class BlockTreeTests
         Assert.That(tree.LowestServedBlock, Is.EqualTo(published), "the served floor never reports below the published boundary");
     }
 
+    [TestCase(1UL, 0UL, 0UL)]
+    [TestCase(2UL, 0UL, 2UL)]
+    [TestCase(1UL, 3UL, 3UL)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void Earliest_resolves_to_the_lowest_served_block(ulong oldestBlock, ulong servedFrontier, ulong expected)
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(5).TestObject;
+        tree.NewOldestBlock(oldestBlock);
+        tree.UpdateLowestServedBlock(servedFrontier);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((IBlockFinder)tree).FindBlock(BlockParameter.Earliest)?.Number, Is.EqualTo(expected));
+            Assert.That(((IBlockFinder)tree).FindHeader(BlockParameter.Earliest)?.Number, Is.EqualTo(expected));
+        }
+    }
+
     private IContainer? _rewindContainer;
 
     private TestMemDb _blocksInfosDb = null!;
