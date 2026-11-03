@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Serialization.Rlp;
@@ -514,13 +515,14 @@ public class Eth72MessageSerializerTests
     }
 
     [Test, NonParallelizable]
+    [ReleaseOnly("Debug builds box each decoded size and hash in the decoder's generic null check, so the per-hash allocation ceiling does not apply.")]
     public void Announcement_decoding_and_reading_hashes_has_bounded_allocations([Values(128, 4096)] int count)
     {
         long baseline = MeasureAnnouncementAllocations(1);
         long allocated = MeasureAnnouncementAllocations(count);
 
         TestContext.Out.WriteLine($"Allocated bytes per {count}-hash announcement: {allocated}; one-hash baseline: {baseline}");
-        // DEBUG list wrappers capture stack traces; compare growth through the same decoder path.
+        // Subtract the one-hash baseline so fixed per-message cost does not count as per-hash cost.
         Assert.That(allocated - baseline, Is.LessThan((count - 1) * 16), "Decoding and consuming hashes must not allocate an object per hash.");
     }
 
