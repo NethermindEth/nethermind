@@ -291,7 +291,7 @@ public class LogEntryDecoderTests
         AssertTopicsDecodedOneAtATimeMatchDecodeTopics(new ReceiptStorageDecoder(), rlp);
     }
 
-    public static void AssertTopicsDecodedOneAtATimeMatchDecodeTopics(IReceiptRefDecoder decoder, byte[] rlp)
+    public static void AssertTopicsDecodedOneAtATimeMatchDecodeTopics(IReceiptRefTopicDecoder decoder, byte[] rlp)
     {
         Hash256[]? expected = null;
         Exception? expectedError = null;

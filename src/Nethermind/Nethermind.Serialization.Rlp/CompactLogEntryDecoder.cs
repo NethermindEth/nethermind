@@ -94,10 +94,10 @@ namespace Nethermind.Serialization.Rlp
             return topics.ToArray();
         }
 
-        /// <inheritdoc cref="IReceiptRefDecoder.StartDecodingTopics"/>
+        /// <inheritdoc cref="IReceiptRefTopicDecoder.StartDecodingTopics"/>
         public static int StartDecodingTopics(ref RlpReader reader) => reader.ReadSequenceLength() + reader.Position;
 
-        /// <inheritdoc cref="IReceiptRefDecoder.DecodeTopic"/>
+        /// <inheritdoc cref="IReceiptRefTopicDecoder.DecodeTopic"/>
         /// <remarks>Every topic is checked as <see cref="DecodeTopics"/> checks it: an RLP null throws.</remarks>
         public static void DecodeTopic(ref RlpReader reader, scoped Span<byte> topic) => reader.DecodeZeroPrefixKeccakNonNull(topic);
 

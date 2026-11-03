@@ -14,7 +14,7 @@ namespace Nethermind.Optimism;
 
 [Decoder(RlpDecoderKey.Storage)]
 public class OptimismCompactReceiptStorageDecoder :
-    RlpDecoder<TxReceipt>, IReceiptRefDecoder
+    RlpDecoder<TxReceipt>, IReceiptRefTopicDecoder
 {
     private static readonly CompactLogEntryDecoder LogEntryDecoder = CompactLogEntryDecoder.Instance;
 

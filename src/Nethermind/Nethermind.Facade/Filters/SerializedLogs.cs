@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Facade.Filters;
 
@@ -57,6 +58,7 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
 
     /// <summary>Writes the log exactly as the JSON writer of <see cref="FilterLog"/> would, without materializing it.</summary>
     /// <exception cref="ArgumentException"><paramref name="transactionHash"/> is not <see cref="Hash256.Size"/> bytes, as when it was not recovered.</exception>
+    /// <exception cref="RlpException">The stored topics are malformed; the log is left partly written and the instance must be disposed.</exception>
     internal void Add(
         long logIndex,
         ulong blockNumber,
@@ -106,21 +108,20 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
     [SkipLocalsInit]
     private static void WriteTopics(Utf8JsonWriter writer, scoped in LogEntryStructRef log, scoped in ReceiptsIterator iterator)
     {
-        if (log.Topics is { } topics)
+        if (log.Topics is null && iterator.TryIterateTopics(log.TopicsRlp, out LogTopicsIterator encoded))
         {
-            foreach (Hash256 topic in topics)
+            Span<byte> buffer = stackalloc byte[Hash256.Size];
+            while (encoded.TryGetNext(buffer))
             {
-                HexWriter.WriteFixed32HexRawValue(writer, topic.Bytes);
+                HexWriter.WriteFixed32HexRawValue(writer, buffer);
             }
 
             return;
         }
 
-        Span<byte> buffer = stackalloc byte[Hash256.Size];
-        LogTopicsIterator encoded = iterator.IterateTopics(log.TopicsRlp);
-        while (encoded.TryGetNext(buffer))
+        foreach (Hash256 topic in log.Topics ?? iterator.DecodeTopics(new RlpReader(log.TopicsRlp)))
         {
-            HexWriter.WriteFixed32HexRawValue(writer, buffer);
+            HexWriter.WriteFixed32HexRawValue(writer, topic.Bytes);
         }
     }
 

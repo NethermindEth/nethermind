@@ -747,7 +747,7 @@ public class LogFinderTests
     private static readonly Hash256 TopicOne = new("0x0000000000000000000000000000000000000000000000000000000000000001");
 
     [Test]
-    public void FindLogs_WhenEncodedLogsHaveManyTopics_SerializesThemAsFilterLogs([Values] bool compact, [Values] bool indexed)
+    public void FindLogs_WhenEncodedLogsHaveManyTopics_SerializesThemAsFilterLogs([Values] bool compact, [Values] bool indexed, [Values] bool streamsTopics)
     {
         LogEntry[] logEntries =
         [
@@ -757,7 +757,7 @@ public class LogFinderTests
         ];
         Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
         byte[] encoded = EncodeReceipt(block, compact, logEntries);
-        LogFinder finder = CreateEncodedLogFinder(block, encoded, compact, indexed, out ILogIndexStorage? index);
+        LogFinder finder = CreateEncodedLogFinder(block, encoded, compact, indexed, streamsTopics, out ILogIndexStorage? index);
         LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
 
         AssertSerializedAsFilterLogs(finder.FindLogs(filter));
@@ -766,7 +766,7 @@ public class LogFinderTests
     }
 
     [Test]
-    public void FindLogs_WhenEncodedTopicIsMalformed_ThrowsOnEveryPath([Values] bool compact, [Values] bool indexed, [Range(0, 1)] int malformedIndex)
+    public void FindLogs_WhenEncodedTopicIsMalformed_ThrowsOnEveryPath([Values] bool compact, [Values] bool indexed, [Values] bool streamsTopics, [Range(0, 1)] int malformedIndex)
     {
         Hash256[] topics = compact
             ? malformedIndex == 0 ? [TopicOne, TestItem.KeccakA] : [TestItem.KeccakA, TopicOne]
@@ -790,7 +790,7 @@ public class LogFinderTests
             encoded[topic] = 0xe0;
         }
 
-        LogFinder finder = CreateEncodedLogFinder(block, encoded, compact, indexed, out _);
+        LogFinder finder = CreateEncodedLogFinder(block, encoded, compact, indexed, streamsTopics, out _);
         LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
 
         using (Assert.EnterMultipleScope())
@@ -812,9 +812,10 @@ public class LogFinderTests
         return new ReceiptArrayStorageDecoder(compact).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
     }
 
-    private LogFinder CreateEncodedLogFinder(Block block, byte[] encoded, bool compact, bool indexed, out ILogIndexStorage? index)
+    private LogFinder CreateEncodedLogFinder(Block block, byte[] encoded, bool compact, bool indexed, bool streamsTopics, out ILogIndexStorage? index)
     {
-        IReceiptRefDecoder decoder = compact ? CompactReceiptStorageDecoder.Instance : new ReceiptStorageDecoder();
+        IReceiptRefTopicDecoder topicDecoder = compact ? CompactReceiptStorageDecoder.Instance : new ReceiptStorageDecoder();
+        IReceiptRefDecoder decoder = streamsTopics ? topicDecoder : new ReceiptRefDecoderWithoutTopicStreaming(topicDecoder);
         ReceiptsRecovery recovery = new(Substitute.For<IEthereumEcdsa>(), _specProvider);
         LegacyReceiptFinder receiptFinder = new(encoded, decoder, () => recovery.CreateLogRecoveryContext(new ReceiptRecoveryBlock(block)));
         if (!indexed)
@@ -826,6 +827,20 @@ public class LogFinderTests
         index = CreateLogIndexStorage(1, 1);
         index.GetEnumerator(TestItem.AddressA, 1, 1).Returns(_ => new[] { 1 }.AsEnumerable().GetEnumerator());
         return new IndexedLogFinder(_blockTree, receiptFinder, _receiptStorage, LimboLogs.Instance, recovery, _specProvider!, index, minBlocksToUseIndex: 1);
+    }
+
+    /// <summary>A decoder built before <see cref="IReceiptRefTopicDecoder"/>, as in a plugin.</summary>
+    private sealed class ReceiptRefDecoderWithoutTopicStreaming(IReceiptRefDecoder decoder) : IReceiptRefDecoder
+    {
+        public void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item) =>
+            decoder.DecodeStructRef(ref decoderContext, rlpBehaviors, out item);
+
+        public void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors none, out LogEntryStructRef current) =>
+            decoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
+
+        public Hash256[] DecodeTopics(RlpReader reader) => decoder.DecodeTopics(reader);
+
+        public bool CanDecodeBloom => decoder.CanDecodeBloom;
     }
 
     private const ulong BoundaryOldestStored = 50;

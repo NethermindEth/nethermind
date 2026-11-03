@@ -14,12 +14,12 @@ namespace Nethermind.Blockchain.Receipts;
 /// </remarks>
 public ref struct LogTopicsIterator
 {
-    private readonly IReceiptRefDecoder _decoder;
+    private readonly IReceiptRefTopicDecoder _decoder;
     private readonly int _end;
     private RlpReader _reader;
     private int _index;
 
-    public LogTopicsIterator(ReadOnlySpan<byte> topicsRlp, IReceiptRefDecoder decoder)
+    public LogTopicsIterator(ReadOnlySpan<byte> topicsRlp, IReceiptRefTopicDecoder decoder)
     {
         _decoder = decoder;
         _reader = new RlpReader(topicsRlp);

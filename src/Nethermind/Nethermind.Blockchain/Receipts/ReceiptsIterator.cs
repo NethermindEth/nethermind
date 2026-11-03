@@ -28,6 +28,7 @@ namespace Nethermind.Blockchain.Receipts
         private int _logRecoveryReceiptIndex;
         private Hash256? _logRecoveryTransactionHash;
         private readonly IReceiptRefDecoder _receiptRefDecoder;
+        private readonly IReceiptRefTopicDecoder? _receiptRefTopicDecoder;
         private bool _recoveryContextConfigured;
         private readonly ReadOnlySpan<byte> _txHashes;
         private readonly Hash256? _blockHash;
@@ -48,6 +49,7 @@ namespace Nethermind.Blockchain.Receipts
             _recoveryContextConfigured = false;
             _recoveryContext = null;
             _receiptRefDecoder = receiptRefDecoder;
+            _receiptRefTopicDecoder = receiptRefDecoder as IReceiptRefTopicDecoder;
 
             _startingPosition = _reader.Position;
             _length = receiptsData.Length == 0 ? 0 : _reader.ReadSequenceLength() + _reader.Position;
@@ -226,9 +228,19 @@ namespace Nethermind.Blockchain.Receipts
         public readonly Hash256[] DecodeTopics(RlpReader reader) =>
             _receiptRefDecoder.DecodeTopics(reader);
 
-        /// <summary>Decodes the topics of a log read without them, as when <see cref="LogEntryStructRef.Topics"/> is null.</summary>
-        public readonly LogTopicsIterator IterateTopics(ReadOnlySpan<byte> topicsRlp) =>
-            new(topicsRlp, _receiptRefDecoder);
+        /// <summary>Starts decoding the topics of a log read without them, as when <see cref="LogEntryStructRef.Topics"/> is null, one at a time.</summary>
+        /// <returns><c>false</c> when the decoder is not an <see cref="IReceiptRefTopicDecoder"/>; use <see cref="DecodeTopics"/> instead.</returns>
+        public readonly bool TryIterateTopics(ReadOnlySpan<byte> topicsRlp, out LogTopicsIterator topics)
+        {
+            if (_receiptRefTopicDecoder is null)
+            {
+                topics = default;
+                return false;
+            }
+
+            topics = new LogTopicsIterator(topicsRlp, _receiptRefTopicDecoder);
+            return true;
+        }
 
         public readonly bool CanDecodeBloom => _receiptRefDecoder is null || _receiptRefDecoder.CanDecodeBloom;
     }
