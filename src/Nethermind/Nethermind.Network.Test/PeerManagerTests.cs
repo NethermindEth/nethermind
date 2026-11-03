@@ -163,6 +163,54 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task Idle_static_peer_is_selected_once_alongside_other_candidates()
+        {
+            Node staticNode = new(TestItem.PublicKeyB, "52.141.78.53", 30303, isStatic: true);
+            Node otherNode = new(TestItem.PublicKeyC, "52.141.78.54", 30303);
+            Peer staticPeer = new(staticNode, Substitute.For<INodeStats>());
+            Peer otherPeer = new(otherNode, Substitute.For<INodeStats>());
+            ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
+            peers.TryAdd(staticNode.Id, staticPeer);
+            peers.TryAdd(otherNode.Id, otherPeer);
+
+            IPeerPool peerPool = Substitute.For<IPeerPool>();
+            peerPool.Peers.Returns(peers);
+            peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
+            peerPool.StaticPeers.Returns(new[] { staticPeer });
+
+            int staticContactChecks = 0;
+            TaskCompletionSource<int> otherDialed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
+            rlpxHost.ShouldContact(Arg.Any<IPAddress>(), Arg.Any<bool>()).Returns(callInfo =>
+            {
+                if (callInfo.Arg<IPAddress>().Equals(staticNode.Address.Address)) Interlocked.Increment(ref staticContactChecks);
+                return true;
+            });
+            rlpxHost.ConnectAsync(Arg.Any<Node>(), Arg.Any<CancellationToken>()).Returns(callInfo =>
+            {
+                if (callInfo.Arg<Node>() == otherNode) otherDialed.TrySetResult(Volatile.Read(ref staticContactChecks));
+                return Task.FromResult(true);
+            });
+
+            NetworkConfig config = new() { MaxActivePeers = 4, NumConcurrentOutgoingConnects = 1, PeersUpdateInterval = 10 };
+            PeerManager manager = new(rlpxHost, peerPool, Substitute.For<INodeStatsManager>(), config,
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
+
+            manager.Start();
+            int staticContactChecksBeforeOtherDial;
+            try
+            {
+                staticContactChecksBeforeOtherDial = await otherDialed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            finally
+            {
+                await manager.StopAsync();
+            }
+
+            Assert.That(staticContactChecksBeforeOtherDial, Is.EqualTo(1));
+        }
+
+        [Test]
         public async Task Start_rejects_non_positive_peer_update_interval([Values(0, -1)] int interval)
         {
             await using Context ctx = new();
