@@ -25,9 +25,12 @@ internal static class OtsTraceReader
         finally { store.DangerousReleaseMemory(data); }
     }
 
-    internal static string? Validate(Block block, List<ParityLikeTxTrace> traces, CancellationToken ct)
+    internal static string? Validate(Block block, List<ParityLikeTxTrace> traces, CancellationToken ct) =>
+        Validate(block, traces, ct, out _);
+
+    internal static string? Validate(Block block, List<ParityLikeTxTrace> traces, CancellationToken ct, out bool[] seen)
     {
-        bool[] seen = new bool[block.Transactions.Length];
+        seen = new bool[block.Transactions.Length];
         foreach (ParityLikeTxTrace trace in traces)
         {
             ct.ThrowIfCancellationRequested();
