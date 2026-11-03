@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       workers:
-        description: NUnit parallel worker count (each spawns a Docker container; >4 may OOM the 16 GB runner)
+        description: NUnit parallel worker count (each spawns a Docker container; >4 may OOM ubuntu-latest)
         type: string
         default: '4'
 
@@ -26,8 +26,7 @@ defaults:
 jobs:
   e2e-tests:
     name: Run E2E (workers=${{ inputs.workers || '4' }})
-    # arm64: as fast as x64 here, and off the x64 hosted pool that PR jobs queue for.
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - name: Check out repository
