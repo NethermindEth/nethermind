@@ -26,11 +26,12 @@ The build writes `bin/nethermind` (ELF), `bin/nethermind.bin` (the ROM image) an
 
 ## Run
 
-`make run` executes the guest on the Airbender CLI (`AIRBENDER_CLI`), built from
-the zksync-airbender revision with the 4 MiB ROM:
+`make run` executes the guest on the Airbender CLI of the zksync-airbender
+revision with the 4 MiB ROM, in the image that bflat-airbender publishes
+(`AIRBENDER_RUNNER`). `AIRBENDER_CLI` names another CLI instead.
 
 ```bash
-make run INPUT=<fixture>.ssz AIRBENDER_CLI=<zksync-airbender>/target/cli/cli
+make run INPUT=<fixture>.ssz
 ```
 
 The CLI prints the output words as `Result:`. The run does not generate or verify
@@ -41,7 +42,7 @@ also checks the public digest and fails on a mismatch. Block `11962427.ssz`
 exercises an unaligned fused PUSH2 jump target, which must work on RV32:
 
 ```bash
-make verify INPUT=11962427.ssz AIRBENDER_CLI=<zksync-airbender>/target/cli/cli
+make verify INPUT=11962427.ssz
 ```
 
 ## Notes

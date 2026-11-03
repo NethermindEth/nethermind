@@ -11,9 +11,10 @@ GUEST_LIBC := airbender
 GUEST_ARCH := riscv32
 
 # The bflat image with the riscv32 target, and the Airbender platform and
-# libairbender of a bflat-airbender release, which bflat checks against its
-# signature. AIRBENDER_LIB_DIR names another libairbender build instead.
-BFLAT_IMAGE := nethermindeth/bflat-riscv64-11-riscv32:08364f7bf222e7597b5d546666d3f76f47665372@sha256:e51685e696bc96005018359805735d76b464e79d0c360e4f81ec62ecbcbc1974
+# libairbender of a bflat-airbender release. bflat does not check a local
+# manifest, so the download is checked against AIRBENDER_SHA256 instead.
+# AIRBENDER_LIB_DIR names another libairbender build.
+BFLAT_IMAGE := nethermindeth/bflat-riscv64-11-riscv32:c8f6294cca505f5118590e7fd23fdb408264f8dc@sha256:7af7b20e333de60d3e80ff371970a79164f8598ca5e02ecbb67ecbb1416eb6c7
 AIRBENDER_VERSION := v1.0.2
 AIRBENDER_SHA256 := 73e55decb782f9b29b4a77d5ccda81009d1751caaae4d2f96a1b6c27892dd554
 AIRBENDER_LIB_DIR ?= $(GUEST_DIR)/obj/libairbender-$(AIRBENDER_VERSION)
@@ -36,9 +37,17 @@ $(GUEST_DIR)/obj/libairbender-$(AIRBENDER_VERSION)/libairbender.bflat.manifest:
 	echo "$(AIRBENDER_SHA256)  $(@D)/libairbender-riscv32.tar.gz" | sha256sum -c --quiet
 	tar -xzf $(@D)/libairbender-riscv32.tar.gz -C $(@D)
 
-# Execution harness: the Airbender CLI's transpiler VM, built from the zksync-airbender
-# revision whose 4 MiB ROM and unsigned RV32M machine the image targets.
-AIRBENDER_CLI ?= cli
+ifneq ($(AIRBENDER_LIB_DIR),$(GUEST_DIR)/obj/libairbender-$(AIRBENDER_VERSION))
+$(AIRBENDER_LIB_DIR)/libairbender.bflat.manifest:
+	@echo "error: $(AIRBENDER_LIB_DIR) has no libairbender.bflat.manifest; AIRBENDER_LIB_DIR names the output/airbender of a bflat-airbender build" >&2; exit 1
+endif
+
+# Execution harness: the Airbender CLI's transpiler VM, from the zksync-airbender
+# revision whose 4 MiB ROM and unsigned RV32M machine the image targets, as the
+# image bflat-airbender publishes. It sees bin/ at the same path.
+AIRBENDER_RUNNER := nethermindeth/airbender-runner:7a147da32e0c74308891a3fbd03193e724115266@sha256:024fe8c5bd052865e02da23d3a24bc17955c4543e64d15aef1f94cfc2a08eb62
+AIRBENDER_CLI ?= docker run --platform linux/amd64 --rm \
+	--mount type=bind,source="$(GUEST_DIR)/bin",target="$(GUEST_DIR)/bin",readonly $(AIRBENDER_RUNNER)
 AIRBENDER_CYCLES ?= 12000000000
 
 run:

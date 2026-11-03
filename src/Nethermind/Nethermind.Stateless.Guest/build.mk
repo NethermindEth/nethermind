@@ -60,12 +60,11 @@ TRIM_FLAGS ?= --no-stacktrace-data --ldflags=--strip-all
 GUEST_OBJECTS ?=
 
 # What a guest whose toolchain is not the default image overrides: the target
-# architecture, its bindings, the bflat command and the docker arguments that bring
+# architecture, its bindings and the docker arguments that bring
 # its bindings into the image (the Airbender guest, which has no runtime package
 # and so leaves GUEST_PACKAGE unset).
 GUEST_ARCH ?= riscv64
 GUEST_EXTLIB ?= $(PACKAGE_DIR)/$(GUEST_NUPKG)
-BFLAT ?= bflat
 BFLAT_DOCKER_ARGS ?=
 
 # Main, the ZkvmThrow export and the failure protocol are one file shared by all
@@ -149,7 +148,7 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		$(SHARED_MOUNT) \
 		$(BFLAT_DOCKER_ARGS) \
 		$(BFLAT_IMAGE) \
-		$(BFLAT) build --arch $(GUEST_ARCH) --os linux --stdlib dotnet --libc $(GUEST_LIBC) \
+		bflat build --arch $(GUEST_ARCH) --os linux --stdlib dotnet --libc $(GUEST_LIBC) \
 		$(OPT_FLAGS) \
 		$(TRIM_FLAGS) \
 		--no-pie \
