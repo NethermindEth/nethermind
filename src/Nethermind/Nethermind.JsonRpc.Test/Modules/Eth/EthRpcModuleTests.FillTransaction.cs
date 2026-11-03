@@ -60,6 +60,17 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task FillTransaction_WhenFromMissing_FillsNonceOfZeroAddress()
+    {
+        // Gas is supplied because estimating it would need the zero address to hold the fee, which the test chain does not give it.
+        EIP1559TransactionForRpc rpcTx = new() { To = TestItem.AddressB, Value = 1, Gas = 0x5208UL };
+
+        LegacyTransactionForRpc filled = (LegacyTransactionForRpc)await FillTransactionForResult(rpcTx);
+
+        Assert.That(filled.Nonce, Is.EqualTo(0UL), "a missing from is the zero address, as in geth");
+    }
+
+    [Test]
     public async Task FillTransaction_WhenCallerSuppliesFields_LeavesThemUntouched()
     {
         EIP1559TransactionForRpc rpcTx = new()
@@ -106,10 +117,6 @@ public partial class EthRpcModuleTests
 
     private static IEnumerable<TestCaseData> InvalidInputCases()
     {
-        yield return new TestCaseData(
-            (TransactionForRpc)new EIP1559TransactionForRpc { From = null, To = TestItem.AddressB, Value = 1 },
-            "from address not specified").SetName("FromMissing");
-
         yield return new TestCaseData(
             (TransactionForRpc)new EIP1559TransactionForRpc
             {
