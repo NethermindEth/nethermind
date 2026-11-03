@@ -146,7 +146,7 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 
-    [JsonRpcMethod(Description = "Executes a list of bundles of transactions without creating transactions on the blockchain and returns their traces. Unless a bundle has state or block overrides, each call is traced independently against the state of the selected block; to let later calls see the effects of earlier ones, use per-bundle state overrides or debug_simulateV1.", IsImplemented = true, IsSharable = false)]
+    [JsonRpcMethod(Description = "Executes a list of bundles of transactions without creating transactions on the blockchain and returns their traces. Unless any bundle has state or block overrides, each call is traced independently against the state of the selected block; to let later calls see the effects of earlier ones, set state or block overrides on a bundle or use debug_simulateV1.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 
     [JsonRpcMethod(Description = "Reprocesses the existing block with the parameters specified and returns the generated execution witness.")]
