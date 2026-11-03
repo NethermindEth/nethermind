@@ -241,7 +241,7 @@ public class FlatStorageTreeDeleteWarmupTests
             return inner.TryLoadStateRlp(path, hash, flags, action, arg);
         }
 
-        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             Interlocked.Increment(ref _loads);
             return inner.TryLoadStorageRlp(address, path, hash, flags, action, arg);

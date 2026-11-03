@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -110,17 +111,7 @@ public class NodeStorage(
             return EmptyTreeHashBytes;
         }
 
-        if (Scheme == INodeStorage.KeyScheme.HalfPath && (readFlags & ReadFlags.HintReadAhead) != 0)
-        {
-            if (address is null && path.Length > TopStateBoundary)
-            {
-                readFlags |= ReadFlags.HintReadAhead2;
-            }
-            else if (address is not null)
-            {
-                readFlags |= ReadFlags.HintReadAhead3;
-            }
-        }
+        readFlags = WithReadAhead(address is not null, path, readFlags);
 
         Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
         if (Scheme == INodeStorage.KeyScheme.HalfPath)
@@ -131,6 +122,61 @@ public class NodeStorage(
 
         return _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags)
                ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
+    }
+
+    /// <inheritdoc/>
+    [SkipLocalsInit]
+    public bool TryGet<TArg>(in ValueHash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+        where TArg : allows ref struct
+    {
+        if (keccak == Keccak.EmptyTreeHash.ValueHash256)
+        {
+            action(EmptyTreeHashBytes, arg);
+            return true;
+        }
+
+        readFlags = WithReadAhead(address is not null, path, readFlags);
+
+        Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
+        return Scheme == INodeStorage.KeyScheme.HalfPath
+            ? TryPass(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags, action, arg)
+              || TryPass(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags, action, arg)
+            : TryPass(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags, action, arg)
+              || TryPass(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags, action, arg);
+    }
+
+    private bool TryPass<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags readFlags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+        where TArg : allows ref struct
+    {
+        Span<byte> rlp = _keyValueStore.GetSpan(key, readFlags);
+        if (rlp.IsEmpty) return false;
+        try
+        {
+            action(rlp, arg);
+        }
+        finally
+        {
+            _keyValueStore.DangerousReleaseMemory(rlp);
+        }
+
+        return true;
+    }
+
+    private ReadFlags WithReadAhead(bool isStorage, in TreePath path, ReadFlags readFlags)
+    {
+        if (Scheme == INodeStorage.KeyScheme.HalfPath && (readFlags & ReadFlags.HintReadAhead) != 0)
+        {
+            if (!isStorage && path.Length > TopStateBoundary)
+            {
+                readFlags |= ReadFlags.HintReadAhead2;
+            }
+            else if (isStorage)
+            {
+                readFlags |= ReadFlags.HintReadAhead3;
+            }
+        }
+
+        return readFlags;
     }
 
     [SkipLocalsInit]

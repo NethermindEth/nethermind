@@ -33,6 +33,6 @@ public readonly record struct MigrationCursor(ValueHash256? Account, ValueHash25
     /// <summary>Whether the trie node at <paramref name="path"/> has been copied.</summary>
     /// <param name="address">The account path of the storage trie, or <c>null</c> for the state trie.</param>
     /// <param name="path">The path of the node.</param>
-    public bool IsCopied(Hash256? address, in TreePath path) =>
-        address is null ? IsCopied(path.ToLowerBoundPath()) : IsCopied(address.ValueHash256, path.ToLowerBoundPath());
+    public bool IsCopied(in ValueHash256? address, in TreePath path) =>
+        address is { } storage ? IsCopied(storage, path.ToLowerBoundPath()) : IsCopied(path.ToLowerBoundPath());
 }

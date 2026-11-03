@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -222,13 +223,7 @@ public class ImporterTests
             }
         }
 
-        List<(Hash256? Address, TreePath Path)> halfPathReads = [];
-        INodeStorage halfPathSpy = Substitute.For<INodeStorage>();
-        halfPathSpy.Get(Arg.Any<Hash256?>(), Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>()).Returns(call =>
-        {
-            halfPathReads.Add((call.ArgAt<Hash256?>(0), call.ArgAt<TreePath>(1)));
-            return halfPath.Get(call.ArgAt<Hash256?>(0), call.ArgAt<TreePath>(1), call.ArgAt<ValueHash256>(2), call.ArgAt<ReadFlags>(3));
-        });
+        ReadRecordingNodeStorage halfPathSpy = new(halfPath);
         HalfPathMigrationCursor migrationCursor = new(_columnsDb);
         migrationCursor.Advance(cursor);
         long walksBefore = Metrics.HalfPathFallbackWalks;
@@ -251,7 +246,7 @@ public class ImporterTests
             UInt256 missingValue = 0;
             Assert.That(reader.GetAccount(TestItem.GetRandomAddress()), Is.Null, "missing account");
             Assert.That(reader.TryGetSlot(accounts[^1].Address, SlotsPerAccount + 1, ref missingValue), Is.False, "missing slot");
-            Assert.That(halfPathReads, Has.None.Matches<(Hash256? Address, TreePath Path)>(read => cursor.IsCopied(read.Address, read.Path)),
+            Assert.That(halfPathSpy.Reads, Has.None.Matches<(ValueHash256? Address, TreePath Path)>(read => cursor.IsCopied(read.Address, read.Path)),
                 "what the cursor has passed comes from flat alone");
             Assert.That(Metrics.HalfPathFallbackWalks > walksBefore, Is.EqualTo(copied != Copied.Everything), "only uncopied reads walk the trie");
             Assert.That(new HalfPathMigrationCursor(_columnsDb).Current, Is.EqualTo(cursor), "the cursor survives a restart");
@@ -450,6 +445,33 @@ public class ImporterTests
         public void VisitExtension(in TreePathContextWithStorage nodeContext, TrieNode node) => Nodes.Add((nodeContext.Storage, nodeContext.Path, node));
         public void VisitLeaf(in TreePathContextWithStorage nodeContext, TrieNode node) => Nodes.Add((nodeContext.Storage, nodeContext.Path, node));
         public void VisitAccount(in TreePathContextWithStorage nodeContext, TrieNode node, in AccountStruct account) { }
+    }
+
+    /// <summary>Serves the node reads of <paramref name="nodeStorage"/>, recording where each was.</summary>
+    private sealed class ReadRecordingNodeStorage(INodeStorage nodeStorage) : INodeStorage
+    {
+        public List<(ValueHash256? Address, TreePath Path)> Reads { get; } = [];
+        public INodeStorage.KeyScheme Scheme { get => nodeStorage.Scheme; set => throw new NotSupportedException(); }
+        public bool RequirePath => nodeStorage.RequirePath;
+
+        public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
+        {
+            Reads.Add((address, path));
+            return nodeStorage.Get(address, path, keccak, readFlags);
+        }
+
+        public bool TryGet<TArg>(in ValueHash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+            where TArg : allows ref struct
+        {
+            Reads.Add((address, path));
+            return nodeStorage.TryGet(address, path, keccak, readFlags, action, arg);
+        }
+
+        public void Set(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None) => throw new NotSupportedException();
+        public INodeStorage.IWriteBatch StartWriteBatch() => throw new NotSupportedException();
+        public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 hash) => throw new NotSupportedException();
+        public void Flush(bool onlyWal) => throw new NotSupportedException();
+        public void Compact() => throw new NotSupportedException();
     }
 
     /// <summary>A migration of the HalfPath state at <paramref name="state"/> into an empty flat DB pointing at it, run on the test thread.</summary>

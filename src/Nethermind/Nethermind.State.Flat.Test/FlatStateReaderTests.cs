@@ -233,9 +233,9 @@ public class FlatStateReaderTests
             return true;
         }
 
-        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
-            byte[]? rlp = TryLoadStorageRlp(address, path, flags);
+            byte[]? rlp = TryLoadStorageRlp(new Hash256(address), path, flags);
             if (rlp is null) return false;
             action(rlp, arg);
             return true;

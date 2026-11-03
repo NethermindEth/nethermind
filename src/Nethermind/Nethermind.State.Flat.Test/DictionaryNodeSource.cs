@@ -70,7 +70,7 @@ public sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> n
         public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
             where TArg : allows ref struct => Pass(source.LoadRlp(path), action, arg);
 
-        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
             where TArg : allows ref struct => Pass(source.LoadRlp(path), action, arg);
 
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => throw new NotSupportedException();

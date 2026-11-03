@@ -310,8 +310,8 @@ public abstract class SubstitutablePersistenceReader : IPersistence.IPersistence
     bool IPersistence.IPersistenceReader.TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
         Pass(TryLoadStateRlp(path, flags), action, arg);
 
-    bool IPersistence.IPersistenceReader.TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
-        Pass(TryLoadStorageRlp(address, path, flags), action, arg);
+    bool IPersistence.IPersistenceReader.TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
+        Pass(TryLoadStorageRlp(new Hash256(address), path, flags), action, arg);
 
     private static bool Pass<TArg>(byte[]? rlp, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {

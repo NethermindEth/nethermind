@@ -59,7 +59,7 @@ public interface IPersistence
         /// <summary>Passes the RLP of the storage trie node at <paramref name="path"/> whose hash is <paramref name="hash"/> to <paramref name="action"/>, which must not keep it.</summary>
         /// <inheritdoc cref="TryLoadStateRlp(in TreePath, in ValueHash256, ReadFlags)" path="/remarks"/>
         /// <returns>Whether the node was found.</returns>
-        bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
+        bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
 
         // Raw operations are used in importer
         byte[]? GetAccountRaw(in ValueHash256 addrHash);
