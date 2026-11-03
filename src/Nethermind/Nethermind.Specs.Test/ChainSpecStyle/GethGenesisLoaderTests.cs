@@ -396,8 +396,11 @@ public class GethGenesisLoaderTests
     [TestCase("\"istanbulBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"shanghaiTime\": 0", "petersburgBlock not enabled, but istanbulBlock enabled at block 0")]
     [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"londonBlock\": 5", "berlinBlock not enabled, but londonBlock enabled at block 5")]
     [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"cancunTime\": 10", "shanghaiTime not enabled, but cancunTime enabled at timestamp 10")]
+    [TestCase("\"eip8141PrototypeTime\": 15", "shanghaiTime not enabled, but eip8141PrototypeTime enabled at timestamp 15")]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"bogotaDevnet2Time\": 10", "shanghaiTime not enabled, but bogotaDevnet2Time enabled at timestamp 10")]
     [TestCase("\"homesteadBlock\": 0, \"tangerineWhistleBlock\": 0, \"spuriousDragonBlock\": 0, \"byzantiumBlock\": 0", null)]
     [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"pragueTime\": 10, \"amsterdamTime\": 20", null)]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"eip4758PrototypeTime\": 15", null)]
     [TestCase("\"homesteadBlock\": 0, \"daoForkBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"muirGlacierBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"grayGlacierBlock\": 0, \"mergeNetsplitBlock\": 0", null)]
     public void Fork_schedule_must_not_skip_a_required_fork(string config, string? expectedError)
     {
@@ -528,7 +531,7 @@ public class GethGenesisLoaderTests
     [TestCase("eip7906PrototypeTime", false, false, true)]
     public void Genesis_frame_transaction_extension_label_schedules_only_its_own_eip(string label, bool eip8250, bool eip8272, bool eip7906)
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"\"{label}\": 15");
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"{label}\": 15");
 
         using (Assert.EnterMultipleScope())
         {
@@ -1107,18 +1110,7 @@ public class GethGenesisLoaderTests
     [Test]
     public void BogotaDevnet2Time_schedules_the_eips_bogota_devnet_2_adds()
     {
-        ChainSpec chainSpec = LoadFromString("""
-            {
-              "config": {
-                "chainId": 1,
-                "bogotaDevnet2Time": 26,
-                "terminalTotalDifficulty": "0x0"
-              },
-              "difficulty": "0x1",
-              "gasLimit": "0x8000000",
-              "alloc": {}
-            }
-            """);
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"bogotaDevnet2Time\": 26, \"terminalTotalDifficulty\": \"0x0\"");
 
         using (Assert.EnterMultipleScope())
         {

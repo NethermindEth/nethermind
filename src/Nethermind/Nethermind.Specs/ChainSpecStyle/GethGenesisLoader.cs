@@ -71,10 +71,12 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
     /// <remarks>
     /// Ports the missing-fork check of <c>CheckConfigForkOrder</c> from geth's <c>params/config.go</c>: every non-optional
     /// fork must be set up to the last set fork. Optional forks may be left out without blocking later ones.
+    /// Every set timestamp label is checked again as an optional fork after <c>bpo5Time</c>, which covers the
+    /// Nethermind-only labels unknown to geth.
     /// </remarks>
     private static void ValidateForkOrder(GethGenesisConfigJson config)
     {
-        (string Name, ulong? Block, ulong? Timestamp, bool Optional)[] forks =
+        List<(string Name, ulong? Block, ulong? Timestamp, bool Optional)> forks =
         [
             ("homesteadBlock", config.HomesteadBlock, null, false),
             ("daoForkBlock", config.DaoForkBlock, null, true),
@@ -103,6 +105,11 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             ("bpo4Time", null, config.Bpo4Time, true),
             ("bpo5Time", null, config.Bpo5Time, true),
         ];
+
+        foreach ((string forkName, ulong timestamp) in ((IHasNamedForks)config).NamedForkTimestamps!)
+        {
+            forks.Add(($"{char.ToLowerInvariant(forkName[0])}{forkName[1..]}Time", null, timestamp, true));
+        }
 
         string? lastUnsetFork = null;
         foreach ((string name, ulong? block, ulong? timestamp, bool optional) in forks)
