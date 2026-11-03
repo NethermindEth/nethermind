@@ -18,9 +18,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
@@ -55,8 +57,6 @@ public class DebugRpcModule(
     ICodeInfoRepository codeInfoRepository)
     : IDebugRpcModule
 {
-    internal sealed class TransactionTraceNotFoundException() : Exception("transaction not found");
-
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     private static readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
@@ -106,7 +106,7 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
                     debugBridge.GetTransactionTrace(blockHash, transactionHash, token, options, writer, pipeWriter)
-                    ?? throw new TransactionTraceNotFoundException()));
+                    ?? throw new RpcErrorException(ErrorCodes.ResourceNotFound, "transaction not found")));
         }
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
@@ -180,8 +180,8 @@ public class DebugRpcModule(
                     if (moveError is not null)
                         return ResultWrapper<GethLikeTxTrace>.Fail(moveError, ErrorCodes.InvalidInput);
                 }
-                if (accountOverride is { State: not null, StateDiff: not null })
-                    return ResultWrapper<GethLikeTxTrace>.Fail($"account {address.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'", ErrorCodes.InvalidInput);
+                if (StateOverrideValidation.GetStorageConflictError(address, accountOverride) is { } storageError)
+                    return ResultWrapper<GethLikeTxTrace>.Fail(storageError, ErrorCodes.InvalidInput);
             }
         }
 
@@ -548,7 +548,8 @@ public class DebugRpcModule(
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
-        catch (NativeTracerConfigException exception)
+        catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
@@ -618,7 +619,8 @@ public class DebugRpcModule(
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
-        catch (NativeTracerConfigException exception)
+        catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
@@ -676,7 +678,8 @@ public class DebugRpcModule(
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
-        catch (NativeTracerConfigException exception)
+        catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
@@ -1091,6 +1094,9 @@ public class DebugRpcModule(
         {
             return headerError;
         }
+
+        if (StateOverrideValidation.GetStorageConflictError(options?.StateOverrides) is { } storageError)
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(storageError, ErrorCodes.InvalidInput);
 
         if (options?.TxIndex is not null) options = options with { TxIndex = null };
 

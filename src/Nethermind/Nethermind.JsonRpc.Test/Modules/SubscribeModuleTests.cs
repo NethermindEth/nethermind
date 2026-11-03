@@ -1315,6 +1315,37 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void New_head_subscriptions_do_not_retain_queued_previous_blocks()
+        {
+            IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+            client.SendJsonRpcResult(Arg.Any<JsonRpcResult>()).Returns(new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+            using NewHeadSubscription subscription = new(client, _blockTree, _logManager, _specProvider, new BlockForRpcFactory());
+
+            (WeakReference queuedBlock, WeakReference previousBlock) = RaiseBlockAddedToMainEvents();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(queuedBlock.IsAlive, Is.True);
+                Assert.That(previousBlock.IsAlive, Is.False);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private (WeakReference QueuedBlock, WeakReference PreviousBlock) RaiseBlockAddedToMainEvents()
+        {
+            Block queuedBlock = Build.A.Block.WithNumber(2).TestObject;
+            Block previousBlock = Build.A.Block.WithNumber(1).TestObject;
+            // The first send never completes, so the second event stays queued.
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), new BlockReplacementEventArgs(Build.A.Block.WithNumber(0).TestObject));
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), new BlockReplacementEventArgs(queuedBlock, previousBlock));
+            // The substitute records the raise, event arguments included.
+            _blockTree.ClearReceivedCalls();
+            return (new WeakReference(queuedBlock), new WeakReference(previousBlock));
+        }
+
+        [Test]
         public async Task SyncingSubscription_creating_result()
         {
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;

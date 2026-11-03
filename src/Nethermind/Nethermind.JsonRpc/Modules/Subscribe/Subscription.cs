@@ -64,7 +64,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly int _maxQueuedMessages;
         private volatile bool _overflowed;
 
-        private static readonly Func<object?, Task> InvokeAction = static action => ((Func<Task>)action!)();
+        private static readonly Func<Func<Task>, Task> InvokeAction = static action => action();
 
         private Channel<QueuedSend> SendChannel { get; }
 
@@ -105,10 +105,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         /// A delegate cached by the subscription plus the event's payload as <paramref name="state"/> queues an event
         /// without allocating a closure, and keeps alive only that payload until it is sent.
         /// </remarks>
-        protected void ScheduleAction(Func<object?, Task> send, object? state)
+        protected void ScheduleAction<TState>(Func<TState, Task> send, TState state) where TState : class?
         {
             // TryComplete fails once disposed, so only an overflow gets past it.
-            if (SendChannel.Writer.TryWrite(new QueuedSend(send, state)) || !SendChannel.Writer.TryComplete()) return;
+            if (SendChannel.Writer.TryWrite(new QueuedSend(send, state, TypedSend<TState>.Invoke)) || !SendChannel.Writer.TryComplete()) return;
 
             _overflowed = true;
             if (_logger.IsWarn) _logger.Warn($"{GetErrorMsg()} Client fell {_maxQueuedMessages} sends behind and is disconnected.");
@@ -132,7 +132,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
                         try
                         {
-                            await queued.Send(queued.State);
+                            await queued.Invoke(queued.Send, queued.State);
                         }
                         catch (Exception e)
                         {
@@ -147,6 +147,15 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
         }
 
-        private readonly record struct QueuedSend(Func<object?, Task> Send, object? State);
+        /// <remarks>
+        /// One channel holds sends of every state type, so the typed pair is stored untyped and restored by
+        /// <see cref="TypedSend{TState}.Invoke"/>, which only <see cref="ScheduleAction{TState}"/> pairs with it.
+        /// </remarks>
+        private readonly record struct QueuedSend(Delegate Send, object? State, Func<Delegate, object?, Task> Invoke);
+
+        private static class TypedSend<TState> where TState : class?
+        {
+            public static readonly Func<Delegate, object?, Task> Invoke = static (send, state) => ((Func<TState, Task>)send)((TState)state);
+        }
     }
 }
