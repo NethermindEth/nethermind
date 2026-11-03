@@ -63,8 +63,8 @@ public class PersistenceManager(
     private StateId? _lastWarnedStall;
     private bool _warnedHeldPastBackstop;
     private const int InitialShutdownTailCapacity = 256;
-    private static readonly StringLabel _stateNodesLabel = new("state_nodes");
-    private static readonly StringLabel _storageNodesLabel = new("storage_nodes");
+    private static readonly StableStringLabel _stateNodesLabel = StableStringLabel.Get("state_nodes");
+    private static readonly StableStringLabel _storageNodesLabel = StableStringLabel.Get("storage_nodes");
 
     // StateId is a 40-byte struct (ulong + ValueHash256), so a direct field read/write is not atomic and
     // query threads calling GetCurrentPersistedStateId could observe a torn (BlockNumber, StateRoot) pair
