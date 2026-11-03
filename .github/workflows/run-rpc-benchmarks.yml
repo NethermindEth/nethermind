@@ -1089,6 +1089,10 @@ jobs:
               git fetch --depth=1 origin "$sha"
               context="$(mktemp -d "${RUNNER_TEMP}/gl-image.XXXXXX")"
               git archive "$sha" | tar -x -C "$context"
+              # Advisories published after an old commit fail its locked restore (NU1902/NU1903 as errors).
+              # Disabling only the audit leaves the restored packages and the compiled code unchanged.
+              props="$context/src/Nethermind/Directory.Build.props"
+              [[ -f "$props" ]] && sed -i 's#</Project>#  <PropertyGroup><NuGetAudit>false</NuGetAudit></PropertyGroup>\n</Project>#' "$props"
               source_date_epoch="$(git log -1 --format=%ct "$sha")"
               docker build "$context" -f "$context/Dockerfile" -t "$image" \
                 --build-arg BUILD_CONFIG=release --build-arg CI=true \
