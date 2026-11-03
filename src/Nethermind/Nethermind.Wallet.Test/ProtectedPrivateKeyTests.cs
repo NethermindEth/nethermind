@@ -6,13 +6,15 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Wallet.Test;
 
 public class ProtectedPrivateKeyTests
 {
-    [Test]
+    // Changes the working directory, so a relative keystore path resolving against it would be caught.
+    [Test, NonParallelizable]
     public void Creates_keys_in_keyStoreDirectory()
     {
         // Don't test on Windows, as DpapiWrapper used
@@ -21,12 +23,24 @@ public class ProtectedPrivateKeyTests
             return;
         }
         string keyStoreDir = Path.Combine("testKeyStoreDir", Path.GetRandomFileName());
+        string workingDirectory = Directory.GetCurrentDirectory();
+        DirectoryInfo otherDirectory = Directory.CreateTempSubdirectory();
 
-        ProtectedPrivateKey key = new(TestItem.PrivateKeyA, keyStoreDir);
+        ProtectedPrivateKey key;
+        Directory.SetCurrentDirectory(otherDirectory.FullName);
+        try
+        {
+            key = new(TestItem.PrivateKeyA, keyStoreDir);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(workingDirectory);
+        }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Directory.EnumerateFiles(Path.Combine(keyStoreDir, "protection_keys")).Count(), Is.EqualTo(1));
+            Assert.That(Directory.EnumerateFiles(Path.Combine(keyStoreDir.GetApplicationResourcePath(), "protection_keys")).Count(), Is.EqualTo(1));
+            Assert.That(otherDirectory.EnumerateFileSystemInfos(), Is.Empty);
 
             Assert.That(key.Unprotect(), Is.EqualTo(TestItem.PrivateKeyA));
         }
