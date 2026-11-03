@@ -31,7 +31,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private static readonly FlushOptions _defaultFlushOptions = new();
 
     private bool _isDisposing;
-    private int _pinnedSlices;
+    private readonly StripedLeaseCount _pinnedSlices = new();
     private readonly InFlightOperations _prefetches = new();
     private bool _nativeCloseDeferred;
     private int _nativeClosed;
@@ -774,7 +774,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out nint handle, ReadFlags flags)
     {
         // Counted before the disposing check, so Dispose either waits for this slice or this read sees it disposing.
-        Interlocked.Increment(ref _pinnedSlices);
+        int slot = _pinnedSlices.Acquire();
         bool pinned = false;
         try
         {
@@ -803,22 +803,23 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         finally
         {
-            if (!pinned) ReleasePinnedSlice();
+            if (!pinned) ReleasePinnedSlice(slot);
         }
     }
 
     public void DangerousReleaseHandle(nint handle)
     {
         PinnedSlice.DangerousDestroy(handle);
-        if (handle != 0) ReleasePinnedSlice();
+        if (handle != 0) ReleasePinnedSlice(StripedLeaseCount.CurrentSlot);
     }
 
     /// <summary>How long <see cref="Dispose"/> waits for pinned slices before it leaves the native close to the last release.</summary>
     internal TimeSpan PinnedSliceDrainTimeout { get; init; } = TimeSpan.FromSeconds(10);
 
-    private void ReleasePinnedSlice()
+    private void ReleasePinnedSlice(int slot)
     {
-        if (Interlocked.Decrement(ref _pinnedSlices) == 0 && Volatile.Read(ref _nativeCloseDeferred)) CloseNative();
+        _pinnedSlices.Release(slot);
+        if (Volatile.Read(ref _nativeCloseDeferred) && _pinnedSlices.Count == 0) CloseNative();
     }
 
     /// <summary>Waits for the slices <see cref="GetNativeSlice(ReadOnlySpan{byte}, out nint, ReadFlags)"/> handed out to be released.</summary>
@@ -831,7 +832,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         long start = Stopwatch.GetTimestamp();
         SpinWait spin = default;
-        while (Volatile.Read(ref _pinnedSlices) != 0)
+        while (_pinnedSlices.Count != 0)
         {
             if (Stopwatch.GetElapsedTime(start) > PinnedSliceDrainTimeout) return false;
             spin.SpinOnce();
@@ -1464,9 +1465,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         else
         {
             // A slice still pinned would read freed memory, so the last release closes the database.
-            if (_logger.IsWarn) _logger.Warn($"DB {LogName} closes when its {Volatile.Read(ref _pinnedSlices)} pinned slices are released");
+            if (_logger.IsWarn) _logger.Warn($"DB {LogName} closes when its {_pinnedSlices.Count} pinned slices are released");
             Interlocked.Exchange(ref _nativeCloseDeferred, true);
-            if (Volatile.Read(ref _pinnedSlices) == 0) CloseNative();
+            if (_pinnedSlices.Count == 0) CloseNative();
         }
 
         _isDisposed = true;
