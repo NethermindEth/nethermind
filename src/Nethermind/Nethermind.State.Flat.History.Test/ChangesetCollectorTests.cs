@@ -7,6 +7,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.State.Flat.History.Changesets;
+using Nethermind.State.Flat.Test;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;

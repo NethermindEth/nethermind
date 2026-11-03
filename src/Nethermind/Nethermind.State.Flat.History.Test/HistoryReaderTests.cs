@@ -15,6 +15,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Test;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
