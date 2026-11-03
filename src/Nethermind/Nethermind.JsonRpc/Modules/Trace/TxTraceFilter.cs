@@ -15,9 +15,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
         ulong? count,
         TraceFilterMode mode)
     {
+        // Up to this length a linear scan is cheaper than hashing the address.
+        private const int MaxScannedAddresses = 8;
+
         // An empty list is read as an omitted one, as in eth_getLogs: it does not restrict the match.
         private readonly Address[]? _fromAddresses = fromAddresses is { Length: > 0 } ? fromAddresses : null;
         private readonly Address[]? _toAddresses = toAddresses is { Length: > 0 } ? toAddresses : null;
+        private readonly HashSet<AddressAsKey>? _fromAddressSet = ToSet(fromAddresses);
+        private readonly HashSet<AddressAsKey>? _toAddressSet = ToSet(toAddresses);
         private ulong _after = after;
         private ulong? _count = count;
         private readonly TraceFilterMode _mode = mode;
@@ -61,11 +66,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private bool MatchAddresses(Address? fromAddress, Address? toAddress)
         {
-            bool? fromMatch = _fromAddresses?.Contains(fromAddress);
-            bool? toMatch = _toAddresses?.Contains(toAddress);
+            bool? fromMatch = Match(_fromAddresses, _fromAddressSet, fromAddress);
+            bool? toMatch = Match(_toAddresses, _toAddressSet, toAddress);
             return _mode == TraceFilterMode.Union && (fromMatch.HasValue || toMatch.HasValue)
                 ? fromMatch == true || toMatch == true
                 : fromMatch != false && toMatch != false;
         }
+
+        private static bool? Match(Address[]? addresses, HashSet<AddressAsKey>? addressSet, Address? address) =>
+            addressSet?.Contains(address) ?? addresses?.Contains(address);
+
+        private static HashSet<AddressAsKey>? ToSet(Address[]? addresses) =>
+            addresses is { Length: > MaxScannedAddresses } ? [.. addresses] : null;
     }
 }
