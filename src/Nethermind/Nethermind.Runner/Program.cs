@@ -495,18 +495,9 @@ ILogger GetCriticalLogger()
 
 void ResolveDatabaseDirectory(string? path, IInitConfig initConfig)
 {
-    if (string.IsNullOrWhiteSpace(path))
-    {
-        initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
-    }
-    else
-    {
-        string dbPath = initConfig.BaseDbPath.GetApplicationResourcePath(path);
+    initConfig.BaseDbPath = DatabaseDirectory.Resolve(path, initConfig.BaseDbPath);
 
-        if (logger.IsDebug) logger.Debug($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(dbPath)}");
-
-        initConfig.BaseDbPath = dbPath;
-    }
+    if (logger.IsDebug) logger.Debug($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(initConfig.BaseDbPath)}");
 }
 
 void PurgeDatabaseDirectory(string basePath, bool preserveNetwork = false) =>
