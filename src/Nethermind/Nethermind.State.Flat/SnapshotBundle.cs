@@ -344,12 +344,13 @@ public sealed class SnapshotBundle : IDisposable
     /// reach by no pointer.
     /// </remarks>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
-    internal bool TryLoadTrieNodeRecord<TArg>(Hash256? address, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    /// <param name="hash">The hash of the node, passed on to persistence.</param>
+    internal bool TryLoadTrieNodeRecord<TArg>(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         GuardDispose();
 
         if (!_transientResource.WarmedNodeBuffer.TryGet(address, path, out NodeRecord record, out _))
-            return _readOnlySnapshotBundle.TryLoadPersistedRlp(address, path, ReadFlags.None, action, arg);
+            return _readOnlySnapshotBundle.TryLoadPersistedRlp(address, path, hash, ReadFlags.None, action, arg);
 
         action(record.Span, arg);
         return true;
@@ -432,7 +433,7 @@ public sealed class SnapshotBundle : IDisposable
         public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => _buffer.StartWriteBatch(alignedTotalLength);
 
         public bool TryLoad<TArg>(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-            _readOnly.TryLoadPersistedRlp(_address, path, ReadFlags.None, action, arg);
+            _readOnly.TryLoadPersistedRlp(_address, path, hash, ReadFlags.None, action, arg);
 
         public void Dispose()
         {

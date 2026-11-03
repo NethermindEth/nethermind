@@ -302,7 +302,7 @@ public sealed class ReadOnlySnapshotBundle(
 
         Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        byte[]? value = persistenceReader.TryLoadStateRlp(path, flags);
+        byte[]? value = persistenceReader.TryLoadStateRlp(path, hash.ValueHash256, flags);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpLabel);
 
         return value;
@@ -317,7 +317,7 @@ public sealed class ReadOnlySnapshotBundle(
 
         Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        byte[]? value = persistenceReader.TryLoadStorageRlp(address, path, flags);
+        byte[]? value = persistenceReader.TryLoadStorageRlp(address, path, hash.ValueHash256, flags);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
 
         return value;
@@ -325,8 +325,9 @@ public sealed class ReadOnlySnapshotBundle(
 
     /// <summary>Passes the persisted RLP of a trie node to <paramref name="action"/>, borrowed for the duration of the call.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <param name="hash">The hash of the node, which a hash-keyed fallback below persistence needs to find it.</param>
     /// <returns>Whether the node was found and passed.</returns>
-    public bool TryLoadPersistedRlp<TArg>(Hash256? address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    public bool TryLoadPersistedRlp<TArg>(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         GuardDispose();
 
@@ -337,8 +338,8 @@ public sealed class ReadOnlySnapshotBundle(
         Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         bool found = address is null
-            ? persistenceReader.TryLoadStateRlp(path, flags, action, arg)
-            : persistenceReader.TryLoadStorageRlp(address, path, flags, action, arg);
+            ? persistenceReader.TryLoadStateRlp(path, hash, flags, action, arg)
+            : persistenceReader.TryLoadStorageRlp(address, path, hash, flags, action, arg);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, address is null ? _readStateRlpLabel : _readStorageRlpLabel);
 
         return found;

@@ -56,6 +56,18 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
         _innerReader.TryLoadStorageRlp(address, in path, flags, action, arg);
 
+    public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
+        _innerReader.TryLoadStateRlp(in path, in hash, flags);
+
+    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
+        _innerReader.TryLoadStorageRlp(address, in path, in hash, flags);
+
+    public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        _innerReader.TryLoadStateRlp(in path, in hash, flags, action, arg);
+
+    public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        _innerReader.TryLoadStorageRlp(address, in path, in hash, flags, action, arg);
+
     public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
         _innerReader.GetAccountRaw(addrHash);
 

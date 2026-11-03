@@ -80,7 +80,7 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
     public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => bundle.NodeRecordBuffer!.StartWriteBatch(alignedTotalLength);
 
     public bool TryLoad<TArg>(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-        bundle.TryLoadTrieNodeRecord(addressHash, path, action, arg);
+        bundle.TryLoadTrieNodeRecord(addressHash, path, hash, action, arg);
 
     private void SetRoot(in (ValueHash256 Hash, ulong Pointer) updated)
     {

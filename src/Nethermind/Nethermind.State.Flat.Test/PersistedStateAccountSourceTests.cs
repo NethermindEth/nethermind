@@ -129,7 +129,7 @@ public class PersistedStateAccountSourceTests
     private PersistedStateAccountSource CreateSource()
     {
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(call =>
+        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>()).Returns(call =>
         {
             _loads++;
             return _nodes.GetValueOrDefault(call.ArgAt<TreePath>(0));

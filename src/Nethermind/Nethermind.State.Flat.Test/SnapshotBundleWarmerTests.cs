@@ -162,7 +162,7 @@ public class SnapshotBundleWarmerTests
 
         bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
         if (warmUp) bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
-        else Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, action, nodes)), Is.EqualTo(persisted[TreePath.Empty]));
+        else Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, root.Hash, action, nodes)), Is.EqualTo(persisted[TreePath.Empty]));
 
         Assert.That(reader.Reads, Is.EqualTo(1));
     }
@@ -251,7 +251,7 @@ public class SnapshotBundleWarmerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.Reads, Is.EqualTo(2), "retirement no longer promotes warmed nodes into a shared cache");
-            Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, action, nodes)), Is.Not.Null);
+            Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, root.Hash, action, nodes)), Is.Not.Null);
             Assert.That(reader.Reads, Is.EqualTo(2), "the replacement transient still reuses its own warmed records");
         }
     }
@@ -592,6 +592,16 @@ public class SnapshotBundleWarmerTests
             Load(path, action, arg);
 
         bool IPersistence.IPersistenceReader.TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
+            Load(path, action, arg);
+
+        byte[]? IPersistence.IPersistenceReader.TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => LoadOwned(path);
+
+        byte[]? IPersistence.IPersistenceReader.TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) => LoadOwned(path);
+
+        bool IPersistence.IPersistenceReader.TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
+            Load(path, action, arg);
+
+        bool IPersistence.IPersistenceReader.TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
             Load(path, action, arg);
 
         private bool Load<TArg>(in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
