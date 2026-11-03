@@ -623,6 +623,29 @@ public class PersistenceManager(
         snapshotRepository.RemoveUnreachableFrom(head, GetCurrentPersistedStateId());
     }
 
+    public bool TryWriteOnPersistedState(in StateId expected, Action<IPersistence.IWriteBatch> write)
+    {
+        if (!_persistenceLock.Wait(0)) return false;
+        try
+        {
+            // Bypasses the reader caches, which may still serve the state before the last persist.
+            using (IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync))
+            {
+                if (reader.CurrentState != expected) return false;
+            }
+
+            // Held until the batch is disposed: a from == to batch rewrites the state pointer on dispose without
+            // checking it again, so a persist committed meanwhile would be rolled back.
+            using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(expected, expected);
+            write(batch);
+            return true;
+        }
+        finally
+        {
+            _persistenceLock.Release();
+        }
+    }
+
     public void Dispose()
     {
         _cts.Dispose();
