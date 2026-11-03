@@ -116,6 +116,15 @@ public class AddressFilterTests
 
         using (Assert.EnterMultipleScope())
         {
+            if (count > 8)
+            {
+                Assert.That(filter.Addresses.Comparer, Is.SameAs(AddressAsKeyComparer.Instance));
+            }
+            else
+            {
+                Assert.That(filter.Addresses, Is.SameAs(addresses));
+            }
+
             foreach (Address address in TestItem.Addresses)
             {
                 AddressStructRef @ref = address.ToStructRef();
@@ -125,30 +134,9 @@ public class AddressFilterTests
     }
 
     [Test]
-    public void Accepts_by_ref_with_a_set_already_using_the_span_comparer()
+    public void Uses_a_set_with_the_span_comparer_without_a_copy([Values(9, 200)] int count)
     {
-        HashSet<AddressAsKey> addresses = new(TestItem.Addresses.Take(20).Select(static a => new AddressAsKey(a)), AddressAsKeyComparer.Instance);
-        AddressFilter filter = new(addresses);
-
-        AddressStructRef hit = TestItem.Addresses[19].ToStructRef();
-        AddressStructRef miss = TestItem.Addresses[20].ToStructRef();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(filter.Addresses, Is.SameAs(addresses));
-            Assert.That(filter.Accepts(ref hit), Is.True);
-            Assert.That(filter.Accepts(ref miss), Is.False);
-        }
-    }
-
-    [Test]
-    public void Uses_a_set_from_CreateAddressSet_without_a_copy([Values(1, 8, 9, 200)] int count)
-    {
-        HashSet<AddressAsKey> addresses = AddressFilter.CreateAddressSet(count);
-        foreach (Address address in TestItem.Addresses.Take(count))
-        {
-            addresses.Add(address);
-        }
-
+        HashSet<AddressAsKey> addresses = new(TestItem.Addresses.Take(count).Select(static a => new AddressAsKey(a)), AddressAsKeyComparer.Instance);
         AddressFilter filter = new(addresses);
 
         AddressStructRef hit = TestItem.Addresses[count - 1].ToStructRef();

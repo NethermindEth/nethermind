@@ -36,10 +36,6 @@ namespace Nethermind.Facade.Filters
         {
         }
 
-        /// <summary>Creates an address set that a filter of <paramref name="count"/> addresses uses without a copy.</summary>
-        public static HashSet<AddressAsKey> CreateAddressSet(int count) =>
-            count > LinearScanMaxCount ? new HashSet<AddressAsKey>(count, AddressAsKeyComparer.Instance) : new HashSet<AddressAsKey>(count);
-
         public HashSet<AddressAsKey> Addresses { get; }
         private Bloom.BloomExtract[] AddressesBloomExtracts => _addressesBloomIndexes ??= CalculateBloomExtracts();
 
