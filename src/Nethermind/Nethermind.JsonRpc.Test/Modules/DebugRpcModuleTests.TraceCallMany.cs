@@ -120,14 +120,16 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceCallMany_with_multiple_transactions_per_bundle()
+    public async Task Debug_traceCallMany_without_overrides_traces_each_call_against_the_base_state([Values] bool streaming)
     {
         using Context ctx = await CreateContext();
-        TransactionBundle bundle = CreateBundle(CreateTransaction(), CreateTransaction(to: TestItem.AddressD));
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Address relay = TestItem.GetRandomAddress();
+        TransactionBundle bundle = CreateBundle(CreateTransaction(to: relay), CreateTransaction(from: relay));
 
         JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
-        Assert.That(result.Select(r => ((JArray)r).Count), Is.EqualTo([2]));
+        Assert.That(result.Select(static r => r.Select(static trace => (bool)trace["failed"]!)), Is.EqualTo(new[] { new[] { false, true } }), result.ToString());
     }
 
     [Test]
