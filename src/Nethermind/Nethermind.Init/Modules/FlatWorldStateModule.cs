@@ -23,6 +23,7 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.Api;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
@@ -125,6 +126,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             })
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
+            .AddSingleton<HalfPathMigrationCursor>()
             .Add<CarryForwardCachingPersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
 
@@ -138,6 +140,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                         new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout, ctx.Resolve<ITrieNodeLog>()),
                     _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
+
+                // Below the reader caches, so what they cache already includes the fallback.
+                HalfPathMigrationCursor migrationCursor = ctx.Resolve<HalfPathMigrationCursor>();
+                if (migrationCursor.Current is not null)
+                    persistence = new HalfPathFallbackPersistence(persistence, ctx.Resolve<INodeStorage>(), migrationCursor);
 
                 IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
                 return flatDbConfig.EnableCarryForwardCache

@@ -30,7 +30,6 @@ public class Importer(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<Importer>();
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
-    private readonly AccountDecoder _accountDecoder = AccountDecoder.Instance;
     private long _totalNodes = 0;
     private const int BatchSize = 128_000;
     private const int FlushInterval = 50_000_000;
@@ -128,36 +127,7 @@ public class Importer(
         {
             // Write it
             Metrics.ImporterEntriesCount++;
-
-            if (address is null)
-            {
-                writeBatch.SetStateTrieNode(path, node.FullRlp.AsSpan());
-            }
-            else
-            {
-                writeBatch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
-            }
-
-            if (node.IsLeaf)
-            {
-                ValueHash256 fullPath = path.Append(node.Key).Path;
-                if (address is null)
-                {
-                    RlpReader accountReader = new(node.Value.AsSpan());
-                    Account acc = _accountDecoder.Decode(ref accountReader)!;
-                    writeBatch.SetAccountRaw(fullPath, acc);
-                }
-                else
-                {
-                    // A storage leaf value is RLP(stripped) and never empty (zero slots are absent), so it is
-                    // stored verbatim when wrapping, skipping a decode + re-encode round-trip.
-                    ReadOnlySpan<byte> value = node.Value.AsSpan();
-                    if (!value.IsEmpty)
-                    {
-                        writeBatch.SetStorageRawEncoded(address, fullPath, value);
-                    }
-                }
-            }
+            WriteNode(writeBatch, address, path, node);
 
             long theTotalNode = Interlocked.Increment(ref _totalNodes);
             if (theTotalNode % CheckCancelInterval == 0)
@@ -183,6 +153,44 @@ public class Importer(
         }
 
         writeBatch.Dispose();
+    }
+
+    /// <summary>Writes a trie node and, for a leaf, the account or slot it holds.</summary>
+    /// <param name="writeBatch">The batch to write to.</param>
+    /// <param name="address">The account path of the storage trie, or <c>null</c> for the state trie.</param>
+    /// <param name="path">The path of the node.</param>
+    /// <param name="node">The resolved node.</param>
+    internal static void WriteNode(IPersistence.IWriteBatch writeBatch, Hash256? address, in TreePath path, TrieNode node)
+    {
+        if (address is null)
+        {
+            writeBatch.SetStateTrieNode(path, node.FullRlp.AsSpan());
+        }
+        else
+        {
+            writeBatch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
+        }
+
+        if (node.IsLeaf)
+        {
+            ValueHash256 fullPath = path.Append(node.Key).Path;
+            if (address is null)
+            {
+                RlpReader accountReader = new(node.Value.AsSpan());
+                Account acc = AccountDecoder.Instance.Decode(ref accountReader)!;
+                writeBatch.SetAccountRaw(fullPath, acc);
+            }
+            else
+            {
+                // A storage leaf value is RLP(stripped) and never empty (zero slots are absent), so it is
+                // stored verbatim when wrapping, skipping a decode + re-encode round-trip.
+                ReadOnlySpan<byte> value = node.Value.AsSpan();
+                if (!value.IsEmpty)
+                {
+                    writeBatch.SetStorageRawEncoded(address, fullPath, value);
+                }
+            }
+        }
     }
 
     private class Visitor(ChannelWriter<Entry> channelWriter, VisitorProgressTracker progressTracker, CancellationToken cancellationToken = default) : ITreeVisitor<TreePathContextWithStorage>

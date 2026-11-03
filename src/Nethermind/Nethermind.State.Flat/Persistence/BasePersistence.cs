@@ -14,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Migration;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -71,6 +72,7 @@ public static class BasePersistence
     private static readonly byte[] SlotEncodingKey = Keccak.Compute("SlotEncoding").BytesToArray();
     private static readonly byte[] WipedForSyncKey = Keccak.Compute("WipedForSync").BytesToArray();
     private static readonly byte[] SnapCheckpointKey = Keccak.Compute("SnapCheckpoint").BytesToArray();
+    private static readonly byte[] MigrationCursorKey = Keccak.Compute("HalfPathMigrationCursor").BytesToArray();
 
     /// <summary>Raw storage slot encoding: the stripped value bytes are stored verbatim. Legacy, deprecated.</summary>
     internal const byte SlotEncodingRaw = 0;
@@ -248,6 +250,47 @@ public static class BasePersistence
         metadata.FlushOrThrow();
     }
 
+    /// <summary>Reads the cursor of the HalfPath to flat migration in progress, or <c>null</c> when there is none.</summary>
+    public static MigrationCursor? ReadMigrationCursor(IReadOnlyKeyValueStore metadata) => metadata.Get(MigrationCursorKey) switch
+    {
+        null => null,
+        { Length: 2 * ValueHash256.MemorySize } bytes => new MigrationCursor(new ValueHash256(bytes.AsSpan(0, ValueHash256.MemorySize)), new ValueHash256(bytes.AsSpan(ValueHash256.MemorySize))),
+        { Length: ValueHash256.MemorySize } bytes => new MigrationCursor(new ValueHash256(bytes), null),
+        _ => MigrationCursor.Start,
+    };
+
+    /// <summary>Saves the cursor of the HalfPath to flat migration, or deletes it when <paramref name="cursor"/> is <c>null</c>. A wipe deletes it too.</summary>
+    /// <remarks>
+    /// Not flushed: the cursor is written after the data it covers is committed through the same write-ahead log, so a crash
+    /// can only lose a cursor write, and the data it covered is copied again.
+    /// </remarks>
+    [SkipLocalsInit]
+    public static void WriteMigrationCursor(IWriteOnlyKeyValueStore metadata, in MigrationCursor? cursor)
+    {
+        if (cursor is not { } position)
+        {
+            metadata.Remove(MigrationCursorKey);
+            return;
+        }
+
+        // Start, with no account copied yet, is a single byte, a length no copied position has.
+        Span<byte> bytes = stackalloc byte[2 * ValueHash256.MemorySize];
+        bytes[0] = 0;
+        int length = 1;
+        if (position.Account is { } account)
+        {
+            account.Bytes.CopyTo(bytes);
+            length = ValueHash256.MemorySize;
+            if (position.Slot is { } slot)
+            {
+                slot.Bytes.CopyTo(bytes[ValueHash256.MemorySize..]);
+                length = 2 * ValueHash256.MemorySize;
+            }
+        }
+
+        metadata.PutSpan(MigrationCursorKey, bytes[..length]);
+    }
+
     /// <summary>Wipes every data column and the state pointer, keeping the format markers, and marks the DB as wiped for a state sync.</summary>
     public static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
     {
@@ -262,6 +305,7 @@ public static class BasePersistence
             // midway reads back as "pointer and marker both present" and the next start redoes it.
             batch.GetColumnBatch(FlatDbColumns.Metadata).PutSpan(WipedForSyncKey, [1]);
             batch.GetColumnBatch(FlatDbColumns.Metadata).Remove(SnapCheckpointKey);
+            batch.GetColumnBatch(FlatDbColumns.Metadata).Remove(MigrationCursorKey);
 
             int count = 0;
             foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
