@@ -14,8 +14,7 @@ namespace Nethermind.State.Flat;
 public class FlatStateReader(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
-    IHistoricalTrieVisitor historicalTrieVisitor,
-    INodeRecordBuffer nodeRecordBuffer
+    IHistoricalTrieVisitor historicalTrieVisitor
 ) : IStateReader
 {
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
@@ -74,7 +73,7 @@ public class FlatStateReader(
 
         using (reader)
         {
-            NodeRecordBufferVisitor<TCtx> visitor = new(reader, nodeRecordBuffer, ulong.MaxValue, treeVisitor, visitingOptions ?? VisitingOptions.Default, diagnostics);
+            NodeRecordBufferVisitor<TCtx> visitor = new(reader, reader.StateSnapshot, treeVisitor, visitingOptions ?? VisitingOptions.Default, diagnostics);
             visitor.Accept(stateId.StateRoot.ToCommitment());
         }
     }

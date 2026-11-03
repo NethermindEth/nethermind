@@ -1451,7 +1451,7 @@ public class FlatWorldStateScopeProviderTests
         }
 
         NodeCollector bundleNodes = new();
-        ctx.SnapshotBundle.RunTreeVisitor(bundleNodes, scope.RootHash, ctx.NodeRecordBuffer, VisitingOptions.Default, diagnostics: null);
+        ctx.SnapshotBundle.RunTreeVisitor(bundleNodes, scope.RootHash, VisitingOptions.Default, diagnostics: null);
         Assert.That(bundleNodes.Nodes, Is.EquivalentTo(CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Nodes));
     }
 

@@ -48,6 +48,9 @@ public sealed class ReadOnlySnapshotBundle(
     private readonly int _persistedSnapshotCount = persistedSnapshots.Count;
     public int SnapshotCount => _persistedSnapshotCount + snapshots.Count;
 
+    /// <summary>The in-memory snapshot of this bundle's state, which resolves its tries' roots; null when the state is persisted.</summary>
+    internal Snapshot? StateSnapshot => snapshots.Count > 0 ? snapshots[^1] : null;
+
     /// <summary>
     /// True when this bundle is backed by the finalized history index (trie-less): it serves account/storage values
     /// only and has no trie nodes, so post-block state-root recomputation must not traverse it.

@@ -228,7 +228,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                     baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
             }
 
-            snapshotBundle.RunTreeVisitor(treeVisitor, stateId.StateRoot.ToCommitment(), overridableWorldScope._nodeRecordBuffer, visitingOptions ?? VisitingOptions.Default, diagnostics);
+            snapshotBundle.RunTreeVisitor(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions ?? VisitingOptions.Default, diagnostics);
         }
 
         public bool HasStateForBlock(BlockHeader? baseBlock) => overridableWorldScope.HasStateForBlock(baseBlock);

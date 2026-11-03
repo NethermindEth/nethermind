@@ -702,8 +702,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
-        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, _bufferPin, shouldAddSnapshot);
-        _bufferPin = _trieless ? null : _snapshotBundle.NodeRecordBuffer!.PinHead();
+        // Taken after the roots were published, so the next block's pin also bounds this snapshot's root lookups.
+        INodeRecordBufferPin? nextBufferPin = _trieless ? null : _snapshotBundle.NodeRecordBuffer!.PinHead();
+        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(
+            _currentStateId, newStateId, _bufferPin, shouldAddSnapshot, nextBufferPin?.WriteBoundary ?? ulong.MaxValue);
+        _bufferPin = nextBufferPin;
 
         if (shouldAddSnapshot)
         {

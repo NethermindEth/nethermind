@@ -49,6 +49,9 @@ public class FlatOverridableWorldScopeTests
         public List<(Snapshot Snapshot, TransientResource Resource)> FlatDbManagerAddSnapshotCalls { get; } = [];
         public ForwardingNodeRecordBuffer GlobalNodeRecordBuffer { get; } = new(FlatTestHelpers.NewTestBuffer());
 
+        /// <summary>An in-memory snapshot of the main world state, included in the read-only bundle gathered for its state.</summary>
+        public Snapshot? GlobalSnapshot { get; set; }
+
         public TestContext(FlatDbConfig? config = null)
         {
             config ??= new FlatDbConfig();
@@ -70,9 +73,11 @@ public class FlatOverridableWorldScopeTests
                         });
 
                     flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
-                        .Returns(_ =>
+                        .Returns(call =>
                         {
                             SnapshotPooledList snapshotList = new(0);
+                            if (GlobalSnapshot is { } globalSnapshot && globalSnapshot.To == call.Arg<StateId>() && globalSnapshot.TryAcquire())
+                                snapshotList.Add(globalSnapshot);
                             return new ReadOnlySnapshotBundle(snapshotList, Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty(), bufferPin: null);
                         });
 
@@ -346,7 +351,8 @@ public class FlatOverridableWorldScopeTests
         // Block 2 adds D beside A and C, so its root points at their leaves from block 1, and only block 1's snapshot holds their storage roots.
         BlockHeader overlayBlock = CommitAccountsWithSlot(CommitAccountsWithSlot(null, TestItem.AddressA, TestItem.AddressC), TestItem.AddressD);
 
-        // Indexed in the main buffer after the overlay pinned it, so the overlay's root lookup skips it and the main buffer's finds it.
+        // A main state indexed after the overlay pinned the main buffer: the overlay's root lookup would skip it, while the state's
+        // own snapshot resolves it in the main buffer.
         Hash256 addressHash = Keccak.Compute(TestItem.AddressB.Bytes);
         TestMemDb trieDb = new();
         StorageTree storageTree = new(new RawScopedTrieStore(trieDb, addressHash), LimboLogs.Instance);
@@ -355,13 +361,12 @@ public class FlatOverridableWorldScopeTests
         StateTree stateTree = new(new RawScopedTrieStore(trieDb), LimboLogs.Instance);
         stateTree.Set(TestItem.AddressB, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
         stateTree.Commit();
-        INodeRecordBuffer mainBuffer = ctx.GlobalNodeRecordBuffer;
-        using (mainBuffer.PinHead())
-        {
-            mainBuffer.SetRoot(addressHash, storageTree.RootHash, mainBuffer.AppendRecordFromRlp(addressHash, TreePath.Empty, storageTree.RootHash, storageTree.GetNodeByPath([])!, []));
-            mainBuffer.SetRoot(null, stateTree.RootHash, mainBuffer.AppendRecordFromRlp(null, TreePath.Empty, stateTree.RootHash, stateTree.GetNodeByPath([])!, []));
-        }
         BlockHeader mainBlock = Build.A.BlockHeader.WithNumber(3).WithStateRoot(stateTree.RootHash).TestObject;
+        INodeRecordBuffer mainBuffer = ctx.GlobalNodeRecordBuffer;
+        using Snapshot mainSnapshot = new ResourcePool(new FlatDbConfig()).CreateSnapshot(StateId.PreGenesis, new StateId(mainBlock), ResourcePool.Usage.MainBlockProcessing, mainBuffer);
+        mainBuffer.SetRoot(addressHash, storageTree.RootHash, mainBuffer.AppendRecordFromRlp(addressHash, TreePath.Empty, storageTree.RootHash, storageTree.GetNodeByPath([])!, []));
+        mainBuffer.SetRoot(null, stateTree.RootHash, mainBuffer.AppendRecordFromRlp(null, TreePath.Empty, stateTree.RootHash, stateTree.GetNodeByPath([])!, []));
+        ctx.GlobalSnapshot = mainSnapshot;
 
         // The bundle under the overlay is empty, so a node read from persistence instead of a record is missing.
         TrieStats overlayStats = Visit(overlayBlock);

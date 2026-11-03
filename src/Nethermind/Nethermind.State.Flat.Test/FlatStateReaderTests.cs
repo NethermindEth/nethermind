@@ -36,7 +36,7 @@ public class FlatStateReaderTests
     public void TearDown() => _buffer.Dispose();
 
     private FlatStateReader CreateReader(IFlatDbManager manager) =>
-        new(new MemDb(), manager, NullHistoricalTrieVisitor.Instance, _buffer);
+        new(new MemDb(), manager, NullHistoricalTrieVisitor.Instance);
 
     public static readonly TestCaseData[] UnavailableStateReads =
     [
@@ -95,8 +95,7 @@ public class FlatStateReaderTests
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
         ResourcePool pool = new(new FlatDbConfig());
         using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
-        // A persisted snapshot stands for one whose records left the buffer, so only an in-memory snapshot's roots are indexed.
-        trieReader.AddNodesTo(snapshot, indexRoots: !persistedSnapshot, TestItem.AddressA, TreePath.Empty);
+        trieReader.AddNodesTo(snapshot, TestItem.AddressA, TreePath.Empty);
         using TempPath arenaPath = TempPath.GetTempDirectory();
         using TempPath blobsPath = TempPath.GetTempDirectory();
         using ArenaManager arena = TestFixtureHelpers.CreateArenaManager(arenaPath.Path);
@@ -125,7 +124,7 @@ public class FlatStateReaderTests
         ResourcePool pool = new(new FlatDbConfig());
         using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
         // The buffer holds the branch root, A's leaf below it and A's storage root; only persistence holds C's leaf and storage root.
-        trieReader.AddNodesTo(snapshot, indexRoots: true, TestItem.AddressA, TreePath.Empty, FlatTestHelpers.CanonicalPath(Keccak.Compute(TestItem.AddressA.Bytes), 1));
+        trieReader.AddNodesTo(snapshot, TestItem.AddressA, TreePath.Empty, FlatTestHelpers.CanonicalPath(Keccak.Compute(TestItem.AddressA.Bytes), 1));
         FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot, persisted: null));
         TrieStatsCollector collector = new(new MemDb(), LimboLogs.Instance);
         VisitingStats diagnostics = new();
@@ -242,16 +241,13 @@ public class FlatStateReaderTests
             return new CountingTrieReader(stateTree, storageTrees);
         }
 
-        /// <summary>Records the state nodes at <paramref name="statePaths"/> and the storage root of <paramref name="address"/> in <paramref name="snapshot"/>.</summary>
-        /// <param name="indexRoots">Indexes both roots in the snapshot's buffer, as block processing publishes them.</param>
-        public void AddNodesTo(Snapshot snapshot, bool indexRoots, Address address, params TreePath[] statePaths)
+        /// <summary>Records the state nodes at <paramref name="statePaths"/> and the storage root of <paramref name="address"/> in <paramref name="snapshot"/>, indexing both roots as block processing publishes them.</summary>
+        public void AddNodesTo(Snapshot snapshot, Address address, params TreePath[] statePaths)
         {
             INodeRecordBuffer buffer = snapshot.BufferPin!.Buffer;
             foreach (TreePath path in statePaths) snapshot.Content.SetStateNodeRlp(buffer, path, stateTree.GetNodeByPath(path.ToNibble())!);
             Hash256 addressHash = Keccak.Compute(address.Bytes);
             snapshot.Content.SetStorageNodeRlp(buffer, addressHash, TreePath.Empty, storageTrees[addressHash].GetNodeByPath([])!);
-            if (!indexRoots) return;
-
             buffer.SetRoot(null, stateTree.RootHash, snapshot.Content.StateRootPointer);
             buffer.SetRoot(addressHash, storageTrees[addressHash].RootHash, snapshot.Content.StorageRoots[addressHash]);
         }

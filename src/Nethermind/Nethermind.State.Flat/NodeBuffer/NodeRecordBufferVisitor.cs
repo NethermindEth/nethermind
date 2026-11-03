@@ -16,20 +16,21 @@ namespace Nethermind.State.Flat.NodeBuffer;
 /// <summary>The part of <see cref="NodeRecordBufferVisitor{TNodeContext}"/> that does not depend on the node context, so it is compiled once.</summary>
 internal abstract class NodeRecordBufferVisitor(
     ReadOnlySnapshotBundle bundle,
-    INodeRecordBuffer nodeRecordBuffer,
-    ulong maxPointer,
+    Snapshot? stateSnapshot,
     VisitingStats? diagnostics,
     ReadFlags readFlags)
 {
     private static readonly ReadOnlySpanAction<byte, LoadTarget> Decode = static (rlp, target) => target.Record = DecodeRecord(rlp, target.Hash);
 
-    /// <summary>Loads a trie's root, starting at the record block processing finds by hash in the buffer's root index.</summary>
+    private readonly INodeRecordBuffer? _nodeRecordBuffer = stateSnapshot?.BufferPin?.Buffer;
+
+    /// <summary>Loads a trie's root, starting at the record the state's snapshot finds by hash, as block processing does.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     /// <returns>False when neither the buffer nor persistence holds it.</returns>
     protected bool TryLoadRoot(Hash256? address, in ValueHash256 rootHash, out NodeRecord root)
     {
         RecordLookup(TreePath.Empty);
-        return TryLoad(address, TreePath.Empty, rootHash, nodeRecordBuffer.ResolveRoot(address, rootHash, maxPointer).Pointer, out root);
+        return TryLoad(address, TreePath.Empty, rootHash, stateSnapshot?.ResolveRoot(address, rootHash) ?? 0, out root);
     }
 
     /// <summary>Loads the node <paramref name="hash"/> names at <paramref name="path"/>: the buffer record at <paramref name="pointer"/>, otherwise the record of the RLP the persisted snapshots or persistence hold.</summary>
@@ -38,7 +39,7 @@ internal abstract class NodeRecordBufferVisitor(
     /// <returns>False when neither holds a valid node.</returns>
     protected bool TryLoad(Hash256? address, in TreePath path, in ValueHash256 hash, ulong pointer, out NodeRecord record)
     {
-        if (pointer != 0 && nodeRecordBuffer.TryLocate(pointer, out record))
+        if (pointer != 0 && _nodeRecordBuffer is not null && _nodeRecordBuffer.TryLocate(pointer, out record))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
             return true;
@@ -95,22 +96,20 @@ internal abstract class NodeRecordBufferVisitor(
 
 /// <summary>Runs a tree visitor over the tries of a <see cref="ReadOnlySnapshotBundle"/> by following trie node buffer record pointers.</summary>
 /// <remarks>
-/// Calls the visitor as <see cref="PatriciaTree.Accept{TNodeContext}"/> does. Each trie starts at the root record block processing finds
-/// by hash in the buffer's root index, and each child at the record its parent points at. A node no pointer resolves, and every node below
-/// it, is loaded by path from the persisted snapshots and persistence instead. The walk reads only records: a <see cref="TrieNode"/> is
-/// decoded just to hand a node to the visitor.
+/// Calls the visitor as <see cref="PatriciaTree.Accept{TNodeContext}"/> does. Each trie starts at the root record the state's snapshot
+/// finds by hash, as block processing does, and each child at the record its parent points at. A node no pointer resolves, and every node
+/// below it, is loaded by path from the persisted snapshots and persistence instead. The walk reads only records: a <see cref="TrieNode"/>
+/// is decoded just to hand a node to the visitor.
 /// Records are borrowed under the caller's pins, so every parallel worker joins before <see cref="Accept"/> returns.
 /// </remarks>
-/// <param name="nodeRecordBuffer">The buffer holding the visited state's root: the global one, or an overridable world scope's overlay.</param>
-/// <param name="maxPointer">Roots the buffer indexes at or past this pointer are skipped, as written concurrently; <see cref="ulong.MaxValue"/> for none.</param>
+/// <param name="stateSnapshot">The in-memory snapshot of the visited state, whose buffer holds its records; null when the state is persisted.</param>
 internal sealed class NodeRecordBufferVisitor<TNodeContext>(
     ReadOnlySnapshotBundle bundle,
-    INodeRecordBuffer nodeRecordBuffer,
-    ulong maxPointer,
+    Snapshot? stateSnapshot,
     ITreeVisitor<TNodeContext> visitor,
     VisitingOptions options,
     VisitingStats? diagnostics)
-    : NodeRecordBufferVisitor(bundle, nodeRecordBuffer, maxPointer, diagnostics, visitor.ExtraReadFlag | (visitor.IsFullDbScan ? ReadFlags.HintReadAhead : ReadFlags.None))
+    : NodeRecordBufferVisitor(bundle, stateSnapshot, diagnostics, visitor.ExtraReadFlag | (visitor.IsFullDbScan ? ReadFlags.HintReadAhead : ReadFlags.None))
     where TNodeContext : struct, INodeContext<TNodeContext>
 {
     private const long SubtreeSizeThreshold = 256 * 1024;

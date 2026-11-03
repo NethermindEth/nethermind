@@ -229,26 +229,15 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
+    /// <summary>The in-memory snapshot of this bundle's state: its newest own snapshot, otherwise its read-only bundle's.</summary>
+    internal Snapshot? StateSnapshot => _snapshots.Count > 0 ? _snapshots[^1] : _readOnlySnapshotBundle.StateSnapshot;
+
     /// <summary>Runs a tree visitor over the trie at <paramref name="rootHash"/> by following trie node buffer record pointers.</summary>
-    /// <remarks>
-    /// The root is looked up in this bundle's own buffer first, then in <paramref name="mainNodeRecordBuffer"/>, skipping the roots it
-    /// indexes past its write boundary now, which are written concurrently. The walk reads the buffer that holds the root.
-    /// </remarks>
-    /// <param name="mainNodeRecordBuffer">The buffer this bundle's buffer overlays, or the same buffer.</param>
-    internal void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 rootHash, INodeRecordBuffer mainNodeRecordBuffer, VisitingOptions options, VisitingStats? diagnostics)
+    internal void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 rootHash, VisitingOptions options, VisitingStats? diagnostics)
         where TCtx : struct, INodeContext<TCtx>
     {
         GuardDispose();
-        INodeRecordBuffer buffer = _nodeRecordBuffer!;
-        ulong maxPointer = ulong.MaxValue;
-        if (buffer.ResolveRoot(null, rootHash).Pointer == 0)
-        {
-            buffer = mainNodeRecordBuffer;
-            using INodeRecordBufferPin pin = mainNodeRecordBuffer.PinHead();
-            maxPointer = pin.WriteBoundary;
-        }
-
-        new NodeRecordBufferVisitor<TCtx>(_readOnlySnapshotBundle, buffer, maxPointer, visitor, options, diagnostics).Accept(rootHash);
+        new NodeRecordBufferVisitor<TCtx>(_readOnlySnapshotBundle, StateSnapshot, visitor, options, diagnostics).Accept(rootHash);
     }
 
     /// <summary>Makes the final state trie readable from this bundle.</summary>
@@ -502,8 +491,11 @@ public sealed class SnapshotBundle : IDisposable
 
     /// <summary>Turns the changes written since the previous snapshot into a new snapshot and starts collecting the next one.</summary>
     /// <param name="bufferPin">The pin covering the trie nodes written since the previous snapshot; the snapshot takes ownership.</param>
-    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, INodeRecordBufferPin? bufferPin, bool returnSnapshot = true)
+    /// <param name="maxPointer">The buffer's write boundary after this snapshot's roots were indexed, bounding the lookups of its state's roots.</param>
+    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, INodeRecordBufferPin? bufferPin, bool returnSnapshot = true, ulong maxPointer = ulong.MaxValue)
     {
+        _currentPooledContent.MaxPointer = maxPointer;
+
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
         // This is because copying the values have a measurable impact on overall performance.
         Snapshot snapshot = new(
