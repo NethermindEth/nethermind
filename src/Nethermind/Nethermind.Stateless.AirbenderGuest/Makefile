@@ -13,7 +13,7 @@ GUEST_ARCH := riscv32
 # The bflat image with the riscv32 target, and the Airbender platform and
 # libairbender of a bflat-airbender release, which bflat checks against its
 # signature. AIRBENDER_LIB_DIR names another libairbender build instead.
-BFLAT_IMAGE := nethermindeth/bflat-riscv64-11-riscv32:57fdc49684ff6518892b3ef45d362ca32ebb5c91@sha256:9b5d3d745e391380217dce47aa97864b55990976b9773df3081f9664091c9275
+BFLAT_IMAGE := nethermindeth/bflat-riscv64-11-riscv32:08364f7bf222e7597b5d546666d3f76f47665372@sha256:e51685e696bc96005018359805735d76b464e79d0c360e4f81ec62ecbcbc1974
 AIRBENDER_VERSION := v1.0.2
 AIRBENDER_SHA256 := 73e55decb782f9b29b4a77d5ccda81009d1751caaae4d2f96a1b6c27892dd554
 AIRBENDER_LIB_DIR ?= $(GUEST_DIR)/obj/libairbender-$(AIRBENDER_VERSION)
