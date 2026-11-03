@@ -1,15 +1,15 @@
 # One Nethermind, one Lighthouse beacon node, one Lighthouse validator client: the Daisugi topology.
 # GENESIS_DIR points at a gen-genesis.sh output; NETHERMIND_IMAGE and LIGHTHOUSE_IMAGE pin the builds.
-name: daisugi-devnet
+name: ${DEVNET_PREFIX:-daisugi}-devnet
 
 networks:
   daisugi-devnet:
-    name: daisugi-devnet
+    name: ${DEVNET_PREFIX:-daisugi}-devnet
 
 services:
   nethermind:
     image: ${NETHERMIND_IMAGE:?}
-    container_name: daisugi-nethermind
+    container_name: ${DEVNET_PREFIX:-daisugi}-nethermind
     user: ${DEVNET_USER:?}
     networks: [daisugi-devnet]
     environment:
@@ -18,7 +18,7 @@ services:
       # Disabled lets the node negotiate eth/73 before PeerDAS (MergeP2PCapabilityResolver); it then holds no blob txs.
       NETHERMIND_TXPOOLCONFIG_BLOBSSUPPORT: ${BLOBS_SUPPORT:-StorageWithReorgs}
     ports:
-      - 127.0.0.1:28545:8545
+      - 127.0.0.1:${EL_RPC_PORT:-28545}:8545
     volumes:
       - ${GENESIS_DIR:?}/data/metadata/genesis.json:/genesis/genesis.json:ro
       - ${GENESIS_DIR:?}/data/jwt:/jwt:ro
@@ -131,12 +131,12 @@ services:
 
   beacon:
     image: ${LIGHTHOUSE_IMAGE:?}
-    container_name: daisugi-beacon
+    container_name: ${DEVNET_PREFIX:-daisugi}-beacon
     user: ${DEVNET_USER:?}
     networks: [daisugi-devnet]
     depends_on: [nethermind]
     ports:
-      - 127.0.0.1:25052:5052
+      - 127.0.0.1:${CL_HTTP_PORT:-25052}:5052
     volumes:
       - ${GENESIS_DIR:?}/data/metadata:/testnet:ro
       - ${GENESIS_DIR:?}/data/jwt:/jwt:ro
@@ -157,18 +157,18 @@ services:
       - --target-peers=8
       - --disable-peer-scoring
       - --subscribe-all-subnets
-      - --suggested-fee-recipient=0x8943545177806ED17B9F23F0a21ee5948eCaa776
+      - --suggested-fee-recipient=${FEE_RECIPIENT:-0x8943545177806ED17B9F23F0a21ee5948eCaa776}
 
   validator:
     image: ${LIGHTHOUSE_IMAGE:?}
-    container_name: daisugi-validator
+    container_name: ${DEVNET_PREFIX:-daisugi}-validator
     user: ${DEVNET_USER:?}
     networks: [daisugi-devnet]
     depends_on: [beacon]
     volumes:
       - ${GENESIS_DIR:?}/data/metadata:/testnet:ro
-      - ${GENESIS_DIR:?}/data/validators/keys:/data/validators
-      - ${GENESIS_DIR:?}/data/validators/secrets:/validators/secrets:ro
+      - ${VALIDATOR_DIR:-${GENESIS_DIR:?}/data/validators}/keys:/data/validators
+      - ${VALIDATOR_DIR:-${GENESIS_DIR:?}/data/validators}/secrets:/validators/secrets:ro
     command:
       - lighthouse
       - vc
@@ -178,4 +178,4 @@ services:
       - --beacon-nodes=http://beacon:5052
       - --logfile-dir=/data/validators/logs
       - --init-slashing-protection
-      - --suggested-fee-recipient=0x8943545177806ED17B9F23F0a21ee5948eCaa776
+      - --suggested-fee-recipient=${FEE_RECIPIENT:-0x8943545177806ED17B9F23F0a21ee5948eCaa776}
