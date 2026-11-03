@@ -122,14 +122,6 @@ namespace Nethermind.Network.Test
 
             Peer lowReputationPeer = new(lowReputationNode, lowReputationStats) { IsAwaitingConnection = true };
             Peer highReputationPeer = new(highReputationNode, highReputationStats) { IsAwaitingConnection = true };
-            ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
-            peers.TryAdd(lowReputationNode.Id, lowReputationPeer);
-            peers.TryAdd(highReputationNode.Id, highReputationPeer);
-
-            IPeerPool peerPool = Substitute.For<IPeerPool>();
-            peerPool.Peers.Returns(peers);
-            peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
-            peerPool.StaticPeers.Returns(new[] { lowReputationPeer, highReputationPeer });
 
             ConcurrentQueue<Node> dialed = new();
             IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
@@ -140,9 +132,8 @@ namespace Nethermind.Network.Test
                 return Task.FromResult(false);
             });
 
-            NetworkConfig config = new() { MaxActivePeers = 2, NumConcurrentOutgoingConnects = 1, PeersUpdateInterval = 10 };
-            PeerManager manager = new(rlpxHost, peerPool, Substitute.For<INodeStatsManager>(), config,
-                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
+            PeerManager manager = CreatePeerManager(rlpxHost, maxActivePeers: 2,
+                peers: [lowReputationPeer, highReputationPeer], staticPeers: [lowReputationPeer, highReputationPeer]);
 
             manager.Start();
             try
@@ -169,14 +160,6 @@ namespace Nethermind.Network.Test
             Node otherNode = new(TestItem.PublicKeyC, "52.141.78.54", 30303);
             Peer staticPeer = new(staticNode, Substitute.For<INodeStats>());
             Peer otherPeer = new(otherNode, Substitute.For<INodeStats>());
-            ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
-            peers.TryAdd(staticNode.Id, staticPeer);
-            peers.TryAdd(otherNode.Id, otherPeer);
-
-            IPeerPool peerPool = Substitute.For<IPeerPool>();
-            peerPool.Peers.Returns(peers);
-            peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
-            peerPool.StaticPeers.Returns(new[] { staticPeer });
 
             int staticContactChecks = 0;
             TaskCompletionSource<int> otherDialed = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -192,9 +175,8 @@ namespace Nethermind.Network.Test
                 return Task.FromResult(true);
             });
 
-            NetworkConfig config = new() { MaxActivePeers = 4, NumConcurrentOutgoingConnects = 1, PeersUpdateInterval = 10 };
-            PeerManager manager = new(rlpxHost, peerPool, Substitute.For<INodeStatsManager>(), config,
-                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
+            PeerManager manager = CreatePeerManager(rlpxHost, maxActivePeers: 4,
+                peers: [staticPeer, otherPeer], staticPeers: [staticPeer]);
 
             manager.Start();
             int staticContactChecksBeforeOtherDial;
@@ -208,6 +190,24 @@ namespace Nethermind.Network.Test
             }
 
             Assert.That(staticContactChecksBeforeOtherDial, Is.EqualTo(1));
+        }
+
+        private static PeerManager CreatePeerManager(IRlpxHost rlpxHost, int maxActivePeers, Peer[] peers, Peer[] staticPeers)
+        {
+            ConcurrentDictionary<PublicKeyAsKey, Peer> pooledPeers = new();
+            foreach (Peer peer in peers)
+            {
+                pooledPeers.TryAdd(peer.Node.Id, peer);
+            }
+
+            IPeerPool peerPool = Substitute.For<IPeerPool>();
+            peerPool.Peers.Returns(pooledPeers);
+            peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
+            peerPool.StaticPeers.Returns(staticPeers);
+
+            NetworkConfig config = new() { MaxActivePeers = maxActivePeers, NumConcurrentOutgoingConnects = 1, PeersUpdateInterval = 10 };
+            return new PeerManager(rlpxHost, peerPool, Substitute.For<INodeStatsManager>(), config,
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
         }
 
         [Test]
