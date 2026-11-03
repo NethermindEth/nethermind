@@ -54,6 +54,9 @@ public class GethGenesisLoaderTests
     // Fork classes that are not real Geth fork names and therefore have no genesis config property
     private static readonly HashSet<string> ForkClassesWithoutConfigProp = [nameof(FramesDevnet1)];
 
+    private const string ForksThroughShanghaiAtGenesis =
+        "\"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"shanghaiTime\": 0";
+
     private static readonly string[] AmsterdamEipNumbers = ["7708", "7778", "7843", "7928", "7954", "8024", "8037"];
 
     private static ChainSpec LoadChainSpec(string path) =>
@@ -330,7 +333,7 @@ public class GethGenesisLoaderTests
         [Values] bool mergedAtGenesis,
         [Values] bool activateMuirGlacier)
     {
-        string configExtra = "\"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"londonBlock\": 10, \"arrowGlacierBlock\": 20, \"grayGlacierBlock\": 30";
+        string configExtra = "\"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 10, \"londonBlock\": 10, \"arrowGlacierBlock\": 20, \"grayGlacierBlock\": 30";
         if (activateMuirGlacier) configExtra += ", \"muirGlacierBlock\": 0";
         if (mergedAtGenesis) configExtra += ", \"terminalTotalDifficulty\": \"0x0\"";
         ChainSpecBasedSpecProvider provider = new(LoadStandardGethGenesis(configExtra: configExtra));
@@ -343,7 +346,7 @@ public class GethGenesisLoaderTests
     public void Historical_forks_keep_validation_enabled([Values(0UL, 9UL, 10UL, 19UL, 20UL, 29UL, 30UL)] ulong blockNumber)
     {
         ChainSpecBasedSpecProvider provider = new(LoadStandardGethGenesis(configExtra:
-            "\"eip155Block\": 10, \"byzantiumBlock\": 20, \"londonBlock\": 30"));
+            "\"eip155Block\": 10, \"byzantiumBlock\": 20, \"constantinopleBlock\": 20, \"petersburgBlock\": 20, \"istanbulBlock\": 20, \"berlinBlock\": 30, \"londonBlock\": 30"));
         IReleaseSpec spec = provider.GetSpec(new ForkActivation(blockNumber));
 
         using (Assert.EnterMultipleScope())
@@ -387,6 +390,22 @@ public class GethGenesisLoaderTests
             Assert.That(spec.IsEip1052Enabled, Is.False);
             Assert.That(spec.IsEip1234Enabled, Is.False);
         }
+    }
+
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"byzantiumBlock\": 0", "eip158Block not enabled, but byzantiumBlock enabled at block 0")]
+    [TestCase("\"istanbulBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"shanghaiTime\": 0", "petersburgBlock not enabled, but istanbulBlock enabled at block 0")]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"londonBlock\": 5", "berlinBlock not enabled, but londonBlock enabled at block 5")]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"cancunTime\": 10", "shanghaiTime not enabled, but cancunTime enabled at timestamp 10")]
+    [TestCase("\"homesteadBlock\": 0, \"tangerineWhistleBlock\": 0, \"spuriousDragonBlock\": 0, \"byzantiumBlock\": 0", null)]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"pragueTime\": 10, \"amsterdamTime\": 20", null)]
+    [TestCase("\"homesteadBlock\": 0, \"daoForkBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"muirGlacierBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"grayGlacierBlock\": 0, \"mergeNetsplitBlock\": 0", null)]
+    public void Fork_schedule_must_not_skip_a_required_fork(string config, string? expectedError)
+    {
+        string json = $$"""{ "config": { "chainId": 1, {{config}} }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }""";
+
+        Assert.That(() => LoadFromString(json), expectedError is null
+            ? Throws.Nothing
+            : Throws.InstanceOf<InvalidDataException>().With.Message.Contains($"Unsupported fork ordering: {expectedError}"));
     }
 
     [Test]
@@ -484,7 +503,7 @@ public class GethGenesisLoaderTests
     [TestCase("eip8141PrototypeTime", false, true)]
     public void Genesis_fork_label_picks_one_of_the_two_amsterdam_successors(string label, bool eip7805, bool eip8141)
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"\"{label}\": 15");
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"{label}\": 15");
 
         using (Assert.EnterMultipleScope())
         {
@@ -538,7 +557,8 @@ public class GethGenesisLoaderTests
     [Test]
     public void Genesis_can_schedule_the_whole_frame_transaction_family_without_inclusion_lists()
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: """
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $$"""
+            {{ForksThroughShanghaiAtGenesis}},
             "amsterdamTime": 0,
             "eip8141PrototypeTime": 15,
             "eip8250PrototypeTime": 15,
@@ -567,7 +587,7 @@ public class GethGenesisLoaderTests
     [Test]
     public void Can_load_genesis_with_amsterdam_time()
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 15");
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"amsterdamTime\": 15");
 
         Assert.That(chainSpec.AmsterdamTimestamp, Is.EqualTo(15));
         AssertAmsterdamTransitionTimestamps(chainSpec, 15);
@@ -580,7 +600,7 @@ public class GethGenesisLoaderTests
         Assert.That(amsterdam.MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip7954));
 
         // When genesis timestamp matches amsterdamTime, genesis header fields are set
-        ChainSpec genesisAtAmsterdam = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 15", timestamp: 15);
+        ChainSpec genesisAtAmsterdam = LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"amsterdamTime\": 15", timestamp: 15);
         ChainSpecBasedSpecProvider genesisProvider = new(genesisAtAmsterdam);
         Block amsterdamGenesis = genesisAtAmsterdam.Genesis ?? throw new AssertionException("Genesis was not loaded.");
 
@@ -596,7 +616,8 @@ public class GethGenesisLoaderTests
     [Test]
     public void Can_load_genesis_with_blob_schedule()
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: """
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $$"""
+            {{ForksThroughShanghaiAtGenesis}},
             "cancunTime": 1710338135,
             "pragueTime": 1800000000,
             "blobSchedule": {
@@ -820,7 +841,7 @@ public class GethGenesisLoaderTests
     public void Can_load_genesis_with_deposit_contract()
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(configExtra:
-            "\"pragueTime\": 1800000000, " +
+            $"{ForksThroughShanghaiAtGenesis}, \"pragueTime\": 1800000000, " +
             "\"depositContractAddress\": \"0x00000000219ab540356cBB839Cbe05303d7705Fa\"");
 
         using (Assert.EnterMultipleScope())
@@ -833,7 +854,7 @@ public class GethGenesisLoaderTests
     [Test]
     public void Defaults_deposit_contract_to_zero_when_unspecified()
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(chainId: 12345, configExtra: "\"pragueTime\": 1800000000");
+        ChainSpec chainSpec = LoadStandardGethGenesis(chainId: 12345, configExtra: $"{ForksThroughShanghaiAtGenesis}, \"pragueTime\": 1800000000");
 
         using (Assert.EnterMultipleScope())
         {

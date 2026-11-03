@@ -45,6 +45,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
         GethGenesisConfigJson config = gethGenesisJson.Config
             ?? throw new ArgumentNullException(nameof(gethGenesisJson.Config));
         ArgumentOutOfRangeException.ThrowIfGreaterThan(config.MinHistoryRetentionEpochs ?? 0, (ulong)uint.MaxValue, nameof(config.MinHistoryRetentionEpochs));
+        ValidateForkOrder(config);
 
         ChainSpec chainSpec = new()
         {
@@ -62,6 +63,64 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
         LoadTransitions(chainSpec);
 
         return chainSpec;
+    }
+
+    /// <summary>
+    /// Rejects a fork schedule that geth rejects, so that a genesis skipping a fork fails instead of loading with that fork off.
+    /// </summary>
+    /// <remarks>
+    /// Ports the missing-fork check of <c>CheckConfigForkOrder</c> from geth's <c>params/config.go</c>: every non-optional
+    /// fork must be set up to the last set fork. Optional forks may be left out without blocking later ones.
+    /// </remarks>
+    private static void ValidateForkOrder(GethGenesisConfigJson config)
+    {
+        (string Name, ulong? Block, ulong? Timestamp, bool Optional)[] forks =
+        [
+            ("homesteadBlock", config.HomesteadBlock, null, false),
+            ("daoForkBlock", config.DaoForkBlock, null, true),
+            ("eip150Block", config.Eip150Block ?? config.TangerineWhistleBlock, null, false),
+            ("eip155Block", config.Eip155Block ?? config.SpuriousDragonBlock, null, false),
+            ("eip158Block", config.Eip158Block ?? config.SpuriousDragonBlock, null, false),
+            ("byzantiumBlock", config.ByzantiumBlock, null, false),
+            ("constantinopleBlock", config.ConstantinopleBlock, null, false),
+            ("petersburgBlock", config.PetersburgBlock, null, false),
+            ("istanbulBlock", config.IstanbulBlock, null, false),
+            ("muirGlacierBlock", config.MuirGlacierBlock, null, true),
+            ("berlinBlock", config.BerlinBlock, null, false),
+            ("londonBlock", config.LondonBlock, null, false),
+            ("arrowGlacierBlock", config.ArrowGlacierBlock, null, true),
+            ("grayGlacierBlock", config.GrayGlacierBlock, null, true),
+            ("mergeNetsplitBlock", config.MergeNetsplitBlock, null, true),
+            ("shanghaiTime", null, config.ShanghaiTime, false),
+            ("cancunTime", null, config.CancunTime, true),
+            ("pragueTime", null, config.PragueTime, true),
+            ("osakaTime", null, config.OsakaTime, true),
+            ("bpo1Time", null, config.Bpo1Time, true),
+            ("bpo2Time", null, config.Bpo2Time, true),
+            ("amsterdamTime", null, config.AmsterdamTime, true),
+            ("bogotaTime", null, config.BogotaTime, true),
+            ("bpo3Time", null, config.Bpo3Time, true),
+            ("bpo4Time", null, config.Bpo4Time, true),
+            ("bpo5Time", null, config.Bpo5Time, true),
+        ];
+
+        string? lastUnsetFork = null;
+        foreach ((string name, ulong? block, ulong? timestamp, bool optional) in forks)
+        {
+            if (block is not null || timestamp is not null)
+            {
+                if (lastUnsetFork is not null)
+                {
+                    throw new InvalidDataException(block is not null
+                        ? $"Unsupported fork ordering: {lastUnsetFork} not enabled, but {name} enabled at block {block}"
+                        : $"Unsupported fork ordering: {lastUnsetFork} not enabled, but {name} enabled at timestamp {timestamp}");
+                }
+            }
+            else if (!optional)
+            {
+                lastUnsetFork = name;
+            }
+        }
     }
 
     private void LoadEngine(GethGenesisConfigJson config, ChainSpec chainSpec)
