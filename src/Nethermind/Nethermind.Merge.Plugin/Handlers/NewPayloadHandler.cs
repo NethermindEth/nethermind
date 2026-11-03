@@ -650,6 +650,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// </summary>
     /// <param name="block">Block</param>
     /// <param name="parent">Parent header</param>
+    /// <param name="parentBlockInfo">The parent's info, read again after any wait for the parent's commit.</param>
     /// <param name="processingOptions">Options that should be used for processing</param>
     /// <returns>Options which should be used for block processing. Null if we shouldn't process the block.</returns>
     /// <remarks>
