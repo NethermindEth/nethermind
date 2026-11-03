@@ -2355,9 +2355,20 @@ namespace Nethermind.TxPool
         {
             foreach (Transaction tx in _bucketUpdateDrops)
             {
-                bool nonceSpent = KeyedNonceManager.UsesKeyedNonce(tx)
-                    ? IsKeyedNonceBehind(tx)
-                    : tx.Nonce < _headInfo.ReadOnlyStateProvider.GetNonce(tx.SenderAddress!);
+                bool nonceSpent;
+                try
+                {
+                    nonceSpent = KeyedNonceManager.UsesKeyedNonce(tx)
+                        ? IsKeyedNonceBehind(tx)
+                        : tx.Nonce < _headInfo.ReadOnlyStateProvider.GetNonce(tx.SenderAddress!);
+                }
+                catch (MissingTrieNodeException)
+                {
+                    // Unknown head state cannot rule out the tx's inclusion, and escaping here would cut the rest of
+                    // the head update short after the buckets have already changed.
+                    continue;
+                }
+
                 if (nonceSpent) continue;
 
                 EvictedPending?.Invoke(this, new TxEventArgs(tx));
