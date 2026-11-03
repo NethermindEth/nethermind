@@ -21,6 +21,7 @@ internal sealed class HistoryStoreV3
     private const int BlockBytes = sizeof(ulong);
 
     private readonly ISortedKeyValueStore _history;
+    private readonly IReadOnlyNativeKeyValueStore? _nativeHistory;
 
     public HistoryStoreV3(IDb history)
     {
@@ -29,6 +30,7 @@ internal sealed class HistoryStoreV3
             throw new ArgumentException($"History column must be a {nameof(ISortedKeyValueStore)}.", nameof(history));
 
         _history = sortedHistory;
+        _nativeHistory = history as IReadOnlyNativeKeyValueStore;
     }
 
     /// <summary>The value held before the change at <paramref name="block"/>; empty means it did not exist.</summary>
@@ -65,20 +67,11 @@ internal sealed class HistoryStoreV3
 
         // A change at the very next block is the answer whenever it exists. A point read finds it without
         // positioning an iterator on every level. An empty pre-value reads as a miss, so it takes the seek.
-        Span<byte> nextBlockValue = _history.GetSpan(seekKey);
-        try
+        int nextBlockLength = ReadExactKey(seekKey, outBuffer, block + 1);
+        if (nextBlockLength > 0)
         {
-            if (!nextBlockValue.IsEmpty)
-            {
-                nextChangeBlock = block + 1;
-                ValidateValueLength(nextBlockValue.Length, outBuffer.Length, nextChangeBlock);
-                nextBlockValue.CopyTo(outBuffer);
-                return nextBlockValue.Length;
-            }
-        }
-        finally
-        {
-            _history.DangerousReleaseMemory(nextBlockValue);
+            nextChangeBlock = block + 1;
+            return nextBlockLength;
         }
 
         Span<byte> upperBound = stackalloc byte[flatKey.Length + BlockBytes + 1];
@@ -108,6 +101,41 @@ internal sealed class HistoryStoreV3
         ReadOnlySpan<byte> value = view.CurrentValue;
         ValidateValueLength(value.Length, outBuffer.Length, nextChangeBlock);
 
+        value.CopyTo(outBuffer);
+        return value.Length;
+    }
+
+    private int ReadExactKey(scoped ReadOnlySpan<byte> historyKey, Span<byte> outBuffer, ulong keyBlock)
+    {
+        if (_nativeHistory is null)
+        {
+            Span<byte> value = _history.GetSpan(historyKey);
+            try
+            {
+                return CopyValue(value, outBuffer, keyBlock);
+            }
+            finally
+            {
+                _history.DangerousReleaseMemory(value);
+            }
+        }
+
+        ReadOnlySpan<byte> slice = _nativeHistory.GetNativeSlice(historyKey, out nint handle);
+        try
+        {
+            return CopyValue(slice, outBuffer, keyBlock);
+        }
+        finally
+        {
+            if (handle != 0) _nativeHistory.DangerousReleaseHandle(handle);
+        }
+    }
+
+    private static int CopyValue(ReadOnlySpan<byte> value, Span<byte> outBuffer, ulong keyBlock)
+    {
+        if (value.IsEmpty) return 0;
+
+        ValidateValueLength(value.Length, outBuffer.Length, keyBlock);
         value.CopyTo(outBuffer);
         return value.Length;
     }
