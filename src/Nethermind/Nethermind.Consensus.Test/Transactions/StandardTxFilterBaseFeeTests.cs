@@ -286,6 +286,9 @@ public class StandardTxFilterBaseFeeTests
         Transaction[] b = Chain(TestItem.PrivateKeyB, 4, maxFee: 1_200_000_000, priorityFee: 100_000_000); // premium 0.075 gwei
         Transaction[] c = Chain(TestItem.PrivateKeyC, 1, maxFee: 1_160_000_000, priorityFee: 1.GWei);   // premium 0.035 gwei
         Transaction[] d = Chain(TestItem.PrivateKeyD, 4, maxFee: 10.GWei, priorityFee: 1.GWei);
+        // At the boundary: the premium over 1.125 gwei is exactly the 0.05 gwei minimum, and one wei less.
+        Transaction[] atBoundary = Chain(TestItem.PrivateKeyE, 1, maxFee: 1_175_000_000, priorityFee: 1.GWei);
+        Transaction[] belowBoundary = Chain(TestItem.PrivateKeyF, 1, maxFee: 1_174_999_999, priorityFee: 1.GWei);
         ITxPool txPool = Substitute.For<ITxPool>();
         txPool.GetPendingForProduction(Arg.Any<BlockHeader>(), Arg.Any<bool>(), Arg.Any<UInt256>())
             .Returns(new PendingTransactionsView(
@@ -295,6 +298,8 @@ public class StandardTxFilterBaseFeeTests
                     [b[0].SenderAddress!] = b,
                     [c[0].SenderAddress!] = c,
                     [d[0].SenderAddress!] = d,
+                    [atBoundary[0].SenderAddress!] = atBoundary,
+                    [belowBoundary[0].SenderAddress!] = belowBoundary,
                 },
                 new Dictionary<AddressAsKey, Transaction[]>(),
                 isRevalidated: true));
@@ -311,7 +316,7 @@ public class StandardTxFilterBaseFeeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(firstBuild, Is.EquivalentTo(b.Concat(d)));
+            Assert.That(firstBuild, Is.EquivalentTo(b.Concat(d).Concat(atBoundary)));
             Assert.That(afterFirstBuild, Is.EqualTo(1), "once by the tx source, never by the filters");
             Assert.That(secondBuild, Is.EquivalentTo(d));
             Assert.That(calculator.Calls, Is.EqualTo(2));
@@ -351,6 +356,27 @@ public class StandardTxFilterBaseFeeTests
             Assert.That(BaseFeeCalculator.Calculate(parent, activation), Is.EqualTo(1.GWei));
             Assert.That(selected, Is.EquivalentTo(aboveBaseFee));
         }
+    }
+
+    [Test]
+    public void Filtered_tx_source_checks_with_the_spec_of_the_block_being_built()
+    {
+        // EIP-1559 activates at block 11: the parent's spec does not have it, the block being built starts at 1 gwei.
+        ReleaseSpec beforeLondon = new() { IsEip1559Enabled = false };
+        ReleaseSpec activation = new() { IsEip1559Enabled = true, Eip1559TransitionBlock = 11 };
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(call => call.Arg<ForkActivation>().BlockNumber >= 11 ? activation : beforeLondon);
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithGasLimit(GasLimit).WithGasUsed(GasLimit / 2).TestObject;
+        Transaction belowBaseFee = Build.A.Transaction.WithGasPrice(500_000_000).TestObject;
+        Transaction aboveBaseFee = Build.A.Transaction.WithGasPrice(2.GWei).TestObject;
+        ITxSource inner = Substitute.For<ITxSource>();
+        inner.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+            .Returns(new[] { belowBaseFee, aboveBaseFee });
+        FilteredTxSource<Transaction> source = new(inner, new BaseFeeTxFilter(), LimboLogs.Instance, specProvider);
+
+        Transaction[] selected = source.GetTransactions(parent, Target(parent), GasLimit, null, false).ToArray();
+
+        Assert.That(selected, Is.EqualTo(new[] { aboveBaseFee }));
     }
 
     [Test]
