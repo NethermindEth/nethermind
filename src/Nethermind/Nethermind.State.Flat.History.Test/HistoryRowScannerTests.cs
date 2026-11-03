@@ -26,6 +26,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.State.Flat.History.Test;
 
@@ -954,9 +955,13 @@ public class HistoryRowScannerTests
         public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum
         {
             if (rocks)
-                return new ColumnsDb<T>(directory, new DbSettings("TransactionIndexScratch", directory), new DbConfig(),
-                    new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
-                    LimboLogs.Instance, Enum.GetValues<T>());
+            {
+                DbConfig dbConfig = new();
+                return new RocksDbFactory(
+                        new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+                        dbConfig, new HyperClockCacheWrapper(), new RealFileSystem(), LimboLogs.Instance, directory)
+                    .CreateColumnsDb<T>(new DbSettings("TransactionIndexScratch", directory));
+            }
             return (IColumnsDb<T>)(object)memory;
         }
     }

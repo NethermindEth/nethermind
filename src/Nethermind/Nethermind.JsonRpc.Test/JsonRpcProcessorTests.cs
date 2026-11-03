@@ -23,6 +23,7 @@ using Nethermind.Core.Threading;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Trie;
@@ -79,7 +80,7 @@ public class JsonRpcProcessorTests
     }
 
     private static IBatchConcurrencyStrategy[] BatchConcurrencyStrategies(IJsonRpcConfig config) =>
-        [new EthCallBatchConcurrency(), new DebugTraceCallBatchConcurrency(config)];
+        [new EthCallBatchConcurrency(), new DebugTraceBatchConcurrency(config), new TraceTransactionBatchConcurrency(config)];
 
     private static JsonRpcContext CreateHttpContext() => new(RpcEndpoint.Http);
 
@@ -623,6 +624,50 @@ public class JsonRpcProcessorTests
             Assert.That(events.IndexOf("start 4"), Is.GreaterThan(events.IndexOf("end 3")), "a JavaScript tracer runs alone");
             Assert.That(events.IndexOf("start 5"), Is.GreaterThan(events.IndexOf("end 4")));
             Assert.That(events.IndexOf("start 6"), Is.GreaterThan(events.IndexOf("end 5")), "a tracer name that cannot be read runs alone");
+        }
+    }
+
+    [Test]
+    public async Task Batch_executes_buffered_transaction_traces_concurrently()
+    {
+        List<string> events = [];
+        TaskCompletionSource allBufferedStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int bufferedStartedCount = 0;
+        IJsonRpcService service = CreateAsyncService(async request =>
+        {
+            string id = request.Id.ToString();
+            lock (events) events.Add($"start {id}");
+            if (id is not "5")
+            {
+                if (Interlocked.Increment(ref bufferedStartedCount) == 4) allBufferedStarted.SetResult();
+                await allBufferedStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+
+            lock (events) events.Add($"end {id}");
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+
+        using CollectedJsonRpcResponses responses = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig
+        {
+            BatchProcessingConcurrency = 4,
+            EthModuleConcurrentInstances = 4,
+            DebugModuleConcurrentInstances = 4,
+            TraceModuleConcurrentInstances = 4,
+            EnableTracingStreamMode = false
+        }),
+            CreateBatchRequest(
+                CreateRequest("1", "debug_traceTransaction", """["0x01",{"tracer":"callTracer"}]"""),
+                CreateRequest("2", "trace_transaction", """["0x02"]"""),
+                CreateRequest("3", "debug_traceTransaction", """["0x03",{"tracer":"prestateTracer"}]"""),
+                CreateRequest("4", "trace_transaction", """["0x04",true]"""),
+                CreateRequest("5", "debug_traceTransaction", """["0x05"]""")),
+            CreateHttpContext());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AssertBatchResponse(responses, 5).BatchItems!.Select(static r => r.Id.ToString()), Is.EqualTo(new[] { "1", "2", "3", "4", "5" }));
+            Assert.That(events.IndexOf("start 4"), Is.LessThan(events.IndexOf("end 1")), "buffered transaction traces overlap");
+            Assert.That(events.IndexOf("start 5"), Is.GreaterThan(new[] { "end 1", "end 2", "end 3", "end 4" }.Max(events.IndexOf)), "a struct log trace may stream, so it runs alone");
         }
     }
 

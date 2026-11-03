@@ -248,7 +248,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary><paramref name="table"/> in the form the dispatch chain carries it.</summary>
         /// <remarks>
-        /// Where <see cref="StrictAlignmentFlag"/> is on, the chain carries the table's address in words. The address formed back from it
+        /// Where <see cref="StrictAlignmentFlag"/> is on, the chain carries the table's address in entries. The address formed back from it
         /// is a shift by <see cref="TableWordShift"/>, which the JIT proves aligned, so each handler load needs neither an alignment test nor an <c>andi</c> to
         /// prove it, as a table pointer would. Read the table only through <see cref="HandlerAt"/> and <see cref="FollowerHandlerAt"/>,
         /// or as SP1's <c>mul.S</c> does.
@@ -256,22 +256,29 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static nint* DispatchTable(nint* table)
         {
-            Debug.Assert(((nuint)table & (nuint)(sizeof(nint) - 1)) == 0);
+            Debug.Assert(((nuint)table & (nuint)((1 << TableWordShift) - 1)) == 0);
             return StrictAlignmentFlag.IsActive ? (nint*)((nuint)table >> TableWordShift) : table;
         }
 
-        /// <summary>The log2 of the size of a table entry, which converts between its address in bytes and in words.</summary>
-        private static int TableWordShift => sizeof(nint) == sizeof(ulong) ? 3 : 2;
+        /// <summary>The log2 of the size of a table entry, which converts between its address in bytes and in entries.</summary>
+        private static int TableWordShift
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => sizeof(nint) == sizeof(ulong) && !CompactsHandlers ? 3 : 2;
+        }
 
         /// <summary>The handler at <paramref name="index"/> in <paramref name="handlers"/>, a table in the form <see cref="DispatchTable"/> gives.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static nint HandlerAt(nint* handlers, nint index) =>
-            StrictAlignmentFlag.IsActive ? *(nint*)(((nuint)handlers + (nuint)index) << TableWordShift) : handlers[index];
+            CompactsHandlers ? (nint)(*(uint*)(((nuint)handlers + (nuint)index) << TableWordShift))
+            : StrictAlignmentFlag.IsActive ? *(nint*)(((nuint)handlers + (nuint)index) << TableWordShift) : handlers[index];
 
         /// <summary>The follower handler for the opcode <paramref name="opcode"/>, which the paired table holds before <paramref name="handlers"/>.</summary>
         /// <remarks>Indexed first and offset after, so the offset folds into the load.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static nint FollowerHandlerAt(nint* handlers, nint opcode) => StrictAlignmentFlag.IsActive
+        private static nint FollowerHandlerAt(nint* handlers, nint opcode) =>
+            CompactsHandlers ? (nint)(*((uint*)(((nuint)handlers + (nuint)opcode) << TableWordShift) - FollowerHandlersLength))
+            : StrictAlignmentFlag.IsActive
             ? *((nint*)(((nuint)handlers + (nuint)opcode) << TableWordShift) - FollowerHandlersLength)
             : Unsafe.Add(ref handlers[opcode], -FollowerHandlersLength);
 

@@ -18,9 +18,10 @@ namespace Nethermind.Trie;
 public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore
 {
     private readonly NonBlocking.ConcurrentDictionary<(TreePath path, Hash256 hash), TrieNode> _cachedNode = new();
+    private readonly Func<(TreePath path, Hash256 hash), TrieNode> _findInBase = key => @base.FindCachedOrUnknown(key.path, key.hash);
 
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-        _cachedNode.GetOrAdd((path, hash), (key) => @base.FindCachedOrUnknown(key.path, key.hash));
+        _cachedNode.GetOrAdd((path, hash), _findInBase);
 
     public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         @base.LoadRlp(in path, hash, flags);

@@ -10,8 +10,9 @@ using Nethermind.Evm.Tracing;
 namespace Nethermind.TxPool;
 
 /// <summary>
-/// Tracks the EIP-8298 code dependencies of pending EIP-8141 frame transactions: targets their validation
-/// prefix relied on whose code could change through DELEGATECALL or CALLCODE.
+/// Tracks the code dependencies of pending EIP-8141 frame transactions: accounts their validation prefix relied on
+/// whose code could change, that is EIP-8298 targets reachable through DELEGATECALL or CALLCODE, and accounts EIP-8151
+/// ecRecover recovered.
 /// </summary>
 /// <remarks>Keyed by transaction hash, so release is idempotent and cannot drift from what was reserved.
 /// The per-account count bounds how many pending transactions one code change can invalidate at once: SETCODEFROM
