@@ -78,7 +78,8 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         _ctx.error = Undefined.Value;
         _ctx.Output = null;
         _ctx.gasUsed = 0;
-        _ctx.GasPrice = tx!.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _baseFee);
+        // Geth exposes the effective gas tip, not the effective gas price, as ctx.gasPrice.
+        _ctx.GasPrice = tx!.CalculateMaxPriorityFeePerGas(spec.IsEip1559Enabled, _baseFee);
         _ctx.TxHash = tx.Hash;
         _ctx.txIndex = tx.Hash is not null ? _index++ : null;
         _ctx.gas = tx.GasLimit;
