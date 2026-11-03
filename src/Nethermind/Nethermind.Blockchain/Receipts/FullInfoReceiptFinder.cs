@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             TxReceipt[] receipts = _receiptStorage.Get(blockHash);
 
-            if (recover && _receiptsRecovery.NeedRecover(receipts))
+            if (recover && _receiptsRecovery.NeedRecover(receipts, forceRecoverSender: false))
             {
                 Block block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (_receiptsRecovery.TryRecover(block, receipts, forceRecoverSender: false) == ReceiptsRecoveryResult.NeedReinsert)
