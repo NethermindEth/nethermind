@@ -6,15 +6,61 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using ModelContextProtocol.Server;
+using Nethermind.Tools.ProfilingMcp.EventPipe;
+using Nethermind.Tools.ProfilingMcp.Memory;
 
 namespace Nethermind.Tools.ProfilingMcp.DotTrace;
 
 [McpServerToolType]
-public sealed class TraceTools(DotTraceSessionManager sessions, Reporter reporter)
+public sealed class TraceTools(DotTraceSessionManager sessions, Reporter reporter, NetTraceReader netTrace, WorkspacePaths paths)
 {
     private const string ProfilingTypeDescription =
         "Sampling (default; low overhead, accurate time, no call counts), Tracing (exact call counts, higher overhead), " +
         "LineByLine (per-line, highest overhead), or Timeline (thread/GC/lock events over time; cannot be analyzed by trace_hotspots).";
+
+    private const string SnapshotDescription = "EventPipe trace (*.nettrace) from cpu_sample, or dotTrace snapshot index file (*.dtp).";
+
+    private const string AnalysisPlatformNote = "EventPipe traces are analyzed on any OS; dotTrace snapshots on Windows only.";
+
+    [McpServerTool(Name = "cpu_sample", Title = "Sample a process over EventPipe", Destructive = false, OpenWorld = false)]
+    [Description("Samples the managed threads of a running process for a time window over EventPipe, with GC and exception events, and saves an EventPipe trace " +
+                 "for trace_hotspots, trace_callstacks, trace_report and trace_compare. Returns a summary: hotspots, GC pauses and thrown exceptions. " +
+                 "The preferred way to profile a running process: it can be repeated any number of times, never needs the process restarted, and is analyzed on any OS. " +
+                 "Native threads and native code are not sampled; time a thread spends in native code shows as own time of the managed method that called it.")]
+    public async Task<string> CpuSampleAsync(
+        [Description("Process ID.")] int pid,
+        [Description("Seconds to sample.")] int seconds = 30,
+        [Description("Number of hotspot rows in the summary.")] int top = 15,
+        CancellationToken cancellationToken = default)
+    {
+        string trace = Path.Combine(paths.Snapshots, WorkspacePaths.NewFileName($"pid{pid}", ".nettrace"));
+        await CpuSampler.CollectAsync(pid, TimeSpan.FromSeconds(seconds), trace, cancellationToken);
+
+        NetTraceProfile profile = netTrace.Read(trace);
+        StringBuilder sb = new();
+        sb.Append($"Trace saved: {trace} ({new FileInfo(trace).Length / (1 << 20):N0} MB)\n");
+        sb.Append($"{profile.Threads} managed threads over {profile.DurationMs / 1000:N1} s.\n");
+
+        GcSummary gc = profile.Gc;
+        int gcCount = gc.CountsByGeneration.Values.Sum();
+        sb.Append($"GCs: {gcCount} (").AppendJoin(", ", gc.CountsByGeneration.OrderBy(static g => g.Key).Select(static g => $"gen{g.Key} {g.Value}"))
+            .Append($"), pauses total {Ms(gc.TotalPauseMs)} ms, max {Ms(gc.MaxPauseMs)} ms");
+        if (gcCount > 0)
+            sb.Append("; reasons: ").AppendJoin(", ", gc.CountsByReason.OrderByDescending(static r => r.Value).Select(static r => $"{r.Key} {r.Value}"));
+        sb.Append('\n');
+
+        int thrown = profile.Exceptions.Sum(static e => e.Count);
+        sb.Append($"Exceptions thrown: {thrown}\n");
+        if (thrown > 0)
+        {
+            TextTable exceptions = new("count", "type: message", "thrown in");
+            foreach (ExceptionStat e in profile.Exceptions.Take(8))
+                exceptions.Add(Count(e.Count), $"{e.Type}: {Truncate(e.Message, 80)}", e.ThrowSite);
+            sb.Append(exceptions);
+        }
+
+        return sb.Append('\n').Append(await HotspotsAsync(trace, top: top, cancellationToken: cancellationToken)).ToString();
+    }
 
     [McpServerTool(Name = "trace_start", Title = "Start an app under dotTrace", Destructive = false, OpenWorld = false)]
     [Description("Launches a .NET executable under the dotTrace profiler and returns a session id. " +
@@ -28,12 +74,13 @@ public sealed class TraceTools(DotTraceSessionManager sessions, Reporter reporte
         [Description("End the session after this many seconds, saving a snapshot and killing the app.")] int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        ThrowInContainerMode();
         DotTraceSession session = await sessions.StartAsync(executable, arguments ?? [], workingDirectory, NormalizeType(profilingType), collectFromStart, timeoutSeconds, cancellationToken);
         return FormatSession(session);
     }
 
     [McpServerTool(Name = "trace_attach", Title = "Attach dotTrace to a process", Destructive = false, OpenWorld = false)]
-    [Description("Attaches the dotTrace profiler to a running .NET process (find it with list_dotnet_processes) and returns a session id. " +
+    [Description("Attaches the dotTrace profiler to a running .NET process (find it with list_dotnet_processes) and returns a session id. Prefer cpu_sample unless dotTrace is specifically needed. " +
                  "On Linux/macOS the profiler is never detached, because detaching crashes the target: trace_stop leaves it loaded but idle, " +
                  "so a process can be attached to only once per run. Take every snapshot you need before trace_stop.")]
     public async Task<string> AttachAsync(
@@ -43,6 +90,7 @@ public sealed class TraceTools(DotTraceSessionManager sessions, Reporter reporte
         [Description("Windows only: detach after this many seconds, saving a snapshot.")] int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        ThrowInContainerMode();
         DotTraceSession session = await sessions.AttachAsync(pid, NormalizeType(profilingType), collectFromStart, timeoutSeconds, cancellationToken);
         return FormatSession(session);
     }
@@ -101,11 +149,11 @@ public sealed class TraceTools(DotTraceSessionManager sessions, Reporter reporte
         return sb.ToString();
     }
 
-    [McpServerTool(Name = "trace_hotspots", Title = "Rank methods in a dotTrace snapshot", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Ranks methods in a dotTrace snapshot (*.dtp) by own time (time in the method body) or total time (including callees). Times are milliseconds summed over all threads. " +
-                 "Bracketed rows such as [Garbage collection] or [Native or optimized code] are profiler pseudo-frames. Windows only.")]
+    [McpServerTool(Name = "trace_hotspots", Title = "Rank methods in a CPU trace", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("Ranks methods in an EventPipe trace or dotTrace snapshot by own time (time in the method body) or total time (including callees). Times are milliseconds summed over all threads. " +
+                 "Bracketed rows such as [Garbage collection] or [Native or optimized code] are dotTrace pseudo-frames. " + AnalysisPlatformNote)]
     public async Task<string> HotspotsAsync(
-        [Description("Snapshot index file (*.dtp).")] string snapshot,
+        [Description(SnapshotDescription)] string snapshot,
         [Description("own or total.")] string sortBy = "own",
         [Description("Number of rows.")] int top = 30,
         [Description("Only methods whose full name matches this regex, e.g. ^Nethermind\\.")] string? include = null,
@@ -114,7 +162,9 @@ public sealed class TraceTools(DotTraceSessionManager sessions, Reporter reporte
                      "Sampling measures wall time, so on a mostly idle process these dominate.")] bool hideWaits = true,
         CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<FunctionStat> functions = await reporter.GetAllMethodsAsync(snapshot, cancellationToken);
+        IReadOnlyList<FunctionStat> functions = NetTraceReader.IsNetTrace(snapshot)
+            ? netTrace.Read(snapshot).Functions
+            : await reporter.GetAllMethodsAsync(snapshot, cancellationToken);
         double totalOwn = 0;
         double waitOwn = 0;
         foreach (FunctionStat f in functions)
@@ -144,19 +194,20 @@ public sealed class TraceTools(DotTraceSessionManager sessions, Reporter reporte
 
     private static readonly Regex BlockingWait = new(
         @"^(System\.Threading\.(Monitor\.Wait|LowLevelLifoSemaphore\.WaitForSignal|LowLevelMonitor\.Wait|SemaphoreSlim\.(WaitUntilCountOrTimeout|WaitCore)|WaitHandle\.WaitOne\w*|WaitHandle\.WaitMultiple\w*|Thread\.Sleep|ManualResetEventSlim\.Wait)" +
+        @"|System\.GC\.RunFinalizers|System\.Net\.Sockets\.SocketAsyncEngine\.EventLoop" +
         @"|Interop\+Sys\.(Read|WaitForSocketEvents|Poll)|Interop\+Kernel32\.(GetQueuedCompletionStatus\w*|WaitFor\w+))$",
         RegexOptions.CultureInvariant);
 
     [McpServerTool(Name = "trace_callstacks", Title = "Show call stacks reaching a method", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Shows the distinct call stacks (outermost caller first) that reach methods matching a regex, ranked by time, to find which callers make a hotspot expensive. Windows only.")]
+    [Description("Shows the distinct call stacks (outermost caller first) that reach methods matching a regex, ranked by time, to find which callers make a hotspot expensive. " + AnalysisPlatformNote)]
     public async Task<string> CallStacksAsync(
-        [Description("Snapshot index file (*.dtp).")] string snapshot,
+        [Description(SnapshotDescription)] string snapshot,
         [Description("Regex on the full method name; escape dots and plus signs, e.g. Nethermind\\.Trie\\.PatriciaTree\\.Get.")] string methodPattern,
         [Description("Maximum stacks to show per method.")] int maxStacks = 10,
         [Description("Maximum frames to show per stack, keeping the innermost.")] int maxFrames = 25,
         CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<FunctionStat> functions = await reporter.GetCallStacksAsync(snapshot, methodPattern, cancellationToken);
+        IReadOnlyList<FunctionStat> functions = await GetCallStacksAsync(snapshot, methodPattern, cancellationToken);
         if (functions.Count == 0)
             return $"No method matches '{methodPattern}'. Use trace_hotspots to find exact names.";
 
@@ -178,42 +229,80 @@ public sealed class TraceTools(DotTraceSessionManager sessions, Reporter reporte
         return sb.ToString();
     }
 
-    [McpServerTool(Name = "trace_report", Title = "Write an HTML report of a dotTrace snapshot", Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Writes a self-contained HTML page for a person to explore a snapshot in a browser: an interactive flame graph of the call tree and a sortable hotspot table, " +
-                 "both with search and a blocking-wait filter. Use it when someone asks to see the results; read them yourself with trace_hotspots and trace_callstacks. Windows only.")]
+    [McpServerTool(Name = "trace_report", Title = "Write an HTML report of a CPU trace", Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Writes a self-contained HTML page for a person to explore a trace or snapshot in a browser: an interactive flame graph of the call tree and a sortable hotspot table, " +
+                 "both with search and a blocking-wait filter. Use it when someone asks to see the results; read them yourself with trace_hotspots and trace_callstacks. " + AnalysisPlatformNote)]
     public async Task<string> ReportAsync(
-        [Description("Snapshot index file (*.dtp).")] string snapshot,
+        [Description(SnapshotDescription)] string snapshot,
         [Description("Where to write the page. Defaults to the snapshot path with .html appended.")] string? output = null,
         [Description("Maximum call-tree nodes in the flame graph; the smallest call paths are dropped to fit.")] int maxNodes = 5000,
         CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<FunctionStat> functions = await reporter.GetCallStacksAsync(snapshot, ".*", cancellationToken);
+        IReadOnlyList<FunctionStat> functions = await GetCallStacksAsync(snapshot, ".*", cancellationToken);
         CallTreeNode tree = CallTree.Build(functions, BlockingWait.IsMatch);
         int nodesBeforePruning = CallTree.Count(tree);
         int kept = CallTree.Prune(tree, maxNodes);
 
         output ??= snapshot + ".html";
         await File.WriteAllTextAsync(output, HtmlReport.Render(snapshot, functions, tree, nodesBeforePruning, BlockingWait.IsMatch), cancellationToken);
-        return $"Report written: {output}\nFlame graph shows {kept:N0} of {nodesBeforePruning:N0} call paths; {Percent(tree.WaitTime, tree.TotalTime)} of sampled time is in blocking waits (hidden by default on the page).";
+        return $"Report written: {paths.ForPerson(output)}\nFlame graph shows {kept:N0} of {nodesBeforePruning:N0} call paths; {Percent(tree.WaitTime, tree.TotalTime)} of sampled time is in blocking waits (hidden by default on the page).";
     }
 
-    [McpServerTool(Name = "trace_compare", Title = "Compare two dotTrace snapshots", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Shows per-method time changes from a baseline snapshot to a current one (current minus baseline), largest first. Use it to verify a fix. " +
-                 "Make both snapshots cover the same workload, or the deltas will mostly reflect the difference in run length. Windows only.")]
+    [McpServerTool(Name = "trace_compare", Title = "Compare two CPU traces", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("Shows per-method time changes from a baseline trace or snapshot to a current one of the same kind (current minus baseline), largest first. Use it to verify a fix. " +
+                 "Make both cover the same workload, or the deltas will mostly reflect the difference in run length. " + AnalysisPlatformNote)]
     public async Task<string> CompareAsync(
-        [Description("Snapshot before the change (*.dtp).")] string baseline,
-        [Description("Snapshot after the change (*.dtp).")] string current,
+        [Description("Snapshot or trace before the change (*.dtp or *.nettrace).")] string baseline,
+        [Description("Snapshot or trace after the change, in the same format as the baseline.")] string current,
         [Description("Number of rows.")] int top = 30,
         [Description("Only methods whose full name matches this regex.")] string? include = null,
         CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<FunctionStat> deltas = await reporter.CompareAsync(baseline, current, cancellationToken);
+        IReadOnlyList<FunctionStat> deltas = (NetTraceReader.IsNetTrace(baseline), NetTraceReader.IsNetTrace(current)) switch
+        {
+            (false, false) => await reporter.CompareAsync(baseline, current, cancellationToken),
+            (true, true) => Diff(netTrace.Read(baseline).Functions, netTrace.Read(current).Functions),
+            _ => throw new ArgumentException("Compare two dotTrace snapshots or two EventPipe traces; their times are not comparable with each other."),
+        };
         TextTable table = new("own Δ ms", "total Δ ms", "method");
         foreach (FunctionStat f in Filter(deltas, include, exclude: null).Where(static f => f.OwnTime != 0 || f.TotalTime != 0).OrderByDescending(static f => Math.Abs(f.OwnTime)).Take(top))
             table.Add(SignedMs(f.OwnTime), SignedMs(f.TotalTime), f.Name);
 
         return table.Count == 0 ? "No differences." : $"Current minus baseline, sorted by |own Δ|. Negative is faster.\n{table}";
     }
+
+    private async Task<IReadOnlyList<FunctionStat>> GetCallStacksAsync(string snapshot, string methodPattern, CancellationToken cancellationToken)
+    {
+        if (!NetTraceReader.IsNetTrace(snapshot))
+            return await reporter.GetCallStacksAsync(snapshot, methodPattern, cancellationToken);
+
+        Regex pattern = new(methodPattern, RegexOptions.CultureInvariant);
+        return [.. netTrace.Read(snapshot).Functions.Where(f => pattern.IsMatch(f.Name))];
+    }
+
+    /// <summary>Per-method deltas from <paramref name="baseline"/> to <paramref name="current"/>, in the shape of a Reporter comparison.</summary>
+    internal static IReadOnlyList<FunctionStat> Diff(IReadOnlyList<FunctionStat> baseline, IReadOnlyList<FunctionStat> current)
+    {
+        Dictionary<string, (double Total, double Own)> deltas = new(StringComparer.Ordinal);
+        foreach (FunctionStat f in current)
+            deltas[f.Name] = (f.TotalTime, f.OwnTime);
+        foreach (FunctionStat f in baseline)
+        {
+            (double total, double own) = deltas.GetValueOrDefault(f.Name);
+            deltas[f.Name] = (total - f.TotalTime, own - f.OwnTime);
+        }
+
+        return [.. deltas.Select(static d => new FunctionStat(d.Key, d.Value.Total, d.Value.Own, null, null, []))];
+    }
+
+    /// <remarks>dotTrace loads its profiler into the target from a path in the sidecar, which the target cannot see.</remarks>
+    private void ThrowInContainerMode()
+    {
+        if (paths.Sidecar is not null)
+            throw new InvalidOperationException("dotTrace is not available for containers; use cpu_sample.");
+    }
+
+    private static string Truncate(string value, int length) => value.Length <= length ? value : value[..(length - 1)] + "…";
 
     private static IEnumerable<FunctionStat> Filter(IEnumerable<FunctionStat> functions, string? include, string? exclude)
     {

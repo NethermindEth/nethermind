@@ -47,44 +47,11 @@ internal static class EventPipeCollector
             new Dictionary<string, string> { ["EventCounterIntervalSec"] = intervalSeconds.ToString(CultureInfo.InvariantCulture) });
         EventPipeProvider gcEvents = new(ClrTraceEventParser.ProviderName, EventLevel.Informational, (long)ClrTraceEventParser.Keywords.GC);
 
-        Dictionary<int, int> byGeneration = [];
-        Dictionary<string, int> byReason = [];
-        double totalPauseMs = 0;
-        double maxPauseMs = 0;
-        double? suspendStartMs = null;
-        Dictionary<string, long>? lastHeap = null;
-        long lastPromoted = 0;
+        GcTracker gc = new();
 
         await RunSessionAsync(pid, [counters, gcEvents], duration, source =>
         {
-            source.Clr.GCStart += data =>
-            {
-                byGeneration[data.Depth] = byGeneration.GetValueOrDefault(data.Depth) + 1;
-                string reason = data.Reason.ToString();
-                byReason[reason] = byReason.GetValueOrDefault(reason) + 1;
-            };
-            source.Clr.GCSuspendEEStart += data => suspendStartMs = data.TimeStampRelativeMSec;
-            source.Clr.GCRestartEEStop += data =>
-            {
-                if (suspendStartMs is not double start)
-                    return;
-                double pause = data.TimeStampRelativeMSec - start;
-                totalPauseMs += pause;
-                maxPauseMs = Math.Max(maxPauseMs, pause);
-                suspendStartMs = null;
-            };
-            source.Clr.GCHeapStats += data =>
-            {
-                lastHeap = new Dictionary<string, long>
-                {
-                    ["gen0"] = data.GenerationSize0,
-                    ["gen1"] = data.GenerationSize1,
-                    ["gen2"] = data.GenerationSize2,
-                    ["LOH"] = data.GenerationSize3,
-                    ["POH"] = data.GenerationSize4,
-                };
-                lastPromoted = data.TotalPromotedSize0 + data.TotalPromotedSize1 + data.TotalPromotedSize2 + data.TotalPromotedSize3;
-            };
+            gc.Subscribe(source);
             source.Dynamic.All += traceEvent =>
             {
                 if (traceEvent.EventName != "EventCounters" ||
@@ -112,7 +79,7 @@ internal static class EventPipeCollector
         }
 
         summaries.Sort(static (a, b) => string.CompareOrdinal(a.Name, b.Name));
-        return (summaries, new GcSummary(byGeneration, byReason, totalPauseMs, maxPauseMs, lastHeap, lastPromoted));
+        return (summaries, gc.ToSummary());
     }
 
     public static async Task<IReadOnlyList<AllocationStat>> SampleAllocationsAsync(int pid, TimeSpan duration, CancellationToken cancellationToken)

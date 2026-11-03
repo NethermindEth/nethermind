@@ -15,23 +15,34 @@ namespace Nethermind.Tools.ProfilingMcp.Memory;
 public sealed class MemoryTools(WorkspacePaths paths)
 {
     [McpServerTool(Name = "heap_stats", Title = "Managed heap statistics", Destructive = false, OpenWorld = false)]
-    [Description("Walks the managed heap of a process or dump and reports totals, bytes per generation, fragmentation, and the types using the most memory (shallow size). " +
-                 "Saves the statistics and returns an id for heap_diff. A live process is paused briefly. Expect minutes on heaps of tens of GB.")]
-    public string HeapStats(
+    [Description("Reports the managed heap of a process or dump: totals, bytes per generation, fragmentation, and the types using the most memory (shallow size). " +
+                 "Saves the statistics and returns an id for heap_diff. " + LiveHeapNote)]
+    public async Task<string> HeapStatsAsync(
         [Description(HeapTarget.Description)] string target,
         [Description("Number of types to list.")] int top = 30,
-        [Description("Only list types whose name matches this regex, e.g. ^Nethermind\\.")] string? include = null)
+        [Description("Only list types whose name matches this regex, e.g. ^Nethermind\\.")] string? include = null,
+        CancellationToken cancellationToken = default)
     {
         HeapSnapshot snapshot;
-        using (DataTarget dataTarget = HeapTarget.Open(target))
-        using (ClrRuntime runtime = HeapTarget.CreateRuntime(dataTarget))
+        StringBuilder sb = new();
+        if (HeapTarget.IsProcess(target, out int pid))
+        {
+            GcHeapDumpResult dump = await GcHeapDump.CollectAsync(pid, withReferences: false, cancellationToken);
+            snapshot = dump.Snapshot;
+            sb.Append(Describe(dump));
+        }
+        else
+        {
+            using DataTarget dataTarget = HeapTarget.OpenDump(target);
+            using ClrRuntime runtime = HeapTarget.CreateRuntime(dataTarget);
             snapshot = HeapSnapshot.Collect(target, runtime.Heap);
+            sb.Append("Read from the dump, including unreachable objects the GC has not collected yet.\n");
+        }
 
         string id = Path.GetFileNameWithoutExtension(WorkspacePaths.NewFileName(File.Exists(target) ? "dump" : $"pid{target}", ""));
         snapshot.Save(Path.Combine(paths.Heap, id + ".json"));
 
-        StringBuilder sb = new();
-        sb.Append($"Heap snapshot id: {id}\n");
+        sb.Insert(0, $"Heap snapshot id: {id}\n");
         sb.Append($"{Count(snapshot.ObjectCount)} objects, {Size(snapshot.TotalBytes)} live, {Size(snapshot.FreeBytes)} free ({Percent(snapshot.FreeBytes, snapshot.TotalBytes + snapshot.FreeBytes)} fragmentation)\n");
         sb.Append("By generation: ").AppendJoin(", ", snapshot.GenerationBytes.OrderBy(static g => g.Key).Select(static g => $"{g.Key} {Size(g.Value)}")).Append('\n');
 
@@ -67,22 +78,34 @@ public sealed class MemoryTools(WorkspacePaths paths)
 
     [McpServerTool(Name = "heap_retention", Title = "Why are objects kept alive", Destructive = false, OpenWorld = false)]
     [Description("For instances of the types matching a regex: counts which types reference them and finds the shortest reference chains from GC roots, " +
-                 "grouping identical chains. Use it on types that heap_diff shows growing to find the cache, event handler, or static holding them.")]
-    public string HeapRetention(
+                 "grouping identical chains. Use it on types that heap_diff shows growing to find the cache, event handler, or static holding them. " +
+                 "Chains from a process name types only; chains from a dump also name fields and static fields. " + LiveHeapNote)]
+    public async Task<string> HeapRetentionAsync(
         [Description(HeapTarget.Description)] string target,
         [Description("Regex on the full type name, e.g. ^Nethermind\\.Core\\.Block$ or LeakyCacheEntry$.")] string typePattern,
         [Description("Maximum distinct reference chains to show.")] int maxPaths = 5,
-        [Description("Stop the root search after visiting this many objects, to bound time and memory on huge heaps.")] long maxVisited = 20_000_000)
+        [Description("Stop the root search after visiting this many objects, to bound time and memory on huge heaps.")] long maxVisited = 20_000_000,
+        CancellationToken cancellationToken = default)
     {
+        Regex pattern = new(typePattern, RegexOptions.CultureInvariant);
         RetentionReport report;
-        using (DataTarget dataTarget = HeapTarget.Open(target))
-        using (ClrRuntime runtime = HeapTarget.CreateRuntime(dataTarget))
-            report = RetentionAnalyzer.Analyze(runtime, new Regex(typePattern, RegexOptions.CultureInvariant), maxPaths, maxVisited);
+        StringBuilder sb = new();
+        if (HeapTarget.IsProcess(target, out int pid))
+        {
+            GcHeapDumpResult dump = await GcHeapDump.CollectAsync(pid, withReferences: true, cancellationToken);
+            sb.Append(Describe(dump));
+            report = RetentionAnalyzer.Analyze(dump.Graph!, pattern, maxPaths, maxVisited);
+        }
+        else
+        {
+            using DataTarget dataTarget = HeapTarget.OpenDump(target);
+            using ClrRuntime runtime = HeapTarget.CreateRuntime(dataTarget);
+            report = RetentionAnalyzer.Analyze(runtime, pattern, maxPaths, maxVisited);
+        }
 
         if (report.InstanceCount == 0)
-            return $"No live instances of types matching '{typePattern}'.";
+            return sb.Append($"No live instances of types matching '{typePattern}'.").ToString();
 
-        StringBuilder sb = new();
         sb.Append($"{Count(report.InstanceCount)} instances, {Size(report.InstanceBytes)} (shallow) of: ").AppendJoin(", ", report.MatchedTypes.Take(10)).Append('\n');
         sb.Append("\nReferenced by (includes unreachable referrers the GC has not collected yet):\n");
         TextTable referrers = new("references", "from type");
@@ -93,7 +116,7 @@ public sealed class MemoryTools(WorkspacePaths paths)
         sb.Append(report.SearchComplete ? "\nShortest paths from GC roots:\n" : "\nShortest paths from GC roots (search stopped early; counts are partial):\n");
         foreach (RetentionPath path in report.Paths)
         {
-            sb.Append($"[{path.RootKind}] retains {Count(path.Instances)} instance(s) via:\n");
+            sb.Append($"[{path.RootKind}] retains {Count(path.Instances)} instance(s), {Size(path.Bytes)}, via:\n");
             foreach (PathStep step in path.Steps)
                 sb.Append("  ").Append(step.Field is null ? "" : $".{step.Field} -> ").Append(step.TypeName).Append($" @0x{step.Address:x}\n");
         }
@@ -162,8 +185,37 @@ public sealed class MemoryTools(WorkspacePaths paths)
     public async Task<string> WriteDumpAsync([Description("Process ID.")] int pid, CancellationToken cancellationToken = default)
     {
         string path = Path.Combine(paths.Heap, WorkspacePaths.NewFileName($"pid{pid}", ".dmp"));
-        await new DiagnosticsClient(pid).WriteDumpAsync(DumpType.WithHeap, path, logDumpGeneration: false, cancellationToken);
+        if (paths.Sidecar is null)
+        {
+            await new DiagnosticsClient(pid).WriteDumpAsync(DumpType.WithHeap, path, logDumpGeneration: false, cancellationToken);
+            return $"Dump written: {path} ({Size(new FileInfo(path).Length)})";
+        }
+
+        // The target's runtime writes the dump, as the target's user and without access to the sidecar's files, so it goes to the
+        // target's temp folder, where the runtime keeps its diagnostic socket, and is moved from there.
+        string inTarget = Path.Combine(Path.GetTempPath(), Path.GetFileName(path));
+        try
+        {
+            await new DiagnosticsClient(pid).WriteDumpAsync(DumpType.WithHeap, inTarget[ContainerSidecar.TargetRoot.Length..], logDumpGeneration: false, cancellationToken);
+            File.Move(inTarget, path);
+        }
+        finally
+        {
+            File.Delete(inTarget);
+        }
+
         return $"Dump written: {path} ({Size(new FileInfo(path).Length)})";
+    }
+
+    private const string LiveHeapNote = "For a process ID, the runtime runs one full blocking GC and reports the objects that survive it, so only live objects count; " +
+                                        "the pause is reported. It needs no ptrace and works in containers. Expect seconds per GB of heap.";
+
+    private static string Describe(GcHeapDumpResult dump)
+    {
+        string text = $"Read over EventPipe in {dump.Elapsed.TotalSeconds:N1} s; the induced GC paused the process for {Number(dump.PauseMs)} ms. Only live objects are counted.\n";
+        return dump.EventsLost > 0
+            ? text + $"WARNING: the runtime dropped {Count(dump.EventsLost)} events, so the heap is incomplete.\n"
+            : text;
     }
 
     private HeapSnapshot LoadSnapshot(string idOrPath) =>

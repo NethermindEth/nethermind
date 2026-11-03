@@ -6,20 +6,42 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nethermind.Tools.ProfilingMcp;
 using Nethermind.Tools.ProfilingMcp.DotTrace;
+using Nethermind.Tools.ProfilingMcp.EventPipe;
+
+if (args is [ContainerSidecar.IdleOption])
+{
+    await Task.Delay(Timeout.Infinite);
+    return;
+}
+
+ContainerSidecar.LinkTargetTempFolder();
 
 HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
 // stdout carries the MCP protocol, so all logging must go to stderr.
 builder.Logging.AddConsole(static options => options.LogToStandardErrorThreshold = LogLevel.Trace);
 
+WorkspacePaths paths = WorkspacePaths.FromEnvironment();
+ContainerRouter router = new();
 builder.Services
-    .AddSingleton(WorkspacePaths.FromEnvironment())
+    .AddSingleton(paths)
+    .AddSingleton(router)
     .AddSingleton<DotTraceLocator>()
     .AddSingleton<DotTraceSessionManager>()
     .AddSingleton<Reporter>()
+    .AddSingleton<NetTraceReader>()
     .AddMcpServer(static options => options.ServerInstructions = ServerInstructions.Text)
     .WithStdioServerTransport()
     .WithToolsFromAssembly()
-    .WithRequestFilters(static filters => filters.AddCallToolFilter(ToolErrors.ReportExceptionMessages));
+    .WithRequestFilters(filters =>
+    {
+        filters.AddCallToolFilter(ToolErrors.ReportExceptionMessages);
+        if (paths.Sidecar is null)
+        {
+            filters.AddListToolsFilter(ContainerRouter.AddTargetArguments);
+            filters.AddCallToolFilter(router.Route);
+        }
+    });
 
 await builder.Build().RunAsync();
+await router.DisposeAsync();

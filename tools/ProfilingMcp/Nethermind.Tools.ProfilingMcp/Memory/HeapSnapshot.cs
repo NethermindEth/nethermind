@@ -63,18 +63,25 @@ public sealed record HeapSnapshot(
             }
         }
 
-        // Generic instantiations from different modules can share a name; merge them so diffs line up by name.
+        IReadOnlyList<TypeStat> types = MergeByName(byMethodTable.Values.Select(static t => new TypeStat(t.Name, t.Count, t.Bytes, t.LargeBytes)));
+        return new HeapSnapshot(target, DateTime.UtcNow, objectCount, totalBytes, freeBytes, generations, types);
+    }
+
+    /// <summary>Merges types that share a name and sorts them by descending bytes.</summary>
+    /// <remarks>Generic instantiations from different modules can share a name; merging them makes diffs line up by name.</remarks>
+    internal static IReadOnlyList<TypeStat> MergeByName(IEnumerable<TypeStat> types)
+    {
         Dictionary<string, TypeStat> byName = [];
-        foreach ((string name, long count, long bytes, long largeBytes) in byMethodTable.Values)
+        foreach (TypeStat type in types)
         {
-            byName[name] = byName.TryGetValue(name, out TypeStat? existing)
-                ? existing with { Count = existing.Count + count, Bytes = existing.Bytes + bytes, LargeObjectBytes = existing.LargeObjectBytes + largeBytes }
-                : new TypeStat(name, count, bytes, largeBytes);
+            byName[type.Name] = byName.TryGetValue(type.Name, out TypeStat? existing)
+                ? existing with { Count = existing.Count + type.Count, Bytes = existing.Bytes + type.Bytes, LargeObjectBytes = existing.LargeObjectBytes + type.LargeObjectBytes }
+                : type;
         }
 
-        List<TypeStat> types = [.. byName.Values];
-        types.Sort(static (a, b) => b.Bytes.CompareTo(a.Bytes));
-        return new HeapSnapshot(target, DateTime.UtcNow, objectCount, totalBytes, freeBytes, generations, types);
+        List<TypeStat> merged = [.. byName.Values];
+        merged.Sort(static (a, b) => b.Bytes.CompareTo(a.Bytes));
+        return merged;
     }
 
     /// <summary>Returns per-type changes from <paramref name="baseline"/> to <paramref name="current"/>, largest absolute byte change first.</summary>

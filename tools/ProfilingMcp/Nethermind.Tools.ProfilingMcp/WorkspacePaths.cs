@@ -31,6 +31,16 @@ public sealed class WorkspacePaths
     /// <summary>Heap statistics JSON files and process dumps.</summary>
     public string Heap { get; }
 
+    /// <summary>The container name when the server runs in a container sidecar (<see cref="ContainerSidecar"/>), or null.</summary>
+    public string? Sidecar { get; } = Environment.GetEnvironmentVariable(ContainerSidecar.NameVariable);
+
+    /// <summary>Where a person finds a file the server wrote: in container mode, with the command that copies it to the host.</summary>
+    public string ForPerson(string path) =>
+        Sidecar is null ? path : WithCopyCommand(path, Sidecar, Environment.GetEnvironmentVariable(ContainerSidecar.DockerCommandVariable) ?? "docker");
+
+    internal static string WithCopyCommand(string path, string sidecar, string docker) =>
+        $"{path} in the sidecar container; copy it to this machine while the session runs with: {docker} cp {sidecar}:{path} .";
+
     public static WorkspacePaths FromEnvironment()
     {
         string? root = Environment.GetEnvironmentVariable("PROFILING_MCP_HOME");

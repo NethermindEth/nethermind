@@ -42,6 +42,35 @@ public sealed class ProcessTools
         return table.Count == 0 ? "No matching .NET processes." : table.ToString();
     }
 
+    [McpServerTool(Name = "list_containers", Title = "List Docker containers", ReadOnly = true, Idempotent = true, OpenWorld = true)]
+    [Description("Lists the running containers of a Docker engine, and the Docker contexts this machine can reach other engines with. " +
+                 "To profile a container's processes, pass its name as container, and the engine as dockerHost, to the other tools.")]
+    public async Task<string> ListContainersAsync(
+        [Description("Docker engine: a context name, or an address such as ssh://user@host or tcp://host:2376. Omit for the engine the docker CLI uses by default.")] string? dockerHost = null,
+        [Description("Only containers whose name or image contains this text (case-insensitive).")] string? filter = null)
+    {
+        TextTable containers = new("container", "image", "status");
+        string listing = await ContainerSidecar.DockerAsync(ContainerSidecar.EngineArguments(dockerHost), "ps", "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}");
+        foreach (string line in listing.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string[] columns = line.Split('\t');
+            if (columns.Length == 3 && !columns[0].StartsWith("profmcp-", StringComparison.Ordinal) &&
+                (filter is null || columns[0].Contains(filter, StringComparison.OrdinalIgnoreCase) || columns[1].Contains(filter, StringComparison.OrdinalIgnoreCase)))
+                containers.Add(columns[0], columns[1], columns[2]);
+        }
+
+        TextTable contexts = new("context", "engine");
+        string contextListing = await ContainerSidecar.DockerAsync([], "context", "ls", "--format", "{{.Name}}\t{{.DockerEndpoint}}");
+        foreach (string line in contextListing.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string[] columns = line.Split('\t');
+            if (columns.Length == 2)
+                contexts.Add(columns[0], columns[1]);
+        }
+
+        return $"{(containers.Count == 0 ? "No matching running containers." : containers.ToString())}\n\nDocker contexts:\n{contexts}";
+    }
+
     private static string TryGetPath(Process process)
     {
         try

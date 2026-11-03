@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <!-- Restores the runtime pack for the Linux build that PublishLinuxBuildForContainers publishes. -->
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,5 +17,10 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.Tools.ProfilingMcp.Test" />
   </ItemGroup>
+
+  <!-- Container mode (ContainerSidecar) runs a Linux build in a sidecar container, so a publish that is not one includes one. -->
+  <Target Name="PublishLinuxBuildForContainers" AfterTargets="Publish" Condition="!$(RuntimeIdentifier.StartsWith('linux'))">
+    <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="Publish" Properties="RuntimeIdentifier=linux-x64;SelfContained=true;Configuration=$(Configuration);PublishDir=$([MSBuild]::EnsureTrailingSlash('$(PublishDir)'))linux-x64/" />
+  </Target>
 
 </Project>

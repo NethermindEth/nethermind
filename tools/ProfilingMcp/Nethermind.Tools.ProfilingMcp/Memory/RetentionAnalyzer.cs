@@ -12,7 +12,8 @@ public sealed record PathStep(string TypeName, ulong Address, string? Field);
 
 /// <summary>A chain of references from a GC root to an instance of the analyzed type.</summary>
 /// <param name="Instances">Number of target instances found behind a path with the same sequence of types and fields.</param>
-public sealed record RetentionPath(string RootKind, IReadOnlyList<PathStep> Steps, int Instances);
+/// <param name="Bytes">Shallow size of those instances.</param>
+public sealed record RetentionPath(string RootKind, IReadOnlyList<PathStep> Steps, int Instances, long Bytes);
 
 /// <param name="Referrers">Count of references to target instances, by referencing type ("[root: kind]" for direct GC roots).</param>
 /// <param name="SearchComplete">False when the visit limit stopped the root search before every reachable object was seen.</param>
@@ -66,6 +67,127 @@ internal static class RetentionAnalyzer
             paths,
             complete,
             $"find instances {scan.TotalSeconds:F1} s, referrers {referrerScan.TotalSeconds:F1} s, statics {staticsScan.TotalSeconds:F1} s, root paths {pathSearch.TotalSeconds:F1} s");
+    }
+
+    /// <summary>Analyzes a heap read over EventPipe. Its references carry no field names, so path steps name types only.</summary>
+    public static RetentionReport Analyze(HeapGraph graph, Regex typePattern, int maxPaths, long maxVisited)
+    {
+        Stopwatch phase = Stopwatch.StartNew();
+        bool[] matchingTypes = [.. graph.TypeNames.Select(name => typePattern.IsMatch(name))];
+        bool[] isTarget = new bool[graph.NodeCount];
+        HashSet<string> matchedTypes = [];
+        long targetCount = 0;
+        long targetBytes = 0;
+        for (int node = 0; node < graph.NodeCount; node++)
+        {
+            if (!matchingTypes[graph.NodeTypes[node]])
+                continue;
+
+            isTarget[node] = true;
+            matchedTypes.Add(graph.TypeName(node));
+            targetCount++;
+            targetBytes += graph.Sizes[node];
+        }
+
+        if (targetCount == 0)
+            return new RetentionReport([], 0, 0, [], [], SearchComplete: true);
+
+        Dictionary<string, long> referrers = [];
+        foreach ((int node, string kind) in graph.Roots)
+        {
+            if (isTarget[node])
+                Increment(referrers, $"[root: {kind}]");
+        }
+
+        for (int node = 0; node < graph.NodeCount; node++)
+        {
+            foreach (int reference in graph.References(node))
+            {
+                if (isTarget[reference])
+                    Increment(referrers, graph.TypeName(node));
+            }
+        }
+
+        List<KeyValuePair<string, long>> sortedReferrers = [.. referrers];
+        sortedReferrers.Sort(static (a, b) => b.Value.CompareTo(a.Value));
+        TimeSpan referrerScan = phase.Elapsed;
+
+        const int Unvisited = -2;
+        const int Root = -1;
+        int[] parents = new int[graph.NodeCount];
+        Array.Fill(parents, Unvisited);
+        Dictionary<int, string> rootKinds = [];
+        Queue<int> queue = new();
+        foreach ((int node, string kind) in graph.Roots)
+        {
+            if (rootKinds.TryAdd(node, kind))
+            {
+                parents[node] = Root;
+                queue.Enqueue(node);
+            }
+        }
+
+        PathGroups groups = new(maxPaths);
+        bool complete = true;
+        long visited = queue.Count;
+        while (queue.Count > 0)
+        {
+            int node = queue.Dequeue();
+            if (isTarget[node])
+            {
+                if (groups.Add(BuildPath(graph, node, parents, rootKinds)))
+                {
+                    complete = false;
+                    break;
+                }
+                continue;
+            }
+
+            foreach (int child in graph.References(node))
+            {
+                if (parents[child] != Unvisited)
+                    continue;
+                parents[child] = node;
+                queue.Enqueue(child);
+                visited++;
+            }
+
+            if (visited >= maxVisited)
+            {
+                complete = false;
+                break;
+            }
+        }
+
+        return new RetentionReport(
+            [.. matchedTypes.Order()],
+            targetCount,
+            targetBytes,
+            sortedReferrers,
+            groups.Top(),
+            complete,
+            $"referrers {referrerScan.TotalSeconds:F1} s, root paths {(phase.Elapsed - referrerScan).TotalSeconds:F1} s");
+    }
+
+    private static RetentionPath BuildPath(HeapGraph graph, int target, int[] parents, Dictionary<int, string> rootKinds)
+    {
+        List<PathStep> steps = [];
+        int current = target;
+        while (true)
+        {
+            int parent = parents[current];
+            string? field = parent < 0 ? null
+                : graph.IsDependentReference(parent, current) ? "[dependent handle]"
+                : graph.TypeName(parent).EndsWith(']') ? "[]"
+                : null;
+            steps.Add(new PathStep(graph.TypeName(current), graph.Addresses[current], field));
+            if (parent < 0)
+                break;
+            current = parent;
+        }
+
+        steps.Reverse();
+        return new RetentionPath(rootKinds[current], steps, 1, graph.Sizes[target]);
     }
 
     /// <summary>Maps objects referenced directly by static fields to the field's name.</summary>
@@ -149,8 +271,7 @@ internal static class RetentionAnalyzer
             }
         }
 
-        Dictionary<string, (RetentionPath Path, int Instances)> bySignature = [];
-        int reportedTargets = 0;
+        PathGroups groups = new(maxPaths);
         complete = true;
 
         while (queue.Count > 0)
@@ -158,14 +279,7 @@ internal static class RetentionAnalyzer
             ulong address = queue.Dequeue();
             if (targets.Contains(address))
             {
-                RetentionPath path = BuildPath(heap, address, parents, rootKinds, statics);
-                string signature = path.RootKind + "|" + string.Join("|", path.Steps.Select(static s => $"{s.Field}>{s.TypeName}"));
-                bySignature[signature] = bySignature.TryGetValue(signature, out (RetentionPath Path, int Instances) existing)
-                    ? (existing.Path, existing.Instances + 1)
-                    : (path, 1);
-
-                // Keep searching past maxPaths distinct patterns for a while so instance counts per pattern are meaningful.
-                if (++reportedTargets >= Math.Max(maxPaths * 50, 1000) && bySignature.Count >= maxPaths)
+                if (groups.Add(BuildPath(heap, address, parents, rootKinds, statics)))
                 {
                     complete = false;
                     break;
@@ -190,11 +304,7 @@ internal static class RetentionAnalyzer
             }
         }
 
-        List<RetentionPath> paths = [];
-        foreach ((RetentionPath path, int instances) in bySignature.Values)
-            paths.Add(path with { Instances = instances });
-        paths.Sort(static (a, b) => b.Instances.CompareTo(a.Instances));
-        return paths.Count > maxPaths ? paths[..maxPaths] : paths;
+        return groups.Top();
     }
 
     private static RetentionPath BuildPath(
@@ -216,15 +326,16 @@ internal static class RetentionAnalyzer
         }
 
         steps.Reverse();
+        long bytes = (long)heap.GetObject(target).Size;
 
         // Start the path at the outermost static field instead of the runtime's statics array that holds it.
         for (int i = 0; i < steps.Count; i++)
         {
             if (statics.TryGetValue(steps[i].Address, out string? staticField))
-                return new RetentionPath($"static {staticField}", steps[i..], 1);
+                return new RetentionPath($"static {staticField}", steps[i..], 1, bytes);
         }
 
-        return new RetentionPath(rootKinds[current], steps, 1);
+        return new RetentionPath(rootKinds[current], steps, 1, bytes);
     }
 
     private static string? FieldName(ClrHeap heap, ulong parent, ulong child)
@@ -243,4 +354,31 @@ internal static class RetentionAnalyzer
     }
 
     private static void Increment(Dictionary<string, long> counts, string key) => counts[key] = counts.GetValueOrDefault(key) + 1;
+
+    /// <summary>Merges paths with the same sequence of root kind, types and fields, summing the instances behind each.</summary>
+    private sealed class PathGroups(int maxPaths)
+    {
+        private readonly Dictionary<string, RetentionPath> _bySignature = [];
+        private int _paths;
+
+        /// <summary>Adds a path and returns true once enough instances were seen to stop searching.</summary>
+        public bool Add(RetentionPath path)
+        {
+            string signature = path.RootKind + "|" + string.Join("|", path.Steps.Select(static s => $"{s.Field}>{s.TypeName}"));
+            _bySignature[signature] = _bySignature.TryGetValue(signature, out RetentionPath? existing)
+                ? existing with { Instances = existing.Instances + path.Instances, Bytes = existing.Bytes + path.Bytes }
+                : path;
+
+            // Keep searching past maxPaths distinct patterns for a while so instance counts per pattern are meaningful.
+            return ++_paths >= Math.Max(maxPaths * 50, 1000) && _bySignature.Count >= maxPaths;
+        }
+
+        /// <summary>The paths retaining the most bytes; instances of one type can differ widely in size, as arrays do.</summary>
+        public List<RetentionPath> Top()
+        {
+            List<RetentionPath> paths = [.. _bySignature.Values];
+            paths.Sort(static (a, b) => b.Bytes != a.Bytes ? b.Bytes.CompareTo(a.Bytes) : b.Instances.CompareTo(a.Instances));
+            return paths.Count > maxPaths ? paths[..maxPaths] : paths;
+        }
+    }
 }
