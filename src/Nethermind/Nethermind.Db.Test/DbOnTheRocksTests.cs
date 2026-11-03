@@ -799,8 +799,12 @@ namespace Nethermind.Db.Test
             Parallel.For(0, handles.Length, i => _ = db.GetNativeSlice(i % 2 == 0 ? key : missing, out handles[i], ReadFlags.None));
             Parallel.For(0, handles.Length, i => db.DangerousReleaseHandle(handles[handles.Length - 1 - i]));
 
-            Assert.That(Task.Run(db.Dispose).Wait(TimeSpan.FromSeconds(10)), "a read left a slice pinned");
-            Assert.That(db.NativeCloses, Is.EqualTo(1));
+            bool disposed = Task.Run(db.Dispose).Wait(TimeSpan.FromSeconds(10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(disposed, "a read left a slice pinned");
+                Assert.That(db.NativeCloses, Is.EqualTo(1));
+            }
         }
 
         // Reads that start while dispose waits must neither hide the slice still held nor keep the database open after it is released.
@@ -827,13 +831,19 @@ namespace Nethermind.Db.Test
 
             Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref reads) > 1000, TimeSpan.FromSeconds(10)), "the readers did not start");
             Task disposing = Task.Run(db.Dispose);
-            Assert.That(disposing.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the database closed under a pinned slice");
-            Assert.That(db.NativeCloses, Is.Zero, "the database closed under a pinned slice");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(disposing.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the database closed under a pinned slice");
+                Assert.That(db.NativeCloses, Is.Zero, "the database closed under a pinned slice");
+            }
 
             db.DangerousReleaseHandle(held);
-            Assert.That(disposing.Wait(TimeSpan.FromSeconds(10)), "dispose never finished after the slice was released");
-            Assert.That(Task.WaitAll(readers, TimeSpan.FromSeconds(10)), "a reader kept reading after dispose");
-            Assert.That(db.NativeCloses, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(disposing.Wait(TimeSpan.FromSeconds(10)), "dispose never finished after the slice was released");
+                Assert.That(Task.WaitAll(readers, TimeSpan.FromSeconds(10)), "a reader kept reading after dispose");
+                Assert.That(db.NativeCloses, Is.EqualTo(1));
+            }
         }
 
         private static void ReadUntilDisposed(DbOnTheRocks db, byte[] key, ref int reads)
