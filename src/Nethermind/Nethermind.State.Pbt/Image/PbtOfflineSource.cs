@@ -79,9 +79,7 @@ public static class PbtOfflineSource
             ulong accountCount = (ulong)totals.Accounts;
             // The preimage stream needs nothing from the leaves, so its spool drains alongside the leaf spool's.
             using CancellationTokenSource failed = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            Task<ValueHash256> snapshotDigest = StartDrain(() => PbtArtifactWriter.WriteDigested(snapshot, destination => PbtSnapshotCodec.Write(destination, SnapshotLeaves(),
-                written => PbtSortedLeafFold.CalculateRoot(written, PbtSortedLeafFold.DefaultWindowSize, workers, failed.Token),
-                failed.Token)));
+            Task<ValueHash256> snapshotDigest = StartDrain(() => PbtArtifactWriter.WriteDigested(snapshot, destination => PbtSnapshotCodec.Write(destination, SnapshotLeaves(), workers, failed.Token)));
             Task<ValueHash256>? preimageDigest = preimages is null ? null
                 : StartDrain(() => PbtArtifactWriter.WriteDigested(preimages, destination => PbtPreimageCodec.Write(destination, Accounts(), failed.Token)));
             // Joined without the token for the same reason as the scan workers.

@@ -19,15 +19,13 @@ public sealed class PbtMigrationImport(Func<CancellationToken, Task> import, IPr
     private readonly ILogger _logger = logManager.GetClassLogger<PbtMigrationImport>();
     private readonly CancellationTokenSource _cancellation = new();
     private string? _error;
+    private Task _completion = Task.CompletedTask;
 
-    /// <summary>Completes once the import has finished, failed or been cancelled.</summary>
-    public Task Completion { get; private set; } = Task.CompletedTask;
-
-    public bool IsPending => !Completion.IsCompleted;
+    public bool IsPending => !_completion.IsCompleted;
 
     public string? Error => Volatile.Read(ref _error);
 
-    public void Start() => Completion = Task.Run(Run);
+    public void Start() => _completion = Task.Run(Run);
 
     private async Task Run()
     {
@@ -51,6 +49,6 @@ public sealed class PbtMigrationImport(Func<CancellationToken, Task> import, IPr
     public async ValueTask DisposeAsync()
     {
         _cancellation.Cancel();
-        await Completion;
+        await _completion;
     }
 }

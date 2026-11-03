@@ -102,7 +102,7 @@ public sealed class PbtBalFollower(
     }
 
     /// <summary>Queues <paramref name="header"/> for replay; a pre-activation block only, since PBT executes the rest itself.</summary>
-    public void Add(BlockHeader header)
+    private void Add(BlockHeader header)
     {
         if (header.Hash is null || specProvider.GetSpec(header).IsEip8347Enabled) return;
         lock (_gate)
@@ -158,7 +158,7 @@ public sealed class PbtBalFollower(
 
     /// <summary>Replays the BALs from the closest ancestor PBT holds up to <paramref name="target"/>.</summary>
     /// <returns>True once PBT holds <paramref name="target"/> or the target is dropped; false while it is to be retried.</returns>
-    public async Task<bool> Follow(BlockHeader target, CancellationToken cancellationToken)
+    private async Task<bool> Follow(BlockHeader target, CancellationToken cancellationToken)
     {
         await _run.WaitAsync(cancellationToken);
         try

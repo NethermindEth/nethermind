@@ -503,15 +503,15 @@ public class PbtDbManagerTests
 
         StateId state = new(1, root1);
         PbtDbManager manager = ctx.Manager;
-        PbtReadOnlySnapshotBundle first = manager.GatherReadOnlyBundle(state);
-        PbtReadOnlySnapshotBundle second = manager.GatherReadOnlyBundle(state);
+        PbtReadOnlySnapshotBundle first = manager.TryGatherReadOnlyBundle(state)!;
+        PbtReadOnlySnapshotBundle second = manager.TryGatherReadOnlyBundle(state)!;
         Assert.That(second, Is.SameAs(first), "one state, one shared view");
 
         // The gather retains its leased view after the sweep drops the cached view.
         ctx.Manager.FlushCache(default);
         Assert.That(first.GetAccount(Address)!.Value.ToAccount().Balance, Is.EqualTo((UInt256)100));
 
-        PbtReadOnlySnapshotBundle afterSweep = manager.GatherReadOnlyBundle(state);
+        PbtReadOnlySnapshotBundle afterSweep = manager.TryGatherReadOnlyBundle(state)!;
         Assert.That(afterSweep, Is.Not.SameAs(first), "the swept view is not handed out again");
 
         first.Dispose();
@@ -1116,10 +1116,9 @@ public class PbtDbManagerTests
         fresh.CurrentState.Returns(PersistenceState(0));
         harness.Persistence.CreateReader().Returns(stale, fresh);
         await using PbtDbManager manager = harness.CreateManager(new ProcessExitSource(CancellationToken.None), LimboLogs.Instance);
-        using PbtReadOnlySnapshotBundle bundle = manager.GatherReadOnlyBundle(state);
+        using PbtReadOnlySnapshotBundle bundle = manager.TryGatherReadOnlyBundle(state)!;
         stale.Received(1).Dispose();
         Assert.That(manager.TryGatherReadOnlyBundle(PersistenceState(9)), Is.Null);
-        Assert.That(() => manager.GatherReadOnlyBundle(PersistenceState(9)), Throws.TypeOf<StateNotRetainedException>());
     }
 
     [Test]
@@ -1228,7 +1227,7 @@ public class PbtDbManagerTests
         await using PbtDbManager manager = harness.CreateManager(new ProcessExitSource(CancellationToken.None), LimboLogs.Instance);
         Assert.That(async () =>
         {
-            using PbtReadOnlySnapshotBundle bundle = await Task.Run(() => manager.GatherReadOnlyBundle(PersistenceState(1)))
+            using PbtReadOnlySnapshotBundle bundle = await Task.Run(() => manager.TryGatherReadOnlyBundle(PersistenceState(1))!)
                 .WaitAsync(TimeSpan.FromSeconds(10));
         }, Throws.TypeOf<InvalidOperationException>().With.Message.Contains("Timed out gathering"));
         Assert.That(manager.HasStateForBlock(PersistenceState(1)), Is.True);
@@ -1240,14 +1239,14 @@ public class PbtDbManagerTests
         using PersistenceManagerHarness harness = new(new PbtConfig { CompactSize = 1, MinReorgDepth = 0, CompactionOffset = 0 });
         await using PbtDbManager manager = harness.CreateManager(new ProcessExitSource(CancellationToken.None), LimboLogs.Instance);
         harness.AddChain(2);
-        using PbtReadOnlySnapshotBundle held = manager.GatherReadOnlyBundle(PersistenceState(2));
-        using PbtReadOnlySnapshotBundle priorHead = manager.GatherReadOnlyBundle(PersistenceState(1));
+        using PbtReadOnlySnapshotBundle held = manager.TryGatherReadOnlyBundle(PersistenceState(2))!;
+        using PbtReadOnlySnapshotBundle priorHead = manager.TryGatherReadOnlyBundle(PersistenceState(1))!;
         manager.DropStateNotReachableFrom(PersistenceState(1));
-        using PbtReadOnlySnapshotBundle freshHead = manager.GatherReadOnlyBundle(PersistenceState(1));
+        using PbtReadOnlySnapshotBundle freshHead = manager.TryGatherReadOnlyBundle(PersistenceState(1))!;
         StateId newBranch = new(2, TestItem.KeccakB.ValueHash256);
         harness.Repository.TryAdd(new(PersistenceState(1), newBranch, TestItem.KeccakC.ValueHash256,
             new(), null, harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
-        using PbtReadOnlySnapshotBundle freshBranch = manager.GatherReadOnlyBundle(newBranch);
+        using PbtReadOnlySnapshotBundle freshBranch = manager.TryGatherReadOnlyBundle(newBranch)!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(manager.HasStateForBlock(PersistenceState(2)), Is.False);

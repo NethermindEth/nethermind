@@ -510,10 +510,9 @@ public class PbtAnchorImportTests
     private static ValueHash256 WriteSnapshot(MemoryStream snapshot, List<RebuildEntry> leaves)
     {
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
-        ValueHash256 root = PbtSortedLeafFold.CalculateRoot(leaves, PbtSortedLeafFold.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
-        PbtSnapshotCodec.Write(snapshot, leaves, PbtTestLeaves.Claiming(root), CancellationToken.None);
+        PbtSnapshotCodec.Write(snapshot, leaves, Environment.ProcessorCount, CancellationToken.None);
         snapshot.Position = 0;
-        return root;
+        return PbtSnapshotCodec.ReadRoot(snapshot);
     }
 
     private static int CompareHashes(ValueHash256 left, ValueHash256 right) => left.Bytes.SequenceCompareTo(right.Bytes);

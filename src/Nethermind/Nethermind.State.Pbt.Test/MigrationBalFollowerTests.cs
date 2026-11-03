@@ -22,13 +22,14 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
@@ -49,16 +50,11 @@ public class MigrationBalFollowerTests
     {
         using Harness harness = new();
         await harness.Publish();
-        harness.Canonical(branch);
-        int count = branch == "a" ? 5 : 6;
-        for (int number = 1; number <= count; number++)
+        foreach (string name in new[] { "a1", branch + 2, branch + 3 })
         {
-            string name = number == 1 ? "a1" : branch + number;
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(await harness.Follower.Follow(harness.Blocks[name].Header, default), Is.True, harness.Follower.Error);
-                Assert.That(harness.Follower.Cursor!.Hash, Is.EqualTo(harness.Blocks[name].Hash));
-            }
+            harness.Follower.Start();
+            harness.SelectHead(name);
+            WaitForCursor(harness, name);
             AssertState(harness, name);
             harness.Reopen();
             AssertState(harness, name);
@@ -70,15 +66,16 @@ public class MigrationBalFollowerTests
     {
         using Harness harness = new();
         await harness.Publish();
-        harness.Canonical("a");
-        Assert.That(await harness.Follower.Follow(harness.Blocks["a5"].Header, default), Is.True);
-        AssertState(harness, "a5");
-        harness.Canonical("b");
+        harness.Follower.Start();
+        harness.SelectHead("a3");
+        WaitForCursor(harness, "a3");
+        AssertState(harness, "a3");
 
-        Assert.That(await harness.Follower.Follow(harness.Blocks["b6"].Header, default), Is.True, harness.Follower.Error);
+        harness.SelectHead("b3");
 
-        AssertState(harness, "b6");
-        AssertState(harness, "a5");
+        WaitForCursor(harness, "b3");
+        AssertState(harness, "b3");
+        AssertState(harness, "a3");
         AssertState(harness, "a1");
     }
 
@@ -97,10 +94,10 @@ public class MigrationBalFollowerTests
     public async Task Failed_bal_acquisition_does_not_skip_gap_and_can_resume([Values("missing", "corrupt", "cancel", "reorg")] string failure)
     {
         using Harness harness = new();
-        using CancellationTokenSource cancellation = new();
         await harness.Publish();
-        harness.Canonical("a");
         Block failing = harness.Blocks["a2"];
+        PbtBalFollower follower = harness.Follower;
+        Task? disposal = null;
         switch (failure)
         {
             case "missing": harness.Store.Delete(failing.Number, failing.Hash!); break;
@@ -110,28 +107,30 @@ public class MigrationBalFollowerTests
                 {
                     if (hash != failing.Hash) return;
                     harness.OnRead = null;
-                    if (failure == "reorg") harness.Canonical("b");
-                    else cancellation.Cancel();
+                    if (failure == "reorg") harness.SelectHead("b3");
+                    else disposal = follower.DisposeAsync().AsTask();
                 };
                 break;
         }
 
-        if (failure == "cancel") await Assert.ThrowsAsync<OperationCanceledException>(() => harness.Follower.Follow(harness.Blocks["a3"].Header, cancellation.Token));
-        else Assert.That(await harness.Follower.Follow(harness.Blocks["a3"].Header, cancellation.Token), Is.False);
+        follower.Start();
+        harness.SelectHead("a3");
 
-        AssertState(harness, "a1");
-        AssertAbsent(harness, "a2");
-        if (failure is "missing" or "corrupt") Assert.That(harness.Follower.Error, Is.Not.Null.And.Not.Empty);
+        // After a reorg the follower also replays the abandoned branch as a side branch, so only the new one is awaited.
+        if (failure == "reorg") WaitForCursor(harness, "b3");
+        else
+        {
+            Assert.That(() => failure == "cancel" ? disposal?.IsCompleted == true : !string.IsNullOrEmpty(follower.Error), Is.True.After(10_000, 50));
+            AssertState(harness, "a1");
+            AssertAbsent(harness, "a2");
+        }
         harness.Reopen();
         harness.RestoreBal("a2");
+        harness.Follower.Start();
         string target = failure == "reorg" ? "b3" : "a3";
-        Assert.That(await harness.Follower.Follow(harness.Blocks[target].Header, default), Is.True, harness.Follower.Error);
+        WaitForCursor(harness, target);
         AssertState(harness, target);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Follower.Cursor!.Hash, Is.EqualTo(harness.Blocks[target].Hash));
-            Assert.That(harness.Follower.Error, Is.Null);
-        }
+        Assert.That(harness.Follower.Error, Is.Null);
     }
 
     [Test]
@@ -161,21 +160,26 @@ public class MigrationBalFollowerTests
     }
 
     [Test]
-    public async Task Follow_drops_only_a_disconnected_target_or_one_beside_finality()
+    public async Task Follower_drops_a_target_beside_finality()
     {
         using Harness harness = new();
         await harness.Publish();
+        harness.Follower.Start();
         harness.BlockTree.ForkChoiceUpdated(harness.Blocks["a3"].Hash, Hash256.Zero);
-        BlockHeader disconnected = Build.A.BlockHeader.WithNumber(10).WithParentHash(Keccak.Compute("unknown")).TestObject;
-        disconnected.Hash = disconnected.CalculateHash();
+        BlockHeader b2 = harness.Blocks["b2"].Header;
+        BlockHeader besideFinality = EmptyBalChild(b2, b2.Timestamp + 1);
+        harness.Store.Insert(besideFinality.Number, besideFinality.Hash!, EmptyBal);
+        harness.BlockTree.SuggestBlock(new Block(besideFinality));
+
+        // The follower takes targets in order, so it has passed the one beside finality once it holds the later head.
+        harness.SelectHead("a3");
+        WaitForCursor(harness, "a3");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(await harness.Follower.Follow(harness.Blocks["b3"].Header, default), Is.True, "beside finality");
-            Assert.That(await harness.Follower.Follow(disconnected, default), Is.True, "disconnected");
-            Assert.That(harness.Manager.HasStateForBlock(new StateId(disconnected)), Is.False);
+            Assert.That(harness.Manager.HasStateForBlock(new StateId(besideFinality)), Is.False);
+            AssertAbsent(harness, "b2");
         }
-        AssertAbsent(harness, "b2", "b3");
     }
 
     [Test]
@@ -186,9 +190,9 @@ public class MigrationBalFollowerTests
         blockTree.FindFinalizedHeader().Returns(_ => harness.BlockTree.FindFinalizedHeader());
         blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
             .Returns(call => harness.BlockTree.FindHeader(call.Arg<Hash256>(), call.Arg<BlockTreeLookupOptions>(), call.Arg<ulong?>()));
+        blockTree.Head.Returns(harness.Blocks["a3"]);
         await using PbtBalFollower follower = harness.CreateFollower(blockTree, harness.Fetcher, harness.Store);
         follower.Start();
-        follower.Add(harness.Blocks["a3"].Header);
 
         // Start reads the finality once to decide on flushing flat; each replay attempt reads it again.
         Assert.That(() => blockTree.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IBlockTree.FindFinalizedHeader)),
@@ -204,15 +208,15 @@ public class MigrationBalFollowerTests
         BlockHeader child = EmptyBalChild(harness.Blocks["anchor"].Header, 12);
         harness.AddCanonical(new Block(child), EmptyBal);
 
-        Assert.That(await harness.Follower.Follow(child, default), Is.True, harness.Follower.Error);
+        harness.Follower.Start();
 
+        Assert.That(() => harness.Follower.Cursor?.Hash, Is.EqualTo(child.Hash).After(10_000, 50));
         Hash256 anchorRoot = Eip8347FixtureState.PbtRoot("anchor");
         using (Assert.EnterMultipleScope())
         {
             Assert.That(harness.TreeRoot(child), Is.EqualTo(anchorRoot));
             Assert.That(harness.TreeRoot(child), Is.Not.EqualTo(child.StateRoot));
-            Assert.That(harness.Follower.Cursor!.Hash, Is.EqualTo(child.Hash));
-            Assert.That(harness.Follower.Cursor.TreeRoot, Is.EqualTo(anchorRoot));
+            Assert.That(harness.Follower.Cursor!.TreeRoot, Is.EqualTo(anchorRoot));
         }
     }
 
@@ -234,6 +238,9 @@ public class MigrationBalFollowerTests
             .WithBlockAccessListHash(Keccak.Compute(EmptyBal)).TestObject;
 
     private static bool HasState(Harness harness, string name) => harness.Manager.HasStateForBlock(new StateId(harness.Blocks[name].Header));
+
+    private static void WaitForCursor(Harness harness, string name) =>
+        Assert.That(() => harness.Follower.Cursor?.Hash, Is.EqualTo(harness.Blocks[name].Hash).After(10_000, 50), name);
 
     private static void AssertAbsent(Harness harness, params string[] names)
     {
@@ -292,19 +299,13 @@ public class MigrationBalFollowerTests
                 _blockTree.SuggestBlock(Blocks[name]);
                 if (name != "anchor") RestoreBal(name);
             }
-            Canonical("a");
+            SelectHead("a5");
             Open();
         }
 
-        public void Canonical(string branch)
-        {
-            string[] names = branch == "a" ? ["anchor", "a1", "a2", "a3", "a4", "a5"] : ["anchor", "a1", "b2", "b3", "b4", "b5", "b6"];
-            foreach (string name in names)
-            {
-                Block block = Blocks[name];
-                _blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: [block]);
-            }
-        }
+        /// <summary>Moves the head to fixture block <paramref name="name"/>, making its ancestry canonical.</summary>
+        public void SelectHead(string name) =>
+            _blockTree.TryUpdateMainChain(Blocks[name].Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: [Blocks[name]]);
 
         public ISpecProvider SpecProvider => _container.Resolve<ISpecProvider>();
         public IBlockTree BlockTree => _blockTree;
@@ -343,10 +344,24 @@ public class MigrationBalFollowerTests
             Follower = CreateFollower(_blockTree, _fetcher, _observedStore);
         }
 
-        private void Close() => _pbt.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        private void Close()
+        {
+            Follower.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            _pbt.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
 
         public PbtBalFollower CreateFollower(IBlockTree blockTree, BalFetcher fetcher, IBlockAccessListStore store) =>
             new(blockTree, fetcher, store, _pbt.Manager, _pbt.PersistenceManager, Replay, SpecProvider, Substitute.For<IFlatDbManager>(), LimboLogs.Instance);
+
+        public MerkleShadowFollower CreateMerkleShadowFollower() =>
+            new(_blockTree, _container.Resolve<FlatWorldStateManager>(), Follower, SpecProvider, LimboLogs.Instance);
+
+        /// <summary>Commits the chain spec's genesis state to flat, where the Merkle shadow follower starts its replay.</summary>
+        public void CommitFlatGenesis()
+        {
+            using ILifetimeScope scope = _container.BeginLifetimeScope(builder => builder.AddSingleton<IWorldStateScopeProvider>(_container.Resolve<FlatWorldStateManager>().GlobalWorldState));
+            using (scope.Resolve<IWorldState>().BeginScope(null)) scope.Resolve<IGenesisBuilder>().Build();
+        }
 
         public async Task Publish()
         {

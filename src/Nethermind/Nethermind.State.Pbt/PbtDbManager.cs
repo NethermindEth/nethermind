@@ -92,7 +92,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         catch (StateNotRetainedException) { return null; }
     }
 
-    public PbtReadOnlySnapshotBundle GatherReadOnlyBundle(in StateId stateId)
+    private PbtReadOnlySnapshotBundle GatherReadOnlyBundle(in StateId stateId)
     {
         if (stateId == StateId.PreGenesis) return new(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance, _recordDetailedMetrics, new PbtPersistedSnapshotList(0), _groupRecordBuffer.PinAll(), slotFilterBitsPerKey: 0);
         long started = 0;

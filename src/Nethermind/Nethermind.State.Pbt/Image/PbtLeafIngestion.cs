@@ -118,7 +118,7 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
     /// section ends. The storage section is staged only after every bytecode is written.
     /// </remarks>
     /// <returns>The staged accounts and slots.</returns>
-    public static (ulong Accounts, ulong Slots) Stage(LogicalBatch batch, IEnumerator<RebuildEntry> leaves,
+    private static (ulong Accounts, ulong Slots) Stage(LogicalBatch batch, IEnumerator<RebuildEntry> leaves,
         PbtCodeReassembly codes, CancellationToken cancellationToken)
     {
         ulong accounts = 0;
@@ -272,7 +272,7 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
     /// <summary>Compiles staged writes into no-WAL batches on the caller's thread and writes them on parallel flushers.</summary>
     /// <remarks>Staged keys are unique, so the order the flushers write in does not matter. Nothing is durable until
     /// <see cref="Commit"/> flushes the write buffers; the caller wipes an interrupted staging before retrying.</remarks>
-    public sealed class LogicalBatch : IDisposable
+    private sealed class LogicalBatch : IDisposable
     {
         private readonly PbtRocksDbPersistence _target;
         private readonly CancellationTokenSource _cancellation;

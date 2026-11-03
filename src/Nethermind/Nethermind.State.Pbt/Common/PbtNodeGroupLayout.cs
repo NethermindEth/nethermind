@@ -9,9 +9,9 @@ namespace Nethermind.State.Pbt.Common;
 public static class PbtNodeGroupLayout
 {
     /// <summary>Account groups keyed at or above this depth are top groups: the group levels down to five bits above the depth-32 dense band.</summary>
-    public const int AccountTopDepth = 27;
+    private const int AccountTopDepth = 27;
     /// <summary>Code and storage groups keyed at or above this depth are top groups: every group keyed shorter than zone and address hash.</summary>
-    public const int StemTopDepth = 261;
+    private const int StemTopDepth = 261;
 
     /// <summary>Whether <paramref name="groupKey"/> is a top group, the root included.</summary>
     public static bool IsTopGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> =>

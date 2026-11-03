@@ -49,20 +49,9 @@ public static class Eip8297KeyDerivation
         ? (PbtVariableTreeKey)HeaderStorageKey(addressHash, slot)
         : (PbtVariableTreeKey)StorageKey(address32, addressHash, slot);
 
-    /// <summary>The storage-zone key of overflow slot <paramref name="slot"/>; header slots derive <see cref="HeaderStorageKey"/> instead.</summary>
-    public static PbtStoragePath StorageKey(ReadOnlySpan<byte> address32, in UInt256 slot)
-    {
-        ThrowIfHeaderSlot(slot);
-        // The address hash and the suffix hash are independent, so both run in one two-lane call.
-        Span<byte> suffixInput = stackalloc byte[64];
-        WriteSuffixInput(address32, slot, suffixInput);
-        Blake3Hash.HashTwo(address32, suffixInput, out ValueHash256 addressHash, out ValueHash256 suffixHash);
-        return StorageKey(addressHash, suffixHash, slot);
-    }
-
     /// <summary>
-    /// <see cref="StorageKey(ReadOnlySpan{byte}, in UInt256)"/> reusing a precomputed address hash, so a run of
-    /// slots for one address pays only the per-tree-index suffix hash.
+    /// The storage-zone key of overflow slot <paramref name="slot"/> reusing a precomputed address hash, so a run of
+    /// slots for one address pays only the per-tree-index suffix hash; header slots derive <see cref="HeaderStorageKey"/> instead.
     /// </summary>
     public static PbtStoragePath StorageKey(ReadOnlySpan<byte> address32, in ValueHash256 addressHash, in UInt256 slot)
     {

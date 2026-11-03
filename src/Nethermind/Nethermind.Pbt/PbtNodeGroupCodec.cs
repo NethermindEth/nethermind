@@ -38,16 +38,13 @@ public static class PbtNodeGroupCodec
     private const int DescendantWidthLength = 1;
 
     /// <summary>The number of bytes in the descendant mask that ends the footer.</summary>
-    public const int DescendantMaskLength = sizeof(byte);
+    private const int DescendantMaskLength = sizeof(byte);
 
     /// <summary>The number of bytes in the availability bitmap.</summary>
-    public const int AvailabilityLength = sizeof(ushort);
-
-    /// <summary>The maximum number of bytes in the packed offset, availability and descendant-size footer.</summary>
-    public const int MaxTrailerLength = PbtThreeLevelGroupGeometry.PositionCount * sizeof(ushort) + AvailabilityLength + PbtThreeLevelGroupGeometry.BoundarySlots * MaxDescendantBytesLength + DescendantWidthLength + DescendantMaskLength;
+    private const int AvailabilityLength = sizeof(ushort);
 
     /// <summary>The largest descendant size a 48-bit field can hold.</summary>
-    public const long MaxDescendantBytes = (1L << (8 * MaxDescendantBytesLength)) - 1;
+    private const long MaxDescendantBytes = (1L << (8 * MaxDescendantBytesLength)) - 1;
 
     /// <summary>The largest payload a group may take, so that a persisted group fits a single blob chunk.</summary>
     public const int MaxPayloadLength = 32 * 1024;

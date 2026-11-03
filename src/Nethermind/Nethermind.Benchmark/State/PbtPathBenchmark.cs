@@ -70,7 +70,7 @@ public class PbtPathDerivationBenchmark
     public PbtPath Account() => Eip8297KeyDerivation.AccountKey(Blake3Hash.Hash(_address), 0);
 
     [Benchmark]
-    public PbtStoragePath Storage() => Eip8297KeyDerivation.StorageKey(_address, _slot);
+    public PbtStoragePath Storage() => Eip8297KeyDerivation.StorageKey(_address, Blake3Hash.Hash(_address), _slot);
 }
 
 [MemoryDiagnoser]

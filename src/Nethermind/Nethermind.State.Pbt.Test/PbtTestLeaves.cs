@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -76,13 +75,6 @@ internal static class PbtTestLeaves
         return accounts;
     }
 
-    /// <summary>A snapshot root calculation that consumes the written leaves and claims <paramref name="root"/> whatever they hold.</summary>
-    public static Func<IEnumerable<RebuildEntry>, ValueHash256> Claiming(ValueHash256 root) => leaves =>
-    {
-        foreach (RebuildEntry _ in leaves) { }
-        return root;
-    };
-
     /// <summary>A database factory that places every database in <paramref name="directory"/>.</summary>
     public static IDbFactory ScratchDbFactory(string directory)
     {
@@ -92,5 +84,5 @@ internal static class PbtTestLeaves
     }
 
     public static PbtLeafIngestion LeafIngestion(PbtRocksDbPersistence target, IPbtConfig config, string scratchDirectory) =>
-        new(target, new PbtRebuilder(target, config, config.ImportConcurrency, LimboLogs.Instance), ScratchDbFactory(scratchDirectory), config, LimboLogs.Instance);
+        new(target, new PbtRebuilder(target, config, LimboLogs.Instance), ScratchDbFactory(scratchDirectory), config, LimboLogs.Instance);
 }

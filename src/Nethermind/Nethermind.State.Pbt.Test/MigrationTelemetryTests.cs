@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -23,9 +24,10 @@ public class MigrationTelemetryTests
     public async Task Progress_and_shadow_roots_follow_the_native_pbt_state_and_finality()
     {
         using MigrationBalFollowerTests.Harness harness = new();
-        SelectHead(harness, "a3");
-        MerkleShadowStub merkle = new();
+        harness.CommitFlatGenesis();
+        harness.SelectHead("a3");
         await using PbtMigrationImport import = new(_ => Task.CompletedTask, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
+        await using MerkleShadowFollower merkle = harness.CreateMerkleShadowFollower();
         MigrationTelemetry telemetry = CreateTelemetry(harness, import, merkle);
         using (Assert.EnterMultipleScope())
         {
@@ -33,44 +35,44 @@ public class MigrationTelemetryTests
             Assert.That(telemetry.GetShadowRoot(harness.Blocks["anchor"].Hash!), Is.Null, "no state before the anchor import");
         }
         await harness.Publish();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(telemetry.GetShadowRoot(harness.Blocks["anchor"].Hash!), Is.EqualTo(Eip8347FixtureState.PbtRoot("anchor")));
-            Assert.That(await harness.Follower.Follow(harness.Blocks["a2"].Header, default), Is.True, harness.Follower.Error);
-        }
+        Assert.That(telemetry.GetShadowRoot(harness.Blocks["anchor"].Hash!), Is.EqualTo(Eip8347FixtureState.PbtRoot("anchor")));
 
-        MigrationProgressForRpc following = telemetry.GetProgress();
+        // Holding the replay at a3's BAL leaves the follower behind the head.
+        using ManualResetEventSlim a3Released = new();
+        harness.OnRead = hash =>
+        {
+            if (hash == harness.Blocks["a3"].Hash) a3Released.Wait(10_000);
+        };
+        harness.Follower.Start();
+        merkle.Start();
+        MigrationDirectionForRpc following = new("following", 2, harness.Blocks["a2"].Hash!, Eip8347FixtureState.PbtRoot("a2"), "");
+        Assert.That(() => telemetry.GetProgress(), Is.EqualTo(new MigrationProgressForRpc("running", following, null)).After(10_000, 50));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(following.Phase, Is.EqualTo("running"));
-            Assert.That(following.Binary, Is.EqualTo(new MigrationDirectionForRpc("following", 2, harness.Blocks["a2"].Hash!, Eip8347FixtureState.PbtRoot("a2"), "")));
-            Assert.That(following.Merkle, Is.Null);
             Assert.That(telemetry.GetShadowRoot(harness.Blocks["a2"].Hash!), Is.EqualTo(Eip8347FixtureState.PbtRoot("a2")));
             Assert.That(telemetry.GetShadowRoot(harness.Blocks["a4"].Hash!), Is.Null, "the post-activation shadow comes from the Merkle follower, which has not replayed yet");
             Assert.That(telemetry.GetShadowRoot(harness.Blocks["a5"].Hash!), Is.Null, "known header without retained state");
             Assert.That(telemetry.GetShadowRoot(Hash256.Zero), Is.Null);
         }
 
-        Assert.That(await harness.Follower.Follow(harness.Blocks["a3"].Header, default), Is.True, harness.Follower.Error);
-        MigrationProgressForRpc synced = telemetry.GetProgress();
-        Assert.That(synced.Binary!.Phase, Is.EqualTo("synced"));
-        AssertFixture("prefork", synced);
+        a3Released.Set();
+        Assert.That(() => telemetry.GetProgress().Binary?.Phase, Is.EqualTo("synced").After(10_000, 50));
+        AssertFixture("prefork", telemetry.GetProgress());
 
-        SelectHead(harness, "a4");
+        harness.SelectHead("a4");
         Hash256 merkleRoot = new(harness.Metadata["a4"].GetProperty("mptRoot").GetString()!);
-        merkle.Cursor = new PbtFollowerCursor(4, harness.Blocks["a4"].Hash!, merkleRoot);
+        Assert.That(() => telemetry.GetProgress().Merkle, Is.EqualTo(new MigrationDirectionForRpc("synced", 4, harness.Blocks["a4"].Hash!, merkleRoot, "")).After(10_000, 50));
         MigrationProgressForRpc transition = telemetry.GetProgress();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(transition.Binary, Is.EqualTo(new MigrationDirectionForRpc("parked", 3, harness.Blocks["a3"].Hash!, Eip8347FixtureState.PbtRoot("a3"), "")));
-            Assert.That(transition.Merkle, Is.EqualTo(new MigrationDirectionForRpc("synced", 4, harness.Blocks["a4"].Hash!, merkleRoot, "")));
             Assert.That(telemetry.GetShadowRoot(harness.Blocks["a4"].Hash!), Is.EqualTo(merkleRoot));
             Assert.That(telemetry.GetShadowRoot(harness.Blocks["a3"].Hash!), Is.EqualTo(Eip8347FixtureState.PbtRoot("a3")), "pre-activation shadow stays the PBT root");
         }
         AssertFixture("transition", transition);
-        merkle.Error = "no BAL";
-        SelectHead(harness, "a5");
-        Assert.That(telemetry.GetProgress().Merkle, Is.EqualTo(new MigrationDirectionForRpc("stalled", 4, harness.Blocks["a4"].Hash!, merkleRoot, "no BAL")));
+        harness.Store.Delete(harness.Blocks["a5"].Number, harness.Blocks["a5"].Hash!);
+        harness.SelectHead("a5");
+        Assert.That(() => telemetry.GetProgress().Merkle, Is.EqualTo(new MigrationDirectionForRpc("stalled", 4, harness.Blocks["a4"].Hash!, merkleRoot, StalledError)).After(10_000, 50));
 
         harness.BlockTree.ForkChoiceUpdated(harness.Blocks["a4"].Hash!, Hash256.Zero);
         Assert.That(telemetry.GetProgress(), Is.EqualTo(new MigrationProgressForRpc("done", null, null)));
@@ -81,23 +83,17 @@ public class MigrationTelemetryTests
     public async Task Lagging_progress_reports_stall_without_inventing_cursor_or_root()
     {
         using MigrationBalFollowerTests.Harness harness = new();
-        SelectHead(harness, "a1");
+        harness.SelectHead("a1");
         await harness.Publish();
-        Assert.That(await harness.Follower.Follow(harness.Blocks["anchor"].Header, default), Is.True, harness.Follower.Error);
-        await using PbtMigrationImport import = new(_ => Task.CompletedTask, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
-        MigrationTelemetry telemetry = CreateTelemetry(harness, import, new MerkleShadowStub());
-        Assert.That(telemetry.GetProgress().Binary!.Phase, Is.EqualTo("following"));
         harness.Store.Delete(harness.Blocks["a1"].Number, harness.Blocks["a1"].Hash!);
-        Assert.That(await harness.Follower.Follow(harness.Blocks["a1"].Header, default), Is.False);
-        MigrationProgressForRpc stalled = telemetry.GetProgress();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(stalled.Binary!.Phase, Is.EqualTo("stalled"));
-            Assert.That(stalled.Binary.CursorHash, Is.EqualTo(harness.Blocks["anchor"].Hash));
-            Assert.That(stalled.Binary.ShadowRoot, Is.EqualTo(Eip8347FixtureState.PbtRoot("anchor")));
-            Assert.That(stalled.Binary.Error, Is.Not.Empty);
-            Assert.That(stalled.Merkle, Is.Null);
-        }
+        await using PbtMigrationImport import = new(_ => Task.CompletedTask, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
+        await using MerkleShadowFollower merkle = harness.CreateMerkleShadowFollower();
+        MigrationTelemetry telemetry = CreateTelemetry(harness, import, merkle);
+
+        harness.Follower.Start();
+
+        MigrationProgressForRpc stalled = new("running", new MigrationDirectionForRpc("stalled", 0, harness.Blocks["anchor"].Hash!, Eip8347FixtureState.PbtRoot("anchor"), StalledError), null);
+        Assert.That(() => telemetry.GetProgress(), Is.EqualTo(stalled).After(10_000, 50));
         AssertFixture("stalled", stalled);
     }
 
@@ -113,7 +109,7 @@ public class MigrationTelemetryTests
     public async Task Background_import_reports_importing_then_its_outcome(Exception? failure, int? exitCode)
     {
         using MigrationBalFollowerTests.Harness harness = new();
-        SelectHead(harness, "a1");
+        harness.SelectHead("a1");
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
         await using PbtMigrationImport import = new(async _ =>
@@ -121,12 +117,13 @@ public class MigrationTelemetryTests
             await release.Task;
             if (failure is not null) throw failure;
         }, exitSource, LimboLogs.Instance);
-        MigrationTelemetry telemetry = CreateTelemetry(harness, import, new MerkleShadowStub());
+        await using MerkleShadowFollower merkle = harness.CreateMerkleShadowFollower();
+        MigrationTelemetry telemetry = CreateTelemetry(harness, import, merkle);
 
         import.Start();
         Assert.That(telemetry.GetProgress(), Is.EqualTo(new MigrationProgressForRpc("importing", null, null)));
         release.SetResult();
-        await import.Completion;
+        Assert.That(() => import.IsPending, Is.False.After(10_000, 50));
 
         using (Assert.EnterMultipleScope())
         {
@@ -137,19 +134,10 @@ public class MigrationTelemetryTests
         else exitSource.Received(1).Exit(exitCode.Value);
     }
 
-    private static MigrationTelemetry CreateTelemetry(MigrationBalFollowerTests.Harness harness, PbtMigrationImport import, IMerkleShadowFollower merkle) =>
+    private const string StalledError = "BAL range unavailable or canonical ancestry changed.";
+
+    private static MigrationTelemetry CreateTelemetry(MigrationBalFollowerTests.Harness harness, PbtMigrationImport import, MerkleShadowFollower merkle) =>
         new(harness.BlockTree, harness.Manager, import, harness.Follower, merkle, harness.SpecProvider);
-
-    // The harness selects a5 (post-activation); the phases under test depend on where the head sits.
-    private static void SelectHead(MigrationBalFollowerTests.Harness harness, string name) =>
-        harness.BlockTree.TryUpdateMainChain(harness.Blocks[name].Header, true, true, [harness.Blocks[name]]);
-
-    private sealed class MerkleShadowStub : IMerkleShadowFollower
-    {
-        public PbtFollowerCursor? Cursor { get; set; }
-        public string? Error { get; set; }
-        public Hash256? GetShadowRoot(Hash256 blockHash) => Cursor?.Hash == blockHash ? Cursor.TreeRoot : null;
-    }
 
     private static void AssertFixture(string name, MigrationProgressForRpc progress)
     {

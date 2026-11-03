@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -105,11 +104,7 @@ public class MigrationLifecycleE2ETests
 
         // A request spanning activation needs PBT at the activation parent before main processing reaches it; the BAL
         // follower replays that non-canonical, not yet processed branch from its stored BALs.
-        void ReplayIntoPbt(string activationParent)
-        {
-            container.Resolve<PbtBalFollower>().Add(blocks[activationParent].Header);
-            harness.WaitForPbt(blocks[activationParent].Header);
-        }
+        void ReplayIntoPbt(string activationParent) => harness.WaitForPbt(blocks[activationParent].Header);
 
         void Select(string name, Hash256 finalized)
         {
@@ -188,7 +183,7 @@ public class MigrationLifecycleE2ETests
         Assert.That(receipts, Has.Length.EqualTo(1));
         Assert.That(receipts[0].StatusCode, Is.EqualTo(StatusCode.Success), "absence must follow successful SELFDESTRUCT, not failed creation");
         harness.Tree.TryUpdateMainChain(produced.Header, true, true, [produced]);
-        Assert.That(await harness.Container.Resolve<PbtBalFollower>().Follow(produced.Header, CancellationToken.None), Is.True);
+        harness.WaitForPbt(produced.Header);
         List<IStateReader> commitments = [harness.Container.Resolve<PbtStateReader>()];
         if (!afterActivation) commitments.Add(harness.Container.Resolve<FlatStateReader>());
         foreach (IStateReader commitment in commitments)

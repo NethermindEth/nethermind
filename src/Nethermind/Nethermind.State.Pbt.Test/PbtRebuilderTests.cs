@@ -29,7 +29,7 @@ namespace Nethermind.State.Pbt.Test;
 [TestFixture]
 public class PbtRebuilderTests
 {
-    private PbtConfig Config => new();
+    private PbtConfig Config => new() { ImportConcurrency = 0 };
 
     private static List<RebuildEntry> BuildFixture(Dictionary<string, byte[]> model, PbtRocksDbPersistence target)
     {
@@ -77,13 +77,13 @@ public class PbtRebuilderTests
 
     private static ValueHash256 Rebuild(List<RebuildEntry> leaves, PbtRocksDbPersistence target, ILogManager logManager, int windowSize)
     {
-        PbtConfig config = new();
+        PbtConfig config = new() { ImportConcurrency = 0 };
         using IEnumerator<RebuildEntry> source = leaves.GetEnumerator();
-        return new PbtRebuilder(target, config, config.FoldConcurrency, logManager).Rebuild(source, windowSize, CancellationToken.None);
+        return new PbtRebuilder(target, config, logManager).Rebuild(source, windowSize, CancellationToken.None);
     }
 
     [Test]
-    public void Rebuild_matches_reference_root_across_windows([Values(0, 1, 3)] int windowSize)
+    public void Rebuild_matches_reference_root_across_windows([Values(1, 3, PbtSortedLeafFold.DefaultWindowSize)] int windowSize)
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtConfig config = Config;
@@ -126,7 +126,7 @@ public class PbtRebuilderTests
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db, Config, NullTrieNodeLog.Instance);
-        ValueHash256 root = Rebuild([], target, LimboLogs.Instance, 0);
+        ValueHash256 root = Rebuild([], target, LimboLogs.Instance, 1);
 
         Assert.That(root, Is.EqualTo(default(ValueHash256)), "an empty tree is 32 zero bytes");
     }
@@ -139,7 +139,7 @@ public class PbtRebuilderTests
         using BlockingCollection<RebuildEntry> pending = new();
         using CancellationTokenSource cancellation = new();
         DrainedLeafEnumerator source = new(pending, windowSize, cancellation.Token);
-        Task<ValueHash256> rebuilding = Task.Run(() => new PbtRebuilder(target, Config, Config.FoldConcurrency, LimboLogs.Instance)
+        Task<ValueHash256> rebuilding = Task.Run(() => new PbtRebuilder(target, Config, LimboLogs.Instance)
             .Rebuild(source, windowSize, cancellation.Token));
         using PbtNodeGroupStore expectedStore = new();
         ValueHash256 expectedRoot = default;

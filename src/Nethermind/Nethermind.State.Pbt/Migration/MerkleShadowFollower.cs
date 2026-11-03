@@ -12,17 +12,6 @@ using Nethermind.State.Flat.ScopeProvider;
 
 namespace Nethermind.State.Pbt.Migration;
 
-/// <summary>The Merkle side of the migration after activation: the MPT roots computed for post-activation blocks.</summary>
-public interface IMerkleShadowFollower
-{
-    /// <summary>The canonical block the MPT has been brought up to, with its MPT root; null before the first replay.</summary>
-    PbtFollowerCursor? Cursor { get; }
-    string? Error { get; }
-
-    /// <summary>The MPT root the follower computed for the block, or null when it has not replayed it.</summary>
-    Hash256? GetShadowRoot(Hash256 blockHash);
-}
-
 /// <summary>Keeps the MPT current through the EIP-8347 transition window by replaying canonical BALs into flat.</summary>
 /// <remarks>
 /// EIP-8347 requires both trees until the activation is finalized. Main processing commits only to PBT after
@@ -37,7 +26,7 @@ public sealed class MerkleShadowFollower(
     FlatWorldStateManager flat,
     PbtBalFollower balAcquisition,
     ISpecProvider specProvider,
-    ILogManager logManager) : IMerkleShadowFollower, IAsyncDisposable
+    ILogManager logManager) : IAsyncDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<MerkleShadowFollower>();
     private readonly SemaphoreSlim _run = new(1, 1);
@@ -50,8 +39,11 @@ public sealed class MerkleShadowFollower(
     private PbtFollowerCursor? _cursor;
 
     public string? Error => Volatile.Read(ref _error);
+
+    /// <summary>The canonical block the MPT has been brought up to, with its MPT root; null before the first replay.</summary>
     public PbtFollowerCursor? Cursor => Volatile.Read(ref _cursor);
 
+    /// <summary>The MPT root the follower computed for the block, or null when it has not replayed it.</summary>
     public Hash256? GetShadowRoot(Hash256 blockHash) => _shadowRoots.TryGetValue(blockHash, out Hash256? root) ? root : null;
 
     public void Start()

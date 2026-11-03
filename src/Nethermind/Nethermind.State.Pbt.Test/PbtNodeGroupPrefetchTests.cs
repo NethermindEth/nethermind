@@ -196,7 +196,7 @@ public class PbtNodeGroupPrefetchTests
     private static byte[]? Persisted(PbtStorageNodePath path) => _payloads.Value.GetValueOrDefault(path);
 
     private static bool IsUnderStorageOf(PbtStorageNodePath path, Address address) =>
-        path.BitDepth >= PbtNodeGroupLayout.StemTopDepth
+        path.BitDepth >= 261
         && path.ToPathArray().AsSpan(0, 33).SequenceEqual([Eip8297KeyDerivation.StorageZone, .. AddressHash(address).Bytes]);
 
     private static ValueHash256 AddressHash(Address address) => Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes);

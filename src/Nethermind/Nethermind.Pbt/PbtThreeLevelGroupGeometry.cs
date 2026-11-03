@@ -31,7 +31,7 @@ public static class PbtThreeLevelGroupGeometry
     public const int MaxPathDepth = PbtVariableTreeKey.MaxLength * 8;
 
     /// <summary>The greatest depth at which a group key can occur.</summary>
-    public const int MaxGroupDepth = MaxPathDepth - LevelsPerGroup;
+    private const int MaxGroupDepth = MaxPathDepth - LevelsPerGroup;
 
     /// <summary>Returns whether <paramref name="depth"/> is a valid group depth.</summary>
     public static bool IsGroupDepth(int depth) =>

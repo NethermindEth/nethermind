@@ -115,6 +115,36 @@ public static class SlotRun
         bytes[key.Length - 1] = last;
         return TKey.Create(bytes[..key.Length]);
     }
+
+    private sealed class EmptySlotRun() : PackedSlotRun(0)
+    {
+        public override void ReturnSelf() { }
+    }
+
+    private sealed class SlotRun1() : PackedSlotRun(1)
+    {
+        public override void ReturnSelf() => StaticPool<SlotRun1>.Return(this);
+    }
+
+    private sealed class SlotRun2() : PackedSlotRun(2)
+    {
+        public override void ReturnSelf() => StaticPool<SlotRun2>.Return(this);
+    }
+
+    private sealed class SlotRun4() : PackedSlotRun(4)
+    {
+        public override void ReturnSelf() => StaticPool<SlotRun4>.Return(this);
+    }
+
+    private sealed class SlotRun8() : PackedSlotRun(8)
+    {
+        public override void ReturnSelf() => StaticPool<SlotRun8>.Return(this);
+    }
+
+    private sealed class SlotRun16() : PackedSlotRun(16)
+    {
+        public override void ReturnSelf() => StaticPool<SlotRun16>.Return(this);
+    }
 }
 
 /// <summary>
@@ -216,34 +246,4 @@ public abstract class PackedSlotRun(int capacity) : IResettable
     void IResettable.Reset() => _mask = 0;
 
     public abstract void ReturnSelf();
-}
-
-public sealed class EmptySlotRun() : PackedSlotRun(0)
-{
-    public override void ReturnSelf() { }
-}
-
-public sealed class SlotRun1() : PackedSlotRun(1)
-{
-    public override void ReturnSelf() => StaticPool<SlotRun1>.Return(this);
-}
-
-public sealed class SlotRun2() : PackedSlotRun(2)
-{
-    public override void ReturnSelf() => StaticPool<SlotRun2>.Return(this);
-}
-
-public sealed class SlotRun4() : PackedSlotRun(4)
-{
-    public override void ReturnSelf() => StaticPool<SlotRun4>.Return(this);
-}
-
-public sealed class SlotRun8() : PackedSlotRun(8)
-{
-    public override void ReturnSelf() => StaticPool<SlotRun8>.Return(this);
-}
-
-public sealed class SlotRun16() : PackedSlotRun(16)
-{
-    public override void ReturnSelf() => StaticPool<SlotRun16>.Return(this);
 }

@@ -29,8 +29,6 @@ public sealed class PbtPersistedSnapshot : SmallRefCountingDisposable
     public ValueHash256 TreeRoot { get; }
     public SnapshotTier Tier { get; }
     public SnapshotLocation Location { get; }
-    /// <summary>The block span from <see cref="From"/> to <see cref="To"/>; with <see cref="To"/>, the snapshot's catalog key.</summary>
-    public long Depth => unchecked((long)(To.BlockNumber - From.BlockNumber));
     public long Size => _reservation.Size;
     public RefCountedBloomFilter BloomRef => _bloom;
     public ArenaReservation Reservation => _reservation;

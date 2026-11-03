@@ -204,7 +204,7 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
             Assert.That(bundle.GetSlot(TestItem.AddressA, 1000), Is.EqualTo((UInt256)3));
         Assert.That(Flat.Metrics.InMemorySlotFilterBuilds - builds, Is.EqualTo(bitsPerKey > 0 ? 1 : 0));
 
-        using PbtReadOnlySnapshotBundle shared = ctx.Manager.GatherReadOnlyBundle(state);
+        using PbtReadOnlySnapshotBundle shared = ctx.Manager.TryGatherReadOnlyBundle(state)!;
         Assert.That(shared.MayFilterSlots, Is.EqualTo(bitsPerKey > 0));
     }
 

@@ -119,10 +119,10 @@ public class PbtRootBuildBenchmark
     private ValueHash256 Rebuild()
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtConfig config = new();
+        PbtConfig config = new() { ImportConcurrency = 0 };
         PbtRocksDbPersistence target = new(db, config, NullTrieNodeLog.Instance);
         using IEnumerator<RebuildEntry> leaves = ((IEnumerable<RebuildEntry>)_entries).GetEnumerator();
-        return new PbtRebuilder(target, config, Environment.ProcessorCount, LimboLogs.Instance).Rebuild(leaves, WindowSize, CancellationToken.None);
+        return new PbtRebuilder(target, config, LimboLogs.Instance).Rebuild(leaves, WindowSize, CancellationToken.None);
     }
 
     private ValueHash256 BuildPartitioned()

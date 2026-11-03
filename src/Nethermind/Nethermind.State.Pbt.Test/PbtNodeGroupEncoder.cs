@@ -85,9 +85,7 @@ internal static class PbtNodeGroupEncoder
     public static byte[] Encode<TPath>(TPath groupKey, IReadOnlyList<PbtNodeRecord> nodes, ReadOnlySpan<long> descendantBytes)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        int capacity = PbtNodeGroupCodec.HeaderLength + PbtNodeGroupCodec.MaxTrailerLength;
-        foreach (PbtNodeRecord record in nodes) capacity += record.Encoding.Length;
-        ArrayBufferWriter<byte> writer = new(capacity);
+        ArrayBufferWriter<byte> writer = new();
         Encode(writer, groupKey, nodes, descendantBytes);
         return writer.WrittenSpan.ToArray();
     }

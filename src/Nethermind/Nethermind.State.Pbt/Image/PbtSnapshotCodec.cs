@@ -86,16 +86,13 @@ public static class PbtSnapshotCodec
         if (source.ReadByte() != -1) throw new InvalidDataException("Trailing snapshot bytes.");
     }
 
-    /// <summary>Writes the snapshot of <paramref name="leaves"/> in one pass, claiming the root that
-    /// <paramref name="calculateRoot"/> folds from the same leaves as they are written.</summary>
-    /// <param name="calculateRoot">Must consume every leaf of the stream it is given.</param>
-    public static void Write(Stream destination, IEnumerable<RebuildEntry> leaves,
-        Func<IEnumerable<RebuildEntry>, ValueHash256> calculateRoot, CancellationToken cancellationToken)
+    /// <summary>Writes the snapshot of <paramref name="leaves"/> in one pass, claiming the root folded from the
+    /// same leaves as they are written.</summary>
+    /// <param name="foldConcurrency">Maximum threads, including the calling one, folding the root.</param>
+    public static void Write(Stream destination, IEnumerable<RebuildEntry> leaves, int foldConcurrency, CancellationToken cancellationToken)
     {
         StemWriter writer = new(destination);
-        bool written = false;
-        ValueHash256 root = calculateRoot(Written());
-        if (!written) throw new InvalidOperationException("The root calculation did not consume every snapshot leaf.");
+        ValueHash256 root = PbtSortedLeafFold.CalculateRoot(Written(), PbtSortedLeafFold.DefaultWindowSize, foldConcurrency, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         writer.Finish(root);
 
@@ -110,7 +107,6 @@ public static class PbtSnapshotCodec
                 writer.Add(entry);
                 yield return entry;
             }
-            written = true;
         }
     }
 

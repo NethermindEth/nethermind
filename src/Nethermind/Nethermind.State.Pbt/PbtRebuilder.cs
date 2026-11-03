@@ -11,15 +11,15 @@ using Nethermind.State.Pbt.Persistence;
 namespace Nethermind.State.Pbt;
 
 /// <summary>Rebuilds a canonical EIP-8297 tree in bounded staging windows.</summary>
-public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config, int foldConcurrency, ILogManager logManager)
+public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config, ILogManager logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PbtRebuilder>();
-    private readonly ConcurrencyController _foldQuota = new(foldConcurrency > 0 ? foldConcurrency : Environment.ProcessorCount);
+    private readonly ConcurrencyController _foldQuota = new(config.ImportConcurrency > 0 ? config.ImportConcurrency : Environment.ProcessorCount);
     private readonly FoldFanOut _foldFanOut = new(config.FoldMinOperationsPerWorker, config.FoldLargeSubtreeBytes, config.FoldLargeSubtreeMinOperationsPerWorker);
 
     /// <summary>Folds leaf records into staged tree groups.</summary>
     /// <param name="source">Strictly ascending leaves.</param>
-    /// <param name="windowSize">Maximum received records per update; zero uses 2,000,000 records.</param>
+    /// <param name="windowSize">Maximum received records per update.</param>
     /// <param name="cancellationToken">Cancels consumption and tree updates.</param>
     /// <returns>The completed canonical tree root.</returns>
     public ValueHash256 Rebuild(
@@ -27,8 +27,6 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
         int windowSize,
         CancellationToken cancellationToken)
     {
-        if (windowSize == 0) windowSize = PbtSortedLeafFold.DefaultWindowSize;
-
         long receivedCount = 0;
         long committedWindows = 0;
         ValueHash256 root;

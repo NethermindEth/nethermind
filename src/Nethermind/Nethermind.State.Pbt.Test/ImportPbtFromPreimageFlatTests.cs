@@ -192,13 +192,10 @@ public class ImportPbtFromPreimageFlatTests
         public void StageAndReassemble(List<RebuildEntry> leaves, int concurrency, CancellationToken cancellationToken)
         {
             leaves.Sort(static (left, right) => left.Key.Bytes.SequenceCompareTo(right.Key.Bytes));
-            using PbtCodeReassembly codes = new(Target, _scratch.Path, SortBufferBytes, concurrency, LimboLogs.Instance, cancellationToken);
-            using (PbtLeafIngestion.LogicalBatch batch = new(Target, 1, cancellationToken))
-            {
-                PbtLeafIngestion.Stage(batch, leaves.GetEnumerator(), codes, cancellationToken);
-                batch.Commit();
-            }
-            codes.Complete();
+            PbtConfig config = new() { ImportConcurrency = concurrency, ImportSortBufferBytes = SortBufferBytes };
+            PbtTestLeaves.LeafIngestion(Target, config, _scratch.Path)
+                .Ingest(_ => leaves, new StateId(SourceBlock, Keccak.EmptyTreeHash), expectedRoot: null, static _ => { }, cancellationToken)
+                .GetAwaiter().GetResult();
         }
 
         public void AssertReleased()
@@ -209,8 +206,7 @@ public class ImportPbtFromPreimageFlatTests
                 Assert.That(Db.ActiveCodeWrites, Is.Zero);
                 Assert.That(Db.AccountsVisited, Is.Zero);
                 Assert.That(Db.CodeReads, Is.Zero);
-                Assert.That(Directory.GetFileSystemEntries(_scratch.Path), Is.Empty);
-                Assert.That(Target.IsValid, Is.False, "code reconstruction alone must not publish staging");
+                Assert.That(Directory.GetFiles(_scratch.Path, "*", SearchOption.AllDirectories), Is.Empty);
             }
         }
 
@@ -353,7 +349,7 @@ public class ImportPbtFromPreimageFlatTests
         maximumLengthKey.AsSpan().Fill(0xFF);
         pbtDb.GetColumnDb(PbtColumns.Storages)[maximumLengthKey] = SlotRunTestExtensions.SingleSlotRow(TestItem.KeccakA.Bytes);
 
-        byte[] maximumGroupKey = new PbtStorageNodePath(Bytes.FromHexString(new string('f', 130) + "f8"), PbtThreeLevelGroupGeometry.MaxGroupDepth)
+        byte[] maximumGroupKey = new PbtStorageNodePath(Bytes.FromHexString(new string('f', 130) + "f8"), 525)
             .ToStorageKey(PbtColumns.StorageNodeGroups);
         PbtColumns[] groupColumns = [PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups];
         foreach (PbtColumns column in groupColumns)
@@ -434,12 +430,12 @@ public class ImportPbtFromPreimageFlatTests
             (9, 0, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups),
             (9, 1, PbtColumns.TopNodeGroups, PbtColumns.CodeNodeGroups),
             (9, 0xFF, PbtColumns.TopNodeGroups, PbtColumns.StorageNodeGroups),
-            (PbtNodeGroupLayout.AccountTopDepth, 0x80, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups),
-            (PbtNodeGroupLayout.AccountTopDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup, 0x80, PbtColumns.AccountNodeGroups, PbtColumns.AccountNodeGroups),
-            (PbtNodeGroupLayout.StemTopDepth, 1, PbtColumns.TopNodeGroups, PbtColumns.CodeNodeGroups),
-            (PbtNodeGroupLayout.StemTopDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup, 1, PbtColumns.CodeNodeGroups, PbtColumns.CodeNodeGroups),
-            (PbtNodeGroupLayout.StemTopDepth, 0xFF, PbtColumns.TopNodeGroups, PbtColumns.StorageNodeGroups),
-            (PbtThreeLevelGroupGeometry.MaxGroupDepth, 0xFF, PbtColumns.StorageNodeGroups, PbtColumns.StorageNodeGroups),
+            (27, 0x80, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups),
+            (27 + PbtThreeLevelGroupGeometry.LevelsPerGroup, 0x80, PbtColumns.AccountNodeGroups, PbtColumns.AccountNodeGroups),
+            (261, 1, PbtColumns.TopNodeGroups, PbtColumns.CodeNodeGroups),
+            (261 + PbtThreeLevelGroupGeometry.LevelsPerGroup, 1, PbtColumns.CodeNodeGroups, PbtColumns.CodeNodeGroups),
+            (261, 0xFF, PbtColumns.TopNodeGroups, PbtColumns.StorageNodeGroups),
+            (525, 0xFF, PbtColumns.StorageNodeGroups, PbtColumns.StorageNodeGroups),
         ];
         foreach ((int depth, byte prefix, PbtColumns column, PbtColumns partition) in groups)
         {
@@ -662,8 +658,7 @@ public class ImportPbtFromPreimageFlatTests
             .AddSingleton<IDbFactory>(PbtTestLeaves.ScratchDbFactory(Path.GetTempPath()))
             .AddSingleton<IPbtConfig>(config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
-            .AddSingleton<PbtRebuilder, PbtRocksDbPersistence, IPbtConfig, ILogManager>(
-                (target, pbtConfig, logManager) => new PbtRebuilder(target, pbtConfig, pbtConfig.ImportConcurrency, logManager))
+            .AddSingleton<PbtRebuilder>()
             .AddSingleton<PbtLeafIngestion>();
         builder.RegisterType<ImportPbtFromPreimageFlat>().WithAttributeFiltering();
         using IContainer container = builder.Build();

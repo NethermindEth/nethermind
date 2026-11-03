@@ -35,24 +35,23 @@ public class SlotRunTests
     }
 
     // An empty run is a row deletion and is never encoded.
-    [TestCase(0, typeof(EmptySlotRun), null)]
-    [TestCase(1, typeof(SlotRun1), 0x00)]
-    [TestCase(2, typeof(SlotRun2), 0x01)]
-    [TestCase(3, typeof(SlotRun4), 0x02)]
-    [TestCase(4, typeof(SlotRun4), 0x02)]
-    [TestCase(5, typeof(SlotRun8), 0x03)]
-    [TestCase(7, typeof(SlotRun8), 0x03)]
-    [TestCase(8, typeof(SlotRun8), 0x03)]
-    [TestCase(9, typeof(SlotRun16), 0x04)]
-    [TestCase(16, typeof(SlotRun16), 0x04)]
-    public void Runs_are_immutable_whole_and_tiered_by_occupancy(int count, Type tier, byte? type)
+    [TestCase(0, null)]
+    [TestCase(1, 0x00)]
+    [TestCase(2, 0x01)]
+    [TestCase(3, 0x02)]
+    [TestCase(4, 0x02)]
+    [TestCase(5, 0x03)]
+    [TestCase(7, 0x03)]
+    [TestCase(8, 0x03)]
+    [TestCase(9, 0x04)]
+    [TestCase(16, 0x04)]
+    public void Runs_are_immutable_whole_and_tiered_by_occupancy(int count, byte? type)
     {
         PackedSlotRun run = Build(count, out ushort mask);
         PackedSlotRun cleared = run.With(SlotRun.Width - 1, default);
         PackedSlotRun clone = run.Clone();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(run, Is.TypeOf(tier));
             Assert.That(run.Count, Is.EqualTo(count));
             Assert.That(Enumerable.Range(0, SlotRun.Width).Select(run.Get), Is.EqualTo(Enumerable.Range(0, SlotRun.Width).Select(index => (mask & (1 << index)) == 0 ? default : Word(index))));
             Assert.That(run.Count, Is.EqualTo(count), "With must not touch its source");

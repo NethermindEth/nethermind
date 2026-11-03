@@ -37,8 +37,7 @@ public class PbtPortableCodecTests
             using MemoryStream snapshotOutput = new();
             using MemoryStream preimageOutput = new();
             PbtArtifactWriter.PbtArtifactDigests digests = new(
-                PbtArtifactWriter.WriteDigested(snapshotOutput, destination => PbtSnapshotCodec.Write(destination, leaves,
-                    written => PbtSortedLeafFold.CalculateRoot(written, PbtSortedLeafFold.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None), CancellationToken.None)),
+                PbtArtifactWriter.WriteDigested(snapshotOutput, destination => PbtSnapshotCodec.Write(destination, leaves, Environment.ProcessorCount, CancellationToken.None)),
                 PbtArtifactWriter.WriteDigested(preimageOutput, destination => PbtPreimageCodec.Write(destination, PbtTestLeaves.ReadPreimages(preimageInput), CancellationToken.None)));
             using (Assert.EnterMultipleScope())
             {
@@ -99,11 +98,11 @@ public class PbtPortableCodecTests
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
 
         using MemoryStream stream = new();
-        PbtSnapshotCodec.Write(stream, leaves, PbtTestLeaves.Claiming(Keccak.Zero.ValueHash256), CancellationToken.None);
+        PbtSnapshotCodec.Write(stream, leaves, Environment.ProcessorCount, CancellationToken.None);
         stream.Position = 0;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(PbtSnapshotCodec.ReadRoot(stream), Is.EqualTo(Keccak.Zero.ValueHash256));
+            Assert.That(PbtSnapshotCodec.ReadRoot(stream), Is.EqualTo(PbtSortedLeafFold.CalculateRoot(leaves, PbtSortedLeafFold.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None)));
             Assert.That(PbtSnapshotCodec.ReadLeaves(stream, CancellationToken.None).ToList(), Is.EqualTo(leaves));
         }
     }
@@ -122,9 +121,9 @@ public class PbtPortableCodecTests
             Leaf("ff" + AddressHash + SecondStorageStem + "02", "0x02"),
         ];
         using MemoryStream stream = new();
-        PbtSnapshotCodec.Write(stream, leaves, PbtTestLeaves.Claiming(default), CancellationToken.None);
-        Assert.That(stream.ToArray(), Is.EqualTo(Snapshot(ValidHeader, "03" + CodeStem + "00" + "00" + "020102",
-            "04" + AddressHash, "05" + StorageStem + "07" + "01ff", "06" + SecondStorageStem + "01" + "01" + "0101" + "02" + "0102")));
+        PbtSnapshotCodec.Write(stream, leaves, Environment.ProcessorCount, CancellationToken.None);
+        Assert.That(stream.ToArray()[..^ValueHash256.MemorySize], Is.EqualTo(Snapshot(ValidHeader, "03" + CodeStem + "00" + "00" + "020102",
+            "04" + AddressHash, "05" + StorageStem + "07" + "01ff", "06" + SecondStorageStem + "01" + "01" + "0101" + "02" + "0102")[..^ValueHash256.MemorySize]));
         stream.Position = 0;
         Assert.That(PbtSnapshotCodec.ReadLeaves(stream, CancellationToken.None).ToList(), Is.EqualTo(leaves));
     }
@@ -205,7 +204,7 @@ public class PbtPortableCodecTests
     }
 
     [Test]
-    public void Writer_rejects_unrepresentable_leaves([Values("unconsumed", "duplicate", "zero", "missing-basic", "cancel")] string failure)
+    public void Writer_rejects_unrepresentable_leaves([Values("duplicate", "zero", "missing-basic", "cancel")] string failure)
     {
         List<RebuildEntry> leaves = failure switch
         {
@@ -214,13 +213,11 @@ public class PbtPortableCodecTests
             "missing-basic" => [CodeHashLeaf],
             _ => [BasicLeaf, CodeHashLeaf]
         };
-        Func<IEnumerable<RebuildEntry>, ValueHash256> calculateRoot = failure == "unconsumed" ? _ => default : PbtTestLeaves.Claiming(default);
         using MemoryStream destination = new();
-        Assert.That(() => PbtSnapshotCodec.Write(destination, leaves, calculateRoot, new CancellationToken(failure == "cancel")),
+        Assert.That(() => PbtSnapshotCodec.Write(destination, leaves, Environment.ProcessorCount, new CancellationToken(failure == "cancel")),
             failure switch
             {
                 "cancel" => Throws.InstanceOf<OperationCanceledException>(),
-                "unconsumed" => Throws.InstanceOf<InvalidOperationException>(),
                 _ => Throws.InstanceOf<InvalidDataException>()
             });
     }

@@ -174,7 +174,7 @@ internal sealed class MigrationLifecycleHarness(IContainer container, Dictionary
             {
                 await container.Resolve<InitializePbtMigration>().Execute(CancellationToken.None);
                 PbtMigrationImport import = container.Resolve<PbtMigrationImport>();
-                await import.Completion;
+                Assert.That(() => import.IsPending, Is.False.After(30_000, 50));
                 Assert.That(import.Error, Is.Null);
             }
             return new(container, blocks, expected, fixtureDirectory);

@@ -632,7 +632,7 @@ public class Eip8297CanonicalTreeTests
         address32[0] = 0xA5;
         PbtPath account = Eip8297KeyDerivation.AccountKey(Blake3Hash.Hash(address32), 0);
         PbtPath headerStorage = Eip8297KeyDerivation.HeaderStorageKey(Blake3Hash.Hash(address32), new Nethermind.Int256.UInt256(63));
-        PbtStoragePath overflowStorage = Eip8297KeyDerivation.StorageKey(address32, new Nethermind.Int256.UInt256(64));
+        PbtStoragePath overflowStorage = Eip8297KeyDerivation.StorageKey(address32, Blake3Hash.Hash(address32), new Nethermind.Int256.UInt256(64));
         byte[] expectedAddressHash = EipReferenceTree.Hash(address32);
         using (Assert.EnterMultipleScope())
         {
@@ -1238,7 +1238,7 @@ public class Eip8297CanonicalTreeTests
             Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
             Assert.That(nodes, Has.Count.EqualTo(storedNodes));
             Assert.That(group.Payload.Length, Is.EqualTo(PbtNodeGroupCodec.HeaderLength + storedNodes * pairBranchLength
-                + storedNodes * sizeof(ushort) + PbtNodeGroupCodec.AvailabilityLength + PbtNodeGroupCodec.DescendantMaskLength));
+                + storedNodes * sizeof(ushort) + sizeof(ushort) + sizeof(byte)), "offsets, availability bitmap and descendant mask");
             Assert.That(group.Payload.ToArray(), Is.EqualTo(expectedPayload));
         }
         using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(payloads);

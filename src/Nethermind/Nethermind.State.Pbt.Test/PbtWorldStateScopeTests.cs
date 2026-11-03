@@ -287,7 +287,7 @@ public class PbtWorldStateScopeTests
         Assert.That(bundle.PendingMutationCount, Is.Zero);
         scope.Commit(0);
 
-        using PbtReadOnlySnapshotBundle reopened = ctx.Manager.GatherReadOnlyBundle(new StateId(0, scope.RootHash));
+        using PbtReadOnlySnapshotBundle reopened = ctx.Manager.TryGatherReadOnlyBundle(new StateId(0, scope.RootHash))!;
         List<RebuildEntry> expected = [];
         PbtTestLeaves.AddAccount(expected, TestItem.AddressA, Build.An.Account.WithBalance(1).WithCode(code).TestObject, code);
         PbtTestLeaves.AddSlot(expected, TestItem.AddressA, 7, (UInt256)(updatedSlot == 7 ? 0xef : 0xab));
@@ -444,7 +444,7 @@ public class PbtWorldStateScopeTests
         {
             BlockHeader header = Build.A.BlockHeader.WithNumber(4).WithStateRoot(committedRoot).TestObject;
             using PbtWorldStateScope scope = reopened.BeginScope(header);
-            using (PbtReadOnlySnapshotBundle bundle = reopened.Manager.GatherReadOnlyBundle(new StateId(header)))
+            using (PbtReadOnlySnapshotBundle bundle = reopened.Manager.TryGatherReadOnlyBundle(new StateId(header))!)
                 Assert.That(bundle.TreeRoot, Is.EqualTo(roots[^1]));
             AssertState(scope, 4);
         }

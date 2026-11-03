@@ -42,7 +42,7 @@ internal static class PbtSnapshotTestExtensions
 
     internal static bool TryLeasePersisted(this PbtSnapshotRepository repository, in StateId to, long depth, SnapshotTier tier, out PbtPersistedSnapshot? snapshot)
     {
-        if (repository.TryLeasePersistedCatalogKey(to, tier, out snapshot) && snapshot!.Depth == depth) return true;
+        if (repository.TryLeasePersistedCatalogKey(to, tier, out snapshot) && snapshot!.To.BlockNumber - snapshot.From.BlockNumber == (ulong)depth) return true;
         snapshot?.Dispose();
         snapshot = null;
         return false;

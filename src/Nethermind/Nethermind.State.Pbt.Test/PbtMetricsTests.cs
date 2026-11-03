@@ -232,7 +232,7 @@ public class PbtMetricsTests
             content.Accounts[Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes)] = new Account(1, 100).ToPbtAccount();
             ctx.Repository.TryAdd(new PbtSnapshot(StateId.PreGenesis, state, default, content, null, ctx.ResourcePool, PbtResourcePool.Usage.MainBlockProcessing));
         }
-        using PbtReadOnlySnapshotBundle bundle = ctx.Manager.GatherReadOnlyBundle(state);
+        using PbtReadOnlySnapshotBundle bundle = ctx.Manager.TryGatherReadOnlyBundle(state)!;
         bundle.GetAccount(TestItem.AddressA);
         using (Assert.EnterMultipleScope())
         {

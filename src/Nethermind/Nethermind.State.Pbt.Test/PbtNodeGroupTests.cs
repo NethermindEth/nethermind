@@ -583,7 +583,7 @@ public class PbtNodeGroupTests
         ReadOnlyMemory<byte>[] encodings = new ReadOnlyMemory<byte>[PbtThreeLevelGroupGeometry.PositionCount];
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
         using PbtNodeGroupWriter streamingWriter = new(groupKey.BitDepth);
-        int fullLength = PbtNodeGroupCodec.HeaderLength + PbtNodeGroupCodec.AvailabilityLength + PbtNodeGroupCodec.DescendantMaskLength;
+        int fullLength = PbtNodeGroupCodec.HeaderLength + sizeof(ushort) + sizeof(byte); // availability bitmap and descendant mask
         int omitted = 0;
         int positionCount = groupDepth == 0 ? 15 : 14;
         for (int position = 0; position < positionCount; position++)
@@ -796,7 +796,7 @@ public class PbtNodeGroupTests
 
     [Test]
     public void Descendant_sizes_are_stored_per_slot_and_reject_the_uint48_overflow(
-        [Values(0L, 1L, 0x1234L, 0x1234_5678_9ABCL, PbtNodeGroupCodec.MaxDescendantBytes)] long descendantBytes, [Values(0, 3, 7)] int slot)
+        [Values(0L, 1L, 0x1234L, 0x1234_5678_9ABCL, 0xFFFF_FFFF_FFFFL)] long descendantBytes, [Values(0, 3, 7)] int slot)
     {
         PbtNodePath groupKey = new([], 0);
         PbtNodeRecord record = new(groupKey.ToPath<PbtStorageNodePath>(), LeafEncoding(0x00));
@@ -818,7 +818,7 @@ public class PbtNodeGroupTests
         }
         slots[slot] = -1;
         Assert.Throws<ArgumentOutOfRangeException>(() => PbtNodeGroupEncoder.Encode(groupKey, [record], slots));
-        slots[slot] = PbtNodeGroupCodec.MaxDescendantBytes + 1;
+        slots[slot] = 0x1_0000_0000_0000L;
         Assert.Throws<InvalidDataException>(() => PbtNodeGroupEncoder.Encode(groupKey, [record], slots));
     }
 
