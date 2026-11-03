@@ -1,0 +1,11 @@
+# The reproducible Lighthouse image is distroless with ENTRYPOINT /lighthouse; the kit's commands start with
+# `lighthouse`, so clear the entrypoint and resolve the binary from /.
+x-lh: &lh
+  entrypoint: []
+  environment:
+    PATH: /usr/local/bin:/usr/bin:/bin:/
+services:
+  beacon: *lh
+  validator: *lh
+  beacon-genesis: *lh
+  beacon-checkpoint: *lh

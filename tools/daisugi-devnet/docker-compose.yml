@@ -1,0 +1,181 @@
+# One Nethermind, one Lighthouse beacon node, one Lighthouse validator client: the Daisugi topology.
+# GENESIS_DIR points at a gen-genesis.sh output; NETHERMIND_IMAGE and LIGHTHOUSE_IMAGE pin the builds.
+name: daisugi-devnet
+
+networks:
+  daisugi-devnet:
+    name: daisugi-devnet
+
+services:
+  nethermind:
+    image: ${NETHERMIND_IMAGE:?}
+    container_name: daisugi-nethermind
+    user: ${DEVNET_USER:?}
+    networks: [daisugi-devnet]
+    environment:
+      # An environment setting, so the sync nodes can turn on peering without repeating the command.
+      NETHERMIND_INITCONFIG_PEERMANAGERENABLED: "false"
+      # Disabled lets the node negotiate eth/73 before PeerDAS (MergeP2PCapabilityResolver); it then holds no blob txs.
+      NETHERMIND_TXPOOLCONFIG_BLOBSSUPPORT: ${BLOBS_SUPPORT:-StorageWithReorgs}
+    ports:
+      - 127.0.0.1:28545:8545
+    volumes:
+      - ${GENESIS_DIR:?}/data/metadata/genesis.json:/genesis/genesis.json:ro
+      - ${GENESIS_DIR:?}/data/jwt:/jwt:ro
+      - ${GENESIS_DIR:?}/nethermind:/data
+    command:
+      - --config=none
+      - --Init.ChainSpecPath=/genesis/genesis.json
+      - --Init.BaseDbPath=/data
+      - --Init.LogDirectory=/data/logs
+      - --KeyStore.KeyStoreDirectory=/data/keystore
+      - --Init.StaticNodesPath=/data/static-nodes.json
+      - --Init.TrustedNodesPath=/data/trusted-nodes.json
+      - --Init.DiscoveryEnabled=false
+      - --Network.EnableExternalIpResolution=false
+      - --Sync.SnapSync=false
+      - --JsonRpc.Enabled=true
+      - --JsonRpc.Host=0.0.0.0
+      - --JsonRpc.Port=8545
+      - --JsonRpc.EnabledModules=Eth,Net,Web3,Debug,TxPool
+      - --JsonRpc.EngineHost=0.0.0.0
+      - --JsonRpc.EnginePort=8551
+      - --JsonRpc.JwtSecretFile=/jwt/jwtsecret
+      - --Blocks.SecondsPerSlot=2
+      - --TxPool.FrameTxMaxVerifyGas=500000
+
+  # Empty-database node with no peers and no CL: proof-tool.cs replay feeds it the beacon node's payloads.
+  nethermind-replay:
+    extends: nethermind
+    profiles: [replay]
+    container_name: daisugi-nethermind-replay
+    depends_on: !reset []
+    ports: !override
+      - 127.0.0.1:28546:8545
+      - 127.0.0.1:28551:8551
+    volumes:
+      - ${GENESIS_DIR:?}/nethermind-replay:/data
+
+  # Sync pairs (profile sync): empty databases, joined to the devnet only through devp2p (EL) and libp2p (CL).
+  # sync.sh writes each EL's static-nodes.json and passes the original beacon node's multiaddr.
+  # Pair "genesis": Lighthouse range-syncs from genesis and drives its EL block by block over the Engine API.
+  nethermind-genesis:
+    extends: nethermind
+    profiles: [sync]
+    container_name: daisugi-nethermind-genesis
+    environment:
+      NETHERMIND_INITCONFIG_PEERMANAGERENABLED: "true"
+    ports: !override
+      - 127.0.0.1:28547:8545
+    volumes:
+      - ${GENESIS_DIR:?}/sync-genesis/nethermind:/data
+
+  beacon-genesis:
+    extends: beacon
+    profiles: [sync]
+    container_name: daisugi-beacon-genesis
+    depends_on: !override [nethermind-genesis]
+    ports: !override
+      - 127.0.0.1:25053:5052
+    volumes:
+      - ${GENESIS_DIR:?}/sync-genesis/beacon:/data
+    command: !override
+      - lighthouse
+      - bn
+      - --testnet-dir=/testnet
+      - --datadir=/data
+      - --execution-endpoint=http://nethermind-genesis:8551
+      - --execution-jwt=/jwt/jwtsecret
+      - --http
+      - --http-address=0.0.0.0
+      - --http-port=5052
+      - --disable-upnp
+      - --disable-enr-auto-update
+      - --enable-private-discovery
+      - --libp2p-addresses=${BEACON_MULTIADDR:-}
+      - --allow-insecure-genesis-sync
+
+  # Pair "checkpoint": Lighthouse starts from the original beacon node's finalized state, so its EL receives a
+  # forkchoice head with no history and must fetch headers and bodies from genesis over devp2p.
+  nethermind-checkpoint:
+    extends: nethermind-genesis
+    container_name: daisugi-nethermind-checkpoint
+    ports: !override
+      - 127.0.0.1:28548:8545
+    volumes:
+      - ${GENESIS_DIR:?}/sync-checkpoint/nethermind:/data
+
+  beacon-checkpoint:
+    extends: beacon-genesis
+    container_name: daisugi-beacon-checkpoint
+    depends_on: !override [nethermind-checkpoint]
+    ports: !override
+      - 127.0.0.1:25054:5052
+    volumes:
+      - ${GENESIS_DIR:?}/sync-checkpoint/beacon:/data
+    command: !override
+      - lighthouse
+      - bn
+      - --testnet-dir=/testnet
+      - --datadir=/data
+      - --execution-endpoint=http://nethermind-checkpoint:8551
+      - --execution-jwt=/jwt/jwtsecret
+      - --http
+      - --http-address=0.0.0.0
+      - --http-port=5052
+      - --disable-upnp
+      - --disable-enr-auto-update
+      - --enable-private-discovery
+      - --libp2p-addresses=${BEACON_MULTIADDR:-}
+      - --checkpoint-sync-url=http://beacon:5052
+
+  beacon:
+    image: ${LIGHTHOUSE_IMAGE:?}
+    container_name: daisugi-beacon
+    user: ${DEVNET_USER:?}
+    networks: [daisugi-devnet]
+    depends_on: [nethermind]
+    ports:
+      - 127.0.0.1:25052:5052
+    volumes:
+      - ${GENESIS_DIR:?}/data/metadata:/testnet:ro
+      - ${GENESIS_DIR:?}/data/jwt:/jwt:ro
+      - ${GENESIS_DIR:?}/beacon:/data
+    command:
+      - lighthouse
+      - bn
+      - --testnet-dir=/testnet
+      - --datadir=/data
+      - --execution-endpoint=http://nethermind:8551
+      - --execution-jwt=/jwt/jwtsecret
+      - --http
+      - --http-address=0.0.0.0
+      - --http-port=5052
+      - --disable-upnp
+      - --disable-enr-auto-update
+      - --enable-private-discovery
+      - --target-peers=8
+      - --disable-peer-scoring
+      - --subscribe-all-subnets
+      - --suggested-fee-recipient=0x8943545177806ED17B9F23F0a21ee5948eCaa776
+
+  validator:
+    image: ${LIGHTHOUSE_IMAGE:?}
+    container_name: daisugi-validator
+    user: ${DEVNET_USER:?}
+    networks: [daisugi-devnet]
+    depends_on: [beacon]
+    volumes:
+      - ${GENESIS_DIR:?}/data/metadata:/testnet:ro
+      - ${GENESIS_DIR:?}/data/validators/keys:/data/validators
+      - ${GENESIS_DIR:?}/data/validators/secrets:/validators/secrets:ro
+    command:
+      - lighthouse
+      - vc
+      - --testnet-dir=/testnet
+      - --validators-dir=/data/validators
+      - --secrets-dir=/validators/secrets
+      - --beacon-nodes=http://beacon:5052
+      - --logfile-dir=/data/validators/logs
+      - --init-slashing-protection
+      - --suggested-fee-recipient=0x8943545177806ED17B9F23F0a21ee5948eCaa776
