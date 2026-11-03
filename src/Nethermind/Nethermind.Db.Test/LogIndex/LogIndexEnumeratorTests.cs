@@ -76,8 +76,14 @@ public class LogIndexEnumeratorTests
     [OneTimeTearDown]
     public async Task OneTimeTearDown()
     {
-        await using (_storage)
+        try
+        {
             await _storage.StopAsync();
+        }
+        finally
+        {
+            await ((IAsyncDisposable)_storage).DisposeAsync();
+        }
 
         _dbPath.Dispose();
     }

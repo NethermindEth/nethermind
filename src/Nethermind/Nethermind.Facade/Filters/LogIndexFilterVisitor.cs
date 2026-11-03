@@ -27,23 +27,14 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
         private readonly ILogIndexEnumerator? _seekable1 = e1 as ILogIndexEnumerator;
         private readonly ILogIndexEnumerator? _seekable2 = e2 as ILogIndexEnumerator;
 
-        public bool MoveNext()
-        {
-            bool has1 = e1.MoveNext();
-            bool has2 = e2.MoveNext();
-
-            return has1 && has2 && Leapfrog();
-        }
+        public bool MoveNext() => e1.MoveNext() && e2.MoveNext() && Leapfrog();
 
         public bool MoveTo(int target)
         {
             if (Current >= target)
                 return true;
 
-            bool has1 = MoveTo(e1, _seekable1, target);
-            bool has2 = MoveTo(e2, _seekable2, target);
-
-            return has1 && has2 && Leapfrog();
+            return MoveTo(e1, _seekable1, target) && MoveTo(e2, _seekable2, e1.Current) && Leapfrog();
         }
 
         // One plain step comes before any seek, so dense postings, where the next value usually matches, stay sequential
