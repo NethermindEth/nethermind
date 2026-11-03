@@ -102,7 +102,12 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
     [TestCase("fe", "INVALID")]
     [TestCase("0c", "opcode 0xc not defined")]
-    public void Invalid_opcode_callbacks_have_geth_cost_and_error(string code, string opcode)
+    [TestCase("5e", "MCOPY", MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp)]
+    [TestCase("f5", "CREATE2", MainnetSpecProvider.ByzantiumBlockNumber, 0UL)]
+    [TestCase("3f", "EXTCODEHASH", MainnetSpecProvider.ByzantiumBlockNumber, 0UL)]
+    [TestCase("fd", "REVERT", MainnetSpecProvider.SpuriousDragonBlockNumber, 0UL)]
+    public void Invalid_opcode_callbacks_have_geth_cost_and_error(string code, string opcode,
+        ulong blockNumber = MainnetSpecProvider.ParisBlockNumber + 2, ulong timestamp = MainnetSpecProvider.CancunBlockTimestamp)
     {
         const string userTracer = """
             {
@@ -113,7 +118,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             }
             """;
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
-            GetTracer(userTracer), Bytes.FromHexString(code), MainnetSpecProvider.CancunActivation);
+            GetTracer(userTracer), Bytes.FromHexString(code), (blockNumber, timestamp));
         using GethLikeTxTrace trace = tracer.BuildResult().First();
         AssertResult(trace, new[] { $"step:{opcode}:0:", $"fault:{opcode}:0:invalid opcode: {opcode}" });
     }
@@ -2035,8 +2040,10 @@ public class GethLikeJavaScriptCallTracerTests : VirtualMachineTestsBase
             step: function(log, db) {
                 if ([0xf1,0xf2,0xf4].indexOf(log.op.toNumber()) < 0) return;
                 var target = toAddress(log.stack.peek(1).toString(16).padStart(40, "0"));
+                this.stepCost = log.getCost();
                 this.events.push("step:" + log.getCost() + ":" + log.getGas() + ":" + log.getRefund() + ":" + log.stack.length() + ":" + log.stack.peek(0).toString() + ":" + log.memory.length() + ":" + db.getBalance(target).toString() + ":" + db.exists(target));
             },
+            postStep: function(log) { if ([0xf1,0xf2,0xf4].indexOf(log.op.toNumber()) >= 0 && log.getCost() !== this.stepCost) this.events.push("postStep:" + log.getCost()); },
             fault: function(log) { this.events.push("fault:" + log.getError()); },
             enter: function(frame) { this.events.push("enter:" + frame.getGas()); },
             exit: function(frame) { this.events.push("exit:" + frame.getGasUsed() + ":" + (frame.getError() || "")); },

@@ -266,6 +266,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             return;
 
         _log.gasCost = gasCost;
+        _gasCostIsStatic = false;
         _log.error = error ?? (_log.gas < gasCost ? "out of gas" : null);
         _failedBeforeExecution = _log.error is not null;
         InvokeStep();
