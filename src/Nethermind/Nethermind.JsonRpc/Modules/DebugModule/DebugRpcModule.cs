@@ -18,6 +18,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
@@ -539,7 +540,8 @@ public class DebugRpcModule(
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
-        catch (NativeTracerConfigException exception)
+        catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
@@ -607,7 +609,8 @@ public class DebugRpcModule(
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
-        catch (NativeTracerConfigException exception)
+        catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
@@ -658,7 +661,8 @@ public class DebugRpcModule(
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
-        catch (NativeTracerConfigException exception)
+        catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
