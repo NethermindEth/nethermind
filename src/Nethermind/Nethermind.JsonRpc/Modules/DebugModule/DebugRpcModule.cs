@@ -179,8 +179,8 @@ public class DebugRpcModule(
                     if (moveError is not null)
                         return ResultWrapper<GethLikeTxTrace>.Fail(moveError, ErrorCodes.InvalidInput);
                 }
-                if (accountOverride is { State: not null, StateDiff: not null })
-                    return ResultWrapper<GethLikeTxTrace>.Fail($"account {address.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'", ErrorCodes.InvalidInput);
+                if (StateOverrideValidation.GetStorageConflictError(address, accountOverride) is { } storageError)
+                    return ResultWrapper<GethLikeTxTrace>.Fail(storageError, ErrorCodes.InvalidInput);
             }
         }
 
@@ -1082,6 +1082,9 @@ public class DebugRpcModule(
         {
             return headerError;
         }
+
+        if (StateOverrideValidation.GetStorageConflictError(options?.StateOverrides) is { } storageError)
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(storageError, ErrorCodes.InvalidInput);
 
         if (options?.TxIndex is not null) options = options with { TxIndex = null };
 
