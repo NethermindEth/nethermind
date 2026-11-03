@@ -324,7 +324,7 @@ public class FlatSnapTrieFactoryTests
         }
     }
 
-    public enum Unresumable { ResumeDisabled, PartitionCountChanged, Unreadable }
+    public enum Unresumable { ResumeDisabled, PartitionCountChanged, Unreadable, WipedByAnOlderVersion, WipeByAnOlderVersionInterrupted }
 
     [Test]
     public void EnsureInitialize_StartsOver_WhenTheCheckpointCannotBeResumed([Values(FlatLayout.Flat, FlatLayout.PaprikaFlat)] FlatLayout layout, [Values] Unresumable reason)
@@ -332,13 +332,24 @@ public class FlatSnapTrieFactoryTests
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
         using LayoutPersistence layoutPersistence = new(db, layout, trieNodeLog: false);
         IPersistence persistence = layoutPersistence.Persistence;
-        using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
-        {
-            batch.SetAccountRaw(LastAccount, new Account(1));
-        }
+        WriteLastAccount(persistence);
 
         CreateResumingFactory(persistence, db).SaveCheckpoint(CreateCheckpoint());
-        if (reason == Unresumable.Unreadable) BasePersistence.WriteSnapCheckpoint(db, [0xff]);
+        switch (reason)
+        {
+            case Unresumable.Unreadable:
+                BasePersistence.WriteSnapCheckpoint(db, [0xff]);
+                break;
+            case Unresumable.WipedByAnOlderVersion:
+                // The older version leaves the checkpoint behind, then syncs data the checkpoint does not describe.
+                WipeLikeAnOlderVersion(db, maxKeys: int.MaxValue);
+                WriteLastAccount(persistence);
+                break;
+            case Unresumable.WipeByAnOlderVersionInterrupted:
+                // The least such a wipe commits: the first key of its first batch.
+                WipeLikeAnOlderVersion(db, maxKeys: 1);
+                break;
+        }
 
         FlatSnapTrieFactory factory = CreateResumingFactory(persistence, db,
             partitionCount: reason == Unresumable.PartitionCountChanged ? 4 : 2,
@@ -359,23 +370,26 @@ public class FlatSnapTrieFactoryTests
     public void SaveCheckpoint_FlushesTheWritesItCovers_AndDeletesItWhenNull()
     {
         IPersistence persistence = Substitute.For<IPersistence>();
-        FlatSnapTrieFactory factory = CreateResumingFactory(persistence, new MemColumnsDb<FlatDbColumns>());
+        MemColumnsDb<FlatDbColumns> db = new();
+        FlatSnapTrieFactory factory = CreateResumingFactory(persistence, db);
 
         factory.SaveCheckpoint(CreateCheckpoint());
         persistence.Received(1).Flush();
         Assert.That(factory.LoadCheckpoint()?.AnchorHash, Is.EqualTo(TestItem.KeccakA));
 
         factory.SaveCheckpoint(null);
-        Assert.That(factory.LoadCheckpoint(), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.LoadCheckpoint(), Is.Null);
+            Assert.That(BasePersistence.HasSnapCheckpointSentinel(db), Is.False);
+        }
     }
 
     [Test]
     public void SaveCheckpoint_KeepsTheLastCheckpoint_WhenTheWritesItCoversFailToFlush()
     {
-        MemColumnsDb<FlatDbColumns> columns = new();
         FlushFailingDb accounts = new();
-        IColumnsDb<FlatDbColumns> db = Substitute.For<IColumnsDb<FlatDbColumns>>();
-        db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(c => c.Arg<FlatDbColumns>() == FlatDbColumns.Account ? accounts : columns.GetColumnDb(c.Arg<FlatDbColumns>()));
+        IColumnsDb<FlatDbColumns> db = CreateColumnsDbWithAccounts(accounts);
         FlatSnapTrieFactory factory = CreateResumingFactory(Substitute.For<IPersistence>(), db);
         factory.SaveCheckpoint(CreateCheckpoint());
 
@@ -383,6 +397,15 @@ public class FlatSnapTrieFactoryTests
 
         Assert.Throws<InvalidOperationException>(() => factory.SaveCheckpoint(CreateCheckpoint(anchorHash: TestItem.KeccakB)));
         Assert.That(factory.LoadCheckpoint()?.AnchorHash, Is.EqualTo(TestItem.KeccakA));
+    }
+
+    [Test]
+    public void WriteSnapCheckpoint_WritesNoCheckpoint_WhenItsSentinelFailsToFlush()
+    {
+        IColumnsDb<FlatDbColumns> db = CreateColumnsDbWithAccounts(new FlushFailingDb { FailFlush = true });
+
+        Assert.Throws<InvalidOperationException>(() => BasePersistence.WriteSnapCheckpoint(db, [1, 2, 3]));
+        Assert.That(BasePersistence.ReadSnapCheckpoint(db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
     }
 
     // RocksDB commits a batch without the WAL every few hundred writes, which bounds the memory a large discard takes.
@@ -416,6 +439,29 @@ public class FlatSnapTrieFactoryTests
 
     private static ValueHash256 Path(string hexPrefix) => new(hexPrefix.PadRight(64, '0'));
 
+    private static void WriteLastAccount(IPersistence persistence)
+    {
+        using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        batch.SetAccountRaw(LastAccount, new Account(1));
+    }
+
+    /// <summary>Deletes the first <paramref name="maxKeys"/> keys in the order a wipe of a version that predates the snap checkpoint does.</summary>
+    /// <remarks>Such a wipe goes through every column but the metadata, each in key order, as a RocksDB iterator yields them.</remarks>
+    private static void WipeLikeAnOlderVersion(IColumnsDb<FlatDbColumns> db, int maxKeys)
+    {
+        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
+        {
+            if (column == FlatDbColumns.Metadata) continue;
+
+            IDb columnDb = db.GetColumnDb(column);
+            foreach (byte[] key in columnDb.GetAllKeys().Order(Bytes.Comparer))
+            {
+                if (maxKeys-- == 0) return;
+                columnDb.Remove(key);
+            }
+        }
+    }
+
     private static byte[] BuildBranchRlp()
     {
         TrieNode branch = TrieNodeFactory.CreateBranch();
@@ -437,6 +483,14 @@ public class FlatSnapTrieFactoryTests
     private static FlatSnapTrieFactory CreateResumingFactory(IPersistence persistence, IColumnsDb<FlatDbColumns> db, int partitionCount = 2, bool snapResume = true) =>
         new(persistence, Substitute.For<IPersistenceManager>(), db, new MemDb(),
             new SyncConfig { SnapResume = snapResume, SnapSyncAccountRangePartitionCount = partitionCount }, LimboLogs.Instance);
+
+    private static IColumnsDb<FlatDbColumns> CreateColumnsDbWithAccounts(IDb accounts)
+    {
+        MemColumnsDb<FlatDbColumns> columns = new();
+        IColumnsDb<FlatDbColumns> db = Substitute.For<IColumnsDb<FlatDbColumns>>();
+        db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(c => c.Arg<FlatDbColumns>() == FlatDbColumns.Account ? accounts : columns.GetColumnDb(c.Arg<FlatDbColumns>()));
+        return db;
+    }
 
     /// <summary>Two account partitions: the first finished, the second downloaded up to <see cref="LastAccount"/>.</summary>
     private static SnapCheckpoint CreateCheckpoint(

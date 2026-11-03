@@ -9,10 +9,13 @@ using System.Reflection;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Crypto;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -459,6 +462,47 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
+    public void InstructionMask_LeavesOutOnlyOpcodesTheTracerIgnores()
+    {
+        UseSpec(new OverridableReleaseSpec(Bogota.Instance)
+        {
+            IsEip8141Enabled = true,
+            IsEip5920Enabled = true,
+            IsEip8298Enabled = true,
+            IsEip8360Enabled = true,
+        });
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(
+            new CodeInfo(new byte[] { (byte)Instruction.STOP }),
+            executingAccount: Sender,
+            caller: Sender,
+            codeSource: Sender,
+            callDepth: 0,
+            value: UInt256.Zero,
+            inputData: ReadOnlyMemory<byte>.Empty);
+        byte[] words = new byte[5 * 32];
+        words.AsSpan().Fill(0xff);
+        IInstructionTracingFilter filter = new FrameTxValidationTracer(Sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec);
+        UInt256 mask = filter.InstructionMask;
+
+        List<Instruction> reacted = [];
+        for (int op = 0; op <= byte.MaxValue; op++)
+        {
+            if (!(mask & (UInt256.One << op)).IsZero) continue;
+
+            FrameTxValidationTracer tracer = new(Sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec);
+            tracer.StartOperation(0, (Instruction)op, 0, env);
+            tracer.SetOperationStack(new TraceStack(words));
+            if (tracer.Violated) reacted.Add((Instruction)op);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reacted, Is.Empty);
+            Assert.That((mask & (UInt256.One << (int)Instruction.SLOAD)).IsZero, Is.False);
+        }
+    }
+
+    [Test]
     public void Simulate_PrefixUsesPay_RecordsViolationOnlyWhenEip5920Enabled([Values] bool enabled)
     {
         UseSpec(new Bogota { IsEip8141Enabled = true, IsEip5920Enabled = enabled });
@@ -649,6 +693,173 @@ public class FrameTxValidationPrefixSimulationTests
         // A seeded verdict is used as is, so the code is not scanned again.
         FrameTxValidationTracer.MutableCodeCache.Set(key, FrameTxValidationTracer.CodeMutability.Direct);
         AssertPrefixCallTarget(TestItem.AddressC, violates: true, "has mutable code");
+    }
+
+    // EIP-8151: ecRecover returns the signer only while its code is empty or a delegation, so an owner check in the
+    // prefix depends on a third party's code. Under EIP-8298, which lets that code change, the signer is recorded like a
+    // delegating helper whether or not ecRecover withheld it: recording needs no code read, and regular code is never
+    // replaced by empty code or a delegation, so the only change that can flip the result is returned -> withheld.
+    // With EIP-8151 off recovery reads no account, and with EIP-8298 off no code change can flip the result.
+    public sealed record EcRecoverSigner(string Name, byte[] Code, bool Approves)
+    {
+        public override string ToString() => Name;
+    }
+
+    private static readonly EcRecoverSigner[] EcRecoverSigners =
+    [
+        new("codeless signer", [], true),
+        new("delegated signer", [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressF.Bytes], true),
+        new("signer with code", [(byte)Instruction.STOP], false),
+    ];
+
+    [Test]
+    public void Simulate_PrefixRecoveringAnOwner_RecordsTheSignerAsACodeDependencyUnderEip8151AndEip8298(
+        [ValueSource(nameof(EcRecoverSigners))] EcRecoverSigner signer,
+        [Values] bool eip8151,
+        [Values] bool eip8298,
+        [Values] bool inPayFrame)
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = eip8151, IsEip8298Enabled = eip8298 });
+        if (signer.Code.Length > 0) DeployContract(OwnerKey.Address, signer.Code);
+        Address checker = inPayFrame ? Sponsor : Sender;
+        if (inPayFrame) DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecution), 1.Ether);
+        DeployContract(checker, OwnerCheckCode(OwnerKey, inPayFrame ? FrameFlags.ApprovePayment : FrameFlags.ApproveExecutionAndPayment), 1.Ether);
+        Transaction tx = inPayFrame
+            ? FrameTx(nonce: 0,
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, Sponsor, gasLimit: 200_000, UInt256.Zero, default))
+            : FrameTx(nonce: 0, SelfVerifyFrame());
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.EqualTo(signer.Approves || !eip8151), result.ErrorDescription);
+            Assert.That(tracer.Payer, signer.Approves || !eip8151 ? Is.EqualTo(checker) : Is.Null);
+            Assert.That(tracer.CodeDependencies, eip8151 && eip8298
+                ? Is.EqualTo(new[] { new FrameTxCodeDependency(OwnerKey.Address, ValueKeccak.Compute(signer.Code)) })
+                : Is.Empty);
+        }
+    }
+
+    public enum EcRecoverCall
+    {
+        Unrecoverable,
+        RecoversTheSender,
+        AfterThePrefix,
+    }
+
+    // A failed recovery reads no account, the sender's code is tracked already, and the frames after the payer is set
+    // are never simulated, so none of these is a dependency.
+    [TestCase(EcRecoverCall.Unrecoverable)]
+    [TestCase(EcRecoverCall.RecoversTheSender)]
+    [TestCase(EcRecoverCall.AfterThePrefix)]
+    public void Simulate_EcRecoverOfNoThirdPartySignerInThePrefix_RecordsNoDependency(EcRecoverCall call)
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = true });
+        byte[] approve = ApproveCode(FrameFlags.ApproveExecutionAndPayment);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        switch (call)
+        {
+            case EcRecoverCall.Unrecoverable:
+                DeployContract(Sender, [.. EcRecoverCode(Eip8151Tests.CreateUnrecoverableInput()), .. approve], 1.Ether);
+                break;
+            case EcRecoverCall.RecoversTheSender:
+                Assert.That(TestItem.PrivateKeyA.Address, Is.EqualTo(Sender));
+                DeployContract(Sender, [.. EcRecoverCode(Eip8151Tests.CreateInput(TestItem.PrivateKeyA)), .. approve], 1.Ether);
+                break;
+            case EcRecoverCall.AfterThePrefix:
+                DeployContract(TestItem.AddressC, [.. EcRecoverCode(Eip8151Tests.CreateInput(OwnerKey)), (byte)Instruction.STOP]);
+                DeployContract(Sender, approve, 1.Ether);
+                tx = FrameTx(nonce: 0, SelfVerifyFrame(),
+                    new TxFrame(FrameMode.Sender, FrameFlags.None, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default));
+                break;
+        }
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(tracer.Payer, Is.EqualTo(Sender));
+            Assert.That(tracer.CodeDependencies, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Simulate_EcRecoverInANestedHelper_RecordsTheSignerNotTheHelper()
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = true });
+        // The helper holds no DELEGATECALL or CALLCODE, so it is no EIP-8298 dependency of its own.
+        DeployContract(TestItem.AddressC, [.. EcRecoverCode(Eip8151Tests.CreateInput(OwnerKey)), (byte)Instruction.STOP]);
+        DeployContract(Sender, [.. Prepare.EvmCode.StaticCall(TestItem.AddressC, 100_000).Op(Instruction.POP).Done, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(tracer.Payer, Is.EqualTo(Sender));
+            Assert.That(tracer.CodeDependencies, Is.EqualTo(new[] { new FrameTxCodeDependency(OwnerKey.Address, ValueKeccak.OfAnEmptyString) }));
+        }
+    }
+
+    [Test]
+    public void Simulate_EcRecoverOutOfGasInTheSignerCodeCheck_RecordsNothing()
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = true });
+        // 3000 gas pays for the recovery but not for EIP-8151's cold access to the recovered account, so the precompile
+        // runs out of gas before it reads the account and the VM reports nothing. The prefix ignores the call result.
+        byte[] call = Prepare.EvmCode.DynamicCallWithInput(Instruction.STATICCALL, PrecompiledAddresses.ECRecover, 3_000, Eip8151Tests.CreateInput(OwnerKey)).Op(Instruction.POP).Done;
+        DeployContract(Sender, [.. call, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(tracer.CodeDependencies, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Simulate_DelegateCallToEcRecover_RecordsTheRecoveredAccount()
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = true });
+        byte[] call = Prepare.EvmCode.DynamicCallWithInput(Instruction.DELEGATECALL, PrecompiledAddresses.ECRecover, 50_000, Eip8151Tests.CreateInput(OwnerKey)).Op(Instruction.POP).Done;
+        DeployContract(Sender, [.. call, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(tracer.CodeDependencies, Is.EqualTo(new[] { new FrameTxCodeDependency(OwnerKey.Address, ValueKeccak.OfAnEmptyString) }));
+        }
+    }
+
+    private static readonly PrivateKey OwnerKey = TestItem.PrivateKeys[9];
+
+    /// <summary>A static call to ecRecover with <paramref name="input"/>, leaving its output in the return buffer.</summary>
+    private static byte[] EcRecoverCode(byte[] input) =>
+        Prepare.EvmCode.DynamicCallWithInput(Instruction.STATICCALL, PrecompiledAddresses.ECRecover, 50_000, input).Op(Instruction.POP).Done;
+
+    /// <summary>Code approving <paramref name="scope"/> only when ecRecover returns <paramref name="owner"/>'s address.</summary>
+    /// <remarks>The output is copied past the input, so a withheld (empty) one compares as zero. An approval the
+    /// context refuses reverts the frame, so a scope of zero is the rejection.</remarks>
+    private static byte[] OwnerCheckCode(PrivateKey owner, FrameFlags scope)
+    {
+        const int outputOffset = 256;
+        byte[] check = Prepare.EvmCode
+            .Op(Instruction.RETURNDATASIZE).PushData(0).PushData(outputOffset).Op(Instruction.RETURNDATACOPY)
+            .PushData(outputOffset).Op(Instruction.MLOAD).PushData(owner.Address).Op(Instruction.EQ)
+            .PushData((byte)scope).Op(Instruction.MUL).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        return [.. EcRecoverCode(Eip8151Tests.CreateInput(owner)), .. check];
     }
 
     [TestCase(true, TestName = "GAS immediately before a call is permitted")]
@@ -935,11 +1146,22 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
-    [Test]
-    public void Simulate_DeployFrameWithExhaustedFactoryNonce_RecordsViolation()
+    private static IEnumerable<TestCaseData> UninspectedEpilogues()
+    {
+        yield return new TestCaseData((object)new[] { (byte)Instruction.POP }).SetName("Simulate_DeployFrameWithExhaustedFactoryNonce_RecordsViolation");
+        yield return new TestCaseData((object)Prepare.EvmCode.PushData(1).Op(Instruction.ADD).Op(Instruction.POP).Op(Instruction.JUMPDEST).Op(Instruction.STOP).Done)
+            .SetName("Simulate_DeployFrameWithExhaustedFactoryNonceThenUninspectedOpcodes_RecordsViolation");
+        yield return new TestCaseData((object)Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done)
+            .SetName("Simulate_DeployFrameWithExhaustedFactoryNonceThenRevert_RecordsViolation");
+        yield return new TestCaseData((object)Prepare.EvmCode.PushData(0xff).Op(Instruction.JUMP).Done)
+            .SetName("Simulate_DeployFrameWithExhaustedFactoryNonceThenFault_RecordsViolation");
+    }
+
+    [TestCaseSource(nameof(UninspectedEpilogues))]
+    public void Simulate_DeployFrameWithExhaustedFactoryNonce_RecordsViolation(byte[] epilogue)
     {
         byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
-        Address deployed = InstallFactory(initCode, epilogue: [(byte)Instruction.POP]);
+        Address deployed = InstallFactory(initCode, epilogue: epilogue);
         FundAccount(deployed, 1.Ether);
         _stateProvider.IncrementNonce(Factory, ulong.MaxValue - _stateProvider.GetNonce(Factory));
         _stateProvider.Commit(Spec);

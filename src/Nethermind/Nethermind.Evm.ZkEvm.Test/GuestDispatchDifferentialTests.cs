@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -40,7 +41,7 @@ public class GuestDispatchDifferentialTests
 
     private static readonly ConcurrentDictionary<(Table, IReleaseSpec), nint[]> SharedTables = new();
 
-    private static readonly ConcurrentDictionary<(Table, IReleaseSpec, bool, bool), nint[]> PairedTables = new();
+    private static readonly ConcurrentDictionary<(Table, IReleaseSpec, bool, bool, bool), nint[]> PairedTables = new();
 
     private static readonly IReleaseSpec ReleaseSpec = Osaka.Instance;
 
@@ -48,12 +49,16 @@ public class GuestDispatchDifferentialTests
     /// <remarks>The guest installs its handlers on every spec, so a fork that gates or reprices one of them has to be here.</remarks>
     private static readonly IReleaseSpec[] Forks = [Byzantium.Instance, Constantinople.Instance, Shanghai.Instance, ReleaseSpec, Amsterdam.Instance];
     private static readonly IReleaseSpec[] StorageLoadForks = [ReleaseSpec, Amsterdam.Instance];
+    // Both sides of EIP-3529, which changed the refunds the guest SSTORE handler grants.
+    private static readonly IReleaseSpec[] StorageWriteForks = [Berlin.Instance, ReleaseSpec];
     private static readonly BlockHeader Header = new(Hash256.Zero, Hash256.Zero, Address.Zero, UInt256.Zero, 1, 30_000_000, 1, []);
 
     public enum Table { Untraced, Cancelable, Traced }
 
+    /// <param name="WorldStateCalls">The world-state calls the run made, in order, with their arguments.</param>
     private readonly record struct Outcome(
-        EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize, EthereumGasPolicy Policy);
+        EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize, EthereumGasPolicy Policy, long Refund,
+        string WorldStateCalls);
 
     [Test]
     public void Random_programs_match_the_shared_handlers([ValueSource(nameof(Forks))] IReleaseSpec spec, [Range(0, 7)] int seed)
@@ -531,10 +536,78 @@ public class GuestDispatchDifferentialTests
         }
     }
 
+    /// <remarks>
+    /// The writes leave a slot as it was, reset one to zero and back, create one and clear it again, and reset and then
+    /// clear a third, each slot first cold and then warm, so every charge and refund of EIP-2200 and EIP-3529 is taken.
+    /// Every amount of gas up to the program's need puts the end of the gas inside each charge and at the stipend sentry.
+    /// In a static frame the first write faults instead. The guest handler serves forks before EIP-8038 only.
+    /// </remarks>
+    [Test]
+    public void Storage_writes_match_the_shared_handlers([ValueSource(nameof(StorageWriteForks))] IReleaseSpec spec, [Values] bool isStatic)
+    {
+        (int Key, UInt256 Value)[] writes =
+        [
+            (5, StorageValueAt(5)), (6, 0), (6, StorageValueAt(6)), (FirstEmptyKey, 1), (FirstEmptyKey, 0), (7, 9), (7, 0),
+        ];
+        List<byte> program = [];
+        foreach ((int key, UInt256 value) in writes)
+        {
+            program.AddRange([(byte)Instruction.PUSH2, .. value.ToBigEndian()[^2..], (byte)Instruction.PUSH1, (byte)key, (byte)Instruction.SSTORE]);
+        }
+
+        program.AddRange([(byte)Instruction.PUSH1, 6, (byte)Instruction.SLOAD, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP]);
+        byte[] code = [.. program];
+        const ulong ample = 100_000;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(code), Table.Traced, spec, loadsStorage: true).GasLeft;
+
+        List<string> mismatches = [];
+        for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
+        {
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, spec, loadsStorage: true, isStatic: isStatic);
+            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, spec, loadsStorage: true, isStatic: isStatic);
+            if (!Matches(untraced, traced) || untraced.Refund != traced.Refund)
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        // The stipend sentry needs more gas at each write than the writes go on to use.
+        Outcome complete = Run(ample, [], 0, new CodeInfo(code), Table.Untraced, spec, loadsStorage: true, isStatic: isStatic);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mismatches, Is.Empty);
+            if (isStatic)
+            {
+                Assert.That(complete.Exception, Is.EqualTo(EvmExceptionType.StaticCallViolation));
+            }
+            else
+            {
+                Assert.That(complete.Exception, Is.EqualTo(EvmExceptionType.Stop));
+                Assert.That(complete.GasLeft, Is.EqualTo(ample - needed));
+                Assert.That(complete.Refund, Is.Not.Zero);
+                Assert.That(complete.Memory, Is.EqualTo(Convert.ToHexString(StorageValueAt(6).ToBigEndian())));
+            }
+        }
+    }
+
     /// <remarks>EIP-8038 SLOAD gas equals EIP-2929's, so only the table itself shows that the guest handler stays out.</remarks>
     [Test]
     public void Guest_storage_load_handler_is_installed_until_eip8038([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
         Assert.That(VirtualMachine<EthereumGasPolicy>.LoadsStorageThroughGuestHandlerForTests(spec), Is.EqualTo(!spec.IsEip8038Enabled));
+
+    [TestCaseSource(nameof(StorageStoreForks))]
+    public bool Guest_storage_store_handler_is_installed_until_eip8038(IReleaseSpec spec) =>
+        VirtualMachine<EthereumGasPolicy>.StoresStorageThroughGuestHandlerForTests(spec);
+
+    private static IEnumerable<TestCaseData> StorageStoreForks()
+    {
+        yield return new TestCaseData(Berlin.Instance).Returns(true);
+        yield return new TestCaseData(Osaka.Instance).Returns(true);
+        yield return new TestCaseData(Amsterdam.Instance).Returns(false);
+    }
+
+    /// <remarks>The guest call handler falls back to the shared one, so only the table shows that it is installed.</remarks>
+    [Test]
+    public void Guest_call_handlers_are_installed([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
+        Assert.That(VirtualMachine<EthereumGasPolicy>.CallsThroughGuestHandlerForTests(spec), Is.True);
 
     /// <remarks>
     /// Every amount of gas up to the program's need puts the end of the gas inside each charge. In a static frame the
@@ -583,7 +656,7 @@ public class GuestDispatchDifferentialTests
     /// its need, which puts the end of the gas inside its word and expansion charges.
     /// </remarks>
     [Test]
-    public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2)] int memory)
+    public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.CODECOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2)] int memory)
     {
         byte[] data = new byte[40];
         for (int i = 0; i < data.Length; i++) data[i] = (byte)(i + 1);
@@ -594,7 +667,7 @@ public class GuestDispatchDifferentialTests
             _ => [(byte)Instruction.PUSH1, 0xbb, (byte)Instruction.PUSH2, 0x01, 0x00, (byte)Instruction.MSTORE],
         };
         UInt256[] destinations = [0, 7, 0x20, 0x40, 0x61, 0x120, 0x3f0, 0x400, UInt256.One << 32, UInt256.One << 64];
-        UInt256[] sources = [0, 5, 39, 40, 41, UInt256.One << 32, UInt256.One << 64];
+        UInt256[] sources = [0, 5, 39, 40, 41, 0x100, UInt256.One << 32, UInt256.One << 64];
         UInt256[] sizes = [0, 1, 31, 32, 33, 64, 200, UInt256.One << 32];
 
         List<string> mismatches = [];
@@ -605,7 +678,7 @@ public class GuestDispatchDifferentialTests
                     byte[] code =
                     [
                         .. prefix, (byte)Instruction.PUSH32, .. size.ToBigEndian(), (byte)Instruction.PUSH32, .. source.ToBigEndian(),
-                        (byte)Instruction.PUSH32, .. destination.ToBigEndian(), (byte)op, (byte)Instruction.MSIZE, (byte)Instruction.STOP
+                        (byte)Instruction.PUSH32, .. destination.ToBigEndian(), (byte)op, (byte)Instruction.MSIZE, (byte)Instruction.STOP, (byte)Instruction.INVALID
                     ];
                     Outcome fresh = Run(100_000, data, 0, new CodeInfo(code), Table.Traced, returnData: data);
                     ulong needed = 100_000 - fresh.GasLeft;
@@ -619,6 +692,82 @@ public class GuestDispatchDifferentialTests
                 }
 
         Assert.That(mismatches, Is.Empty);
+    }
+
+    public enum CallTarget { NoCode, Code, Delegation, Precompile }
+
+    /// <remarks>
+    /// Two calls reach an account with no code, first cold and then warm, and a third reaches the target: an account
+    /// with no code, one with code, one that delegates to code under EIP-7702, or the identity precompile. At code the
+    /// chain leaves to enter its frame; a precompile runs inline, and the chain goes on. The calls expand memory over their input or output, or need no expansion. Every amount
+    /// of gas up to the program's need puts the end of the gas inside each charge.
+    /// The calls move no value, except in a static frame, where each CALL moves value and faults.
+    /// The reference is the cancelable table: a traced call enters a frame even at no code, so that the tracer sees it.
+    /// </remarks>
+    [Test]
+    public void Calls_match_the_shared_handlers(
+        [Values(Instruction.CALL, Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction op,
+        [Values] CallTarget target,
+        [ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec,
+        [Values] bool isStatic)
+    {
+        // A value transfer outside a static frame reads the balance, which the substitute world state cannot return by reference.
+        byte value = isStatic ? (byte)1 : (byte)0;
+        Address noCode = new("0x00000000000000000000000000000000000000aa");
+        Address withCode = new("0x00000000000000000000000000000000000000bb");
+        Address delegating = new("0x00000000000000000000000000000000000000cc");
+        Address identity = new("0x0000000000000000000000000000000000000004");
+        CodeInfo code = new(new[] { (byte)Instruction.STOP });
+        ICodeInfoRepository repository = Substitute.For<ICodeInfoRepository>();
+        repository.GetCachedCodeInfo(Arg.Any<Address>(), Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address?>())
+            .Returns(call =>
+            {
+                Address account = (Address)call[0];
+                call[3] = account == delegating ? withCode : null;
+                return account == withCode ? code : account == identity ? new CodeInfo(IdentityPrecompile.Instance) : CodeInfo.Empty;
+            });
+        repository.GetDelegatedCodeInfo(withCode, Arg.Any<IReleaseSpec>()).Returns(code);
+
+        Address last = target switch { CallTarget.NoCode => noCode, CallTarget.Code => withCode, CallTarget.Precompile => identity, _ => delegating };
+        byte[] program =
+        [
+            .. Call(op, noCode, 0, 0x40, 0x40, 0x20, value),
+            .. Call(op, noCode, 0x20, 0x20, 0, 0x20, value),
+            // A non-zero input byte shows where the precompile reads and writes.
+            (byte)Instruction.PUSH1, 0xff, (byte)Instruction.PUSH1, 0x10, (byte)Instruction.MSTORE,
+            .. Call(op, last, 0x10, 0x20, 0xe0, 0x20, value),
+            (byte)Instruction.STOP
+        ];
+        const ulong ample = 100_000;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(program), Table.Cancelable, spec, isStatic: isStatic, codeInfoRepository: repository).GasLeft;
+
+        List<string> mismatches = [];
+        for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
+        {
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(program), Table.Untraced, spec, isStatic: isStatic, codeInfoRepository: repository);
+            Outcome shared = Run(gas, [], 0, new CodeInfo(program), Table.Cancelable, spec, isStatic: isStatic, codeInfoRepository: repository);
+            // A frame entered is not a fault: the gas, stack and counter it leaves the caller at must match too.
+            if (untraced.Exception == EvmExceptionType.Suspend ? untraced != shared : !Matches(untraced, shared))
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n shared   {shared}");
+        }
+
+        Outcome complete = Run(needed, [], 0, new CodeInfo(program), Table.Untraced, spec, isStatic: isStatic, codeInfoRepository: repository);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mismatches, Is.Empty);
+            Assert.That(complete.Exception, Is.EqualTo(
+                isStatic && op == Instruction.CALL ? EvmExceptionType.StaticCallViolation
+                : target is CallTarget.NoCode or CallTarget.Precompile ? EvmExceptionType.Stop
+                : EvmExceptionType.Suspend));
+        }
+
+        static byte[] Call(Instruction op, Address to, byte inputOffset, byte inputLength, byte outputOffset, byte outputLength, byte value) =>
+        [
+            (byte)Instruction.PUSH1, outputLength, (byte)Instruction.PUSH1, outputOffset,
+            (byte)Instruction.PUSH1, inputLength, (byte)Instruction.PUSH1, inputOffset,
+            .. op != Instruction.CALL ? [] : value == 0 ? (byte[])[(byte)Instruction.PUSH0] : [(byte)Instruction.PUSH1, value],
+            (byte)Instruction.PUSH20, .. to.Bytes, (byte)Instruction.PUSH1, 0x40, (byte)op
+        ];
     }
 
     /// <summary>A big-endian word drawn mostly from the values arithmetic splits its cases on.</summary>
@@ -845,11 +994,19 @@ public class GuestDispatchDifferentialTests
     });
 
     /// <param name="initial">The frame's full policy, whose execution gas must be <paramref name="gas"/>; by default one holding only it.</param>
+    /// <param name="codeInfoRepository">The code the calls read; without it CALL, STATICCALL and DELEGATECALL run as INVALID.</param>
     private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
-        bool loadsStorage = false, byte[]? returnData = null, bool isStatic = false, EthereumGasPolicy? initial = null)
+        bool loadsStorage = false, byte[]? returnData = null, bool isStatic = false, EthereumGasPolicy? initial = null,
+        ICodeInfoRepository? codeInfoRepository = null)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
         if (returnData is not null) vm.ReturnDataBuffer = returnData;
+        if (codeInfoRepository is not null)
+        {
+            vm.UseCodeInfoRepository(codeInfoRepository);
+            // A precompile the calls reach runs inline, through the frame handlers.
+            vm.PrepareFrameHandlersForTests();
+        }
         using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, 0, UInt256.Zero, inputData);
         using VmState<EthereumGasPolicy> frame = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default, isStatic);
@@ -879,8 +1036,9 @@ public class GuestDispatchDifferentialTests
         for (int opcode = 0; opcode < handlers.Length; opcode++)
         {
             if (NeedsWorldStateOrHash((Instruction)opcode) &&
-                !(loadsStorage && (Instruction)opcode is Instruction.SLOAD or Instruction.TLOAD or Instruction.TSTORE) &&
-                !(returnData is not null && (Instruction)opcode is Instruction.RETURNDATASIZE or Instruction.RETURNDATACOPY))
+                !(loadsStorage && (Instruction)opcode is Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE) &&
+                !(returnData is not null && (Instruction)opcode is Instruction.RETURNDATASIZE or Instruction.RETURNDATACOPY) &&
+                !(codeInfoRepository is not null && (Instruction)opcode is Instruction.CALL or Instruction.STATICCALL or Instruction.DELEGATECALL))
                 handlers[opcode] = handlers[(int)Instruction.INVALID];
         }
 
@@ -890,7 +1048,7 @@ public class GuestDispatchDifferentialTests
         nint pc;
         nint finalHead;
         // Paired once per table, fork and replaced set, as the dispatch loop pairs each table once.
-        nint[] paired = PairedTables.GetOrAdd((table, spec ?? ReleaseSpec, loadsStorage, returnData is not null), _ => VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers));
+        nint[] paired = PairedTables.GetOrAdd((table, spec ?? ReleaseSpec, loadsStorage, returnData is not null, codeInfoRepository is not null), _ => VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers));
         fixed (nint* pairedStart = paired)
         {
             nint* entries = pairedStart + VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength;
@@ -913,11 +1071,17 @@ public class GuestDispatchDifferentialTests
             memoryHex = Convert.ToHexString(memory);
         }
 
-        return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), pc, finalHead, stackHex, memoryHex, size, gasPolicy[0]);
+        // An out argument holds whatever the caller's stack held, so only the inputs are compared.
+        string worldStateCalls = string.Join("; ", vm.WorldState.ReceivedCalls().Select(static call =>
+            $"{call.GetMethodInfo().Name}({string.Join(", ", call.GetArguments().Where((_, i) => !call.GetParameterInfos()[i].IsOut))})"));
+        return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), pc, finalHead, stackHex, memoryHex, size, gasPolicy[0], frame.Refund, worldStateCalls);
     }
 
-    /// <summary>The value every test world state holds at <paramref name="key"/>.</summary>
-    private static UInt256 StorageValueAt(UInt256 key) => key * 7 + 3;
+    /// <summary>The value every test world state holds at <paramref name="key"/> when the transaction starts.</summary>
+    /// <remarks>Zero from <see cref="FirstEmptyKey"/> on, so a write can create a slot.</remarks>
+    private static UInt256 StorageValueAt(UInt256 key) => key >= FirstEmptyKey ? UInt256.Zero : key * 7 + 3;
+
+    private const int FirstEmptyKey = 0x80;
 
     private static bool NeedsWorldStateOrHash(Instruction opcode) =>
         opcode is Instruction.KECCAK256 or Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE ||
@@ -935,8 +1099,15 @@ public class GuestDispatchDifferentialTests
             SetBlockExecutionContext(new BlockExecutionContext(Header, spec));
             _txTracer = new SilentTracer();
             _worldState = Substitute.For<IWorldState>();
+            Dictionary<StorageCell, UInt256> storage = [];
             _worldState.When(static state => state.Get(Arg.Any<StorageCell>(), out Arg.Any<UInt256>()))
+                .Do(call => call[1] = storage.TryGetValue((StorageCell)call[0], out UInt256 value) ? value : StorageValueAt(((StorageCell)call[0]).Index));
+            _worldState.When(static state => state.GetOriginal(Arg.Any<StorageCell>(), out Arg.Any<UInt256>()))
                 .Do(static call => call[1] = StorageValueAt(((StorageCell)call[0]).Index));
+            _worldState.When(static state => state.Set(Arg.Any<StorageCell>(), Arg.Any<UInt256>()))
+                .Do(call => storage[(StorageCell)call[0]] = (UInt256)call[1]);
+            _worldState.When(static state => state.Set(Arg.Any<StorageCell>(), Arg.Any<UInt256>(), Arg.Any<UInt256>()))
+                .Do(call => storage[(StorageCell)call[0]] = (UInt256)call[1]);
             Dictionary<StorageCell, UInt256> transient = [];
             _worldState.When(static state => state.SetTransientState(Arg.Any<StorageCell>(), Arg.Any<UInt256>()))
                 .Do(call => transient[(StorageCell)call[0]] = (UInt256)call[1]);
@@ -948,6 +1119,10 @@ public class GuestDispatchDifferentialTests
         public ITxTracer Tracer => _txTracer;
 
         public void Enter(VmState<EthereumGasPolicy> frame) => VmState = frame;
+
+        /// <summary>Sets the code repository that a transaction brings, which the calls read.</summary>
+        public void UseCodeInfoRepository(ICodeInfoRepository repository) =>
+            typeof(VirtualMachine<EthereumGasPolicy>).GetField("_codeInfoRepository", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(this, repository);
 
         public void Trace(ITxTracer tracer) => _txTracer = tracer;
     }

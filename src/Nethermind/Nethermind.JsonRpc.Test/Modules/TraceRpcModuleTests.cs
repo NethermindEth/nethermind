@@ -3933,10 +3933,10 @@ public class TraceRpcModuleTests
             IReadOnlyCollection<ParityLikeTxTrace> traces = Substitute.For<IReadOnlyCollection<ParityLikeTxTrace>, IDisposable>();
             traces.GetEnumerator().Returns(_ => new List<ParityLikeTxTrace> { new() }.GetEnumerator());
 
-            Assert.Throws<OperationCanceledException>(() => tracer.WriteTraces(traces));
+            Assert.Throws<OperationCanceledException>(() => tracer.Write(traces));
             ((IDisposable)traces).Received(1).Dispose();
             return Task.CompletedTask;
-        })).SetName("WriteTraces: disposes the traces when writing them is cancelled");
+        })).SetName("Write: disposes the traces when writing them is cancelled");
     }
 
     [TestCaseSource(nameof(StreamingResourceSafetyCases))]
