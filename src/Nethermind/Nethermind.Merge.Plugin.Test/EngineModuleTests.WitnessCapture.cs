@@ -782,13 +782,14 @@ public partial class EngineModuleTests
     {
         int processCount = 0;
 
+        using MergeTestBlockchain producer = await CreateBlockchain(Amsterdam.Instance);
         using MergeTestBlockchain chain = await CreateBlockchain(
             Amsterdam.Instance,
             configurer: builder =>
                 builder.AddDecorator<IBranchProcessor>((_, inner) =>
                     new CountingBranchProcessorDecorator(inner, () => Interlocked.Increment(ref processCount))));
 
-        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(producer);
         processCount = 0;
 
         ResultWrapper<NewPayloadWithWitnessV1Result> result =

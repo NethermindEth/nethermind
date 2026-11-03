@@ -87,7 +87,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 .Returns(ci =>
                 {
                     PingMsg sent = (PingMsg)ci[0]!;
-                    using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
+                    byte[] buffer = _receiverSerializationManager.SerializeToArray(sent);
                     PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
                     onWirePing?.Invoke(msg);
                     PongMsg pong = new(
@@ -239,7 +239,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         private T AddReceiverFarAddress<T>(T msg) where T : DiscoveryMsg
         {
-            using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize<T>(msg).AsDisposable();
+            byte[] buffer = _receiverSerializationManager.SerializeToArray<T>(msg);
             IPEndPoint? farAddress = msg.FarAddress;
             msg = _receiverSerializationManager.Deserialize<T>(buffer);
             msg.FarAddress = farAddress;
@@ -311,7 +311,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 .Returns(ci =>
                 {
                     PingMsg sent = (PingMsg)ci[0]!;
-                    using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
+                    byte[] buffer = _receiverSerializationManager.SerializeToArray(sent);
                     PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
                     PongMsg pong = new(
                         msg.FarPublicKey!,

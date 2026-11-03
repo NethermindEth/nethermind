@@ -24,28 +24,27 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
     {
         if (o is IDictionary<string, object> dictionary)
         {
-            if (dictionary.TryGetValue("value", out object? value))
+            // value is marshaled to BigInteger by ClearScript
+            if (dictionary.TryGetValue("value", out object? value) && value is BigInteger bigInteger)
             {
-                // value is marshaled to BigInteger by ClearScript
-                if (value is BigInteger bigInteger)
-                {
-                    writer.WriteStringValue(bigInteger.ToString(CultureInfo.InvariantCulture));
-                    return;
-                }
-
-                if (value == Undefined.Value)
-                {
-                    dictionary.Remove("value");
-                }
+                writer.WriteStringValue(bigInteger.ToString(CultureInfo.InvariantCulture));
+                return;
             }
 
-            // remove undefined errors
-            if (dictionary.TryGetValue("error", out object? error) && error == Undefined.Value)
+            // Keys are the script's own data, so they skip options.DictionaryKeyPolicy and stay verbatim, as in JSON.stringify.
+            writer.WriteStartObject();
+            foreach ((string key, object? item) in dictionary)
             {
-                dictionary.Remove("error");
-            }
+                // JSON.stringify omits properties whose value is undefined
+                if (item == Undefined.Value)
+                {
+                    continue;
+                }
 
-            TypeInfoJsonSerializer.Serialize(writer, dictionary, options);
+                writer.WritePropertyName(key);
+                TypeInfoJsonSerializer.Serialize(writer, item, options);
+            }
+            writer.WriteEndObject();
         }
         else if (o is IList<object> list)
         {

@@ -3,7 +3,6 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
@@ -79,7 +78,6 @@ public class XdcModule : Module
             //TODO this might not be wired correctly
             .AddSingleton<
                 IMasternodeVotingContract,
-                IAbiEncoder,
                 ISpecProvider,
                 IReadOnlyTxProcessingEnvFactory>(CreateVotingContract)
             .AddSingleton<IMintedRecordContract, MintedRecordContract>()
@@ -203,11 +201,10 @@ public class XdcModule : Module
     }
 
     private IMasternodeVotingContract CreateVotingContract(
-        IAbiEncoder abiEncoder,
         ISpecProvider specProvider,
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnv)
     {
         IXdcReleaseSpec spec = (XdcReleaseSpec)specProvider.GetFinalSpec();
-        return new MasternodeVotingContract(abiEncoder, spec.MasternodeVotingContract, readOnlyTxProcessingEnv);
+        return new MasternodeVotingContract(spec.MasternodeVotingContract, readOnlyTxProcessingEnv);
     }
 }

@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto;
 
@@ -372,11 +373,15 @@ public static partial class KeccakCache
     /// little-endian target, so shifting them down zero-pads them and the stored key never needs a
     /// byte-granular compare. A big-endian target would derive a different word - harmless for
     /// correctness, since key and probe stay consistent, but it would scatter the slot index. riscv64
-    /// and every host this runs on are little-endian.
+    /// and every host this runs on are little-endian. Where <see cref="StrictAlignmentFlag"/> is on, the word ending an
+    /// input that starts on a word boundary is not on one, and reading it is a byte-by-byte gather: the bytes are read
+    /// in pieces from where they start instead, which gives the same word.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong MemoLastKeyWord(ref byte inputRef, nuint length, nuint partial) => partial == 0
         ? 0
+        : StrictAlignmentFlag.IsActive
+        ? KeccakHash.PartialLane(ref Unsafe.Add(ref inputRef, length - partial), partial)
         : Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, length - sizeof(ulong))) >> (int)((sizeof(ulong) - partial) << 3);
 
     /// <summary>The input's slot in <see cref="Memo"/>.</summary>

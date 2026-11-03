@@ -10,9 +10,11 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
@@ -24,12 +26,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -2352,6 +2356,110 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        public enum NonceTakenBy { CompetitorInBlock, PooledTxInBlock, NoTxInBlock }
+
+        [Test]
+        public async Task Pending_tx_is_surfaced_as_evicted_only_when_a_different_block_tx_takes_its_nonce([Values] bool isBlob, [Values] NonceTakenBy takenBy)
+        {
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetCancunSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction[] pooled = new Transaction[2];
+            for (int nonce = 0; nonce < pooled.Length; nonce++)
+            {
+                pooled[nonce] = Build.A.Transaction
+                    .WithNonce((ulong)nonce)
+                    .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
+                    .WithShardBlobTxTypeAndFieldsIfBlobTx()
+                    .WithMaxFeePerGas(1.GWei)
+                    .WithMaxPriorityFeePerGas(1.GWei)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                Assert.That(_txPool.SubmitTx(pooled[nonce], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            Transaction competitor = Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(2.GWei)
+                .WithMaxPriorityFeePerGas(2.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            List<Transaction> evicted = [];
+            List<Transaction> removed = [];
+            _txPool.EvictedPending += (_, e) => evicted.Add(e.Transaction);
+            _txPool.RemovedPending += (_, e) => removed.Add(e.Transaction);
+
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+            Transaction[] blockTxs = takenBy switch
+            {
+                NonceTakenBy.CompetitorInBlock => [competitor],
+                NonceTakenBy.PooledTxInBlock => [pooled[0]],
+                _ => [],
+            };
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTransactions(blockTxs).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetPendingTransaction(pooled[0].Hash!, out _), Is.False, "the nonce-0 tx leaves the pool in every case");
+                Assert.That(evicted.Select(static tx => tx.Hash),
+                    Is.EqualTo(takenBy == NonceTakenBy.CompetitorInBlock ? new[] { pooled[0].Hash } : Array.Empty<Hash256>()),
+                    "only a tx whose nonce a different included tx took is surfaced as a drop");
+                Assert.That(removed.Select(static tx => tx.Hash),
+                    Is.EqualTo(takenBy == NonceTakenBy.NoTxInBlock ? Array.Empty<Hash256>() : new[] { pooled[0].Hash }));
+            }
+        }
+
+        [TestCase(null, 0ul, 0xbeeful, false, TestName = "account-nonce tx pending, keyed tx included")]
+        [TestCase(0xbeeful, 0ul, null, false, TestName = "keyed tx pending, account-nonce tx included")]
+        [TestCase(0xbeeful, 0ul, 0xbeeful, true, TestName = "keyed txs sharing a key and sequence")]
+        [TestCase(0xbeeful, 1ul, 0xbeeful, false, TestName = "keyed tx pending at the shared key's next sequence")]
+        [TestCase(0xbeeful, 0ul, 0xcafeul, false, TestName = "keyed txs on different keys")]
+        public async Task Pending_tx_is_evicted_by_an_included_tx_only_at_its_sequence_in_a_shared_nonce_domain(ulong? pendingKey, ulong pendingSeq, ulong? includedKey, bool expectEvicted)
+        {
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+            Address sender = TestItem.PrivateKeyA.Address;
+            EnsureSenderBalance(sender, 100.Ether);
+            // The pool admits a keyed tx only at its key's current sequence.
+            if (pendingKey is { } advancedKey && pendingSeq > 0)
+            {
+                _stateProvider.Set(KeyedNonceManager.StorageSlot(sender, advancedKey), (UInt256)pendingSeq);
+            }
+
+            Transaction pending = pendingKey is { } key
+                ? BuildKeyedFrameTx(sender, nonceKey: key, seq: pendingSeq, value: UInt256.Zero, maxFee: 1.GWei)
+                : PlainTx(1.GWei);
+            Transaction included = includedKey is { } blockKey
+                ? BuildKeyedFrameTx(sender, nonceKey: blockKey, seq: 0, value: UInt256.Zero, maxFee: 2.GWei)
+                : PlainTx(2.GWei);
+            Assert.That(_txPool.SubmitTx(pending, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            List<Transaction> evicted = [];
+            _txPool.EvictedPending += (_, e) => evicted.Add(e.Transaction);
+
+            if (includedKey is { } consumedKey)
+            {
+                _stateProvider.Set(KeyedNonceManager.StorageSlot(sender, consumedKey), UInt256.One);
+            }
+            else
+            {
+                _stateProvider.IncrementNonce(sender);
+            }
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTransactions(included).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(evicted, Is.EqualTo(expectEvicted ? new[] { pending } : Array.Empty<Transaction>()));
+                Assert.That(_txPool.TryGetPendingTransaction(pending.Hash!, out _), Is.EqualTo(!expectEvicted));
+            }
+
+            Transaction PlainTx(UInt256 fee) => Build.A.Transaction
+                .WithNonce(0)
+                .WithMaxFeePerGas(fee)
+                .WithMaxPriorityFeePerGas(fee)
+                .WithGasLimit(21_000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+        }
+
         [Test]
         public void should_calculate_gasBottleneck_properly()
         {
@@ -4414,7 +4522,7 @@ namespace Nethermind.TxPool.Test
             byte[] publicKey = [.. q.X!, .. q.Y!];
             Address signer = new(Keccak.Compute(publicKey).Bytes[12..]);
 
-            tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, default)];
+            tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, new byte[TxFrameSignature.P256SignatureLength])];
             byte[] signature = key.SignHash(FrameTxSigHash.ComputeValue(tx).Bytes);
 
             UInt256 s = new(signature.AsSpan(32, 32), isBigEndian: true);
@@ -5298,6 +5406,128 @@ namespace Nethermind.TxPool.Test
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "only the slot holder survives");
                 Assert.That(_txPool.TryGetPendingTransaction(untracked.Hash!, out _), Is.False, "the newly dependent transaction is over the cap");
             }
+        }
+
+        public enum EcRecoverSignerChange
+        {
+            UnrelatedAccountGainsCode,
+            SignerGainsCode,
+            SignerDelegates,
+        }
+
+        // EIP-8151: an owner check in the prefix turns on the code of the account ecRecover recovers. The prefix runs
+        // in a real EVM here, so it is the tracer, not a stub, that names the signer the pool revalidates on.
+        [TestCase(EcRecoverSignerChange.UnrelatedAccountGainsCode, true, true, false)]
+        [TestCase(EcRecoverSignerChange.SignerGainsCode, true, false, true)]
+        [TestCase(EcRecoverSignerChange.SignerDelegates, true, true, true)]
+        // Without EIP-8298 the signer is not a dependency: a code change there (infeasible on such a chain) goes unnoticed.
+        [TestCase(EcRecoverSignerChange.SignerGainsCode, false, true, false)]
+        [TestCase(EcRecoverSignerChange.SignerDelegates, false, true, false)]
+        public async Task Revalidation_follows_the_code_of_the_signer_an_ecrecover_owner_check_recovered(EcRecoverSignerChange change, bool eip8298, bool stays, bool resimulated)
+        {
+            PrivateKey owner = TestItem.PrivateKeys[9];
+            ISpecProvider specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = eip8298 });
+            IReleaseSpec spec = specProvider.GenesisSpec;
+            IWorldState state = TestWorldStateFactory.CreateForTest();
+            byte[] senderCode = OwnerCheckCode(owner);
+            BlockHeader stateHead = WithCode(state, spec, IWorldState.PreGenesis, TestItem.AddressA, senderCode, 1.Ether);
+            using FrameTxPrefixSimulator realSimulator = EvmFrameTxPrefixSimulator(state, specProvider, () => stateHead);
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>())
+                .Returns(call => realSimulator.Simulate(call.ArgAt<Transaction>(0), call.ArgAt<bool>(1), call.ArgAt<bool>(2), call.ArgAt<CancellationToken>(3), call.ArgAt<Func<bool>>(4)));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, specProvider, frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            _stateProvider.InsertCode(senderCode, TestItem.AddressA);
+
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                SenderAddress = TestItem.AddressA,
+                Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>())],
+                FrameSignatures = [],
+                GasLimit = 1_000_000,
+                GasPrice = 1.GWei,
+                DecodedMaxFeePerGas = 1.GWei,
+            };
+            tx.Hash = tx.CalculateHash();
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // A baseline head first, so the following change list is trusted as complete.
+            Block first = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(first);
+            simulator.ClearReceivedCalls();
+
+            Address touched = change == EcRecoverSignerChange.UnrelatedAccountGainsCode ? TestItem.AddressF : owner.Address;
+            byte[] code = change == EcRecoverSignerChange.SignerDelegates
+                ? [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressF.Bytes]
+                : [(byte)Instruction.STOP];
+            stateHead = WithCode(state, spec, stateHead, touched, code);
+            Block second = Build.A.Block.WithNumber(2).WithParent(first).TestObject;
+            second.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { touched };
+            await RaiseBlockAddedToMainAndWaitForNewHead(second);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(stays ? 1 : 0));
+                simulator.Received(resimulated ? 1 : 0).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>());
+            }
+        }
+
+        /// <summary>Code approving execution and payment only when ecRecover returns <paramref name="owner"/>'s address.</summary>
+        /// <remarks>The output is copied past the input, so a withheld (empty) one compares as zero, and an approval of
+        /// scope zero reverts the frame.</remarks>
+        private static byte[] OwnerCheckCode(PrivateKey owner)
+        {
+            const int outputOffset = 256;
+            ValueHash256 message = ValueKeccak.Compute("owner check"u8);
+            Signature signature = new Ecdsa().Sign(owner, in message);
+            byte[] input = new byte[128];
+            message.Bytes.CopyTo(input);
+            input[63] = (byte)signature.V;
+            signature.Bytes.CopyTo(input.AsSpan(64));
+            return Prepare.EvmCode
+                .DynamicCallWithInput(Instruction.STATICCALL, PrecompiledAddresses.ECRecover, 50_000, input).Op(Instruction.POP)
+                .Op(Instruction.RETURNDATASIZE).PushData(0).PushData(outputOffset).Op(Instruction.RETURNDATACOPY)
+                .PushData(outputOffset).Op(Instruction.MLOAD).PushData(owner.Address).Op(Instruction.EQ)
+                .PushData((byte)FrameFlags.ApproveExecutionAndPayment).Op(Instruction.MUL).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        }
+
+        /// <summary>Installs <paramref name="code"/> at <paramref name="address"/> over the state at <paramref name="parent"/>.</summary>
+        /// <returns>A header at the resulting state.</returns>
+        private static BlockHeader WithCode(IWorldState state, IReleaseSpec spec, BlockHeader parent, Address address, byte[] code, UInt256 balance = default)
+        {
+            using IDisposable scope = state.BeginScope(parent);
+            state.CreateAccountIfNotExists(address, balance);
+            state.InsertCode(address, code, spec);
+            state.Commit(spec);
+            ulong number = parent is null ? 0 : parent.Number + 1;
+            state.CommitTree(number);
+            return Build.A.BlockHeader.WithNumber(number).WithStateRoot(state.StateRoot).TestObject;
+        }
+
+        /// <summary>The production simulator, running each prefix over <paramref name="state"/> at <paramref name="stateAt"/>.</summary>
+        private static FrameTxPrefixSimulator EvmFrameTxPrefixSimulator(IWorldState state, ISpecProvider specProvider, Func<BlockHeader> stateAt)
+        {
+            EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+            ITransactionProcessor processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, virtualMachine, new EthereumCodeInfoRepository(state), LimboLogs.Instance);
+            IReadOnlyTxProcessorSource source = Substitute.For<IReadOnlyTxProcessorSource>();
+            source.TryBuild(Arg.Any<BlockHeader>(), out Arg.Any<IReadOnlyTxProcessingScope>())
+                .Returns(call => call.Succeed(1, new WorldStateProcessingScope(processor, state, state.BeginScope(stateAt()))));
+            IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+            envFactory.Create().Returns(source);
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.Head.Returns(Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithGasLimit(30_000_000).TestObject);
+            return new FrameTxPrefixSimulator(envFactory, blockFinder, specProvider,
+                new TxPoolConfig { FrameTxSimulationTimeoutMs = 0, FrameTxSimulationBudgetPerHeadMs = int.MaxValue }, LimboLogs.Instance);
+        }
+
+        /// <remarks>Closes the world-state scope it was opened over on the thread that disposes it, the simulating one.</remarks>
+        private sealed class WorldStateProcessingScope(ITransactionProcessor transactionProcessor, IWorldState worldState, IDisposable closer) : IReadOnlyTxProcessingScope
+        {
+            public ITransactionProcessor TransactionProcessor => transactionProcessor;
+            public IWorldState WorldState => worldState;
+            public void Dispose() => closer.Dispose();
         }
 
         [Test]
@@ -6707,16 +6937,16 @@ namespace Nethermind.TxPool.Test
                 Frames = frames,
                 FrameSignatures =
                 [
-                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, default, default),
-                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: sponsorKey.Address, default, default),
+                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, default, new byte[TxFrameSignature.Secp256k1SignatureLength]),
+                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: sponsorKey.Address, default, new byte[TxFrameSignature.Secp256k1SignatureLength]),
                 ],
                 GasLimit = 1_000_000,
                 GasPrice = feePerGas ?? 1.GWei,
                 DecodedMaxFeePerGas = feePerGas ?? 1.GWei,
                 MaxFee = (UInt256)1_000_000 * (feePerGas ?? 1.GWei),
             };
-            // compute_sig_hash covers each entry's scheme/signer/msg and elides only the raw bytes, so the
-            // signatures are taken with the entries already installed, then their bytes are filled in.
+            // compute_sig_hash replaces each empty-msg entry's signature bytes with their length, so the entries are
+            // installed with 65-byte placeholders before hashing, then their bytes are filled in.
             ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
             tx.FrameSignatures =
             [

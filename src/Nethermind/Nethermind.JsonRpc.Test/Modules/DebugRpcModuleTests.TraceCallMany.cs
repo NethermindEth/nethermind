@@ -268,7 +268,7 @@ public partial class DebugRpcModuleTests
         JToken error = JToken.Parse(response)["error"]!;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(error["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(error["code"]!.Value<int>(), Is.EqualTo(many ? ErrorCodes.InvalidParams : ErrorCodes.InvalidInput));
             Assert.That(error["message"]!.Value<string>(), Is.EqualTo(BlockOverride.WithdrawalsNotSupported));
         }
     }

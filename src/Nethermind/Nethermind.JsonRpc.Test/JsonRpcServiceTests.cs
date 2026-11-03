@@ -55,6 +55,20 @@ namespace Nethermind.JsonRpc.Test;
 [TestFixture]
 public class JsonRpcServiceTests
 {
+    [Test]
+    public void Safe_public_message_exception_preserves_single_string_constructor()
+    {
+        ConstructorInfo? constructor = typeof(SafePublicMessageFormatException).GetConstructor([typeof(string)]);
+        Assert.That(constructor, Is.Not.Null);
+
+        SafePublicMessageFormatException exception = (SafePublicMessageFormatException)constructor!.Invoke(["invalid input"]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Is.EqualTo("invalid input"));
+            Assert.That(exception.OmitArgumentPosition, Is.False);
+        }
+    }
+
     [TestCase("engine_newPayloadV1", true, true, RpcEndpoint.Http)]
     [TestCase("engine_newPayloadV5", true, true, RpcEndpoint.Http)]
     [TestCase("engine_newPayloadV99", true, true, RpcEndpoint.Http)]
@@ -170,7 +184,7 @@ public class JsonRpcServiceTests
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBalance),
             """["cf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x1036640"]""",
-            "invalid argument 0: hex string without 0x prefix",
+            "invalid argument 0: json: cannot unmarshal hex string without 0x prefix into Go value of type common.Address",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
             .SetName("Address without 0x prefix");
         yield return new TestCaseData(
@@ -209,6 +223,73 @@ public class JsonRpcServiceTests
             "invalid argument 1: cannot specify both BlockHash and BlockNumber, choose one or the other",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
             .SetName("EIP-1898 mutually exclusive block fields");
+    }
+
+    private static IEnumerable<TestCaseData> MalformedArgumentCases()
+    {
+        const string shortHash = "0x96cfa0fb5e50b0a3f6cc76f3299cfbf48f17e8b41798d1394474e67ec8a97e";
+        const string fullHash = shortHash + "9f";
+        const string shortAddress = "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35";
+        const string address = "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6";
+        yield return new TestCaseData("eth_getBlockByNumber", """["0x10","full"]""",
+            "invalid argument 1: json: cannot unmarshal string into Go value of type bool").SetName("Non-boolean full transactions flag");
+        yield return new TestCaseData("eth_getBlockByHash", $"""["{shortHash}",false]""",
+            "invalid argument 0: hex string has length 62, want 64 for common.Hash").SetName("Short block hash");
+        yield return new TestCaseData("eth_getTransactionReceipt", $"""["{shortHash}"]""",
+            "invalid argument 0: hex string has length 62, want 64 for common.Hash").SetName("Short transaction hash");
+        yield return new TestCaseData("eth_getBlockTransactionCountByNumber", $"""["{shortHash}"]""",
+            "invalid argument 0: hex number > 64 bits").SetName("Block number above 64 bits");
+        foreach ((string method, string block) in new[]
+        {
+            ("eth_getTransactionByBlockNumberAndIndex", "0x10"),
+            ("eth_getTransactionByBlockHashAndIndex", fullHash),
+            ("eth_getRawTransactionByBlockNumberAndIndex", "0x10"),
+            ("eth_getRawTransactionByBlockHashAndIndex", fullHash),
+            ("eth_getUncleByBlockNumberAndIndex", "0x10"),
+            ("eth_getUncleByBlockHashAndIndex", fullHash),
+        })
+        {
+            yield return new TestCaseData(method, $"""["{block}","0xzz"]""",
+                "invalid argument 1: json: cannot unmarshal invalid hex string into Go value of type hexutil.Uint").SetName($"Non-hex position index in {method}");
+        }
+        foreach ((string flag, string kind) in new[] { ("1", "number"), ("{}", "object"), ("[]", "array") })
+        {
+            yield return new TestCaseData("eth_getBlockByNumber", $"""["0x10",{flag}]""",
+                $"invalid argument 1: json: cannot unmarshal {kind} into Go value of type bool").SetName($"Full transactions flag as {kind}");
+        }
+        foreach ((string index, string reason) in new[] { ("5", "non-string"), ("\"0x\"", "hex string \"0x\""), ("\"zz\"", "hex string without 0x prefix") })
+        {
+            yield return new TestCaseData("eth_getTransactionByBlockNumberAndIndex", $"""["0x10",{index}]""",
+                $"invalid argument 1: json: cannot unmarshal {reason} into Go value of type hexutil.Uint").SetName($"Position index rejected as {reason}");
+        }
+        yield return new TestCaseData("eth_getBlockByHash", $"""["{fullHash[..^1]}",false]""",
+            "invalid argument 0: json: cannot unmarshal hex string of odd length into Go value of type common.Hash").SetName("Odd-length block hash");
+        yield return new TestCaseData("eth_getBlockByNumber", $"""["0x{new string('1', 65)}",false]""",
+            "invalid argument 0: hex number > 64 bits").SetName("Block number of 65 digits");
+        yield return new TestCaseData("eth_getLogs", """[{"fromBlock":"0x1","toBlock":"0x2","address":[null]}]""",
+            "invalid argument 0: non-string address at index 0").SetName("Non-string log filter address");
+        yield return new TestCaseData("eth_getLogs", """[{"fromBlock":"0x1","toBlock":"0x2","topics":[[true]]}]""",
+            "invalid argument 0: invalid topic(s)").SetName("Non-string log filter topic");
+        yield return new TestCaseData("eth_getBlockByHash", $"""["{fullHash}","full"]""",
+            "invalid argument 1: json: cannot unmarshal string into Go value of type bool").SetName("Non-boolean full transactions flag by hash");
+        yield return new TestCaseData("eth_getBalance", $"""["{shortAddress}","latest"]""",
+            "invalid argument 0: hex string has length 38, want 40 for common.Address").SetName("Short address");
+        yield return new TestCaseData("eth_call", $$"""[{"from":"{{address}}","to":"{{shortAddress}}","data":"0x12"},"latest"]""",
+            "invalid argument 0: hex string has length 38, want 40 for common.Address").SetName("Short call target");
+        yield return new TestCaseData("eth_getLogs", $$"""[{"fromBlock":"0x1","toBlock":"0x2","address":"{{shortAddress}}"}]""",
+            "invalid argument 0: invalid address: hex has invalid length 19 after decoding; expected 20 for address").SetName("Short log filter address");
+        yield return new TestCaseData("eth_getLogs", $$"""[{"fromBlock":"0x1","toBlock":"0x2","address":["{{address}}","{{shortAddress}}"]}]""",
+            "invalid argument 0: invalid address at index 1: hex has invalid length 19 after decoding; expected 20 for address").SetName("Short log filter address in list");
+        yield return new TestCaseData("eth_getLogs", $$"""[{"fromBlock":"0x1","toBlock":"0x2","topics":["{{shortHash}}"]}]""",
+            "invalid argument 0: hex has invalid length 31 after decoding; expected 32 for topic").SetName("Short log filter topic");
+        yield return new TestCaseData("eth_feeHistory", """["0xzz","0x10",[25,75]]""",
+            "invalid argument 0: invalid hex or decimal integer \"0xzz\"").SetName("Non-integer block count");
+        yield return new TestCaseData("eth_getStorageAt", $"""["{address}","0x1zz","latest"]""",
+            "invalid hex in storage key: \"0x1zz\"").SetName("Non-hex storage slot");
+        yield return new TestCaseData("eth_getProof", $"""["{address}",["0x1zz"],"0x10"]""",
+            "invalid hex in storage key: \"0x1zz\"").SetName("Non-hex proof storage key");
+        yield return new TestCaseData("eth_getStorageAt", $"""["{address}","0x{new string('1', 65)}","latest"]""",
+            $"storage key too long (want at most 32 bytes): \"0x{new string('1', 65)}\"").SetName("Storage slot above 32 bytes");
     }
 
     private static IEnumerable<TestCaseData> RuntimePolymorphicPayloadCases()
@@ -1182,6 +1263,21 @@ public class JsonRpcServiceTests
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         AssertInvalidParamsWithoutData(TestRawRequest(ethRpcModule, method, rawParameters), expectedMessage);
         assertNotInvoked(ethRpcModule);
+    }
+
+    [TestCaseSource(nameof(MalformedArgumentCases))]
+    public void Malformed_argument_returns_reason_with_argument_position(string method, string rawParameters, string expectedMessage)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        using JsonDocument parameters = JsonDocument.Parse(rawParameters);
+        JsonRpcRequest elementRequest = new() { JsonRpc = "2.0", Method = method, Params = parameters.RootElement, Id = 67 };
+
+        using JsonRpcResponse rawResponse = TestRawRequest(ethRpcModule, method, rawParameters);
+        using JsonRpcResponse elementResponse = SendRequestWithPool(new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(ethRpcModule), true), elementRequest);
+
+        AssertInvalidParamsWithoutData(rawResponse, expectedMessage);
+        AssertInvalidParamsWithoutData(elementResponse, expectedMessage);
+        Assert.That(ethRpcModule.ReceivedCalls(), Is.Empty);
     }
 
     [Test]

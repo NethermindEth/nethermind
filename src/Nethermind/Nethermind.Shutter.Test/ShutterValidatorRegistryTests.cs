@@ -29,7 +29,6 @@ class ShutterValidatorRegistryTests
     {
         ValidatorRegistryContract contract = new(
             Substitute.For<ITransactionProcessor>(),
-            ShutterTestsCommon.AbiEncoder,
             Address.Zero,
             LimboLogs.Instance,
             ShutterTestsCommon.ChainId,

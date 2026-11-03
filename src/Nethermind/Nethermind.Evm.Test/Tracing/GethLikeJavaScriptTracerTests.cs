@@ -22,6 +22,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -38,7 +39,12 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("[0, 1, 255]", "[0,1,255]")]
     [TestCase("toHex(new Uint8Array([]))", "\"0x\"")]
     [TestCase("toHex(new Uint8Array([0, 1, 255]))", "\"0x0001ff\"")]
-    public void Javascript_byte_results_match_json_stringify(string expression, string expected)
+    [TestCase("({ DUP1: 'a', PUSH1: 'b', LOG2: 'c', Foo: 'd', add: 'e' })", "{\"DUP1\":\"a\",\"PUSH1\":\"b\",\"LOG2\":\"c\",\"Foo\":\"d\",\"add\":\"e\"}")]
+    [TestCase("({ counts: { SSTORE: 'x' } })", "{\"counts\":{\"SSTORE\":\"x\"}}")]
+    [TestCase("[{ DUP1: 1 }]", "[{\"DUP1\":1}]")]
+    [TestCase("({ Foo: [{ BarBaz: 1 }] })", "{\"Foo\":[{\"BarBaz\":1}]}")]
+    [TestCase("({ a: undefined, b: 1, value: undefined, error: undefined })", "{\"b\":1}")]
+    public void Javascript_results_match_json_stringify(string expression, string expected)
     {
         using Engine engine = new(Shanghai.Instance);
         dynamic tracer = engine.CreateTracer("{result:function(){return " + expression + ";}}");
@@ -110,6 +116,25 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             GetTracer(userTracer), Bytes.FromHexString(code), MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace trace = tracer.BuildResult().First();
         AssertResult(trace, new[] { $"step:{opcode}:0:", $"fault:{opcode}:0:invalid opcode: {opcode}" });
+    }
+
+    [Test]
+    public void Nested_precompile_out_of_gas_is_reported_by_exit_not_fault()
+    {
+        const string userTracer = """
+            {
+                events: [],
+                step: function(log) { if (["CALL", "POP", "STOP"].indexOf(log.op.toString()) >= 0) this.events.push("step:" + log.op.toString() + ":" + (log.getError() || "")); },
+                fault: function(log) { this.events.push("fault:" + log.op.toString() + ":" + log.getError()); },
+                enter: function(frame) { this.events.push("enter"); },
+                exit: function(frame) { this.events.push("exit:" + frame.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        byte[] code = Prepare.EvmCode.Call(Sha256Precompile.Address, 10).Op(Instruction.POP).Op(Instruction.STOP).Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(userTracer), code, MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, new[] { "step:CALL:", "enter", "exit:out of gas", "step:POP:", "step:STOP:" });
     }
 
     [Test]
@@ -965,6 +990,17 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void unigram_tracer()
+    {
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer("unigramTracer"),
+                MStore(),
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+        Assert.That(ResultJson(traces), Is.EqualTo("{\"PUSH32\":2,\"PUSH1\":2,\"MSTORE\":2,\"STOP\":1}"));
+    }
+
+    [Test]
     public void prestate_tracer()
     {
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
@@ -1222,6 +1258,38 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         string[] results = ResultJsons(tracer.BuildResult());
 
         Assert.That(results, Is.EqualTo(new[] { "\"error\"", "\"none\"" }));
+    }
+
+    [TestCase("5b600056", null, "out of gas")]
+    [TestCase("600056", null, "invalid jump destination")]
+    [TestCase(null, 2, "out of gas")]
+    [TestCase("5b5f600056", null, "stack limit reached 1024 (1023)", 100_000UL)]
+    // A revert reason that reads as an exception name is kept as is: revert(Error("OutOfGas")).
+    [TestCase("6308c379a0600052602060205260086040527f4f75744f664761730000000000000000000000000000000000000000000000006060526064601cfd",
+        null, "OutOfGas", 100_000UL)]
+    public void Failed_transaction_reports_geth_error_text_in_ctx_error(string? code, int? precompile, string expected, ulong gasLimit = 21050UL)
+    {
+        const string errorTracer = @"{
+                    step: function(log, db) { },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return ctx.error; }
+                }";
+        Transaction? precompileCall = precompile is null ? null : Build.A.Transaction
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(1)
+            .To(Address.FromNumber((uint)precompile.Value))
+            .SignedAndResolved(SenderKey)
+            .TestObject;
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation, gasLimit,
+            code is null ? null : Bytes.FromHexString(code), transaction: precompileCall);
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(errorTracer);
+
+        tracer.StartNewBlockTrace(block);
+        ExecuteTraced(tracer, block, transaction);
+        tracer.EndBlockTrace();
+
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, expected);
     }
 
     [Test]

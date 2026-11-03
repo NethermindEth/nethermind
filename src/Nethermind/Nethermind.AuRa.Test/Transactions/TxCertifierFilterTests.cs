@@ -5,7 +5,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.AuRa.Test.Contract;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
@@ -68,7 +68,7 @@ public class TxCertifierFilterTests
     public void should_not_allow_addresses_on_contract_error()
     {
         Address address = TestItem.Addresses.First();
-        _certifierContract.Certified(Arg.Any<BlockHeader>(), address).Throws(new AbiException(string.Empty));
+        _certifierContract.Certified(Arg.Any<BlockHeader>(), address).Throws(new ContractException(string.Empty));
         ShouldAllowAddress(address, expected: false);
     }
 
@@ -98,6 +98,35 @@ public class TxCertifierFilterTests
     }
 
     [Test]
+    public async Task should_not_certify_when_contract_does_not_exist()
+    {
+        using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
+        RegisterContract registerContract = new(Address.FromNumber(1000), chain.ReadOnlyTxProcessingEnvFactory.Create());
+        CertifierContract contract = new(registerContract, chain.ReadOnlyTxProcessingEnvFactory.Create());
+        Assert.That(contract.Certified(chain.BlockTree.Head.Header, new Address("0xbbcaa8d48289bb1ffcf9808d9aa4b1d215054c78")), Is.False);
+    }
+
+    [Test]
+    public async Task should_not_certify_after_registry_stops_resolving_the_contract()
+    {
+        using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
+        Address certified = new("0xbbcaa8d48289bb1ffcf9808d9aa4b1d215054c78");
+        BlockHeader resolved = chain.BlockTree.Head.Header;
+        IRegisterContract registry = Substitute.For<IRegisterContract>();
+        registry.TryGetAddress(resolved, CertifierContract.ServiceTransactionContractRegistryName, out Arg.Any<Address>())
+            .Returns(call =>
+            {
+                call[2] = new Address("0x5000000000000000000000000000000000000001");
+                return true;
+            });
+        CertifierContract contract = new(registry, chain.ReadOnlyTxProcessingEnvFactory.Create());
+        Assert.That(contract.Certified(resolved, certified), Is.True);
+
+        BlockHeader unresolved = (await chain.AddBlock()).Header;
+        Assert.That(contract.Certified(unresolved, certified), Is.False);
+    }
+
+    [Test]
     public async Task registry_contract_returns_correct_address()
     {
         using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
@@ -119,7 +148,7 @@ public class TxCertifierFilterTests
     public async Task registry_contract_returns_not_found_when_contract_does_not_exist()
     {
         using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
-        RegisterContract contract = new(AbiEncoder.Instance, Address.FromNumber(1000), chain.ReadOnlyTxProcessingEnvFactory.Create());
+        RegisterContract contract = new(Address.FromNumber(1000), chain.ReadOnlyTxProcessingEnvFactory.Create());
         Assert.That(contract.TryGetAddress(chain.BlockTree.Head.Header, CertifierContract.ServiceTransactionContractRegistryName, out Address _), Is.False);
     }
 
@@ -131,10 +160,8 @@ public class TxCertifierFilterTests
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
             TestBlockchain blockchain = await base.Build(configurer);
-            AbiEncoder abiEncoder = AbiEncoder.Instance;
-            RegisterContract = new RegisterContract(abiEncoder, ChainSpec.Parameters.Registrar, ReadOnlyTxProcessingEnvFactory.Create());
+            RegisterContract = new RegisterContract(ChainSpec.Parameters.Registrar, ReadOnlyTxProcessingEnvFactory.Create());
             CertifierContract = new CertifierContract(
-                abiEncoder,
                 RegisterContract,
                 ReadOnlyTxProcessingEnvFactory.Create());
             return blockchain;

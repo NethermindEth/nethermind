@@ -5,7 +5,9 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore.Config;
@@ -42,6 +44,31 @@ namespace Nethermind.Config.Test
             ConfigProvider configProvider = new();
             INetworkConfig config = configProvider.GetConfig<INetworkConfig>();
             Assert.That(config.DiscoveryPort, Is.EqualTo(30303));
+        }
+
+        [Test]
+        public void Can_read_obsolete_trie_cache_budget_without_changing_buffer_budget([Values] bool overrideLegacyBudget)
+        {
+            ConfigProvider provider = new();
+            if (overrideLegacyBudget)
+            {
+                provider.AddSource(new ArgsConfigSource(new Dictionary<string, string>
+                {
+                    ["FlatDb.TrieCacheMemoryBudget"] = "1234"
+                }));
+            }
+
+            IFlatDbConfig config = provider.GetConfig<IFlatDbConfig>();
+            PropertyInfo property = typeof(IFlatDbConfig).GetProperty("TrieCacheMemoryBudget")!;
+            StandardConfigTests.CheckDefault(property, new FlatDbConfig());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(property.GetValue(config), Is.EqualTo(overrideLegacyBudget ? 1234UL : 512UL.MiB));
+                Assert.That(config.CompressedNodeRecordBufferMemoryBudget, Is.EqualTo(500UL.MiB));
+                Assert.That(property.GetCustomAttribute<ObsoleteAttribute>(), Is.Not.Null);
+                Assert.That(typeof(FlatDbConfig).GetProperty(property.Name)!.GetCustomAttribute<ObsoleteAttribute>(), Is.Not.Null);
+                Assert.That(property.GetCustomAttribute<ConfigItemAttribute>()!.HiddenFromDocs, Is.True);
+            }
         }
 
         public int DefaultTestProperty { get; set; } = 5;

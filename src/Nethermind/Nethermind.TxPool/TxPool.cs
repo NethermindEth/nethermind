@@ -19,6 +19,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Trie;
 using Nethermind.TxPool.Collections;
+using Nethermind.TxPool.Comparison;
 using Nethermind.TxPool.Filters;
 using System;
 using System.Collections.Concurrent;
@@ -276,6 +277,9 @@ namespace Nethermind.TxPool
             {
                 foreach (Transaction restored in _blobTransactions.GetSnapshot())
                 {
+                    // Admission marks a pooled hash as known; a recreated record skipped admission, so peers'
+                    // announcements of it would be fetched again and a resubmission rejected as a replacement.
+                    _hashCache.SetLongTerm(restored.Hash!);
                     if (HasExpiryDeadline(restored)) _expiringFrameTxCount++;
                     // EIP-8141: the bound is summed over the pending set, so a record that survived the restart
                     // has to keep counting against its payer. Restored, not re-gated: the reservation was
@@ -627,8 +631,8 @@ namespace Nethermind.TxPool
         /// Two kinds of dependency sit outside the set (EIP8141-GAP): helper contracts an opaque prefix reaches
         /// through <c>CALL*</c>, so a code change at one does not trigger revalidation; and block context it
         /// reads (<c>TIMESTAMP</c>, <c>NUMBER</c>), which no change list can describe. The exception is a helper
-        /// whose code can change under EIP-8298 by delegating, which admission records and this indexes; a
-        /// record restored without simulation carries none.
+        /// whose code can change under EIP-8298 by delegating, or an account EIP-8151 ecRecover recovered, which
+        /// admission records and this indexes; a record restored without simulation carries none.
         /// A persistent blob pool holds a frameless light record, which is indexed all the same: the set is
         /// addresses that record carries, and <see cref="RevalidateFrameTransactions"/> reloads the prefix
         /// from blob storage. Skipping it would exempt every blob-carrying frame transaction from revalidation.
@@ -1174,6 +1178,7 @@ namespace Nethermind.TxPool
                 if (!isPending)
                 {
                     discoveredForPendingTxs++;
+                    EvictSameNonceCompetitors(blockTx);
                 }
 
                 if (!isKnown && !isPending)
@@ -1203,6 +1208,37 @@ namespace Nethermind.TxPool
             bool removed = RemoveTransaction(tx.Hash);
             _broadcaster.EnsureStopBroadcastUpToNonce(tx);
             return removed;
+        }
+
+        /// <summary>Evicts the pending transactions whose nonce <paramref name="blockTx"/>, included without passing
+        /// through the pool, has taken.</summary>
+        /// <remarks>Decided from the block alone, not from the head state, which may already be past this block: a
+        /// pending transaction with an included transaction's sender and nonce, in a nonce domain the two share, can
+        /// never be included on this chain, while one that only looks stale against the head state may be in a block
+        /// the pool has not processed yet.</remarks>
+        private void EvictSameNonceCompetitors(Transaction blockTx)
+        {
+            if (blockTx.SenderAddress is not { } sender) return;
+
+            EvictSameNonceCompetitors(_transactions, sender, blockTx);
+            EvictSameNonceCompetitors(_blobTransactions, sender, blockTx);
+        }
+
+        private void EvictSameNonceCompetitors(TxDistinctSortedPool pool, Address sender, Transaction blockTx)
+        {
+            if (!pool.TryGetBucket(sender, out Transaction[] bucket)) return;
+
+            foreach (Transaction pooled in bucket)
+            {
+                if (pooled.Nonce == blockTx.Nonce
+                    && CompetingTransactionEqualityComparer.OverlapsNonceDomain(blockTx, pooled)
+                    && RemoveTransaction(pooled.Hash, out Transaction? removed))
+                {
+                    EvictedPending?.Invoke(this, new TxEventArgs(removed));
+                    Metrics.PendingTransactionsEvicted++;
+                    if (_logger.IsTrace) _logger.Trace($"Evicted transaction {removed.Hash}, its nonce was taken by included transaction {blockTx.Hash}.");
+                }
+            }
         }
 
         /// <summary>Drops pending EIP-8141 frame transactions whose expiry deadline has passed as of the new head.</summary>
@@ -1583,7 +1619,7 @@ namespace Nethermind.TxPool
                         return simulated.Indeterminate;
                     }
                     payer = simulated.Payer;
-                    // EIP-8298: the prefix may now rely on different mutable code, re-judged against the cap.
+                    // The prefix may now rely on different accounts whose code can change, re-judged against the cap.
                     if (!_codeDependencies.TryUpdate(tx.Hash!.ValueHash256, simulated.CodeDependencies, _txPoolConfig.FrameTxMaxPendingPerDelegatingCode, out bool added)) return false;
                     // An eviction that landed before the entry was added has already released, so release again.
                     if (added && !_transactions.ContainsKey(tx.Hash!.ValueHash256) && !_blobTransactions.ContainsKey(tx.Hash!.ValueHash256))
@@ -2122,17 +2158,20 @@ namespace Nethermind.TxPool
             }
         }
 
-        /// <summary>Whether every nonce key <paramref name="tx"/> selects still sits at its declared sequence in the head state.</summary>
+        /// <summary>Whether every nonce key <paramref name="tx"/> selects still sits at its declared sequence in the head state; single-use sets must read 0.</summary>
         private bool IsKeyedNonceCurrent(Transaction tx) =>
             KeyedNonceManager.IsNonceSetValid(_headInfo.ReadOnlyStateProvider, tx.SenderAddress!, tx.NonceKeys!, tx.Nonce);
 
         /// <summary>Whether any nonce key <paramref name="tx"/> selects has advanced past its declared sequence in the head state.</summary>
-        /// <remarks>A keyed sequence only ever advances, so a key already beyond the declared sequence has spent it for good on this fork.</remarks>
+        /// <remarks>A keyed sequence only ever advances, so a key already beyond the declared sequence has spent it for good on this fork.
+        /// A single-use set (<see cref="Eip8250Constants.MaxNonceSeq"/>) is behind once any of its keys has been used.</remarks>
         private bool IsKeyedNonceBehind(Transaction tx)
         {
+            bool singleUse = tx.Nonce == Eip8250Constants.MaxNonceSeq;
             foreach (UInt256 nonceKey in tx.NonceKeys!)
             {
-                if (KeyedNonceManager.CurrentNonceSeq(_headInfo.ReadOnlyStateProvider, tx.SenderAddress!, in nonceKey) > tx.Nonce)
+                ulong current = KeyedNonceManager.CurrentNonceSeq(_headInfo.ReadOnlyStateProvider, tx.SenderAddress!, in nonceKey);
+                if (singleUse ? current != 0 : current > tx.Nonce)
                 {
                     return true;
                 }

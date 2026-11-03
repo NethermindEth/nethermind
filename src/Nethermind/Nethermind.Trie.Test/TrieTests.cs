@@ -1322,27 +1322,6 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
-        public void WarmUpPath_DoesNotThrow()
-        {
-            // Build a tree with extension, branch, and leaf nodes: _keyA, _keyB, _keyC, _keyD
-            using IPruningTrieStore trieStore = CreateTrieStore();
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
-            patriciaTree.Set(_keyA, _longLeaf1);
-            patriciaTree.Set(_keyB, _longLeaf2);
-            patriciaTree.Set(_keyC, _longLeaf1);
-            patriciaTree.Set(_keyD, _longLeaf2);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
-
-            // Test warmup on various keys
-            Assert.That(() => patriciaTree.WarmUpPath(_keyA), Throws.Nothing);  // Existing key
-            Assert.That(() => patriciaTree.WarmUpPath(_keyB), Throws.Nothing);  // Existing key
-            Assert.That(() => patriciaTree.WarmUpPath(_keyC), Throws.Nothing);  // Existing key in different branch
-            Assert.That(() => patriciaTree.WarmUpPath(_keyD), Throws.Nothing);  // Existing key in different branch
-            Assert.That(() => patriciaTree.WarmUpPath(Bytes.FromHexString("00000000000cc")), Throws.Nothing);  // Non-existent key
-            Assert.That(() => patriciaTree.WarmUpPath(Bytes.FromHexString("fffffffffffff")), Throws.Nothing);  // Completely different path
-        }
-
-        [Test]
         public void Commit_matches_serial_nodes_and_root(
             [Values(4, 16, 128, 1200)] int count,
             [Values(0, 4)] int sharedPrefix,
