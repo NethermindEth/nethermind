@@ -2583,6 +2583,82 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task Head_drops_read_each_senders_head_nonce_once()
+        {
+            IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+            state.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(callInfo =>
+            {
+                callInfo[1] = new AccountStruct(0, UInt256.MaxValue);
+                return true;
+            });
+            _txPool = CreatePool(
+                specProvider: GetCancunSpecProvider(),
+                chainHeadInfoProvider: new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, state));
+
+            // Nonces 1 to 3 leave a gap behind the account nonce, so the bucket update drops all three on the next head.
+            Transaction[] txs = [.. Enumerable.Range(1, 3).Select(nonce => Build.A.Transaction
+                .WithNonce((ulong)nonce)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject)];
+            foreach (Transaction tx in txs)
+            {
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            List<Transaction> evicted = [];
+            _txPool.EvictedPending += (_, e) => evicted.Add(e.Transaction);
+
+            state.ClearReceivedCalls();
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(evicted, Is.EqualTo(txs), "each drop is surfaced once, in nonce order");
+                state.Received(1).GetNonce(TestItem.AddressA);
+            }
+        }
+
+        [Test]
+        public async Task Head_drops_are_judged_against_one_head_when_the_head_moves_during_the_loop()
+        {
+            Block fork = Build.A.Block.WithNumber(2).WithExtraData([0xF]).TestObject;
+            IStateReader stateReader = Substitute.For<IStateReader>();
+            // On the fork, every sender's nonce is past its pending tx, as if the fork included it. On any other head it is 0.
+            stateReader.TryGetAccount(Arg.Any<BlockHeader>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(callInfo =>
+            {
+                callInfo[2] = new AccountStruct(ReferenceEquals(callInfo.Arg<BlockHeader>(), fork.Header) ? 5ul : 0ul, UInt256.MaxValue);
+                return true;
+            });
+            _txPool = CreatePool(
+                specProvider: GetCancunSpecProvider(),
+                chainHeadInfoProvider: new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, stateReader));
+
+            // Nonce 1 leaves a gap behind the account nonce, so the bucket update drops both on the next head.
+            Transaction[] txs = [.. new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB }.Select(key => Build.A.Transaction
+                .WithNonce(1)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, key).TestObject)];
+            foreach (Transaction tx in txs)
+            {
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            List<Transaction> evicted = [];
+            _txPool.EvictedPending += (_, e) =>
+            {
+                evicted.Add(e.Transaction);
+                // The block tree moves to another chain while the pool is still reporting its drops.
+                _blockTree.Head = fork;
+            };
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            Assert.That(evicted, Is.EquivalentTo(txs), "the second drop is judged against the same head as the first");
+        }
+
+        [Test]
         public void should_calculate_gasBottleneck_properly()
         {
             _txPool = CreatePool();
