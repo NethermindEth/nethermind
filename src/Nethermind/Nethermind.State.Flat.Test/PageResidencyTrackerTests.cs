@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Threading;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NUnit.Framework;
@@ -247,6 +249,38 @@ public class PageResidencyTrackerTests
     {
         PageResidencyTracker tracker = new(maxCapacity: requested);
         Assert.That(tracker.MaxCapacity, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void TryTouch_Concurrent_KeepsResidentCountExact([Values(1, 8)] int threads)
+    {
+        const int capacity = 8 * Ways;
+        const int pages = 4 * capacity;
+        using PageResidencyTracker tracker = new(capacity);
+        int[] inserted = new int[threads];
+        int foreignVictims = 0;
+        Thread[] touchers = [.. Enumerable.Range(0, threads).Select(thread => new Thread(() =>
+        {
+            Random random = new(thread);
+            for (int i = 0; i < 100_000; i++)
+            {
+                PageResidencyTracker.TouchOutcome outcome = tracker.TryTouch(0, (uint)random.Next(pages), out int victimArena, out uint victimPage);
+                if (outcome == PageResidencyTracker.TouchOutcome.Inserted) inserted[thread]++;
+                if (outcome == PageResidencyTracker.TouchOutcome.Evicted && (victimArena != 0 || victimPage >= pages)) Interlocked.Increment(ref foreignVictims);
+            }
+        }))];
+        foreach (Thread toucher in touchers) toucher.Start();
+        foreach (Thread toucher in touchers) toucher.Join();
+
+        int distinctTracked = Enumerable.Range(0, pages).Count(page => tracker.ContainsPage(0, (uint)page));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracker.Count, Is.EqualTo(inserted.Sum()), "only an insert adds a slot");
+            Assert.That(distinctTracked, Is.EqualTo(tracker.Count), "no page holds two slots");
+            Assert.That(tracker.ResidentBytes, Is.EqualTo(tracker.Count * (long)Environment.SystemPageSize));
+            Assert.That(tracker.Count, Is.LessThanOrEqualTo(capacity));
+            Assert.That(foreignVictims, Is.Zero, "every victim is a touched page");
+        }
     }
 
     [Test]

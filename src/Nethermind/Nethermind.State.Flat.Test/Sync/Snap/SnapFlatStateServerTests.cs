@@ -12,7 +12,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Snap;
@@ -24,12 +23,14 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test.Sync.Snap;
 
-[TestFixture]
-public class SnapFlatStateServerTests
+[TestFixture(FlatLayout.Flat)]
+[TestFixture(FlatLayout.PaprikaFlat)]
+public class SnapFlatStateServerTests(FlatLayout layout)
 {
     private const int RequestCount = 5000;
 
     private SnapshotableMemColumnsDb<FlatDbColumns> _columnsDb = null!;
+    private LayoutPersistence _layoutPersistence = null!;
     private IPersistence _persistence = null!;
     private IFlatDbManager _flatDbManager = null!;
     private IFlatStateRootIndex _stateRootIndex = null!;
@@ -41,7 +42,8 @@ public class SnapFlatStateServerTests
     public void SetUp()
     {
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance, NullTrieNodeLog.Instance);
+        _layoutPersistence = new LayoutPersistence(_columnsDb, layout, trieNodeLog: false);
+        _persistence = _layoutPersistence.Persistence;
 
         byte[] rootRlp = BuildRootRlp(out _rootHash);
         _stateId = new StateId(0, _rootHash.ValueHash256);
@@ -63,7 +65,11 @@ public class SnapFlatStateServerTests
     }
 
     [TearDown]
-    public void TearDown() => _columnsDb.Dispose();
+    public void TearDown()
+    {
+        _layoutPersistence.Dispose();
+        _columnsDb.Dispose();
+    }
 
     [Test]
     public void GetTrieNodes_RespectsHardResponseByteLimit()

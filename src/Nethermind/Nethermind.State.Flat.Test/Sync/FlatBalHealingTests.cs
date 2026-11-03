@@ -25,11 +25,13 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test.Sync;
 
-[TestFixture]
-public class FlatBalHealingTests
+[TestFixture(FlatLayout.Flat)]
+[TestFixture(FlatLayout.PaprikaFlat)]
+public class FlatBalHealingTests(FlatLayout layout)
 {
     private SnapshotableMemColumnsDb<FlatDbColumns> _columnsDb = null!;
-    private RocksDbPersistence _persistence = null!;
+    private LayoutPersistence _layoutPersistence = null!;
+    private IPersistence _persistence = null!;
     private TrieReassembler _reassembler = null!;
     private MemDb _codeDb = null!;
     private MemDb _balDb = null!;
@@ -43,7 +45,8 @@ public class FlatBalHealingTests
     public void SetUp()
     {
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance, NullTrieNodeLog.Instance);
+        _layoutPersistence = new LayoutPersistence(_columnsDb, layout, trieNodeLog: false);
+        _persistence = _layoutPersistence.Persistence;
         _reassembler = new TrieReassembler(_persistence, LimboLogs.Instance);
         _codeDb = new MemDb();
         _balDb = new MemDb();
@@ -57,6 +60,7 @@ public class FlatBalHealingTests
     [TearDown]
     public void TearDown()
     {
+        _layoutPersistence.Dispose();
         _columnsDb.Dispose();
         _codeDb.Dispose();
         _balDb.Dispose();
@@ -640,7 +644,7 @@ public class FlatBalHealingTests
 
     // Writes a consistent flat state (flat leaves + trie nodes) and returns the state root. Code bytes are not
     // stored - the code db is written by healing alone.
-    private static Hash256 CommitState(RocksDbPersistence persistence, AccountSpec[] accounts)
+    private static Hash256 CommitState(IPersistence persistence, AccountSpec[] accounts)
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);

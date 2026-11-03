@@ -1,0 +1,3 @@
+# Vendored upstream Paprika (see README.md): analyzer diagnostics are off so the code stays diffable with upstream.
+[*.cs]
+dotnet_analyzer_diagnostic.severity = none

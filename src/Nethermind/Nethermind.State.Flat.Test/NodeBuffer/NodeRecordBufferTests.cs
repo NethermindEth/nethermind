@@ -11,6 +11,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -140,7 +141,7 @@ public class NodeRecordBufferTests
     {
         FlatDbConfig config = new() { TrieNodeLogEnabled = trieNodeLog, CompressedNodeRecordBufferMemoryBudget = budget };
         using IContainer container = new ContainerBuilder()
-            .AddModule(new FlatWorldStateModule(config))
+            .AddModule(new FlatWorldStateModule(config, new InitConfig()))
             .AddSingleton<IFlatDbConfig>(config)
             .Build();
         NodeRecordBuffer buffer = (NodeRecordBuffer)container.Resolve<INodeRecordBuffer>();

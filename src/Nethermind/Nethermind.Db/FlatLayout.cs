@@ -9,4 +9,10 @@ public enum FlatLayout
     FlatInTrie,
     PreimageFlatV1,
     PreimageFlat,
+
+    /// <summary>
+    /// Accounts, storage and the state pointer in a memory-mapped Paprika file; trie nodes in RocksDB behind the trie node
+    /// log, which this layout requires.
+    /// </summary>
+    PaprikaFlat,
 }

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Init.Modules;
 using Nethermind.Core;
@@ -658,7 +659,7 @@ public class LongFinalityIntegrationTests
     {
         FlatDbConfig config = new() { EnableLongFinality = false };
         using IContainer container = new ContainerBuilder()
-            .AddModule(new FlatWorldStateModule(config))
+            .AddModule(new FlatWorldStateModule(config, new InitConfig()))
             .AddSingleton<IFlatDbConfig>(config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .Build();

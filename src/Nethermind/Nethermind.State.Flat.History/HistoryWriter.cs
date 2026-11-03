@@ -70,6 +70,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
     public HistoryWriter(
         IColumnsDb<FlatDbColumns> db,
+        IFlatMetadataStore flatMetadata,
         IColumnsDb<FlatHistoryColumns> history,
         IFlatDbConfig config,
         HistoryAvailability availability,
@@ -123,7 +124,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             bool hasFloor = _availability.TryGetGlobalFloor(out ulong floor);
             if (hasFloor) Metrics.FlatHistoryFloor = (long)floor;
             if (_pivotImageWriter is not null) _pivotImageWriter.Failed += DisableCapture;
-            ReportFlatStateAboveHistory(db.GetColumnDb(FlatDbColumns.Metadata));
+            ReportFlatStateAboveHistory(flatMetadata.Committed);
             if (_captureFromBlock > 0) PublishSinceBlockFloor();
             else if (hasFloor && config.HistoryRetention == HistoryRetentionMode.None)
             {
@@ -296,7 +297,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// resync, a pivot image still being written, or a state below a since-block floor, where the watermark follows the
     /// state without rows. A genesis state with no history is also what a crash leaves after it recorded a pivot image
     /// and before the state pointer moved; the next sync begins a new image.</remarks>
-    private void ReportFlatStateAboveHistory(IDb metadata)
+    private void ReportFlatStateAboveHistory(IReadOnlyKeyValueStore metadata)
     {
         if (_pivotImageWriter is { Holds: true } || BasePersistence.ReadWipedForSync(metadata)) return;
 

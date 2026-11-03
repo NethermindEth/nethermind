@@ -8,14 +8,19 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
+using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.PaprikaFlat;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie;
 using NSubstitute;
@@ -34,11 +39,20 @@ public class TrieNodeLogTests
     private static readonly byte[] Rlp3 = Bytes.FromHexString("0x3333333333");
     private static readonly IFileSystem FileSystem = new RealFileSystem();
 
+    /// <summary>The metadata store a test taking one confirms the log in: RocksDB's metadata column, or a Paprika file.</summary>
+    public enum MetadataStore
+    {
+        RocksDb,
+        Paprika,
+    }
+
     private TempPath _directory = null!;
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
     private FlatDbConfig _config = null!;
     private TrieNodeLog _log = null!;
-    private RocksDbPersistence _persistence = null!;
+    private IPersistence _persistence = null!;
+    private TempPath? _paprikaDirectory;
+    private PaprikaFlatStore? _paprika;
 
     [SetUp]
     public void Setup()
@@ -47,26 +61,45 @@ public class TrieNodeLogTests
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         // Two shards per partition, so every shard gets a 4 KiB generation; otherwise the shipped defaults.
         _config = new FlatDbConfig { TrieNodeLogEnabled = true, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192 };
+        // The Paprika file outlives the log's restarts, as the flat DB does.
+        _paprikaDirectory = TestContext.CurrentContext.Test.Arguments.Contains(MetadataStore.Paprika) ? TempPath.GetTempDirectory() : null;
         Open();
     }
 
     [TearDown]
     public async Task TearDown()
     {
-        await _log.DisposeAsync();
+        await Close();
         _db.Dispose();
         _directory.Dispose();
+        _paprikaDirectory?.Dispose();
     }
 
     private void Open()
     {
-        _log = new TrieNodeLog(_directory.Path, FileSystem, _db, _config, LimboLogs.Instance);
-        _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, _log);
+        string? paprikaDirectory = _paprikaDirectory?.Path;
+        _paprika = paprikaDirectory is null
+            ? null
+            : new PaprikaFlatStore(_db, paprikaDirectory, () => PaprikaFlatStore.OpenFile(paprikaDirectory, 64 * 1024 * 1024, pageCacheBytes: 0, LimboLogs.Instance), TimeSpan.FromSeconds(5), LimboLogs.Instance);
+        _log = _paprika is null ? OpenLog(_directory.Path, _db) : new TrieNodeLog(_directory.Path, FileSystem, _db, _paprika, _config, LimboLogs.Instance);
+        _persistence = _paprika is null ? new RocksDbPersistence(_db, LimboLogs.Instance, _log) : new PaprikaFlatPersistence(_db, _paprika, _log, _config);
     }
+
+    private async Task Close()
+    {
+        await _log.DisposeAsync();
+        _paprika?.Dispose();
+    }
+
+    private TrieNodeLog OpenLog(string path, IColumnsDb<FlatDbColumns> db) =>
+        new(path, FileSystem, db, new ColumnsFlatMetadataStore(db, _config), _config, LimboLogs.Instance);
+
+    private void MergeAllOnDisk() =>
+        TrieNodeLog.MergeAllOnDisk(_directory.Path, FileSystem, _db, new ColumnsFlatMetadataStore(_db, _config), LimboLogs.Instance);
 
     private async Task Reopen()
     {
-        await _log.DisposeAsync();
+        await Close();
         Open();
     }
 
@@ -110,7 +143,7 @@ public class TrieNodeLogTests
         Metrics.TrieNodeLogSecondLevelStoredBytes.TryGetValue(TrieNodeLogLabel.State, out long bytes) ? bytes : 0;
 
     [Test]
-    public void Readers_see_the_version_of_their_snapshot_across_overwrites_and_merges()
+    public void Readers_see_the_version_of_their_snapshot_across_overwrites_and_merges([Values] MetadataStore store)
     {
         using IPersistence.IPersistenceReader before = _persistence.CreateReader();
         WriteTop(0, 1, Rlp1);
@@ -137,7 +170,7 @@ public class TrieNodeLogTests
     }
 
     [Test]
-    public void Merge_writes_only_the_latest_record_per_key_and_applies_tombstones()
+    public void Merge_writes_only_the_latest_record_per_key_and_applies_tombstones([Values] MetadataStore store)
     {
         // The node must be in RocksDB for the range delete's scan to find it: sync batches bypass the log.
         using (IPersistence.IWriteBatch sync = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
@@ -173,42 +206,62 @@ public class TrieNodeLogTests
     }
 
     [Test]
-    public void Three_columns_are_logged_and_fallback_goes_direct()
+    public async Task Every_trie_column_is_logged([Values] bool storage)
     {
         Hash256 address = TestItem.KeccakA;
         TreePath longPath = TreePath.FromHexString("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"); // FallbackNodes
+        (TreePath Path, byte[] Rlp)[] nodes = storage
+            ? [(StoragePath, Rlp1), (longPath, Rlp2)]
+            : [(TopPath, Rlp1), (MediumPath, Rlp2), (longPath, Rlp3)];
         using (IPersistence.IWriteBatch batch = Batch(0, 1))
         {
-            batch.SetStateTrieNode(TopPath, Rlp1);
-            batch.SetStateTrieNode(MediumPath, Rlp2);
-            batch.SetStorageTrieNode(address, StoragePath, Rlp3);
-            batch.SetStateTrieNode(longPath, Rlp1);
+            foreach ((TreePath path, byte[] rlp) in nodes)
+            {
+                if (storage) batch.SetStorageTrieNode(address, path, rlp);
+                else batch.SetStateTrieNode(path, rlp);
+            }
         }
 
-        using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
-        using (Assert.EnterMultipleScope())
+        void AssertNodes(bool inRocksDb)
         {
-            Assert.That(reader.TryLoadStateRlp(longPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(Raw().TryLoadStateRlp(longPath, ReadFlags.None), Is.EqualTo(Rlp1), "fallback nodes bypass the log");
-            Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(reader.TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
-            Assert.That(reader.TryLoadStorageRlp(address, StoragePath, ReadFlags.None), Is.EqualTo(Rlp3));
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Null);
-            Assert.That(Raw().TryLoadStorageRlp(address, StoragePath, ReadFlags.None), Is.Null);
+            using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+            BaseTriePersistence.Reader raw = Raw();
+            using (Assert.EnterMultipleScope())
+            {
+                foreach ((TreePath path, byte[] rlp) in nodes)
+                {
+                    Assert.That(storage ? reader.TryLoadStorageRlp(address, path, ReadFlags.None) : reader.TryLoadStateRlp(path, ReadFlags.None), Is.EqualTo(rlp), $"{path} through the log");
+                    Assert.That(storage ? raw.TryLoadStorageRlp(address, path, ReadFlags.None) : raw.TryLoadStateRlp(path, ReadFlags.None), Is.EqualTo(inRocksDb ? rlp : null), $"{path} in RocksDB");
+                }
+            }
         }
 
+        AssertNodes(inRocksDb: false);
+        // Reopened with FallbackNodes failing its durable flush, which a merge must pass before writing its marker.
+        await _log.DisposeAsync();
+        _log = OpenLog(_directory.Path, WithUnflushable(static column => column == FlatDbColumns.FallbackNodes));
+        _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, _log);
+        AssertNodes(inRocksDb: false);
+        Assert.That(_log.Drain, Throws.TypeOf<AggregateException>().With.InnerException.TypeOf<IOException>());
+        Assert.That(LogFiles(), Is.Not.Empty, "the generation is kept for the next start");
+        await Reopen();
         _log.Drain();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
-            Assert.That(Raw().TryLoadStorageRlp(address, StoragePath, ReadFlags.None), Is.EqualTo(Rlp3));
-        }
+        AssertNodes(inRocksDb: true);
     }
 
+    // Only a key's first two bytes route it: a FallbackNodes prefix byte picks the partition (0 state, 1 storage), and the
+    // byte after it the shard, as the first byte of the other columns' keys does.
+    [TestCase(FlatDbColumns.FallbackNodes, "0x007f", "state-0")]
+    [TestCase(FlatDbColumns.FallbackNodes, "0x0080", "state-1")]
+    [TestCase(FlatDbColumns.FallbackNodes, "0x017f", "storage-0")]
+    [TestCase(FlatDbColumns.FallbackNodes, "0x0180", "storage-1")]
+    [TestCase(FlatDbColumns.StateTopNodes, "0x80", "state-1")]
+    [TestCase(FlatDbColumns.StorageNodes, "0x80", "storage-1")]
+    public void ShardIndex_routes_fallback_keys_by_prefix(FlatDbColumns column, string keyStart, string shard) =>
+        Assert.That(_log.Shards[_log.ShardIndex((byte)column, Bytes.FromHexString(keyStart))].Name, Is.EqualTo(shard));
+
     [Test]
-    public void Sync_batch_drains_the_log_and_writes_directly()
+    public void Sync_batch_drains_the_log_and_writes_directly([Values] MetadataStore store)
     {
         WriteTop(0, 1, Rlp1);
         Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
@@ -260,7 +313,7 @@ public class TrieNodeLogTests
     }
 
     [Test]
-    public async Task Restart_after_everything_was_merged_continues_above_the_marker()
+    public async Task Restart_after_everything_was_merged_continues_above_the_marker([Values] MetadataStore store)
     {
         WriteTop(0, 1, Rlp1);
         _log.Drain();
@@ -360,7 +413,7 @@ public class TrieNodeLogTests
         await _log.DisposeAsync();
         _config.TrieNodeLogMergeLag = 0;
         _config.TrieNodeLogSecondLevelMergeLag = 0;
-        _log = new TrieNodeLog(_directory.Path, FileSystem, WithUnflushable(static column => column != FlatDbColumns.Metadata), _config, LimboLogs.Instance);
+        _log = OpenLog(_directory.Path, WithUnflushable(static column => column != FlatDbColumns.Metadata));
         _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, _log);
         WriteFullGenerations(3);
         Assert.That(() => ShardFiles("state-0-l2"), Has.Length.EqualTo(2).After(5000, 20));
@@ -368,7 +421,7 @@ public class TrieNodeLogTests
     }
 
     [Test]
-    public async Task Second_level_takes_merged_generations_and_merges_its_own_full_ones_into_RocksDB()
+    public async Task Second_level_takes_merged_generations_and_merges_its_own_full_ones_into_RocksDB([Values] MetadataStore store)
     {
         await ReopenWithSecondLevel(secondLevelMergeLag: 0);
 
@@ -489,7 +542,7 @@ public class TrieNodeLogTests
 
         WriteTop(3, 4, Rlp3);
         await _log.DisposeAsync();
-        TrieNodeLog.MergeAllOnDisk(_directory.Path, FileSystem, _db, LimboLogs.Instance);
+        MergeAllOnDisk();
         Open();
         using (Assert.EnterMultipleScope())
         {
@@ -528,7 +581,7 @@ public class TrieNodeLogTests
     }
 
     [Test]
-    public void Persistence_backs_up_on_the_merge_backlog_and_completes()
+    public void Persistence_backs_up_on_the_merge_backlog_and_completes([Values] MetadataStore store)
     {
         // One merge at a time and no slack beyond the lag: every other batch rolls, so rolls regularly have to wait.
         _config.TrieNodeLogMaxConcurrentMerges = 1;
@@ -564,7 +617,7 @@ public class TrieNodeLogTests
         await _log.DisposeAsync();
         Assert.That(Raw().TryLoadStateRlp(highPath, ReadFlags.None), Is.Null);
 
-        TrieNodeLog.MergeAllOnDisk(_directory.Path, FileSystem, _db, LimboLogs.Instance);
+        MergeAllOnDisk();
 
         // The directory is clean, so a different shard count starts from an empty log and reads come from RocksDB.
         _config.TrieNodeLogStateShardCount = 1;
@@ -637,32 +690,81 @@ public class TrieNodeLogTests
         }
     }
 
-    [Test]
-    public async Task A_generation_file_of_another_format_is_refused()
+    [TestCase("0x01000000", true, Description = "Format 1 logged no FallbackNodes, so it reads unchanged")]
+    [TestCase("0xffffffff", false)]
+    public async Task A_generation_file_is_read_only_in_a_known_format(string version, bool known)
     {
         WriteTop(0, 1, Rlp1);
         await _log.DisposeAsync();
         string file = LogFiles().Single(static file => file.Contains("state-0"));
+        Assert.That(File.ReadAllBytes(file)[4..8], Is.EqualTo(Bytes.FromHexString("0x02000000")), "the format this build writes");
         using (FileStream stream = new(file, FileMode.Open, FileAccess.Write))
         {
             stream.Position = 4; // the version word after the magic
-            stream.Write(Bytes.FromHexString("0xffffffff"));
+            stream.Write(Bytes.FromHexString(version));
         }
 
-        Assert.That(Open, Throws.TypeOf<InvalidDataException>().With.Message.Contains("format"));
+        if (!known)
+        {
+            Assert.That(Open, Throws.TypeOf<InvalidDataException>().With.Message.Contains("format"));
+            return;
+        }
+
+        Open();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp1));
+        _log.Drain();
+        Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+    }
+
+    [Test]
+    public async Task Layout_switch_is_refused_before_the_log_recovers([Values] bool logEnabledAtRestart)
+    {
+        // Under the directory FlatWorldStateModule gives the log, so a container over the same base path finds it.
+        await _log.DisposeAsync();
+        _log = OpenLog(Path.Combine(_directory.Path, "flatTrieNodeLog"), _db);
+        _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, _log);
+        WriteTop(0, 1, Rlp1);
+        // An unconfirmed tail, which a recovery would truncate.
+        CommitUnconfirmed(Bytes.FromHexString("0x123450"), Rlp2);
+        await _log.DisposeAsync();
+        Dictionary<string, byte[]> files = LogFiles().ToDictionary(static file => file, File.ReadAllBytes);
+        Assert.That(files, Is.Not.Empty);
+
+        // A disabled log would merge the generations into RocksDB and delete them, an enabled one recover them.
+        FlatDbConfig switched = new() { Layout = FlatLayout.FlatInTrie, TrieNodeLogEnabled = logEnabledAtRestart, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192 };
+        InitConfig initConfig = new() { BaseDbPath = _directory.Path };
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new FlatWorldStateModule(switched, initConfig))
+            .AddSingleton<IFlatDbConfig>(switched)
+            .AddSingleton<IInitConfig>(initConfig)
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton<IColumnsDb<FlatDbColumns>>(_db)
+            .AddSingleton(FileSystem)
+            .Build();
+
+        Exception refusal = Assert.Catch(() => container.Resolve<ITrieNodeLog>())!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal.GetBaseException(), Is.TypeOf<InvalidConfigurationException>().With.Message.Contains(nameof(FlatLayout.FlatInTrie)));
+            Assert.That(LogFiles().ToDictionary(static file => file, File.ReadAllBytes), Is.EqualTo(files));
+        }
+    }
+
+    /// <summary>Commits a log batch putting <paramref name="key"/> into StateTopNodes whose RocksDB write never happens.</summary>
+    private void CommitUnconfirmed(byte[] key, byte[] rlp)
+    {
+        using IColumnsWriteBatch<FlatDbColumns> rocksDbBatch = _db.StartWriteBatch();
+        using ITrieNodeLog.IWriteBatch logBatch = _log.StartWriteBatch(rocksDbBatch.GetColumnBatch(FlatDbColumns.Metadata), bypass: false);
+        logBatch.Wrap(FlatDbColumns.StateTopNodes, rocksDbBatch.GetColumnBatch(FlatDbColumns.StateTopNodes)).PutSpan(key, rlp);
+        logBatch.Commit();
+        rocksDbBatch.Clear(); // the RocksDB write "failed": nothing of this batch, its version included, reaches RocksDB
     }
 
     [Test]
     public async Task A_batch_RocksDB_never_confirmed_poisons_the_log_until_restart()
     {
         byte[] key = Bytes.FromHexString("0x123450"); // a StateTopNodes column key
-        using (IColumnsWriteBatch<FlatDbColumns> rocksDbBatch = _db.StartWriteBatch())
-        using (ITrieNodeLog.IWriteBatch logBatch = _log.StartWriteBatch(rocksDbBatch, bypass: false))
-        {
-            logBatch.Wrap(FlatDbColumns.StateTopNodes, rocksDbBatch.GetColumnBatch(FlatDbColumns.StateTopNodes)).PutSpan(key, Rlp1);
-            logBatch.Commit();
-            rocksDbBatch.Clear(); // the RocksDB write "failed": nothing of this batch, its version included, reaches RocksDB
-        }
+        CommitUnconfirmed(key, Rlp1);
 
         Assert.That(() => Batch(0, 1), Throws.InvalidOperationException.With.Message.Contains("restart"));
 
@@ -678,7 +780,7 @@ public class TrieNodeLogTests
     public void A_commit_failing_after_the_log_is_durable_poisons_the_log()
     {
         using (IColumnsWriteBatch<FlatDbColumns> rocksDbBatch = _db.StartWriteBatch())
-        using (ITrieNodeLog.IWriteBatch logBatch = _log.StartWriteBatch(new FailingMetadataBatch(rocksDbBatch), bypass: false))
+        using (ITrieNodeLog.IWriteBatch logBatch = _log.StartWriteBatch(new FailingMetadataBatch(rocksDbBatch).GetColumnBatch(FlatDbColumns.Metadata), bypass: false))
         {
             logBatch.Wrap(FlatDbColumns.StateTopNodes, rocksDbBatch.GetColumnBatch(FlatDbColumns.StateTopNodes)).PutSpan(Bytes.FromHexString("0x123450"), Rlp1);
             Assert.That(logBatch.Commit, Throws.TypeOf<IOException>(), "the version write into the RocksDB batch fails after the log records are fsynced");
@@ -688,7 +790,7 @@ public class TrieNodeLogTests
     }
 
     [Test]
-    public void A_sync_batch_range_delete_removes_nodes_the_log_held()
+    public void A_sync_batch_range_delete_removes_nodes_the_log_held([Values] MetadataStore store)
     {
         WriteTop(0, 1, Rlp1);
         using (IPersistence.IWriteBatch sync = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
@@ -765,7 +867,7 @@ public class TrieNodeLogTests
         foreach (string shardDirectory in Directory.GetDirectories(_directory.Path)) Directory.Delete(shardDirectory, recursive: true);
 
         // A disabled log merges whatever is on disk at startup instead of recovering it.
-        Action restart = logDisabledAtRestart ? () => TrieNodeLog.MergeAllOnDisk(_directory.Path, FileSystem, _db, LimboLogs.Instance) : Open;
+        Action restart = logDisabledAtRestart ? MergeAllOnDisk : Open;
         Assert.That(restart, Throws.TypeOf<InvalidDataException>().With.Message.Contains("missing"));
     }
 
@@ -785,7 +887,7 @@ public class TrieNodeLogTests
     }
 
     [Test]
-    public async Task A_cleared_log_resumes_and_restarts_without_the_discarded_generations()
+    public async Task A_cleared_log_resumes_and_restarts_without_the_discarded_generations([Values] MetadataStore store)
     {
         WriteTop(0, 1, Rlp1);
         _persistence.Clear();
@@ -796,11 +898,14 @@ public class TrieNodeLogTests
     }
 
     [Test]
-    public async Task A_wipe_interrupted_before_the_log_was_cleared_restarts_after_the_resync()
+    public async Task A_wipe_interrupted_before_the_log_was_cleared_restarts_after_the_resync([Values] MetadataStore store)
     {
         WriteTop(0, 1, Rlp1);
         await _log.DisposeAsync();
-        BasePersistence.MarkWipeStarted(_db); // the crash comes before the log is cleared
+        // The crash comes before the log is cleared.
+        if (_paprika is null) BasePersistence.MarkWipeStarted(_db);
+        else _paprika.MarkWipeStarted();
+        await Close();
         Open();
         _persistence.Clear(); // the wipe is redone
         Batch(0, 1).Dispose(); // the resync completes without a new generation in the shard that held Rlp1
@@ -848,7 +953,7 @@ public class TrieNodeLogTests
 
         // Every flush fails: the recovered first-level copy waits on the second level's full backlog, and the manifest
         // cannot be made durable.
-        Assert.That(async () => await Task.Run(() => new TrieNodeLog(_directory.Path, FileSystem, WithUnflushable(static _ => true), _config, LimboLogs.Instance)).WaitAsync(TimeSpan.FromSeconds(10)), Throws.TypeOf<IOException>());
+        Assert.That(async () => await Task.Run(() => OpenLog(_directory.Path, WithUnflushable(static _ => true))).WaitAsync(TimeSpan.FromSeconds(10)), Throws.TypeOf<IOException>());
         Assert.That(TrieNodeLogGeneration.AliveCount, Is.EqualTo(alive), "the recovered generations are released");
 
         Open();

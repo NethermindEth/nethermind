@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
+using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -751,7 +752,7 @@ public class CarryForwardCachingPersistenceTests
     }
 
     private static IContainer CreateCacheContainer() => new ContainerBuilder()
-        .AddModule(new FlatWorldStateModule(new FlatDbConfig()))
+        .AddModule(new FlatWorldStateModule(new FlatDbConfig(), new InitConfig()))
         .Build();
 
     private static CarryForwardCachingPersistence ResolveCache(IContainer container, IPersistence inner, int? maxEntriesPerKind = null, int? slotCapacity = null)

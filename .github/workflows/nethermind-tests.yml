@@ -67,6 +67,7 @@ jobs:
               Nethermind.BalRecorder.Test
               Nethermind.Mining.Test
               Nethermind.Optimism.Test
+              Nethermind.Paprika.Test
               Nethermind.Sockets.Test
               Nethermind.State.Flat.History.Test
               Nethermind.Taiko.Test

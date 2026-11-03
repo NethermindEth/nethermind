@@ -67,7 +67,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new DbMonitoringModule())
             .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
             .AddModule(new PruningTrieStoreModule())
-            .AddModule(new FlatWorldStateModule(configProvider.GetConfig<IFlatDbConfig>()))
+            .AddModule(new FlatWorldStateModule(configProvider.GetConfig<IFlatDbConfig>(), configProvider.GetConfig<IInitConfig>()))
             .AddModule(new WorldStateDbDeciderModule())
             .AddModule(new PrewarmerModule(configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BuiltInStepsModule())

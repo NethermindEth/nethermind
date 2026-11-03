@@ -5,25 +5,29 @@ using System;
 using System.Buffers.Binary;
 using System.Linq;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Module;
 
-[TestFixture]
+[TestFixture(FlatLayout.Flat)]
+[TestFixture(FlatLayout.PaprikaFlat)]
 [Parallelizable(ParallelScope.All)]
-public class WorldStateDbDeciderModuleTests
+public class WorldStateDbDeciderModuleTests(FlatLayout layout)
 {
     [Flags]
     public enum Flags
@@ -38,13 +42,15 @@ public class WorldStateDbDeciderModuleTests
     // Mirrors the 5 branches in FlatStateActivationPolicy at the full DI container level.
     [TestCase(Flags.None, false, Description = "Flat disabled → patricia")]
     [TestCase(Flags.Enabled | Flags.FlatHasData, true, Description = "Flat has committed state → flat")]
+    [TestCase(Flags.Enabled | Flags.FlatHasData | Flags.PatriciaHasData, true, Description = "Committed flat state wins over patricia data → flat")]
     [TestCase(Flags.Enabled | Flags.ImportFromPruningTrieState, true, Description = "ImportFromPruningTrieState → flat")]
     [TestCase(Flags.Enabled | Flags.PatriciaHasData, false, Description = "Patricia has data → patricia")]
     [TestCase(Flags.Enabled, true, Description = "Fresh node, flat enabled → flat")]
     public void IWorldStateManager_ResolvesToCorrectBackend(Flags flags, bool expectFlat)
     {
+        using TempPath baseDbPath = TempPath.GetTempDirectory();
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule())
+            .AddModule(CreateModule(baseDbPath))
             .Intercept<IFlatDbConfig>((cfg) =>
             {
                 cfg.Enabled = flags.HasFlag(Flags.Enabled);
@@ -74,8 +80,9 @@ public class WorldStateDbDeciderModuleTests
     public void Ignored_full_prune_warning_fires_only_on_flat_with_automatic_trigger(bool flatEnabled, FullPruningTrigger trigger, int expectedWarnings)
     {
         TestLogger testLogger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        using TempPath baseDbPath = TempPath.GetTempDirectory();
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule())
+            .AddModule(CreateModule(baseDbPath))
             .AddSingleton<ILogManager>(new OneLoggerLogManager(new(testLogger)))
             .Intercept<IFlatDbConfig>((cfg) => cfg.Enabled = flatEnabled)
             .Intercept<IPruningConfig>((cfg) => { cfg.FullPruningTrigger = trigger; cfg.Mode = PruningMode.Memory; })
@@ -100,8 +107,9 @@ public class WorldStateDbDeciderModuleTests
     [TestCase(Flags.Enabled | Flags.ImportFromPruningTrieState, PointerSeed.BlockInfosEntry, 936ul, Description = "Import mode falls back to the trie pointer while flat is empty")]
     public void IStateBoundary_ReadsBackendPointer(Flags flags, PointerSeed seed, ulong? expected)
     {
+        using TempPath baseDbPath = TempPath.GetTempDirectory();
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule())
+            .AddModule(CreateModule(baseDbPath))
             .Intercept<IFlatDbConfig>((cfg) =>
             {
                 cfg.Enabled = flags.HasFlag(Flags.Enabled);
@@ -121,9 +129,24 @@ public class WorldStateDbDeciderModuleTests
         Assert.DoesNotThrow(() => container.Resolve<IBlockTree>());
     }
 
+    /// <summary>
+    /// A node on the fixture's layout whose files go under <paramref name="baseDbPath"/>: the trie node log PaprikaFlat
+    /// requires, while its Paprika store stays in memory.
+    /// </summary>
+    private TestNethermindModule CreateModule(TempPath baseDbPath) => new(
+        new FlatDbConfig { Layout = layout, TrieNodeLogEnabled = layout == FlatLayout.PaprikaFlat, PaprikaFlatFileSizeBytes = 64 * 1024 * 1024 },
+        new InitConfig { BaseDbPath = baseDbPath.Path, DiagnosticMode = DiagnosticMode.MemDb });
+
     // Format: 8-byte big-endian block number + 32-byte state root (matches BasePersistence encoding).
-    private static void WriteFlatCurrentState(IContainer container, ulong blockNumber)
+    // PaprikaFlat keeps the state pointer in Paprika, which only a persistence commit writes.
+    private void WriteFlatCurrentState(IContainer container, ulong blockNumber)
     {
+        if (layout == FlatLayout.PaprikaFlat)
+        {
+            container.Resolve<IPersistence>().CreateWriteBatch(StateId.PreGenesis, new StateId(blockNumber, ValueKeccak.Zero), WriteFlags.None).Dispose();
+            return;
+        }
+
         IDb metadataDb = container.Resolve<IColumnsDb<FlatDbColumns>>().GetColumnDb(FlatDbColumns.Metadata);
         byte[] value = new byte[8 + 32];
         BinaryPrimitives.WriteUInt64BigEndian(value, blockNumber);

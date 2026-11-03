@@ -16,6 +16,7 @@
     "src/bench_precompiles",
     "src/Nethermind/BenchmarkDotNet.Artifacts/**",
     "src/Nethermind/Chains/**",
+    "src/Nethermind/Nethermind.Paprika/**",
     "src/Nethermind/Nethermind.Runner/configs/**",
     "src/Nethermind/TestResults/**",
     "src/tests"

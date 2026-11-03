@@ -41,7 +41,7 @@ public class SeedFlatHistoryGenesisTests
         FlatDbConfig config = new() { HistoryEnabled = true };
         HistoryAvailability availability = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
         HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(availability, config);
-        _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
+        _writer = new HistoryWriter(_db, new ColumnsFlatMetadataStore(_db, config), _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
         _reader = new HistoryReader(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         _image = new PivotHistoryImageWriter(_db, _historyColumns, config, availability, rowFormat, new Lazy<IPivotStateSource>(Substitute.For<IPivotStateSource>()), LimboLogs.Instance);
     }
@@ -166,6 +166,7 @@ public class SeedFlatHistoryGenesisTests
             flatDbConfig,
             new TestHardwareInfo(32L * 1024 * 1024 * 1024),
             new Lazy<IColumnsDb<FlatDbColumns>>(() => flatDb),
+            new Lazy<IFlatMetadataStore>(() => new ColumnsFlatMetadataStore(flatDb, flatDbConfig)),
             new Lazy<IDb>(() => new MemDb()),
             Substitute.For<ISyncConfig>(),
             initConfig,

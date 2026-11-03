@@ -518,7 +518,7 @@ namespace Nethermind.Db.Test
             flatConfig ??= new FlatDbConfig();
             return new ContainerBuilder()
                 .AddModule(new DbModule(initConfig, new ReceiptConfig(), new SyncConfig()))
-                .AddModule(new FlatWorldStateModule(flatConfig))
+                .AddModule(new FlatWorldStateModule(flatConfig, initConfig))
                 .AddSingleton<IDbConfig>(config)
                 .AddSingleton<IFlatDbConfig>(flatConfig)
                 .AddSingleton<IInitConfig>(initConfig)

@@ -22,7 +22,7 @@ public class HistoryRowFormatTests
     private HistoryAvailability Availability() => new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
 
     [Test]
-    public void Resolve_WindowedOnALayoutThatCannotBackTheV3Fallback_Refuses([Values(FlatLayout.FlatInTrie, FlatLayout.PreimageFlat, FlatLayout.PreimageFlatV1)] FlatLayout layout)
+    public void Resolve_WindowedOnALayoutThatCannotBackTheV3Fallback_Refuses([Values(FlatLayout.FlatInTrie, FlatLayout.PreimageFlat, FlatLayout.PreimageFlatV1, FlatLayout.PaprikaFlat)] FlatLayout layout)
     {
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100, Layout = layout };
 
@@ -45,7 +45,7 @@ public class HistoryRowFormatTests
     }
 
     [Test]
-    public void Resolve_UnwindowedOnANonFlatLayout_IsStillAllowed([Values(FlatLayout.FlatInTrie, FlatLayout.PreimageFlat, FlatLayout.PreimageFlatV1)] FlatLayout layout)
+    public void Resolve_UnwindowedOnANonFlatLayout_IsStillAllowed([Values(FlatLayout.FlatInTrie, FlatLayout.PreimageFlat, FlatLayout.PreimageFlatV1, FlatLayout.PaprikaFlat)] FlatLayout layout)
     {
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = 0, Layout = layout };
 

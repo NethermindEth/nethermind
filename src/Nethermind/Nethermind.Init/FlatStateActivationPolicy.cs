@@ -12,9 +12,11 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Paprika.Store.PageManagers;
 
 namespace Nethermind.Init;
 
@@ -26,6 +28,7 @@ public sealed class FlatStateActivationPolicy(
     IFlatDbConfig flatDbConfig,
     IHardwareInfo hardwareInfo,
     Lazy<IColumnsDb<FlatDbColumns>> flatDb,
+    Lazy<IFlatMetadataStore> flatMetadata,
     [KeyFilter(DbNames.State)] Lazy<IDb> patriciaStateDb,
     ISyncConfig syncConfig,
     IInitConfig initConfig,
@@ -34,13 +37,13 @@ public sealed class FlatStateActivationPolicy(
 {
     private static readonly long LowMemoryLayoutThreshold = 16.GiB;
 
-    private readonly bool _result = Compute(flatDbConfig, hardwareInfo, flatDb, patriciaStateDb, syncConfig, initConfig, fileSystem, logManager.GetClassLogger<FlatStateActivationPolicy>());
+    private readonly bool _result = Compute(flatDbConfig, hardwareInfo, flatDb, flatMetadata, patriciaStateDb, syncConfig, initConfig, fileSystem, logManager.GetClassLogger<FlatStateActivationPolicy>());
 
     public bool ShouldTurnOnFlatDb() => _result;
 
-    private static bool Compute(IFlatDbConfig flatDbConfig, IHardwareInfo hardwareInfo, Lazy<IColumnsDb<FlatDbColumns>> flatDb, Lazy<IDb> patriciaStateDb, ISyncConfig syncConfig, IInitConfig initConfig, IFileSystem fileSystem, ILogger logger)
+    private static bool Compute(IFlatDbConfig flatDbConfig, IHardwareInfo hardwareInfo, Lazy<IColumnsDb<FlatDbColumns>> flatDb, Lazy<IFlatMetadataStore> flatMetadata, Lazy<IDb> patriciaStateDb, ISyncConfig syncConfig, IInitConfig initConfig, IFileSystem fileSystem, ILogger logger)
     {
-        bool activateFlat = DecideBackend(flatDbConfig, flatDb, patriciaStateDb, syncConfig, initConfig, fileSystem, logger);
+        bool activateFlat = DecideBackend(flatDbConfig, flatDb, flatMetadata, patriciaStateDb, syncConfig, initConfig, fileSystem, logger);
         if (activateFlat) AdviseLayoutForMemory(flatDbConfig, hardwareInfo, logger);
         return activateFlat;
     }
@@ -57,7 +60,7 @@ public sealed class FlatStateActivationPolicy(
             $"Set '--FlatDb.Layout {nameof(FlatLayout.FlatInTrie)}' to switch (requires a fresh flat DB sync).");
     }
 
-    private static bool DecideBackend(IFlatDbConfig flatDbConfig, Lazy<IColumnsDb<FlatDbColumns>> flatDb, Lazy<IDb> patriciaStateDb, ISyncConfig syncConfig, IInitConfig initConfig, IFileSystem fileSystem, ILogger logger)
+    private static bool DecideBackend(IFlatDbConfig flatDbConfig, Lazy<IColumnsDb<FlatDbColumns>> flatDb, Lazy<IFlatMetadataStore> flatMetadata, Lazy<IDb> patriciaStateDb, ISyncConfig syncConfig, IInitConfig initConfig, IFileSystem fileSystem, ILogger logger)
     {
         if (!flatDbConfig.Enabled)
         {
@@ -65,10 +68,12 @@ public sealed class FlatStateActivationPolicy(
             // on patricia-only nodes and can throw on a stale layout. RocksDB writes CURRENT
             // as soon as the DB is opened, including an empty one, so the signal for state
             // worth keeping is an SST file.
-            if (HasSstFile(fileSystem, DbNames.Flat.GetApplicationResourcePath(initConfig.BaseDbPath)))
+            // A PaprikaFlat node keeps its flat state in paprika.db, which counts even without the flat directory.
+            if (HasSstFile(fileSystem, DbNames.Flat.GetApplicationResourcePath(initConfig.BaseDbPath))
+                || fileSystem.File.Exists(MemoryMappedPageManager.GetPaprikaFilePath(FlatWorldStateModule.PaprikaFlatDirectory.GetApplicationResourcePath(initConfig.BaseDbPath))))
             {
                 throw new InvalidConfigurationException(
-                    $"Refusing --FlatDb.Enabled=false on an existing flat DB: that would discard the complete flat state and full-resync. Keep FlatDb.Enabled=true, or delete the '{DbNames.Flat}', '{DbNames.FlatHistory}' and 'persistedSnapshot' directories under '{initConfig.BaseDbPath}' to start over on patricia.",
+                    $"Refusing --FlatDb.Enabled=false on an existing flat DB: that would discard the complete flat state and full-resync. Keep FlatDb.Enabled=true, or delete the '{DbNames.Flat}', 'flatTrieNodeLog', '{FlatWorldStateModule.PaprikaFlatDirectory}', '{DbNames.FlatHistory}' and 'persistedSnapshot' directories under '{initConfig.BaseDbPath}' to start over on patricia.",
                     -1);
             }
 
@@ -76,10 +81,10 @@ public sealed class FlatStateActivationPolicy(
             return false;
         }
 
-        // The metadata is read off the columns DB rather than through IPersistence: constructing a persistence latches
+        // The markers are read through the metadata store rather than IPersistence: constructing a persistence latches
         // its slot encoding from the pre-wipe DB, which a repair that dropped the metadata would resolve as raw.
         IColumnsDb<FlatDbColumns> db = flatDb.Value;
-        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+        IReadOnlyKeyValueStore metadata = flatMetadata.Value.Committed;
         bool flatHasData = BasePersistence.ReadCurrentState(metadata) != StateId.PreGenesis;
         // A DB wiped for a resync holds no state pointer until the sync completes; it is still the active backend.
         bool wipedForSync = BasePersistence.ReadWipedForSync(metadata);
@@ -180,7 +185,7 @@ public sealed class FlatStateActivationPolicy(
         }
 
         // Refused before the wipe, so a node whose config is fixed wipes on its next start rather than losing its state first.
-        if (wipe) WipeForResync(db, flatDbConfig, logger);
+        if (wipe) WipeForResync(db, flatMetadata.Value, flatDbConfig, logger);
         return activateFlat;
     }
 
@@ -201,10 +206,9 @@ public sealed class FlatStateActivationPolicy(
     /// before anything reads the DB, and the patricia import writes over the surviving repaired keys without clearing them.
     /// The repair is acknowledged only after the wipe is flushed, so a crash in between redoes the wipe.
     /// </remarks>
-    private static void WipeForResync(IColumnsDb<FlatDbColumns> db, IFlatDbConfig flatDbConfig, ILogger logger)
+    private static void WipeForResync(IColumnsDb<FlatDbColumns> db, IFlatMetadataStore flatMetadata, IFlatDbConfig flatDbConfig, ILogger logger)
     {
-        BasePersistence.ClearAllColumns(db);
-        db.Flush();
+        flatMetadata.WipeForResync();
         db.AcknowledgeRepair();
         if (logger.IsInfo) logger.Info("Flat DB wiped; the state sync refills it.");
         // History keeps its watermark across this wipe. HistoryWriter.SeedPivot refuses the new pivot at FinalizeSync,

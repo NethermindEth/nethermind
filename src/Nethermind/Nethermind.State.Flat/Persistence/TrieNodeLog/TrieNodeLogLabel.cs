@@ -25,6 +25,6 @@ public readonly record struct TrieNodeLogLabel(string Value) : IMetricLabels
 
     public string[] Labels => [Value];
 
-    /// <summary>The column label of a logged column: state for both state trie columns, storage for storage.</summary>
+    /// <summary>The column label of a partition's first logged column: state for the state trie columns, storage for storage.</summary>
     public static TrieNodeLogLabel Column(FlatDbColumns column) => column == FlatDbColumns.StorageNodes ? Storage : State;
 }

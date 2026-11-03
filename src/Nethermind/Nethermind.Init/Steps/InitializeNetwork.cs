@@ -207,6 +207,7 @@ public class InitializeNetwork : IStep
                 FlatLayout.Flat => "-f",
                 FlatLayout.FlatInTrie => "-fit",
                 FlatLayout.PreimageFlat => "-pf",
+                FlatLayout.PaprikaFlat => "-pap",
                 _ => ""
             };
         }

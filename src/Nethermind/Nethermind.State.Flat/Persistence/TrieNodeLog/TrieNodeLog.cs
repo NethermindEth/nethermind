@@ -19,9 +19,9 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 
 /// <summary>
 /// <see cref="ITrieNodeLog"/> made of independent <see cref="TrieNodeLogShard"/>s: a state partition
-/// (<c>StateTopNodes</c> and <c>StateNodes</c>) and a storage partition (<c>StorageNodes</c>), each with its own
-/// byte budget and shard count, sharded by the first byte of the column key.
-/// <c>FallbackNodes</c> (paths of 16+ nibbles, practically empty) goes straight to RocksDB. A batch's records are
+/// (<c>StateTopNodes</c>, <c>StateNodes</c> and the state paths of <c>FallbackNodes</c>) and a storage partition
+/// (<c>StorageNodes</c> and the storage paths of <c>FallbackNodes</c>), each with its own byte budget and shard count,
+/// sharded by the first byte of the column key, or of a <c>FallbackNodes</c> key after its prefix. A batch's records are
 /// staged per shard and appended by one worker per shard, and the shards are made durable and merged in parallel.
 /// Unless <see cref="IFlatDbConfig.TrieNodeLogSecondLevelMergeLag"/> is -1, every shard merges into a second-level shard
 /// of the same size instead of RocksDB, and only that one merges into RocksDB.
@@ -38,17 +38,18 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     private readonly int[] _partitionShift = new int[PartitionCount]; // right shift of the shard byte selecting the shard
     private readonly TrieNodeLogShard[] _shards; // partition-major: state, storage
     private readonly TrieNodeLogShard[] _secondLevelShards; // same order as _shards, empty when disabled
-    private static readonly FlatDbColumns[] StateColumns = [FlatDbColumns.StateTopNodes, FlatDbColumns.StateNodes];
-    private static readonly FlatDbColumns[] StorageColumns = [FlatDbColumns.StorageNodes];
+    private static readonly FlatDbColumns[] StateColumns = [FlatDbColumns.StateTopNodes, FlatDbColumns.StateNodes, FlatDbColumns.FallbackNodes];
+    private static readonly FlatDbColumns[] StorageColumns = [FlatDbColumns.StorageNodes, FlatDbColumns.FallbackNodes];
     private readonly SemaphoreSlim _mergeLimiter;
     // A first-level merge holds its limiter while it may wait for second-level merges, so they cannot share one.
     private readonly SemaphoreSlim _secondLevelMergeLimiter;
     private readonly Lock _drainLock = new(); // drains and clears queue behind each other; sync runs bypass batches from several threads
     private readonly bool _drainOnShutdown;
+    private readonly IFlatMetadataStore _metadataStore;
     private readonly ILogger _logger;
     private int _disposed;
 
-    public TrieNodeLog(string basePath, IFileSystem fileSystem, IColumnsDb<FlatDbColumns> db, IFlatDbConfig config, ILogManager logManager)
+    public TrieNodeLog(string basePath, IFileSystem fileSystem, IColumnsDb<FlatDbColumns> db, IFlatMetadataStore metadataStore, IFlatDbConfig config, ILogManager logManager)
     {
         if (config.TrieNodeLogMaxConcurrentMerges < 1)
             throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogMaxConcurrentMerges)} must be at least 1, got {config.TrieNodeLogMaxConcurrentMerges}", -1);
@@ -59,9 +60,10 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         _mergeLimiter = new SemaphoreSlim(config.TrieNodeLogMaxConcurrentMerges, config.TrieNodeLogMaxConcurrentMerges);
         _secondLevelMergeLimiter = new SemaphoreSlim(config.TrieNodeLogMaxConcurrentMerges, config.TrieNodeLogMaxConcurrentMerges);
         _drainOnShutdown = config.TrieNodeLogDrainOnShutdown;
+        _metadataStore = metadataStore;
         _logger = logManager.GetClassLogger<TrieNodeLog>();
         // Before the manifest is replaced: a shard of the previous layout that no longer exists must still have its files.
-        ValidateRecordedShards(basePath, fileSystem, db);
+        ValidateRecordedShards(basePath, fileSystem, db, metadataStore);
 
         // A generation's index is 1/IndexRatio of its bytes and rolls it at three-quarters occupancy, so the ratio
         // follows the partition's typical record size: state nodes are mostly branches, storage has smaller leaves.
@@ -89,10 +91,10 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                     if (SecondLevelEnabled(config))
                     {
                         string secondLevelName = name + SecondLevelSuffix;
-                        secondLevel = new TrieNodeLogShard(secondLevelName, name, columns, fileSystem.Path.Combine(basePath, secondLevelName), fileSystem, db, budget / shardCount, SecondLevelIndexRatio, config.TrieNodeLogSecondLevelMergeLag, config.TrieNodeLogMergeBacklogMargin, _secondLevelMergeLimiter, secondLevel: null, logManager);
+                        secondLevel = new TrieNodeLogShard(secondLevelName, name, columns, fileSystem.Path.Combine(basePath, secondLevelName), fileSystem, db, metadataStore, budget / shardCount, SecondLevelIndexRatio, config.TrieNodeLogSecondLevelMergeLag, config.TrieNodeLogMergeBacklogMargin, _secondLevelMergeLimiter, secondLevel: null, logManager);
                         secondLevelShards.Add(secondLevel);
                     }
-                    shards.Add(new TrieNodeLogShard(name, name, columns, fileSystem.Path.Combine(basePath, name), fileSystem, db, budget / shardCount, indexRatio, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _mergeLimiter, secondLevel, logManager));
+                    shards.Add(new TrieNodeLogShard(name, name, columns, fileSystem.Path.Combine(basePath, name), fileSystem, db, metadataStore, budget / shardCount, indexRatio, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _mergeLimiter, secondLevel, logManager));
                 }
                 foreach (FlatDbColumns column in columns) db.GetColumnDb(column).SetWriteBuffer(WriteBufferAdjuster.MaxWriteBufferSize(column));
             }
@@ -143,7 +145,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
     // Metadata key of the shard names the database may hold confirmed-but-unmerged generations for, so a database
     // restored without the log directory is refused even when no directory is left to enumerate.
-    private static readonly byte[] ShardManifestKey = Keccak.Compute("TrieNodeLogShards").BytesToArray();
+    internal static readonly byte[] ShardManifestKey = Keccak.Compute("TrieNodeLogShards").BytesToArray();
 
     /// <summary>Durably records the shard names before any of them commits.</summary>
     private static void WriteShardManifest(IColumnsDb<FlatDbColumns> db, IEnumerable<string> names)
@@ -153,18 +155,25 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         metadata.FlushOrThrow();
     }
 
+    /// <summary>Whether a shard recorded in <paramref name="metadata"/>'s manifest has merged a generation into RocksDB.</summary>
+    internal static bool HasMergedGenerations(IReadOnlyKeyValueStore metadata) =>
+        metadata.Get(ShardManifestKey) is { } manifest
+        && Encoding.UTF8.GetString(manifest).Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Any(name => metadata.Get(TrieNodeLogShard.FlushedGenerationKeyFor(name)) is not null);
+
     /// <summary>
     /// Throws when a shard the database recorded confirms generations beyond its merged marker whose files are not
     /// under <paramref name="basePath"/>: a database restored without its log directory, whatever the layout it is
     /// started with. A database without a manifest is only checked shard by shard as its directories are opened.
     /// </summary>
-    public static void ValidateRecordedShards(string basePath, IFileSystem fileSystem, IColumnsDb<FlatDbColumns> db)
+    public static void ValidateRecordedShards(string basePath, IFileSystem fileSystem, IColumnsDb<FlatDbColumns> db, IFlatMetadataStore metadataStore)
     {
-        IReadOnlyKeyValueStore metadata = db.GetColumnDb(FlatDbColumns.Metadata);
-        byte[]? manifest = metadata.Get(ShardManifestKey);
+        IReadOnlyKeyValueStore merged = db.GetColumnDb(FlatDbColumns.Metadata);
+        byte[]? manifest = merged.Get(ShardManifestKey);
         if (manifest is null) return;
+        IReadOnlyKeyValueStore confirmed = metadataStore.Committed;
         foreach (string name in Encoding.UTF8.GetString(manifest).Split('\n', StringSplitOptions.RemoveEmptyEntries))
-            TrieNodeLogShard.ThrowIfConfirmedGenerationsMissing(metadata, name, fileSystem.Path.Combine(basePath, name), fileSystem);
+            TrieNodeLogShard.ThrowIfConfirmedGenerationsMissing(confirmed, merged, name, name.EndsWith(SecondLevelSuffix), fileSystem.Path.Combine(basePath, name), fileSystem);
     }
 
     /// <summary>
@@ -173,9 +182,9 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     /// Run before the log is constructed; the configured shards then start empty.
     /// </summary>
     /// <remarks>Second-level shards go first: they hold what their first-level shards merged before.</remarks>
-    public static void MergeAllOnDisk(string basePath, IFileSystem fileSystem, IColumnsDb<FlatDbColumns> db, ILogManager logManager)
+    public static void MergeAllOnDisk(string basePath, IFileSystem fileSystem, IColumnsDb<FlatDbColumns> db, IFlatMetadataStore metadataStore, ILogManager logManager)
     {
-        ValidateRecordedShards(basePath, fileSystem, db);
+        ValidateRecordedShards(basePath, fileSystem, db, metadataStore);
         if (!fileSystem.Directory.Exists(basePath)) return;
         ILogger logger = logManager.GetClassLogger<TrieNodeLog>();
         using SemaphoreSlim mergeLimiter = new(1, 1);
@@ -196,7 +205,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
             if (logger.IsInfo) logger.Info($"Merging trie node log shard {name} left by the previous run");
             string versionName = name.EndsWith(SecondLevelSuffix) ? name[..^SecondLevelSuffix.Length] : name;
-            TrieNodeLogShard shard = new(name, versionName, columns, directory, fileSystem, db, generationBytes: 0, indexRatio: 1, mergeLag: 0, backlogMargin: 1, mergeLimiter, secondLevel: null, logManager);
+            TrieNodeLogShard shard = new(name, versionName, columns, directory, fileSystem, db, metadataStore, generationBytes: 0, indexRatio: 1, mergeLag: 0, backlogMargin: 1, mergeLimiter, secondLevel: null, logManager);
             try
             {
                 shard.Drain();
@@ -210,7 +219,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         db.GetColumnDb(FlatDbColumns.Metadata).Remove(ShardManifestKey);
     }
 
-    internal static bool Covers(FlatDbColumns column) => column is FlatDbColumns.StateTopNodes or FlatDbColumns.StateNodes or FlatDbColumns.StorageNodes;
+    internal static bool Covers(FlatDbColumns column) => column is FlatDbColumns.StateTopNodes or FlatDbColumns.StateNodes or FlatDbColumns.StorageNodes or FlatDbColumns.FallbackNodes;
 
     private const string StatePartitionName = "state";
     private const string StoragePartitionName = "storage";
@@ -219,10 +228,15 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     private const int PartitionCount = 2;
 
     /// <summary>Shard of a column key: its column's partition, then the top bits of the key's first byte.</summary>
+    /// <remarks>
+    /// A <c>FallbackNodes</c> key holds either trie's long path behind a prefix byte (0 state, 1 storage) that picks the
+    /// partition; the byte after it is the path's or address's first byte, which the other columns' keys start with.
+    /// </remarks>
     internal int ShardIndex(byte column, ReadOnlySpan<byte> key)
     {
-        int partition = (FlatDbColumns)column == FlatDbColumns.StorageNodes ? StoragePartition : StatePartition;
-        int shardByte = key[0];
+        bool fallback = (FlatDbColumns)column == FlatDbColumns.FallbackNodes;
+        int partition = (FlatDbColumns)column == FlatDbColumns.StorageNodes || (fallback && key[0] == 1) ? StoragePartition : StatePartition;
+        int shardByte = fallback ? key[1] : key[0];
 
         return _partitionOffset[partition] + (shardByte >> _partitionShift[partition]);
     }
@@ -234,24 +248,27 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         // the first, so a generation the first level dropped before its pin is already published in the second level.
         ArrayPoolList<TrieNodeLogView> views = new(_shards.Length + _secondLevelShards.Length);
         IColumnDbSnapshot<FlatDbColumns>? snapshot = null;
+        IFlatMetadataStore.ISnapshot? confirmation = null;
         try
         {
             foreach (TrieNodeLogShard shard in _shards) views.Add(shard.PinLiveGenerations());
             foreach (TrieNodeLogShard shard in _secondLevelShards) views.Add(shard.PinLiveGenerations());
             snapshot = db.CreateSnapshot(flags);
-            IReadOnlyKeyValueStore metadata = snapshot.GetColumn(FlatDbColumns.Metadata);
-            foreach (TrieNodeLogView view in views) view.Bind(metadata);
-            return new View(this, snapshot, views);
+            confirmation = _metadataStore.OpenSnapshot(snapshot);
+            IReadOnlyKeyValueStore merged = snapshot.GetColumn(FlatDbColumns.Metadata);
+            foreach (TrieNodeLogView view in views) view.Bind(confirmation.Metadata, merged);
+            return new View(this, snapshot, confirmation, views);
         }
         catch
         {
             views.DisposeRecursive();
+            confirmation?.Dispose();
             snapshot?.Dispose();
             throw;
         }
     }
 
-    public ITrieNodeLog.IWriteBatch StartWriteBatch(IColumnsWriteBatch<FlatDbColumns> batch, bool bypass)
+    public ITrieNodeLog.IWriteBatch StartWriteBatch(IWriteOnlyKeyValueStore confirmation, bool bypass)
     {
         if (bypass) return NullTrieNodeLog.Instance;
 
@@ -266,7 +283,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             throw;
         }
 
-        return new WriteBatch(this, batch, batches);
+        return new WriteBatch(this, confirmation, batches);
     }
 
     public void Drain()
@@ -339,9 +356,11 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         _secondLevelMergeLimiter.Dispose();
     }
 
-    private sealed class View(TrieNodeLog log, IColumnDbSnapshot<FlatDbColumns> snapshot, ArrayPoolList<TrieNodeLogView> views) : ITrieNodeLog.IView
+    private sealed class View(TrieNodeLog log, IColumnDbSnapshot<FlatDbColumns> snapshot, IFlatMetadataStore.ISnapshot confirmation, ArrayPoolList<TrieNodeLogView> views) : ITrieNodeLog.IView
     {
         public IColumnDbSnapshot<FlatDbColumns> Snapshot => snapshot;
+
+        public IFlatMetadataStore.ISnapshot Confirmation => confirmation;
 
         public IReadOnlyKeyValueStore GetColumn(FlatDbColumns column) =>
             Covers(column) ? new Column(log, views, (byte)column, snapshot.GetColumn(column)) : snapshot.GetColumn(column);
@@ -349,6 +368,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         public void Dispose()
         {
             snapshot.Dispose();
+            confirmation.Dispose();
             views.DisposeRecursive();
         }
 
@@ -377,17 +397,17 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     private sealed class WriteBatch : ITrieNodeLog.IWriteBatch
     {
         private readonly TrieNodeLog _log;
-        private readonly IColumnsWriteBatch<FlatDbColumns> _rocksDbBatch;
+        private readonly IWriteOnlyKeyValueStore _confirmation;
         private readonly ArrayPoolList<TrieNodeLogWriteBatch> _batches;
         private readonly ArrayPoolList<ShardWriter> _writers;
         private bool _durable;
         private bool _committed;
         private bool _confirmed;
 
-        public WriteBatch(TrieNodeLog log, IColumnsWriteBatch<FlatDbColumns> rocksDbBatch, ArrayPoolList<TrieNodeLogWriteBatch> batches)
+        public WriteBatch(TrieNodeLog log, IWriteOnlyKeyValueStore confirmation, ArrayPoolList<TrieNodeLogWriteBatch> batches)
         {
             _log = log;
-            _rocksDbBatch = rocksDbBatch;
+            _confirmation = confirmation;
             _batches = batches;
             _writers = new ArrayPoolList<ShardWriter>(batches.Count);
             foreach (TrieNodeLogWriteBatch batch in batches) _writers.Add(new ShardWriter(batch, log._logger));
@@ -417,8 +437,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
             Parallel.ForEach(_batches, static batch => batch.Publish());
             // The RocksDB batch is not thread-safe.
-            IWriteBatch metadata = _rocksDbBatch.GetColumnBatch(FlatDbColumns.Metadata);
-            foreach (TrieNodeLogWriteBatch batch in _batches) batch.WriteVersion(metadata);
+            foreach (TrieNodeLogWriteBatch batch in _batches) batch.WriteVersion(_confirmation);
             _committed = true;
             Metrics.TrieNodeLogCommitTime.Observe(Stopwatch.GetTimestamp() - sw);
         }

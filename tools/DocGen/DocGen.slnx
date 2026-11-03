@@ -52,6 +52,7 @@
     <Project Path="../../src/Nethermind/Nethermind.CensorshipDetector.Plugin/Nethermind.CensorshipDetector.Plugin.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.OpcodeTracing.Plugin/Nethermind.OpcodeTracing.Plugin.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Optimism/Nethermind.Optimism.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Paprika/Nethermind.Paprika.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.PortfolioViewer.Plugin/Nethermind.PortfolioViewer.Plugin.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Seq/Nethermind.Seq.csproj" />

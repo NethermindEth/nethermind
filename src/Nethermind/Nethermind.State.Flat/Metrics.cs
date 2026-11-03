@@ -569,4 +569,71 @@ public static class Metrics
     [Description("Newest trie node log generation merged into RocksDB, by shard")]
     [KeyIsLabel("shard")]
     public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogFlushedGeneration { get; } = new();
+
+    [GaugeMetric]
+    [Description("Paprika readers open on the PaprikaFlat file; each keeps the pages its root reaches from being reused")]
+    public static long PaprikaFlatOpenReaders { get; set; }
+
+    [GaugeMetric]
+    [Description("Paprika commits since the root of the oldest open PaprikaFlat reader; the file grows while that reader stays open")]
+    public static long PaprikaFlatOldestReaderLag { get; set; }
+
+    [GaugeMetric]
+    [Description("Bytes of the PaprikaFlat file up to its highest page in use")]
+    public static long PaprikaFlatUsedBytes { get; set; }
+
+    [DetailedMetric]
+    [Description("Time to apply one group of PaprikaFlat write batches and commit it to Paprika (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 50)]
+    public static IMetricObserver PaprikaFlatCommitTime { get; set; } = new NoopMetricObserver();
+
+    [CounterMetric]
+    [Description("Paprika commits of the PaprikaFlat file that carried more than one write batch")]
+    public static long PaprikaFlatGroupedCommits { get; set; }
+
+    [GaugeMetric]
+    [Description("Bytes of the PaprikaFlat file's windows tracked as resident under its page cache budget")]
+    public static long PaprikaPageTrackerResidentBytes { get; set; }
+
+    [GaugeMetric]
+    [Description("Unmanaged metadata bytes of the PaprikaFlat page-residency tracker")]
+    public static long PaprikaPageTrackerMetadataBytes { get; set; }
+
+    [DetailedMetric]
+    [GaugeMetric]
+    [Description("PaprikaFlat windows evicted from the page-residency tracker and queued for release")]
+    public static long PaprikaPageTrackerEvictionQueueDepth { get; set; }
+
+    internal static long _paprikaPageTrackerEvictionsDispatched;
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("PaprikaFlat windows released off the drain queue (madvise issued)")]
+    public static long PaprikaPageTrackerEvictionsDispatched
+    {
+        get => Volatile.Read(ref _paprikaPageTrackerEvictionsDispatched);
+        set => Volatile.Write(ref _paprikaPageTrackerEvictionsDispatched, value);
+    }
+
+    internal static long _paprikaPageTrackerEvictionsInlineFallback;
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("PaprikaFlat windows released inline by a reader because the drain queue was full")]
+    public static long PaprikaPageTrackerEvictionsInlineFallback
+    {
+        get => Volatile.Read(ref _paprikaPageTrackerEvictionsInlineFallback);
+        set => Volatile.Write(ref _paprikaPageTrackerEvictionsInlineFallback, value);
+    }
+
+    internal static long _paprikaPageTrackerEvictionsSkippedRetouched;
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("PaprikaFlat windows the drain kept because they were read again after their eviction")]
+    public static long PaprikaPageTrackerEvictionsSkippedRetouched
+    {
+        get => Volatile.Read(ref _paprikaPageTrackerEvictionsSkippedRetouched);
+        set => Volatile.Write(ref _paprikaPageTrackerEvictionsSkippedRetouched, value);
+    }
 }

@@ -13,7 +13,7 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 /// </summary>
 internal sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<TrieNodeLogGeneration> pinned) : IDisposable
 {
-    // Header, the longest key (28 bytes) and a full branch node (~532 bytes) fit in one read; a longer value takes a second.
+    // Header, the longest key (54 bytes) and a full branch node (~532 bytes) fit in one read; a longer value takes a second.
     private const int ReadBufferSize = 700;
 
     private ulong _version;
@@ -24,12 +24,14 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<Trie
     private long _misses;
 
     /// <summary>Binds the view to its snapshot's version; on the thread that pinned, which holds the shard's retention until this returns.</summary>
-    public void Bind(IReadOnlyKeyValueStore metadata)
+    /// <param name="confirmed">The <see cref="IFlatMetadataStore.ISnapshot.Metadata"/> the reader is bound to, holding <c>V</c>.</param>
+    /// <param name="merged">The snapshot's RocksDB metadata column, holding <c>N</c>.</param>
+    public void Bind(IReadOnlyKeyValueStore confirmed, IReadOnlyKeyValueStore merged)
     {
         try
         {
-            _version = ReadUInt64(metadata.Get(shard.VersionKey));
-            _flushedGeneration = ReadUInt64(metadata.Get(shard.FlushedGenerationKey));
+            _version = ReadUInt64(confirmed.Get(shard.VersionKey));
+            _flushedGeneration = ReadUInt64(merged.Get(shard.FlushedGenerationKey));
             shard.PinNewer(pinned);
 
             while (pinned.Count > 0 && pinned[0].Number <= _flushedGeneration)

@@ -37,10 +37,11 @@ namespace Nethermind.State.Flat.Test.Sync;
 /// Applies the same block access lists through <see cref="IWorldState.ApplyBal"/> (catch-up and parallel validation)
 /// and through <see cref="FlatBalHealing"/> (snap healing), which must reach the same state.
 /// </summary>
-[TestFixture(false)]
-[TestFixture(true)]
+[TestFixture(false, FlatLayout.Flat)]
+[TestFixture(true, FlatLayout.Flat)]
+[TestFixture(true, FlatLayout.PaprikaFlat)]
 [Parallelizable(ParallelScope.All)]
-public class BalApplierDifferentialTests(bool flatScope)
+public class BalApplierDifferentialTests(bool flatScope, FlatLayout healingLayout)
 {
     private static readonly byte[] Code = [0x60, 0x00, 0x60, 0x00];
     private static readonly byte[] Replacement = [0x60, 0x01];
@@ -324,10 +325,11 @@ public class BalApplierDifferentialTests(bool flatScope)
     }
 
     /// <param name="targetRoots">The root each block's header commits to; healing reports no root unless it reaches the last.</param>
-    private static (Hash256? Root, MemDb CodeDb) ApplyThroughHealing(AccountSpec[] pre, ReadOnlyBlockAccessList[] bals, Hash256[] targetRoots, bool blockByBlock)
+    private (Hash256? Root, MemDb CodeDb) ApplyThroughHealing(AccountSpec[] pre, ReadOnlyBlockAccessList[] bals, Hash256[] targetRoots, bool blockByBlock)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> columns = new();
-        RocksDbPersistence persistence = new(columns, LimboLogs.Instance, NullTrieNodeLog.Instance);
+        using LayoutPersistence layoutPersistence = new(columns, healingLayout, trieNodeLog: false);
+        IPersistence persistence = layoutPersistence.Persistence;
         Hash256 preRoot = CommitState(persistence, pre);
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -366,7 +368,7 @@ public class BalApplierDifferentialTests(bool flatScope)
     }
 
     /// <summary>Writes a consistent flat state (leaves and trie nodes) without code bytes, and returns its root.</summary>
-    private static Hash256 CommitState(RocksDbPersistence persistence, AccountSpec[] accounts)
+    private static Hash256 CommitState(IPersistence persistence, AccountSpec[] accounts)
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);

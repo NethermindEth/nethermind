@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.State.Flat.History.Changesets;
@@ -25,23 +26,39 @@ using Nethermind.Api;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.PaprikaFlat;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
+using Paprika.Store;
+using Paprika.Store.PageManagers;
 
 namespace Nethermind.Init.Modules;
 
-public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
+public class FlatWorldStateModule(IFlatDbConfig flatDbConfig, IInitConfig initConfig) : Module
 {
     private const string VerifyTrieDirectory = "verify-trie";
     private const string PersistedSnapshotDirectory = "persistedSnapshot";
     private const string TrieNodeLogDirectory = "flatTrieNodeLog";
+    internal const string PaprikaFlatDirectory = "flatPaprika";
+
+    /// <summary>The most trie node log shards <see cref="FlatLayout.PaprikaFlat"/> takes, state and storage together.</summary>
+    /// <remarks>Each first-level shard keeps its version and generation in Paprika's metadata blob, which holds 2048 bytes.</remarks>
+    private const int MaxPaprikaFlatShards = 16;
+
+    /// <summary>The most anonymous memory a <see cref="DiagnosticMode.MemDb"/> node gives Paprika.</summary>
+    /// <remarks>Linux refuses to reserve more than RAM plus swap at once, which the 1 TiB file size default exceeds.</remarks>
+    private static readonly long MemDbPaprikaFlatBytes = 4.GiB;
+
+    /// <summary>How long disposing the PaprikaFlat store waits for its readers before it leaves the file mapped.</summary>
+    private static readonly TimeSpan PaprikaFlatReaderWait = TimeSpan.FromSeconds(10);
 
     protected override void Load(ContainerBuilder builder)
     {
+        FlatLayout layout = flatDbConfig.Layout;
         builder
 
             // Implementation of nethermind interfaces
@@ -112,15 +129,15 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     Path.Combine(PersistedSnapshotDirectory, "catalog"))))
             .AddSingleton<SnapshotCatalog>()
             .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
-            .AddSingleton<ITrieNodeLog, IFlatDbConfig, IInitConfig, IColumnsDb<FlatDbColumns>, IFileSystem, ILogManager>((cfg, initConfig, db, fileSystem, logManager) =>
+            .AddSingleton<ITrieNodeLog, IFlatDbConfig, IInitConfig, IColumnsDb<FlatDbColumns>, IFlatMetadataStore, IFileSystem, ILogManager>((cfg, initConfig, db, metadataStore, fileSystem, logManager) =>
             {
                 string basePath = TrieNodeLogDirectory.GetApplicationResourcePath(initConfig.BaseDbPath);
                 // The log is recovered across restarts, keeping its deduplication window, unless it is now disabled or
                 // its shard layout changed; then whatever the previous run left is merged into RocksDB first.
                 if (!cfg.TrieNodeLogEnabled || !TrieNodeLog.MatchesOnDiskLayout(basePath, fileSystem, cfg))
-                    TrieNodeLog.MergeAllOnDisk(basePath, fileSystem, db, logManager);
+                    TrieNodeLog.MergeAllOnDisk(basePath, fileSystem, db, metadataStore, logManager);
                 return cfg.TrieNodeLogEnabled
-                    ? new TrieNodeLog(basePath, fileSystem, db, cfg, logManager)
+                    ? new TrieNodeLog(basePath, fileSystem, db, metadataStore, cfg, logManager)
                     : NullTrieNodeLog.Instance;
             })
             .AddSingleton<RocksDbPersistence>()
@@ -130,13 +147,14 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
             .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
             {
-                IPersistence persistence = flatDbConfig.Layout switch
+                IPersistence persistence = layout switch
                 {
                     FlatLayout.Flat => ctx.Resolve<RocksDbPersistence>(),
                     FlatLayout.FlatInTrie => ctx.Resolve<FlatInTriePersistence>(),
                     FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat =>
-                        new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout, ctx.Resolve<ITrieNodeLog>()),
-                    _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
+                        new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, layout, ctx.Resolve<ITrieNodeLog>()),
+                    FlatLayout.PaprikaFlat => ctx.Resolve<PaprikaFlatPersistence>(),
+                    _ => throw new NotSupportedException($"Unsupported layout {layout}")
                 };
 
                 IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
@@ -145,6 +163,20 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     : cachedReader;
             })
             ;
+
+        // Chosen with the persistence, so the trie node log recovers against the markers the persistence commits.
+        if (layout == FlatLayout.PaprikaFlat)
+        {
+            ValidatePaprikaFlat(flatDbConfig, initConfig);
+            builder
+                .AddSingleton<PaprikaFlatStore, IColumnsDb<FlatDbColumns>, ILogManager>(CreatePaprikaFlatStore)
+                .Bind<IFlatMetadataStore, PaprikaFlatStore>()
+                .AddSingleton<PaprikaFlatPersistence>();
+        }
+        else
+        {
+            builder.AddSingleton<IFlatMetadataStore, ColumnsFlatMetadataStore>();
+        }
 
         if (!flatDbConfig.EnableLongFinality)
         {
@@ -231,6 +263,61 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 "FlatDb.HistoryTransactionIndexRetrofitFromBlock all require FlatDb.HistoryEnabled: " +
                 "with it off no history is captured, so these settings would be silently ignored. Enable FlatDb.HistoryEnabled or unset them.", -1);
         }
+    }
+
+    private static void ValidatePaprikaFlat(IFlatDbConfig config, IInitConfig initConfig)
+    {
+        if (!config.TrieNodeLogEnabled)
+        {
+            throw new InvalidConfigurationException(
+                $"FlatDb.Layout={nameof(FlatLayout.PaprikaFlat)} requires FlatDb.{nameof(IFlatDbConfig.TrieNodeLogEnabled)}=true: the trie nodes stay in RocksDB, " +
+                "and only the trie node log, whose versions Paprika commits with the state, keeps the two consistent across a crash.", -1);
+        }
+
+        long fileSize = config.PaprikaFlatFileSizeBytes;
+        long minFileSize = (PaprikaFlatStore.HistoryDepth + 1L) * Page.PageSize;
+        if (fileSize < minFileSize || fileSize % Page.PageSize != 0 || fileSize > PointerPageManager.MaxSize)
+        {
+            throw new InvalidConfigurationException(
+                $"FlatDb.{nameof(IFlatDbConfig.PaprikaFlatFileSizeBytes)} is {fileSize}; it must be a multiple of {Page.PageSize} " +
+                $"from {minFileSize}, Paprika's {PaprikaFlatStore.HistoryDepth} root pages and one more, to {PointerPageManager.MaxSize}, the most Paprika can address.", -1);
+        }
+
+        if (config.PaprikaFlatPageCacheBytes < 0)
+        {
+            throw new InvalidConfigurationException(
+                $"FlatDb.{nameof(IFlatDbConfig.PaprikaFlatPageCacheBytes)} is {config.PaprikaFlatPageCacheBytes}; it must not be negative, and 0 disables the budget.", -1);
+        }
+
+        int shardCount = config.TrieNodeLogStateShardCount + config.TrieNodeLogStorageShardCount;
+        if (shardCount > MaxPaprikaFlatShards)
+        {
+            throw new InvalidConfigurationException(
+                $"FlatDb.{nameof(IFlatDbConfig.TrieNodeLogStateShardCount)} plus FlatDb.{nameof(IFlatDbConfig.TrieNodeLogStorageShardCount)} is {shardCount}; " +
+                $"FlatDb.Layout={nameof(FlatLayout.PaprikaFlat)} takes at most {MaxPaprikaFlatShards}, as Paprika commits every shard's confirmed version.", -1);
+        }
+
+        // Both keep RocksDB's writes from disk while Paprika and the trie node log write through, so the trie nodes the
+        // log merges into RocksDB would be lost while Paprika confirms them.
+        if (initConfig.DiagnosticMode is DiagnosticMode.ReadOnlyDb or DiagnosticMode.RpcDb)
+        {
+            throw new InvalidConfigurationException(
+                $"Init.DiagnosticMode={initConfig.DiagnosticMode} cannot run FlatDb.Layout={nameof(FlatLayout.PaprikaFlat)}: Paprika writes its file through a memory mapping, " +
+                "which this mode cannot keep from disk.", -1);
+        }
+    }
+
+    /// <summary>The store of <see cref="FlatLayout.PaprikaFlat"/>: in memory under <see cref="DiagnosticMode.MemDb"/>, as RocksDB is, otherwise <c>paprika.db</c> under the base DB path.</summary>
+    private PaprikaFlatStore CreatePaprikaFlatStore(IColumnsDb<FlatDbColumns> db, ILogManager logManager)
+    {
+        if (initConfig.DiagnosticMode == DiagnosticMode.MemDb)
+        {
+            long sizeBytes = Math.Min(flatDbConfig.PaprikaFlatFileSizeBytes, MemDbPaprikaFlatBytes);
+            return new PaprikaFlatStore(db, null, () => PagedDb.NativeMemoryDb(sizeBytes, PaprikaFlatStore.HistoryDepth), PaprikaFlatReaderWait, logManager);
+        }
+
+        string directory = PaprikaFlatDirectory.GetApplicationResourcePath(initConfig.BaseDbPath);
+        return new PaprikaFlatStore(db, directory, () => PaprikaFlatStore.OpenFile(directory, flatDbConfig.PaprikaFlatFileSizeBytes, flatDbConfig.PaprikaFlatPageCacheBytes, logManager), PaprikaFlatReaderWait, logManager);
     }
 
     internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule

@@ -41,7 +41,9 @@ internal class FlatRocksDbConfigAdjuster(
             }
 
             IntPtr? cacheHandle = null;
-            if (columnName == nameof(FlatDbColumns.Account))
+            // PaprikaFlat keeps accounts and storage in Paprika, so their columns stay empty.
+            bool flatColumnsInRocksDb = flatDbConfig.Layout != FlatLayout.PaprikaFlat;
+            if (flatColumnsInRocksDb && columnName == nameof(FlatDbColumns.Account))
             {
                 ulong cacheCapacity = (ulong)(flatDbConfig.BlockCacheSizeBudget * 0.3);
                 if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / 1UL.MiB):N0} MB of block cache to account");
@@ -50,7 +52,7 @@ internal class FlatRocksDbConfigAdjuster(
                 disposeStack.Push(cacheWrapper);
             }
 
-            if (columnName == nameof(FlatDbColumns.Storage))
+            if (flatColumnsInRocksDb && columnName == nameof(FlatDbColumns.Storage))
             {
                 ulong cacheCapacity = (ulong)(flatDbConfig.BlockCacheSizeBudget * 0.7);
                 if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / 1UL.MiB):N0} MB of block cache to storage");

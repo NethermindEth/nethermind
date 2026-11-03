@@ -197,8 +197,9 @@ public class EthereumRunnerTests
     [TestCase("foundation", false, false, WarmupSecretChange.None, 10_000_000_000UL)]
     [TestCase("foundation", false, true, WarmupSecretChange.None, 0UL, true)]
     [TestCase("amsterdam", false, true, WarmupSecretChange.None, 0UL, true)]
+    [TestCase("foundation", true, false, WarmupSecretChange.None, 0UL, false, FlatLayout.PaprikaFlat)]
     public async Task Startup_pipeline_warmup_processes_payload(string chain, bool flatState, bool authenticated,
-        WarmupSecretChange secretChange = WarmupSecretChange.None, ulong minGasPrice = 0, bool throughStartRpc = false)
+        WarmupSecretChange secretChange = WarmupSecretChange.None, ulong minGasPrice = 0, bool throughStartRpc = false, FlatLayout layout = FlatLayout.Flat)
     {
         ChainSpec spec = LoadWarmupChainSpec(chain);
         Block originalGenesis = spec.Genesis!;
@@ -222,6 +223,7 @@ public class EthereumRunnerTests
         livePorts.Start();
         int livePort = ((IPEndPoint)livePorts.LocalEndpoint).Port;
         ConfigProvider liveConfig = new(new InitConfig { BaseDbPath = dataDirectory.Path }, new BlocksConfig { MinGasPrice = minGasPrice },
+            new FlatDbConfig { Layout = layout, TrieNodeLogEnabled = layout == FlatLayout.PaprikaFlat },
             new JsonRpcConfig
             {
                 Host = "127.0.0.1",
@@ -762,6 +764,18 @@ public class EthereumRunnerTests
             configProvider.Initialize();
             configProvider.GetConfig<ICensorshipDetectorConfig>().Enabled = true;
             result.Add(("censorship-detector", configProvider));
+        }
+
+        {
+            // PaprikaFlat, which requires the trie node log
+            ConfigProvider configProvider = new();
+            configProvider.AddSource(BuiltInConfig("mainnet"));
+            configProvider.Initialize();
+            IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+            flatDbConfig.Layout = FlatLayout.PaprikaFlat;
+            flatDbConfig.TrieNodeLogEnabled = true;
+            flatDbConfig.PaprikaFlatFileSizeBytes = 256 * 1024 * 1024;
+            result.Add(("paprika-flat", configProvider));
         }
 
         return result;

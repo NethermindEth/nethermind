@@ -27,7 +27,10 @@ internal sealed unsafe partial class TrieNodeLogGeneration : RefCountingDisposab
 
     /// <summary>File header: magic followed by the record format version; records start right after it.</summary>
     public const int FileHeaderLength = 8;
-    private const uint FormatVersion = 1;
+    // Format 2 logs FallbackNodes too. A build that reads only format 1 refuses such a file rather than merging records
+    // it neither flushes before the merged marker nor serves to readers; format 1 files hold none and read unchanged.
+    private const uint FormatVersion = 2;
+    private const uint FallbackDirectFormatVersion = 1;
     private static ReadOnlySpan<byte> Magic => "TNLG"u8;
 
     private static long _aliveCount;
@@ -99,8 +102,8 @@ internal sealed unsafe partial class TrieNodeLogGeneration : RefCountingDisposab
     }
 
     /// <summary>
-    /// Whether the file at <paramref name="path"/> carries this format's header. A short or zero-filled header (a
-    /// creation cut short before its first commit) yields false; a header of another format throws.
+    /// Whether the file at <paramref name="path"/> carries the header of a format this build reads. A short or zero-filled
+    /// header (a creation cut short before its first commit) yields false; a header of another format throws.
     /// </summary>
     public static bool HasFileHeader(string path, IFileSystem fileSystem)
     {
@@ -111,7 +114,7 @@ internal sealed unsafe partial class TrieNodeLogGeneration : RefCountingDisposab
         if (!header[..Magic.Length].SequenceEqual(Magic))
             throw new InvalidDataException($"{path} is not a trie node log generation file");
         uint version = BinaryPrimitives.ReadUInt32LittleEndian(header[Magic.Length..]);
-        if (version != FormatVersion)
+        if (version is not (FallbackDirectFormatVersion or FormatVersion))
             throw new InvalidDataException($"{path} uses trie node log format {version}, this build writes format {FormatVersion}; merge it with the build that wrote it or delete it");
         return true;
     }

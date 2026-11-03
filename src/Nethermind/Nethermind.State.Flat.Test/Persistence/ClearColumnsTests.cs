@@ -8,9 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test.Persistence;
@@ -50,31 +48,17 @@ public class ClearColumnsTests
         }
     }
 
-    private static IEnumerable<TestCaseData> WipeMarkerLifecycleCases()
-    {
-        foreach ((string name, Func<IColumnsDb<FlatDbColumns>, IPersistence> create) in PersistenceFactories())
-        {
-            yield return new TestCaseData(create, true, true).SetName($"{name}: sync batch keeps the wipe marker");
-            yield return new TestCaseData(create, false, false).SetName($"{name}: persisted state clears the wipe marker");
-        }
-    }
-
-    private static IEnumerable<(string, Func<IColumnsDb<FlatDbColumns>, IPersistence>)> PersistenceFactories()
-    {
-        yield return (nameof(RocksDbPersistence), static db => new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance));
-        yield return (nameof(PreimageRocksdbPersistence), static db => new PreimageRocksdbPersistence(db, LimboLogs.Instance, FlatLayout.PreimageFlat, NullTrieNodeLog.Instance));
-        yield return (nameof(FlatInTriePersistence), static db => new FlatInTriePersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance));
-    }
-
     // The sync that follows a wipe never advances the state pointer, so on a restart mid-sync only the wipe marker
     // keeps FlatStateActivationPolicy on flat when a migrated node still holds leftover patricia state. Once a
     // completed sync persists a state pointer, the DB is no longer awaiting its resync.
-    [TestCaseSource(nameof(WipeMarkerLifecycleCases))]
+    [Test]
     public void Wipe_marker_lasts_until_a_state_pointer_is_persisted(
-        Func<IColumnsDb<FlatDbColumns>, IPersistence> create, bool syncBatch, bool expectedWiped)
+        [Values(FlatLayout.Flat, FlatLayout.PreimageFlat, FlatLayout.FlatInTrie, FlatLayout.PaprikaFlat)] FlatLayout layout,
+        [Values] bool syncBatch)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
-        IPersistence persistence = create(db);
+        using LayoutPersistence layoutPersistence = new(db, layout, trieNodeLog: false);
+        IPersistence persistence = layoutPersistence.Persistence;
         persistence.Clear();
 
         StateId to = syncBatch ? StateId.Sync : new StateId(1, ValueKeccak.EmptyTreeHash);
@@ -83,7 +67,7 @@ public class ClearColumnsTests
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(BasePersistence.ReadWipedForSync(db.GetColumnDb(FlatDbColumns.Metadata)), Is.EqualTo(expectedWiped));
+            Assert.That(BasePersistence.ReadWipedForSync(layoutPersistence.Metadata.Committed), Is.EqualTo(syncBatch), "a sync batch keeps the wipe marker, a persisted state clears it");
             Assert.That(reader.CurrentState, Is.EqualTo(syncBatch ? StateId.PreGenesis : to));
         }
     }

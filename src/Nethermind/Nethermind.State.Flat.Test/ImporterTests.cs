@@ -12,7 +12,6 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -20,12 +19,14 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
 
-[TestFixture]
-public class ImporterTests
+[TestFixture(FlatLayout.Flat)]
+[TestFixture(FlatLayout.PaprikaFlat)]
+public class ImporterTests(FlatLayout layout)
 {
     private MemDb _trieDb = null!;
     private StateTree _stateTree = null!;
     private SnapshotableMemColumnsDb<FlatDbColumns> _columnsDb = null!;
+    private LayoutPersistence _layoutPersistence = null!;
     private IPersistence _persistence = null!;
     private Importer _importer = null!;
 
@@ -35,13 +36,15 @@ public class ImporterTests
         _trieDb = new MemDb();
         _stateTree = new StateTree(new RawScopedTrieStore(_trieDb), LimboLogs.Instance);
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance, NullTrieNodeLog.Instance);
+        _layoutPersistence = new LayoutPersistence(_columnsDb, layout, trieNodeLog: false);
+        _persistence = _layoutPersistence.Persistence;
         _importer = new Importer(new NodeStorage(_trieDb), _persistence, LimboLogs.Instance);
     }
 
     [TearDown]
     public void TearDown()
     {
+        _layoutPersistence.Dispose();
         _trieDb.Dispose();
         _columnsDb.Dispose();
     }

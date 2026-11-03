@@ -8,7 +8,7 @@ namespace Nethermind.Db;
 
 public interface IFlatDbConfig : IConfig
 {
-    [ConfigItem(Description = "Block cache size budget", DefaultValue = "1073741824")]
+    [ConfigItem(Description = "Block cache size budget, in bytes, of the flat Account and Storage columns. Unused with Layout=PaprikaFlat, which keeps accounts and storage outside RocksDB.", DefaultValue = "1073741824")]
     ulong BlockCacheSizeBudget { get; set; }
 
     [ConfigItem(Description = "Fixed compaction schedule offset in blocks. When 0 or greater, overrides the per-instance offset in the metadata DB, which is neither read nor updated. Only the value modulo CompactSize matters. -1 to use the stored offset, generating a random one when absent.", DefaultValue = "-1")]
@@ -110,8 +110,14 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]
     bool InlineCompaction { get; set; }
 
-    [ConfigItem(Description = "Flat db layout", DefaultValue = "Flat")]
+    [ConfigItem(Description = "Flat db layout. PaprikaFlat (experimental) keeps accounts and storage in a memory-mapped Paprika file instead of RocksDB and requires TrieNodeLogEnabled.", DefaultValue = "Flat")]
     FlatLayout Layout { get; set; }
+
+    [ConfigItem(Description = "Size, in bytes, of the Paprika file (paprika.db in the flatPaprika directory) that holds accounts and storage with Layout=PaprikaFlat. The file is sparse, so only written pages take disk space, and a persist fails once they fill it. It must be a multiple of 4096, at least 12288 (Paprika's two root pages and one more) and at most 1 TiB (1099511627776), the most Paprika can address, and it can be raised on an existing database but not lowered. With Init.DiagnosticMode=MemDb the state is kept in anonymous memory instead, of this size but at most 4 GiB.", DefaultValue = "1099511627776")]
+    long PaprikaFlatFileSizeBytes { get; set; }
+
+    [ConfigItem(Description = "Resident memory budget, in bytes, of the memory-mapped Paprika file with Layout=PaprikaFlat. Pages are tracked in 64 KiB windows, the kernel's fault-around unit (this assumes fault_around_bytes is at most 64 KiB, and that a fault maps no more: a kernel that maps a whole large page-cache folio on a fault can exceed the budget), and the budget keeps at most budget / 64 KiB windows resident, rounded down to a power of two with a minimum of 8; the least recently used beyond them are released with madvise(MADV_DONTNEED) and stay in the OS page cache. Linux only. 0 disables the budget.", DefaultValue = "4294967296")]
+    long PaprikaFlatPageCacheBytes { get; set; }
 
     [ConfigItem(Description = "Max in flight compact job", DefaultValue = "32")]
     int MaxInFlightCompactJob { get; set; }
@@ -191,16 +197,16 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Persistent dedicated reader threads used to resolve hinted BAL read sets into the pre-block cache. -1 for 4x logical processor count capped at 64. Values below 1 are clamped to 1. Use --Blocks.ParallelExecutionBatchRead=false to disable BAL warming entirely.", DefaultValue = "-1")]
     int WarmReadConcurrency { get; set; }
 
-    [ConfigItem(Description = "Write trie nodes (StateTopNodes, StateNodes and StorageNodes; FallbackNodes stays direct) through an append-only trie node log (with an in-memory index) that is merged into RocksDB one generation at a time, so nodes rewritten within a generation are written to RocksDB once. Experimental: a self-destruct only removes the storage trie nodes already in RocksDB, nodes still in the log are left as unreachable orphans.", DefaultValue = "false")]
+    [ConfigItem(Description = "Write trie nodes (StateTopNodes, StateNodes, StorageNodes and FallbackNodes) through an append-only trie node log (with an in-memory index) that is merged into RocksDB one generation at a time, so nodes rewritten within a generation are written to RocksDB once. Experimental: a self-destruct only removes the storage trie nodes already in RocksDB, nodes still in the log are left as unreachable orphans. Required by Layout=PaprikaFlat, whose Paprika commit confirms the log.", DefaultValue = "false")]
     bool TrieNodeLogEnabled { get; set; }
 
-    [ConfigItem(Description = "Byte budget of the state partition of the trie node log (StateTopNodes and StateNodes), split evenly over its shards: each shard's generation, i.e. its deduplication window before it is merged into RocksDB, is this divided by the partition's shard count. Each live generation also keeps an in-memory index of 1/64 of its size (1/32 for the storage partition).", DefaultValue = "524288000")]
+    [ConfigItem(Description = "Byte budget of the state partition of the trie node log (StateTopNodes, StateNodes and the state paths of FallbackNodes), split evenly over its shards: each shard's generation, i.e. its deduplication window before it is merged into RocksDB, is this divided by the partition's shard count. Each live generation also keeps an in-memory index of 1/64 of its size (1/32 for the storage partition).", DefaultValue = "524288000")]
     long TrieNodeLogStateBytes { get; set; }
 
-    [ConfigItem(Description = "Byte budget of the storage partition of the trie node log (StorageNodes), split evenly over its shards like TrieNodeLogStateBytes.", DefaultValue = "524288000")]
+    [ConfigItem(Description = "Byte budget of the storage partition of the trie node log (StorageNodes and the storage paths of FallbackNodes), split evenly over its shards like TrieNodeLogStateBytes.", DefaultValue = "524288000")]
     long TrieNodeLogStorageBytes { get; set; }
 
-    [ConfigItem(Description = "Number of shards of the state partition of the trie node log, a power of two. Nodes are sharded by the first byte of their column key (the first path nibbles for state nodes, the first byte of the address hash for storage nodes); shards are appended to and merged in parallel.", DefaultValue = "2")]
+    [ConfigItem(Description = "Number of shards of the state partition of the trie node log, a power of two. Nodes are sharded by the first byte of their column key, after the prefix byte for FallbackNodes (the first path nibbles for state nodes, the first byte of the address hash for storage nodes); shards are appended to and merged in parallel.", DefaultValue = "2")]
     int TrieNodeLogStateShardCount { get; set; }
 
     [ConfigItem(Description = "Number of shards of the storage partition of the trie node log, a power of two.", DefaultValue = "2")]

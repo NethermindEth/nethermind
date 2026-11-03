@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
@@ -133,6 +134,21 @@ public class FlatRocksDbConfigAdjusterTests
         adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Account));
 
         _baseFactory.Received(1).GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Account));
+    }
+
+    [Test]
+    public void Flat_columns_get_a_dedicated_block_cache_only_when_the_layout_stores_them(
+        [Values] FlatLayout layout, [Values(nameof(FlatDbColumns.Account), nameof(FlatDbColumns.Storage))] string column)
+    {
+        bool stored = layout != FlatLayout.PaprikaFlat;
+        _flatDbConfig.Layout.Returns(layout);
+        // A budget of zero is refused only where it would size a cache.
+        _flatDbConfig.BlockCacheSizeBudget.Returns(stored ? 16UL * 1024 * 1024 : 0UL);
+
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+
+        adjuster.GetForDatabase(nameof(DbNames.Flat), column);
+        _disposeStack.Received(stored ? 1 : 0).Push(Arg.Any<IDisposable>());
     }
 
     [TestCase(0UL, TestName = "FlatDatabase_WithZeroCacheBudget_ReportsConfigurationError")]

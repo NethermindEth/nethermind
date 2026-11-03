@@ -233,6 +233,13 @@ internal static class StartupPipelineWarmer
             {
                 Enabled = flatState,
                 Layout = liveConfig.GetConfig<IFlatDbConfig>().Layout,
+                // Part of the persist pipeline, and PaprikaFlat refuses to start without it.
+                TrieNodeLogEnabled = liveConfig.GetConfig<IFlatDbConfig>().TrieNodeLogEnabled,
+                TrieNodeLogStateBytes = 16 * 1024 * 1024,
+                TrieNodeLogStorageBytes = 16 * 1024 * 1024,
+                PaprikaFlatFileSizeBytes = 64 * 1024 * 1024,
+                // Runs beside the live node, whose residency metrics a budget of its own would overwrite.
+                PaprikaFlatPageCacheBytes = 0,
                 BlockCacheSizeBudget = 16 * 1024 * 1024,
                 PersistedSnapshotArenaPageCacheBytes = 16 * 1024 * 1024,
                 ArenaFileSizeBytes = 16 * 1024 * 1024

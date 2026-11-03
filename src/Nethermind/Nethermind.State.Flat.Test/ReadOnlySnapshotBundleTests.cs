@@ -11,6 +11,7 @@ using Autofac;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Api.Monitoring;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -815,7 +816,7 @@ public class ReadOnlySnapshotBundleFilterTests
         blocksConfig.SecondsPerSlot.Returns(12UL);
 
         return new ContainerBuilder()
-            .AddModule(new FlatWorldStateModule(config))
+            .AddModule(new FlatWorldStateModule(config, new InitConfig()))
             .AddSingleton<IFlatDbConfig>(config)
             .AddSingleton<IProcessExitSource>(processExitSource)
             .AddSingleton<ILogManager>(LimboLogs.Instance)

@@ -14,7 +14,7 @@ public sealed class NullTrieNodeLog : ITrieNodeLog, ITrieNodeLog.IWriteBatch
     private NullTrieNodeLog() { }
 
     public ITrieNodeLog.IView OpenView(IColumnsDb<FlatDbColumns> db, ReaderFlags flags) => new View(db.CreateSnapshot(flags));
-    public ITrieNodeLog.IWriteBatch StartWriteBatch(IColumnsWriteBatch<FlatDbColumns> batch, bool bypass) => this;
+    public ITrieNodeLog.IWriteBatch StartWriteBatch(IWriteOnlyKeyValueStore confirmation, bool bypass) => this;
     public void Drain() { }
     public void Clear() { }
 
@@ -27,6 +27,7 @@ public sealed class NullTrieNodeLog : ITrieNodeLog, ITrieNodeLog.IWriteBatch
     private sealed class View(IColumnDbSnapshot<FlatDbColumns> snapshot) : ITrieNodeLog.IView
     {
         public IColumnDbSnapshot<FlatDbColumns> Snapshot => snapshot;
+        public IFlatMetadataStore.ISnapshot Confirmation => new ColumnsFlatMetadataStore.SnapshotMetadata(snapshot.GetColumn(FlatDbColumns.Metadata));
         public IReadOnlyKeyValueStore GetColumn(FlatDbColumns column) => snapshot.GetColumn(column);
         public void Dispose() => snapshot.Dispose();
     }

@@ -14,7 +14,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -27,6 +26,7 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture(FlatLayout.Flat)]
 [TestFixture(FlatLayout.PreimageFlatV1)]
 [TestFixture(FlatLayout.PreimageFlat)]
+[TestFixture(FlatLayout.PaprikaFlat)]
 public class FlatTrieVerifierTests(FlatLayout layout)
 {
     private bool IsPreimage => layout is FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat;
@@ -37,6 +37,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     private StateTree _stateTree = null!;
     private ILogManager _logManager = null!;
     private SnapshotableMemColumnsDb<FlatDbColumns> _columnsDb = null!;
+    private LayoutPersistence _layoutPersistence = null!;
     private IPersistence _persistence = null!;
 
     [SetUp]
@@ -50,15 +51,15 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
         // These tests seed the Storage column with raw (un-wrapped) bytes after the persistence is built,
         // so slot-presence detection can't kick in — pin the raw encoding up front.
-        BasePersistence.SetSlotEncoding(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
-        _persistence = IsPreimage
-            ? new PreimageRocksdbPersistence(_columnsDb, _logManager, layout, NullTrieNodeLog.Instance)
-            : new RocksDbPersistence(_columnsDb, _logManager, NullTrieNodeLog.Instance);
+        if (layout != FlatLayout.PaprikaFlat) BasePersistence.SetSlotEncoding(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
+        _layoutPersistence = new LayoutPersistence(_columnsDb, layout, trieNodeLog: false);
+        _persistence = _layoutPersistence.Persistence;
     }
 
     [TearDown]
     public void TearDown()
     {
+        _layoutPersistence.Dispose();
         _trieDb.Dispose();
         _columnsDb.Dispose();
     }
@@ -88,6 +89,14 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
     private void WriteStorageDirectToDb(Address address, UInt256 slot, byte[] value)
     {
+        // Paprika has no column to write to directly; a sync batch leaves the state pointer as it is.
+        if (layout == FlatLayout.PaprikaFlat)
+        {
+            using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+            batch.SetStorage(address, slot, new UInt256(value, isBigEndian: true));
+            return;
+        }
+
         IDb storageDb = _columnsDb.GetColumnDb(FlatDbColumns.Storage);
 
         ValueHash256 addrHash;
@@ -125,6 +134,13 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
     private void CorruptAccountInFlat(Address address, Account corruptedAccount)
     {
+        if (layout == FlatLayout.PaprikaFlat)
+        {
+            using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+            batch.SetAccount(address, corruptedAccount);
+            return;
+        }
+
         IDb accountDb = _columnsDb.GetColumnDb(FlatDbColumns.Account);
         ValueHash256 addrKey = IsPreimage
             ? CreatePreimageAddressKey(address)

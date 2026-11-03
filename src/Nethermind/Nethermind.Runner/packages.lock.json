@@ -1081,6 +1081,12 @@
           "Snappier": "[1.3.1, )"
         }
       },
+      "nethermind.paprika": {
+        "type": "Project",
+        "dependencies": {
+          "NonBlocking": "[2.1.2, )"
+        }
+      },
       "nethermind.portfolioviewer.plugin": {
         "type": "Project",
         "dependencies": {
@@ -1184,6 +1190,7 @@
           "Nethermind.Core": "[2.3.0-preview, )",
           "Nethermind.Db": "[2.3.0-preview, )",
           "Nethermind.Evm": "[2.3.0-preview, )",
+          "Nethermind.Paprika": "[2.3.0-preview, )",
           "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
           "Nethermind.State": "[2.3.0-preview, )",
           "Nethermind.Synchronization": "[2.3.0-preview, )",

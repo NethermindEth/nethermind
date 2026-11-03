@@ -23,12 +23,14 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.PaprikaFlat;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Proofs;
@@ -37,6 +39,8 @@ using Nethermind.Synchronization.FastSync;
 using NSubstitute;
 using Nethermind.Trie.Pruning;
 using Nethermind.Trie;
+using Paprika.Store;
+using Testably.Abstractions;
 using AccountRange = Nethermind.State.Snap.AccountRange;
 
 namespace Nethermind.Synchronization.Test.SnapSync;
@@ -1068,7 +1072,7 @@ public class SnapProviderTests
     /// written twice.
     /// </summary>
     [Test]
-    public async Task Flat_snap_sync_resumed_from_a_checkpoint_matches_a_run_whose_pivot_moved_there([Values] Interruption interruption)
+    public async Task Flat_snap_sync_resumed_from_a_checkpoint_matches_a_run_whose_pivot_moved_there([Values] Interruption interruption, [Values(FlatLayout.Flat, FlatLayout.PaprikaFlat)] FlatLayout layout)
     {
         const int checkpointedRequests = 6;
 
@@ -1092,7 +1096,8 @@ public class SnapProviderTests
         TestSyncConfig syncConfig = new() { SnapResume = true, EnableSnapDoubleWriteCheck = true, SnapSyncAccountRangePartitionCount = 1 };
 
         using SnapshotableMemColumnsDb<FlatDbColumns> resumedDb = new();
-        FlatSnapTrieFactory resumedFactory = CreateFlatSnapTrieFactory(resumedDb, syncConfig);
+        using LayoutPersistence resumed = new(resumedDb, layout);
+        FlatSnapTrieFactory resumedFactory = CreateFlatSnapTrieFactory(resumed.Persistence, resumedDb, syncConfig);
         IStateSyncPivot resumedPivot = CreatePivot(1, firstRoot);
         byte[]? lastDurableCheckpoint;
         int movePivotAt = checkpointedRequests;
@@ -1132,6 +1137,7 @@ public class SnapProviderTests
         ValueHash256 deleted = afterCheckpoint.First(path => !storages.ContainsKey(path));
         ValueHash256 withChangedStorage = afterCheckpoint.First(storages.ContainsKey);
         ValueHash256 withChangedBalance = afterCheckpoint.Last(path => path != deleted);
+        ValueHash256[] firstRootAccounts = [.. accounts.Keys];
         accounts.Remove(deleted);
         sourceTree.Set(deleted, null);
         accounts[withChangedBalance] = accounts[withChangedBalance].WithChangedBalance(1000);
@@ -1144,19 +1150,23 @@ public class SnapProviderTests
         await RunSnapSync(resumedFactory, syncConfig, resumedPivot, server);
 
         using SnapshotableMemColumnsDb<FlatDbColumns> uninterruptedDb = new();
+        using LayoutPersistence uninterrupted = new(uninterruptedDb, layout);
         IStateSyncPivot uninterruptedPivot = CreatePivot(1, firstRoot);
-        await RunSnapSync(CreateFlatSnapTrieFactory(uninterruptedDb, syncConfig), syncConfig, uninterruptedPivot, server, beforeRequest: request =>
+        await RunSnapSync(CreateFlatSnapTrieFactory(uninterrupted.Persistence, uninterruptedDb, syncConfig), syncConfig, uninterruptedPivot, server, beforeRequest: request =>
         {
             if (request == movePivotAt) MovePivot(uninterruptedPivot, 2, secondRoot);
         });
 
-        using IPersistence.IPersistenceReader reader = new RocksDbPersistence(resumedDb, LimboLogs.Instance, NullTrieNodeLog.Instance).CreateReader();
+        using IPersistence.IPersistenceReader reader = resumed.Persistence.CreateReader();
+        using IPersistence.IPersistenceReader uninterruptedReader = uninterrupted.Persistence.CreateReader();
         using (Assert.EnterMultipleScope())
         {
             foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
             {
                 Assert.That(ReadColumn(resumedDb, column), Is.EqualTo(ReadColumn(uninterruptedDb, column)), $"{column} column");
             }
+
+            Assert.That(ReadFlatState(reader, firstRootAccounts), Is.EqualTo(ReadFlatState(uninterruptedReader, firstRootAccounts)), "accounts and storage");
 
             Assert.That(resumedPivot.UpdatedStorages, Is.EquivalentTo(uninterruptedPivot.UpdatedStorages), "accounts to heal");
             Assert.That(BasePersistence.ReadSnapCheckpoint(resumedDb.GetColumnDb(FlatDbColumns.Metadata)), Is.Null, "a finished state ranges phase leaves no checkpoint");
@@ -1186,10 +1196,68 @@ public class SnapProviderTests
 
         static SortedDictionary<string, string> ReadColumn(IColumnsDb<FlatDbColumns> db, FlatDbColumns column) =>
             new(db.GetColumnDb(column).GetAll().ToDictionary(static kv => Convert.ToHexString(kv.Key), static kv => Convert.ToHexString(kv.Value)));
+
+        // PaprikaFlat keeps accounts and storage outside the columns, so they are compared as the persistence reads them.
+        // Storage is read under every account of the first root, so storage left under a deleted account shows too.
+        static List<string> ReadFlatState(IPersistence.IPersistenceReader reader, ValueHash256[] storageAccounts)
+        {
+            List<string> entries = [];
+            using (IPersistence.IFlatIterator accounts = reader.CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue))
+            {
+                while (accounts.MoveNext()) entries.Add($"{accounts.CurrentKey} {Convert.ToHexString(accounts.CurrentValue)}");
+            }
+
+            foreach (ValueHash256 account in storageAccounts)
+            {
+                using IPersistence.IFlatIterator slots = reader.CreateStorageIterator(account, ValueKeccak.Zero, ValueKeccak.MaxValue);
+                while (slots.MoveNext()) entries.Add($"{account} {slots.CurrentKey} {Convert.ToHexString(slots.CurrentValue)}");
+            }
+
+            return entries;
+        }
     }
 
-    private static FlatSnapTrieFactory CreateFlatSnapTrieFactory(IColumnsDb<FlatDbColumns> db, ISyncConfig syncConfig) =>
-        new(new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance), Substitute.For<IPersistenceManager>(), db, new MemDb(), syncConfig, LimboLogs.Instance);
+    private static FlatSnapTrieFactory CreateFlatSnapTrieFactory(IPersistence persistence, IColumnsDb<FlatDbColumns> db, ISyncConfig syncConfig) =>
+        new(persistence, Substitute.For<IPersistenceManager>(), db, new MemDb(), syncConfig, LimboLogs.Instance);
+
+    /// <summary>
+    /// The persistence of <see cref="FlatLayout.Flat"/> or <see cref="FlatLayout.PaprikaFlat"/> over a flat DB, with what
+    /// PaprikaFlat needs besides it: an in-memory Paprika store and the trie node log it requires.
+    /// </summary>
+    private sealed class LayoutPersistence : IDisposable
+    {
+        private readonly PaprikaFlatStore? _paprika;
+        private readonly TempPath? _logDirectory;
+        private readonly TrieNodeLog? _log;
+
+        /// <param name="db">The flat DB; it must outlive this instance.</param>
+        /// <param name="layout">The layout of the persistence.</param>
+        public LayoutPersistence(IColumnsDb<FlatDbColumns> db, FlatLayout layout)
+        {
+            if (layout == FlatLayout.Flat)
+            {
+                Persistence = new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
+                return;
+            }
+
+            if (layout != FlatLayout.PaprikaFlat) throw new ArgumentOutOfRangeException(nameof(layout));
+
+            FlatDbConfig config = new() { Layout = layout, TrieNodeLogEnabled = true };
+            _paprika = new PaprikaFlatStore(db, null, static () => PagedDb.NativeMemoryDb(64 * 1024 * 1024, PaprikaFlatStore.HistoryDepth), TimeSpan.FromSeconds(1), LimboLogs.Instance);
+            _logDirectory = TempPath.GetTempDirectory();
+            _log = new TrieNodeLog(_logDirectory.Path, new RealFileSystem(), db, _paprika, config, LimboLogs.Instance);
+            Persistence = new PaprikaFlatPersistence(db, _paprika, _log, config);
+        }
+
+        public IPersistence Persistence { get; }
+
+        public void Dispose()
+        {
+            _log?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            _paprika?.Dispose();
+            _logDirectory?.Dispose();
+        }
+    }
 
     private static IStateSyncPivot CreatePivot(ulong blockNumber, Hash256 stateRoot)
     {

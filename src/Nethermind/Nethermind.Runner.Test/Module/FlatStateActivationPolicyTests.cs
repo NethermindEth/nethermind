@@ -41,7 +41,8 @@ public class FlatStateActivationPolicyTests
         Repaired = 32,
         FlatDataKeys = 64,
         FastSync = 128,
-        SnapSync = 256
+        SnapSync = 256,
+        PaprikaFile = 512
     }
 
     public enum RepairOutcome
@@ -215,22 +216,18 @@ public class FlatStateActivationPolicyTests
     }
 
     // The DB layer roots a relative BaseDbPath at the executing directory; the probe must resolve it the same way.
-    [TestCase("/data")]
-    [TestCase("nethermind_db/mainnet")]
-    public void Disabling_flat_on_an_existing_flat_db_is_refused(string baseDbPath)
+    // A PaprikaFlat node's paprika.db holds flat state even without the flat directory.
+    [TestCase("/data", false)]
+    [TestCase("nethermind_db/mainnet", false)]
+    [TestCase("/data", true)]
+    [TestCase("nethermind_db/mainnet", true)]
+    public void Disabling_flat_on_an_existing_flat_db_is_refused(string baseDbPath, bool paprikaFileOnly)
     {
-        InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(() => CreatePolicy(
-            enabled: false,
-            importFromPruning: false,
-            flatHasData: false,
-            patriciaHasData: false,
-            layout: FlatLayout.Flat,
-            availableMemoryBytes: 32.GiB,
-            logManager: LimboLogs.Instance,
-            sstFiles: ["state.sst"],
-            baseDbPath: baseDbPath))!;
+        InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(() => CreateSetup(
+            paprikaFileOnly ? Flags.PaprikaFile : Flags.None, FlatLayout.Flat, 32.GiB, LimboLogs.Instance,
+            sstFiles: paprikaFileOnly ? [] : ["state.sst"], baseDbPath: baseDbPath))!;
 
-        Assert.That(ex.Message, Does.Contain("FlatDb.Enabled").And.Contain("existing"));
+        Assert.That(ex.Message, Does.Contain("FlatDb.Enabled").And.Contain("existing").And.Contain("'flatTrieNodeLog', 'flatPaprika'"));
     }
 
     // RocksDB writes CURRENT when opening an empty DB, so a flat directory without SST files holds no state.
@@ -317,11 +314,16 @@ public class FlatStateActivationPolicyTests
                 : throw new DirectoryNotFoundException(call.ArgAt<string>(0)));
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         fileSystem.Directory.Returns(directory);
+        string paprikaFile = Path.Combine("flatPaprika".GetApplicationResourcePath(baseDbPath), "paprika.db");
+        fileSystem.File.Exists(paprikaFile).Returns(flags.HasFlag(Flags.PaprikaFile));
 
         FlatStateActivationPolicy policy = new(
             flatDbConfig,
             new TestHardwareInfo(availableMemoryBytes),
             new Lazy<IColumnsDb<FlatDbColumns>>(() => flatDb),
+            new Lazy<IFlatMetadataStore>(() => flags.HasFlag(Flags.Enabled)
+                ? new ColumnsFlatMetadataStore(flatDb, flatDbConfig)
+                : throw new AssertionException("the flat metadata must not be resolved with the flat DB disabled")),
             new Lazy<IDb>(() => patriciaDb),
             syncConfig,
             initConfig,

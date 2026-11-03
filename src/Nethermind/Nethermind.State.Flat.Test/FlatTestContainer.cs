@@ -80,8 +80,9 @@ public sealed class FlatTestContainer : IDisposable
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(_cts.Token);
 
+        InitConfig initConfig = new() { BaseDbPath = BaseDbPath };
         _builder = new ContainerBuilder()
-            .AddModule(new FlatWorldStateModule(Config))
+            .AddModule(new FlatWorldStateModule(Config, initConfig))
             .AddSingleton<FlatDbManager>()
             .AddSingleton<IDbFactory, MemDbFactory>()
             .AddSingleton<IFlatDbConfig>(Config)
@@ -89,7 +90,7 @@ public sealed class FlatTestContainer : IDisposable
             .AddSingleton<IFileSystem>(new RealFileSystem())
             .AddSingleton<IMetricsConfig>(new MetricsConfig())
             .AddSingleton<IBlocksConfig>(new BlocksConfig())
-            .AddSingleton<IInitConfig>(new InitConfig { BaseDbPath = BaseDbPath })
+            .AddSingleton<IInitConfig>(initConfig)
             .AddSingleton<ISyncConfig>(new SyncConfig())
             .AddSingleton<IProcessExitSource>(processExitSource)
             .AddSingleton<IStatePersistenceBarrier>(NullStatePersistenceBarrier.Instance)

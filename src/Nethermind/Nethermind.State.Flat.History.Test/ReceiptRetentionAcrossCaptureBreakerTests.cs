@@ -17,6 +17,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Test;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -50,7 +51,7 @@ public class ReceiptRetentionAcrossCaptureBreakerTests
         _tier = new FlatTestContainer(new FlatDbConfig { CompactSize = 16 });
         FlatDbConfig historyConfig = new() { HistoryEnabled = true };
         (HistoryAvailability historyAvailability, HistoryRowFormat historyRowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, historyConfig);
-        _writer = new HistoryWriter(_db, _historyColumns, historyConfig, historyAvailability, historyRowFormat, LimboLogs.Instance, commitments: null);
+        _writer = new HistoryWriter(_db, new ColumnsFlatMetadataStore(_db, historyConfig), _historyColumns, historyConfig, historyAvailability, historyRowFormat, LimboLogs.Instance, commitments: null);
 
         _specProvider = new TestSpecProvider(Byzantium.Instance);
         _receiptsDb = new TestMemColumnsDb<ReceiptsColumns>();

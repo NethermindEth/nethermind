@@ -44,6 +44,8 @@ public class FlatDbConfig : IFlatDbConfig
     public bool DeferStorageTrieCommit { get; set; } = true;
     public bool ApplyStorageWritesOnIdleThread { get; set; } = true;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
+    public long PaprikaFlatFileSizeBytes { get; set; } = 1024.GiB;
+    public long PaprikaFlatPageCacheBytes { get; set; } = 4.GiB;
     public ulong CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;
     public ulong MaxInMemorySnapshotBytes { get; set; } = 0;

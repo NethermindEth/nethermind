@@ -25,18 +25,18 @@ public interface ITrieNodeLog
     /// </summary>
     IView OpenView(IColumnsDb<FlatDbColumns> db, ReaderFlags flags);
 
-    /// <summary>Starts the log side of the persistence write batch <paramref name="batch"/>; one log-backed batch may be open at a time.</summary>
-    /// <param name="batch">
-    /// The RocksDB batch the records belong to. The log puts its version into that batch's metadata column at
-    /// <see cref="IWriteBatch.Commit"/>, so the version lands in the same atomic write as the state pointer: a
-    /// RocksDB snapshot then confirms exactly which log batches it includes, and recovery discards records of a
-    /// batch whose RocksDB write never happened.
+    /// <summary>Starts the log side of a persistence write batch; one log-backed batch may be open at a time.</summary>
+    /// <param name="confirmation">
+    /// The writes committed atomically with the state pointer (for the RocksDB layouts, the batch's metadata column).
+    /// The log puts its version into it at <see cref="IWriteBatch.Commit"/>, so the version lands in the same atomic write as the state
+    /// pointer: a RocksDB snapshot then confirms exactly which log batches it includes, and recovery discards records
+    /// of a batch whose RocksDB write never happened.
     /// </param>
     /// <param name="bypass">
     /// When true the returned batch passes every column through unchanged; used for sync and import batches, which
     /// <see cref="Drain"/> the log before taking the snapshot their range scans use, so those see every node in RocksDB.
     /// </param>
-    IWriteBatch StartWriteBatch(IColumnsWriteBatch<FlatDbColumns> batch, bool bypass);
+    IWriteBatch StartWriteBatch(IWriteOnlyKeyValueStore confirmation, bool bypass);
 
     /// <summary>Merges every generation into RocksDB synchronously.</summary>
     void Drain();
@@ -48,6 +48,9 @@ public interface ITrieNodeLog
     public interface IView : IDisposable
     {
         IColumnDbSnapshot<FlatDbColumns> Snapshot { get; }
+
+        /// <summary>The markers the view is bound to, opened after <see cref="Snapshot"/>; owned by the view.</summary>
+        IFlatMetadataStore.ISnapshot Confirmation { get; }
 
         /// <summary>The snapshot's column, with the log consulted first for a column the log covers.</summary>
         IReadOnlyKeyValueStore GetColumn(FlatDbColumns column);

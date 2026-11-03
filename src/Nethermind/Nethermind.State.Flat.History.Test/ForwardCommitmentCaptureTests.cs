@@ -10,6 +10,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.NodeBuffer;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Test;
 using Nethermind.Core.Buffers;
 using Nethermind.Trie;
@@ -50,7 +51,7 @@ public class ForwardCommitmentCaptureTests
         _metadata = new CommitmentMetadata(_historyColumns, Policy);
         ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
         ForwardCommitmentCapture capture = Track(new ForwardCommitmentCapture(_historyColumns, Policy, _metadata, settings, CreateReclaimer(settings), LimboLogs.Instance));
-        _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, capture);
+        _writer = new HistoryWriter(_db, new ColumnsFlatMetadataStore(_db, config), _historyColumns, config, availability, rowFormat, LimboLogs.Instance, capture);
     }
 
     private readonly List<CommitmentReclaimer> _reclaimers = [];
@@ -267,7 +268,7 @@ public class ForwardCommitmentCaptureTests
         ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
         ForwardCommitmentCapture bounded = Track(new ForwardCommitmentCapture(
             _historyColumns, Policy, _metadata, settings, CreateReclaimer(settings), LimboLogs.Instance, maxBufferedBytes));
-        return new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, bounded);
+        return new HistoryWriter(_db, new ColumnsFlatMetadataStore(_db, config), _historyColumns, config, availability, rowFormat, LimboLogs.Instance, bounded);
     }
 
     private void CommitBlock(ulong block, in TreePath path, byte[] rlp)

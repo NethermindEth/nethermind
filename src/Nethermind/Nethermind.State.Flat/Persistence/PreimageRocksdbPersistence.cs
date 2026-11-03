@@ -112,7 +112,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
         ITrieNodeLog.IWriteBatch logBatch;
         try
         {
-            logBatch = trieNodeLog.StartWriteBatch(batch, bypass);
+            logBatch = trieNodeLog.StartWriteBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), bypass);
         }
         catch
         {

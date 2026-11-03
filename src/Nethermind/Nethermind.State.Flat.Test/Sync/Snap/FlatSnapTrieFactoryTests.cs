@@ -15,7 +15,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
@@ -91,10 +90,11 @@ public class FlatSnapTrieFactoryTests
     }
 
     [Test]
-    public void EnsureInitialize_WarnsOnlyWhenDiscardingState_AndLogsWipeDuration([Values] bool hasState)
+    public void EnsureInitialize_WarnsOnlyWhenDiscardingState_AndLogsWipeDuration([Values(FlatLayout.Flat, FlatLayout.PaprikaFlat)] FlatLayout layout, [Values] bool hasState)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
-        RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
+        using LayoutPersistence layoutPersistence = new(db, layout, trieNodeLog: false);
+        IPersistence persistence = layoutPersistence.Persistence;
         if (hasState)
         {
             using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
@@ -226,10 +226,11 @@ public class FlatSnapTrieFactoryTests
     private static readonly ValueHash256 NextAccount = LastAccount.IncrementPath();
 
     [Test]
-    public void EnsureInitialize_Resuming_DiscardsWhatTheResumedRunRequestsAgain([Values(FlatLayout.Flat, FlatLayout.FlatInTrie)] FlatLayout layout)
+    public void EnsureInitialize_Resuming_DiscardsWhatTheResumedRunRequestsAgain([Values(FlatLayout.Flat, FlatLayout.FlatInTrie, FlatLayout.PaprikaFlat)] FlatLayout layout)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
-        IPersistence persistence = CreatePersistence(db, layout);
+        using LayoutPersistence layoutPersistence = new(db, layout, trieNodeLog: false);
+        IPersistence persistence = layoutPersistence.Persistence;
 
         ValueHash256 writtenAfter = Path("a");
         ValueHash256 inFinishedPartition = Path("1");
@@ -326,10 +327,11 @@ public class FlatSnapTrieFactoryTests
     public enum Unresumable { ResumeDisabled, PartitionCountChanged, Unreadable }
 
     [Test]
-    public void EnsureInitialize_StartsOver_WhenTheCheckpointCannotBeResumed([Values] Unresumable reason)
+    public void EnsureInitialize_StartsOver_WhenTheCheckpointCannotBeResumed([Values(FlatLayout.Flat, FlatLayout.PaprikaFlat)] FlatLayout layout, [Values] Unresumable reason)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
-        RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
+        using LayoutPersistence layoutPersistence = new(db, layout, trieNodeLog: false);
+        IPersistence persistence = layoutPersistence.Persistence;
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
         {
             batch.SetAccountRaw(LastAccount, new Account(1));
@@ -385,11 +387,12 @@ public class FlatSnapTrieFactoryTests
 
     // RocksDB commits a batch without the WAL every few hundred writes, which bounds the memory a large discard takes.
     [Test]
-    public void EnsureInitialize_Resuming_DeletesWithoutTheWal([Values(FlatLayout.Flat, FlatLayout.FlatInTrie)] FlatLayout layout)
+    public void EnsureInitialize_Resuming_DeletesWithoutTheWal([Values(FlatLayout.Flat, FlatLayout.FlatInTrie, FlatLayout.PaprikaFlat)] FlatLayout layout)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> inner = new();
         DeleteFlagsSpyColumnsDb db = new(inner);
-        IPersistence persistence = CreatePersistence(db, layout);
+        using LayoutPersistence layoutPersistence = new(db, layout, trieNodeLog: false);
+        IPersistence persistence = layoutPersistence.Persistence;
         ValueHash256 writtenAfter = Path("a");
         ValueHash256 storageQueued = Path("2");
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
@@ -430,13 +433,6 @@ public class FlatSnapTrieFactoryTests
         node.ResolveKey(NullTrieNodeResolver.Instance, ref empty);
         return node.FullRlp.ToArray()!;
     }
-
-    private static IPersistence CreatePersistence(IColumnsDb<FlatDbColumns> db, FlatLayout layout) => layout switch
-    {
-        FlatLayout.Flat => new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance),
-        FlatLayout.FlatInTrie => new FlatInTriePersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance),
-        _ => throw new ArgumentOutOfRangeException(nameof(layout)),
-    };
 
     private static FlatSnapTrieFactory CreateResumingFactory(IPersistence persistence, IColumnsDb<FlatDbColumns> db, int partitionCount = 2, bool snapResume = true) =>
         new(persistence, Substitute.For<IPersistenceManager>(), db, new MemDb(),

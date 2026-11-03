@@ -4,6 +4,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
@@ -19,15 +21,20 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.PaprikaFlat;
+using Nethermind.State.Flat.Test.Persistence.PaprikaFlat;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
+using Paprika.Store.PageManagers;
 
 namespace Nethermind.State.Flat.Test;
 
 [TestFixtureSource(nameof(TestConfigs))]
 public class PersistenceScenario(PersistenceScenario.TestConfiguration configuration)
 {
+    private const long PaprikaFileSize = 64 * 1024 * 1024;
+
     private TempPath _tmpDirectory = null!;
     private IContainer _container = null!;
     private IPersistence _persistence = null!;
@@ -52,11 +59,15 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     {
         foreach (FlatLayout layout in Enum.GetValues<FlatLayout>())
         {
-            yield return new TestConfiguration(new FlatDbConfig()
+            // PaprikaFlat refuses to start without the trie node log.
+            if (layout != FlatLayout.PaprikaFlat)
             {
-                Enabled = true,
-                Layout = layout
-            }, layout.ToString());
+                yield return new TestConfiguration(new FlatDbConfig()
+                {
+                    Enabled = true,
+                    Layout = layout
+                }, layout.ToString());
+            }
 
             // A generation small enough that the scenarios roll and merge generations while readers are open.
             yield return new TestConfiguration(new FlatDbConfig()
@@ -67,7 +78,24 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
                 TrieNodeLogStateBytes = 8192,
                 TrieNodeLogStorageBytes = 8192,
                 TrieNodeLogSecondLevelMergeLag = -1,
+                PaprikaFlatFileSizeBytes = PaprikaFileSize,
             }, $"{layout}+TrieNodeLog");
+
+            if (layout == FlatLayout.PaprikaFlat)
+            {
+                // Below the minimum of 8 windows, so the scenarios run while the mapping is released all along.
+                yield return new TestConfiguration(new FlatDbConfig()
+                {
+                    Enabled = true,
+                    Layout = layout,
+                    TrieNodeLogEnabled = true,
+                    TrieNodeLogStateBytes = 8192,
+                    TrieNodeLogStorageBytes = 8192,
+                    TrieNodeLogSecondLevelMergeLag = -1,
+                    PaprikaFlatFileSizeBytes = PaprikaFileSize,
+                    PaprikaFlatPageCacheBytes = 256 * 1024,
+                }, $"{layout}+TrieNodeLog+PageCache256KiB");
+            }
 
             yield return new TestConfiguration(new FlatDbConfig()
             {
@@ -76,6 +104,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
                 TrieNodeLogEnabled = true,
                 TrieNodeLogStateBytes = 8192,
                 TrieNodeLogStorageBytes = 8192,
+                PaprikaFlatFileSizeBytes = PaprikaFileSize,
             }, $"{layout}+TrieNodeLogSecondLevel");
         }
     }
@@ -94,6 +123,12 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     public void Setup()
     {
         _tmpDirectory = TempPath.GetTempDirectory();
+        Open();
+    }
+
+    /// <summary>Builds the node's container over <see cref="_tmpDirectory"/>, as a start of the node does.</summary>
+    private void Open()
+    {
         _container = new ContainerBuilder()
             .AddModule(
                 new NethermindModule(
@@ -1024,11 +1059,198 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     }
 
     [Test]
-    public void SupportsPrefetch_IsFalseOnlyForPreimageLayouts()
+    public void SupportsPrefetch_IsTrueOnlyForHashedRocksDbLayouts()
     {
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
 
         // Preimage keys are not hashed, so the hashed prefetch does not apply to them.
-        Assert.That(reader is IPersistence.IPrefetchingReader { SupportsPrefetch: true }, Is.EqualTo(!IsPreimage(configuration.FlatDbConfig.Layout)));
+        // PaprikaFlat does not prefetch.
+        Assert.That(reader is IPersistence.IPrefetchingReader { SupportsPrefetch: true }, Is.EqualTo(configuration.FlatDbConfig.Layout is FlatLayout.Flat or FlatLayout.FlatInTrie));
+    }
+
+    [Test]
+    public void TestRangeDeletes_AreEndInclusive()
+    {
+        if (IsPreimage(configuration.FlatDbConfig.Layout)) Assert.Ignore("Preimage mode does not support range deletes");
+
+        ValueHash256[] accounts = [PathOf("0x10"), PathOf("0x20"), PathOf("0x30"), PathOf("0x40")];
+        // Past the end bound only in the last 12 bytes, which account ranges do not compare.
+        accounts[2].BytesAsSpan[^1] = 0xff;
+        ValueHash256[] slots = [PathOf("0x10"), PathOf("0x20"), PathOf("0x30"), PathOf("0x40")];
+        using (IPersistence.IWriteBatch writer = SyncBatch())
+        {
+            for (int i = 0; i < accounts.Length; i++)
+            {
+                writer.SetAccountRaw(accounts[i], TestItem.GenerateIndexedAccount(i));
+                writer.SetStorageRawEncoded(accounts[0], slots[i], SlotRlp((byte)(i + 1)));
+            }
+        }
+
+        using (IPersistence.IWriteBatch writer = SyncBatch())
+        {
+            writer.DeleteAccountRange(PathOf("0x20"), PathOf("0x30"));
+            writer.DeleteStorageRange(accounts[0], slots[1], slots[2]);
+        }
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts.Select(account => reader.GetAccountRaw(account) is not null), Is.EqualTo(new[] { true, false, false, true }));
+            Assert.That(slots.Select(slot => ReadSlotRaw(reader, accounts[0], slot)), Is.EqualTo(new UInt256?[] { 1, null, null, 4 }));
+        }
+    }
+
+    [Test]
+    public void TestSelfDestructRange_ClearsStorageOfAccountsInRange()
+    {
+        if (IsPreimage(configuration.FlatDbConfig.Layout)) Assert.Ignore("Preimage mode does not support range deletes");
+
+        ValueHash256 orphan = PathOf("0x28");
+        ValueHash256 last = PathOf("0x30");
+        // Past the end bound only in the last 12 bytes, which account ranges do not compare.
+        last.BytesAsSpan[^1] = 0xff;
+        ValueHash256[] owners = [PathOf("0x10"), PathOf("0x20"), orphan, last, PathOf("0x40")];
+        ValueHash256 slot = PathOf("0x01");
+        using (IPersistence.IWriteBatch writer = SyncBatch())
+        {
+            foreach (ValueHash256 owner in owners)
+            {
+                // Storage without its account, as a snap sync can leave it, is deleted too.
+                if (owner != orphan) writer.SetAccountRaw(owner, TestItem.GenerateIndexedAccount(0));
+                writer.SetStorageRawEncoded(owner, slot, SlotRlp(1));
+            }
+        }
+
+        using (IPersistence.IWriteBatch writer = SyncBatch())
+        {
+            writer.SelfDestructRange(PathOf("0x20"), PathOf("0x30"));
+        }
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(owners.Select(owner => ReadSlotRaw(reader, owner, slot) is not null), Is.EqualTo(new[] { true, false, false, false, true }));
+            Assert.That(owners.Select(owner => reader.GetAccountRaw(owner) is not null), Is.EqualTo(new[] { true, true, false, true, true }), "accounts are kept");
+        }
+    }
+
+    [Test]
+    public void TestRangeDeletes_ActOnThePreBatchStateAndLaterPutsSurvive()
+    {
+        if (IsPreimage(configuration.FlatDbConfig.Layout)) Assert.Ignore("Preimage mode does not support range deletes");
+
+        ValueHash256 other = PathOf("0x10");
+        ValueHash256 account = PathOf("0x20");
+        ValueHash256 contract = PathOf("0x30");
+        ValueHash256[] owners = [account, contract];
+        ValueHash256 slot = PathOf("0x01");
+        ValueHash256 otherSlot = PathOf("0x02");
+        using (IPersistence.IWriteBatch writer = SyncBatch())
+        {
+            writer.SetAccountRaw(other, TestItem.GenerateIndexedAccount(0));
+            writer.SetAccountRaw(account, TestItem.GenerateIndexedAccount(0));
+            foreach (ValueHash256 owner in owners)
+            {
+                writer.SetStorageRawEncoded(owner, slot, SlotRlp(1));
+                writer.SetStorageRawEncoded(owner, otherSlot, SlotRlp(1));
+            }
+        }
+
+        using (IPersistence.IWriteBatch writer = SyncBatch())
+        {
+            writer.DeleteAccountRange(ValueKeccak.Zero, ValueKeccak.MaxValue);
+            writer.SetAccountRaw(account, TestItem.GenerateIndexedAccount(1));
+            writer.DeleteStorageRange(account, ValueKeccak.Zero, ValueKeccak.MaxValue);
+            writer.SetStorageRawEncoded(account, slot, SlotRlp(2));
+            writer.SelfDestructRange(contract, contract);
+            writer.SetStorageRawEncoded(contract, slot, SlotRlp(2));
+        }
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.GetAccountRaw(other), Is.Null);
+            Assert.That(ReadAccountRaw(reader, account), Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
+            foreach (ValueHash256 owner in owners)
+            {
+                Assert.That(ReadSlotRaw(reader, owner, slot), Is.EqualTo((UInt256?)2), $"{owner} slot written after the delete");
+                Assert.That(ReadSlotRaw(reader, owner, otherSlot), Is.Null, $"{owner} slot written before the delete");
+            }
+        }
+    }
+
+    [Test]
+    public void TestReopenKeepsCommittedState()
+    {
+        StateId state = new(1, ValueKeccak.Compute("root"));
+        Account account = TestItem.GenerateIndexedAccount(0);
+        TreePath path = TreePath.FromHexString("12345");
+        byte[] node = Bytes.FromHexString("0xc101");
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, state, WriteFlags.None))
+        {
+            writer.SetAccount(TestItem.AddressA, account);
+            writer.SetStorage(TestItem.AddressA, 42, BaseFlatPersistence.DecodeSlotValue(Bytes.FromHexString("0x42")));
+            writer.SetStateTrieNode(path, node);
+        }
+
+        _container.Dispose();
+        Open();
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.CurrentState, Is.EqualTo(state));
+            Assert.That(reader.GetAccount(TestItem.AddressA), Is.EqualTo(account));
+            Assert.That(GetSlot(reader, TestItem.AddressA, 42), Is.EqualTo(Bytes.FromHexString("0x42")));
+            Assert.That(reader.TryLoadStateRlp(path, ReadFlags.None), Is.EqualTo(node));
+        }
+    }
+
+    [Test]
+    public void TestPaprikaFlatPageCacheBoundsTheMappedFile()
+    {
+        if (configuration.FlatDbConfig.Layout != FlatLayout.PaprikaFlat || !OperatingSystem.IsLinux())
+            Assert.Ignore("Only PaprikaFlat maps its file, and only Linux releases its pages");
+
+        Random random = new(1);
+        (Address Address, Account Account)[] accounts = [.. Enumerable.Range(0, 20_000).Select(index => (TestItem.GetRandomAddress(random), TestItem.GenerateIndexedAccount(index)))];
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
+        {
+            foreach ((Address address, Account account) in accounts) writer.SetAccount(address, account);
+        }
+
+        using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        {
+            Assert.That(accounts.Count(entry => !entry.Account.Equals(reader.GetAccount(entry.Address))), Is.Zero);
+        }
+
+        // The minimum of 8 windows a budget keeps, the root pages', and slack for windows read back before their release.
+        long bound = 16L * PaprikaPageResidencyAdvisor.UnitBytes;
+        string paprikaFile = MemoryMappedPageManager.GetPaprikaFilePath(Path.Combine(_tmpDirectory.Path, "flatPaprika"));
+        if (configuration.FlatDbConfig.PaprikaFlatPageCacheBytes < bound)
+            Assert.That(() => PaprikaPageResidencyAdvisorTests.Rss(paprikaFile), Is.LessThanOrEqualTo(bound).After(30_000, 100));
+        else
+            Assert.That(PaprikaPageResidencyAdvisorTests.Rss(paprikaFile), Is.GreaterThan(bound), "the same writes exceed the bound under a larger budget");
+    }
+
+    /// <summary>A sync batch, which snap sync issues its range deletes in.</summary>
+    private IPersistence.IWriteBatch SyncBatch() => _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+
+    /// <summary>A path of the given leading bytes, zero after them.</summary>
+    private static ValueHash256 PathOf(string hexPrefix) => new(hexPrefix.PadRight(66, '0'));
+
+    private static byte[] SlotRlp(byte value) => Rlp.Encode(new byte[] { value }).Bytes;
+
+    private static Account? ReadAccountRaw(IPersistence.IPersistenceReader reader, in ValueHash256 path)
+    {
+        if (reader.GetAccountRaw(path) is not { } rlp) return null;
+        RlpReader rlpReader = new(rlp);
+        return AccountDecoder.Slim.Decode(ref rlpReader);
+    }
+
+    private static UInt256? ReadSlotRaw(IPersistence.IPersistenceReader reader, in ValueHash256 account, in ValueHash256 slot)
+    {
+        UInt256 value = default;
+        return reader.TryGetStorageRaw(account, slot, ref value) ? value : null;
     }
 }

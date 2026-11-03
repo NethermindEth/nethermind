@@ -1,79 +1,63 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test.Sync;
 
-[TestFixture]
-public class FlatTreeSyncStoreTests
+[TestFixture(FlatLayout.Flat)]
+[TestFixture(FlatLayout.PaprikaFlat)]
+public class FlatTreeSyncStoreTests(FlatLayout layout)
 {
     private SnapshotableMemColumnsDb<FlatDbColumns> _columnsDb = null!;
+    private LayoutPersistence _layoutPersistence = null!;
     private IPersistence _persistence = null!;
 
     [SetUp]
     public void SetUp()
     {
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        // WriteStorageDirectToDb seeds the Storage column with raw (un-wrapped) bytes after the persistence
-        // is built, so slot-presence detection can't kick in — pin the raw encoding up front.
-        BasePersistence.SetSlotEncoding(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
-        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance, NullTrieNodeLog.Instance);
+        _layoutPersistence = new LayoutPersistence(_columnsDb, layout, trieNodeLog: false);
+        _persistence = _layoutPersistence.Persistence;
     }
 
     [TearDown]
-    public void TearDown() => _columnsDb.Dispose();
-
-    private void WriteStorageDirectToDb(Address address, UInt256 slot, byte[] value)
+    public void TearDown()
     {
-        IDb storageDb = _columnsDb.GetColumnDb(FlatDbColumns.Storage);
-        ValueHash256 addrHash = ValueKeccak.Compute(address.Bytes);
-        Span<byte> slotBytes = stackalloc byte[32];
-        slot.ToBigEndian(slotBytes);
-        ValueHash256 slotHash = ValueKeccak.Compute(slotBytes);
+        _layoutPersistence.Dispose();
+        _columnsDb.Dispose();
+    }
 
-        byte[] storageKey = new byte[52];
-        addrHash.Bytes[..4].CopyTo(storageKey.AsSpan()[..4]);
-        slotHash.Bytes.CopyTo(storageKey.AsSpan()[4..36]);
-        addrHash.Bytes[4..20].CopyTo(storageKey.AsSpan()[36..52]);
-
-        storageDb.PutSpan(storageKey, ((ReadOnlySpan<byte>)value).WithoutLeadingZeros());
+    private void WriteStorage(Address address, UInt256 slot, byte[] value)
+    {
+        using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        batch.SetStorage(address, slot, new UInt256(value, isBigEndian: true));
     }
 
     private bool HasStorageEntries(Address address)
     {
-        IDb storageDb = _columnsDb.GetColumnDb(FlatDbColumns.Storage);
-        ValueHash256 addrHash = ValueKeccak.Compute(address.Bytes);
-        byte[] prefix = addrHash.Bytes[..4].ToArray();
-
-        foreach (byte[] key in storageDb.GetAllKeys())
-        {
-            if (key.AsSpan()[..4].SequenceEqual(prefix))
-                return true;
-        }
-        return false;
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using IPersistence.IFlatIterator slots = reader.CreateStorageIterator(ValueKeccak.Compute(address.Bytes), ValueKeccak.Zero, ValueKeccak.MaxValue);
+        return slots.MoveNext();
     }
 
     [Test]
     public void EnsureStorageEmpty_deletes_all_storage_entries()
     {
         Address address = TestItem.AddressA;
-        WriteStorageDirectToDb(address, 0, [0x01, 0x15, 0xe8]);
-        WriteStorageDirectToDb(address, 1, [0xab, 0xcd]);
-        WriteStorageDirectToDb(address, 42, [0xff]);
+        WriteStorage(address, 0, [0x01, 0x15, 0xe8]);
+        WriteStorage(address, 1, [0xab, 0xcd]);
+        WriteStorage(address, 42, [0xff]);
 
         Assert.That(HasStorageEntries(address), Is.True, "Storage entries should exist before cleanup");
 

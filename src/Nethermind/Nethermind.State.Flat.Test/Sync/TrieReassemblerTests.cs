@@ -12,7 +12,6 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.Trie;
@@ -22,23 +21,30 @@ using static Nethermind.Trie.PatriciaTree;
 
 namespace Nethermind.State.Flat.Test.Sync;
 
-[TestFixture]
-public class TrieReassemblerTests
+[TestFixture(FlatLayout.Flat)]
+[TestFixture(FlatLayout.PaprikaFlat)]
+public class TrieReassemblerTests(FlatLayout layout)
 {
     private SnapshotableMemColumnsDb<FlatDbColumns> _columnsDb = null!;
-    private RocksDbPersistence _persistence = null!;
+    private LayoutPersistence _layoutPersistence = null!;
+    private IPersistence _persistence = null!;
     private TrieReassembler _reassembler = null!;
 
     [SetUp]
     public void SetUp()
     {
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance, NullTrieNodeLog.Instance);
+        _layoutPersistence = new LayoutPersistence(_columnsDb, layout, trieNodeLog: false);
+        _persistence = _layoutPersistence.Persistence;
         _reassembler = new TrieReassembler(_persistence, LimboLogs.Instance);
     }
 
     [TearDown]
-    public void TearDown() => _columnsDb.Dispose();
+    public void TearDown()
+    {
+        _layoutPersistence.Dispose();
+        _columnsDb.Dispose();
+    }
 
     [Test]
     public void Reassembles_state_root_from_single_account()
@@ -139,7 +145,7 @@ public class TrieReassemblerTests
             (TestItem.KeccakC, new Account(0, 100, correctStorageRootC, Keccak.OfAnEmptyString)),
         });
 
-        ClearAll();
+        _persistence.Clear();
 
         BuildStorageTree(TestItem.KeccakA, new[]
         {
@@ -174,7 +180,7 @@ public class TrieReassemblerTests
             (TestItem.KeccakA, new Account(0, 100, correctStorageRoot, Keccak.OfAnEmptyString)),
         });
 
-        ClearAll();
+        _persistence.Clear();
 
         Hash256 _ = BuildStorageTree(TestItem.KeccakA, new[]
         {
@@ -228,7 +234,7 @@ public class TrieReassemblerTests
             (TestItem.KeccakD, new Account(0, 200, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString)),
         });
 
-        ClearAll();
+        _persistence.Clear();
 
         // Step 2: overwrite with stale state trie (A has old storage root baked in)
         BuildStateTree(new[]
@@ -377,15 +383,6 @@ public class TrieReassemblerTests
         return BuildStateTree(new[] { (TestItem.KeccakA, account) });
     }
 
-
-    private void ClearAll()
-    {
-        foreach (FlatDbColumns col in Enum.GetValues<FlatDbColumns>())
-        {
-            IDb db = _columnsDb.GetColumnDb(col);
-            db.Clear();
-        }
-    }
 
     // Delete all trie nodes that pass the filter
     // If no filter is provided, all nodes are deleted

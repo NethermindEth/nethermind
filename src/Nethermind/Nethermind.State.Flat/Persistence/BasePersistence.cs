@@ -223,6 +223,16 @@ public static class BasePersistence
     /// </remarks>
     public static bool ReadWipedForSync(IReadOnlyKeyValueStore metadata) => metadata.Get(WipedForSyncKey) is { Length: > 0 };
 
+    /// <summary>Marks the DB as wiped for a state sync, or removes the mark; see <see cref="ReadWipedForSync"/>.</summary>
+    internal static void SetWipedForSync(IWriteOnlyKeyValueStore kv, bool wiped)
+    {
+        if (wiped) kv.PutSpan(WipedForSyncKey, [1]);
+        else kv.Remove(WipedForSyncKey);
+    }
+
+    /// <summary>Removes the state pointer, so <see cref="ReadCurrentState"/> reads <see cref="StateId.PreGenesis"/>.</summary>
+    internal static void RemoveCurrentState(IWriteOnlyKeyValueStore kv) => kv.Remove(CurrentStateKey);
+
     /// <summary>
     /// Durably marks the DB as wiped for a state sync ahead of <see cref="ClearAllColumns"/>, for a caller that drops
     /// data outside RocksDB first: a crash in between then reads back as an interrupted wipe rather than as a state

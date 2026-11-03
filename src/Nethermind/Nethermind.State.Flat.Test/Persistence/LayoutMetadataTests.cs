@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.State.Flat.Persistence;
 using NUnit.Framework;
@@ -53,6 +54,22 @@ public class LayoutMetadataTests
 
         Assert.That(metadata.Get(Keccak.Compute("SlotEncoding").BytesToArray()),
             Is.EqualTo(new[] { BasePersistence.SlotEncodingRlp }));
+    }
+
+    // The byte is stored, so every layout keeps its value; a new layout is appended.
+    [TestCase(FlatLayout.Flat, ExpectedResult = "0x00")]
+    [TestCase(FlatLayout.FlatInTrie, ExpectedResult = "0x01")]
+    [TestCase(FlatLayout.PreimageFlatV1, ExpectedResult = "0x02")]
+    [TestCase(FlatLayout.PreimageFlat, ExpectedResult = "0x03")]
+    [TestCase(FlatLayout.PaprikaFlat, ExpectedResult = "0x04")]
+    public string Layout_bytes_are_stable(FlatLayout layout)
+    {
+        using MemColumnsDb<FlatDbColumns> db = new();
+        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+
+        BasePersistence.SetLayout(metadata, layout);
+
+        return metadata.Get(Keccak.Compute("Layout").BytesToArray())!.ToHexString(true);
     }
 
     [TestCaseSource(nameof(Layouts))]

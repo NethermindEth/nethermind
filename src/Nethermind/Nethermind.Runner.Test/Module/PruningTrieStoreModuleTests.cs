@@ -45,11 +45,7 @@ public class PruningTrieStoreModuleTests
     [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.WipedForSync, false, Description = "Interrupted wipe is redone on this start -> keep")]
     public void Drops_only_when_flat_owns_a_populated_store(Flags flags, bool expected)
     {
-        bool dropped = PruningTrieStoreModule.ShouldDropPruningTrieState(
-            Config(flags),
-            () => FlatDb(flags),
-            () => LimboLogs.Instance,
-            () => true);
+        bool dropped = ShouldDrop(flags, LimboLogs.Instance, () => true);
 
         Assert.That(dropped, Is.EqualTo(expected));
     }
@@ -62,6 +58,7 @@ public class PruningTrieStoreModuleTests
         bool dropped = PruningTrieStoreModule.ShouldDropPruningTrieState(
             configRegistered ? Config(Flags.Enabled | Flags.FlatHasData) : null,
             () => throw new AssertionException("the flat DB must not be resolved"),
+            () => throw new AssertionException("the flat metadata must not be resolved"),
             () => throw new AssertionException("the log manager must not be resolved"),
             () => throw new AssertionException("the disk must not be touched"));
 
@@ -77,11 +74,7 @@ public class PruningTrieStoreModuleTests
         logger.IsWarn.Returns(true);
         logger.IsDebug.Returns(true);
 
-        bool dropped = PruningTrieStoreModule.ShouldDropPruningTrieState(
-            Config(Flags.Drop | Flags.Enabled | Flags.FlatHasData),
-            () => FlatDb(Flags.FlatHasData),
-            () => new OneLoggerLogManager(new ILogger(logger)),
-            () => hasTrieData);
+        bool dropped = ShouldDrop(Flags.Drop | Flags.Enabled | Flags.FlatHasData, new OneLoggerLogManager(new ILogger(logger)), () => hasTrieData);
 
         Assert.That(dropped, Is.True, "the deletion is unconditional so that an interrupted one completes");
         logger.Received(hasTrieData ? 1 : 0).Warn(Arg.Is<string>(s => s.Contains("irreversible", StringComparison.OrdinalIgnoreCase)));
@@ -98,11 +91,7 @@ public class PruningTrieStoreModuleTests
         logger.IsWarn.Returns(true);
         logger.IsInfo.Returns(true);
 
-        PruningTrieStoreModule.ShouldDropPruningTrieState(
-            Config(flags),
-            () => FlatDb(flags),
-            () => new OneLoggerLogManager(new ILogger(logger)),
-            () => throw new AssertionException("the disk must not be touched when declining"));
+        ShouldDrop(flags, new OneLoggerLogManager(new ILogger(logger)), () => throw new AssertionException("the disk must not be touched when declining"));
 
         logger.DidNotReceive().Warn(Arg.Any<string>());
         logger.Received(1).Info(Arg.Any<string>());
@@ -216,5 +205,12 @@ public class PruningTrieStoreModuleTests
         if (flags.HasFlag(Flags.WipedForSync))
             FlatStateActivationPolicyTests.MarkWipedForSync(flatDb);
         return flatDb;
+    }
+
+    private static bool ShouldDrop(Flags flags, ILogManager logManager, Func<bool> hasTrieData)
+    {
+        IFlatDbConfig config = Config(flags);
+        FlatStateActivationPolicyTests.SpyFlatColumnsDb flatDb = FlatDb(flags);
+        return PruningTrieStoreModule.ShouldDropPruningTrieState(config, () => flatDb, () => new ColumnsFlatMetadataStore(flatDb, config), () => logManager, hasTrieData);
     }
 }

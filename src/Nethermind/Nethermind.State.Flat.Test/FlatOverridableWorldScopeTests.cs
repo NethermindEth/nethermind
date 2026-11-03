@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -53,7 +54,7 @@ public class FlatOverridableWorldScopeTests
             IPersistence.IPersistenceReader persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
 
             _containerBuilder = new ContainerBuilder()
-                .AddModule(new FlatWorldStateModule(config))
+                .AddModule(new FlatWorldStateModule(config, new InitConfig()))
                 .AddSingleton<INodeRecordBuffer>(GlobalNodeRecordBuffer)
                 .AddSingleton<IPersistence.IPersistenceReader>(_ => persistenceReader)
                 .AddSingleton<IFlatDbManager>(ctx =>

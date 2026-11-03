@@ -237,7 +237,7 @@ public class FlatWorldStateScopeProviderTests
             config ??= new FlatDbConfig();
 
             _containerBuilder = new ContainerBuilder()
-                    .AddModule(new FlatWorldStateModule(config))
+                    .AddModule(new FlatWorldStateModule(config, new InitConfig()))
                     .AddSingleton<INodeRecordBuffer>(_ => FlatTestHelpers.NewTestBuffer())
                     .Bind<IWorldStateManager, FlatWorldStateManager>()
                     .AddSingleton<IPersistence>(Substitute.For<IPersistence>())

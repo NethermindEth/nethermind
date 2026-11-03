@@ -41,6 +41,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     private readonly string _basePath;
     private readonly IFileSystem _fileSystem;
     private readonly IColumnsDb<FlatDbColumns> _db;
+    private readonly IFlatMetadataStore _metadataStore;
     private readonly ILogger _logger;
     private readonly long _generationBytes;
     private readonly int _indexCapacity;
@@ -84,10 +85,14 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     /// Name of the shard whose version key confirms the records: this shard's own name, or for a second-level shard the
     /// name of the first-level shard it copies from, whose records keep their versions there.
     /// </param>
+    /// <param name="metadataStore">
+    /// Store of the version and wipe marker that confirm the records, and of a first-level shard's generation key; the
+    /// merged marker and a second-level shard's generation key are in the <paramref name="db"/> metadata column.
+    /// </param>
     /// <param name="mergeLimiter">Caps concurrent merges across every shard of the log.</param>
     /// <param name="backlogMargin">Sealed generations allowed beyond <paramref name="mergeLag"/> before a roll waits for a merge.</param>
     /// <param name="secondLevel">Shard a merged generation is copied into instead of RocksDB; null merges into RocksDB.</param>
-    public TrieNodeLogShard(string name, string versionName, FlatDbColumns[] columns, string basePath, IFileSystem fileSystem, IColumnsDb<FlatDbColumns> db, long generationBytes, int indexRatio, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, TrieNodeLogShard? secondLevel, ILogManager logManager)
+    public TrieNodeLogShard(string name, string versionName, FlatDbColumns[] columns, string basePath, IFileSystem fileSystem, IColumnsDb<FlatDbColumns> db, IFlatMetadataStore metadataStore, long generationBytes, int indexRatio, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, TrieNodeLogShard? secondLevel, ILogManager logManager)
     {
         Name = name;
         IsSecondLevel = versionName != name;
@@ -99,6 +104,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         _basePath = basePath;
         _fileSystem = fileSystem;
         _db = db;
+        _metadataStore = metadataStore;
         _logger = logManager.GetClassLogger<TrieNodeLogShard>();
         _generationBytes = generationBytes;
         _indexCapacity = TrieNodeLogGeneration.CapacityFor(generationBytes, indexRatio);
@@ -131,20 +137,25 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     /// <summary>Metadata key of the newest generation a committed batch wrote to; its file must exist until merged.</summary>
     internal byte[] GenerationKey { get; }
 
-    private static byte[] FlushedGenerationKeyFor(string name) => Keccak.Compute($"TrieNodeLogFlushedGeneration:{name}").BytesToArray();
+    internal static byte[] FlushedGenerationKeyFor(string name) => Keccak.Compute($"TrieNodeLogFlushedGeneration:{name}").BytesToArray();
     private static byte[] GenerationKeyFor(string name) => Keccak.Compute($"TrieNodeLogGeneration:{name}").BytesToArray();
     private static string FileName(ulong number) => $"{FilePrefix}{number:D8}{FileExtension}";
 
     /// <summary>
-    /// Throws when a generation of shard <paramref name="name"/> that <paramref name="metadata"/> confirms beyond
-    /// its merged marker has no file in <paramref name="directory"/>: the database holds nodes only up to that
-    /// marker, so a database restored without the log directory must not start with those nodes silently gone.
+    /// Throws when a generation of shard <paramref name="name"/> that the database confirms beyond its merged marker has
+    /// no file in <paramref name="directory"/>: the database holds nodes only up to that marker, so a database restored
+    /// without the log directory must not start with those nodes silently gone.
     /// </summary>
-    internal static void ThrowIfConfirmedGenerationsMissing(IReadOnlyKeyValueStore metadata, string name, string directory, IFileSystem fileSystem)
+    /// <remarks>
+    /// The wipe marker and a first-level shard's generation key are read from <paramref name="confirmed"/>, the
+    /// <see cref="IFlatMetadataStore.Committed"/> markers; the merged marker, and the generation key a first level's merge
+    /// writes for a <paramref name="secondLevel"/> shard, from <paramref name="merged"/>, the RocksDB metadata column.
+    /// </remarks>
+    internal static void ThrowIfConfirmedGenerationsMissing(IReadOnlyKeyValueStore confirmed, IReadOnlyKeyValueStore merged, string name, bool secondLevel, string directory, IFileSystem fileSystem)
     {
-        if (BasePersistence.ReadWipedForSync(metadata)) return;
-        ulong flushedGeneration = ReadUInt64(metadata.Get(FlushedGenerationKeyFor(name)));
-        ulong committedGeneration = ReadUInt64(metadata.Get(GenerationKeyFor(name)));
+        if (BasePersistence.ReadWipedForSync(confirmed)) return;
+        ulong flushedGeneration = ReadUInt64(merged.Get(FlushedGenerationKeyFor(name)));
+        ulong committedGeneration = ReadUInt64((secondLevel ? merged : confirmed).Get(GenerationKeyFor(name)));
         for (ulong number = flushedGeneration + 1; number <= committedGeneration; number++)
         {
             if (!fileSystem.File.Exists(fileSystem.Path.Combine(directory, FileName(number))))
@@ -549,12 +560,13 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         long sw = Stopwatch.GetTimestamp();
         int records = 0;
         long written = 0;
-        IReadOnlyKeyValueStore metadata = _db.GetColumnDb(FlatDbColumns.Metadata);
-        if (!BasePersistence.ReadWipedForSync(metadata))
+        // One instance, so a store that returns a copy per commit serves the wipe marker and the version from the same one.
+        IReadOnlyKeyValueStore confirmed = _metadataStore.Committed;
+        if (!BasePersistence.ReadWipedForSync(confirmed))
         {
             // A key with a newer record in a later generation is skipped, but only if that record's batch has reached
             // RocksDB: the index is published before the RocksDB commit, and a crash in between drops the record.
-            ulong committedVersion = ReadUInt64(metadata.Get(VersionKey));
+            ulong committedVersion = ReadUInt64(confirmed.Get(VersionKey));
             Span<byte> probeBuffer = stackalloc byte[TrieNodeLogRecord.HeaderLength + TrieNodeLogRecord.MaxKeyLength];
             ulong? secondLevelGeneration = null;
 
@@ -680,13 +692,14 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     private void Recover()
     {
-        IReadOnlyKeyValueStore metadata = _db.GetColumnDb(FlatDbColumns.Metadata);
-        ulong committedVersion = ReadUInt64(metadata.Get(VersionKey));
-        ulong flushedGeneration = ReadUInt64(metadata.Get(FlushedGenerationKey));
-        bool wiped = BasePersistence.ReadWipedForSync(metadata);
+        IReadOnlyKeyValueStore confirmed = _metadataStore.Committed;
+        IReadOnlyKeyValueStore merged = _db.GetColumnDb(FlatDbColumns.Metadata);
+        ulong committedVersion = ReadUInt64(confirmed.Get(VersionKey));
+        ulong flushedGeneration = ReadUInt64(merged.Get(FlushedGenerationKey));
+        bool wiped = BasePersistence.ReadWipedForSync(confirmed);
         _version = committedVersion;
         _nextGeneration = flushedGeneration + 1;
-        ThrowIfConfirmedGenerationsMissing(metadata, Name, _basePath, _fileSystem);
+        ThrowIfConfirmedGenerationsMissing(confirmed, merged, Name, IsSecondLevel, _basePath, _fileSystem);
 
         List<(ulong Number, string Path)> files = [];
         foreach (string path in _fileSystem.Directory.GetFiles(_basePath, $"{FilePrefix}*{FileExtension}"))
@@ -701,7 +714,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             // The files go with the wipe, so they count as merged, durably before they go, as in ClearExclusive:
             // otherwise the generation recorded by a wipe interrupted before the log was cleared would require their
             // files again once the resync removes the wipe marker.
-            ulong discarded = Math.Max(flushedGeneration, ReadUInt64(metadata.Get(GenerationKey)));
+            ulong discarded = Math.Max(flushedGeneration, ReadUInt64((IsSecondLevel ? merged : confirmed).Get(GenerationKey)));
             if (files.Count > 0) discarded = Math.Max(discarded, files[^1].Number);
             if (discarded != flushedGeneration)
             {
