@@ -947,7 +947,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     /// this node could not bind, both of which are the operator's problem and have to stay visible at default level.
     /// <para>
     /// Server-side codes (-32603, -32000, timeouts) keep WARN for every caller, and
-    /// <see cref="Error.OperatorActionable"/> overrides the code: -32600 also carries "namespace X is disabled for
+    /// <see cref="Error.OperatorActionable"/> overrides the code: -32601 also carries "namespace X is disabled for
     /// this URL", which is a statement about this node's configuration.
     /// </para>
     /// </remarks>
@@ -986,7 +986,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             Metrics.JsonRpcErrors++;
         }
 
-        string reportMethod = responseError?.Code == ErrorCodes.MethodNotFound
+        string reportMethod = responseError is { Code: ErrorCodes.MethodNotFound, OperatorActionable: false }
             ? RpcReport.UnknownMethod
             : request.Method;
         JsonRpcResult.Entry result = new(
