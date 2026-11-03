@@ -411,6 +411,57 @@ public class JsonRpcProcessorTests
         return sink.Responses;
     }
 
+    private static IEnumerable<TestCaseData> NotificationCases()
+    {
+        const string notification = """{"jsonrpc":"2.0","method":"eth_chainId","params":[]}""";
+        string request = CreateRequest("1", "eth_chainId");
+        (string name, string body, int dispatched, string answer)[] cases =
+        [
+            ("Single notification", notification, 1, ""),
+            ("Batch of notifications", CreateBatchRequest(notification, notification), 2, ""),
+            ("Notification before request", CreateBatchRequest(notification, request), 2, "[1]"),
+            ("Request between notifications", CreateBatchRequest(notification, request, notification), 3, "[1]"),
+            ("Null id is a request", CreateRequest("null", "eth_chainId"), 1, "null"),
+            ("Null id in batch is a request", CreateBatchRequest(notification, CreateRequest("null", "eth_chainId")), 2, "[null]"),
+            ("Object without id or method is answered", """{"jsonrpc":"2.0"}""", 1, "<missing>"),
+            ("Batch item without id or method is answered", CreateBatchRequest(notification, """{"jsonrpc":"2.0"}"""), 2, "[<missing>]"),
+        ];
+
+        foreach ((string name, string body, int dispatched, string answer) in cases)
+        {
+            foreach (RequestTransport transport in Enum.GetValues<RequestTransport>())
+            {
+                yield return new TestCaseData(body, transport, dispatched, answer).SetName($"{name} ({transport})");
+            }
+        }
+    }
+
+    /// <remarks>
+    /// JSON-RPC 2.0 sections 4.1 and 6: a notification is executed but never answered, also inside a batch, and a
+    /// batch of notifications only is answered with nothing. <paramref name="answer"/> lists the answered ids, with
+    /// brackets for a batch.
+    /// </remarks>
+    [TestCaseSource(nameof(NotificationCases))]
+    public async Task Notifications_are_executed_but_not_answered(string body, RequestTransport transport, int dispatched, string answer)
+    {
+        int calls = 0;
+        IJsonRpcService service = CreateService(request =>
+        {
+            Interlocked.Increment(ref calls);
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateProcessor(service), Encoding.UTF8.GetBytes(body), transport);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(dispatched));
+            Assert.That(string.Join(" ", result.Select(static r => r.IsCollection
+                ? $"[{string.Join(",", r.BatchItems!.Select(static item => item.Id.ToString()))}]"
+                : r.Response!.Id.ToString())), Is.EqualTo(answer));
+        }
+    }
+
     [Test]
     public async Task Sink_processor_entry_point_propagates_stop_requested_to_inline_batch_processing()
     {
