@@ -18,6 +18,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using NSubstitute;
@@ -41,7 +42,9 @@ public class FlatStateActivationPolicyTests
         Repaired = 32,
         FlatDataKeys = 64,
         FastSync = 128,
-        SnapSync = 256
+        SnapSync = 256,
+        MigrateFromPruningTrieState = 512,
+        Migrating = 1024
     }
 
     public enum RepairOutcome
@@ -261,6 +264,40 @@ public class FlatStateActivationPolicyTests
         }
     }
 
+    [TestCase(Flags.MigrateFromPruningTrieState | Flags.PatriciaHasData, true, Description = "Starts migrating")]
+    [TestCase(Flags.MigrateFromPruningTrieState | Flags.PatriciaHasData | Flags.FastSync, true, Description = "Starts migrating, fast without snap")]
+    [TestCase(Flags.MigrateFromPruningTrieState, false, Description = "Nothing to migrate on a fresh node")]
+    [TestCase(Flags.Migrating | Flags.FlatHasData | Flags.PatriciaHasData, true, Description = "A restart keeps migrating without the flag")]
+    public void Migrating_from_patricia_runs_on_flat_and_records_the_start(Flags flags, bool expectMigrating)
+    {
+        PolicySetup setup = CreateSetup(flags | Flags.Enabled, FlatLayout.Flat, 32.GiB, LimboLogs.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(setup.Policy.ShouldTurnOnFlatDb(), Is.True);
+            Assert.That(BasePersistence.ReadMigrationCursor(setup.FlatDb.GetColumnDb(FlatDbColumns.Metadata)), expectMigrating ? Is.EqualTo(MigrationCursor.Start) : Is.Null);
+        }
+    }
+
+    [TestCase(Flags.MigrateFromPruningTrieState | Flags.FlatDataKeys, FlatLayout.Flat, false, false, "leftover data", Description = "Leftover flat data")]
+    [TestCase(Flags.MigrateFromPruningTrieState, FlatLayout.PreimageFlat, false, false, "Layout=PreimageFlat", Description = "Preimage layout")]
+    [TestCase(Flags.MigrateFromPruningTrieState, FlatLayout.Flat, true, false, "HistoryEnabled", Description = "Flat history")]
+    [TestCase(Flags.Migrating | Flags.FlatHasData, FlatLayout.Flat, false, true, "TrieNodeLogEnabled", Description = "Trie node log on a restart")]
+    public void Migrating_from_patricia_refuses_what_it_cannot_serve(Flags flags, FlatLayout layout, bool historyEnabled, bool trieNodeLogEnabled, string expected)
+    {
+        SpyFlatColumnsDb flatDb = new();
+
+        InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(() => CreateSetup(flags | Flags.Enabled | Flags.PatriciaHasData, layout, 32.GiB,
+            LimboLogs.Instance, historyEnabled: historyEnabled, trieNodeLogEnabled: trieNodeLogEnabled, flatDb: flatDb))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Contain(expected));
+            Assert.That(BasePersistence.ReadMigrationCursor(flatDb.GetColumnDb(FlatDbColumns.Metadata)), flags.HasFlag(Flags.Migrating) ? Is.Not.Null : Is.Null,
+                "a refused start records nothing");
+        }
+    }
+
     private static FlatStateActivationPolicy CreatePolicy(
         bool enabled, bool importFromPruning, bool flatHasData, bool patriciaHasData,
         FlatLayout layout, long availableMemoryBytes, ILogManager logManager, bool wipedForSync = false,
@@ -280,9 +317,11 @@ public class FlatStateActivationPolicyTests
 
     private static PolicySetup CreateSetup(Flags flags, FlatLayout layout, long availableMemoryBytes, ILogManager logManager,
         FlatDbOnRepair onRepair = FlatDbOnRepair.Resync, bool historyEnabled = false, HistoryRetentionMode historyRetention = HistoryRetentionMode.None,
-        string[] sstFiles = null, string baseDbPath = "/data", SpyFlatColumnsDb flatDb = null)
+        string[] sstFiles = null, string baseDbPath = "/data", SpyFlatColumnsDb flatDb = null, bool trieNodeLogEnabled = false)
     {
         IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
+        flatDbConfig.MigrateFromPruningTrieState.Returns(flags.HasFlag(Flags.MigrateFromPruningTrieState));
+        flatDbConfig.TrieNodeLogEnabled.Returns(trieNodeLogEnabled);
         flatDbConfig.Enabled.Returns(flags.HasFlag(Flags.Enabled));
         flatDbConfig.HistoryEnabled.Returns(historyEnabled);
         flatDbConfig.HistoryRetention.Returns(historyRetention);
@@ -297,6 +336,8 @@ public class FlatStateActivationPolicyTests
             MarkWipedForSync(flatDb);
         if (flags.HasFlag(Flags.FlatDataKeys))
             flatDb.GetColumnDb(FlatDbColumns.Storage).Set([1], [1]);
+        if (flags.HasFlag(Flags.Migrating))
+            BasePersistence.WriteMigrationCursor(flatDb.GetColumnDb(FlatDbColumns.Metadata), MigrationCursor.Start);
         flatDb.Events.Clear();
 
         MemDb patriciaDb = new();
