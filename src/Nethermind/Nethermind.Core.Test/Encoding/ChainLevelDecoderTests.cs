@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -38,18 +39,12 @@ public class ChainLevelDecoderTests
         }
     }
 
-    [Test]
-    public void Encode_matches_independently_built_rlp([Values(0, 1, 2, 5)] int blockCount, [Values] bool hasBlockOnMainChain)
+    [TestCaseSource(nameof(EncodeCases))]
+    public void Encode_matches_independently_built_rlp(BlockInfo[] blockInfos, bool hasBlockOnMainChain)
     {
-        BlockInfo[] blockInfos = new BlockInfo[blockCount];
-        Rlp[] encodedInfos = new Rlp[blockCount];
-        for (int i = 0; i < blockCount; i++)
+        Rlp[] encodedInfos = new Rlp[blockInfos.Length];
+        for (int i = 0; i < blockInfos.Length; i++)
         {
-            BlockMetadata metadata = i % 3 == 0 ? BlockMetadata.None : BlockMetadata.Finalized | BlockMetadata.BeaconMainChain;
-            blockInfos[i] = new BlockInfo(TestItem.Keccaks[i], new UInt256((ulong)i * 1_000_000_007UL), metadata)
-            {
-                WasProcessed = i % 2 == 0
-            };
             encodedInfos[i] = Rlp.Encode(blockInfos[i]);
         }
 
@@ -65,6 +60,52 @@ public class ChainLevelDecoderTests
             Assert.That(Rlp.Encode(chainLevelInfo).Bytes, Is.EqualTo(expected));
             Assert.That(((ReadOnlySpan<byte>)pooled).ToArray(), Is.EqualTo(expected));
         }
+    }
+
+    private static IEnumerable<TestCaseData> EncodeCases()
+    {
+        (string Name, BlockInfo[] BlockInfos)[] sets =
+        [
+            ("0 mixed entries", MixedBlockInfos(0)),
+            ("1 mixed entry", MixedBlockInfos(1)),
+            ("2 mixed entries", MixedBlockInfos(2)),
+            ("5 mixed entries", MixedBlockInfos(5)),
+            ("55 bytes of entries, short inner prefix in long outer prefix", BlockInfosWithTotalDifficultyBit(1, 151)),
+            ("56 bytes of entries, long inner prefix", BlockInfosWithTotalDifficultyBit(1, 159)),
+            ("255 bytes of entries, one-byte inner length in two-byte outer length", BlockInfosWithTotalDifficultyBit(5, 112))
+        ];
+
+        foreach ((string name, BlockInfo[] blockInfos) in sets)
+        {
+            yield return new TestCaseData(blockInfos, false).SetArgDisplayNames(name, "not on main chain");
+            yield return new TestCaseData(blockInfos, true).SetArgDisplayNames(name, "on main chain");
+        }
+    }
+
+    private static BlockInfo[] MixedBlockInfos(int blockCount)
+    {
+        BlockInfo[] blockInfos = new BlockInfo[blockCount];
+        for (int i = 0; i < blockCount; i++)
+        {
+            BlockMetadata metadata = i % 3 == 0 ? BlockMetadata.None : BlockMetadata.Finalized | BlockMetadata.BeaconMainChain;
+            blockInfos[i] = new BlockInfo(TestItem.Keccaks[i], new UInt256((ulong)i * 1_000_000_007UL), metadata)
+            {
+                WasProcessed = i % 2 == 0
+            };
+        }
+
+        return blockInfos;
+    }
+
+    private static BlockInfo[] BlockInfosWithTotalDifficultyBit(int blockCount, int totalDifficultyBit)
+    {
+        BlockInfo[] blockInfos = new BlockInfo[blockCount];
+        for (int i = 0; i < blockCount; i++)
+        {
+            blockInfos[i] = new BlockInfo(TestItem.Keccaks[i], UInt256.One << totalDifficultyBit);
+        }
+
+        return blockInfos;
     }
 
     [Test]
