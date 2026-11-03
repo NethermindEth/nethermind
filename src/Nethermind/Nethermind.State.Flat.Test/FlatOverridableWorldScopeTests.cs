@@ -20,6 +20,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -313,7 +314,7 @@ public class FlatOverridableWorldScopeTests
     }
 
     [Test]
-    public void RunTreeVisitor_FollowsOverlaySnapshotRecords([Values(1, 4)] int parallelism)
+    public void RunTreeVisitor_FollowsOverlayAndMainBufferRecords([Values(1, 4)] int parallelism)
     {
         using TestContext ctx = new();
         FlatOverridableWorldScope overridableScope = ctx.OverridableScope;
@@ -335,19 +336,46 @@ public class FlatOverridableWorldScopeTests
             return Build.A.BlockHeader.WithNumber(number).WithStateRoot(scope.RootHash).TestObject;
         }
 
-        // Block 2 adds D beside A and C, so its root points at their leaves from block 1, and only block 1's snapshot holds their storage roots.
-        // The bundle under the overlay is empty, so a node read from persistence instead of a record is missing.
-        BlockHeader block2 = CommitAccountsWithSlot(CommitAccountsWithSlot(null, TestItem.AddressA, TestItem.AddressC), TestItem.AddressD);
-        TrieStatsCollector collector = new(new TestMemDb(), LimboLogs.Instance);
+        TrieStats Visit(BlockHeader block)
+        {
+            TrieStatsCollector collector = new(new TestMemDb(), LimboLogs.Instance);
+            overridableScope.GlobalStateReader.RunTreeVisitor(collector, block, new VisitingOptions { MaxDegreeOfParallelism = parallelism });
+            return collector.Stats;
+        }
 
-        overridableScope.GlobalStateReader.RunTreeVisitor(collector, block2, new VisitingOptions { MaxDegreeOfParallelism = parallelism });
+        // Block 2 adds D beside A and C, so its root points at their leaves from block 1, and only block 1's snapshot holds their storage roots.
+        BlockHeader overlayBlock = CommitAccountsWithSlot(CommitAccountsWithSlot(null, TestItem.AddressA, TestItem.AddressC), TestItem.AddressD);
+
+        // Indexed in the main buffer after the overlay pinned it, so the overlay's root lookup skips it and the main buffer's finds it.
+        Hash256 addressHash = Keccak.Compute(TestItem.AddressB.Bytes);
+        TestMemDb trieDb = new();
+        StorageTree storageTree = new(new RawScopedTrieStore(trieDb, addressHash), LimboLogs.Instance);
+        storageTree.Set(1, [0x01]);
+        storageTree.Commit();
+        StateTree stateTree = new(new RawScopedTrieStore(trieDb), LimboLogs.Instance);
+        stateTree.Set(TestItem.AddressB, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
+        stateTree.Commit();
+        INodeRecordBuffer mainBuffer = ctx.GlobalNodeRecordBuffer;
+        using (mainBuffer.PinHead())
+        {
+            mainBuffer.SetRoot(addressHash, storageTree.RootHash, mainBuffer.AppendRecordFromRlp(addressHash, TreePath.Empty, storageTree.RootHash, storageTree.GetNodeByPath([])!, []));
+            mainBuffer.SetRoot(null, stateTree.RootHash, mainBuffer.AppendRecordFromRlp(null, TreePath.Empty, stateTree.RootHash, stateTree.GetNodeByPath([])!, []));
+        }
+        BlockHeader mainBlock = Build.A.BlockHeader.WithNumber(3).WithStateRoot(stateTree.RootHash).TestObject;
+
+        // The bundle under the overlay is empty, so a node read from persistence instead of a record is missing.
+        TrieStats overlayStats = Visit(overlayBlock);
+        TrieStats mainStats = Visit(mainBlock);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(collector.Stats.StateBranchCount, Is.EqualTo(1));
-            Assert.That(collector.Stats.AccountCount, Is.EqualTo(3));
-            Assert.That(collector.Stats.StorageLeafCount, Is.EqualTo(3));
-            Assert.That(collector.Stats.MissingNodes, Is.Zero);
+            Assert.That(overlayStats.StateBranchCount, Is.EqualTo(1));
+            Assert.That(overlayStats.AccountCount, Is.EqualTo(3));
+            Assert.That(overlayStats.StorageLeafCount, Is.EqualTo(3));
+            Assert.That(overlayStats.MissingNodes, Is.Zero);
+            Assert.That(mainStats.AccountCount, Is.EqualTo(1));
+            Assert.That(mainStats.StorageLeafCount, Is.EqualTo(1));
+            Assert.That(mainStats.MissingNodes, Is.Zero);
         }
     }
 

@@ -229,12 +229,26 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    /// <summary>Runs a tree visitor over the trie at <paramref name="rootHash"/> by following this bundle's trie node buffer record pointers.</summary>
-    internal void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 rootHash, VisitingOptions options, VisitingStats? diagnostics)
+    /// <summary>Runs a tree visitor over the trie at <paramref name="rootHash"/> by following trie node buffer record pointers.</summary>
+    /// <remarks>
+    /// The root is looked up in this bundle's own buffer first, then in <paramref name="mainNodeRecordBuffer"/>, skipping the roots it
+    /// indexes past its write boundary now, which are written concurrently. The walk reads the buffer that holds the root.
+    /// </remarks>
+    /// <param name="mainNodeRecordBuffer">The buffer this bundle's buffer overlays, or the same buffer.</param>
+    internal void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 rootHash, INodeRecordBuffer mainNodeRecordBuffer, VisitingOptions options, VisitingStats? diagnostics)
         where TCtx : struct, INodeContext<TCtx>
     {
         GuardDispose();
-        new NodeRecordBufferVisitor<TCtx>(_readOnlySnapshotBundle, _nodeRecordBuffer!, visitor, options, diagnostics).Accept(rootHash);
+        INodeRecordBuffer buffer = _nodeRecordBuffer!;
+        ulong maxPointer = ulong.MaxValue;
+        if (buffer.ResolveRoot(null, rootHash).Pointer == 0)
+        {
+            buffer = mainNodeRecordBuffer;
+            using INodeRecordBufferPin pin = mainNodeRecordBuffer.PinHead();
+            maxPointer = pin.WriteBoundary;
+        }
+
+        new NodeRecordBufferVisitor<TCtx>(_readOnlySnapshotBundle, buffer, maxPointer, visitor, options, diagnostics).Accept(rootHash);
     }
 
     /// <summary>Makes the final state trie readable from this bundle.</summary>

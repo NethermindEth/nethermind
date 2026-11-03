@@ -74,7 +74,7 @@ public class FlatStateReader(
 
         using (reader)
         {
-            NodeRecordBufferVisitor<TCtx> visitor = new(reader, nodeRecordBuffer, treeVisitor, visitingOptions ?? VisitingOptions.Default, diagnostics);
+            NodeRecordBufferVisitor<TCtx> visitor = new(reader, nodeRecordBuffer, ulong.MaxValue, treeVisitor, visitingOptions ?? VisitingOptions.Default, diagnostics);
             visitor.Accept(stateId.StateRoot.ToCommitment());
         }
     }

@@ -17,6 +17,7 @@ namespace Nethermind.State.Flat.NodeBuffer;
 internal abstract class NodeRecordBufferVisitor(
     ReadOnlySnapshotBundle bundle,
     INodeRecordBuffer nodeRecordBuffer,
+    ulong maxPointer,
     VisitingStats? diagnostics,
     ReadFlags readFlags)
 {
@@ -28,7 +29,7 @@ internal abstract class NodeRecordBufferVisitor(
     protected bool TryLoadRoot(Hash256? address, in ValueHash256 rootHash, out NodeRecord root)
     {
         RecordLookup(TreePath.Empty);
-        return TryLoad(address, TreePath.Empty, rootHash, nodeRecordBuffer.ResolveRoot(address, rootHash).Pointer, out root);
+        return TryLoad(address, TreePath.Empty, rootHash, nodeRecordBuffer.ResolveRoot(address, rootHash, maxPointer).Pointer, out root);
     }
 
     /// <summary>Loads the node <paramref name="hash"/> names at <paramref name="path"/>: the buffer record at <paramref name="pointer"/>, otherwise the record of the RLP the persisted snapshots or persistence hold.</summary>
@@ -37,7 +38,11 @@ internal abstract class NodeRecordBufferVisitor(
     /// <returns>False when neither holds a valid node.</returns>
     protected bool TryLoad(Hash256? address, in TreePath path, in ValueHash256 hash, ulong pointer, out NodeRecord record)
     {
-        if (pointer != 0 && nodeRecordBuffer.TryLocate(pointer, out record)) return true;
+        if (pointer != 0 && nodeRecordBuffer.TryLocate(pointer, out record))
+        {
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+            return true;
+        }
 
         diagnostics?.RecordCacheMiss();
         NodeRecord? loaded = null;
@@ -96,14 +101,16 @@ internal abstract class NodeRecordBufferVisitor(
 /// decoded just to hand a node to the visitor.
 /// Records are borrowed under the caller's pins, so every parallel worker joins before <see cref="Accept"/> returns.
 /// </remarks>
-/// <param name="nodeRecordBuffer">The buffer block processing reads the bundle's tries from: the global one, or an overridable world scope's overlay.</param>
+/// <param name="nodeRecordBuffer">The buffer holding the visited state's root: the global one, or an overridable world scope's overlay.</param>
+/// <param name="maxPointer">Roots the buffer indexes at or past this pointer are skipped, as written concurrently; <see cref="ulong.MaxValue"/> for none.</param>
 internal sealed class NodeRecordBufferVisitor<TNodeContext>(
     ReadOnlySnapshotBundle bundle,
     INodeRecordBuffer nodeRecordBuffer,
+    ulong maxPointer,
     ITreeVisitor<TNodeContext> visitor,
     VisitingOptions options,
     VisitingStats? diagnostics)
-    : NodeRecordBufferVisitor(bundle, nodeRecordBuffer, diagnostics, visitor.ExtraReadFlag | (visitor.IsFullDbScan ? ReadFlags.HintReadAhead : ReadFlags.None))
+    : NodeRecordBufferVisitor(bundle, nodeRecordBuffer, maxPointer, diagnostics, visitor.ExtraReadFlag | (visitor.IsFullDbScan ? ReadFlags.HintReadAhead : ReadFlags.None))
     where TNodeContext : struct, INodeContext<TNodeContext>
 {
     private const long SubtreeSizeThreshold = 256 * 1024;
@@ -207,24 +214,33 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
 
     private long VisitBranch(NodeRecord branch, in TNodeContext context, Hash256? address, TreePath path, long sizeHint)
     {
-        sizeHint /= TrieNode.BranchesCount;
-        // As in TrieNodeTraverser, fanning out only over the top state levels and the top storage level.
-        bool parallel = options.MaxDegreeOfParallelism != 1 && path.Length <= (address is null ? 2 : 1);
         Span<ChildRef> children = stackalloc ChildRef[TrieNode.BranchesCount];
         branch.View.CopyChildren(children);
+        int childCount = 0;
+        foreach (ChildRef child in children)
+        {
+            if (child.Kind != ChildRefKind.Empty) childCount++;
+        }
+
+        // As in TrieNodeTraverser: fanning out only over the top state levels and the top storage level, splitting the size hint
+        // among the children there, and keeping the last child for this thread rather than idling until the workers finish.
+        bool parallel = options.MaxDegreeOfParallelism != 1 && path.Length <= (address is null ? 2 : 1);
+        sizeHint /= parallel ? childCount : TrieNode.BranchesCount;
         List<Task<long>>? tasks = null;
         long size = 0;
+        int handledChildren = 0;
         try
         {
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
                 ChildRef child = children[i];
                 if (child.Kind == ChildRefKind.Empty) continue;
+                handledChildren++;
                 TreePath childPath = path.Append(i);
                 TNodeContext childContext = context.Add((byte)i);
                 if (!ShouldVisit(child, childContext, childPath)) continue;
 
-                if (parallel && sizeHint > SubtreeSizeThreshold && _workers.TryTakeSlot(out ConcurrencyController.Slot slot))
+                if (parallel && handledChildren < childCount && sizeHint > SubtreeSizeThreshold && _workers.TryTakeSlot(out ConcurrencyController.Slot slot))
                 {
                     tasks ??= [];
                     long childSizeHint = sizeHint;
@@ -244,11 +260,18 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
         }
         finally
         {
-            // Borrowed buffer records must outlive every worker, even when a callback on this thread fails.
+            // Borrowed buffer records must outlive every worker, even when a callback on this thread fails. Waiting on each worker,
+            // not on Task.WhenAll, lets this thread run one that has not started, and suppressing their exceptions here keeps the
+            // exception this thread is unwinding with.
             if (tasks is not null)
             {
-                foreach (long childSize in Task.WhenAll(tasks).GetAwaiter().GetResult()) size += childSize;
+                foreach (Task task in tasks) task.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing).GetAwaiter().GetResult();
             }
+        }
+
+        if (tasks is not null)
+        {
+            foreach (Task<long> task in tasks) size += task.GetAwaiter().GetResult();
         }
         return size;
     }
