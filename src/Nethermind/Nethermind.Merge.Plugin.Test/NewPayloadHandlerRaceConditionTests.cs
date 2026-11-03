@@ -1574,6 +1574,83 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
     }
 
+    /// <summary>
+    /// Tracking a copy counts the copies still queued and then gathers them in a second pass, so one that leaves the
+    /// queue between the passes must not leave an empty slot: its null task would break every later newPayload.
+    /// </summary>
+    /// <remarks>
+    /// A task cannot be made to complete between the two passes on cue, so each round completes the earlier copies
+    /// from a second thread while the next one is tracked. Many rounds hit that window; correct code never fails.
+    /// </remarks>
+    [Test]
+    public void TrackQueuedCopy_leaves_no_empty_slot_when_a_copy_leaves_between_passes()
+    {
+        const int rounds = 20_000;
+        const int pendingCopies = 16;
+
+        MethodInfo? trackMethod = typeof(NewPayloadHandler).GetMethod("TrackQueuedCopy", BindingFlags.Instance | BindingFlags.NonPublic);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trackMethod, Is.Not.Null, "TrackQueuedCopy method not found - was it renamed?");
+            Assert.That(QueuedCopiesField, Is.Not.Null, "_queuedCopies field not found - was it renamed?");
+        }
+
+        using NewPayloadHandler handler = CreateHandler(PostMergeBlock(), AddBlockResult.Added, wasProcessed: false, validateSuggestedBlock: true);
+        Action<Hash256, ValueHash256?, Task> track = trackMethod!.CreateDelegate<Action<Hash256, ValueHash256?, Task>>(handler);
+        Type queuedCopyType = QueuedCopiesField!.FieldType.GetElementType()!;
+        Array noCopies = Array.CreateInstance(queuedCopyType, 0);
+        PropertyInfo leftProperty = queuedCopyType.GetProperty("Left")!;
+        PropertyInfo blockHashProperty = queuedCopyType.GetProperty("BlockHash")!;
+
+        TaskCompletionSource[] pending = new TaskCompletionSource[pendingCopies];
+        for (int i = 0; i < pendingCopies; i++) pending[i] = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int startedRound = 0;
+        int finishedRound = 0;
+        Thread completer = new(() =>
+        {
+            SpinWait spin = default;
+            for (int round = 1; round <= rounds; round++)
+            {
+                while (Volatile.Read(ref startedRound) < round) spin.SpinOnce(sleep1Threshold: -1);
+                foreach (TaskCompletionSource copy in pending) copy.TrySetResult();
+                Volatile.Write(ref finishedRound, round);
+            }
+        })
+        { IsBackground = true };
+        completer.Start();
+
+        try
+        {
+            SpinWait spin = default;
+            for (int round = 1; round <= rounds; round++)
+            {
+                QueuedCopiesField.SetValue(handler, noCopies);
+                for (int i = 0; i < pendingCopies; i++)
+                {
+                    pending[i] = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    track(TestItem.KeccakA, null, pending[i].Task);
+                }
+
+                Volatile.Write(ref startedRound, round);
+                track(TestItem.KeccakB, null, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+                while (Volatile.Read(ref finishedRound) < round) spin.SpinOnce(sleep1Threshold: -1);
+
+                Array tracked = (Array)QueuedCopiesField.GetValue(handler)!;
+                foreach (object copy in tracked)
+                {
+                    if (leftProperty.GetValue(copy) is null) Assert.Fail($"round {round} left an empty slot");
+                }
+
+                if ((Hash256)blockHashProperty.GetValue(tracked.GetValue(tracked.Length - 1)!)! != TestItem.KeccakB) Assert.Fail($"round {round} lost the copy it tracked");
+            }
+        }
+        finally
+        {
+            Volatile.Write(ref startedRound, int.MaxValue);
+            completer.Join();
+        }
+    }
+
     private static int GetPendingValidationTaskCount(NewPayloadHandler handler)
     {
         Assert.That(BlockValidationTasksField, Is.Not.Null, "_blockValidationTasks field not found - was it renamed?");
