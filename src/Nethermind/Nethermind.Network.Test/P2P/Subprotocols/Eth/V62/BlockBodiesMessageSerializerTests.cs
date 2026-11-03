@@ -32,12 +32,12 @@ public class BlockBodiesMessageSerializerTests
     }
 
     [TestCaseSource(nameof(GetBlockBodyValues))]
-    public void Should_pass_roundtrip(BlockBody[] bodies) => SerializerTester.TestZero(
+    public void Should_pass_roundtrip(BlockBody[] bodies) => SerializerTester.Test(
         new BlockBodiesMessageSerializer(),
         new BlockBodiesMessage(bodies));
 
     [TestCaseSource(nameof(GetEncodingCases))]
-    public void Should_encode_to_expected_wire_bytes(BlockBody[] bodies, string expected) => SerializerTester.TestZero(
+    public void Should_encode_to_expected_wire_bytes(BlockBody[] bodies, string expected) => SerializerTester.Test(
         new BlockBodiesMessageSerializer(),
         new BlockBodiesMessage(bodies),
         expected);
