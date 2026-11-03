@@ -70,6 +70,9 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
         Transaction[] transactions, byte[][] encodedTransactions, IEthereumEcdsa ecdsa, bool useSignatureChainId)
     {
         int count = transactions.Length;
+        if (count == 0)
+            return true;
+
         byte[] messages = new byte[count * ValueHash256.MemorySize];
         byte[] signatures = new byte[count * 64];
         byte[] recoveryIds = new byte[count];

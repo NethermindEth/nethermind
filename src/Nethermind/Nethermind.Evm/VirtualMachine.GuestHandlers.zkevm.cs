@@ -490,7 +490,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     analyzed = destination;
                                     skipped = 1 + 3;
                                     // The analysis charges the jump itself.
-                                    gas += (nuint)(jumpGas);
+                                    gas += (nuint)jumpGas;
                                     goto AnalyzeBranch;
                                 }
 
@@ -528,7 +528,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                         analyzed = destination;
                                         skipped = 1 + 1 + 3;
                                         // The analysis charges the jump itself.
-                                        gas += (nuint)(jumpGas);
+                                        gas += (nuint)jumpGas;
                                         goto AnalyzeBranch;
                                     }
 
@@ -564,7 +564,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     analyzed = destination;
                                     skipped = 1 + 2;
                                     // The analysis charges the jump itself.
-                                    gas += (nuint)(jumpGas);
+                                    gas += (nuint)jumpGas;
                                     goto AnalyzeBranch;
                                 }
 
@@ -1073,7 +1073,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
 
                     // The shared handler takes the other operands, so this handler makes no call.
-                    gas += (nuint)(MidGasCost.GasCost);
+                    gas += (nuint)MidGasCost.GasCost;
                     nint general = Entry(&ExecuteOpcode<Math3Opcode<TOperation, OffFlag>, OffFlag, OffFlag, OnFlag>);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, general);
                 }
@@ -1318,7 +1318,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     head += 2;
                                     sp = ref Moved(ref sp, 2);
                                     // The analysis charges the jump itself.
-                                    gas += (nuint)(jumpGas);
+                                    gas += (nuint)jumpGas;
                                     ip = ref Unsafe.Add(ref ip, 10);
                                     nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OnFlag>);
                                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, analyze);
@@ -1410,7 +1410,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     head--;
                     sp = ref Moved(ref sp, -1);
-                    gas -= (nuint)(BaseGasCost.GasCost);
+                    gas -= (nuint)BaseGasCost.GasCost;
                     ip = ref Unsafe.Add(ref ip, 2);
                     nint fused = HandlerAt(handlers, PairAt(ref ip));
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, fused);
@@ -1701,7 +1701,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(value))
                     {
                         // The analysis charges the jump itself.
-                        gas += (nuint)(jumpGas);
+                        gas += (nuint)jumpGas;
                         analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OffFlag>);
                         goto Analyze;
                     }
@@ -1737,7 +1737,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(value))
                     {
                         // The analysis charges the jump itself.
-                        gas += (nuint)(jumpGas);
+                        gas += (nuint)jumpGas;
                         analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OnFlag>);
                         goto Analyze;
                     }
@@ -1810,7 +1810,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                gas += (nuint)(VeryLowGasCost.GasCost);
+                gas += (nuint)VeryLowGasCost.GasCost;
             }
 
             nint growing = Entry(&ExecuteMStoreGrowing);
@@ -1853,7 +1853,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                gas += (nuint)(VeryLowGasCost.GasCost);
+                gas += (nuint)VeryLowGasCost.GasCost;
             }
 
             nint shared = Entry(&ExecuteOpcode<MStoreOpcode<OffFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
@@ -1892,7 +1892,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (!Covers(gas, cost))
                     return ExitChain(ref state, 0, (nint)Unsafe.ByteOffset(ref code, ref ip) + 1, head - 1, EvmExceptionType.OutOfGas);
 
-                gas -= (nuint)(cost);
+                gas -= (nuint)cost;
                 vm.WorldState.Get(in storageCell, out slot);
                 // Reloaded rather than held across the calls, where each would take a callee-saved register.
                 handlers = state.OpcodeHandlers;
@@ -2241,14 +2241,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     {
                         if (size == 0)
                         {
-                            gas -= (nuint)(cost);
+                            gas -= (nuint)cost;
                             goto Dispatch;
                         }
 
                         ulong target = destination;
                         if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3) | (target >> 32)) == 0)
                         {
-                            gas -= (nuint)(cost);
+                            gas -= (nuint)cost;
                             ref byte range = ref AlignedMemory(ref state).TryPrepareRangeOverwrite(target, size, ref gas);
                             if (!Unsafe.IsNullRef(ref range))
                             {
@@ -2267,7 +2267,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 goto Dispatch;
                             }
 
-                            gas += (nuint)(cost);
+                            gas += (nuint)cost;
                         }
                     }
                 }
@@ -2370,7 +2370,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                gas += (nuint)(VeryLowGasCost.GasCost);
+                gas += (nuint)VeryLowGasCost.GasCost;
             }
 
             nint shared = Entry(&ExecuteOpcode<MStore8Opcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
@@ -2411,7 +2411,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                gas += (nuint)(VeryLowGasCost.GasCost);
+                gas += (nuint)VeryLowGasCost.GasCost;
             }
 
             nint shared = Entry(&ExecuteOpcode<MLoadOpcode<OffFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
@@ -2452,7 +2452,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
-                gas += (nuint)(VeryLowGasCost.GasCost);
+                gas += (nuint)VeryLowGasCost.GasCost;
             }
 
             nint shared = Entry(&ExecuteOpcode<CallDataLoadOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
@@ -2492,7 +2492,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     ref byte data = ref AlignedMemory(ref state).GetActiveInitializedRange(offset, length);
                     if (Covers(gas, cost) && !Unsafe.IsNullRef(ref data))
                     {
-                        gas -= (nuint)(cost);
+                        gas -= (nuint)cost;
                         head--;
                         if (TryReadWordKeccakMemo(ref data, length, ref lengthLimbs))
                         {
@@ -3007,7 +3007,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(target))
                     {
-                        gas += (nuint)(jumpAndJumpDestGas);
+                        gas += (nuint)jumpAndJumpDestGas;
                         nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OffFlag>);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, analyze);
                     }
@@ -3019,7 +3019,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
-                gas += (nuint)(jumpAndJumpDestGas);
+                gas += (nuint)jumpAndJumpDestGas;
             }
 
             nint shared = Entry(&ExecuteOpcode<JumpOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
@@ -3053,7 +3053,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     head -= 2;
                     sp = ref Moved(ref sp, -2);
-                    gas -= (nuint)(JumpIGasCost.GasCost);
+                    gas -= (nuint)JumpIGasCost.GasCost;
                     ip = ref Unsafe.Add(ref ip, 1);
                     nint notTaken = HandlerAt(handlers, PairAt(ref ip));
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, notTaken);
@@ -3072,7 +3072,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                     head -= 2;
                     sp = ref Moved(ref sp, -2);
-                    gas -= (nuint)(jumpIAndJumpDestGas);
+                    gas -= (nuint)jumpIAndJumpDestGas;
                     ip = ref Unsafe.Add(ref code, (nint)target + 1);
                     nint taken = HandlerAt(handlers, PairAt(ref ip));
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, taken);

@@ -51,3 +51,7 @@ make verify INPUT=11962427.ssz
   handler, which publishes the failure result.
 - The image has no reflection data, so the exception handler prints the message
   without the type name.
+- The guest carries a frame's gas in 32 bits. A transaction with a gas limit of
+  2^31 or more, possible only before EIP-7825 on a chain whose block gas limit
+  is that high, stops the guest, which then publishes the failure result for a
+  valid block.
