@@ -266,11 +266,6 @@ public class Eth72ProtocolHandler(
                         RequeueClaimedCellRequest(sentRequest, CellRequeueReason.PeerFault);
                         throw;
                     }
-                    catch (IncompleteDeserializationException)
-                    {
-                        RequeueClaimedCellRequest(sentRequest, CellRequeueReason.PeerFault);
-                        throw;
-                    }
 
                     ReportIn(cellsMessage, size);
                     ClaimedCellsResponse response = new(cellsMessage, sentRequest);
