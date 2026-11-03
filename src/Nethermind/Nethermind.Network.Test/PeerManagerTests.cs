@@ -111,6 +111,52 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task Static_only_candidates_are_ranked_by_reputation()
+        {
+            Node lowReputationNode = new(TestItem.PublicKeyB, "52.141.78.53", 30303, isStatic: true);
+            Node highReputationNode = new(TestItem.PublicKeyC, "52.141.78.54", 30303, isStatic: true);
+            INodeStats lowReputationStats = Substitute.For<INodeStats>();
+            lowReputationStats.CurrentNodeReputation(Arg.Any<DateTime>()).Returns(10);
+            INodeStats highReputationStats = Substitute.For<INodeStats>();
+            highReputationStats.CurrentNodeReputation(Arg.Any<DateTime>()).Returns(100);
+
+            IPeerPool peerPool = Substitute.For<IPeerPool>();
+            peerPool.Peers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
+            peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
+            peerPool.StaticPeers.Returns(new[] { new Peer(lowReputationNode, lowReputationStats), new Peer(highReputationNode, highReputationStats) });
+
+            ConcurrentQueue<Node> dialed = new();
+            IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
+            rlpxHost.ShouldContact(Arg.Any<IPAddress>(), Arg.Any<bool>()).Returns(true);
+            rlpxHost.ConnectAsync(Arg.Any<Node>(), Arg.Any<CancellationToken>()).Returns(callInfo =>
+            {
+                dialed.Enqueue(callInfo.Arg<Node>());
+                return Task.FromResult(false);
+            });
+
+            NetworkConfig config = new() { MaxActivePeers = 2, NumConcurrentOutgoingConnects = 1, PeersUpdateInterval = 10 };
+            PeerManager manager = new(rlpxHost, peerPool, Substitute.For<INodeStatsManager>(), config,
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
+
+            manager.Start();
+            try
+            {
+                Assert.That(() => dialed.Count, Is.GreaterThanOrEqualTo(2).After(5000, 10));
+            }
+            finally
+            {
+                await manager.StopAsync();
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dialed.Take(2), Is.EqualTo(new[] { highReputationNode, lowReputationNode }));
+                Assert.That(highReputationNode.CurrentReputation, Is.EqualTo(100));
+                Assert.That(lowReputationNode.CurrentReputation, Is.EqualTo(10));
+            }
+        }
+
+        [Test]
         public async Task Start_rejects_non_positive_peer_update_interval([Values(0, -1)] int interval)
         {
             await using Context ctx = new();
