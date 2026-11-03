@@ -144,9 +144,15 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     /// not pay never shows up in its <c>gasCost</c>.
     /// </remarks>
     [TestCaseSource(nameof(AmsterdamOutOfGasOperations))]
-    public void Out_of_gas_operation_reports_its_execution_cost_on_Amsterdam(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
+    public void Out_of_gas_operation_reports_its_execution_cost_on_Amsterdam(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost) =>
+        AssertOutOfGasCost(MainnetSpecProvider.AmsterdamActivation, code, gasAfterIntrinsic, expectedGasCost);
+
+    [TestCaseSource(nameof(CancunOutOfGasOperations))]
+    public void Out_of_gas_operation_reports_its_full_cost_on_Cancun(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost) =>
+        AssertOutOfGasCost(MainnetSpecProvider.CancunActivation, code, gasAfterIntrinsic, expectedGasCost);
+
+    private void AssertOutOfGasCost(ForkActivation activation, byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
     {
-        ForkActivation activation = MainnetSpecProvider.AmsterdamActivation;
         (_, Transaction sizing) = PrepareTx(activation, 0, code);
         ulong intrinsicGas = IntrinsicGasCalculator.Calculate(sizing, SpecProvider.GetSpec(activation)).MinimalGas;
         (Block block, Transaction transaction) = PrepareTx(activation, intrinsicGas + gasAfterIntrinsic, code);
@@ -160,6 +166,29 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
             Assert.That(trace.Entries[^1].Error, Is.EqualTo("out of gas"));
             Assert.That(trace.Entries[^1].GasCost, Is.EqualTo(expectedGasCost));
         }
+    }
+
+    /// <remarks>
+    /// Geth charges the warm access of EXTCODECOPY and the base cost of SELFDESTRUCT as constant gas, so a step that
+    /// cannot pay them reports them alone; any other shortfall reports the constant and the whole dynamic cost.
+    /// </remarks>
+    private static TestCaseData[] CancunOutOfGasOperations()
+    {
+        byte[] extCodeCopyCold = Prepare.EvmCode.PushData(32).PushData(0).PushData(0).PushData(TestItem.AddressC).Op(Instruction.EXTCODECOPY).Done;
+        byte[] extCodeCopyWarm = Prepare.EvmCode.PushData(32).PushData(0).PushData(0).Op(Instruction.ADDRESS).Op(Instruction.EXTCODECOPY).Done;
+        byte[] mcopy = Prepare.EvmCode.PushData(32).PushData(0).PushData(0).Op(Instruction.MCOPY).Done;
+        byte[] selfDestruct = Prepare.EvmCode.PushData(TestItem.AddressF).Op(Instruction.SELFDESTRUCT).Done;
+        return
+        [
+            new TestCaseData(extCodeCopyCold, 111UL, GasCostOf.WarmStateRead).SetArgDisplayNames("EXTCODECOPY base"),
+            new TestCaseData(extCodeCopyCold, 2617UL, GasCostOf.ColdAccountAccess + 2 * GasCostOf.Memory).SetArgDisplayNames("EXTCODECOPY cold"),
+            new TestCaseData(extCodeCopyWarm, 116UL, GasCostOf.WarmStateRead + 2 * GasCostOf.Memory).SetArgDisplayNames("EXTCODECOPY warm"),
+            new TestCaseData(mcopy, 11UL, GasCostOf.VeryLow).SetArgDisplayNames("MCOPY base"),
+            new TestCaseData(mcopy, 17UL, GasCostOf.VeryLow + GasCostOf.VeryLow + GasCostOf.Memory).SetArgDisplayNames("MCOPY"),
+            new TestCaseData(selfDestruct, 5002UL, GasCostOf.SelfDestructEip150).SetArgDisplayNames("SELFDESTRUCT base"),
+            new TestCaseData(selfDestruct, 7602UL, GasCostOf.SelfDestructEip150 + GasCostOf.ColdAccountAccess + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT cold"),
+            new TestCaseData(selfDestruct, 32602UL, GasCostOf.SelfDestructEip150 + GasCostOf.ColdAccountAccess + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT new account"),
+        ];
     }
 
     private static TestCaseData[] AmsterdamOutOfGasOperations()
@@ -194,6 +223,10 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).PushData(0).PushData(TestItem.AddressC).Op(Instruction.EXTCODECOPY).Done, 715UL,
             GasCostOf.ExtCodeEip150 + GasCostOf.Memory + GasCostOf.Memory).SetArgDisplayNames("EXTCODECOPY"),
         new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.SELFDESTRUCT).Done, 4000UL, GasCostOf.SelfDestructEip150).SetArgDisplayNames("SELFDESTRUCT"),
+        new TestCaseData(Prepare.EvmCode.PushData(32).PushData(0).PushData(0).PushData(TestItem.AddressC).Op(Instruction.EXTCODECOPY).Done, 711UL, GasCostOf.ExtCodeEip150).SetArgDisplayNames("EXTCODECOPY base"),
+        // Before Berlin, Geth prices SELFDESTRUCT's base cost as part of its dynamic cost.
+        new TestCaseData(Prepare.EvmCode.PushData(TestItem.AddressF).Op(Instruction.SELFDESTRUCT).Done, 5002UL, GasCostOf.SelfDestructEip150 + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT base"),
+        new TestCaseData(Prepare.EvmCode.PushData(TestItem.AddressF).Op(Instruction.SELFDESTRUCT).Done, 30002UL, GasCostOf.SelfDestructEip150 + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT new account"),
     ];
 
     [Test]

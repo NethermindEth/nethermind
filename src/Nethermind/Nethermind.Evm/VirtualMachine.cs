@@ -1954,7 +1954,7 @@ public partial class VirtualMachine<TGasPolicy>(
             static (tracer, operation) => tracer.ReportOperationReady(operation.Cost, operation.Error));
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal ulong GetAccountAccessTraceGasCost(Address address, ulong baseCost, ulong extraCost = 0)
+    internal ulong GetAccountAccessTraceGasCost(Address address, ulong baseCost, ulong extraCost = 0, ulong warmCost = GasCostOf.WarmStateRead)
     {
         if (!Spec.UseHotAndColdStorage)
             return baseCost + extraCost;
@@ -1962,7 +1962,7 @@ public partial class VirtualMachine<TGasPolicy>(
         bool isCold = !IsTracingAccess && VmState.AccessTracker.IsCold(address) && !Spec.IsPrecompile(address);
         ulong accessCost = isCold
             ? Spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess
-            : GasCostOf.WarmStateRead;
+            : warmCost;
         return baseCost + accessCost + extraCost;
     }
 

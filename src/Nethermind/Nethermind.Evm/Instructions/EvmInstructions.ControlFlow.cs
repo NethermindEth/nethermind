@@ -379,13 +379,20 @@ public static partial class EvmInstructions
         if (TSpec.UseShanghaiDDosProtection)
         {
             if (!TGasPolicy.TryConsumeSelfDestructGas(ref gas))
+            {
+                if (DispatchFlags.ConstTracing && vm.IsTracingOperationStart)
+                    TraceSelfDestructBaseOutOfGas<TGasPolicy, TEip8037, TSpec>(vm, ref stack);
                 goto OutOfGas;
+            }
         }
 
         // Pop the inheritor address from the stack; signal underflow if missing.
         Address? inheritor = stack.PopAddress(vm.AddressCache);
         if (inheritor is null)
             goto StackUnderflow;
+
+        if (DispatchFlags.ConstTracing && vm.IsTracingOperationStart)
+            vm.TraceOperationReady(GetSelfDestructTraceGasCost<TGasPolicy, TEip8037, TSpec>(vm, inheritor));
 
         // Charge gas for SELFDESTRUCT beneficiary access; if insufficient, signal out-of-gas.
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, inheritor, AccountAccessKind.SelfDestructBeneficiary))
@@ -411,11 +418,7 @@ public static partial class EvmInstructions
 
         // Charge gas if transferring to a dead or non-existent account.
         bool inheritorAccountExists = state.AccountExists(inheritor);
-        bool chargesNewAccount = TSpec.ClearEmptyAccountWhenTouched switch
-        {
-            true => !result.IsZero && state.IsDeadAccount(inheritor),
-            false => !inheritorAccountExists && TSpec.UseShanghaiDDosProtection,
-        };
+        bool chargesNewAccount = ChargesSelfDestructNewAccount<TSpec>(state, inheritor, inheritorAccountExists, in result);
 
         // EIP-8038 adds an ACCOUNT_WRITE execution charge on top of the NEW_ACCOUNT state gas;
         // charge execution first so an execution-gas OOG does not spill state gas.
@@ -479,6 +482,55 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ChargesSelfDestructNewAccount<TSpec>(IWorldState state, Address inheritor, bool inheritorAccountExists, in UInt256 balance)
+        where TSpec : struct, ISelfDestructSpec =>
+        TSpec.ClearEmptyAccountWhenTouched switch
+        {
+            true => !balance.IsZero && state.IsDeadAccount(inheritor),
+            false => !inheritorAccountExists && TSpec.UseShanghaiDDosProtection,
+        };
+
+    /// <summary>Returns the execution gas a SELFDESTRUCT to <paramref name="inheritor"/> charges in all.</summary>
+    /// <remarks>
+    /// Under EIP-8037 the new-account charge is state gas, which Geth's struct logger does not see, so only the
+    /// EIP-8038 account-write part of it is included.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ulong GetSelfDestructTraceGasCost<TGasPolicy, TEip8037, TSpec>(VirtualMachine<TGasPolicy> vm, Address inheritor)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TEip8037 : struct, IFlag
+        where TSpec : struct, ISelfDestructSpec
+    {
+        IWorldState state = vm.WorldState;
+        ulong baseCost = TSpec.UseShanghaiDDosProtection ? GasCostOf.SelfDestructEip150 : 0;
+        ulong cost = vm.GetAccountAccessTraceGasCost(inheritor, baseCost, warmCost: 0);
+        if (ChargesSelfDestructNewAccount<TSpec>(state, inheritor, state.AccountExists(inheritor), state.GetBalance(vm.VmState.Env.ExecutingAccount)))
+        {
+            cost += (TSpec.IsEip8038Enabled ? Eip8038Constants.AccountWrite : 0) + (TEip8037.IsActive ? 0 : GasCostOf.NewAccount);
+        }
+
+        return cost;
+    }
+
+    /// <summary>Reports the cost of a SELFDESTRUCT that cannot pay its base cost.</summary>
+    /// <remarks>
+    /// Since Berlin, Geth charges the base cost as constant gas and reports it alone. Before, it prices the base and
+    /// new-account costs as one dynamic cost, so the beneficiary is popped here to price it; the frame halts anyway.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceSelfDestructBaseOutOfGas<TGasPolicy, TEip8037, TSpec>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TEip8037 : struct, IFlag
+        where TSpec : struct, ISelfDestructSpec
+    {
+        ulong cost = GasCostOf.SelfDestructEip150;
+        if (!vm.Spec.UseHotAndColdStorage && stack.PopAddress(vm.AddressCache) is { } inheritor)
+            cost = GetSelfDestructTraceGasCost<TGasPolicy, TEip8037, TSpec>(vm, inheritor);
+
+        vm.TraceOperationReady(cost);
     }
 
     /// <summary>
