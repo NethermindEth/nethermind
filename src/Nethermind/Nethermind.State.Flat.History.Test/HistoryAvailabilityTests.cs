@@ -53,16 +53,25 @@ public class HistoryAvailabilityTests
         _directory.Dispose();
     }
 
+    /// <remarks>
+    /// Reports the cheapest of several identical measurement windows: a per-read copy survives the minimum,
+    /// while a one-off chunk the runtime charges to this thread lands in one window only.
+    /// </remarks>
     [Test]
     public void RootMatches_ReadsTheMarkerWithoutAllocating()
     {
         const int Reads = 1000;
+        const int Windows = 5;
         bool matched = true;
         for (int i = 0; i < 10; i++) matched &= _availability.RootMatches(MarkedBlock, TestItem.KeccakA);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Reads; i++) matched &= _availability.RootMatches(MarkedBlock, TestItem.KeccakA);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = long.MaxValue;
+        for (int window = 0; window < Windows; window++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < Reads; i++) matched &= _availability.RootMatches(MarkedBlock, TestItem.KeccakA);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
 
         using (Assert.EnterMultipleScope())
         {
