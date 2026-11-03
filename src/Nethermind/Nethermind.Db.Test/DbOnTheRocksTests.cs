@@ -761,8 +761,8 @@ namespace Nethermind.Db.Test
             Assert.That(db.NativeCloses, Is.EqualTo(1), "the last release must close the database once");
         }
 
-        // After the dispose timeout, the last slices can be released at the same time on different cores, so each release
-        // returns its count to a different slot. The database must stay open until the last release and then close once.
+        // After the dispose timeout, the slices still held are released on many threads, and the last of them at the same
+        // time. The database must stay open while any slice is held and then close exactly once.
         [Test]
         public void Slices_held_past_the_dispose_timeout_and_released_together_close_the_db_once()
         {
@@ -821,7 +821,7 @@ namespace Nethermind.Db.Test
         // released before RocksDB closes, or releasing it afterwards touches freed native memory. Reads that start while
         // dispose waits must neither hide the slice still held nor keep the database open after it is released.
         [Test]
-        public void Dispose_waits_for_a_held_slice_while_other_threads_read_hits_and_misses([Values(0, 4)] int readerCount)
+        public void Dispose_waits_for_a_held_slice_with_concurrent_readers([Values(0, 4)] int readerCount)
         {
             byte[] key = [1, 2, 3];
             byte[] missing = [4, 5, 6];
@@ -2318,11 +2318,13 @@ namespace Nethermind.Db.Test
         ILogManager logManager
         ) : DbOnTheRocks(instance, null, "Blocks", config, logManager)
     {
-        public int NativeCloses { get; private set; }
+        private int _nativeCloses;
+
+        public int NativeCloses => Volatile.Read(ref _nativeCloses);
 
         protected override void ReleaseUnmanagedResources()
         {
-            NativeCloses++;
+            Interlocked.Increment(ref _nativeCloses);
             base.ReleaseUnmanagedResources();
         }
     }
