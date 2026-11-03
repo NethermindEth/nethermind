@@ -423,13 +423,15 @@ public class TransactionsMessageSerializerTests
         return result;
     }
 
-    [Test, NonParallelizable]
-    public void Malformed_list_returns_previously_decoded_transaction()
+    // A valid signed legacy transaction followed by a null transaction.
+    [TestCase("d2d08203e8640a80822710830405061b0102c0", TestName = "Malformed_list_returns_previously_decoded_transaction")]
+    // A list of one valid signed legacy transaction followed by a byte the message does not take.
+    [TestCase("d1d08203e8640a80822710830405061b010200", TestName = "Trailing_byte_returns_previously_decoded_transaction")]
+    [NonParallelizable]
+    public void Rejected_list_returns_previously_decoded_transaction(string payload)
     {
         TransactionsMessageSerializer serializer = new();
-        // A valid signed legacy transaction followed by a null transaction.
-        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(Bytes.FromHexString(
-            "d2d08203e8640a80822710830405061b0102c0")).AsDisposable();
+        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(Bytes.FromHexString(payload)).AsDisposable();
         Transaction reusable = TxDecoder.TxObjectPool.Get();
         TxDecoder.TxObjectPool.Return(reusable);
 
