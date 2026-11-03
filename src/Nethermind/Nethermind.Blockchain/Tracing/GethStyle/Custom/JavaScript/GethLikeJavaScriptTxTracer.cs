@@ -44,6 +44,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private string? _traceError;
     private bool _failedBeforeExecution;
     private bool _pendingStep;
+    private bool _pendingPostStep;
     private TraceStack _operationStack;
     private Stack<ulong>? _frameGas;
     private Stack<Log.Contract>? _contracts;
@@ -227,7 +228,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         _log.error = null;
         _log.gasCost = null;
         _failedBeforeExecution = false;
-        _pendingStep = opcode is Instruction.RETURNDATACOPY or Instruction.RETURN or Instruction.REVERT
+        _pendingPostStep = false;
+        _pendingStep = opcode is Instruction.KECCAK256 or Instruction.RETURNDATACOPY or Instruction.RETURN or Instruction.REVERT
             or Instruction.MLOAD or Instruction.MSTORE or Instruction.MSTORE8 or Instruction.CALLDATACOPY or Instruction.CODECOPY
             or Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.SLOAD or Instruction.SSTORE or Instruction.STATICCALL or Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL;
     }
@@ -262,12 +264,15 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
 
     public override void ReportOperationRemainingGas(ulong gas)
     {
-        if (!_pendingStep)
-            _log.gasCost ??= _log.gas - gas;
-        if (_functions.HasFlag(TracerFunctions.postStep))
+        // A step still pending failed before it could run; postStep follows the step that reports the error.
+        if (_pendingStep)
         {
-            Invoke(TracerFunctions.postStep);
+            _pendingPostStep = true;
+            return;
         }
+
+        _log.gasCost ??= _log.gas - gas;
+        InvokePostStep();
     }
 
     public override void ReportOperationError(EvmExceptionType error)
@@ -400,6 +405,20 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         if (_functions.HasFlag(TracerFunctions.step))
         {
             Invoke(TracerFunctions.step);
+        }
+
+        if (_pendingPostStep)
+        {
+            _pendingPostStep = false;
+            InvokePostStep();
+        }
+    }
+
+    private void InvokePostStep()
+    {
+        if (_functions.HasFlag(TracerFunctions.postStep))
+        {
+            Invoke(TracerFunctions.postStep);
         }
     }
 
