@@ -76,7 +76,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private static bool? Match(Address[]? addresses, HashSet<AddressAsKey>? addressSet, Address? address) =>
             addressSet?.Contains(address) ?? addresses?.Contains(address);
 
-        private static HashSet<AddressAsKey>? ToSet(Address[]? addresses) =>
-            addresses is { Length: > MaxScannedAddresses } ? [.. addresses] : null;
+        private static HashSet<AddressAsKey>? ToSet(Address[]? addresses)
+        {
+            if (addresses is not { Length: > MaxScannedAddresses }) return null;
+
+            HashSet<AddressAsKey> set = new(addresses.Length, GenericEqualityComparer.GetOptimized<AddressAsKey>());
+            foreach (Address address in addresses)
+            {
+                set.Add(address);
+            }
+
+            return set;
+        }
     }
 }
