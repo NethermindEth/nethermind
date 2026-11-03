@@ -107,7 +107,7 @@ public class StandardTxFilterBaseFeeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(rejection));
-            Assert.That(calculator.Calls, Is.EqualTo(1), "computed once, as the filter computed it before");
+            Assert.That(calculator.Calls, Is.EqualTo(1), "computed once per filter call");
         }
     }
 
@@ -292,7 +292,7 @@ public class StandardTxFilterBaseFeeTests
 
             Assert.That(calculator.Calls, Is.Zero);
 
-            // Without a supplied base fee, each filter that reads it computes it, as before.
+            // Without a supplied base fee, each filter that reads it computes it.
             Assert.That((bool)composite.IsAllowed(tx, new TxFilterContext(ParentAt1Gwei, spec)), Is.True);
             Assert.That(calculator.Calls, Is.EqualTo(2));
         }
@@ -435,7 +435,7 @@ public class StandardTxFilterBaseFeeTests
     [Test]
     public void Tx_pool_admission_checks_with_the_spec_of_the_head()
     {
-        // EIP-1559 activates at block 11 and the head is block 10, so admission checks with the head's spec, as before.
+        // EIP-1559 activates at block 11 and the head is block 10, so admission checks with the head's spec.
         ReleaseSpec beforeLondon = new() { IsEip1559Enabled = false };
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(call => call.Arg<ForkActivation>().BlockNumber >= 11 ? London : beforeLondon);
