@@ -120,10 +120,16 @@ namespace Nethermind.Network.Test
             INodeStats highReputationStats = Substitute.For<INodeStats>();
             highReputationStats.CurrentNodeReputation(Arg.Any<DateTime>()).Returns(100);
 
+            Peer lowReputationPeer = new(lowReputationNode, lowReputationStats) { IsAwaitingConnection = true };
+            Peer highReputationPeer = new(highReputationNode, highReputationStats) { IsAwaitingConnection = true };
+            ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
+            peers.TryAdd(lowReputationNode.Id, lowReputationPeer);
+            peers.TryAdd(highReputationNode.Id, highReputationPeer);
+
             IPeerPool peerPool = Substitute.For<IPeerPool>();
-            peerPool.Peers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
+            peerPool.Peers.Returns(peers);
             peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
-            peerPool.StaticPeers.Returns(new[] { new Peer(lowReputationNode, lowReputationStats), new Peer(highReputationNode, highReputationStats) });
+            peerPool.StaticPeers.Returns(new[] { lowReputationPeer, highReputationPeer });
 
             ConcurrentQueue<Node> dialed = new();
             IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
