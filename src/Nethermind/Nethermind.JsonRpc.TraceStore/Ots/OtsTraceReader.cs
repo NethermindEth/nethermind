@@ -28,9 +28,10 @@ internal static class OtsTraceReader
     internal static string? Validate(Block block, List<ParityLikeTxTrace> traces, CancellationToken ct) =>
         Validate(block, traces, ct, out _);
 
-    internal static string? Validate(Block block, List<ParityLikeTxTrace> traces, CancellationToken ct, out bool[] seen)
+    internal static string? Validate(Block block, List<ParityLikeTxTrace> traces, CancellationToken ct, out bool[] validatedPositions)
     {
-        seen = new bool[block.Transactions.Length];
+        bool[] seen = new bool[block.Transactions.Length];
+        validatedPositions = seen;
         foreach (ParityLikeTxTrace trace in traces)
         {
             ct.ThrowIfCancellationRequested();

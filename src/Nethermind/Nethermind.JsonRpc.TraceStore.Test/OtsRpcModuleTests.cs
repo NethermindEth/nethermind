@@ -146,6 +146,8 @@ public class OtsRpcModuleTests
         {
             Assert.That(response.Data.Txs.Select(t => t.Hash), Is.EqualTo(new[] { f.Blocks[4].Transactions[^1].Hash }));
             Assert.That(response.Data.Receipts.Select(r => r.TransactionHash), Is.EqualTo(response.Data.Txs.Select(t => t.Hash)));
+            Assert.That(response.Data.FirstPage, Is.True);
+            Assert.That(response.Data.LastPage, Is.False);
         }
     }
 
