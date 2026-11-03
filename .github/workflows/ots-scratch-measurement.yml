@@ -1,0 +1,61 @@
+name: OTS scratch allocation measurement
+on:
+  push:
+    branches: [perf/ots-scratch-measurement-20261103]
+    paths:
+      - .github/workflows/ots-scratch-measurement.yml
+      - src/Nethermind/Nethermind.JsonRpc.TraceStore.Test/OtsRpcModuleTests.cs
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-dotnet
+      - name: Build identical probes against exact baseline and candidate sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ots-measure" "$RUNNER_TEMP/ots-results"
+          dotnet --info > "$RUNNER_TEMP/ots-results/runtime.txt"
+          lscpu > "$RUNNER_TEMP/ots-results/cpu.txt"
+          git rev-parse HEAD > "$RUNNER_TEMP/ots-results/probe-commit.txt"
+          for pair in baseline:eddcb9c3e42ac545791bec2eb5b350d2f3cd132d candidate:b5db9ed22f61b3c22e675e2a7edf5ef7f67ffddc; do
+            label=${pair%%:*}; source=${pair#*:}
+            echo "$label $source" >> "$RUNNER_TEMP/ots-results/source-pins.txt"
+            for file in OtsTraceReader.cs OtsRpcModule.cs; do
+              path="src/Nethermind/Nethermind.JsonRpc.TraceStore/Ots/$file"
+              git show "$source:$path" > "$path"
+              sha256sum "$path" >> "$RUNNER_TEMP/ots-results/$label-source-hashes.txt"
+            done
+            dotnet build src/Nethermind/Nethermind.JsonRpc.TraceStore.Test/Nethermind.JsonRpc.TraceStore.Test.csproj -c Release > "$RUNNER_TEMP/ots-results/$label-build.log" 2>&1
+            cp -a src/Nethermind/artifacts/bin/Nethermind.JsonRpc.TraceStore.Test/release "$RUNNER_TEMP/ots-measure/$label"
+          done
+          dotnet build-server shutdown
+      - name: Run three complete ABBA cycles with fresh test processes
+        shell: bash
+        run: |
+          set -euo pipefail
+          arm=0
+          for label in baseline candidate candidate baseline baseline candidate candidate baseline baseline candidate candidate baseline; do
+            arm=$((arm + 1))
+            export OTS_PROBE_OUTPUT="$RUNNER_TEMP/ots-results/arm-$arm-$label.jsonl"
+            echo "$arm $label" >> "$RUNNER_TEMP/ots-results/order.txt"
+            dotnet "$RUNNER_TEMP/ots-measure/$label/Nethermind.JsonRpc.TraceStore.Test.dll"               --filter 'FullyQualifiedName~Measure_scratch_scan'               --results-directory "$RUNNER_TEMP/ots-results/test-$arm"               > "$RUNNER_TEMP/ots-results/arm-$arm-$label.log" 2>&1
+            test "$(wc -l < "$OTS_PROBE_OUTPUT")" -eq 3
+            cat "$OTS_PROBE_OUTPUT"
+          done
+      - name: Preserve results including failed builds or arms
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ots-scratch-measurement-${{ github.run_id }}
+          path: ${{ runner.temp }}/ots-results
+          if-no-files-found: error

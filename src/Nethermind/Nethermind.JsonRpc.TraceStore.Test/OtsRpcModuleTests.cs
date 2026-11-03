@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -774,6 +775,78 @@ public class OtsRpcModuleTests
             Assert.That(chain.StateReader.GetBalance(block.Header, TestItem.AddressF), Is.EqualTo((UInt256)10));
             Assert.That(chain.StateReader.GetCode(block.Header, contract), Is.EqualTo(!createdInSameTransaction && spec.IsEip6780Enabled ? code : []));
         }
+    }
+
+    [NonParallelizable]
+    [TestCase("absent", 32, 64)]
+    [TestCase("sparse", 32, 64)]
+    [TestCase("busy", 32, 64)]
+    public void Measure_scratch_scan(string scenario, int blockCount, int transactionCount)
+    {
+        using Fixture f = new();
+        for (int block = 0; block < blockCount; block++)
+        {
+            ParityTraceAction[] actions = new ParityTraceAction[transactionCount];
+            for (int i = 0; i < actions.Length; i++) actions[i] = Call(TestItem.AddressC);
+            if (scenario == "busy")
+                for (int i = 0; i < actions.Length; i++) actions[i] = Call(TestItem.AddressF);
+            else if (scenario == "sparse" && block == blockCount / 2)
+                actions[0] = Call(TestItem.AddressF);
+            f.AddBlock(actions);
+        }
+
+        Hash256?[] expected = scenario switch
+        {
+            "busy" => f.Blocks[^1].Transactions.Reverse().Select(t => t.Hash).ToArray(),
+            "sparse" => [f.Blocks[4 + blockCount / 2].Transactions[0].Hash],
+            _ => []
+        };
+        using (ResultWrapper<OtsSearchResult> sample = f.Module.ots_searchTransactionsBefore(TestItem.AddressF, 0, 25))
+        {
+            Assert.That(sample.Result.ResultType, Is.EqualTo(ResultType.Success), sample.Result.Error);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sample.Data.Txs.Select(t => t.Hash), Is.EqualTo(expected));
+                Assert.That(sample.Data.Receipts.Select(t => t.TransactionHash), Is.EqualTo(expected));
+            }
+        }
+
+        void Run(int iterations)
+        {
+            for (int i = 0; i < iterations; i++)
+            {
+                using ResultWrapper<OtsSearchResult> page = f.Module.ots_searchTransactionsBefore(TestItem.AddressF, 0, 25);
+                if (page.Result.ResultType != ResultType.Success || page.Data.Txs.Count != expected.Length)
+                    throw new InvalidOperationException("Measured search failed or returned unexpected row count.");
+            }
+        }
+
+        Run(50);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        using Process process = Process.GetCurrentProcess();
+        TimeSpan cpu = process.TotalProcessorTime;
+        int gen0 = GC.CollectionCount(0);
+        int gen1 = GC.CollectionCount(1);
+        int gen2 = GC.CollectionCount(2);
+        long allocated = GC.GetAllocatedBytesForCurrentThread();
+        long start = Stopwatch.GetTimestamp();
+        Run(200);
+        double milliseconds = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        double cpuMilliseconds = (process.TotalProcessorTime - cpu).TotalMilliseconds;
+        string record = JsonSerializer.Serialize(new
+        {
+            scenario, blockCount, transactionCount, iterations = 200,
+            milliseconds, allocatedBytes = allocated, bytesPerQuery = allocated / 200.0,
+            cpuMilliseconds, gen0 = GC.CollectionCount(0) - gen0,
+            gen1 = GC.CollectionCount(1) - gen1, gen2 = GC.CollectionCount(2) - gen2,
+            resultCount = expected.Length
+        });
+        string output = Environment.GetEnvironmentVariable("OTS_PROBE_OUTPUT") ?? throw new InvalidOperationException("Missing probe output path.");
+        File.AppendAllText(output, record + Environment.NewLine);
+        TestContext.Progress.WriteLine(record);
     }
 
     private static ParityLikeTxTrace ReadExecutionTrace(BasicTestBlockchain chain, Block block)
