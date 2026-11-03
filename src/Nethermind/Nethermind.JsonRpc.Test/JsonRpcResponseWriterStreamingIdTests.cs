@@ -14,7 +14,6 @@ using Microsoft.IO;
 using Nethermind.Core;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Evm.Tracing;
-using Nethermind.JsonRpc.Exceptions;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
