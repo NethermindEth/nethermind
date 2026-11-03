@@ -24,6 +24,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.JsonRpc.WebSockets;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -459,6 +460,45 @@ public class JsonRpcProcessorTests
             Assert.That(string.Join(" ", result.Select(static r => r.IsCollection
                 ? $"[{string.Join(",", r.BatchItems!.Select(static item => item.Id.ToString()))}]"
                 : r.Response!.Id.ToString())), Is.EqualTo(answer));
+        }
+    }
+
+    /// <remarks>
+    /// The socket sink is shared by every batch of one WS/IPC message and resets its stop flag only when a batch
+    /// response starts, which a leading notification defers.
+    /// </remarks>
+    [TestCase("eth_chainId", 1, TestName = "Response limit stop of a previous batch does not leak (sequential)")]
+    [TestCase("eth_call", 4, TestName = "Response limit stop of a previous batch does not leak (concurrent)")]
+    public async Task Response_limit_stop_of_a_previous_batch_does_not_leak(string method, int concurrency)
+    {
+        List<string> dispatched = [];
+        IJsonRpcService service = CreateService(request =>
+        {
+            lock (dispatched) dispatched.Add(request.Id.ToString());
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = concurrency, EthModuleConcurrentInstances = concurrency });
+        JsonRpcContext context = new(RpcEndpoint.Ws);
+        using MemoryMessageStream stream = new();
+        using SocketSendLock sendLock = new();
+        using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(stream, new NullJsonRpcLocalStats(), maxBatchResponseBodySize: 1, sendLock, context);
+        string notification = $$"""{"jsonrpc":"2.0","method":"{{method}}","params":[]}""";
+
+        await processor.ProcessAsync(
+            CreateReader(CreateBatchRequest(CreateRequest("1", method), CreateRequest("2", method)) + CreateBatchRequest(notification, CreateRequest("3", method))),
+            context,
+            sink,
+            new JsonRpcProcessingOptions(JsonRpcInputMode.MultipleDocuments));
+
+        string[] messages = Encoding.UTF8.GetString(stream.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        using JsonDocument secondBatch = JsonDocument.Parse(messages[^1]);
+        JsonElement answer = secondBatch.RootElement.EnumerateArray().Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(messages, Has.Length.EqualTo(2));
+            Assert.That(dispatched, Does.Contain("3"));
+            Assert.That(answer.GetProperty("id").GetInt32(), Is.EqualTo(3));
+            Assert.That(answer.TryGetProperty("error", out _), Is.False, answer.GetRawText());
         }
     }
 

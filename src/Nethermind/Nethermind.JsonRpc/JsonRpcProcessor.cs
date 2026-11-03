@@ -671,7 +671,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     }
 
                     await WriteBatchResponseAsync(executed, executedResponse, ref batchStarted, requestIndex, requestCount, sink, cancellationToken);
-                    isStopped |= sink.StopRequested;
+                    isStopped |= batchStarted && sink.StopRequested;
                     continue;
                 }
 
@@ -699,7 +699,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 }
 
                 await WriteBatchResponseAsync(request, response, ref batchStarted, requestIndex, requestCount, sink, cancellationToken);
-                isStopped |= sink.StopRequested;
+                isStopped |= batchStarted && sink.StopRequested;
                 hasNext = source.TryGetNext(out request, out decodeException);
                 if (hasNext && request is not null) batchRequestJsonLifetime.TrackUntilBatchEnd(request);
             }
