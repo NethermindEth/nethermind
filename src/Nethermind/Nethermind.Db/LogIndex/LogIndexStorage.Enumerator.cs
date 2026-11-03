@@ -102,6 +102,7 @@ public partial class LogIndexStorage
             return true;
         }
 
+        /// <inheritdoc/>
         public bool MoveTo(int target)
         {
             if (_index >= 0 && _value is not null)

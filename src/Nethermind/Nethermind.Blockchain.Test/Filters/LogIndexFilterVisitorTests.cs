@@ -5,12 +5,14 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
 using Nethermind.Db.LogIndex;
 using NSubstitute;
 using NUnit.Framework;
@@ -20,6 +22,35 @@ namespace Nethermind.Blockchain.Test.Filters;
 [Parallelizable(ParallelScope.All)]
 public class LogIndexFilterVisitorTests
 {
+    private const int StorageBlockCount = 6_000;
+    private const int StorageBatchSize = 50;
+    private static readonly Address SparseAddress = TestItem.AddressA;
+    private static readonly Address DenseAddress = TestItem.AddressB;
+    private static readonly Address MissingAddress = TestItem.AddressC;
+    private static readonly Hash256 DenseTopic = TestItem.KeccakA;
+    private static readonly Hash256 SparseTopic = TestItem.KeccakB;
+
+    private ChunkedLogIndexStorage _chunkedIndex = null!;
+    private HashSet<int> _sparseAddressBlocks = null!;
+    private HashSet<int> _denseAddressBlocks = null!;
+    private HashSet<int> _denseTopicBlocks = null!;
+    private HashSet<int> _sparseTopicBlocks = null!;
+
+    [OneTimeSetUp]
+    public async Task OneTimeSetUp()
+    {
+        Random random = new(42);
+        _sparseAddressBlocks = RandomBlocks(random, 100);
+        _denseAddressBlocks = RandomBlocks(random, 2);
+        _denseTopicBlocks = RandomBlocks(random, 1);
+        _sparseTopicBlocks = RandomBlocks(random, 30);
+
+        _chunkedIndex = await ChunkedLogIndexStorage.CreateAsync(StorageBlockCount, StorageBatchSize, StorageLogsAt);
+    }
+
+    [OneTimeTearDown]
+    public async Task OneTimeTearDown() => await _chunkedIndex.DisposeAsync();
+
     private record Ranges(Dictionary<Address, List<int>> Address, Dictionary<Hash256, List<int>>[] Topic)
     {
         public List<int> this[Address address] => Address[address];
@@ -117,36 +148,15 @@ public class LogIndexFilterVisitorTests
     [TestCase(5_000, 5_000, 1)]
     [TestCase(5_000, 5_000, 2)]
     [TestCase(20, 100, 3)]
-    public void IntersectEnumerator_Seekable_Random(int len1, int len2, int seed)
+    public void IntersectEnumerator_Random_DifferentDensity(int len1, int len2, int seed)
     {
         Random random = new(seed);
         int[] s1 = RandomAscending(random, len1, Math.Max(1, 10_000 / len1));
         int[] s2 = RandomAscending(random, len2, Math.Max(1, 10_000 / len2));
         int[] expected = s1.Intersect(s2).Order().ToArray();
 
-        foreach ((bool seekable1, bool seekable2) in new[] { (true, true), (true, false), (false, true) })
-        {
-            using LogIndexFilterVisitor.IntersectEnumerator forward = new(Create(s1, seekable1), Create(s2, seekable2));
-            Assert.That(EnumerateOnce(forward), Is.EqualTo(expected));
-
-            using LogIndexFilterVisitor.IntersectEnumerator backward = new(Create(s2, seekable2), Create(s1, seekable1));
-            Assert.That(EnumerateOnce(backward), Is.EqualTo(expected));
-        }
-
-        static IEnumerator<int> Create(int[] array, bool seekable) =>
-            seekable ? new SeekableEnumerator(array) : array.Cast<int>().GetEnumerator();
-    }
-
-    [TestCase(0, 0)]
-    [TestCase(0, 10)]
-    [TestCase(10, 0)]
-    public void IntersectEnumerator_Seekable_SomeEmpty(int len1, int len2)
-    {
-        using LogIndexFilterVisitor.IntersectEnumerator enumerator = new(
-            new SeekableEnumerator(Enumerable.Range(0, len1).ToArray()),
-            new SeekableEnumerator(Enumerable.Range(0, len2).ToArray()));
-
-        Assert.That(EnumerateOnce(enumerator), Is.Empty);
+        VerifyEnumerator<LogIndexFilterVisitor.IntersectEnumerator>(s1, s2, expected);
+        VerifyEnumerator<LogIndexFilterVisitor.IntersectEnumerator>(s2, s1, expected);
     }
 
     [TestCase(100, 3_000, 3_000)]
@@ -162,12 +172,43 @@ public class LogIndexFilterVisitorTests
 
         foreach (bool seekableInnerChild in new[] { true, false })
         {
-            IEnumerator<int> innerChild = seekableInnerChild ? new SeekableEnumerator(s3) : s3.Cast<int>().GetEnumerator();
-            using LogIndexFilterVisitor.IntersectEnumerator inner = new(new SeekableEnumerator(s2), innerChild);
+            using LogIndexFilterVisitor.IntersectEnumerator inner = new(new SeekableEnumerator(s2), CreateEnumerator(s3, seekableInnerChild));
             using LogIndexFilterVisitor.IntersectEnumerator outer = new(new SeekableEnumerator(s1), inner);
 
             Assert.That(EnumerateOnce(outer), Is.EqualTo(expected));
         }
+    }
+
+    [Test]
+    public void FilterEnumerator_OverChunkedStorage(
+        [Values("sparse-dense", "dense-dense", "sparse-sparse", "missing-dense", "dense-dense-sparse", "two-addresses-dense", "sparse-or-topics-sparse")] string query,
+        [Values(0, 777, StorageBlockCount / 2 - 5)] int from,
+        [Values(StorageBlockCount / 2 + 5, 4_321, StorageBlockCount - 1)] int to)
+    {
+        (LogFilter Filter, IEnumerable<int> Blocks) testCase = query switch
+        {
+            "sparse-dense" => (StorageFilter(SparseAddress, DenseTopic), _sparseAddressBlocks.Intersect(_denseTopicBlocks)),
+            "dense-dense" => (StorageFilter(DenseAddress, DenseTopic), _denseAddressBlocks.Intersect(_denseTopicBlocks)),
+            "sparse-sparse" => (StorageFilter(SparseAddress, null, SparseTopic), _sparseAddressBlocks.Intersect(_sparseTopicBlocks)),
+            "missing-dense" => (StorageFilter(MissingAddress, DenseTopic), []),
+            "dense-dense-sparse" => (StorageFilter(DenseAddress, DenseTopic, SparseTopic),
+                _denseAddressBlocks.Intersect(_denseTopicBlocks).Intersect(_sparseTopicBlocks)),
+            "two-addresses-dense" => (FilterBuilder.New()
+                    .WithAddresses(SparseAddress, MissingAddress)
+                    .WithTopicExpressions(TestTopicExpressions.Specific(DenseTopic))
+                    .Build(),
+                _sparseAddressBlocks.Intersect(_denseTopicBlocks)),
+            "sparse-or-topics-sparse" => (FilterBuilder.New()
+                    .WithAddress(SparseAddress)
+                    .WithTopicExpressions(TestTopicExpressions.Or(DenseTopic, TestItem.KeccakE), TestTopicExpressions.Specific(SparseTopic))
+                    .Build(),
+                _sparseAddressBlocks.Intersect(_denseTopicBlocks).Intersect(_sparseTopicBlocks)),
+            _ => throw new ArgumentOutOfRangeException(nameof(query))
+        };
+
+        long[] expected = testCase.Blocks.Where(b => b >= from && b <= to).Order().Select(static b => (long)b).ToArray();
+
+        Assert.That(_chunkedIndex.Storage.EnumerateBlockNumbersFor(testCase.Filter, (ulong)from, (ulong)to).ToArray(), Is.EqualTo(expected));
     }
 
     [TestCase(
@@ -440,14 +481,20 @@ public class LogIndexFilterVisitorTests
     private static void VerifyEnumerator<T>(int[] s1, int[] s2, int[] ex)
         where T : IEnumerator<int>
     {
-        using T enumerator = (T)Activator.CreateInstance(
-            typeof(T),
-            s1.Cast<int>().GetEnumerator(),
-            s2.Cast<int>().GetEnumerator()
-        )!;
+        foreach ((bool seekable1, bool seekable2) in new[] { (false, false), (true, true), (true, false), (false, true) })
+        {
+            using T enumerator = (T)Activator.CreateInstance(
+                typeof(T),
+                CreateEnumerator(s1, seekable1),
+                CreateEnumerator(s2, seekable2)
+            )!;
 
-        Assert.That(EnumerateOnce(enumerator), Is.EqualTo(ex));
+            Assert.That(EnumerateOnce(enumerator), Is.EqualTo(ex), $"seekable: {seekable1}, {seekable2}");
+        }
     }
+
+    private static IEnumerator<int> CreateEnumerator(int[] array, bool seekable) =>
+        seekable ? new SeekableEnumerator(array) : array.Cast<int>().GetEnumerator();
 
     private static IEnumerable<int> EnumerateOnce(IEnumerator<int> enumerator)
     {
@@ -490,4 +537,24 @@ public class LogIndexFilterVisitorTests
     private static FilterBuilder BuildFilter() => FilterBuilder.New()
         .FromBlock(FromBlock)
         .ToBlock(ToBlock);
+
+    private static LogFilter StorageFilter(Address address, Hash256? topic0, Hash256? topic1 = null) => FilterBuilder.New()
+        .WithAddress(address)
+        .WithTopicExpressions(
+            topic0 is null ? TestTopicExpressions.Any : TestTopicExpressions.Specific(topic0),
+            topic1 is null ? TestTopicExpressions.Any : TestTopicExpressions.Specific(topic1))
+        .Build();
+
+    private static HashSet<int> RandomBlocks(Random random, int oneIn) =>
+        [.. Enumerable.Range(0, StorageBlockCount).Where(_ => random.Next(oneIn) == 0)];
+
+    private LogEntry[] StorageLogsAt(int block)
+    {
+        List<LogEntry> logs = [Build.A.LogEntry.WithAddress(TestItem.AddressD).TestObject];
+        if (_sparseAddressBlocks.Contains(block)) logs.Add(Build.A.LogEntry.WithAddress(SparseAddress).TestObject);
+        if (_denseAddressBlocks.Contains(block)) logs.Add(Build.A.LogEntry.WithAddress(DenseAddress).TestObject);
+        if (_denseTopicBlocks.Contains(block)) logs.Add(Build.A.LogEntry.WithAddress(TestItem.AddressD).WithTopics(DenseTopic).TestObject);
+        if (_sparseTopicBlocks.Contains(block)) logs.Add(Build.A.LogEntry.WithAddress(TestItem.AddressD).WithTopics(TestItem.KeccakC, SparseTopic).TestObject);
+        return [.. logs];
+    }
 }
