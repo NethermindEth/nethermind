@@ -3,7 +3,8 @@ name: Nethermind tests (Trie DB)
 # Mirror of nethermind-tests.yml pinned to the patricia-trie backend via TEST_USE_TRIE. Flat is the
 # production default and so the default everywhere else; this workflow keeps patricia validated across
 # the same project matrix. Kept to a single Linux runner and without coverage plumbing: the multi-OS and
-# codecov legs are backend-independent, and duplicating them would only collide on artifact names.
+# codecov legs are backend-independent, and duplicating them would only collide on artifact names. That
+# runner is arm64, as fast as x64 for this suite and off the x64 hosted pool that PR jobs queue for.
 # EEST fixtures are not run here — nethermind-tests.yml calls run-nethtest.yml with setup_group "all",
 # which covers both the patricia and flat configuration groups.
 
@@ -34,12 +35,12 @@ jobs:
     uses: ./.github/workflows/build-test-artifacts.yml
     with:
       matrix: >-
-        {"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""}]}
+        {"include":[{"rid":"linux-arm64","os":"ubuntu-24.04-arm","variant":"release","build_args":""}]}
 
   tests:
     name: Run ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: ${{ matrix.project.list && 25 || 20 }}
     env:
       DOTNET_GCConserveMemory: 9
@@ -158,7 +159,7 @@ jobs:
   tests-spec:
     name: Run ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: ${{ matrix.project.list && 25 || 20 }}
     strategy:
       fail-fast: false
@@ -225,7 +226,7 @@ jobs:
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }})
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -281,7 +282,7 @@ jobs:
     name: Tests summary
     needs: [tests, tests-spec, tests-chunked]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Check result
         run: |
