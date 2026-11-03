@@ -154,12 +154,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     {
                         string revertMessage = TransactionSubstate.BuildRevertMessage(executionRevertedReason, errorMessage);
 
-                        if (executionRevertedReason is not null)
-                        {
-                            return ResultWrapper<TResult, string>.Fail(revertMessage, ErrorCodes.ExecutionReverted, executionRevertedReason.ToHexString(true));
-                        }
-
-                        return ResultWrapper<TResult, string?>.Fail(revertMessage, ErrorCodes.ExecutionReverted, null);
+                        return ResultWrapper<TResult, string>.Fail(revertMessage, ErrorCodes.ExecutionReverted, (executionRevertedReason ?? []).ToHexString(true));
                     }
 
                     return bodyData is null

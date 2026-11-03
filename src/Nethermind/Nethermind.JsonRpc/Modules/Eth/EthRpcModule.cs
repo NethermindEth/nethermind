@@ -1192,7 +1192,7 @@ public partial class EthRpcModule(
         }
         catch (Exception ex)
         {
-            return ResultWrapper<ulong>.Fail(ex.Message, ErrorCodes.InternalError, 0ul);
+            return ResultWrapper<ulong>.Fail(ex.Message, ErrorCodes.InternalError);
         }
     }
 

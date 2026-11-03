@@ -274,7 +274,7 @@ public partial class DebugRpcModuleTests
             expected = JsonSerializer.Serialize(new
             {
                 jsonrpc = "2.0",
-                error = new { code = ErrorCodes.InvalidParams, message = error.Message, data = $"{error.GetType()}: {error.Message}" },
+                error = new { code = ErrorCodes.InvalidParams, message = error.Message },
                 id = 67
             });
         }

@@ -1260,7 +1260,7 @@ public partial class EthRpcModuleTests
 
         string message = $"From block {expectedFromBlock} is later than to block 0.";
         Assert.That(serialized, Is.EqualTo(
-            $$"""{"jsonrpc":"2.0","error":{"code":-32602,"message":"{{message}}","data":"System.ArgumentException: {{message}}"},"id":67}"""));
+            $$"""{"jsonrpc":"2.0","error":{"code":-32602,"message":"{{message}}"},"id":67}"""));
     }
 
     [TestCase("""{"fromBlock":"0x1","toBlock":"0x64"}""", ErrorCodes.InvalidParams)]
@@ -2274,6 +2274,32 @@ public partial class EthRpcModuleTests
             Assert.That(secondSerialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{TestBlockchainIds.ChainId:X}\",\"id\":\"client-id\"}}"));
         }
         bridge.Received(1).GetChainId();
+    }
+
+    [Test]
+    public async Task Eth_chain_id_failure_has_no_error_data()
+    {
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        using Context ctx = await Context.Create(blockchainBridge: bridge);
+        _ = ctx.Test;
+        bridge.GetChainId().Throws(new InvalidOperationException("chain id unavailable"));
+
+        string serialized = await ctx.Test.TestEthRpc("eth_chainId");
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32603,"message":"chain id unavailable"},"id":67}"""));
+    }
+
+    [Test]
+    public async Task Eth_call_revert_without_output_reports_empty_hex_data()
+    {
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        bridge.Call(null!, null!).ReturnsForAnyArgs(new CallOutput { Error = "execution reverted", ExecutionReverted = true, OutputData = null! });
+        using Context ctx = await Context.Create(blockchainBridge: bridge);
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", new { to = TestItem.AddressB }, "latest");
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted","data":"0x"},"id":67}"""));
     }
 
     [Test]
