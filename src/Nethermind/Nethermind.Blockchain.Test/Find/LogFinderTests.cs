@@ -757,9 +757,16 @@ public class LogFinderTests
         ];
         Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
         byte[] encoded = EncodeReceipt(block, compact, logEntries);
-        LogFinder finder = CreateEncodedLogFinder(block, encoded, compact, indexed, streamsTopics, out ILogIndexStorage? index);
+        TopicCountingDecoder decoder = TopicCountingDecoder.Create(compact, streamsTopics);
+        LogFinder finder = CreateEncodedLogFinder(block, encoded, decoder, indexed, out ILogIndexStorage? index);
         LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
 
+        foreach (SerializedLogs logs in FoundLogs.Serialize(finder.FindLogs(filter)))
+        {
+            logs.Dispose();
+        }
+
+        Assert.That(decoder.DecodeTopicsCalls, Is.EqualTo(streamsTopics ? 0 : logEntries.Length));
         AssertSerializedAsFilterLogs(finder.FindLogs(filter));
         Assert.That(finder.FindLogs(filter).Select(static log => log.Topics), Is.EqualTo(logEntries.Select(static log => log.Topics)));
         index?.Received().GetEnumerator(TestItem.AddressA, 1, 1);
@@ -790,7 +797,7 @@ public class LogFinderTests
             encoded[topic] = 0xe0;
         }
 
-        LogFinder finder = CreateEncodedLogFinder(block, encoded, compact, indexed, streamsTopics, out _);
+        LogFinder finder = CreateEncodedLogFinder(block, encoded, TopicCountingDecoder.Create(compact, streamsTopics), indexed, out _);
         LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
 
         using (Assert.EnterMultipleScope())
@@ -812,10 +819,8 @@ public class LogFinderTests
         return new ReceiptArrayStorageDecoder(compact).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
     }
 
-    private LogFinder CreateEncodedLogFinder(Block block, byte[] encoded, bool compact, bool indexed, bool streamsTopics, out ILogIndexStorage? index)
+    private LogFinder CreateEncodedLogFinder(Block block, byte[] encoded, IReceiptRefDecoder decoder, bool indexed, out ILogIndexStorage? index)
     {
-        IReceiptRefTopicDecoder topicDecoder = compact ? CompactReceiptStorageDecoder.Instance : new ReceiptStorageDecoder();
-        IReceiptRefDecoder decoder = streamsTopics ? topicDecoder : new ReceiptRefDecoderWithoutTopicStreaming(topicDecoder);
         ReceiptsRecovery recovery = new(Substitute.For<IEthereumEcdsa>(), _specProvider);
         LegacyReceiptFinder receiptFinder = new(encoded, decoder, () => recovery.CreateLogRecoveryContext(new ReceiptRecoveryBlock(block)));
         if (!indexed)
@@ -827,20 +832,6 @@ public class LogFinderTests
         index = CreateLogIndexStorage(1, 1);
         index.GetEnumerator(TestItem.AddressA, 1, 1).Returns(_ => new[] { 1 }.AsEnumerable().GetEnumerator());
         return new IndexedLogFinder(_blockTree, receiptFinder, _receiptStorage, LimboLogs.Instance, recovery, _specProvider!, index, minBlocksToUseIndex: 1);
-    }
-
-    /// <summary>A decoder built before <see cref="IReceiptRefTopicDecoder"/>, as in a plugin.</summary>
-    private sealed class ReceiptRefDecoderWithoutTopicStreaming(IReceiptRefDecoder decoder) : IReceiptRefDecoder
-    {
-        public void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item) =>
-            decoder.DecodeStructRef(ref decoderContext, rlpBehaviors, out item);
-
-        public void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors none, out LogEntryStructRef current) =>
-            decoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
-
-        public Hash256[] DecodeTopics(RlpReader reader) => decoder.DecodeTopics(reader);
-
-        public bool CanDecodeBloom => decoder.CanDecodeBloom;
     }
 
     private const ulong BoundaryOldestStored = 50;
@@ -1160,6 +1151,44 @@ public class LogFinderTests
             Interlocked.Increment(ref _calls);
             return inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
         }
+    }
+
+    /// <summary>Counts the calls to <see cref="IReceiptRefDecoder.DecodeTopics"/>.</summary>
+    /// <remarks>Implements only <see cref="IReceiptRefDecoder"/>, as a plugin decoder built before <see cref="IReceiptRefTopicDecoder"/> does.</remarks>
+    private class TopicCountingDecoder(IReceiptRefTopicDecoder decoder) : IReceiptRefDecoder
+    {
+        private int _decodeTopicsCalls;
+
+        protected IReceiptRefTopicDecoder Decoder { get; } = decoder;
+
+        public int DecodeTopicsCalls => Volatile.Read(ref _decodeTopicsCalls);
+
+        public static TopicCountingDecoder Create(bool compact, bool streamsTopics)
+        {
+            IReceiptRefTopicDecoder decoder = compact ? CompactReceiptStorageDecoder.Instance : new ReceiptStorageDecoder();
+            return streamsTopics ? new TopicStreamingCountingDecoder(decoder) : new TopicCountingDecoder(decoder);
+        }
+
+        public void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item) =>
+            Decoder.DecodeStructRef(ref decoderContext, rlpBehaviors, out item);
+
+        public void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors none, out LogEntryStructRef current) =>
+            Decoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
+
+        public Hash256[] DecodeTopics(RlpReader reader)
+        {
+            Interlocked.Increment(ref _decodeTopicsCalls);
+            return Decoder.DecodeTopics(reader);
+        }
+
+        public bool CanDecodeBloom => Decoder.CanDecodeBloom;
+    }
+
+    private sealed class TopicStreamingCountingDecoder(IReceiptRefTopicDecoder decoder) : TopicCountingDecoder(decoder), IReceiptRefTopicDecoder
+    {
+        public int StartDecodingTopics(ref RlpReader reader) => Decoder.StartDecodingTopics(ref reader);
+
+        public void DecodeTopic(ref RlpReader reader, int index, scoped Span<byte> topic) => Decoder.DecodeTopic(ref reader, index, topic);
     }
 
     private sealed class LegacyReceiptFinder(byte[] receiptsData, IReceiptRefDecoder? decoder = null,

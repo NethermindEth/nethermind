@@ -3,9 +3,8 @@
 
 using System;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Blockchain.Receipts;
+namespace Nethermind.Serialization.Rlp;
 
 /// <summary>Decodes the topics of a stored log one at a time, without allocating them.</summary>
 /// <remarks>
