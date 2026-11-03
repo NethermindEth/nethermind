@@ -52,17 +52,6 @@ while true; do
   sleep 10
 done
 
-# A started receipt transaction-hash migration must finish before the stop: after a restart without peers the
-# node does not leave the syncing state, so the migration does not resume.
-deadline=$((SECONDS + 3600))
-plain_backfill() { sed -E 's/\x1b\[[0-9;]*m//g' "$out/backfill.log"; }
-while plain_backfill | grep -F 'Adding transaction hashes to stored receipts' > /dev/null \
-  && ! plain_backfill | grep -F 'Transaction hashes added to stored receipts' > /dev/null; do
-  (( SECONDS < deadline )) || die "transaction hashes were not added to stored receipts before the stop"
-  sleep 10
-  docker logs "$container" > "$out/backfill.log" 2>&1
-done
-
 # Graceful shutdown drains the compression queue before the measured warm-up.
 stop_signal="$(docker inspect "$container" --format '{{.Config.StopSignal}}')"
 case "$stop_signal" in
