@@ -8,13 +8,16 @@ namespace Nethermind.Runner;
 internal static class DatabaseDirectory
 {
     /// <summary>
-    /// Returns the database directory: <paramref name="dbDir"/> when given, otherwise <paramref name="configured"/> or the default.
+    /// Returns the database path: <paramref name="configured"/> under <paramref name="dbDir"/> when given, otherwise <paramref name="resolved"/>.
     /// </summary>
+    /// <param name="dbDir">The <c>--db-dir</c> value.</param>
+    /// <param name="configured">The configured <c>Init.BaseDbPath</c>, before <c>--data-dir</c> is applied.</param>
+    /// <param name="resolved">The database path after <c>--data-dir</c> is applied.</param>
     /// <remarks>
-    /// <paramref name="dbDir"/> is the <c>--db-dir</c> value. It is used as given rather than as a prefix for the configured path,
-    /// so it also wins over the path derived from <c>--data-dir</c>; a relative value resolves the way <c>--data-dir</c> does.
+    /// <c>--db-dir</c> is the parent directory of the configured path (bundled configs use <c>nethermind_db/&lt;network&gt;</c>),
+    /// and a rooted configured path is kept as is. It is applied to <paramref name="configured"/> rather than to <paramref name="resolved"/>,
+    /// which <c>--data-dir</c> has already made rooted, so <c>--db-dir</c> wins over the data directory.
     /// </remarks>
-    public static string Resolve(string? dbDir, string? configured) => string.IsNullOrWhiteSpace(dbDir)
-        ? configured ?? string.Empty.GetApplicationResourcePath("db")
-        : dbDir.GetApplicationResourcePath();
+    public static string Resolve(string? dbDir, string? configured, string resolved) =>
+        string.IsNullOrWhiteSpace(dbDir) ? resolved : configured.GetApplicationResourcePath(dbDir);
 }
