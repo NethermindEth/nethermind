@@ -1051,6 +1051,36 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Find_headers_forward_returns_only_descendants_of_origin([Values(0, 1)] int skip, [Values(2, 4)] int numberOfBlocks, [Values] bool sideChainOrigin)
+    {
+        BlockTree blockTree = BuildBlockTree();
+        Block[] canonical = new Block[4];
+        canonical[0] = Build.A.Block.WithNumber(0).TestObject;
+        AddToMain(blockTree, canonical[0]);
+        for (int i = 1; i < canonical.Length; i++)
+        {
+            canonical[i] = Build.A.Block.WithParent(canonical[i - 1]).TestObject;
+            AddToMain(blockTree, canonical[i]);
+        }
+
+        Block block1b = Build.A.Block.WithParent(canonical[0]).WithExtraData([1]).TestObject;
+        Block block2b = Build.A.Block.WithParent(block1b).WithExtraData([1]).TestObject;
+        blockTree.SuggestBlock(block1b);
+        blockTree.SuggestBlock(block2b);
+
+        Hash256[] expected = sideChainOrigin
+            ? [block1b.Hash!]
+            : Enumerable.Range(0, numberOfBlocks)
+                .Select(i => 1 + i * (skip + 1))
+                .TakeWhile(number => number < canonical.Length)
+                .Select(number => canonical[number].Hash!)
+                .ToArray();
+
+        using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(sideChainOrigin ? block1b.Hash : canonical[1].Hash, numberOfBlocks, skip, false);
+        Assert.That(headers.TakeWhile(static header => header is not null).Select(static header => header.Hash), Is.EqualTo(expected));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_headers_reverse()
     {
         BlockTree blockTree = BuildBlockTree();

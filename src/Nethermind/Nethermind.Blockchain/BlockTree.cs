@@ -775,9 +775,22 @@ namespace Nethermind.Blockchain
                     BlockHeader endHeader = FindHeader(startHeader.Number + (ulong)(numberOfBlocks - 1), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (endHeader is not null)
                     {
-                        return FindHeadersReversedFast(this, endHeader, numberOfBlocks);
+                        ArrayPoolList<BlockHeader> headers = FindHeadersReversedFast(this, endHeader, numberOfBlocks);
+                        if (headers[0] is null || headers[0].Hash == startHeader.Hash)
+                        {
+                            return headers;
+                        }
+
+                        headers.Dispose();
+                        return new ArrayPoolList<BlockHeader>(1) { startHeader };
                     }
                 }
+            }
+
+            // Later headers are resolved by number, so they descend from the origin only when it is the block that its number resolves to
+            if (!reverse && GetBlockHashOnMainOrBestDifficultyHash(startHeader.Number) != startHeader.Hash)
+            {
+                return new ArrayPoolList<BlockHeader>(1) { startHeader };
             }
 
             ArrayPoolList<BlockHeader> result = new(numberOfBlocks, numberOfBlocks);
