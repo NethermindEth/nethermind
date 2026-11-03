@@ -1228,20 +1228,6 @@ public partial class DebugRpcModuleTests
         if (method == "debug_traceBlockByNumber") Assert.That(clock.Timers, Is.Empty, "a recovered setup failure must never arm an execution timer");
     }
 
-    private static IEnumerable<TestCaseData> BlockTimeoutPrecedenceCases()
-    {
-        foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash" })
-        {
-            yield return new TestCaseData(false, "\"bad\"", "lookup", method);
-            yield return new TestCaseData(false, "\"5s\"", "lookup", method);
-            yield return new TestCaseData(true, "\"bad\"", "constructor", method);
-            yield return new TestCaseData(true, "\"5s\"", "constructor", method);
-            yield return new TestCaseData(false, "7", "type", method);
-        }
-        yield return new TestCaseData(false, "\"bad\"", "lookup-tx", "debug_traceTransaction");
-        yield return new TestCaseData(false, "\"bad\"", "eager", "debug_intermediateRoots");
-    }
-
     private static IEnumerable<TestCaseData> RawBlockTimeoutCases()
     {
         const string raw = "debug_traceBlock";
@@ -1325,6 +1311,20 @@ public partial class DebugRpcModuleTests
             for (int i = 0; i < traces.Count; i++)
                 Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
         }
+    }
+
+    private static IEnumerable<TestCaseData> BlockTimeoutPrecedenceCases()
+    {
+        foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash" })
+        {
+            yield return new TestCaseData(false, "\"bad\"", "lookup", method);
+            yield return new TestCaseData(false, "\"5s\"", "lookup", method);
+            yield return new TestCaseData(true, "\"bad\"", "constructor", method);
+            yield return new TestCaseData(true, "\"5s\"", "constructor", method);
+            yield return new TestCaseData(false, "7", "type", method);
+        }
+        yield return new TestCaseData(false, "\"bad\"", "lookup-tx", "debug_traceTransaction");
+        yield return new TestCaseData(false, "\"bad\"", "eager", "debug_intermediateRoots");
     }
 
     [Test]
