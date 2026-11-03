@@ -52,13 +52,16 @@ public sealed class WorkspacePaths
 
     internal static WorkspacePaths At(string root) => new(root);
 
-    /// <summary>Returns a timestamped file name, e.g. <c>20261029-113045-demo.dtp</c>.</summary>
+    /// <summary>Returns a timestamped file name, e.g. <c>20261029-113045-demo-3fa2c1.dtp</c>.</summary>
+    /// <remarks>
+    /// The random suffix keeps names apart when several sessions sharing a folder profile the same process within a second.
+    /// </remarks>
     public static string NewFileName(string label, string extension)
     {
         Span<char> sanitized = stackalloc char[Math.Min(label.Length, 40)];
         for (int i = 0; i < sanitized.Length; i++)
             sanitized[i] = char.IsLetterOrDigit(label[i]) ? label[i] : '-';
 
-        return $"{DateTime.Now:yyyyMMdd-HHmmss}-{sanitized}{extension}";
+        return $"{DateTime.Now:yyyyMMdd-HHmmss}-{sanitized}-{Random.Shared.Next(1 << 24):x6}{extension}";
     }
 }

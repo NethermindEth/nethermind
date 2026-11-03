@@ -41,6 +41,7 @@ internal static class ContainerSidecar
     private const string RuntimeImage = "mcr.microsoft.com/dotnet/runtime-deps:10.0";
     private const string BuildFolder = "linux-x64";
     private const string CompleteMarker = ".complete";
+    private static readonly TimeSpan LoaderWait = TimeSpan.FromMinutes(10);
     private const string Executable = "Nethermind.Tools.ProfilingMcp";
 
     /// <summary>Returns the docker CLI options that select an engine: a context name, or an address such as <c>ssh://user@host</c>.</summary>
@@ -232,16 +233,19 @@ internal static class ContainerSidecar
     /// <remarks>
     /// A marker file copied last tells a complete volume from one whose copy was cut short, as when <c>claude mcp list</c> kills a
     /// server whose first start, pulling the image and copying the build, outlasts its health check.
+    /// The container used for copying has a fixed name per volume, so servers starting at the same time copy one after another
+    /// instead of overwriting files a sidecar may already run.
     /// </remarks>
     private static async Task<string> EnsureBuildVolumeAsync(string[] engine, string image, string container, string version)
     {
         string build = Path.Combine(AppContext.BaseDirectory, BuildFolder);
         string volume = $"profmcp-{version}";
 
-        // docker cp reaches a volume through a container that mounts it; this one is never started. Its labels let a later start
-        // remove it if this process is killed before it does.
-        string loader = $"{volume}-load-{Environment.ProcessId}";
-        await DockerAsync(engine, "create", "--name", loader, "--volume", $"{volume}:/profmcp",
+        // docker cp reaches a volume through a container that mounts it; this one is never started. Its launcher label lets another
+        // server remove it if this process is killed before it does.
+        string loader = $"{volume}-load";
+        await AcquireLoaderAsync(engine, loader,
+            "--volume", $"{volume}:/profmcp",
             "--label", $"{TargetLabel}={container}", "--label", $"{LauncherLabel}={Launcher(Environment.ProcessId)}",
             "--entrypoint", "/bin/true", image);
         string marker = Path.GetTempFileName();
@@ -260,6 +264,41 @@ internal static class ContainerSidecar
         }
 
         return volume;
+    }
+
+    /// <summary>Creates the loader container, waiting while another server holds one of that name.</summary>
+    private static async Task AcquireLoaderAsync(string[] engine, string loader, params string[] options)
+    {
+        string[] create = ["create", "--name", loader, .. options];
+        Stopwatch waited = Stopwatch.StartNew();
+        while (!await SucceedsAsync(engine, create))
+        {
+            // Without a holder, creating failed for another reason, which this reports.
+            if (await LauncherOfAsync(engine, loader) is not { } holder)
+            {
+                await DockerAsync(engine, create);
+                return;
+            }
+
+            if (IsOrphan(holder))
+                await SucceedsAsync(engine, "rm", "--force", loader);
+            else if (waited.Elapsed > LoaderWait)
+                throw new InvalidOperationException($"Waited {LoaderWait.TotalMinutes:N0} min for the server {holder} to finish copying the build with {loader}; remove that container if the server is gone.");
+            else
+                await Task.Delay(TimeSpan.FromSeconds(1));
+        }
+    }
+
+    private static async Task<string?> LauncherOfAsync(string[] engine, string loader)
+    {
+        try
+        {
+            return await DockerAsync(engine, "inspect", "--type", "container", "--format", $"{{{{index .Config.Labels \"{LauncherLabel}\"}}}}", loader);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Identifies the Linux build by a hash of the server assembly.</summary>
