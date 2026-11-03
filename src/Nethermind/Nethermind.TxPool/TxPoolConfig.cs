@@ -34,7 +34,7 @@ public class TxPoolConfig : ITxPoolConfig
     public bool FrameTxWidthEnabled { get; set; } = false;
     public ulong FrameTxWidthSafetyFactorPermille { get; set; } = 1000;
     public ulong FrameTxWidthCap { get; set; } = 0;
-    public int HashCacheSize { get; set; } = 512 * 1024;
+    public int HashCacheSize { get; set; } = 128 * 1024;
     public ulong? GasLimit { get; set; } = null;
     public long? MaxTxSize { get; set; } = 128.KiB;
     public long? MaxBlobTxSize { get; set; } = 1.MiB;

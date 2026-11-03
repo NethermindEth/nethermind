@@ -3096,6 +3096,19 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task HashCacheSize_sizes_the_long_term_cache_of_known_tx_hashes([Values(0, 1024)] int hashCacheSize)
+        {
+            _txPool = CreatePool(new TxPoolConfig { HashCacheSize = hashCacheSize });
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.TestObject);
+
+            Assert.That(_txPool.IsKnown(tx.Hash), Is.EqualTo(hashCacheSize > 0));
+        }
+
+        [Test]
         public void should_return_false_when_trying_to_remove_tx_with_null_txHash()
         {
             _txPool = CreatePool();
