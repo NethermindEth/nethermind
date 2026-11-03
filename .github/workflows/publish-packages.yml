@@ -15,7 +15,7 @@ jobs:
     if: ${{ !github.event.release.prerelease && !startsWith(github.event.release.tag_name, 'bootnode-') }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.TAG_NAME }}
       - name: Set up GPG
@@ -71,7 +71,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install debhelper devscripts ubuntu-dev-tools -y
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       - name: Install launchpadlib
         run: pip install launchpadlib --upgrade
       - name: Copy to other series
@@ -110,14 +110,14 @@ jobs:
     steps:
       - name: Create GitHub app token
         id: gh-app
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           repositories: homebrew-nethermind
 
       - name: Check out homebrew-nethermind repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: NethermindEth/homebrew-nethermind
           token: ${{ steps.gh-app.outputs.token }}
@@ -161,7 +161,7 @@ jobs:
       id-token: write
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.TAG_NAME }}
 
@@ -193,7 +193,7 @@ jobs:
           unzip "$refasm_dir"/*.zip -d src/Nethermind/Nethermind.ReferenceAssemblies/ref
 
       - name: NuGet login
-        uses: nuget/login@v1
+        uses: nuget/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         id: login
         with:
           user: ${{ secrets.NUGET_USER }}
