@@ -112,9 +112,7 @@ jobs:
   build-image:
     name: Build Nethermind image
     needs: setup
-    # Hive runs on arm64: the x64 hosted pool is the one PR jobs queue for, and the suites take
-    # no longer there. The image build and the tests must share an architecture.
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v6
@@ -145,7 +143,7 @@ jobs:
   test:
     name: Run Hive (${{ matrix.name || matrix.suite }})
     needs: [setup, build-image]
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
