@@ -189,6 +189,11 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done, 3000UL, GasCostOf.SSet).SetArgDisplayNames("SSTORE"),
         new TestCaseData(Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE).Done, 1000UL, GasCostOf.Create).SetArgDisplayNames("CREATE"),
         new TestCaseData(Prepare.EvmCode.PushData(32).PushData(0).PushData(0).Op(Instruction.CREATE).Done, 32010UL, GasCostOf.Create + GasCostOf.Memory).SetArgDisplayNames("CREATE dynamic"),
+        new TestCaseData(Prepare.EvmCode.PushData(1).PushData(1).Op(Instruction.SIGNEXTEND).Done, 10UL, GasCostOf.Low).SetArgDisplayNames("SIGNEXTEND"),
+        new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.BLOCKHASH).Done, 22UL, GasCostOf.BlockHash).SetArgDisplayNames("BLOCKHASH"),
+        new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).PushData(0).PushData(TestItem.AddressC).Op(Instruction.EXTCODECOPY).Done, 715UL,
+            GasCostOf.ExtCodeEip150 + GasCostOf.Memory + GasCostOf.Memory).SetArgDisplayNames("EXTCODECOPY"),
+        new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.SELFDESTRUCT).Done, 4000UL, GasCostOf.SelfDestructEip150).SetArgDisplayNames("SELFDESTRUCT"),
     ];
 
     [Test]
