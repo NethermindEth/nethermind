@@ -183,6 +183,10 @@ public class JsonConfigSource : IConfigSource
         {
             return result.ToString();
         }
+        else if (value.GetRawText() is var rawText && rawText.AsSpan().IndexOfAny('.', 'e', 'E') < 0)
+        {
+            return rawText;
+        }
         else if (value.TryGetDouble(out double doubleResult))
         {
             return doubleResult.ToString(CultureInfo.InvariantCulture);
