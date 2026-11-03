@@ -167,6 +167,15 @@ public partial class DebugRpcModuleTests
         public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) => inner.PrepareForInclusionCheck(transaction, stateGasAvailable);
     }
 
+    private static Transaction[] CreateDeadlineTransactions(ulong nonce)
+    {
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        return transactions;
+    }
+
     private sealed class DeadlineExecution : TimeProvider
     {
         private long _timestamp;
