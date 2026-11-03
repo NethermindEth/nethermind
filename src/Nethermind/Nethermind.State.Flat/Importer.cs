@@ -65,7 +65,7 @@ public class Importer(
 
         Task visitTask = Task.Run(() =>
         {
-            Visitor visitor = new((address, path, node) => Ingest(from, ingestBatches, address, path, node), progressTracker, cancellationToken);
+            Visitor visitor = new((address, path, node) => IngestNode(from, ingestBatches, address, path, node), progressTracker, cancellationToken);
             try
             {
                 tree.Accept(visitor, to.StateRoot.ToHash256(), new VisitingOptions()
@@ -118,7 +118,20 @@ public class Importer(
         _logger.Info($"Flat Import {progress.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter((float)progress, 1)} written: {Interlocked.Read(ref _totalNodes):N0}");
     }
 
-    private void Ingest(in StateId from, ConcurrentBag<IngestBatch> ingestBatches, Hash256? address, in TreePath path, TrieNode node)
+    private void IngestNode(in StateId from, ConcurrentBag<IngestBatch> ingestBatches, Hash256? address, in TreePath path, TrieNode node)
+    {
+        if (node.IsLeaf)
+        {
+            Ingest(from, ingestBatches, address, path, node.FullRlp.AsSpan(), path.Append(node.Key).Path, node.Value.AsSpan());
+        }
+        else
+        {
+            Ingest(from, ingestBatches, address, path, node.FullRlp.AsSpan(), leafPath: null, leafValue: default);
+        }
+    }
+
+    private void Ingest(in StateId from, ConcurrentBag<IngestBatch> ingestBatches, Hash256? address, in TreePath path,
+        ReadOnlySpan<byte> rlp, ValueHash256? leafPath, ReadOnlySpan<byte> leafValue)
     {
         if (!ingestBatches.TryTake(out IngestBatch? ingestBatch))
         {
@@ -132,19 +145,18 @@ public class Importer(
 
         if (address is null)
         {
-            writeBatch.SetStateTrieNode(path, node.FullRlp.AsSpan());
+            writeBatch.SetStateTrieNode(path, rlp);
         }
         else
         {
-            writeBatch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
+            writeBatch.SetStorageTrieNode(address, path, rlp);
         }
 
-        if (node.IsLeaf)
+        if (leafPath is { } fullPath)
         {
-            ValueHash256 fullPath = path.Append(node.Key).Path;
             if (address is null)
             {
-                RlpReader accountReader = new(node.Value.AsSpan());
+                RlpReader accountReader = new(leafValue);
                 Account acc = _accountDecoder.Decode(ref accountReader)!;
                 writeBatch.SetAccountRaw(fullPath, acc);
             }
@@ -152,10 +164,9 @@ public class Importer(
             {
                 // A storage leaf value is RLP(stripped) and never empty (zero slots are absent), so it is
                 // stored verbatim when wrapping, skipping a decode + re-encode round-trip.
-                ReadOnlySpan<byte> value = node.Value.AsSpan();
-                if (!value.IsEmpty)
+                if (!leafValue.IsEmpty)
                 {
-                    writeBatch.SetStorageRawEncoded(address, fullPath, value);
+                    writeBatch.SetStorageRawEncoded(address, fullPath, leafValue);
                 }
             }
         }
