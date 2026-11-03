@@ -132,15 +132,31 @@ public class SnapshotHttpStreamTests
             Is.Not.Empty, "a redirect that keeps or raises the transport must be followed");
 
     [Test]
-    public async Task Read_ServerReturnsNotFoundMidDownload_ThrowsWithoutRetrying()
+    public async Task Read_ServerReturnsNotFoundMidDownload_ThrowsWithoutRetrying([Values] bool supportsRanges)
     {
         _server.Content = BuildContent(100_000);
-        _server.FailWithNotFoundAfterRequests = 1;
+        _server.SupportsRanges = supportsRanges;
+        _server.FailRequestWithStatus = (2, 404);
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
 
         await Assert.ThrowsAsync<HttpRequestException>(
             () => DownloadAsync(connections: 2, cancellationToken: timeout.Token),
             "a permanent HTTP error must abort the stream instead of retrying forever");
+    }
+
+    [Test]
+    public async Task Read_ServerReturnsTransientErrorMidDownload_RetriesAndDeliversExactContent(
+        [Values(408, 429, 503)] int statusCode, [Values] bool supportsRanges)
+    {
+        byte[] content = BuildContent(100_000);
+        _server.Content = content;
+        _server.SupportsRanges = supportsRanges;
+        _server.FailRequestWithStatus = (2, statusCode);
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
+
+        (byte[] delivered, byte[] hash) = await DownloadAsync(connections: 2, cancellationToken: timeout.Token);
+
+        AssertDeliveredExactly(delivered, hash, content, "a transient HTTP error must be retried instead of aborting the stream", "the retried request must be hashed exactly once");
     }
 
     [Test]
