@@ -360,15 +360,10 @@ internal class NodeRecordBulkSetTests
             key[depth / 2] = depth % 2 == 0 ? (byte)0x10 : (byte)0x01;
             items.Add((new Hash256(key), ExistingValue));
         }
-        using NodeRecordBuffer original = new(0, SmallGenerationBytes);
-        using NodeRecordBufferPin retain = original.PinHead();
-        (ValueHash256 Hash, ulong Pointer) root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), NewWarmedNodeBuffer(1), null),
-            null, (ValueKeccak.EmptyTreeHash, 0), items, false);
-        Dictionary<TreePath, byte[]> nodes = Rlps(original, root);
-        WarmedNodeBuffer warmed = NewWarmedNodeBuffer(1024);
+        (DictionaryNodeSource source, WarmedNodeBuffer warmed, Dictionary<TreePath, byte[]> nodes, (ValueHash256 Hash, ulong Pointer) root) = PersistedTrie(items);
         using NodeRecordBuffer buffer = new(0, SmallGenerationBytes);
 
-        new DictionaryNodeSource(nodes, warmed, null).WarmUp(buffer, (root.Hash, 0), ValueKeccak.Zero, forDelete: false);
+        source.WarmUp(buffer, root, ValueKeccak.Zero, forDelete: false);
 
         TreePath path = TreePath.Empty;
         Assert.That(warmed.TryGet(null, path, out NodeRecord record, out _), Is.True);
