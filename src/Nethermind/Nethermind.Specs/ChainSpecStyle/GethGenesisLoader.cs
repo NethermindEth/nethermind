@@ -51,7 +51,8 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             Name = gethGenesisJson.Name,
             Bootnodes = NetworkNode.ParseNodes(gethGenesisJson.Bootnodes, _logger),
             ChainId = config.ChainId,
-            NetworkId = config.ChainId
+            NetworkId = config.ChainId,
+            UnsetPreMergeForksNeverActivate = true
         };
 
         LoadGenesis(gethGenesisJson, config, chainSpec);
@@ -110,18 +111,18 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             MinHistoryRetentionEpochs = config.MinHistoryRetentionEpochs ?? HistoryRetentionConstants.MinEpochsForBlockRequests,
             MinBalRetentionEpochs = HistoryRetentionConstants.HistoryPruneEpochs,
 
-            Eip7Transition = config.HomesteadBlock ?? 0,
+            Eip7Transition = config.HomesteadBlock,
 
             // MaxCodeSize (EIP-170) is standard on all networks since Spurious Dragon
             MaxCodeSize = 0x6000,
-            MaxCodeSizeTransition = config.Eip158Block ?? config.SpuriousDragonBlock ?? 0,
+            MaxCodeSizeTransition = config.Eip158Block ?? config.SpuriousDragonBlock,
 
-            Eip150Transition = config.Eip150Block ?? config.TangerineWhistleBlock ?? 0,
+            Eip150Transition = config.Eip150Block ?? config.TangerineWhistleBlock,
 
-            Eip160Transition = config.Eip155Block ?? config.SpuriousDragonBlock ?? 0,
-            Eip161abcTransition = config.Eip158Block ?? config.SpuriousDragonBlock ?? 0,
-            Eip161dTransition = config.Eip158Block ?? config.SpuriousDragonBlock ?? 0,
-            Eip155Transition = config.Eip155Block ?? config.SpuriousDragonBlock ?? 0,
+            Eip160Transition = config.Eip155Block ?? config.SpuriousDragonBlock,
+            Eip161abcTransition = config.Eip158Block ?? config.SpuriousDragonBlock,
+            Eip161dTransition = config.Eip158Block ?? config.SpuriousDragonBlock,
+            Eip155Transition = config.Eip155Block ?? config.SpuriousDragonBlock,
 
             Eip140Transition = config.ByzantiumBlock,
             Eip211Transition = config.ByzantiumBlock,
@@ -375,7 +376,7 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
         public string EngineName => Core.SealEngineType.Ethash;
         public string SealEngineType => Core.SealEngineType.Ethash;
 
-        public ulong HomesteadTransition { get; } = config.HomesteadBlock ?? 0;
+        public ulong? HomesteadTransition { get; } = config.HomesteadBlock;
         public ulong? DaoHardforkTransition { get; } = config.DaoForkBlock;
         public Address? DaoHardforkBeneficiary { get; }
         public Address[] DaoHardforkAccounts { get; } = [];
@@ -405,7 +406,11 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
                 }
             }
 
-            blockNumbers.Add(HomesteadTransition);
+            if (HomesteadTransition is not null)
+            {
+                blockNumbers.Add(HomesteadTransition.Value);
+            }
+
             if (DaoHardforkTransition is not null)
             {
                 blockNumbers.Add(DaoHardforkTransition.Value);
@@ -443,7 +448,7 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
 
             spec.IsEip2Enabled = HomesteadTransition <= startBlock;
             spec.IsEip7Enabled = HomesteadTransition <= startBlock;
-            spec.IsEip100Enabled = (Eip100bTransition ?? 0) <= startBlock;
+            spec.IsEip100Enabled = Eip100bTransition <= startBlock;
             spec.DifficultyBoundDivisor = DifficultyBoundDivisor;
             spec.FixedDifficulty = FixedDifficulty;
         }

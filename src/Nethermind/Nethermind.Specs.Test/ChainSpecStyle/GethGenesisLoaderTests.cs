@@ -355,6 +355,41 @@ public class GethGenesisLoaderTests
     }
 
     [Test]
+    public void Absent_pre_merge_forks_never_activate([Values] bool spuriousDragon, [Values(0UL, 1_000_000UL)] ulong blockNumber)
+    {
+        string json = spuriousDragon
+            ? BuildStandardGethGenesisJson()
+            : """{ "config": { "chainId": 1 }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }""";
+        ChainSpecBasedSpecProvider provider = new(LoadFromString(json));
+        IReleaseSpec spec = provider.GetSpec(new ForkActivation(blockNumber));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.TransitionActivations, Is.Empty);
+            Assert.That(spec.IsEip2Enabled, Is.EqualTo(spuriousDragon));
+            Assert.That(spec.IsEip7Enabled, Is.EqualTo(spuriousDragon));
+            Assert.That(spec.IsEip150Enabled, Is.EqualTo(spuriousDragon));
+            Assert.That(spec.IsEip155Enabled, Is.EqualTo(spuriousDragon));
+            Assert.That(spec.IsEip158Enabled, Is.EqualTo(spuriousDragon));
+            Assert.That(spec.IsEip160Enabled, Is.EqualTo(spuriousDragon));
+            Assert.That(spec.IsEip170Enabled, Is.EqualTo(spuriousDragon));
+            Assert.That(spec.IsEip100Enabled, Is.False);
+            Assert.That(spec.IsEip140Enabled, Is.False);
+            Assert.That(spec.IsEip196Enabled, Is.False);
+            Assert.That(spec.IsEip197Enabled, Is.False);
+            Assert.That(spec.IsEip198Enabled, Is.False);
+            Assert.That(spec.IsEip211Enabled, Is.False);
+            Assert.That(spec.IsEip214Enabled, Is.False);
+            Assert.That(spec.IsEip649Enabled, Is.False);
+            Assert.That(spec.IsEip658Enabled, Is.False);
+            Assert.That(spec.IsEip145Enabled, Is.False);
+            Assert.That(spec.IsEip1014Enabled, Is.False);
+            Assert.That(spec.IsEip1052Enabled, Is.False);
+            Assert.That(spec.IsEip1234Enabled, Is.False);
+        }
+    }
+
+    [Test]
     public void Loads_bootnodes_with_enode_and_enr([Values] bool includeInvalid)
     {
         const string enode = "enode://2112dd3839dd752813d4df7f40936f06829fc54c0e051a93967c26e5f5d27d99d886b57b4ffcc3c475e930ec9e79c56ef1dbb7d86ca5ee83a9d2ccf36e5c240c@134.209.138.84:30303";
