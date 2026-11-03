@@ -1218,7 +1218,7 @@ public class PersistedSnapshotTests
             StateId to = new((ulong)i + 1, Keccak.Compute((i + 1).ToString()));
             INodeRecordBufferPin pin = _buffer.PinHead();
             SnapshotContent content = new();
-            Populate(content, random, i);
+            Populate(content, random, i, sourceCount);
             using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing, pin);
             sources.Add(TestFixtureHelpers.CreatePersistedSnapshot(
                 _memArena, _blobs, from, to, PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs)));
@@ -1234,19 +1234,30 @@ public class PersistedSnapshotTests
         }
     }
 
-    private void Populate(SnapshotContent content, Random random, int source)
+    private void Populate(SnapshotContent content, Random random, int source, int sourceCount)
     {
-        Address[] addresses = TestItem.Addresses;
         const int addressPool = 6;
+        Address[] addresses = TestItem.Addresses[..addressPool];
+        Array.Sort(addresses, static (x, y) => x.Bytes.SequenceCompareTo(y.Bytes));
         for (int a = 0; a < addressPool; a++)
         {
             Address address = addresses[a];
+            // The last address in key order never self-destructs, and the address before it is destructed by the
+            // newest source. The merge must not apply that barrier to slot 0 of the last address, which only source 0 writes.
+            bool lastAddress = a == addressPool - 1;
             if (random.Next(2) == 0)
                 content.Accounts[address] = random.Next(4) == 0 ? null : new Account((ulong)source, (UInt256)random.Next(1000));
-            if (random.Next(4) == 0)
+            if (a == addressPool - 2 && source == sourceCount - 1)
+                content.SelfDestructedStorageAddresses[address] = false;
+            else if (!lastAddress && random.Next(4) == 0)
                 content.SelfDestructedStorageAddresses[address] = random.Next(2) == 0;
             for (int slot = 0; slot < 8; slot++)
             {
+                if (lastAddress && slot == 0)
+                {
+                    if (source == 0) content.Storages[(address, UInt256.Zero)] = 1;
+                    continue;
+                }
                 if (random.Next(3) != 0) continue;
                 content.Storages[(address, (UInt256)slot)] = random.Next(5) == 0 ? null : (UInt256?)(source * 100 + random.Next(100) + 1);
             }
@@ -1392,18 +1403,11 @@ public class PersistedSnapshotTests
         List<(byte[] Key, byte[] Value)> result = [];
         using WholeReadSession session = snapshot.BeginWholeReadSession();
         WholeReadSessionReader reader = session.CreateReader();
-        SortedTableEnumerator<WholeReadSessionReader, NoOpPin> enumerator = new(in reader, new Bound(0, reader.Length));
-        try
+        using SortedTableEnumerator<WholeReadSessionReader, NoOpPin> enumerator = new(in reader, new Bound(0, reader.Length));
+        while (enumerator.MoveNext(in reader))
         {
-            while (enumerator.MoveNext(in reader))
-            {
-                using NoOpPin pin = reader.PinBuffer(enumerator.CurrentValue);
-                result.Add((enumerator.CurrentKey.ToArray(), pin.Buffer.ToArray()));
-            }
-        }
-        finally
-        {
-            enumerator.Dispose();
+            using NoOpPin pin = reader.PinBuffer(enumerator.CurrentValue);
+            result.Add((enumerator.CurrentKey.ToArray(), pin.Buffer.ToArray()));
         }
         return result;
     }
