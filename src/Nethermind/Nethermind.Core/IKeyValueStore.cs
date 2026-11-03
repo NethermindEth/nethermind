@@ -226,6 +226,8 @@ namespace Nethermind.Core
     /// </summary>
     public interface ISortedView : IDisposable
     {
+        /// <summary>Positions the view at the last key at or before <paramref name="value"/>.
+        /// Can be called before or during the iteration. On false, the next <see cref="MoveNext"/> starts at the first key.</summary>
         public bool StartBefore(ReadOnlySpan<byte> value);
         public bool MoveNext();
         public ReadOnlySpan<byte> CurrentKey { get; }
