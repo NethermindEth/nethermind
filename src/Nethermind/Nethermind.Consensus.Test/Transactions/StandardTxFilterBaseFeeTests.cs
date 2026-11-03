@@ -82,6 +82,35 @@ public class StandardTxFilterBaseFeeTests
             .SetArgDisplayNames("Composite");
     }
 
+    public static IEnumerable<TestCaseData> Rejections()
+    {
+        yield return new TestCaseData((Func<ITxFilter>)(static () => new BaseFeeTxFilter()), Tx(maxFee: (UInt256)500_000_000, priorityFee: (UInt256)500_000_000),
+                $"{AcceptTxResult.FeeTooLow}, MaxFeePerGas too low. MaxFeePerGas: 500000000, BaseFee: 1000000000, MaxPriorityFeePerGas:500000000, Block number: 11")
+            .SetArgDisplayNames("BaseFee");
+        yield return new TestCaseData((Func<ITxFilter>)(static () => new MinGasPriceTxFilter(new BlocksConfig { MinGasPrice = 1.GWei })), Tx(maxFee: (UInt256)1_500_000_000, priorityFee: 1.GWei),
+                $"{AcceptTxResult.FeeTooLow}, EffectivePriorityFeePerGas too low 500000000 < 1000000000, BaseFee: 1000000000")
+            .SetArgDisplayNames("MinGasPrice");
+        yield return new TestCaseData((Func<ITxFilter>)(static () => new CustomFloorFilter(new MinGasPriceTxFilter(new BlocksConfig()), (UInt256)600_000_000)), Tx(maxFee: (UInt256)1_500_000_000, priorityFee: 1.GWei),
+                $"{AcceptTxResult.FeeTooLow}, EffectivePriorityFeePerGas too low 500000000 < 600000000, BaseFee: 1000000000")
+            .SetArgDisplayNames("MinGasPriceCustomFloor");
+    }
+
+    [TestCaseSource(nameof(Rejections))]
+    public void Context_without_a_base_fee_computes_it_once_for_a_rejection(Func<ITxFilter> create, Transaction tx, string rejection)
+    {
+        CountingBaseFeeCalculator calculator = new();
+        ReleaseSpec spec = new() { IsEip1559Enabled = true, BaseFeeCalculator = calculator };
+        TxFilterContext context = new(ParentAt1Gwei, spec);
+
+        string result = create().IsAllowed(tx, in context).ToString();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(rejection));
+            Assert.That(calculator.Calls, Is.EqualTo(1), "computed once, as the filter computed it before");
+        }
+    }
+
     [TestCaseSource(nameof(Filters))]
     public void Supplied_base_fee_decides_and_words_rejections_as_a_computed_one(Func<ITxFilter> create)
     {

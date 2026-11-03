@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.Transactions;
 /// <see cref="TxFilterContext(BlockHeader, IReleaseSpec)"/>, which computes the base fee only when a filter reads it.
 /// </remarks>
 /// <param name="parent">The parent of the block the transaction is checked for.</param>
-/// <param name="spec">The spec of the block the transaction is checked for.</param>
+/// <param name="spec">The spec the transaction is checked with; see <see cref="Spec"/>.</param>
 public readonly struct TxFilterContext(BlockHeader parent, IReleaseSpec spec)
 {
     private readonly UInt256 _baseFee;
@@ -35,7 +35,9 @@ public readonly struct TxFilterContext(BlockHeader parent, IReleaseSpec spec)
     /// <summary>The parent of the block the transaction is checked for.</summary>
     public BlockHeader Parent { get; } = parent;
 
-    /// <summary>The spec of the block the transaction is checked for, not of its parent.</summary>
+    /// <summary>The spec the transaction is checked with.</summary>
+    /// <remarks>Block building and <see cref="FilteredTxSource{T}"/> use the spec of the block being built; tx-pool
+    /// admission uses the spec of the current head.</remarks>
     public IReleaseSpec Spec { get; } = spec;
 
     /// <summary>The base fee of the block the transaction is checked for.</summary>
