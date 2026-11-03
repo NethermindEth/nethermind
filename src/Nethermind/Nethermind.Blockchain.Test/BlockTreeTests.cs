@@ -2753,6 +2753,25 @@ public class BlockTreeTests
         }
     }
 
+    [TestCase(null, 1UL, 1)]
+    [TestCase(2UL, 3UL, 2)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void Delete_slice_sets_best_known_number_to_the_highest_remaining_level(ulong? endNumber, ulong expectedBestKnown, int expectedDeletedBySecondCall)
+    {
+        BlockTree blockTree = Build.A.BlockTree().OfChainLength(4).TestObject;
+
+        blockTree.DeleteChainSlice(2, endNumber);
+        Assert.That(blockTree.BestKnownNumber, Is.EqualTo(expectedBestKnown));
+
+        int deleted = blockTree.DeleteChainSlice(1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deleted, Is.EqualTo(expectedDeletedBySecondCall));
+            Assert.That(blockTree.BestKnownNumber, Is.EqualTo(0UL));
+            Assert.That(blockTree.FindLevel(3), Is.Null);
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Direct_delete_clears_only_removed_execution_header_pointer([Values(2UL, 3UL, 4UL)] ulong pointerLevel)
     {
