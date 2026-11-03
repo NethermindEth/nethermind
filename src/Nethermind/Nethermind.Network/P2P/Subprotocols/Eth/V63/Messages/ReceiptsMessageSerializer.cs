@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -12,7 +11,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
-    public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
+    public class ReceiptsMessageSerializer : IMessageSerializer<ReceiptsMessage>
     {
         private const ulong NoBlockSeenYet = ulong.MaxValue;
 
@@ -35,13 +34,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             _decodeArrayFunc = (ref RlpReader ctx) => ctx.DecodeNonNullArray((ref RlpReader nestedContext) => _decoder.Decode(ref nestedContext, decodeBehaviors), limit: BlockReceiptsRlpLimit);
         }
 
-        public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
+        public int Serialize(Span<byte> destination, ReceiptsMessage message)
         {
-            int totalLength = GetLength(message, out int contentLength);
+            RlpWriter writer = new(destination);
+            Serialize(ref writer, message);
+            return writer.Position;
+        }
 
-            byteBuffer.EnsureWritable(totalLength);
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+        internal void Serialize(ref RlpWriter writer, ReceiptsMessage message)
+        {
+            writer.StartSequence(GetContentLength(message));
 
             ulong lastBlockNumber = NoBlockSeenYet;
             RlpBehaviors behaviors = RlpBehaviors.None;
@@ -71,20 +73,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             }
         }
 
-        public ReceiptsMessage Deserialize(IByteBuffer byteBuffer)
+        public ReceiptsMessage Deserialize(ReadOnlySpan<byte> data)
         {
-            if (byteBuffer.ReadableBytes == 0)
+            if (data.IsEmpty)
             {
                 return new ReceiptsMessage(null);
             }
 
-            if (byteBuffer.GetByte(byteBuffer.ReaderIndex) == Rlp.OfEmptyList[0])
+            RlpReader ctx = new(data);
+            if (data[0] == Rlp.OfEmptyList[0])
             {
-                byteBuffer.ReadByte();
+                ctx.Position = 1;
+                ctx.CheckEnd();
                 return new ReceiptsMessage(null);
             }
 
-            return byteBuffer.DeserializeRlp(Deserialize);
+            return ctx.CheckEnd(Deserialize(ref ctx));
         }
 
         public ReceiptsMessage Deserialize(ref RlpReader ctx)
@@ -93,9 +97,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             return new ReceiptsMessage(data);
         }
 
-        public int GetLength(ReceiptsMessage message, out int contentLength)
+        public int GetLength(ReceiptsMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
+
+        private int GetContentLength(ReceiptsMessage message)
         {
-            contentLength = 0;
+            int contentLength = 0;
 
             ReadOnlySpan<TxReceipt[]?> txReceiptsSpan = message.TxReceipts.AsSpan();
             for (int i = 0; i < txReceiptsSpan.Length; i++)
@@ -106,7 +112,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                     : Rlp.LengthOfSequence(GetInnerLength(txReceipts));
             }
 
-            return Rlp.LengthOfSequence(contentLength);
+            return contentLength;
         }
 
         private int GetInnerLength(TxReceipt[] txReceipts)

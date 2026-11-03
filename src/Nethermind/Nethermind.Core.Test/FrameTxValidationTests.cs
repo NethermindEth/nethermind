@@ -711,4 +711,60 @@ public class FrameTxValidationTests
             Assert.That(zerosFloor, Is.EqualTo(nonZerosFloor));
         }
     }
+
+    // EIP-8141 bounds the frame gas sum by 2^64 - 1, not the intrinsic gas added to it, so these budgets pass
+    // ulong.MaxValue. They saturate there; failing would mark a well-formed transaction unpriceable.
+    private static IEnumerable<TestCaseData> SaturatedBudgetCases()
+    {
+        // The shape of EELS test_frame_gas_sum_bound_transaction[sum_2_pow_64_minus_one].
+        yield return new TestCaseData(new[] { BudgetFrame(10_000, 0), BudgetFrame(10_000, ulong.MaxValue - 20_000) }, false)
+            .SetName("TryCalculateGasBudget_FrameGasSumAtItsMaximum_SaturatesTheBudget");
+        // The intrinsic gas plus the frame gas saturates here too, so this case passes whether the floor reservation
+        // wraps or saturates.
+        yield return new TestCaseData(new[] { BudgetFrame(0, ulong.MaxValue) }, false)
+            .SetName("TryCalculateGasBudget_StateGasAtTheMaximum_SaturatesTheBudget");
+        // Calldata lifts the floor above the intrinsic gas, so the calldata floor plus the state gas passes
+        // ulong.MaxValue while the intrinsic gas plus the frame gas stays 1000 below it.
+        byte[] calldata = new byte[100];
+        Array.Fill(calldata, (byte)0xff);
+        FrameTxValidation.TryCalculateGasBudget(
+            CreateValidFrameTx(t => t.Frames = [BudgetFrame(0, 0, calldata)]), FloorPricedSpec(), out ulong intrinsicGas, out _, out _);
+        yield return new TestCaseData(new[] { BudgetFrame(0, ulong.MaxValue - intrinsicGas - 1000, calldata) }, false)
+            .SetName("TryCalculateGasBudget_CalldataFloorPlusStateGasPastTheMaximum_SaturatesTheFloorReservation");
+        yield return new TestCaseData(new[] { BudgetFrame(ulong.MaxValue, 0) }, true)
+            .SetName("TryCalculateGasBudget_ExecutionGasAtTheMaximum_SaturatesTheExecutionReservation");
+    }
+
+    [TestCaseSource(nameof(SaturatedBudgetCases))]
+    public void TryCalculateGasBudget_PastUlongMaxValue_SaturatesRatherThanFailing(TxFrame[] frames, bool executionSaturates)
+    {
+        IReleaseSpec spec = FloorPricedSpec();
+        Transaction tx = CreateValidFrameTx(t => t.Frames = frames);
+        ulong executionSum = 0;
+        ulong stateSum = 0;
+        foreach (TxFrame frame in frames)
+        {
+            executionSum += frame.ExecutionGasLimit;
+            stateSum += frame.StateGasLimit;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas), Is.True);
+            Assert.That(maxGas, Is.EqualTo(ulong.MaxValue));
+            Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, spec, out ulong execution, out ulong state), Is.True);
+            Assert.That(state, Is.EqualTo(stateSum));
+            Assert.That(execution, Is.EqualTo(executionSaturates ? ulong.MaxValue : Math.Max(intrinsicGas + executionSum, floorGas)));
+        }
+    }
+
+    private static IReleaseSpec FloorPricedSpec()
+    {
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip7623Enabled.Returns(true);
+        return spec;
+    }
+
+    private static TxFrame BudgetFrame(ulong executionGasLimit, ulong stateGasLimit, byte[]? data = null) =>
+        new(FrameMode.Default, FrameFlags.None, target: null, executionGasLimit, stateGasLimit, UInt256.Zero, data);
 }

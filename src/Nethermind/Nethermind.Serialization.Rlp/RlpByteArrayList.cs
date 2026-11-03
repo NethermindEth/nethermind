@@ -24,7 +24,14 @@ public sealed class RlpByteArrayList : IByteArrayList, IRlpWrapper
     public void Write<TWriter>(ref TWriter writer)
         where TWriter : struct, IRlpWriteBackend, allows ref struct => _inner.Write(ref writer);
 
-    public static RlpByteArrayList DecodeList(ref RlpReader ctx, IMemoryOwner<byte> memoryOwner, RlpLimit? limit = null)
+    public static RlpByteArrayList DecodeList(ref RlpReader ctx, IMemoryOwner<byte> memoryOwner, RlpLimit? limit = null) =>
+        DecodeList(ref ctx, memoryOwner, memoryOwner.Memory, limit);
+
+    /// <summary>
+    /// Decodes a list whose items stay in <paramref name="memory"/>, which <paramref name="ctx"/> reads.
+    /// </summary>
+    /// <param name="memoryOwner">The owner of <paramref name="memory"/>, which the list takes.</param>
+    public static RlpByteArrayList DecodeList(ref RlpReader ctx, IMemoryOwner<byte> memoryOwner, Memory<byte> memory, RlpLimit? limit = null)
     {
         // An omitted limit must not mean no limit, so fall back to the default cap.
         RlpLimit effectiveLimit = limit ?? RlpLimit.DefaultLimit;
@@ -37,7 +44,7 @@ public sealed class RlpByteArrayList : IByteArrayList, IRlpWrapper
         int count = ctx.PeekNumberOfItemsRemaining(end, effectiveLimit.Limit + 1);
         ctx.GuardLimit(count, effectiveLimit);
 
-        Memory<byte> rlpRegion = memoryOwner.Memory.Slice(prefixStart, end - prefixStart);
+        Memory<byte> rlpRegion = memory.Slice(prefixStart, end - prefixStart);
         ctx.Position = end;
         return new(new RlpItemList(memoryOwner, rlpRegion, knownCount: count));
     }

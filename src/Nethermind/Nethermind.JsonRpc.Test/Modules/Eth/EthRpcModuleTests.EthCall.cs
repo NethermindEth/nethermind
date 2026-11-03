@@ -239,6 +239,49 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Rpc_rejects_conflicting_storage_overrides_before_fee_validation(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method,
+        [Values] bool mixedFees,
+        [Values] bool reverse)
+    {
+        using Context ctx = await Context.Create();
+        Dictionary<string, object> call = new() { ["from"] = TestItem.AddressA.ToString(), ["to"] = TestItem.AddressB.ToString() };
+        if (mixedFees)
+        {
+            call["gasPrice"] = "0x1";
+            call["maxFeePerGas"] = "0x2";
+            string withoutOverride = await ctx.Test.TestEthRpc(method, call, "latest");
+            Assert.That(JToken.Parse(withoutOverride)["error"], Is.Not.Null, withoutOverride);
+        }
+        string[] conflicting = reverse
+            ? ["0xc200000000000000000000000000000000000000", "0x000000000000000000000000000000000000dead"]
+            : ["0x000000000000000000000000000000000000dead", "0xc200000000000000000000000000000000000000"];
+        Dictionary<string, object> stateOverride = conflicting.ToDictionary(static address => address, static object (_) => new { state = new { }, stateDiff = new { } });
+
+        string response = await ctx.Test.TestEthRpc(method, call, "latest", stateOverride);
+
+        AssertCallBlockOverrideError(JToken.Parse(response)["error"], "account 0x000000000000000000000000000000000000dEaD has both 'state' and 'stateDiff'", response);
+    }
+
+    [Test]
+    public async Task Rpc_applies_a_lone_storage_override(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method,
+        [Values("state", "stateDiff", null)] string? field)
+    {
+        using Context ctx = await Context.Create();
+        // PUSH1 0 SLOAD ISZERO PUSH1 8 JUMPI STOP JUMPDEST PUSH1 0 DUP1 REVERT: reverts while slot 0 is empty.
+        Dictionary<string, object> accountOverride = new() { ["code"] = "0x60005415600857005b600080fd" };
+        if (field is not null) accountOverride[field] = new Dictionary<string, string> { [Hash256.Zero.ToString()] = Keccak.OfAnEmptyString.ToString() };
+        object stateOverride = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = accountOverride };
+
+        string response = await ctx.Test.TestEthRpc(method, new { from = TestItem.AddressA.ToString(), to = TestItem.AddressC.ToString() }, "latest", stateOverride);
+
+        JToken json = JToken.Parse(response);
+        bool reverted = json["error"] is not null || (json["result"] is JObject result && result["error"]?.Type == JTokenType.String);
+        Assert.That(reverted, Is.EqualTo(field is null), response);
+    }
+
+    [Test]
     public async Task Rpc_resolves_a_call_against_its_block_override(
         [Values("eth_call", "eth_estimateGas")] string method,
         [Values] bool dynamicFees)

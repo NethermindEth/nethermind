@@ -39,7 +39,7 @@ internal sealed class FlakySnapshotServer : IDisposable
 
     public int? DropFirstAttemptPerRangeAfterBytes { get; set; }
 
-    public int? FailWithNotFoundAfterRequests { get; set; }
+    public (int RequestNumber, int StatusCode)? FailRequestWithStatus { get; set; }
 
     public bool OmitContentLength { get; set; }
 
@@ -132,9 +132,9 @@ internal sealed class FlakySnapshotServer : IDisposable
                 return;
             }
 
-            if (FailWithNotFoundAfterRequests is int failAfter && requestNumber > failAfter)
+            if (FailRequestWithStatus is (int failedRequest, int failureStatus) && requestNumber == failedRequest)
             {
-                response.StatusCode = 404;
+                response.StatusCode = failureStatus;
                 response.Close();
                 return;
             }

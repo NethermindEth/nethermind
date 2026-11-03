@@ -2943,6 +2943,26 @@ public partial class EthRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Eth_createAccessList_lists_each_storage_key_once_in_ascending_order()
+    {
+        static string Slot(int slot) => $"0x{slot:x64}";
+        // SLOAD slots 3, 1, 2 and 1 again; the caller's list adds slots 5 and 2.
+        const string code = "0x6003545060015450600254506001545000";
+        string call = $$"""{"from":"{{CreateAccessListSender}}","to":"{{AccessListContract}}","accessList":[{"address":"{{AccessListContract}}","storageKeys":["{{Slot(5)}}","{{Slot(2)}}"]}]}""";
+        using Context ctx = await Context.CreateWithOsakaEnabled();
+
+        (JToken result, _) = await CallCreateAccessList(ctx, call, AccessListStateOverride(code), optimize: true);
+
+        JToken[] accessList = result["accessList"]!.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accessList.Select(static e => e["address"]!.Value<string>()), Is.EqualTo(new[] { AccessListContract }), result.ToString());
+            Assert.That(accessList[0]["storageKeys"]!.Select(static k => k.Value<string>()),
+                Is.EqualTo(new[] { Slot(1), Slot(2), Slot(3), Slot(5) }), result.ToString());
+        }
+    }
+
     private static string AccessListContractCall => $$"""{"from":"{{CreateAccessListSender}}","to":"{{AccessListContract}}"}""";
 
     // The contract under test runs code; the delegated account delegates to a contract that only stops.

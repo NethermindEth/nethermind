@@ -305,14 +305,15 @@ public class FrameTxDecoderTests
     /// Encodes the well-formed type-6 payload body that the hand-built payload tests start from.
     /// </summary>
     /// <param name="chainId">Replaces the chain_id field; defaults to <see cref="TestBlockchainIds.ChainId"/>.</param>
+    /// <param name="nonce">Replaces the nonce field; defaults to zero.</param>
     /// <param name="sender">Replaces the sender field; defaults to <see cref="TestItem.AddressA"/>.</param>
     /// <param name="signatures">Replaces the signatures field; defaults to the empty list.</param>
     /// <param name="fees">Replaces the fees field; defaults to three zero per-gas fees.</param>
     /// <param name="trailing">Extra elements appended after <c>blob_versioned_hashes</c>.</param>
-    private static Rlp FrameTxBody(Rlp? chainId = null, Rlp? sender = null, Rlp? signatures = null, Rlp? frames = null, Rlp? fees = null, params Rlp[] trailing) =>
+    private static Rlp FrameTxBody(Rlp? chainId = null, Rlp? nonce = null, Rlp? sender = null, Rlp? signatures = null, Rlp? frames = null, Rlp? fees = null, params Rlp[] trailing) =>
         Rlp.Encode([
             chainId ?? Rlp.Encode(TestBlockchainIds.ChainId),
-            Rlp.Encode(0L),                                 // nonce
+            nonce ?? Rlp.Encode(0L),                        // nonce
             sender ?? Rlp.Encode(TestItem.AddressA.Bytes),  // sender
             frames ?? Rlp.Encode(Array.Empty<Rlp>()),       // frames
             signatures ?? Rlp.Encode(Array.Empty<Rlp>()),   // signatures
@@ -385,6 +386,10 @@ public class FrameTxDecoderTests
             new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressC, FilledBytes(32, 0xab), FilledBytes(TxFrameSignature.Secp256k1SignatureLength, 0x22)),
             new TxFrameSignature(TxFrameSignature.SchemeP256, TestItem.AddressD, default, FilledBytes(TxFrameSignature.P256SignatureLength, 0x33)),
         ])).SetName("Roundtrip_AllSignatureSchemes");
+
+        Transaction largestNonce = CreateFrameTx();
+        largestNonce.Nonce = ulong.MaxValue;
+        yield return new TestCaseData(largestNonce).SetName("Roundtrip_LargestNonce");
 
         Transaction keyed = CreateFrameTx();
         keyed.NonceKeys = [UInt256.Zero];
@@ -727,6 +732,16 @@ public class FrameTxDecoderTests
             Throws.InstanceOf<RlpException>().With.Message.Contains("Unexpected length of integer"));
     }
 
+    // EIP-8141 requires nonce < 2^64. A wider nonce gets the NonceTooWide error the other transaction types report.
+    [Test]
+    public void Decode_NonceAtTwoToThe64_ThrowsNonceTooWide()
+    {
+        byte[] payload = TypedPayload(FrameTxBody(nonce: Rlp.Encode((UInt256)ulong.MaxValue + 1)));
+
+        Assert.That(() => DecodeConsensusPayload(payload),
+            Throws.InstanceOf<RlpException>().With.Message.Contains("NonceTooWide"));
+    }
+
     [TestCase(FrameDataDecodeCap, false)]
     [TestCase(FrameDataDecodeCap + 1, true)]
     public void Decode_BoundsTheFrameDataLength(int dataLength, bool rejected)
@@ -753,6 +768,46 @@ public class FrameTxDecoderTests
         payload[1] += (byte)overrun;
 
         Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpException>().With.Message.Contains("payload is incomplete"));
+    }
+
+    [TestCaseSource(nameof(TruncatedPayloadCases))]
+    public void Decode_InputEndingBeforeThePayloadDoes_ThrowsTruncated(byte[] payload) =>
+        Assert.That(() => DecodeConsensusPayload(payload),
+            Throws.InstanceOf<RlpException>().With.Message.EqualTo("RLP data is truncated: frame transaction payload is incomplete."));
+
+    /// <summary>Inputs that stop before the payload is complete, every header declaring only the bytes present.
+    /// Without the decoder's end-of-input checks each one reads past the end of the buffer, and the index exception
+    /// surfaces as <c>Cannot decode stream of</c>.</summary>
+    private static IEnumerable<TestCaseData> TruncatedPayloadCases()
+    {
+        Rlp chainId = Rlp.Encode(TestBlockchainIds.ChainId);
+        Rlp nonce = Rlp.Encode(0L);
+        Rlp sender = Rlp.Encode(TestItem.AddressA.Bytes);
+
+        yield return new TestCaseData(new[] { (byte)TxType.FrameTx }).SetName("Decode_TypeByteAlone_ThrowsTruncated");
+        yield return new TestCaseData(new[] { (byte)TxType.FrameTx, Rlp.EmptyListByte })
+            .SetName("Decode_EmptyPayloadList_ThrowsTruncated");
+        yield return new TestCaseData(TypedPayload(Rlp.Encode([
+                chainId, nonce, sender,
+                Rlp.Encode(Array.Empty<Rlp>()),                     // frames
+                Rlp.Encode(Array.Empty<Rlp>()),                     // signatures
+                Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L))])))      // fees; no blob_versioned_hashes
+            .SetName("Decode_PayloadWithoutItsLastField_ThrowsTruncated");
+
+        // The execution gas limit declares eight bytes and one follows it, so the input ends inside the frame.
+        Rlp frameEndingInItsGasLimit = Rlp.Encode([
+            Rlp.Encode((byte)FrameMode.Default),
+            Rlp.Encode((byte)FrameFlags.None),
+            Rlp.Encode(TestItem.AddressB.Bytes),
+            Rlp.Encode([new Rlp([0x88, 0x01])])]);          // limits
+        yield return new TestCaseData(TypedPayload(Rlp.Encode([chainId, nonce, sender, Rlp.Encode([frameEndingInItsGasLimit])])))
+            .SetName("Decode_InputEndingInsideAFrame_ThrowsTruncated");
+
+        // The signer declares 20 bytes and two follow it, so the input ends inside the signature entry.
+        Rlp signatureEndingInItsSigner = Rlp.Encode([Rlp.Encode(TxFrameSignature.SchemeArbitrary), new Rlp([0x94, 0x01, 0x02])]);
+        yield return new TestCaseData(TypedPayload(Rlp.Encode([
+                chainId, nonce, sender, Rlp.Encode(Array.Empty<Rlp>()), Rlp.Encode([signatureEndingInItsSigner])])))
+            .SetName("Decode_InputEndingInsideASignature_ThrowsTruncated");
     }
 
     /// <summary>An RLP list of <paramref name="count"/> single-byte items, without materialising the items.</summary>
