@@ -103,12 +103,16 @@ public sealed class RlpItemList : IRlpItemList
         return new RlpItemList(_memoryOwner, nestedRegion, parent: this);
     }
 
-    public static IRlpItemList DecodeList(ref RlpReader ctx, IMemoryOwner<byte> memoryOwner)
+    /// <summary>
+    /// Decodes a list whose items stay in <paramref name="memory"/>, which <paramref name="ctx"/> reads.
+    /// </summary>
+    /// <param name="memoryOwner">The owner of <paramref name="memory"/>, which the list takes.</param>
+    public static IRlpItemList DecodeList(ref RlpReader ctx, IMemoryOwner<byte> memoryOwner, Memory<byte> memory)
     {
         int prefixStart = ctx.Position;
         int innerLength = ctx.ReadSequenceLength();
         int totalLength = (ctx.Position - prefixStart) + innerLength;
-        RlpItemList list = new(memoryOwner, memoryOwner.Memory.Slice(prefixStart, totalLength));
+        RlpItemList list = new(memoryOwner, memory.Slice(prefixStart, totalLength));
         ctx.Position = prefixStart + totalLength;
         return list;
     }
