@@ -74,21 +74,21 @@ public class InitDatabaseSnapshot(
             else
             {
                 if (_logger.IsInfo)
-                    _logger.Info($"Database already exists at {dbPath}. Skipping snapshot initialization.");
+                    _logger.Info($"Database already exists at {dbPath:hide}. Skipping snapshot initialization.");
                 return;
             }
         }
         else if (checkpoint.Read() >= SnapshotStage.Extracted)
         {
             if (_logger.IsWarn)
-                _logger.Warn($"The snapshot checkpoint indicates a completed extraction, but the database at {dbPath} is missing or empty. Reinitializing from the snapshot.");
+                _logger.Warn($"The snapshot checkpoint indicates a completed extraction, but the database at {dbPath:hide} is missing or empty. Reinitializing from the snapshot.");
             checkpoint.Advance(File.Exists(snapshotPath) ? SnapshotStage.Downloaded : SnapshotStage.Started);
         }
 
         if (checkpoint.Read() >= SnapshotStage.Downloaded && !File.Exists(snapshotPath))
         {
             if (_logger.IsWarn)
-                _logger.Warn($"The snapshot checkpoint indicates a completed download, but no archive exists at {snapshotPath}. Restarting the download.");
+                _logger.Warn($"The snapshot checkpoint indicates a completed download, but no archive exists at {snapshotPath:hide}. Restarting the download.");
             checkpoint.Advance(SnapshotStage.Started);
         }
 
@@ -104,7 +104,7 @@ public class InitDatabaseSnapshot(
             }
 
             if (_logger.IsWarn)
-                _logger.Warn($"A fully downloaded snapshot archive exists at {snapshotPath}. Extracting it instead of streaming.");
+                _logger.Warn($"A fully downloaded snapshot archive exists at {snapshotPath:hide}. Extracting it instead of streaming.");
         }
 
         using SnapshotDownloader downloader = new(api.LogManager);
@@ -114,7 +114,7 @@ public class InitDatabaseSnapshot(
         if (!checksumPassed)
         {
             if (_logger.IsWarn)
-                _logger.Warn($"Deleting invalid snapshot file '{snapshotPath}' and resetting checkpoint for re-download on next run.");
+                _logger.Warn($"Deleting invalid snapshot file '{snapshotPath:hide}' and resetting checkpoint for re-download on next run.");
             File.Delete(snapshotPath);
             checkpoint.Advance(SnapshotStage.Started);
             return;
@@ -125,7 +125,7 @@ public class InitDatabaseSnapshot(
         if (_logger.IsInfo)
         {
             _logger.Info("Database successfully initialized from snapshot.");
-            _logger.Info($"Deleting snapshot file {snapshotPath}.");
+            _logger.Info($"Deleting snapshot file {snapshotPath:hide}.");
         }
 
         File.Delete(snapshotPath);
@@ -164,7 +164,7 @@ public class InitDatabaseSnapshot(
                 lastSize = currentSize;
 
                 if (_logger.IsError)
-                    _logger.Error($"Snapshot download failed. Retrying in {retryDelay.TotalSeconds}s. Error: {e}");
+                    _logger.Error($"Snapshot download failed. Retrying in {retryDelay.TotalSeconds}s. Error: {(SensitiveLogMasking.Enabled ? e.GetType().Name : e.ToString())}");
                 await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
                 retryDelay = TimeSpan.FromSeconds(Math.Min(retryDelay.TotalSeconds * 2, MaxRetryDelaySeconds));
             }
@@ -228,7 +228,7 @@ public class InitDatabaseSnapshot(
         catch (Exception e) when (e is IOException or HttpRequestException)
         {
             if (_logger.IsWarn)
-                _logger.Warn($"Could not determine the snapshot size upfront. Skipping the pre-download disk space check. Error: {e.Message}");
+                _logger.Warn($"Could not determine the snapshot size upfront. Skipping the pre-download disk space check. Error: {(SensitiveLogMasking.Enabled ? e.GetType().Name : e.Message)}");
             return;
         }
 

@@ -15,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.IO;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Tracing;
@@ -474,6 +475,44 @@ public class OrderedTraceEmitterTests
         pipe.Reader.AdvanceTo(read.Buffer.End);
     }
 
+    /// <summary>One element far longer than a flush inside an element: the pipe is flushed while the element is
+    /// written, so it never holds the whole element at once.</summary>
+    [Test]
+    public void TraceStreamOutput_WithOneLongElement_FlushesInsideIt()
+    {
+        const int flushThresholdBytes = 16 * 1024;
+        const int pastTheFlushBytes = 64 * 1024;
+        SerializedTraces.Pool pool = new(capacity: 1, chunks: 1);
+        SerializedTraces serialized = pool.Rent(Options);
+        Utf8JsonWriter alone = serialized.Start(Options);
+        alone.WriteStartArray();
+        while (alone.BytesCommitted + alone.BytesPending < TraceStreamOutput.InElementFlushBytes + pastTheFlushBytes) alone.WriteStringValue("0123456789");
+        alone.WriteEndArray();
+        alone.Flush();
+        serialized.Seal();
+        byte[] element = serialized.Written.ToArray();
+
+        FlushRecordingPipeWriter recording = new(keepOutput: true);
+        using (Utf8JsonWriter writer = new(recording, new JsonWriterOptions { SkipValidation = true }))
+        {
+            writer.WriteStartArray();
+            TraceStreamOutput output = new(writer, recording, CancellationToken.None, flushThresholdBytes);
+            output.WriteSerialized(serialized.Written);
+            pool.Return(serialized);
+            writer.WriteEndArray();
+        }
+
+        byte[] expected = [.. "["u8, .. element, .. "]"u8];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(element.Length, Is.GreaterThan(TraceStreamOutput.InElementFlushBytes + SerializedTraces.ChunkSize), "precondition: the element is longer than a flush inside it");
+            Assert.That(recording.MaxUnflushedBytes, Is.InRange(TraceStreamOutput.InElementFlushBytes, TraceStreamOutput.InElementFlushBytes + SerializedTraces.ChunkSize),
+                "the element is flushed once per flush inside an element, neither per chunk nor only at its end");
+            Assert.That(recording.WrittenSpan.ToArray(), Is.EqualTo(expected), "the element reaches the writer whole and in order");
+        }
+    }
+
     [Test]
     public void Emitter_WhenTheByteBudgetIsSpent_WaitsForTheWriteBeforeTakingAnotherTransaction()
     {
@@ -499,6 +538,44 @@ public class OrderedTraceEmitterTests
             Assert.That(pending, Is.EqualTo(SerializedTraces.ChunkSize), "precondition: the chunk held by the transaction waiting behind the first one");
             Assert.That(emitter.PendingBytes, Is.Zero, "writing gives the bytes back");
             Assert.That(stream.Json(), Is.EqualTo("[0,11,12]"));
+        }
+    }
+
+    /// <summary>Workers wait for a place, for the window or for the byte budget, while the oldest transaction is
+    /// held: once the last transaction is taken they are all let go, rather than kept until the next write, and the
+    /// next block waits for its places again.</summary>
+    [Test]
+    public void Emitter_WhenTheLastTransactionIsTaken_LetsTheWorkersWaitingForAPlaceGo([Values] bool budgetSpent)
+    {
+        RecordingStream stream = new(serializeAhead: true);
+        SerializedTraces.Pool pool = new(8, 1);
+        using SerializingTraceEmitter<int> emitter = new();
+        StartWithTheOldestHeld();
+
+        Task[] waiters = [Task.Run(() => emitter.Reserve(CancellationToken.None)), Task.Run(() => emitter.Reserve(CancellationToken.None))];
+        bool waited = Task.WaitAny(waiters, TimeSpan.FromMilliseconds(200)) == -1;
+        emitter.LastTaken(waiters: waiters.Length);
+        bool letGo = Task.WaitAll(waiters, Timeout);
+        string written = stream.Json();
+
+        emitter.DisposeUnpublished();
+        emitter.Clear();
+        StartWithTheOldestHeld();
+        using CancellationTokenSource blocked = new(TimeSpan.FromMilliseconds(200));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waited, Is.True, budgetSpent ? "precondition: the byte budget is spent" : "precondition: the window is full");
+            Assert.That(letGo, Is.True, "every worker waiting for a place is let go once the last transaction is taken");
+            Assert.That(written, Is.EqualTo("[]"), "nothing is written while the oldest transaction is held");
+            Assert.That(() => emitter.Reserve(blocked.Token), Throws.InstanceOf<OperationCanceledException>(), "the next block waits for a place again");
+        }
+
+        void StartWithTheOldestHeld()
+        {
+            emitter.Start(stream, stream.SerializeAheadOptions!.Value, pool, transactions: 3, window: budgetSpent ? 8 : 2, budgetBytes: budgetSpent ? 1 : long.MaxValue);
+            Reserve(emitter, 2);
+            emitter.Add(1, new Traces(11));
         }
     }
 

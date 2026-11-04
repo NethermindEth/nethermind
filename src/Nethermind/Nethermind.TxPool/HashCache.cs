@@ -18,13 +18,13 @@ namespace Nethermind.TxPool
     /// I claim that this class is thread safe due to thread safety of underlying structures and
     /// careful ordering of the operations.
     /// </summary>
-    internal class HashCache
+    internal class HashCache(int longTermCapacity)
     {
         private const int SafeCapacity = 1024 * 16;
         private const int InvalidBlobProofsCapacity = 1024;
 
         private readonly AssociativeKeyCache<ValueHash256> _longTermCache = new(
-            MemoryAllowance.TxHashCacheSize);
+            longTermCapacity);
 
         private readonly AssociativeKeyCache<ValueHash256> _currentBlockCache = new(
             SafeCapacity);
