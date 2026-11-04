@@ -276,7 +276,7 @@ public class GethStyleTracer(
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
         Block? block = FindBlockForTrace(blockParameter);
-        return TraceBlockImpl(block, options, cancellationToken, writer, pipeWriter);
+        return TraceBlockImpl(block, options, cancellationToken, writer, pipeWriter, enforceNativeExecutionDeadline: true);
     }
 
     private Block? FindBlockForTrace(BlockParameter selector)
@@ -291,10 +291,12 @@ public class GethStyleTracer(
     }
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
-        TraceBlockImpl(GetBlockToTrace(blockRlp), options, cancellationToken, writer, pipeWriter, allowIndexed: false, processingOptions: TraceProcessingOptions.ReadOnlySigned);
+        TraceBlockImpl(GetBlockToTrace(blockRlp), options, cancellationToken, writer, pipeWriter, allowIndexed: false,
+            processingOptions: TraceProcessingOptions.ReadOnlySigned, enforceNativeExecutionDeadline: false);
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block block, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
-        TraceBlockImpl(block, options, cancellationToken, writer, pipeWriter, allowIndexed: false, processingOptions: TraceProcessingOptions.ReadOnlySigned);
+        TraceBlockImpl(block, options, cancellationToken, writer, pipeWriter, allowIndexed: false,
+            processingOptions: TraceProcessingOptions.ReadOnlySigned, enforceNativeExecutionDeadline: false);
 
     public IReadOnlyCollection<Hash256> TraceBlockIntermediateRoots(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken)
     {
@@ -371,7 +373,7 @@ public class GethStyleTracer(
 
     private GethLikeTxTrace? TraceImpl(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options,
         bool useBlockAsBase = false, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null, bool allowIndexed = true,
-        ProcessingOptions processingOptions = TraceProcessingOptions.ReadOnlyReplay, int txIndex = -1)
+        ProcessingOptions processingOptions = TraceProcessingOptions.ReadOnlyReplay, int txIndex = -1, bool enforceNativeExecutionDeadline = false)
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
@@ -418,7 +420,7 @@ public class GethStyleTracer(
             effective => writer is null
                 ? CreateOptionsTracer(block.Header, filtered with { DeadlineScope = effective.DeadlineScope }, scope.Component.WorldState, specProvider, logIndex is null ? null : (_, _) => logIndex)
                 : new GethLikeBlockStreamingMemoryTracer(filtered with { DeadlineScope = effective.DeadlineScope }, writer, pipeWriter, cancellationToken, destroyRefund),
-            options with { TxHash = txHash }, cancellationToken, streaming: writer is not null);
+            options with { TxHash = txHash }, cancellationToken, enforceNativeExecutionDeadline: enforceNativeExecutionDeadline || writer is not null);
 
         try
         {
@@ -468,7 +470,7 @@ public class GethStyleTracer(
             logIndex is null ? options : options with { LogIndex = logIndex(b, tx) }, b, tx, worldState, specProvider.GetSpec(b.Header));
 
     private IReadOnlyCollection<GethLikeTxTrace> TraceBlockImpl(Block? block, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null, bool allowIndexed = true,
-        ProcessingOptions processingOptions = TraceProcessingOptions.ReadOnlyReplay)
+        ProcessingOptions processingOptions = TraceProcessingOptions.ReadOnlyReplay, bool enforceNativeExecutionDeadline = false)
     {
         ArgumentNullException.ThrowIfNull(block);
 
@@ -484,7 +486,8 @@ public class GethStyleTracer(
         // replay. The block-level options the sequential path ignores stay with it.
         if (writer is null && options.TxHash is { } target && options.BlockOverrides is null && !options.NoBaseFee)
         {
-            GethLikeTxTrace? single = TraceImpl(block, target, cancellationToken, options, allowIndexed: allowIndexed, processingOptions: processingOptions);
+            GethLikeTxTrace? single = TraceImpl(block, target, cancellationToken, options, allowIndexed: allowIndexed,
+                processingOptions: processingOptions, enforceNativeExecutionDeadline: enforceNativeExecutionDeadline);
             IReadOnlyCollection<GethLikeTxTrace> filtered = single is null ? [] : [single];
             return new GethLikeTxTraceCollection(filtered);
         }
@@ -497,7 +500,7 @@ public class GethStyleTracer(
             Func<IWorldState, Hash256, IBlockTracer<GethLikeTxTrace>> forTransaction =
                 (state, txHash) => GethLikeBlockDeadlineTracer.Wrap(
                     effective => CreateOptionsTracer(block.Header, effective, state, specProvider, parallelLogIndex),
-                    options with { TxHash = txHash }, cancellationToken, streaming: writer is not null);
+                    options with { TxHash = txHash }, cancellationToken, enforceNativeExecutionDeadline: enforceNativeExecutionDeadline || writer is not null);
             if (writer is null)
             {
                 if (parallelTracer.TryTrace(block, FindParent(block), forTransaction, afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))
@@ -540,7 +543,8 @@ public class GethStyleTracer(
                 : streamsNative
                     ? new GethLikeBlockNativeStreamingTracer(CreateNativeTracerFactory(effective, scope.Component.WorldState, specProvider, logIndex), writer, pipeWriter, cancellationToken, effective.DeadlineScope)
                     : new GethLikeBlockEnvelopeStreamingTracer(options with { DeadlineScope = effective.DeadlineScope }, writer, pipeWriter, cancellationToken, destroyRefund),
-            options with { TxHash = keptTxHash ?? options.TxHash }, cancellationToken, streaming: writer is not null);
+            options with { TxHash = keptTxHash ?? options.TxHash }, cancellationToken,
+            enforceNativeExecutionDeadline: enforceNativeExecutionDeadline || writer is not null);
 
         try
         {
