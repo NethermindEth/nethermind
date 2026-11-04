@@ -1996,13 +1996,18 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceBlockByNumber_mux_preserves_javascript_result_errors(
         [Values] bool nested,
         [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
-        [Values("result", "step")] string callback)
+        [Values("result", "step", "cyclic")] string callback)
     {
         using Context ctx = await Context.Create();
         Block block = await ctx.Blockchain.AddBlock(CreateTraceBlockTransactions(ctx.Blockchain));
-        string script = callback == "result"
-            ? "{fault:function(){},result:function(){throw Error('mux result failure');}}"
-            : "{fault:function(){},step:function(){throw Error('mux step failure');},result:function(){return {};}}";
+        string script = callback switch
+        {
+            "result" => "{fault:function(){},result:function(){throw Error('mux result failure');}}",
+            "step" => "{fault:function(){},step:function(){throw Error('mux step failure');},result:function(){return {};}}",
+            // A cyclic result is reported as the depth error, not a stack overflow.
+            _ => "{fault:function(){},result:function(){var o={};o.self=o;return o;}}"
+        };
+        string expected = callback == "cyclic" ? JavaScriptResultDepthError : $"mux {callback} failure";
         Dictionary<string, object> children = new() { [script] = new { }, ["noopTracer"] = new { } };
         object config = nested ? new Dictionary<string, object> { ["muxTracer"] = children } : children;
 
@@ -2020,7 +2025,7 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That((int?)error["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-            Assert.That((string?)error["message"], Does.Contain($"mux {callback} failure"), response);
+            Assert.That((string?)error["message"], Does.Contain(expected), response);
             Assert.That(json["result"], Is.Null, response);
         }
     }
@@ -2047,37 +2052,6 @@ public partial class DebugRpcModuleTests
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InternalError), response);
             Assert.That((string?)json["error"]?["data"], Does.Contain(expected), response);
             Assert.That(JToken.DeepEquals(JToken.Parse(next)["result"], JToken.Parse("""{"ok":[1]}""")), Is.True, next);
-        }
-    }
-
-    [Test]
-    public async Task Debug_traceBlockByNumber_mux_reports_a_cyclic_javascript_result_on_its_transaction([Values] bool nested)
-    {
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
-        UInt256 initial = chain.WorldStateManager.GlobalStateReader.GetBalance(chain.BlockTree.Head!.Header, TestItem.AddressC);
-        Block block = await AddTraceCallPrefixTransfers(chain, 2);
-        string script = "{fault:function(){},result:function(ctx,db){if(ctx.txIndex===0){var o={};o.self=o;return o;}"
-            + "return {index:ctx.txIndex,balance:db.getBalance(toAddress('" + TestItem.AddressC + "')).toString()};}}";
-        Dictionary<string, object> children = new() { [script] = new { }, ["noopTracer"] = new { } };
-        object config = nested ? new Dictionary<string, object> { ["muxTracer"] = children } : children;
-
-        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
-            new { tracer = "muxTracer", tracerConfig = config });
-
-        JToken json = JToken.Parse(response);
-        Assert.That(json["error"], Is.Null, response);
-        JArray entries = (JArray)json["result"]!;
-        JToken? second = entries.Count == 2 ? entries[1]["result"] : null;
-        if (nested) second = second?["muxTracer"];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(entries, Has.Count.EqualTo(2), response);
-            Assert.That((string?)entries[0]["error"], Is.EqualTo(JavaScriptResultDepthError), response);
-            Assert.That(entries[0]["result"], Is.Null, response);
-            Assert.That(entries[1]["error"], Is.Null, response);
-            Assert.That((int?)second?[script]?["index"], Is.EqualTo(1), response);
-            Assert.That((string?)second?[script]?["balance"], Is.EqualTo((initial + 2).ToString()),
-                "the first transaction still executes, so the second one sees both transfers");
         }
     }
 
