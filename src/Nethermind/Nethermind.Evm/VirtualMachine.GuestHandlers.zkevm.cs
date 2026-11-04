@@ -1181,8 +1181,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// modulus's; a zero modulus is one such case.</returns>
         /// <remarks>
         /// Two addends below the modulus, as field arithmetic gives, have a sum below twice the modulus: one add and one
-        /// conditional subtract, with no call. Testing the top limbs alone proves them below it for all but a sliver of
-        /// field elements, which <see cref="ExecuteAddModOfAddendsBelowModulus"/> takes. The sum goes to the second
+        /// conditional subtract, with no call. For a modulus with a large top limb, testing the top limbs alone proves
+        /// them below it for all but a sliver of field elements, which <see cref="ExecuteAddModOfAddendsBelowModulus"/>
+        /// takes. A modulus below 2^192 has a zero top limb, so all its addends go there. The sum goes to the second
         /// addend's slot and its difference with the modulus to the modulus's, a limb at a time, so few values are live
         /// at once and the handler saves no registers.
         /// </remarks>
@@ -1275,8 +1276,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <remarks>
         /// The precompile overwrites its multiplicand with the product and takes the multiplier and the modulus side by
         /// side. The modulus moves to the free slot above the first factor, and the second factor to the modulus's slot,
-        /// where the precompile leaves the product. The stack keeps a slot above its deepest word, so the free slot is
-        /// always there. The stack is pinned and its slots are 8-byte aligned, as the precompile needs.
+        /// where the precompile leaves the product. The stack holds at most <see cref="EvmStack.MaxStackSize"/> - 1
+        /// words and its buffer has room for at least <see cref="EvmStack.MaxStackSize"/>, so the slot above its topmost
+        /// word is always free. The stack is pinned and its slots are 8-byte aligned, as the precompile needs.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Sp1MulModInSlots(ref ulong modulus)
