@@ -3,8 +3,6 @@
 
 using System.Buffers.Binary;
 using System.IO.Compression;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing.ParityStyle;
@@ -31,6 +29,8 @@ internal sealed class TracePositionSidecar(
     internal static ReadOnlySpan<byte> Prefix => "ots-pos-p1/"u8;
     internal static readonly byte[] SchemaKey = Key(0);
     internal static readonly byte[] ProgressKey = Key(1);
+    // Bump when stored-trace decoding changes incompatibly; record layout is versioned separately.
+    private const int SerializerFormatVersion = 1;
     private readonly IDb _meta = db.GetColumnDb(LogIndexColumns.Meta);
     private readonly JsonSerializerOptions _options = EthereumJsonSerializer.JsonOptions;
     private volatile bool _ready;
@@ -39,12 +39,12 @@ internal sealed class TracePositionSidecar(
     private ulong _next;
     private int _building;
     private string? _lastPause;
-    private bool _loggedFirstMatch;
+    private int _loggedFirstMatch;
 
     private bool Eligible => !_disabled && serializer.GetType() == typeof(ParityLikeTraceSerializer)
         && ReferenceEquals(_options, EthereumJsonSerializer.JsonOptions);
 
-    // Caller holds the index lifecycle lock; all leases end before returning to RPC receipt processing.
+    // The caller's lifecycle lease prevents disposal; source leases end before RPC receipt processing.
     internal SearchResult<bool[]>? TryMatch(Block block, Address address, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -61,9 +61,8 @@ internal sealed class TracePositionSidecar(
             {
                 bool[]? matches = TracePositionRecord.Match(record, block, address, blob, ct);
                 if (!Eligible || matches is null) return null;
-                if (!_loggedFirstMatch && logger.IsInfo)
+                if (logger.IsInfo && Interlocked.CompareExchange(ref _loggedFirstMatch, 1, 0) == 0)
                 {
-                    _loggedFirstMatch = true;
                     logger.Info($"Position sidecar first proof match: {block.Number} ({block.Hash}).");
                 }
                 return new(matches);
@@ -187,25 +186,13 @@ internal sealed class TracePositionSidecar(
 
     private byte[] Schema()
     {
-        byte[] value = new byte[84];
+        byte[] value = new byte[52];
         "OTP1"u8.CopyTo(value);
         BinaryPrimitives.WriteInt32LittleEndian(value.AsSpan(4), TracePositionRecord.Version);
-        BinaryPrimitives.WriteInt32LittleEndian(value.AsSpan(8), TracePositionRecord.Version);
+        BinaryPrimitives.WriteInt32LittleEndian(value.AsSpan(8), SerializerFormatVersion);
         blocks.GenesisHash.Bytes.CopyTo(value.AsSpan(12, 32));
         BinaryPrimitives.WriteInt32LittleEndian(value.AsSpan(44), config.AddressIndexFromBlock);
         BinaryPrimitives.WriteInt32LittleEndian(value.AsSpan(48), config.MaxDepth);
-        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        Type[] contracts = [typeof(ParityLikeTraceSerializer), typeof(ParityLikeTxTrace), typeof(Address),
-            typeof(EthereumJsonSerializer), typeof(SearchResult<>), typeof(JsonSerializer), typeof(object), typeof(SHA256)];
-        foreach (Type type in contracts) hash.AppendData(type.Assembly.ManifestModule.ModuleVersionId.ToByteArray());
-        byte[] runtime = Encoding.UTF8.GetBytes(Environment.Version.ToString());
-        Span<byte> number = stackalloc byte[4];
-        BinaryPrimitives.WriteInt32LittleEndian(number, runtime.Length);
-        hash.AppendData(number);
-        hash.AppendData(runtime);
-        BinaryPrimitives.WriteInt32LittleEndian(number, TracePositionRecord.Version);
-        hash.AppendData(number);
-        hash.GetHashAndReset(value.AsSpan(52));
         return value;
     }
 
@@ -213,19 +200,24 @@ internal sealed class TracePositionSidecar(
         && blocks.FindBlockHash((ulong)coverage.To) == coverage.Hash
         && blocks.FindBlockHash(block.Number) == block.Hash && blocks.IsMainChain(block.Header);
 
-    private static bool FitsInflatedLimit(ReadOnlySpan<byte> blob, CancellationToken ct)
+    private static unsafe bool FitsInflatedLimit(ReadOnlySpan<byte> blob, CancellationToken ct)
     {
-        using MemoryStream input = new(blob.ToArray(), writable: false);
-        using GZipStream gzip = new(input, CompressionMode.Decompress);
-        Span<byte> buffer = stackalloc byte[4096];
-        int total = 0;
-        while (true)
+        // The caller retains the source lease, and the pin outlives both streams and every synchronous read.
+        fixed (byte* bufferStart = blob)
         {
-            ct.ThrowIfCancellationRequested();
-            int count = gzip.Read(buffer);
-            if (count == 0) return true;
-            total += count;
-            if (total > TracePositionRecord.MaxBlobBytes) return false;
+            using UnmanagedMemoryStream input = new(bufferStart, blob.Length);
+            using GZipStream gzip = new(input, CompressionMode.Decompress);
+            // Validate before deserializing: the serializer has no inflated-byte limit, and oversized input skips proof publication.
+            Span<byte> buffer = stackalloc byte[4096];
+            int total = 0;
+            while (true)
+            {
+                ct.ThrowIfCancellationRequested();
+                int count = gzip.Read(buffer);
+                if (count == 0) return true;
+                total += count;
+                if (total > TracePositionRecord.MaxBlobBytes) return false;
+            }
         }
     }
 

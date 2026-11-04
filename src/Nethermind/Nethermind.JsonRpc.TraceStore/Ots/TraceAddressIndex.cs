@@ -32,6 +32,9 @@ public sealed class TraceAddressIndex : IStoppableService, IAsyncDisposable
     private readonly IDb _meta;
     private readonly TracePositionSidecar? _positions;
     private readonly Lock _lifecycle = new();
+    private readonly TimeProvider _timeProvider;
+    private int _activeReads;
+    private TaskCompletionSource? _readsDrained;
     private readonly CancellationTokenSource _stop = new();
     private Task _worker = Task.CompletedTask;
     private Task? _stopping;
@@ -52,7 +55,7 @@ public sealed class TraceAddressIndex : IStoppableService, IAsyncDisposable
     }
 
     internal TraceAddressIndex(IDbFactory dbFactory, IDb traces, ITraceSerializer<ParityLikeTxTrace> serializer,
-        IBlockFinder blocks, ITraceStoreConfig config, ILogManager logManager, bool positionsEnabled)
+        IBlockFinder blocks, ITraceStoreConfig config, ILogManager logManager, bool positionsEnabled, TimeProvider? timeProvider = null)
     {
         if (positionsEnabled && config.AddressIndexReset)
             throw new ArgumentException("The experimental position sidecar requires AddressIndexReset=false.", nameof(config));
@@ -60,6 +63,7 @@ public sealed class TraceAddressIndex : IStoppableService, IAsyncDisposable
             throw new ArgumentException("TraceStore.AddressIndexEnabled requires BlocksToKeep=0 and TraceTypes including Trace.", nameof(config));
         if (config.AddressIndexFromBlock < 1 || config.AddressIndexLag < 0)
             throw new ArgumentException("Trace address index start must be positive and lag must be nonnegative.", nameof(config));
+        _timeProvider = timeProvider ?? TimeProvider.System;
         _traces = traces;
         _serializer = serializer;
         _blocks = blocks;
@@ -117,8 +121,6 @@ public sealed class TraceAddressIndex : IStoppableService, IAsyncDisposable
     {
         try
         {
-            bool bulkBuild = _positions is not null
-                && AppContext.TryGetSwitch("Nethermind.Experimental.OtsPositionSidecarBulkBuild", out bool enabled) && enabled;
             while (!_stop.IsCancellationRequested)
             {
                 // Yield between bounded groups; no aggregation queue or whole-range trace materialization.
@@ -130,10 +132,10 @@ public sealed class TraceAddressIndex : IStoppableService, IAsyncDisposable
                     if (!built) break;
                     worked = true;
                 }
-                if (bulkBuild && worked)
+                if (worked)
                     await Task.Yield();
                 else
-                    await Task.Delay(TimeSpan.FromSeconds(1), _stop.Token);
+                    await Task.Delay(TimeSpan.FromSeconds(1), _timeProvider, _stop.Token);
             }
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
@@ -244,18 +246,18 @@ public sealed class TraceAddressIndex : IStoppableService, IAsyncDisposable
     internal SearchResult<bool[]>? TryMatchPositions(Block block, Address address, CancellationToken ct)
     {
         if (_positions is null) return null;
-        while (!_lifecycle.TryEnter(TimeSpan.FromMilliseconds(50))) ct.ThrowIfCancellationRequested();
+        if (!TryEnterRead(ct)) return null;
         try
         {
             ct.ThrowIfCancellationRequested();
             return _stopped || _invalid ? null : _positions.TryMatch(block, address, ct);
         }
-        finally { _lifecycle.Exit(); }
+        finally { ExitRead(); }
     }
 
     internal Candidates? FindCandidates(Address address, ulong from, ulong to, bool backwards, int limit, CancellationToken ct)
     {
-        while (!_lifecycle.TryEnter(TimeSpan.FromMilliseconds(50))) ct.ThrowIfCancellationRequested();
+        if (!TryEnterRead(ct)) return null;
         try
         {
             ct.ThrowIfCancellationRequested();
@@ -313,7 +315,26 @@ public sealed class TraceAddressIndex : IStoppableService, IAsyncDisposable
             }
             return new(checkpoint, result, hashes, new Hash256(first.AsSpan(Hash256.Size)));
         }
+        finally { ExitRead(); }
+    }
+
+    private bool TryEnterRead(CancellationToken ct)
+    {
+        while (!_lifecycle.TryEnter(TimeSpan.FromMilliseconds(50))) ct.ThrowIfCancellationRequested();
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            if (_stopped) return false;
+            _activeReads++;
+            return true;
+        }
         finally { _lifecycle.Exit(); }
+    }
+
+    private void ExitRead()
+    {
+        using Lock.Scope _ = _lifecycle.EnterScope();
+        if (--_activeReads == 0) _readsDrained?.TrySetResult();
     }
 
     private static byte[] BlockKey(int number)
@@ -355,6 +376,7 @@ public sealed class TraceAddressIndex : IStoppableService, IAsyncDisposable
         _stopped = true;
         using Lock.Scope _ = _lifecycle.EnterScope();
         if (_stopping is not null) return _stopping;
+        if (_activeReads != 0) _readsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _stop.Cancel();
         return _stopping = StopCoreAsync();
     }
@@ -362,6 +384,7 @@ public sealed class TraceAddressIndex : IStoppableService, IAsyncDisposable
     private async Task StopCoreAsync()
     {
         await _worker;
+        if (_readsDrained is not null) await _readsDrained.Task;
         await _storage.StopAsync();
     }
 

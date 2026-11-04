@@ -23,6 +23,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -874,7 +875,7 @@ public class OtsRpcModuleTests
         public bool PositionsEnabled { get; }
 
         public Fixture(IDbFactory? indexFactory = null, int fromBlock = 1, int lag = 0, bool resetIndex = false, bool positions = false,
-            ILogManager? logManager = null, bool observeTraces = false, ISpecProvider? specProvider = null)
+            ILogManager? logManager = null, bool observeTraces = false, ISpecProvider? specProvider = null, TimeProvider? timeProvider = null)
         {
             PositionsEnabled = positions;
             TraceConfig.AddressIndexEnabled = indexFactory is not null;
@@ -888,10 +889,10 @@ public class OtsRpcModuleTests
                 .AddDecorator<ITraceSerializer<ParityLikeTxTrace>>((_, inner) => positions ? inner : new RecordingSerializer(inner))
                 .AddSingleton<IJsonRpcService, JsonRpcService>();
             if (logManager is not null) builder.AddSingleton<ILogManager>(logManager);
-            if (positions)
+            if (positions || timeProvider is not null)
                 builder.AddSingleton<TraceAddressIndex>(ctx => new(ctx.Resolve<IDbFactory>(),
                     ctx.ResolveKeyed<IDb>(TraceStorePlugin.DbName), ctx.Resolve<ITraceSerializer<ParityLikeTxTrace>>(),
-                    ctx.Resolve<IBlockTree>(), TraceConfig, ctx.Resolve<ILogManager>(), true));
+                    ctx.Resolve<IBlockTree>(), TraceConfig, ctx.Resolve<ILogManager>(), positions, timeProvider));
             if (specProvider is not null) builder.AddSingleton<ISpecProvider>(specProvider);
             Container = builder.Build();
             Tree = Container.Resolve<IBlockTree>();
@@ -1657,30 +1658,50 @@ public class OtsRpcModuleTests
     }
 
     [Test]
-    public async Task Position_disposal_waits_for_active_lookup()
+    public async Task Index_concurrent_lookups_hold_storage_until_shutdown([Values] bool positions, [Values] bool dispose)
     {
         using IndexEnvironment env = new(observe: true);
-        await using Fixture f = new(env, positions: true);
+        await using Fixture f = new(env, positions: positions);
         await BuildIndex(f);
-        using ManualResetEventSlim entered = new();
+        using CountdownEvent entered = new(2);
         using ManualResetEventSlim release = new();
-        env.Controlled!.Meta.BeforeSpan = () =>
+        int reads = 0;
+        void BlockRead()
         {
-            entered.Set();
+            if (Interlocked.Increment(ref reads) > 2) return;
+            entered.Signal();
             if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException();
-        };
+        }
+        if (positions) env.Controlled!.Meta.BeforeSpan = BlockRead;
+        else env.Controlled!.Meta.BeforeGet = BlockRead;
         TraceAddressIndex index = f.Container.Resolve<TraceAddressIndex>();
-        Task reading = Task.Run(() => index.TryMatchPositions(f.Blocks[1], TestItem.AddressA, CancellationToken.None));
-        Assert.That(await Task.Run(() => entered.Wait(TimeSpan.FromSeconds(10))), Is.True);
-        Task disposing = Task.Run(async () => await index.DisposeAsync());
+        void Read()
+        {
+            if (positions) index.TryMatchPositions(f.Blocks[1], TestItem.AddressA, CancellationToken.None);
+            else index.FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None);
+        }
+        Task first = Task.Run(Read);
+        Task second = Task.Run(Read);
+        Task? shutdown = null;
         try
         {
-            await Task.Delay(50);
-            Assert.That(disposing.IsCompleted, Is.False);
+            Assert.That(await Task.Run(() => entered.Wait(TimeSpan.FromSeconds(10))), Is.True,
+                "both queries must enter storage before either is released");
+            shutdown = dispose ? index.DisposeAsync().AsTask() : index.StopAsync();
+            Assert.That(shutdown.IsCompleted, Is.False);
         }
-        finally { release.Set(); }
-        await Task.WhenAll(reading, disposing).WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.That(env.Controlled.Meta.Leases, Is.Zero);
+        finally
+        {
+            release.Set();
+            await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(10));
+            if (shutdown is not null) await shutdown.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(env.Controlled!.Meta.Leases, Is.Zero);
+            Assert.That(index.FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None), Is.Null);
+            Assert.That(index.TryMatchPositions(f.Blocks[1], TestItem.AddressA, CancellationToken.None), Is.Null);
+        }
     }
 
     [Test]
@@ -1707,9 +1728,88 @@ public class OtsRpcModuleTests
     }
 
     [Test]
-    public async Task Position_restart_handles_schema_and_resume_hint([Values("valid", "hint", "schema", "orphan")] string state)
+    public async Task Position_schema_has_explicit_stable_format_versions()
     {
         using IndexEnvironment env = new();
+        await using Fixture f = new(env, positions: true);
+        await BuildIndex(f);
+        byte[] expected = new byte[52];
+        "OTP1"u8.CopyTo(expected);
+        BinaryPrimitives.WriteInt32LittleEndian(expected.AsSpan(4), 2);
+        BinaryPrimitives.WriteInt32LittleEndian(expected.AsSpan(8), 1);
+        f.Tree.GenesisHash.Bytes.CopyTo(expected.AsSpan(12, 32));
+        BinaryPrimitives.WriteInt32LittleEndian(expected.AsSpan(44), 1);
+        BinaryPrimitives.WriteInt32LittleEndian(expected.AsSpan(48), f.TraceConfig.MaxDepth);
+        Assert.That(env.Database!.GetColumnDb(LogIndexColumns.Meta).Get(TracePositionSidecar.SchemaKey),
+            Is.EqualTo(expected));
+    }
+
+    [TestCase("below", true, true)]
+    [TestCase("exact", true, true)]
+    [TestCase("over", true, false)]
+    [TestCase("compressed-over", true, false)]
+    [TestCase("gzip", false, false)]
+    [TestCase("json", false, false)]
+    [TestCase("cancel", false, false)]
+    public async Task Position_builder_bounds_and_failures_release_source(
+        string state, bool advances, bool hasProof)
+    {
+        using IndexEnvironment env = new();
+        await using Fixture f = new(env, positions: true);
+        TraceAddressIndex index = f.Container.Resolve<TraceAddressIndex>();
+        while (await index.BuildNextAsync(CancellationToken.None)) { }
+        TraceAddressIndex.Checkpoint coverage = index.FindCandidates(
+            TestItem.AddressA, 1, 3, true, 26, CancellationToken.None)!.Coverage;
+        byte[] blob = f.Store.Get(f.Blocks[1].Hash!)!;
+        if (state is "below" or "exact" or "over" or "json")
+        {
+            using MemoryStream compressed = new(blob, writable: false);
+            using System.IO.Compression.GZipStream inflater = new(compressed, System.IO.Compression.CompressionMode.Decompress);
+            using MemoryStream json = new();
+            inflater.CopyTo(json);
+            byte[] payload = json.ToArray();
+            if (state == "json") payload = "not-json"u8.ToArray();
+            else
+            {
+                int length = TracePositionRecord.MaxBlobBytes + (state == "over" ? 1 : state == "below" ? -1 : 0);
+                int originalLength = payload.Length;
+                Array.Resize(ref payload, length);
+                payload.AsSpan(originalLength).Fill((byte)' ');
+            }
+            using MemoryStream output = new();
+            using (System.IO.Compression.GZipStream deflater = new(output, System.IO.Compression.CompressionMode.Compress, leaveOpen: true))
+                deflater.Write(payload);
+            blob = output.ToArray();
+        }
+        if (state == "gzip") blob = new byte[] { 1, 2, 3, 4 };
+        if (state == "compressed-over") blob = new byte[TracePositionRecord.MaxBlobBytes + 1];
+        f.Store.Set(f.Blocks[1].Hash!, blob);
+        ObservedDb source = new(f.Store);
+        TracePositionSidecar sidecar = new(env.Database!, source, new ParityLikeTraceSerializer(LimboLogs.Instance),
+            f.Tree, f.TraceConfig, LimboLogs.Instance.GetClassLogger<TracePositionSidecar>());
+        using CancellationTokenSource cancellation = new();
+        if (state == "cancel") source.BeforeSpan = cancellation.Cancel;
+        bool built = false;
+        if (state == "cancel")
+            Assert.Throws<OperationCanceledException>(() => sidecar.BuildNext(coverage, cancellation.Token));
+        else
+            built = sidecar.BuildNext(coverage, cancellation.Token);
+        IDb meta = env.Database!.GetColumnDb(LogIndexColumns.Meta);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built, Is.EqualTo(advances));
+            Assert.That(meta.Get(TracePositionSidecar.Key(2, f.Blocks[1].Hash!)) is not null, Is.EqualTo(hasProof));
+            Assert.That(BinaryPrimitives.ReadUInt64LittleEndian(meta.Get(TracePositionSidecar.ProgressKey)!),
+                Is.EqualTo(advances ? 2ul : 1ul));
+            Assert.That(source.Leases, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Position_restart_handles_schema_and_resume_hint([Values("valid", "hint", "schema", "orphan", "record-version", "serializer-version", "genesis", "from-block", "max-depth", "old-fingerprint")] string state)
+    {
+        using IndexEnvironment env = new();
+        byte[]? originalSchema;
         await using (Fixture f = new(env, positions: true))
         {
             await BuildIndex(f);
@@ -1717,6 +1817,23 @@ public class OtsRpcModuleTests
             if (state == "hint") meta.Set(TracePositionSidecar.ProgressKey, new byte[] { 1 });
             if (state == "schema") meta.Set(TracePositionSidecar.SchemaKey, new byte[] { 1 });
             if (state == "orphan") meta.Set(TracePositionSidecar.SchemaKey, null);
+            if (state is "record-version" or "serializer-version" or "genesis" or "from-block" or "max-depth" or "old-fingerprint")
+            {
+                byte[] schema = meta.Get(TracePositionSidecar.SchemaKey)!;
+                int offset = state switch
+                {
+                    "record-version" => 4,
+                    "serializer-version" => 8,
+                    "genesis" => 12,
+                    "from-block" => 44,
+                    "max-depth" => 48,
+                    _ => -1
+                };
+                if (offset >= 0) schema[offset] ^= 1;
+                else Array.Resize(ref schema, 84);
+                meta.Set(TracePositionSidecar.SchemaKey, schema);
+            }
+            originalSchema = meta.Get(TracePositionSidecar.SchemaKey);
             env.Database.SyncWal();
         }
         await using Fixture restarted = new(env, positions: true);
@@ -1727,7 +1844,11 @@ public class OtsRpcModuleTests
         using ResultWrapper<OtsSearchResult> result = restarted.Search(true, 0, 25);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         OtsSearchResult page = result.Data;
-        Assert.That(page.Txs.Count, Is.EqualTo(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(page.Txs.Count, Is.EqualTo(4));
+            Assert.That(env.Database!.GetColumnDb(LogIndexColumns.Meta).Get(TracePositionSidecar.SchemaKey), Is.EqualTo(originalSchema));
+        }
     }
 
     [Test]
@@ -1915,47 +2036,55 @@ public class OtsRpcModuleTests
     }
 
     [Test, NonParallelizable]
-    public async Task Position_bulk_worker_catches_up_and_preserves_results([Values] bool bulk, [Values] bool backwards)
+    public async Task Index_worker_yields_without_throttling_productive_batches([Values] bool positions, [Values] bool backwards)
     {
-        using BulkWorkerSwitch _ = new(bulk);
         using IndexEnvironment env = new();
+        ManualTimeProvider clock = new();
         TaskCompletionSource caughtUp = new(TaskCreationOptions.RunContinuationsAsynchronously);
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsInfo.Returns(true);
-        logger.When(x => x.Info(Arg.Is<string>(line => line.StartsWith("Position sidecar caught up through"))))
-            .Do(call => caughtUp.TrySetResult());
-        await using Fixture indexed = new(env, positions: true, logManager: new OneLoggerLogManager(new ILogger(logger)));
+        await using Fixture indexed = new(env, positions: positions, logManager: new OneLoggerLogManager(new ILogger(logger)), timeProvider: clock);
         await using Fixture scanned = new();
         for (int i = 0; i < 67; i++)
         {
             indexed.AddBlock(Call(TestItem.AddressA));
             scanned.AddBlock(Call(TestItem.AddressA));
         }
+        string message = positions ? $"Position sidecar caught up through {indexed.Blocks.Count - 1} "
+            : $"Trace address index coverage: 1-{indexed.Blocks.Count - 1} ";
+        logger.When(x => x.Info(Arg.Is<string>(line => line.StartsWith(message))))
+            .Do(call => caughtUp.TrySetResult());
         TraceAddressIndex index = indexed.Container.Resolve<TraceAddressIndex>();
-        while (await index.BuildNextAsync(CancellationToken.None)) { }
         IDb meta = env.Database!.GetColumnDb(LogIndexColumns.Meta);
-        KeyValuePair<byte[], byte[]>[] original = meta.GetAll().ToArray();
+        KeyValuePair<byte[], byte[]>[] original = [];
+        if (positions)
+        {
+            while (await index.BuildNextAsync(CancellationToken.None)) { }
+            original = meta.GetAll().ToArray();
+        }
         index.Start();
-        await caughtUp.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.That(index.TryMatchPositions(indexed.Blocks[1], TestItem.AddressA, CancellationToken.None), Is.Not.Null);
+        Task completed = await Task.WhenAny(caughtUp.Task, clock.TimerCreated).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(completed, Is.SameAs(caughtUp.Task), "productive batches must not wait for the idle timer");
+        await clock.TimerCreated.WaitAsync(TimeSpan.FromSeconds(10));
+        if (positions) Assert.That(index.TryMatchPositions(indexed.Blocks[1], TestItem.AddressA, CancellationToken.None), Is.Not.Null);
         using ResultWrapper<OtsSearchResult> expected = scanned.Search(backwards, 0, 25);
         using ResultWrapper<OtsSearchResult> actual = indexed.Search(backwards, 0, 25);
         EthereumJsonSerializer json = new();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(json.Serialize(actual.Data), Is.EqualTo(json.Serialize(expected.Data)));
-            Assert.That(BinaryPrimitives.ReadUInt64LittleEndian(meta.Get(TracePositionSidecar.ProgressKey)!), Is.EqualTo((ulong)indexed.Blocks.Count));
+            if (positions)
+                Assert.That(BinaryPrimitives.ReadUInt64LittleEndian(meta.Get(TracePositionSidecar.ProgressKey)!), Is.EqualTo((ulong)indexed.Blocks.Count));
             foreach (KeyValuePair<byte[], byte[]> item in original) Assert.That(meta.Get(item.Key), Is.EqualTo(item.Value));
         }
         await index.StopAsync();
     }
 
     [Test, NonParallelizable]
-    public async Task Position_bulk_disposal_waits_for_work_and_releases_source([Values] bool bulk)
+    public async Task Index_disposal_waits_for_work_and_releases_source([Values] bool positions)
     {
-        using BulkWorkerSwitch _ = new(bulk);
         using IndexEnvironment env = new();
-        await using Fixture f = new(env, positions: true, observeTraces: true);
+        await using Fixture f = new(env, positions: positions, observeTraces: true);
         ObservedDb source = (ObservedDb)f.Store;
         using ManualResetEventSlim entered = new();
         using ManualResetEventSlim release = new();
@@ -1977,11 +2106,11 @@ public class OtsRpcModuleTests
     }
 
     [Test, NonParallelizable]
-    public async Task Position_bulk_idle_worker_does_not_spin_on_missing_source([Values] bool bulk)
+    public async Task Position_idle_worker_does_not_spin_on_missing_source()
     {
-        using BulkWorkerSwitch _ = new(bulk);
         using IndexEnvironment env = new();
-        await using Fixture f = new(env, positions: true, observeTraces: true);
+        ManualTimeProvider clock = new();
+        await using Fixture f = new(env, positions: true, observeTraces: true, timeProvider: clock);
         TraceAddressIndex index = f.Container.Resolve<TraceAddressIndex>();
         while (await index.BuildNextAsync(CancellationToken.None)) { }
         f.Store.Delete(f.Blocks[1].Hash!);
@@ -1995,25 +2124,13 @@ public class OtsRpcModuleTests
         };
         index.Start();
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        await Task.Delay(100);
+        await clock.TimerCreated.WaitAsync(TimeSpan.FromSeconds(10));
         await index.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Volatile.Read(ref reads), Is.EqualTo(1));
             Assert.That(source.Leases, Is.Zero);
         }
-    }
-
-    private sealed class BulkWorkerSwitch : IDisposable
-    {
-        private const string Key = "Nethermind.Experimental.OtsPositionSidecarBulkBuild";
-        private readonly bool _previous;
-        public BulkWorkerSwitch(bool enabled)
-        {
-            _previous = AppContext.TryGetSwitch(Key, out bool value) && value;
-            AppContext.SetSwitch(Key, enabled);
-        }
-        public void Dispose() => AppContext.SetSwitch(Key, _previous);
     }
 
     private sealed class IndexOnlyDbFactory(IDbFactory inner, IDbFactory index, bool observeTraces = false) : IDbFactory
@@ -2071,6 +2188,7 @@ public class OtsRpcModuleTests
         private int _leases;
         public int Leases => Volatile.Read(ref _leases);
         public Action? BeforeSpan { get; set; }
+        public Action? BeforeGet { get; set; }
         public Action<byte[]>? OnSpanKey { get; set; }
         public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
@@ -2084,7 +2202,11 @@ public class OtsRpcModuleTests
             try { inner.DangerousReleaseMemory(value); }
             finally { Interlocked.Decrement(ref _leases); }
         }
-        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            BeforeGet?.Invoke();
+            return inner.Get(key, flags);
+        }
         public void Set(scoped ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => inner.Set(key, value, flags);
         public string Name => inner.Name;
         public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => inner[keys];

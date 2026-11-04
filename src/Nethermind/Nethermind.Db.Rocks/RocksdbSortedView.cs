@@ -49,6 +49,7 @@ internal class RocksdbSortedView(Iterator iterator, ReadOptions readOptions) : I
 
     public bool MovePrevious()
     {
+        if (!_started || !_iterator.Valid()) return false;
         _iterator.Prev();
         return _iterator.Valid();
     }

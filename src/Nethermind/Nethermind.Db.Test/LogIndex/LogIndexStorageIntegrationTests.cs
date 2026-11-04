@@ -103,6 +103,29 @@ namespace Nethermind.Db.Test.LogIndex
             Assert.That(actual, Is.EqualTo(backwards ? blocks.Reverse() : blocks));
         }
 
+        [Test]
+        public void Reverse_view_rejects_invalid_positions([Values("unstarted", "empty", "before-first", "after-last", "failed-seek")] string state)
+        {
+            using IDb db = _dbFactory.CreateDb(new DbSettings(nameof(LogIndexStorage), "reverse-view"));
+            if (state != "empty") db.Set(new byte[] { 1 }, new byte[] { 2 });
+            using ISortedView view = ((ISortedKeyValueStore)db).GetViewBetween(new byte[] { 0 }, new byte[] { 3 });
+            IReverseSortedView reverse = (IReverseSortedView)view;
+            switch (state)
+            {
+                case "empty": Assert.That(view.StartBefore(new byte[] { 2 }), Is.False); break;
+                case "before-first":
+                    Assert.That(view.StartBefore(new byte[] { 2 }), Is.True);
+                    Assert.That(reverse.MovePrevious(), Is.False);
+                    break;
+                case "after-last":
+                    Assert.That(view.MoveNext(), Is.True);
+                    Assert.That(view.MoveNext(), Is.False);
+                    break;
+                case "failed-seek": Assert.That(((ISeekableSortedView)view).SeekTo(new byte[] { 2 }), Is.False); break;
+            }
+            Assert.That(reverse.MovePrevious(), Is.False);
+        }
+
         private IEnumerator<int> CreatePostingEnumerator(IDb db, int from, int to, bool backwards) => backwards
             ? ReverseLogIndexEnumerator.TryCreate((ISortedKeyValueStore)db, CompressionAlgorithm.Supported[testData.Compression!],
                 TestItem.AddressA.Bytes.ToArray(), from, to)!
