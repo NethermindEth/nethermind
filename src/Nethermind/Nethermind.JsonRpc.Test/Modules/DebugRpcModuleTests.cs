@@ -129,10 +129,12 @@ public partial class DebugRpcModuleTests
         Block block = chain.BlockTree.Head!;
         Assert.That(block.Transactions, Is.Not.Empty);
         chain.BlockTree.SyncPivot = (block.Number, block.Hash!);
-        chain.Container.Resolve<ISyncPointers>().LowestInsertedReceiptBlockNumber = block.Number;
+        ISyncPointers pointers = chain.Container.Resolve<ISyncPointers>();
+        pointers.LowestInsertedReceiptBlockNumber = 1;
         ISyncFeed<ReceiptsSyncBatch?> feed = chain.Container.Resolve<ISyncFeed<ReceiptsSyncBatch?>>();
         ((ReceiptsSyncFeed)feed).InitializeFeed();
-        Assert.That(chain.Container.Resolve<ISyncProgressResolver>().IsFastBlocksReceiptsFinished(), Is.False);
+        ISyncProgressResolver progress = chain.Container.Resolve<ISyncProgressResolver>();
+        Assert.That(progress.IsFastBlocksReceiptsFinished(), Is.True);
 
         object[] parameters = method switch
         {
@@ -141,12 +143,40 @@ public partial class DebugRpcModuleTests
             "debug_traceTransactionByBlockhashAndIndex" => [block.Hash!.ToString(), 0, new { }],
             _ => [block.Hash!.ToString()]
         };
+        string baselineResponse = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, parameters);
+        JToken baseline = JToken.Parse(baselineResponse);
+        Assert.That(baseline["error"], Is.Null, baselineResponse);
+        Assert.That(baseline["result"], Is.Not.Null, baselineResponse);
+        JToken expected = baseline["result"]!;
+        bool blockTrace = method is "debug_traceBlockByNumber" or "debug_traceBlockByHash";
+        if (blockTrace)
+        {
+            Assert.That(expected, Is.TypeOf<JArray>(), baselineResponse);
+            Assert.That(((JArray)expected).Count, Is.EqualTo(block.Transactions.Length), baselineResponse);
+        }
+        for (int i = 0; i < (blockTrace ? block.Transactions.Length : 1); i++)
+        {
+            JToken trace = blockTrace ? expected[i]!["result"]! : expected;
+            Assert.That(trace, Is.Not.Null, baselineResponse);
+            using (Assert.EnterMultipleScope())
+            {
+                if (blockTrace)
+                    Assert.That((string?)expected[i]!["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), baselineResponse);
+                Assert.That((long?)trace["gas"], Is.GreaterThan(0), baselineResponse);
+                Assert.That((bool?)trace["failed"], Is.False, baselineResponse);
+                Assert.That(trace["structLogs"], Is.TypeOf<JArray>(), baselineResponse);
+            }
+        }
+
+        pointers.LowestInsertedReceiptBlockNumber = block.Number;
+        Assert.That(progress.IsFastBlocksReceiptsFinished(), Is.False);
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, parameters);
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(json["error"], Is.Null, response);
             Assert.That(json["result"], Is.Not.Null, response);
+            Assert.That(JToken.DeepEquals(json["result"], expected), Is.True, response);
         }
     }
 
