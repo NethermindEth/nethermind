@@ -572,7 +572,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     if (_logger.IsDebug) DebugRequest(request, context);
 
                     JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context);
-                    await WriteSingleEntryAsync(singleResponse, sink, cancellationToken);
+                    await WriteSingleResponseAsync(request, singleResponse, sink, cancellationToken);
                     break;
 
                 case JsonValueKind.Array:
@@ -601,7 +601,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             if (_logger.IsDebug) DebugRequest(request, context);
 
             JsonRpcResult.Entry response = await HandleSingleRequest(request, context);
-            await WriteSingleEntryAsync(response, sink, cancellationToken);
+            await WriteSingleResponseAsync(request, response, sink, cancellationToken);
         }
         finally
         {
@@ -641,7 +641,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         long startTime = Stopwatch.GetTimestamp();
         int requestIndex = 0;
         bool isStopped = false;
-        // Deferred so an empty batch can be answered as a single Invalid Request rather than an empty array.
+        // Deferred until the first answered item, so a batch of notifications only writes nothing.
         bool batchStarted = false;
         BatchRequestJsonLifetime batchRequestJsonLifetime = new();
         // Override calls rent from an environment pool of this size, which rejects rather than queues.
@@ -655,12 +655,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             if (hasNext && request is not null) batchRequestJsonLifetime.TrackUntilBatchEnd(request);
             while (hasNext || window?.Count > 0)
             {
-                if (!batchStarted)
-                {
-                    await sink.BeginBatchAsync(cancellationToken);
-                    batchStarted = true;
-                }
-
                 while (hasNext
                     && request is not null
                     && !isStopped
@@ -686,15 +680,15 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         executedResponse = CreateBatchResponseLimitEntry(executed);
                     }
 
-                    await WriteBatchResponseAsync(executed, executedResponse, requestIndex, requestCount, sink, cancellationToken);
-                    isStopped |= sink.StopRequested;
+                    await WriteBatchResponseAsync(executed, executedResponse, ref batchStarted, requestIndex, requestCount, sink, cancellationToken);
+                    isStopped |= batchStarted && sink.StopRequested;
                     continue;
                 }
 
                 if (request is null)
                 {
                     if (_logger.IsDebug) LogInvalidBatchItem(requestIndex, requestCount, context, decodeException);
-                    await WriteBatchEntryAsync(CreateInvalidRequestEntry(startTime), sink, cancellationToken);
+                    await WriteBatchEntryAsync(CreateInvalidRequestEntry(startTime), ref batchStarted, sink, cancellationToken);
                     // The entry still counts against the response body: skipping this read would let the next
                     // valid element be dispatched in full after the sink already asked to stop.
                     isStopped |= sink.StopRequested;
@@ -714,22 +708,23 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     response = await HandleSingleRequest(request, context);
                 }
 
-                await WriteBatchResponseAsync(request, response, requestIndex, requestCount, sink, cancellationToken);
-                isStopped |= sink.StopRequested;
+                await WriteBatchResponseAsync(request, response, ref batchStarted, requestIndex, requestCount, sink, cancellationToken);
+                isStopped |= batchStarted && sink.StopRequested;
                 hasNext = source.TryGetNext(out request, out decodeException);
                 if (hasNext && request is not null) batchRequestJsonLifetime.TrackUntilBatchEnd(request);
             }
 
             // JSON-RPC 2.0: an empty batch is itself an Invalid Request, answered with one error object rather
             // than an empty array. Detected by exhausting the source, so it costs no extra pass.
-            if (!batchStarted)
+            if (requestIndex == 0)
             {
                 await WriteInvalidRequestAsync(sink, startTime, cancellationToken);
                 return;
             }
 
             if (_logger.IsTrace) _logger.Trace($"  {requestIndex} requests handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
-            await sink.EndBatchAsync(cancellationToken);
+            // JSON-RPC 2.0 section 6: a batch of notifications only is answered with nothing at all.
+            if (batchStarted) await sink.EndBatchAsync(cancellationToken);
         }
         finally
         {
@@ -751,6 +746,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private ValueTask WriteBatchResponseAsync(
         JsonRpcRequest request,
         JsonRpcResult.Entry response,
+        ref bool batchStarted,
         int requestIndex,
         int requestCount,
         IJsonRpcResponseSink sink,
@@ -762,8 +758,63 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             _diagnostics.TraceResult(response);
         }
 
-        return WriteBatchEntryAsync(response, sink, cancellationToken);
+        if (IsNotification(request))
+        {
+            response.Dispose();
+            return ValueTask.CompletedTask;
+        }
+
+        return WriteBatchEntryAsync(response, ref batchStarted, sink, cancellationToken);
     }
+
+    /// <summary>Writes a batch item, first opening the batch response if no item has been written yet.</summary>
+    /// <remarks>The batch is opened lazily so that a batch of notifications only writes nothing.</remarks>
+    private ValueTask WriteBatchEntryAsync(JsonRpcResult.Entry entry, ref bool batchStarted, IJsonRpcResponseSink sink, CancellationToken cancellationToken)
+    {
+        if (batchStarted)
+        {
+            return WriteBatchEntryAsync(entry, sink, cancellationToken);
+        }
+
+        batchStarted = true;
+        return BeginBatchAndWriteAsync(entry, sink, cancellationToken);
+    }
+
+    private async ValueTask BeginBatchAndWriteAsync(JsonRpcResult.Entry entry, IJsonRpcResponseSink sink, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await sink.BeginBatchAsync(cancellationToken);
+        }
+        catch
+        {
+            entry.Dispose();
+            throw;
+        }
+
+        await WriteBatchEntryAsync(entry, sink, cancellationToken);
+    }
+
+    /// <summary>Writes the response to a single request, or drops it when the request is a notification.</summary>
+    private ValueTask WriteSingleResponseAsync(JsonRpcRequest request, JsonRpcResult.Entry response, IJsonRpcResponseSink sink, CancellationToken cancellationToken)
+    {
+        if (!IsNotification(request))
+        {
+            return WriteSingleEntryAsync(response, sink, cancellationToken);
+        }
+
+        response.Dispose();
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Whether <paramref name="request"/> is a notification, which is executed but never answered.</summary>
+    /// <remarks>
+    /// JSON-RPC 2.0 section 4.1: a notification is a Request object without an <c>id</c> member, and the server must
+    /// not reply to it, also inside a batch. An explicit <c>"id": null</c> is a request, and an object without a
+    /// method is not a valid Request object, so it is still answered with an Invalid Request error (section 5).
+    /// </remarks>
+    private static bool IsNotification(JsonRpcRequest request) =>
+        request.Id.IsMissing && !string.IsNullOrWhiteSpace(request.Method);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void LogInvalidBatchItem(int requestIndex, int requestCount, JsonRpcContext context, Exception? exception) =>

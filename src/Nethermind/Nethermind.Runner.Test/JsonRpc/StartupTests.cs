@@ -199,6 +199,22 @@ public class StartupTests
         AssertArrayResultResponse(response, expectedId: 1);
     }
 
+    [TestCase(false, TestName = "Single notification")]
+    [TestCase(true, TestName = "Batch of notifications")]
+    public async Task ProcessJsonRpcRequest_Notifications_AreAnsweredWithEmptyBody(bool batch)
+    {
+        string notification = $$"""{"jsonrpc":"2.0","method":"{{GetBlobsV1Method}}","params":[[]]}""";
+        string request = batch ? $"[{notification},{notification}]" : notification;
+
+        (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(response, Is.Empty);
+        }
+    }
+
     [Test]
     public async Task ProcessJsonRpcRequest_AcceptsBatchDocument()
     {

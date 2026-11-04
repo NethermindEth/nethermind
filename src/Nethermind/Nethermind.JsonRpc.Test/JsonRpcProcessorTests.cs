@@ -24,6 +24,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Trie;
@@ -525,6 +526,96 @@ public class JsonRpcProcessorTests
 
         await processor.ProcessAsync(reader, context, sink, new JsonRpcProcessingOptions(inputMode));
         return sink.Responses;
+    }
+
+    private static IEnumerable<TestCaseData> NotificationCases()
+    {
+        const string notification = """{"jsonrpc":"2.0","method":"eth_chainId","params":[]}""";
+        string request = CreateRequest("1", "eth_chainId");
+        (string name, string body, int dispatched, string answer)[] cases =
+        [
+            ("Single notification", notification, 1, ""),
+            ("Batch of notifications", CreateBatchRequest(notification, notification), 2, ""),
+            ("Notification before request", CreateBatchRequest(notification, request), 2, "[1]"),
+            ("Request between notifications", CreateBatchRequest(notification, request, notification), 3, "[1]"),
+            ("Null id is a request", CreateRequest("null", "eth_chainId"), 1, "null"),
+            ("Null id in batch is a request", CreateBatchRequest(notification, CreateRequest("null", "eth_chainId")), 2, "[null]"),
+            ("Object without id or method is answered", """{"jsonrpc":"2.0"}""", 1, "<missing>"),
+            ("Batch item without id or method is answered", CreateBatchRequest(notification, """{"jsonrpc":"2.0"}"""), 2, "[<missing>]"),
+        ];
+
+        foreach ((string name, string body, int dispatched, string answer) in cases)
+        {
+            foreach (RequestTransport transport in Enum.GetValues<RequestTransport>())
+            {
+                yield return new TestCaseData(body, transport, dispatched, answer).SetName($"{name} ({transport})");
+            }
+        }
+    }
+
+    /// <remarks>
+    /// JSON-RPC 2.0 sections 4.1 and 6: a notification is executed but never answered, also inside a batch, and a
+    /// batch of notifications only is answered with nothing. <paramref name="answer"/> lists the answered ids, with
+    /// brackets for a batch.
+    /// </remarks>
+    [TestCaseSource(nameof(NotificationCases))]
+    public async Task Notifications_are_executed_but_not_answered(string body, RequestTransport transport, int dispatched, string answer)
+    {
+        int calls = 0;
+        IJsonRpcService service = CreateService(request =>
+        {
+            Interlocked.Increment(ref calls);
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateProcessor(service), Encoding.UTF8.GetBytes(body), transport);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(dispatched));
+            Assert.That(string.Join(" ", result.Select(static r => r.IsCollection
+                ? $"[{string.Join(",", r.BatchItems!.Select(static item => item.Id.ToString()))}]"
+                : r.Response!.Id.ToString())), Is.EqualTo(answer));
+        }
+    }
+
+    /// <remarks>
+    /// The socket sink is shared by every batch of one WS/IPC message and resets its stop flag only when a batch
+    /// response starts, which a leading notification defers.
+    /// </remarks>
+    [TestCase("eth_chainId", 1, TestName = "Response limit stop of a previous batch does not leak (sequential)")]
+    [TestCase("eth_call", 4, TestName = "Response limit stop of a previous batch does not leak (concurrent)")]
+    public async Task Response_limit_stop_of_a_previous_batch_does_not_leak(string method, int concurrency)
+    {
+        List<string> dispatched = [];
+        IJsonRpcService service = CreateService(request =>
+        {
+            lock (dispatched) dispatched.Add(request.Id.ToString());
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = concurrency, EthModuleConcurrentInstances = concurrency });
+        JsonRpcContext context = new(RpcEndpoint.Ws);
+        using MemoryMessageStream stream = new();
+        using SocketSendLock sendLock = new();
+        using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(stream, new NullJsonRpcLocalStats(), maxBatchResponseBodySize: 1, sendLock, context);
+        string notification = $$"""{"jsonrpc":"2.0","method":"{{method}}","params":[]}""";
+
+        await processor.ProcessAsync(
+            CreateReader(CreateBatchRequest(CreateRequest("1", method), CreateRequest("2", method)) + CreateBatchRequest(notification, CreateRequest("3", method))),
+            context,
+            sink,
+            new JsonRpcProcessingOptions(JsonRpcInputMode.MultipleDocuments));
+
+        string[] messages = Encoding.UTF8.GetString(stream.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        using JsonDocument secondBatch = JsonDocument.Parse(messages[^1]);
+        JsonElement answer = secondBatch.RootElement.EnumerateArray().Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(messages, Has.Length.EqualTo(2));
+            Assert.That(dispatched, Does.Contain("3"));
+            Assert.That(answer.GetProperty("id").GetInt32(), Is.EqualTo(3));
+            Assert.That(answer.TryGetProperty("error", out _), Is.False, answer.GetRawText());
+        }
     }
 
     [Test]
