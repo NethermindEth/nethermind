@@ -3,6 +3,7 @@
 
 using DotNetty.Buffers;
 using System.Linq;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
@@ -53,7 +54,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
         {
             GetTrieNodesMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(),
+                RequestId = 1,
                 RootHash = TestItem.KeccakA,
                 Paths = PathGroup.EncodeToRlpPathGroupList([
                     new() { Group = [TestItem.RandomDataA, TestItem.RandomDataB] },
@@ -63,7 +64,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
             GetTrieNodesMessageSerializer serializer = new();
 
-            AssertByteRoundtrip(serializer, msg);
+            AssertByteRoundtrip(serializer, msg, "f501a003783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760d1c9830102038404050607c685010208090a0a");
         }
 
         [Test]
@@ -162,7 +163,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
         /// RlpItemList has a ReadOnlySpan indexer that structural assertions cannot reflect over,
         /// so we verify roundtrip via byte equality instead of SerializerTester.TestZero.
         /// </summary>
-        private static void AssertByteRoundtrip(GetTrieNodesMessageSerializer serializer, GetTrieNodesMessage msg)
+        private static void AssertByteRoundtrip(GetTrieNodesMessageSerializer serializer, GetTrieNodesMessage msg, string? expectedData = null)
         {
             using GetTrieNodesMessage _ = msg;
             using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
@@ -187,6 +188,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             buffer2.GetBytes(buffer2.ReaderIndex, secondBytes);
 
             Assert.That(secondBytes, Is.EqualTo(firstBytes));
+            if (expectedData is not null)
+            {
+                Assert.That(firstBytes.ToHexString(), Is.EqualTo(expectedData));
+            }
         }
     }
 }

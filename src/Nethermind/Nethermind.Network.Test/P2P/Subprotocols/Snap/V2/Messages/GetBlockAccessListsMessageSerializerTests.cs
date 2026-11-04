@@ -37,14 +37,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V2.Messages
         {
             GetBlockAccessListsMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(),
+                RequestId = 1,
                 BlockHashes = ArrayPoolList<ValueHash256>.Empty(),
                 Bytes = 10
             };
 
             GetBlockAccessListsMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.TestZero(serializer, msg, "c301c00a");
         }
 
         [Test]
