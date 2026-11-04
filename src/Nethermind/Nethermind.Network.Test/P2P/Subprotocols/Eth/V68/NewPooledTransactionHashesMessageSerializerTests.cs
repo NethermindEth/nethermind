@@ -73,9 +73,18 @@ public class NewPooledTransactionHashesMessageSerializerTests
         Assert.That(() => serializer.Deserialize(bytes), Throws.InstanceOf<RlpException>());
     }
 
-    [Test]
-    [NonParallelizable]
-    public void Reused_message_clears_fields_and_lists([Values(0, 3, 129)] int count)
+    // One method per case: these read message lists back from the process-wide MessageLists pool, and a
+    // [NonParallelizable] on a parameterized method does not keep other fixtures' decoders away (nunit/nunit#3371).
+    [Test, NonParallelizable]
+    public void Reused_empty_message_clears_fields_and_lists() => AssertReusedMessageClearsFieldsAndLists(0);
+
+    [Test, NonParallelizable]
+    public void Reused_message_clears_fields_and_lists() => AssertReusedMessageClearsFieldsAndLists(3);
+
+    [Test, NonParallelizable]
+    public void Reused_message_over_retained_capacity_clears_fields_and_lists() => AssertReusedMessageClearsFieldsAndLists(129);
+
+    private static void AssertReusedMessageClearsFieldsAndLists(int count)
     {
         NewPooledTransactionHashesMessageSerializer serializer = new();
         using NewPooledTransactionHashesMessage68 source = new(
