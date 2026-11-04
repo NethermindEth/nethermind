@@ -104,6 +104,38 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCase("0x9", null)]
+    [TestCase(null, "0x0")]
+    public async Task Debug_traceCall_blob_fee_override_keeps_prevrandao_of_header_without_post_merge_flag(string? blobBaseFee, string? maxFeePerBlobGas)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        BlockHeader head = ctx.Blockchain.BlockTree.Head!.Header;
+        head.ExcessBlobGas = 0;
+        head.Difficulty = 0;
+        head.MixHash = TestItem.KeccakH;
+        head.IsPostMerge = false;
+        const string address = "0xc200000000000000000000000000000000000000";
+        Dictionary<string, object> transaction = new() { ["to"] = address, ["gas"] = "0x186a0" };
+        Dictionary<string, object> options = new()
+        {
+            ["stateOverrides"] = new Dictionary<string, object> { [address] = new { code = "0x4460005260206000f3" } }
+        };
+        if (blobBaseFee is not null) options["blockOverrides"] = new { blobBaseFee };
+        if (maxFeePerBlobGas is not null)
+        {
+            transaction["maxFeePerBlobGas"] = maxFeePerBlobGas;
+            transaction["blobVersionedHashes"] = new[] { "0x01" + new string('0', 62) };
+        }
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, "latest", options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(response)["result"]!["failed"]!.Value<bool>(), Is.False, response);
+            Assert.That(ParseReturnValue(response), Is.EqualTo(TestItem.KeccakH.Bytes.ToArray()));
+        }
+    }
+
     private sealed class BlobFeeObservingAdapter(ITransactionProcessorAdapter inner,
         GethStyleTracer.TraceCallRequestState? request, List<UInt256?> observedFees) : ITransactionProcessorAdapter
     {
