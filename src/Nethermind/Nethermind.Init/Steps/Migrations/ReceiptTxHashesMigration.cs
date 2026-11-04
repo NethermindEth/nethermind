@@ -109,6 +109,9 @@ public sealed class ReceiptTxHashesMigration(
     private async Task Migrate(CancellationToken cancellationToken)
     {
         ulong next = ReadNextBlock() ?? blockTree.Head?.Number ?? Completed;
+        // Until the pruner loads its pointers, the lowest block reads as at least the configured ancient barrier. Blocks below it
+        // can still hold receipts, and a position saved below it would read as done.
+        _ = historyPruner.OldestBlockHeader;
         ulong lowest = GetLowestBlock();
         if (next < lowest) return;
 
