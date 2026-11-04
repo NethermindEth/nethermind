@@ -141,15 +141,18 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
             ? ref _txServeRequestsInFlight
             : ref _syncServeRequestsInFlight;
 
-    /// <summary>Disposes the request when the outbound buffer of the peer is full.</summary>
-    /// <remarks>The session drops a message when the buffer is full, so making the response would only waste work.</remarks>
+    /// <summary>Disposes the request when the transport channel of the peer cannot take new messages.</summary>
+    /// <remarks>
+    /// The session drops a message when the outbound buffer is full or the channel is closed, so making the response would only waste work.
+    /// The fulfill function does not run, so its request validation (and a disconnect for an invalid request) is skipped too.
+    /// </remarks>
     /// <returns><see langword="true"/> when the request was disposed and must not be served.</returns>
     private static bool SkipIfResponseCannotBeSent<TReq>(ProtocolHandlerBase handler, TReq request)
     {
         if (!handler.Session.IsOutboundBufferFull) return false;
 
         request.TryDispose();
-        if (handler.Logger.IsTrace) handler.Logger.Trace($"Skipping {typeof(TReq).Name} on session {handler.Session}, outbound buffer is full");
+        if (handler.Logger.IsTrace) handler.Logger.Trace($"Skipping {typeof(TReq).Name} on session {handler.Session}, outbound buffer is full or channel is closed");
         return true;
     }
 

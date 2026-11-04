@@ -155,7 +155,14 @@ public class ProtocolHandlerBaseTests
         public override string Protocol => "test";
         public bool IsDisposed { get; private set; }
 
-        public TestResponseMessage Serve() => fail ? throw new InvalidOperationException("serve failed") : new TestResponseMessage();
+        public bool Served { get; private set; }
+
+        public TestResponseMessage Serve()
+        {
+            if (fail) throw new InvalidOperationException("serve failed");
+            Served = true;
+            return new TestResponseMessage();
+        }
 
         public override void Dispose()
         {
@@ -320,7 +327,34 @@ public class ProtocolHandlerBaseTests
         await scheduler.ScheduledTask;
 
         session.Received(bufferFull ? 0 : 1).DeliverMessage(Arg.Any<TestResponseMessage>());
-        Assert.That(request.IsDisposed, Is.EqualTo(bufferFull));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.IsDisposed, Is.EqualTo(bufferFull));
+            Assert.That(request.Served, Is.EqualTo(!bufferFull));
+        }
+    }
+
+    [Test]
+    public async Task Skipped_sync_serve_requests_give_back_their_slot(
+        [Values(SchedulingPath.SyncServeTask, SchedulingPath.SyncServeValueTask, SchedulingPath.HandlerSyncServe)] SchedulingPath path)
+    {
+        ISession session = Substitute.For<ISession>();
+        session.IsOutboundBufferFull.Returns(true);
+        ImmediateBackgroundTaskScheduler scheduler = new(CancellationToken.None);
+        TestProtocolHandler handler = new(session, TimeSpan.FromSeconds(1), scheduler);
+
+        for (int i = 0; i < BackgroundTaskSchedulerWrapper.MaxSyncServeRequestsInFlight; i++)
+        {
+            Schedule(handler, path, new TestRequestMessage());
+            await scheduler.ScheduledTask;
+        }
+
+        session.IsOutboundBufferFull.Returns(false);
+        TestRequestMessage request = new();
+        Schedule(handler, path, request);
+        await scheduler.ScheduledTask;
+
+        Assert.That(request.Served, Is.True);
     }
 
     [Test]
