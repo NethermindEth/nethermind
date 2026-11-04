@@ -366,7 +366,7 @@ public class LogIndexBuilderTests
         TestLogIndexStorage storage = new() { MinBlockNumber = 0, MaxBlockNumber = BatchSize };
         LogIndexBuilder builder = GetService(storage, tree);
 
-        await builder.StartAsync();
+        await builder.StartAsync().WaitAsync(cancellation);
         await polledEmptyBatch.Task.WaitAsync(cancellation);
 
         Assert.That(nonCanonicalReads, Is.Empty);
@@ -386,6 +386,7 @@ public class LogIndexBuilderTests
         tree.Head.Returns(realTree.FindBlock(0UL, BlockTreeLookupOptions.None));
         // A beacon header that is not on the main chain yet, so the canonical lookup of it fails.
         tree.FinalizedHash.Returns(TestItem.KeccakA);
+        tree.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.None, Arg.Any<ulong?>()).Returns(realTree.FindHeader(90UL, BlockTreeLookupOptions.None));
         tree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
             .Returns(ci => ci.ArgAt<ulong>(0) <= (ulong)Volatile.Read(ref downloadedTo)
