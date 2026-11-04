@@ -57,7 +57,7 @@ public class GethStyleTracer(
         Block block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
         if ((uint)txIndex >= (uint)block.Transactions.Length) throw new InvalidOperationException($"Block {blockHash} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
 
-        return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options, writer: writer, pipeWriter: pipeWriter);
+        return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options, writer: writer, pipeWriter: pipeWriter, txIndex: txIndex);
     }
 
     public GethLikeTxTrace? Trace(Rlp blockRlp, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
@@ -114,7 +114,7 @@ public class GethStyleTracer(
             // Prefix execution uses canonical state and block context. Overrides belong only to the synthetic call.
             CallAtIndexBlockTracer callTracer = new(tracer.WithCancellation(cancellationToken), callHeader, call,
                 tracedBlock => PrepareIndexedCall(tracedBlock, call, options, state, callSpec));
-            IBlockTracer boundary = TransactionTraceBoundary.Wrap(callTracer, call.Hash);
+            IBlockTracer boundary = TransactionTraceBoundary.WrapAt(callTracer, call.Hash, (int)index);
             scope.Component.BlockchainProcessor.Process(replay, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
             if (!callTracer.IsPrepared) throw new InvalidOperationException($"The synthetic call at index {index} in block {block.Hash} was not prepared for tracing.");
             return (tracePreceding ? KeepTrace(tracer.BuildResult(), call.Hash) : tracer.BuildResult()).SingleOrDefault();
@@ -251,7 +251,7 @@ public class GethStyleTracer(
         Block block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical) ?? throw new InvalidOperationException($"No historical block found for {blockNumber}");
         if ((uint)txIndex >= (uint)block.Transactions.Length) throw new InvalidOperationException($"Block {blockNumber} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
 
-        return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options, writer: writer, pipeWriter: pipeWriter);
+        return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options, writer: writer, pipeWriter: pipeWriter, txIndex: txIndex);
     }
 
     public GethLikeTxTrace? Trace(ulong blockNumber, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
@@ -275,8 +275,19 @@ public class GethStyleTracer(
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
-        Block? block = blockTree.FindBlock(blockParameter);
+        Block? block = FindBlockForTrace(blockParameter);
         return TraceBlockImpl(block, options, cancellationToken, writer, pipeWriter);
+    }
+
+    private Block? FindBlockForTrace(BlockParameter selector)
+    {
+        if (selector.Type != BlockParameterType.BlockHash) return blockTree.FindBlock(selector);
+        if (blockTree.Head is { } head && head.Hash == selector.BlockHash) return head;
+
+        const BlockTreeLookupOptions ReadOnlyLookupOptions = BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
+        BlockTreeLookupOptions lookupOptions = ReadOnlyLookupOptions;
+        if (selector.RequireCanonical) lookupOptions |= BlockTreeLookupOptions.RequireCanonical;
+        return blockTree.FindBlock(selector.BlockHash!, lookupOptions);
     }
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
@@ -360,7 +371,7 @@ public class GethStyleTracer(
 
     private GethLikeTxTrace? TraceImpl(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options,
         bool useBlockAsBase = false, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null, bool allowIndexed = true,
-        ProcessingOptions processingOptions = TraceProcessingOptions.ReadOnlyReplay)
+        ProcessingOptions processingOptions = TraceProcessingOptions.ReadOnlyReplay, int txIndex = -1)
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
@@ -394,7 +405,7 @@ public class GethStyleTracer(
         {
             // Stored receipts describe only the unaltered canonical body; anything else numbers its logs from the
             // transactions it runs, which then have to be traced too.
-            int txIndex = Array.FindIndex(block.Transactions, t => t.Hash == txHash);
+            if (txIndex < 0) txIndex = TransactionTraceBoundary.IndexOf(block.Transactions, txHash);
             using ArrayPoolList<int>? firstLogIndexes = unaltered && txIndex >= 0 ? FirstLogIndexes(block) : null;
             tracePreceding = firstLogIndexes is null;
             logIndex = new BlockLogIndex(tracePreceding ? 0 : firstLogIndexes![txIndex]);
@@ -404,9 +415,10 @@ public class GethStyleTracer(
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
         long destroyRefund = (long)spec.GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider, logIndex is null ? null : (_, _) => logIndex)
+            ? GethLikeBlockDeadlineTracer.Wrap(
+                effective => CreateOptionsTracer(block.Header, filtered with { DeadlineScope = effective.DeadlineScope }, scope.Component.WorldState, specProvider, logIndex is null ? null : (_, _) => logIndex),
+                options with { TxHash = txHash }, cancellationToken)
             : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, destroyRefund);
-        if (writer is null) tracer = GethLikeBlockDeadlineTracer.Wrap(tracer, options with { TxHash = txHash }, cancellationToken);
 
         try
         {
@@ -420,8 +432,8 @@ public class GethStyleTracer(
             }
 
             // A seed skips the prefix, whose logs a traced prefix is there to count.
-            IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(
-                traced, txHash, !useBlockAsBase && unaltered && !tracePreceding ? prefixSeeds : null);
+            IBlockTracer executionTracer = TransactionTraceBoundary.WrapAt(
+                traced, txHash, txIndex, !useBlockAsBase && unaltered && !tracePreceding ? prefixSeeds : null);
             scope.Component.BlockchainProcessor.Process(block, processingOptions, executionTracer, cancellationToken);
             if (overridesTracer is { IsPrepared: false }) throw new InvalidOperationException($"The state overrides of the call in block {block.Number} were not applied.");
             return (tracePreceding ? KeepTrace(tracer.BuildResult(), txHash) : tracer.BuildResult()).SingleOrDefault();
@@ -441,10 +453,12 @@ public class GethStyleTracer(
         options switch
         {
             { Tracer: GethLikeBlockMuxTracer.TracerName } => new GethLikeBlockMuxTracer(options,
-                child => CreateOptionsTracer(block, child, worldState, specProvider, logIndex)),
+                child => child.Tracer != GethLikeBlockMuxTracer.TracerName && IsJavaScriptTracer(child)
+                    ? new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), child)
+                    : CreateOptionsTracer(block, child, worldState, specProvider, logIndex)),
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, CreateNativeTracerFactory(options, worldState, specProvider, logIndex)),
             { Tracer.Length: > 0, CaptureJavaScriptErrors: true } => new RecoveringJavaScriptBlockTracer(
-                () => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options), options.TxHash),
+                () => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options), options.TxHash, options.DeadlineScope),
             { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
             _ => new GethLikeBlockMemoryTracer(options, (long)specProvider.GetSpec(block).GasCosts.DestroyRefund),
         };
@@ -458,9 +472,12 @@ public class GethStyleTracer(
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        // As in geth, a block trace reports a JavaScript tracer's error on the failing transaction's entry, while a
-        // single-transaction trace fails the call. Unlike geth, this also covers a JavaScript child of muxTracer.
-        if (options.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
+        // Standalone JavaScript block traces report per-transaction errors; mux child failures abort the RPC.
+        options = options with
+        {
+            CaptureJavaScriptErrors = options.CaptureJavaScriptErrors || options.Tracer is { Length: > 0 },
+            ExecutionCancellationToken = cancellationToken
+        };
 
         // A block trace filtered to one transaction is that transaction's trace: the sequential tracer replays the
         // block and keeps one result, and the seeded single-transaction path produces the same result without the
@@ -479,21 +496,27 @@ public class GethStyleTracer(
         {
             Func<IWorldState, Hash256, IBlockTracer<GethLikeTxTrace>> forTransaction =
                 (state, txHash) => GethLikeBlockDeadlineTracer.Wrap(
-                    CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider, parallelLogIndex),
+                    effective => CreateOptionsTracer(block.Header, effective, state, specProvider, parallelLogIndex),
                     options with { TxHash = txHash }, cancellationToken);
             if (writer is null)
             {
                 if (parallelTracer.TryTrace(block, FindParent(block), forTransaction, afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))
                     return new GethLikeTxTraceCollection(parallel);
             }
-            else if (parallelTracer.TryStream(block, FindParent(block), forTransaction, afterTransactions: null,
-                traces =>
-                {
-                    foreach (GethLikeTxTrace trace in traces) GethLikeBlockNativeStreamingTracer.Write(writer, pipeWriter, trace, cancellationToken);
-                },
-                cancellationToken))
+            else
             {
-                return Array.Empty<GethLikeTxTrace>();
+                GethLikeTraceStream stream = GethLikeTraceStream.Rent(writer, pipeWriter, cancellationToken);
+                bool streamed;
+                try
+                {
+                    streamed = parallelTracer.TryStream(block, FindParent(block), forTransaction, afterTransactions: null, stream, cancellationToken);
+                }
+                finally
+                {
+                    stream.Return();
+                }
+
+                if (streamed) return Array.Empty<GethLikeTxTrace>();
             }
         }
 
@@ -512,11 +535,12 @@ public class GethStyleTracer(
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         Func<Block, Transaction, BlockLogIndex>? logIndex = sharedLogIndex is null ? null : (_, _) => sharedLogIndex;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider, logIndex)
+            ? GethLikeBlockDeadlineTracer.Wrap(
+                effective => CreateOptionsTracer(block.Header, options with { DeadlineScope = effective.DeadlineScope }, scope.Component.WorldState, specProvider, logIndex),
+                options with { TxHash = keptTxHash ?? options.TxHash }, cancellationToken)
             : streamsNative
                 ? new GethLikeBlockNativeStreamingTracer(CreateNativeTracerFactory(options, scope.Component.WorldState, specProvider, logIndex), writer, pipeWriter, cancellationToken)
                 : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken, destroyRefund);
-        if (writer is null) tracer = GethLikeBlockDeadlineTracer.Wrap(tracer, options with { TxHash = keptTxHash ?? options.TxHash }, cancellationToken);
 
         try
         {

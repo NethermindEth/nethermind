@@ -316,19 +316,21 @@ public partial class EthRpcModuleTests
         }
     }
 
-    [TestCase(0ul, (ulong)int.MaxValue + 1, "activationTime")]
-    [TestCase((ulong)int.MaxValue + 1, null, "activationBlock")]
-    public async Task Eth_config_reports_activation_beyond_int_range(ulong blockNumber, ulong? timestamp, string property)
+    [TestCase(0ul, (ulong)long.MaxValue + 1, "activationTime", "activationBlock")]
+    [TestCase((ulong)long.MaxValue + 1, null, "activationBlock", "activationTime")]
+    public async Task Eth_config_reports_activation_beyond_int_range(ulong blockNumber, ulong? timestamp, string property, string absentProperty)
     {
         TestSpecProvider specProvider = new(Cancun.Instance) { TransitionActivations = [(ForkActivation)0, new ForkActivation(blockNumber, timestamp)] };
         using Context ctx = await Context.Create(specProvider);
 
-        JToken? activation = JToken.Parse(await ctx.Test.TestEthRpc("eth_config")).SelectToken($"result.next.{property}");
+        JToken? next = JToken.Parse(await ctx.Test.TestEthRpc("eth_config")).SelectToken("result.next");
+        JToken? activation = next?[property];
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(activation?.Type, Is.EqualTo(JTokenType.Integer));
             Assert.That(activation?.ToString(), Is.EqualTo((timestamp ?? blockNumber).ToString()));
+            Assert.That(next?[absentProperty], Is.Null);
         }
     }
 
@@ -1265,6 +1267,7 @@ public partial class EthRpcModuleTests
     [TestCase("""{"fromBlock":"0x64"}""", ErrorCodes.InvalidParams)]
     [TestCase("""{"fromBlock":"0x2","toBlock":"0x1"}""", ErrorCodes.InvalidParams)]
     [TestCase("""{"fromBlock":"safe"}""", ErrorCodes.ResourceNotFound)]
+    [TestCase("""{"blockHash":"0x00000000000000000000000000000000000000000000000000000000000000ff"}""", ErrorCodes.ResourceNotFound)]
     public async Task Eth_getFilterLogs_reports_unresolvable_range_like_eth_getLogs(string filter, int expectedErrorCode)
     {
         using Context ctx = await Context.Create();
@@ -1656,6 +1659,31 @@ public partial class EthRpcModuleTests
         string serialized2 = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockParameter);
         Assert.That(serialized2, Is.EqualTo(expectedResult), serialized2);
     }
+
+    [Test]
+    public async Task Earliest_resolves_to_the_lowest_served_block_when_history_is_pruned(
+        [Values("eth_getBlockByNumber", "eth_getHeaderByNumber", "eth_getBlockReceipts", "eth_getBlockTransactionCountByNumber",
+            "eth_getTransactionByBlockNumberAndIndex", "eth_feeHistory")] string method)
+    {
+        using Context ctx = await Context.Create();
+        ctx.Test.BlockTree.NewOldestBlock(2);
+
+        string earliest = await ctx.Test.TestEthRpc(method, EarliestTestParameters(method, "earliest"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(earliest, Is.EqualTo(await ctx.Test.TestEthRpc(method, EarliestTestParameters(method, "0x2"))));
+            Assert.That(earliest, Is.Not.EqualTo(await ctx.Test.TestEthRpc(method, EarliestTestParameters(method, "0x0"))));
+        }
+    }
+
+    private static object?[] EarliestTestParameters(string method, string block) => method switch
+    {
+        "eth_getBlockByNumber" => [block, true],
+        "eth_getTransactionByBlockNumberAndIndex" => [block, "0x0"],
+        "eth_feeHistory" => ["0x1", block, Array.Empty<double>()],
+        _ => [block],
+    };
 
     [Test]
     public async Task Eth_getBlockByNumber_pending_fields_should_be_null([Values("hash", "nonce", "miner")] string field)
@@ -2937,6 +2965,26 @@ public partial class EthRpcModuleTests
             Assert.That(accessList.Select(static e => e["address"]!.Value<string>()), Is.EquivalentTo(new[] { DelegatedAccount, touched }), result.ToString());
             Assert.That(accessList.Single(e => e["address"]!.Value<string>() == touched)["storageKeys"]!.Select(static k => k.Value<string>()),
                 Is.EqualTo(storageKeys), result.ToString());
+        }
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_lists_each_storage_key_once_in_ascending_order()
+    {
+        static string Slot(int slot) => $"0x{slot:x64}";
+        // SLOAD slots 3, 1, 2 and 1 again; the caller's list adds slots 5 and 2.
+        const string code = "0x6003545060015450600254506001545000";
+        string call = $$"""{"from":"{{CreateAccessListSender}}","to":"{{AccessListContract}}","accessList":[{"address":"{{AccessListContract}}","storageKeys":["{{Slot(5)}}","{{Slot(2)}}"]}]}""";
+        using Context ctx = await Context.CreateWithOsakaEnabled();
+
+        (JToken result, _) = await CallCreateAccessList(ctx, call, AccessListStateOverride(code), optimize: true);
+
+        JToken[] accessList = result["accessList"]!.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accessList.Select(static e => e["address"]!.Value<string>()), Is.EqualTo(new[] { AccessListContract }), result.ToString());
+            Assert.That(accessList[0]["storageKeys"]!.Select(static k => k.Value<string>()),
+                Is.EqualTo(new[] { Slot(1), Slot(2), Slot(3), Slot(5) }), result.ToString());
         }
     }
 

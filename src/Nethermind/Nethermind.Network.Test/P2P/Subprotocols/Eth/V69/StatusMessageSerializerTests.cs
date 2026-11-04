@@ -63,7 +63,7 @@ public class StatusMessageSerializerTests
     {
         StatusMessageSerializer69 serializer = new();
 
-        SerializerTester.TestZero(
+        SerializerTester.Test(
             serializer,
             message,
             expected

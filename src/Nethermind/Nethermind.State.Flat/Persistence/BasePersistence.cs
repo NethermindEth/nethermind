@@ -72,6 +72,13 @@ public static class BasePersistence
     private static readonly byte[] WipedForSyncKey = Keccak.Compute("WipedForSync").BytesToArray();
     private static readonly byte[] SnapCheckpointKey = Keccak.Compute("SnapCheckpoint").BytesToArray();
 
+    /// <summary>Key of the sentinel saved in the account column with a snap sync checkpoint, see <see cref="HasSnapCheckpointSentinel"/>.</summary>
+    /// <remarks>
+    /// No account key is a single byte, and this one sorts before all of them in the first column a wipe goes through,
+    /// so the first batch any wipe commits deletes it.
+    /// </remarks>
+    private static readonly byte[] SnapCheckpointSentinelKey = [0];
+
     /// <summary>Raw storage slot encoding: the stripped value bytes are stored verbatim. Legacy, deprecated.</summary>
     internal const byte SlotEncodingRaw = 0;
 
@@ -239,12 +246,31 @@ public static class BasePersistence
     /// <summary>Reads the snap sync checkpoint saved by <see cref="WriteSnapCheckpoint"/>, or <c>null</c> when there is none.</summary>
     internal static byte[]? ReadSnapCheckpoint(IReadOnlyKeyValueStore metadata) => metadata.Get(SnapCheckpointKey) is { Length: > 0 } record ? record : null;
 
+    /// <summary>Whether the sentinel saved with the snap sync checkpoint is still there, so no wipe has run since it was saved.</summary>
+    /// <remarks>
+    /// Versions that predate the checkpoint wipe every column but the metadata, so they leave the checkpoint behind
+    /// over data it no longer describes, while they do delete the sentinel.
+    /// </remarks>
+    internal static bool HasSnapCheckpointSentinel(IColumnsDb<FlatDbColumns> db) =>
+        db.GetColumnDb(FlatDbColumns.Account).Get(SnapCheckpointSentinelKey) is not null;
+
     /// <summary>Durably saves the snap sync checkpoint, or deletes it when <paramref name="record"/> is <c>null</c>. A wipe deletes it too.</summary>
+    /// <remarks>The sentinel is made durable before the checkpoint and deleted after it, so a checkpoint is never without it unless a wipe took it.</remarks>
     internal static void WriteSnapCheckpoint(IColumnsDb<FlatDbColumns> db, byte[]? record)
     {
         IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
-        if (record is null) metadata.Remove(SnapCheckpointKey);
-        else metadata.PutSpan(SnapCheckpointKey, record);
+        IDb accounts = db.GetColumnDb(FlatDbColumns.Account);
+        if (record is null)
+        {
+            metadata.Remove(SnapCheckpointKey);
+            metadata.FlushOrThrow();
+            accounts.Remove(SnapCheckpointSentinelKey);
+            return;
+        }
+
+        accounts.PutSpan(SnapCheckpointSentinelKey, [1]);
+        accounts.FlushOrThrow();
+        metadata.PutSpan(SnapCheckpointKey, record);
         metadata.FlushOrThrow();
     }
 

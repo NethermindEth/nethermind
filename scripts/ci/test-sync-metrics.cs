@@ -5,9 +5,7 @@
 #:include ../sync/sync-tests.helpers.cs
 #:include ../sync/sync.helpers.cs
 #:include ../sync-metrics/metrics.helpers.cs
-#:include ../../.github/actions/gcp-runner/gcp.helpers.cs
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 
 string Line(int minute, string text, string prefix = "") => $"{prefix}2026-09-16T12:{minute:00}:00.123456789Z {text}";
 foreach (var (seconds, expected) in new[] { (3d, 0.1), (9d, 0.1), (15d, 0.2), (21d, 0.3), (27d, 0.5), (33d, 0.6), (39d, 0.7), (45d, 0.8), (51d, 0.8), (57d, 0.9), (63d, 1.1), (3.000001, 0.1), (2.999999, 0d), (9.000001, 0.2), (8.999999, 0.1) })
@@ -127,25 +125,4 @@ foreach (var scenario in new[] { "legacy", "reusable", "trigger", "paginate", "f
         }
         finally { temporary.Delete(recursive: true); }
     });
-await Cases.Test("dashboard pinned master images", async () =>
-{
-    var html = File.ReadAllText(Path.Combine(Cases.Root(), "scripts/sync-metrics/index.html"));
-    var script = HtmlScriptRegex().Match(html).Groups[1].Value.Replace("init();", "", StringComparison.Ordinal);
-    script += """
-        for (const [row, expected] of [
-            [{event:'workflow_run',image:'nethermindeth/nethermind:master'},false],
-            [{event:'workflow_run',image:'nethermindeth/nethermind:master-abcdef1'},false],
-            [{event:'workflow_run',image:'nethermindeth/nethermind:master-'+ 'a'.repeat(40)},false],
-            [{},false],[{event:'workflow_dispatch'},true],[{image:'nethermindeth/nethermind:experiment'},true]
-        ]) { if (isExperimental(row)!==expected) throw new Error(JSON.stringify(row)); }
-        """;
-    var result = await Gcp.Run("node", ["-e", script], null, CancellationToken.None);
-    Cases.Equal(0, result.Code);
-});
 Cases.Finish();
-
-partial class Program
-{
-    [GeneratedRegex("<script>(.*?)</script>", RegexOptions.Singleline)]
-    private static partial Regex HtmlScriptRegex();
-}

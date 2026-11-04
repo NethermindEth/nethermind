@@ -70,6 +70,8 @@ namespace Nethermind.Core
         /// </summary>
         [JsonIgnore]
         public ulong BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
+        /// <summary>Whether <see cref="BlockGasUsed"/> was set by an execution rather than falling back to <see cref="GasLimit"/>.</summary>
+        internal bool HasBlockGasUsed => _blockGasUsed > 0;
         public Address? To { get; set; }
         private UInt256 _gasPrice;
         private UInt256 _value;
