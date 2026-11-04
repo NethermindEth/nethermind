@@ -56,6 +56,9 @@ public class JsonRpcProcessorTests
         ["9223372036854775807", new JsonRpcId(long.MaxValue)],
         ["\";\\\\\\\"\"", new JsonRpcId(";\\\"")],
         ["null", JsonRpcId.Null],
+        ["1.5", JsonRpcId.FromValidatedRawNumberToken("1.5"u8)],
+        ["1.0", JsonRpcId.FromValidatedRawNumberToken("1.0"u8)],
+        ["1e40", JsonRpcId.FromValidatedRawNumberToken("1e40"u8)],
     ];
 
     static JsonRpcProcessorTests()
@@ -936,6 +939,27 @@ public class JsonRpcProcessorTests
     }
 
     [Test]
+    public void JsonRpcEnvelopeReader_echoes_non_integral_numeric_id_token([Values("1.5", "1.0", "-0.0", "1e40", "1E-7")] string idJson)
+    {
+        JsonRpcEnvelope envelope = ReadEnvelope($"{{\"id\":{idJson},\"method\":\"eth_blockNumber\"}}", out byte[] body);
+        using JsonDocument document = JsonDocument.Parse(body);
+        JsonRpcEnvelope elementEnvelope = JsonRpcEnvelopeReader.Read(document.RootElement, out _);
+
+        ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            envelope.Id.WriteTo(writer);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Encoding.UTF8.GetString(buffer.WrittenSpan), Is.EqualTo(idJson));
+            Assert.That(elementEnvelope.Id, Is.EqualTo(envelope.Id));
+            Assert.That(elementEnvelope.Id.GetHashCode(), Is.EqualTo(envelope.Id.GetHashCode()));
+        }
+    }
+
+    [Test]
     public void JsonRpcEnvelopeReader_returns_false_for_non_object_root()
     {
         JsonRpcEnvelopeReader reader = new(Encoding.UTF8.GetBytes("[{\"id\":1}]"));
@@ -944,14 +968,6 @@ public class JsonRpcProcessorTests
             Assert.That(reader.TryRead(out JsonRpcEnvelope envelope), Is.False);
             Assert.That(envelope, Is.EqualTo(default(JsonRpcEnvelope)));
         }
-    }
-
-    [Test]
-    public void JsonRpcEnvelopeReader_rejects_fractional_numeric_ids()
-    {
-        Action read = () => ReadEnvelope("{\"id\":1.1,\"method\":\"eth_blockNumber\"}", out _);
-
-        Assert.That(read, Throws.TypeOf<JsonException>());
     }
 
     private static JsonRpcEnvelope ReadEnvelope(string request, out byte[] body)
@@ -1337,7 +1353,8 @@ public class JsonRpcProcessorTests
             ("First request invalid", "{aaa}" + first),
             ("Garbage after request", first + " garbage"),
             ("Primitives between requests", first + " 1 \"x\" null " + second),
-            ("Undecodable envelope between requests", first + """{"jsonrpc":"2.0","id":1.5,"method":"eth_chainId","params":[]}""" + second),
+            ("Fractional id between requests", first + """{"jsonrpc":"2.0","id":1.5,"method":"eth_chainId","params":[]}""" + second),
+            ("Object id between requests", first + """{"jsonrpc":"2.0","id":{"a":1},"method":"eth_chainId","params":[]}""" + second),
             ("Empty batch between requests", first + "[]" + second),
             ("Batch with malformed item", CreateBatchRequest(first, "1", second) + first),
             ("Empty object", "{}" + first),
@@ -1622,8 +1639,8 @@ public class JsonRpcProcessorTests
             ("String element", "[\"x\"]"u8.ToArray(), 1, -1),
             ("Null element followed by valid request", "[null,{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 2, 1),
             ("Object element with invalid UTF-8 method", [(byte)'[', .. CreateRequestWithRawMethodTail(0xC3), (byte)']'], 1, -1),
-            ("Object element with fractional id", "[{\"jsonrpc\":\"2.0\",\"id\":1.5,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 1, -1),
-            ("Object element with fractional id before nested params followed by valid request", "[{\"jsonrpc\":\"2.0\",\"id\":1.5,\"method\":\"eth_chainId\",\"params\":[[1],{\"a\":[2]}]},{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 2, 1),
+            ("Object element with array id", "[{\"jsonrpc\":\"2.0\",\"id\":[1],\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 1, -1),
+            ("Object element with object id before nested params followed by valid request", "[{\"jsonrpc\":\"2.0\",\"id\":{\"a\":[1]},\"method\":\"eth_chainId\",\"params\":[[1],{\"a\":[2]}]},{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 2, 1),
             ("Object element with boolean id after nested params followed by valid request", "[{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[{\"a\":[1]}],\"id\":true},{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 2, 1),
             ("Nested array element followed by valid request", "[[{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"eth_chainId\",\"params\":[]},[1]],{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 2, 1),
             ("Whitespace around elements", " \r\n[ null ,\t{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[ ]} \n] \r\n"u8.ToArray(), 2, 1),
@@ -1817,6 +1834,8 @@ public class JsonRpcProcessorTests
         "[" + CreateRequest("1", "eth_blockNumber"),
         "[" + CreateRequest("1", "eth_blockNumber") + ",]",
         CreateBatchRequest(CreateRequest("1", "eth_blockNumber"), "{\"id\":2 \"method\":\"eth_chainId\"}"),
+        CreateRequest("true", "eth_blockNumber") + " garbage",
+        CreateRequest("{\"a\":1}", "eth_blockNumber") + "]",
     ];
 
     /// <remarks>
@@ -1845,6 +1864,33 @@ public class JsonRpcProcessorTests
             Assert.That(response, Is.TypeOf<JsonRpcErrorResponse>());
             Assert.That(((JsonRpcErrorResponse)response).Error!.Code, Is.EqualTo(ErrorCodes.ParseError));
             Assert.That(dispatched, Is.False, "a body that is not one document must not be dispatched");
+        }
+    }
+
+    /// <remarks>
+    /// JSON-RPC 2.0 section 5.1: valid JSON that is not a valid Request object is -32600, not -32700, as it already is
+    /// for the same object inside a batch.
+    /// </remarks>
+    [Test]
+    public async Task Single_request_with_unsupported_id_type_is_an_invalid_request(
+        [Values("true", "false", "{\"a\":1}", "[1]")] string idJson,
+        [Values] RequestTransport transport)
+    {
+        bool dispatched = false;
+        IJsonRpcService service = CreateService(request =>
+        {
+            dispatched = true;
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service);
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, Encoding.UTF8.GetBytes(CreateRequest(idJson, "eth_chainId")), transport);
+
+        JsonRpcResponse response = AssertSingleResponse(result).Response!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((response as JsonRpcErrorResponse)?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
+            Assert.That(dispatched, Is.False);
         }
     }
 
