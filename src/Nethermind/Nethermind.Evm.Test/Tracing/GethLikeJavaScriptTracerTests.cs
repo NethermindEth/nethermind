@@ -274,6 +274,11 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("6001600360003e", 100000UL, "step:RETURNDATACOPY:9::3:0,3,1:0", "fault:RETURNDATACOPY:9:return data out of bounds:3:0,4,1:0")]
     [TestCase("60006801000000000000000060003e", 100000UL, "step:RETURNDATACOPY:3::3:0,18446744073709551616,0:0", "fault:RETURNDATACOPY:3:return data out of bounds:3:0,18446744073709551616,0:0")]
     [TestCase("600167ffffffffffffffff60003e", 100000UL, "step:RETURNDATACOPY:9::3:0,18446744073709551615,1:0", "fault:RETURNDATACOPY:9:return data out of bounds:3:0,18446744073709551616,1:0")]
+    [TestCase("61beefff", 26002UL, "step:SELFDESTRUCT:5000:out of gas:1:48879:0", null)]
+    // Geth stops pricing SELFDESTRUCT at a cold access it cannot pay.
+    [TestCase("61beefff", 27003UL, "step:SELFDESTRUCT:5000:out of gas: out of gas:1:48879:0", null)]
+    [TestCase("61beefff", 29003UL, "step:SELFDESTRUCT:32600:out of gas:1:48879:0", null)]
+    [TestCase("61beefff", 100000UL, "step:SELFDESTRUCT:32600::1:48879:0", null)]
     public void Jump_and_memory_boundaries_preserve_geth_callback_order_and_state(string code, ulong gasLimit, string step, string? fault)
     {
         const string userTracer = """
@@ -299,6 +304,36 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         tracer.EndBlockTrace();
         using GethLikeTxTrace trace = tracer.BuildResult().First();
         AssertResult(trace, fault is null ? new[] { step } : new[] { step, fault });
+    }
+
+    /// <remarks>
+    /// Before Berlin, Geth prices SELFDESTRUCT wholly as dynamic gas: its constant gas, which an underflow reports, is 0,
+    /// and a new beneficiary costs 30000 in one charge.
+    /// </remarks>
+    [TestCase(false, "ff", 21000UL, new[] { "step:0:stack underflow (0 <=> 1)", "postStep:0" })]
+    [TestCase(true, "ff", 21000UL, new[] { "step:5000:stack underflow (0 <=> 1)", "postStep:5000" })]
+    [TestCase(false, "61beefff", 26002UL, new[] { "step:30000:out of gas", "postStep:30000" })]
+    [TestCase(false, "61beefff", 100000UL, new[] { "step:30000:", "postStep:30000" })]
+    [TestCase(true, "61beefff", 100000UL, new[] { "step:32600:", "postStep:32600" })]
+    public void Self_destruct_callbacks_report_geth_cost(bool berlin, string code, ulong gasLimit, string[] expected)
+    {
+        const string userTracer = """
+            {
+                events: [],
+                step: function(log) { if (log.op.toNumber() === 0xff) this.events.push("step:" + log.getCost() + ":" + (log.getError() || "")); },
+                postStep: function(log) { if (log.op.toNumber() === 0xff) this.events.push("postStep:" + log.getCost()); },
+                fault: function(log) { if (log.op.toNumber() === 0xff) this.events.push("fault:" + log.getCost() + ":" + log.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(userTracer);
+        ForkActivation activation = berlin ? MainnetSpecProvider.CancunActivation : (MainnetSpecProvider.ByzantiumBlockNumber, 0);
+        (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, Bytes.FromHexString(code));
+        tracer.StartNewBlockTrace(block);
+        ExecuteTraced(tracer, block, transaction);
+        tracer.EndBlockTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, expected);
     }
 
     [TestCase("600051", 3, "0", "aa", false)]
@@ -389,6 +424,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("5f5f5f5ff5", "step:32000:out of gas: write protection", null)]
     [TestCase("680100000000000000005f5ff0", "step:32000:gas uint64 overflow", null)]
     [TestCase("5f5f5f5fa2", "step:0:", "fault:0:write protection")]
+    [TestCase("61beefff", "step:5000:out of gas: write protection", null)]
     public void Static_context_preserves_precondition_and_execution_failure_callbacks(string childCode, string step, string? fault)
     {
         const string userTracer = """

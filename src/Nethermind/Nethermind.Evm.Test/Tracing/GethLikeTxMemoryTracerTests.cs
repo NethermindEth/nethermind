@@ -144,9 +144,15 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     /// not pay never shows up in its <c>gasCost</c>.
     /// </remarks>
     [TestCaseSource(nameof(AmsterdamOutOfGasOperations))]
-    public void Out_of_gas_operation_reports_its_execution_cost_on_Amsterdam(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
+    public void Out_of_gas_operation_reports_its_execution_cost_on_Amsterdam(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost) =>
+        AssertOutOfGasCost(MainnetSpecProvider.AmsterdamActivation, code, gasAfterIntrinsic, expectedGasCost);
+
+    [TestCaseSource(nameof(CancunOutOfGasOperations))]
+    public void Out_of_gas_operation_reports_its_full_cost_on_Cancun(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost) =>
+        AssertOutOfGasCost(MainnetSpecProvider.CancunActivation, code, gasAfterIntrinsic, expectedGasCost);
+
+    private void AssertOutOfGasCost(ForkActivation activation, byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
     {
-        ForkActivation activation = MainnetSpecProvider.AmsterdamActivation;
         (_, Transaction sizing) = PrepareTx(activation, 0, code);
         ulong intrinsicGas = IntrinsicGasCalculator.Calculate(sizing, SpecProvider.GetSpec(activation)).MinimalGas;
         (Block block, Transaction transaction) = PrepareTx(activation, intrinsicGas + gasAfterIntrinsic, code);
@@ -162,13 +168,40 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         }
     }
 
+    /// <remarks>
+    /// Geth charges the warm access of EXTCODECOPY and the base cost of SELFDESTRUCT as constant gas, so a step that
+    /// cannot pay them reports them alone; any other shortfall reports the constant and the whole dynamic cost, except
+    /// that SELFDESTRUCT stops pricing at a cold access it cannot pay.
+    /// </remarks>
+    private static TestCaseData[] CancunOutOfGasOperations()
+    {
+        byte[] extCodeCopyCold = Prepare.EvmCode.PushData(32).PushData(0).PushData(0).PushData(TestItem.AddressC).Op(Instruction.EXTCODECOPY).Done;
+        byte[] extCodeCopyWarm = Prepare.EvmCode.PushData(32).PushData(0).PushData(0).Op(Instruction.ADDRESS).Op(Instruction.EXTCODECOPY).Done;
+        byte[] mcopy = Prepare.EvmCode.PushData(32).PushData(0).PushData(0).Op(Instruction.MCOPY).Done;
+        byte[] selfDestruct = Prepare.EvmCode.PushData(TestItem.AddressF).Op(Instruction.SELFDESTRUCT).Done;
+        return
+        [
+            new TestCaseData(extCodeCopyCold, 111UL, GasCostOf.WarmStateRead).SetArgDisplayNames("EXTCODECOPY base"),
+            new TestCaseData(extCodeCopyCold, 2617UL, GasCostOf.ColdAccountAccess + 2 * GasCostOf.Memory).SetArgDisplayNames("EXTCODECOPY cold"),
+            new TestCaseData(extCodeCopyWarm, 116UL, GasCostOf.WarmStateRead + 2 * GasCostOf.Memory).SetArgDisplayNames("EXTCODECOPY warm"),
+            new TestCaseData(mcopy, 11UL, GasCostOf.VeryLow).SetArgDisplayNames("MCOPY base"),
+            new TestCaseData(mcopy, 17UL, GasCostOf.VeryLow + GasCostOf.VeryLow + GasCostOf.Memory).SetArgDisplayNames("MCOPY"),
+            new TestCaseData(selfDestruct, 5002UL, GasCostOf.SelfDestructEip150).SetArgDisplayNames("SELFDESTRUCT base"),
+            new TestCaseData(selfDestruct, 7602UL, GasCostOf.SelfDestructEip150).SetArgDisplayNames("SELFDESTRUCT cold"),
+            new TestCaseData(selfDestruct, 32602UL, GasCostOf.SelfDestructEip150 + GasCostOf.ColdAccountAccess + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT new account"),
+        ];
+    }
+
     private static TestCaseData[] AmsterdamOutOfGasOperations()
     {
         byte[] sstore = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done;
         byte[] create = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE).Done;
         byte[] create2 = Prepare.EvmCode.PushData(0).PushData(32).PushData(0).PushData(0).Op(Instruction.CREATE2).Done;
+        byte[] selfDestruct = Prepare.EvmCode.PushData(TestItem.AddressF).Op(Instruction.SELFDESTRUCT).Done;
         return
         [
+            new TestCaseData(selfDestruct, 6003UL, GasCostOf.SelfDestructEip150 + Eip8038Constants.ColdAccountAccess).SetArgDisplayNames("SELFDESTRUCT cold"),
+            new TestCaseData(selfDestruct, 9003UL, GasCostOf.SelfDestructEip150 + Eip8038Constants.ColdAccountAccess + Eip8038Constants.AccountWrite).SetArgDisplayNames("SELFDESTRUCT new account"),
             new TestCaseData(sstore, 3000UL, Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite).SetArgDisplayNames("SSTORE execution"),
             new TestCaseData(sstore, 14000UL, Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite).SetArgDisplayNames("SSTORE state"),
             new TestCaseData(create, 1000UL, Eip8038Constants.CreateAccess).SetArgDisplayNames("CREATE execution"),
@@ -193,7 +226,10 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.BLOCKHASH).Done, 22UL, GasCostOf.BlockHash).SetArgDisplayNames("BLOCKHASH"),
         new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).PushData(0).PushData(TestItem.AddressC).Op(Instruction.EXTCODECOPY).Done, 715UL,
             GasCostOf.ExtCodeEip150 + GasCostOf.Memory + GasCostOf.Memory).SetArgDisplayNames("EXTCODECOPY"),
-        new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.SELFDESTRUCT).Done, 4000UL, GasCostOf.SelfDestructEip150).SetArgDisplayNames("SELFDESTRUCT"),
+        // Before Berlin, Geth prices SELFDESTRUCT's base cost as part of its dynamic cost.
+        new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.SELFDESTRUCT).Done, 4000UL, GasCostOf.SelfDestructEip150 + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT"),
+        new TestCaseData(Prepare.EvmCode.PushData(32).PushData(0).PushData(0).PushData(TestItem.AddressC).Op(Instruction.EXTCODECOPY).Done, 711UL, GasCostOf.ExtCodeEip150).SetArgDisplayNames("EXTCODECOPY base"),
+        new TestCaseData(Prepare.EvmCode.PushData(TestItem.AddressF).Op(Instruction.SELFDESTRUCT).Done, 30002UL, GasCostOf.SelfDestructEip150 + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT new account"),
     ];
 
     [Test]
