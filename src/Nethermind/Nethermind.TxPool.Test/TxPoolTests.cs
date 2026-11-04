@@ -2533,13 +2533,14 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(sender, UInt256.MaxValue);
 
             ulong firstNonce = cause == HeadDropCause.NonceGap ? 1ul : 0ul;
+            // Only the first tx is invalid under the new fork, so the follower is dropped behind it while still valid.
             Transaction[] txs = new Transaction[2];
             for (int i = 0; i < txs.Length; i++)
             {
                 txs[i] = Build.A.Transaction
                     .WithType(TxType.AccessList)
                     .WithAccessList(BuildUnderGassedAccessList())
-                    .WithGasLimit(cause == HeadDropCause.InvalidUnderNewFork ? UnderGassedTransactionGasLimit : TxGasLimit)
+                    .WithGasLimit(cause == HeadDropCause.InvalidUnderNewFork && i == 0 ? UnderGassedTransactionGasLimit : TxGasLimit)
                     .WithNonce(firstNonce + (ulong)i)
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
                 Assert.That(_txPool.SubmitTx(txs[i], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -2554,6 +2555,8 @@ namespace Nethermind.TxPool.Test
                 includedAhead ? firstNonce + (ulong)txs.Length : 0);
             await AddEmptyBlock();
             AssertRevalidatedForHead();
+            // A later head must not surface the same drops again.
+            await AddEmptyBlock();
 
             using (Assert.EnterMultipleScope())
             {
