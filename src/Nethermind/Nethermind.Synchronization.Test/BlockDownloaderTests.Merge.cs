@@ -18,10 +18,12 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
@@ -34,6 +36,66 @@ namespace Nethermind.Synchronization.Test;
 
 public partial class BlockDownloaderTests
 {
+    [Test]
+    [NonParallelizable]
+    public async Task Stored_block_rejection_preserves_diagnostics_without_peer(
+        [Values(AddBlockResult.UnknownParent, AddBlockResult.CannotAccept, AddBlockResult.InvalidBlock)] AddBlockResult rejection,
+        [Values] bool maskSensitiveData)
+    {
+        bool previous = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = maskSensitiveData;
+        try
+        {
+            BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder trees = BlockTreeTests.BlockTreeTestScenario
+                .GoesLikeThis().WithBlockTrees(1, 2).InsertBeaconPivot(1).InsertBeaconBlocks(1, 1);
+            TestLogger logger = new();
+            await using IContainer node = CreateMergeNode(builder => builder
+                    .AddSingleton<IBlockTree>(trees.NotSyncedTree)
+                    .AddKeyedSingleton<IDb>(DbNames.Metadata, trees.NotSyncedTreeBuilder.MetadataDb)
+                    .AddDecorator<IBlockTree>((_, tree) => new StoredBlockRejectionTree(tree, rejection))
+                    .AddSingleton<ILogManager>(new OneLoggerLogManager(new(logger))),
+                new MergeConfig { TerminalTotalDifficulty = "0" });
+            PostMergeContext context = node.Resolve<PostMergeContext>();
+            BlockHeader header = trees.SyncedTree.FindHeader(1UL, BlockTreeLookupOptions.None)!;
+            context.BeaconPivot.EnsurePivot(header);
+            context.BeaconPivot.ProcessDestination = header;
+            context.ConfigureBestPeer(new PeerInfo(new SyncPeerMock(trees.SyncedTree, false, Response.AllCorrect, 16000000)));
+
+            using BlocksRequest? request = await context.FullSyncFeedComponent.BlockDownloader.PrepareRequest(
+                DownloaderOptions.Process, 0, CancellationToken.None);
+
+            string peer = maskSensitiveData ? "[redacted]" : string.Empty;
+            string expected = rejection switch
+            {
+                AddBlockResult.UnknownParent => $"Peer {peer} sent orphaned blocks/headers inside the batch:",
+                AddBlockResult.CannotAccept => $"Block download deferred: Block tree cannot accept block/header from peer {peer}:",
+                _ => $"Peer {peer} sent an invalid block/header:"
+            };
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(((StoredBlockRejectionTree)context.BlockTree).Rejections, Is.EqualTo(1));
+                Assert.That(logger.LogList, Has.Some.Contains(expected));
+                Assert.That(logger.LogList, Has.None.Contains(nameof(NullReferenceException)));
+            }
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+        }
+    }
+
+    private sealed class StoredBlockRejectionTree(IBlockTree tree, AddBlockResult rejection) : BlockTreeTestDouble(tree)
+    {
+        public int Rejections { get; private set; }
+
+        public override AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
+        {
+            if (block.Number == 0) return base.SuggestBlock(block, options);
+            Rejections++;
+            return rejection;
+        }
+    }
+
     [TestCase(16UL, 32UL, false, 32UL, 32UL)]
     [TestCase(16UL, 32UL, false, 32UL, 29UL)]
     [TestCase(16UL, 32UL, true, 0UL, 32UL)]

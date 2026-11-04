@@ -1613,6 +1613,9 @@ public partial class DebugRpcModuleTests
             ("uint-input", 1, null),
             ("slice-padding", 0, null),
             ("slice-padding", 1, null),
+            ("cyclic", 0, null),
+            ("cyclic", 1, null),
+            ("deep", 2, null),
             ("setup", -1, null),
             ("missing", -1, null),
             ("noncallable", -1, null),
@@ -1696,6 +1699,8 @@ public partial class DebugRpcModuleTests
         {
             "result" => "{fault:function(){},result:function(ctx,db){if(ctx.txIndex===" + failAt + ")throw Error('result failure');" + resultBody + "}}",
             "null" or "undefined" or "42" => "{fault:function(){},result:function(ctx,db){if(ctx.txIndex===" + failAt + ")throw " + failure + ";" + resultBody + "}}",
+            "cyclic" => "{fault:function(){},result:function(ctx,db){if(ctx.txIndex===" + failAt + "){var o={index:ctx.txIndex};o.self=o;return o;}" + resultBody + "}}",
+            "deep" => "{fault:function(){},result:function(ctx,db){if(ctx.txIndex===" + failAt + "){var o=1;for(var i=0;i<5000;i++)o=[o];return o;}" + resultBody + "}}",
             "step" or "postStep" => "{fault:function(){}," + failure + ":function(log,db){if(db.getNonce(toAddress('" + TestItem.AddressB + "'))===" + failingExecutionNonce + ")throw Error('" + failure + " failure');},result:function(ctx,db){" + resultBody + "}}",
             "enter" => "{fault:function(){},enter:function(frame){if(toHex(frame.getFrom())===toHex(toAddress('" + failingWrapper + "')))throw Error('enter failure');},exit:function(){},result:function(ctx,db){" + resultBody + "}}",
             "exit" => "{fault:function(){},enter:function(frame){this.fail=toHex(frame.getFrom())===toHex(toAddress('" + failingWrapper + "'));},exit:function(){if(this.fail)throw Error('exit failure');},result:function(ctx,db){" + resultBody + "}}",
@@ -1757,6 +1762,8 @@ public partial class DebugRpcModuleTests
                     }
                     if (failure is "fault" or "exit" or "postStep" or "precedence")
                         Assert.That((string?)entries[index]["error"], Does.Contain(failure == "precedence" ? "first failure" : failure + " failure"));
+                    if (failure is "cyclic" or "deep")
+                        Assert.That((string?)entries[index]["error"], Is.EqualTo(JavaScriptResultDepthError), response);
                 }
                 else Assert.That(JToken.DeepEquals(entries[index], baseline["result"]![transactionIndex]), Is.True, response);
             }
@@ -1989,13 +1996,18 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceBlockByNumber_mux_preserves_javascript_result_errors(
         [Values] bool nested,
         [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
-        [Values("result", "step")] string callback)
+        [Values("result", "step", "cyclic")] string callback)
     {
         using Context ctx = await Context.Create();
         Block block = await ctx.Blockchain.AddBlock(CreateTraceBlockTransactions(ctx.Blockchain));
-        string script = callback == "result"
-            ? "{fault:function(){},result:function(){throw Error('mux result failure');}}"
-            : "{fault:function(){},step:function(){throw Error('mux step failure');},result:function(){return {};}}";
+        string script = callback switch
+        {
+            "result" => "{fault:function(){},result:function(){throw Error('mux result failure');}}",
+            "step" => "{fault:function(){},step:function(){throw Error('mux step failure');},result:function(){return {};}}",
+            // A cyclic result is reported as the depth error, not a stack overflow.
+            _ => "{fault:function(){},result:function(){var o={};o.self=o;return o;}}"
+        };
+        string expected = callback == "cyclic" ? JavaScriptResultDepthError : $"mux {callback} failure";
         Dictionary<string, object> children = new() { [script] = new { }, ["noopTracer"] = new { } };
         object config = nested ? new Dictionary<string, object> { ["muxTracer"] = children } : children;
 
@@ -2013,8 +2025,33 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That((int?)error["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-            Assert.That((string?)error["message"], Does.Contain($"mux {callback} failure"), response);
+            Assert.That((string?)error["message"], Does.Contain(expected), response);
             Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
+    private const string JavaScriptResultDepthError = "JavaScript tracer result exceeds the maximum depth of 4096 (possibly cyclic)";
+
+    [TestCase("throw Error('result failure');", "Error: result failure", TestName = "Debug_traceCall_fails_on_a_javascript_result_failure_thrown")]
+    [TestCase("var o={};o.self=o;return o;", JavaScriptResultDepthError, TestName = "Debug_traceCall_fails_on_a_javascript_result_failure_cyclic")]
+    [TestCase("var o=1;for(var i=0;i<5000;i++)o={a:o};return o;", JavaScriptResultDepthError, TestName = "Debug_traceCall_fails_on_a_javascript_result_failure_deep")]
+    public async Task Debug_traceCall_fails_on_a_javascript_result_failure(string resultBody, string expected)
+    {
+        using Context ctx = await Context.Create();
+        object call = new { to = TestItem.AddressC.ToString() };
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", call, "latest",
+            new { tracer = "{fault:function(){},result:function(){" + resultBody + "}}" });
+        string next = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", call, "latest",
+            new { tracer = "{fault:function(){},result:function(){return {ok:[1]};}}" });
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InternalError), response);
+            Assert.That((string?)json["error"]?["data"], Does.Contain(expected), response);
+            Assert.That(JToken.DeepEquals(JToken.Parse(next)["result"], JToken.Parse("""{"ok":[1]}""")), Is.True, next);
         }
     }
 
