@@ -315,19 +315,24 @@ public partial class DebugRpcModuleTests
     [NonParallelizable]
     public Task ByNumber_streamed_registered_native_tracers_enforce_reached_timeout(
         [Values(NativeNoopTracer.NoopTracer, NativeKeccakPreimageTracer.KeccakPreimageTracer, "registered", Native4ByteTracer.FourByteTracer)] string tracer,
-        [Values("before", "after")] string expiry) => AssertByNumberDeadline(tracer, expiry, streamMode: true);
+        [Values("before", "after")] string expiry) => AssertNamedBlockDeadline(tracer, expiry, streamMode: true);
 
     [Test]
-    public Task ByNumber_streamed_tracers_enforce_reached_timeout(
+    public async Task ByNumber_streamed_tracers_enforce_reached_timeout(
         [Values("", NativeCallTracer.CallTracer, NativeNoopTracer.NoopTracer, Native4ByteTracer.FourByteTracer)] string tracer,
-        [Values("before", "after")] string expiry) => AssertByNumberDeadline(tracer, expiry, streamMode: true);
+        [Values("before", "after")] string expiry)
+    {
+        foreach (string method in new[] { nameof(IDebugRpcModule.debug_traceBlockByNumber), nameof(IDebugRpcModule.debug_traceBlockByHash) })
+            await AssertNamedBlockDeadline(tracer, expiry, streamMode: true, method: method);
+    }
 
     [Test]
     public Task ByNumber_mux_tracers_enforce_reached_timeout(
         [Values("mux-native", "mux-js-constructor-error")] string tracer,
-        [Values("before", "after")] string expiry) => AssertByNumberDeadline(tracer, expiry, streamMode: false);
+        [Values("before", "after")] string expiry) => AssertNamedBlockDeadline(tracer, expiry, streamMode: false);
 
-    private static async Task AssertByNumberDeadline(string tracer, string expiry, bool streamMode)
+    private static async Task AssertNamedBlockDeadline(string tracer, string expiry, bool streamMode,
+        string method = nameof(IDebugRpcModule.debug_traceBlockByNumber))
     {
         if (tracer == "registered")
         {
@@ -351,8 +356,8 @@ public partial class DebugRpcModuleTests
                 : "{fault:function(){},setup:function(){throw Error('ordinary setup failure');},result:function(){return {};}}", new { });
             options["tracerConfig"] = children;
         }
-        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
-            nameof(IDebugRpcModule.debug_traceBlockByNumber), block.Number, options);
+        object selector = method == nameof(IDebugRpcModule.debug_traceBlockByNumber) ? block.Number : block.Hash!;
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock), method, selector, options);
         JToken json = JToken.Parse(response);
         bool setupFailure = tracer == "mux-js-constructor-error";
         using (Assert.EnterMultipleScope())
@@ -370,19 +375,26 @@ public partial class DebugRpcModuleTests
         [Values("", NativeCallTracer.CallTracer)] string tracer,
         [Values("staged", "committed", "buffered")] string transport)
     {
+        foreach (string method in new[] { nameof(IDebugRpcModule.debug_traceBlockByNumber), nameof(IDebugRpcModule.debug_traceBlockByHash) })
+            await AssertStreamedTimeoutCommitment(method, tracer, transport);
+    }
+
+    private static async Task AssertStreamedTimeoutCommitment(string method, string tracer, string transport)
+    {
         DeadlineExecution clock = new() { Expiry = "before" };
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
         Block block = await AddDeadlineCommitmentBlock(chain, transport != "staged");
         clock.Enabled = true;
         clock.Target = block.Transactions[1].Nonce;
+        object selector = method == nameof(IDebugRpcModule.debug_traceBlockByNumber) ? block.Number : block.Hash!;
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
         using RecyclableMemoryStream stream = RecyclableStream.GetStream("debug-timeout");
         PipeWriter writer = transport == "buffered" ? new RewindableStreamPipeWriter(stream) : pipe.Writer;
         try
         {
             Task Write() => RpcTest.TestStreamedRequest(WithDeadlineClock(chain.DebugRpcModule, clock), writer,
-                nameof(IDebugRpcModule.debug_traceBlockByNumber), block.Number, new { tracer, timeout = "1s", streamMode = true });
+                method, selector, new { tracer, timeout = "1s", streamMode = true });
             if (transport == "committed") await Assert.ThrowsAsync<RpcErrorException>(Write);
             else await Write();
             byte[] bytes;
