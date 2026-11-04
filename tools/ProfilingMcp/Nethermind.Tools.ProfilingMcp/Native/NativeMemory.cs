@@ -16,7 +16,11 @@ public sealed record Mapping(ulong Start, ulong End, string Permissions, string 
 }
 
 /// <summary>A labelled address range: a GC region, a runtime heap or a thread's stack.</summary>
-public readonly record struct KnownRange(ulong Start, ulong End, string Label);
+/// <param name="Detail">What the range is within its label, such as the thread a stack belongs to; null to describe it by its mapping.</param>
+public readonly record struct KnownRange(ulong Start, ulong End, string Label, string? Detail = null);
+
+/// <summary>The part of one mapping's memory that one category holds; <paramref name="Item"/> names the file, thread or mapping.</summary>
+public sealed record MemoryShare(string Category, string Item, double Rss, double Swap);
 
 /// <summary>Resident memory of one category.</summary>
 public sealed record MemoryCategory(string Name, long Rss, long Swap, int Mappings);
@@ -92,17 +96,11 @@ public static class NativeMemory
     private static long Kilobytes(string line) =>
         long.TryParse(line.AsSpan(line.IndexOf(':') + 1).Trim().TrimEnd("kB").Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long kb) ? kb * 1024 : 0;
 
-    /// <summary>Totals resident memory by category, largest first.</summary>
+    /// <summary>Splits every mapping's resident and swapped-out bytes among the categories and items that hold them.</summary>
     /// <param name="known">GC regions, runtime heaps and thread stacks; where they overlap, the bytes count once, for the range that starts lower.</param>
-    public static IReadOnlyList<MemoryCategory> Categorize(IReadOnlyList<Mapping> mappings, IReadOnlyList<KnownRange> known)
+    public static IReadOnlyList<MemoryShare> Attribute(IReadOnlyList<Mapping> mappings, IReadOnlyList<KnownRange> known)
     {
-        Dictionary<string, (double Rss, double Swap, int Mappings)> totals = new(StringComparer.Ordinal);
-        void Add(string name, double share, Mapping mapping)
-        {
-            (double Rss, double Swap, int Mappings) total = totals.GetValueOrDefault(name);
-            totals[name] = (total.Rss + mapping.Rss * share, total.Swap + mapping.Swap * share, total.Mappings + 1);
-        }
-
+        List<MemoryShare> shares = [];
         KnownRange[] ranges = [.. known.OrderBy(static r => r.Start)];
         foreach (Mapping mapping in mappings)
         {
@@ -111,29 +109,38 @@ public static class NativeMemory
 
             if (!mapping.IsAnonymous)
             {
-                Add(NamedCategory(mapping.Name), 1, mapping);
+                shares.Add(new MemoryShare(NamedCategory(mapping.Name), mapping.Name, mapping.Rss, mapping.Swap));
                 continue;
             }
 
             double size = mapping.End - mapping.Start;
             double covered = 0;
-            foreach ((string label, ulong bytes) in Overlaps(mapping, ranges))
+            foreach (((string label, string? detail), ulong bytes) in Overlaps(mapping, ranges))
             {
-                Add(label, bytes / size, mapping);
+                shares.Add(new MemoryShare(label, detail ?? Describe(mapping), mapping.Rss * (bytes / size), mapping.Swap * (bytes / size)));
                 covered += bytes;
             }
 
             if (covered < size)
-                Add(AnonymousCategory(mapping), (size - covered) / size, mapping);
+                shares.Add(new MemoryShare(AnonymousCategory(mapping), Describe(mapping), mapping.Rss * ((size - covered) / size), mapping.Swap * ((size - covered) / size)));
         }
 
-        return [.. totals.Select(static t => new MemoryCategory(t.Key, (long)t.Value.Rss, (long)t.Value.Swap, t.Value.Mappings)).OrderByDescending(static c => c.Rss + c.Swap)];
+        return shares;
     }
 
-    /// <summary>Bytes of <paramref name="mapping"/> in each label, counting each byte once.</summary>
-    private static IEnumerable<(string Label, ulong Bytes)> Overlaps(Mapping mapping, KnownRange[] sortedRanges)
+    /// <summary>Totals shares by category, largest first.</summary>
+    public static IReadOnlyList<MemoryCategory> Categorize(IReadOnlyList<MemoryShare> shares) =>
+        [.. shares.GroupBy(static s => s.Category)
+            .Select(static g => new MemoryCategory(g.Key, (long)g.Sum(static s => s.Rss), (long)g.Sum(static s => s.Swap), g.Count()))
+            .OrderByDescending(static c => c.Rss + c.Swap)];
+
+    private static string Describe(Mapping mapping) =>
+        $"mapping at {mapping.Start:x}, {(mapping.End - mapping.Start) / (1024.0 * 1024):N1} MB";
+
+    /// <summary>Bytes of <paramref name="mapping"/> in each label and detail, counting each byte once.</summary>
+    private static Dictionary<(string Label, string? Detail), ulong> Overlaps(Mapping mapping, KnownRange[] sortedRanges)
     {
-        Dictionary<string, ulong> bytes = new(StringComparer.Ordinal);
+        Dictionary<(string, string?), ulong> bytes = [];
         ulong next = mapping.Start;
         foreach (KnownRange range in sortedRanges)
         {
@@ -145,11 +152,11 @@ public static class NativeMemory
             if (end <= start)
                 continue;
 
-            bytes[range.Label] = bytes.GetValueOrDefault(range.Label) + (end - start);
+            bytes[(range.Label, range.Detail)] = bytes.GetValueOrDefault((range.Label, range.Detail)) + (end - start);
             next = end;
         }
 
-        return bytes.Select(static b => (b.Key, b.Value));
+        return bytes;
     }
 
     private static string AnonymousCategory(Mapping mapping) =>
@@ -241,7 +248,19 @@ public static class NativeMemory
             }
 
             if (StackPointer(syscall) is { } sp && Find(sorted, sp) is { IsAnonymous: true } stack)
-                yield return new KnownRange(stack.Start, stack.End, ThreadStacks);
+                yield return new KnownRange(stack.Start, stack.End, ThreadStacks, ThreadName(pid, Path.GetFileName(task)));
+        }
+    }
+
+    private static string ThreadName(int pid, string tid)
+    {
+        try
+        {
+            return $"thread {File.ReadAllText($"/proc/{pid}/task/{tid}/comm").TrimEnd()} ({tid})";
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return $"thread {tid}";
         }
     }
 
@@ -308,7 +327,7 @@ public static class NativeMemory
             foreach (ClrThread thread in runtime.Threads)
             {
                 if (thread.StackLimit != 0 && thread.StackBase > thread.StackLimit)
-                    ranges.Add(new KnownRange(thread.StackLimit, thread.StackBase, ThreadStacks));
+                    ranges.Add(new KnownRange(thread.StackLimit, thread.StackBase, ThreadStacks, ThreadName(pid, thread.OSThreadId.ToString(CultureInfo.InvariantCulture))));
             }
 
             return (ranges, committed);

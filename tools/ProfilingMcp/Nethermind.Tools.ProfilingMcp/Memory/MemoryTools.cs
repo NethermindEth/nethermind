@@ -232,6 +232,7 @@ public sealed class MemoryTools(WorkspacePaths paths)
                  "thread stacks, glibc malloc (arenas and large blocks), other anonymous mmaps such as other allocators' (RocksDB may bring jemalloc), and mapped files. " +
                  "Answers whether memory growth is managed or native; use heap_stats for what is in the GC heap. " +
                  "Reads /proc and, for a .NET process, the runtime with ClrMD, without suspending or pausing the process. " +
+                 "Also writes an HTML page for people: a zoomable treemap of the memory down to single mappings, files and threads, and a category table. " +
                  "It cannot name the code that allocated native memory. Linux only, so on Windows pass a container.")]
     public string NativeMemoryBreakdown(
         [Description("Process ID; in a container, a PID from list_dotnet_processes or docker top.")] int pid,
@@ -243,11 +244,15 @@ public sealed class MemoryTools(WorkspacePaths paths)
         IReadOnlyList<Mapping> mappings = Native.NativeMemory.ParseSmaps(File.ReadLines($"/proc/{pid}/smaps"));
         (IReadOnlyList<KnownRange> Ranges, long GcCommitted)? runtime = Native.NativeMemory.RuntimeRanges(pid);
         List<KnownRange> known = [.. runtime?.Ranges ?? [], .. Native.NativeMemory.ThreadStackRanges(pid, mappings), .. Native.NativeMemory.MallocMmappedRanges(pid, mappings)];
-        IReadOnlyList<MemoryCategory> categories = Native.NativeMemory.Categorize(mappings, known);
+        IReadOnlyList<MemoryShare> shares = Native.NativeMemory.Attribute(mappings, known);
+        IReadOnlyList<MemoryCategory> categories = Native.NativeMemory.Categorize(shares);
+
+        string report = Path.Combine(paths.Heap, WorkspacePaths.NewFileName($"pid{pid}-memory", ".html"));
+        File.WriteAllText(report, MemoryReport.Render($"PID {pid}", shares, runtime?.GcCommitted));
 
         long rss = mappings.Sum(static m => m.Rss);
         long swap = mappings.Sum(static m => m.Swap);
-        StringBuilder sb = new($"RSS {Size(rss)}" + (swap > 0 ? $", swapped out {Size(swap)}" : "") + $", {Count(mappings.Count)} mappings.\n");
+        StringBuilder sb = new($"Report written: {paths.ForPerson(report)}\nRSS {Size(rss)}" + (swap > 0 ? $", swapped out {Size(swap)}" : "") + $", {Count(mappings.Count)} mappings.\n");
         sb.Append(runtime is { } clr
             ? $"GC heap committed: {Size(clr.GcCommitted)}. GC regions, runtime heaps and managed thread stacks are located through the runtime.\n"
             : "Not read as .NET (not a .NET process, or ClrMD could not read it): the GC heap shows as anonymous memory.\n");

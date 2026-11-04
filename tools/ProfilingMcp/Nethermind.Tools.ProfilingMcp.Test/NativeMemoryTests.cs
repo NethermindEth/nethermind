@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
 using Nethermind.Tools.ProfilingMcp.Native;
 using NUnit.Framework;
 
@@ -47,7 +48,7 @@ public class NativeMemoryTests
     {
         // The 4 MB mapping is a quarter gen2 region; the 1 MB one starts on a 64 MB boundary, as glibc's arena heaps do.
         KnownRange[] known = [new(0x7f0000200000, 0x7f0000300000, NativeMemory.GcPrefix + "gen2"), new(0x7f0000280000, 0x7f0000300000, NativeMemory.ThreadStacks)];
-        Dictionary<string, long> rss = NativeMemory.Categorize(Parse(), known).ToDictionary(static c => c.Name, static c => c.Rss);
+        Dictionary<string, long> rss = NativeMemory.Categorize(NativeMemory.Attribute(Parse(), known)).ToDictionary(static c => c.Name, static c => c.Rss);
 
         Assert.That(rss, Is.EquivalentTo(new Dictionary<string, long>
         {
@@ -58,6 +59,51 @@ public class NativeMemoryTests
             [NativeMemory.NativeLibraries] = 4 * 1024,
             [NativeMemory.JitCode] = 4 * 1024,
         }));
+    }
+
+    [Test]
+    public void Names_items_by_file_known_range_detail_or_mapping()
+    {
+        KnownRange[] known = [new(0x7f0000200000, 0x7f0000300000, NativeMemory.ThreadStacks, "thread worker (42)")];
+        string[] items = [.. NativeMemory.Attribute(Parse(), known).Select(static s => s.Item)];
+
+        Assert.That(items, Is.EqualTo(new[]
+        {
+            "[heap]",
+            "thread worker (42)",
+            "mapping at 7f0000200000, 4.0 MB",
+            "mapping at 7f0004000000, 1.0 MB",
+            "/usr/share/dotnet/libcoreclr.so",
+            "/memfd:doublemapper (deleted)",
+        }));
+    }
+
+    [Test]
+    public void Report_groups_categories_and_escapes_names()
+    {
+        MemoryShare[] shares =
+        [
+            new(NativeMemory.GcPrefix + "gen2", "a", 300, 0),
+            new(NativeMemory.OtherAnonymous, "</script><b>", 500, 0),
+            new(NativeMemory.OtherAnonymous, "b", 100, 0),
+            new(NativeMemory.Assemblies, "c.dll", 50, 0),
+        ];
+
+        string html = MemoryReport.Render("PID 1", shares, gcCommitted: 400);
+        const string Open = "<script id=\"data\" type=\"application/json\">";
+        int start = html.IndexOf(Open, StringComparison.Ordinal) + Open.Length;
+        string data = html[start..html.IndexOf("</script>", start, StringComparison.Ordinal)];
+        JsonElement tree = JsonDocument.Parse(data).RootElement.GetProperty("tree");
+        static string[] Names(JsonElement node) => [.. node[3].EnumerateArray().Select(static c => $"{c[0].GetString()} {c[1].GetInt64()}")];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(data, Does.Not.Contain("</script>"));
+            Assert.That(tree[1].GetInt64(), Is.EqualTo(950));
+            Assert.That(Names(tree), Is.EqualTo(new[] { "Managed heap (GC) 300", "Native heap 600", "Mapped files 50" }));
+            Assert.That(Names(tree[3][1][3][0]), Is.EqualTo(new[] { "</script><b> 500", "b 100" }));
+            Assert.That(Names(tree[3][0][3][0]), Is.Empty, "a category with one item has no items of its own");
+        }
     }
 
     [Test]

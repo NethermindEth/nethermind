@@ -19,7 +19,7 @@ An [MCP](https://modelcontextprotocol.io) server that lets an AI agent profile .
 | `trace_report` | A self-contained HTML page for people: interactive flame graph and sortable hotspot table, with search and wait/pseudo-frame filters |
 | `heap_stats` | Per-type counts and sizes of live objects, generations, fragmentation; saved for diffing. A PID is read over EventPipe with one induced full GC; a dump with ClrMD |
 | `heap_diff` | Types that grew or shrank between two `heap_stats` snapshots |
-| `native_memory` | Split a Linux process's resident memory into the GC heap by generation, the runtime's own heaps and JIT code, thread stacks, glibc malloc, other anonymous mmaps (such as RocksDB's jemalloc) and mapped files. Reads `/proc` and the runtime without pausing the process |
+| `native_memory` | Split a Linux process's resident memory into the GC heap by generation, the runtime's own heaps and JIT code, thread stacks, glibc malloc, other anonymous mmaps (such as RocksDB's jemalloc) and mapped files, and write an HTML page with a zoomable treemap down to single mappings, files and threads. Reads `/proc` and the runtime without pausing the process |
 | `heap_retention` | Who references instances of a type, and the shortest chains from GC roots, largest retained bytes first. Chains from a dump also name fields and static fields |
 | `alloc_sample` | Allocated bytes per type, allocating method and call stack over a window, from allocation tick events; `include` keeps the allocations with a matching frame |
 | `write_dump` | A full-heap dump for offline `heap_stats`/`heap_retention` |
