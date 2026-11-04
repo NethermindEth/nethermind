@@ -12,6 +12,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -54,7 +57,10 @@ public class DebugRpcModule(
     IBlocksConfig blocksConfig,
     IBlockFinder blockFinder,
     IBlockForRpcFactory blockForRpcFactory,
-    ICodeInfoRepository codeInfoRepository)
+    ICodeInfoRepository codeInfoRepository,
+    IReceiptConfig receiptConfig,
+    ISyncPointers syncPointers,
+    ISyncProgressResolver syncProgressResolver)
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
@@ -86,7 +92,10 @@ public class DebugRpcModule(
         Hash256? blockHash = debugBridge.GetTransactionBlockHash(transactionHash);
         if (blockHash is null)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
+            const string indexingMessage = "transaction indexing is in progress";
+            return IsTransactionIndexingInProgress()
+                ? ResultWrapper<GethLikeTxTrace, string>.Fail(indexingMessage, ErrorCodes.ResourceNotFound, indexingMessage)
+                : ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
         }
 
         BlockHeader? header = TryGetHeader(blockHash, out ResultWrapper<GethLikeTxTrace>? headerError);
@@ -142,6 +151,23 @@ public class DebugRpcModule(
         Result<Transaction> result = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call).ToCallTransaction(spec, jsonRpcConfig.GasCap);
         if (result) result.Data.MaxFeePerBlobGas = UInt256.Zero;
         return result;
+    }
+
+    private bool IsTransactionIndexingInProgress()
+    {
+        if (receiptConfig.TxLookupLimit == ulong.MaxValue || syncProgressResolver.IsFastBlocksReceiptsFinished()) return false;
+
+        ulong highestPendingBlock = syncProgressResolver.SyncPivot.BlockNumber;
+        if (syncPointers.LowestInsertedReceiptBlockNumber is { } lowestInserted)
+        {
+            if (lowestInserted == 0) return false;
+            highestPendingBlock = Math.Min(highestPendingBlock, lowestInserted - 1);
+        }
+        if (highestPendingBlock == 0) return false;
+
+        ulong lastBlock = blockFinder.FindBestSuggestedHeader()?.Number ?? 0;
+        return receiptConfig.TxLookupLimit is not > 0 || lastBlock < receiptConfig.TxLookupLimit.Value
+            || highestPendingBlock > lastBlock - receiptConfig.TxLookupLimit.Value;
     }
 
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
