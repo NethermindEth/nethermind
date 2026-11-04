@@ -217,6 +217,15 @@ public ref struct RlpWriter
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void WriteLongString(scoped ReadOnlySpan<byte> value)
     {
+        if (!_isContent)
+        {
+            // A copy to scratch space is not necessary, and above 1 MiB it allocates on each call.
+            int itemLength = 1 + LengthOfLength(value.Length) + value.Length;
+            if ((uint)itemLength > (uint)(int.MaxValue - _length)) ThrowLengthOverflow();
+            _length += itemLength;
+            return;
+        }
+
         if (value.Length <= byte.MaxValue)
         {
             // A one-byte length, as for most call data, needs no length loop.
@@ -253,7 +262,9 @@ public ref struct RlpWriter
             int payloadStart = _length;
             action(ref this, ctx);
             int payloadLength = _length - payloadStart;
-            _length += payloadLength > RlpPrefix.MaxShortLength ? 1 + LengthOfLength(payloadLength) : 1;
+            int prefixLength = payloadLength > RlpPrefix.MaxShortLength ? 1 + LengthOfLength(payloadLength) : 1;
+            if (prefixLength > int.MaxValue - _length) ThrowLengthOverflow();
+            _length += prefixLength;
         }
         else if (_buffer is null)
         {
@@ -392,11 +403,19 @@ public ref struct RlpWriter
     private ref byte ReserveSlow(int count)
     {
         // A length writer has no destination. Its bytes go to scratch space, so that the writes need no mode check.
-        if (!_isContent) return ref LengthScratch(count);
+        if (!_isContent)
+        {
+            // A length writer keeps no bytes, so valid writes can add up to more than an int holds.
+            if ((uint)count > (uint)(int.MaxValue - _length)) ThrowLengthOverflow();
+            return ref LengthScratch(count);
+        }
 
         Grow(count);
         return ref MemoryMarshal.GetReference(_destination.Slice(_length, count));
     }
+
+    [DoesNotReturn]
+    private static void ThrowLengthOverflow() => throw new OverflowException("RLP length is larger than int.MaxValue");
 
     private static ref byte LengthScratch(int count)
     {
