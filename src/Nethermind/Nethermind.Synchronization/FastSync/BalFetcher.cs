@@ -152,7 +152,7 @@ public class BalFetcher(
         catch (Exception e)
         {
             requestFailed = true;
-            if (_logger.IsDebug) _logger.Debug($"Error fetching block access lists from {peer}: {e}");
+            if (_logger.IsDebug) _logger.Debug($"Error fetching block access lists from {peer:hide}: {e:hide}");
         }
 
         // An empty entry is a well-formed answer from a peer that does not have that BAL. A list that does not

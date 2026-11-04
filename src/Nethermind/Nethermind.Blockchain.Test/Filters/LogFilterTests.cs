@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -206,6 +208,62 @@ public class LogFilterTests
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem.KeccakA, TestItem.KeccakD));
 
         Assert.That(filter.Matches(bloom), Is.False);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void or_topics_accepts_listed_topics_only([Values(1, 15, 16, 1000)] int count, [Values] bool useStructRef)
+    {
+        Hash256[] topics = CreateTopics(count);
+        TopicExpression expression = TestTopicExpressions.Or(topics);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topics.Where(t => !Accepts(expression, t, useStructRef)), Is.Empty);
+            Assert.That(Accepts(expression, Keccak.Compute("missing"), useStructRef), Is.False);
+            Assert.That(Accepts(expression, Keccak.Zero, useStructRef), Is.False);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void large_or_topics_with_any_topic_accepts_any_topic([Values] bool useStructRef)
+    {
+        TopicExpression expression = TestTopicExpressions.Or(
+            CreateTopics(100).Select(TestTopicExpressions.Specific).Append(TestTopicExpressions.Any).ToArray());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Accepts(expression, Keccak.Compute("missing"), useStructRef), Is.True);
+            Assert.That(expression.AcceptsAnyBlock, Is.True);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void large_or_topics_with_nested_or_accepts_nested_topics([Values] bool useStructRef)
+    {
+        Hash256[] topics = CreateTopics(101);
+        TopicExpression expression = TestTopicExpressions.Or(
+            topics[..100].Select(TestTopicExpressions.Specific).Append(TestTopicExpressions.Or(topics[100])).ToArray());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topics.Where(t => !Accepts(expression, t, useStructRef)), Is.Empty);
+            Assert.That(Accepts(expression, Keccak.Compute("missing"), useStructRef), Is.False);
+            Assert.That(expression.AcceptsAnyBlock, Is.False);
+        }
+    }
+
+    private static Hash256[] CreateTopics(int count) =>
+        Enumerable.Range(0, count).Select(static i => Keccak.Compute(i.ToString())).ToArray();
+
+    private static bool Accepts(TopicExpression expression, Hash256 topic, bool useStructRef)
+    {
+        if (!useStructRef)
+        {
+            return expression.Accepts(topic);
+        }
+
+        Hash256StructRef topicRef = new(topic.Bytes);
+        return expression.Accepts(ref topicRef);
     }
 
     private Core.Bloom GetBloom(params LogEntry[] logEntries)

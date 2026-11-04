@@ -30,6 +30,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -584,6 +585,34 @@ public partial class EngineModuleTests
         JsonRpcErrorResponse errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response)!;
 
         Assert.That(errorResponse.Error?.Code, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+    }
+
+    [Test]
+    public async Task ForkChoiceUpdated_rejects_null_withdrawal_entry_without_preparing_payload(
+        [Values(EngineApiVersions.Fcu.V2, EngineApiVersions.Fcu.V3)] int version,
+        [Values] bool afterValidWithdrawal)
+    {
+        IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            releaseSpec: version == EngineApiVersions.Fcu.V2 ? Shanghai.Instance : Cancun.Instance,
+            mockedPayloadService: payloadPreparationService);
+        Hash256 headHash = chain.BlockTree.HeadHash!;
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = chain.BlockTree.Head!.Timestamp + 1,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = afterValidWithdrawal ? [TestItem.WithdrawalA_1Eth, null!] : [null!],
+            ParentBeaconBlockRoot = version == EngineApiVersions.Fcu.V3 ? Keccak.Zero : null,
+        };
+
+        string response = await RpcTest.TestSerializedRequest(chain.EngineRpcModule, $"engine_forkchoiceUpdatedV{version}",
+            chain.JsonSerializer.Serialize(new ForkchoiceStateV1(headHash, headHash, headHash)),
+            chain.JsonSerializer.Serialize(payloadAttributes));
+        JsonRpcErrorResponse errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response)!;
+
+        Assert.That(errorResponse.Error?.Code, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes), response);
+        payloadPreparationService.DidNotReceiveWithAnyArgs().StartPreparingPayload(default!, default!);
     }
 
     private const string FurtherValidationStatus = "FurtherValidation";
