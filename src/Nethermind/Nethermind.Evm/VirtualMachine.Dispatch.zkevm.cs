@@ -89,8 +89,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     /// <summary>The execution gas as the dispatch chain carries it: pointer-sized, in one register on a 32-bit guest.</summary>
     /// <remarks>
-    /// A frame's gas never exceeds its transaction's gas limit, far below 2^31 under any block gas limit a chain can
-    /// reach. A 32-bit guest stops on gas it cannot carry, rather than run the frame with a different amount.
+    /// A frame's gas never exceeds its transaction's gas limit: 2^24 at most under EIP-7825, and below 2^31 before it
+    /// unless the block gas limit is above that. A 32-bit guest stops on gas it cannot carry, rather than run the frame
+    /// with a different amount, and so rejects such a block (README of the Airbender guest).
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static nuint ChainGas(ulong gas)

@@ -1887,7 +1887,7 @@ public partial class VirtualMachine<TGasPolicy>(
             tracer.SetOperationMemorySize(vmState.Memory.Size);
         }
 
-        if (tracer.IsTracingStack || tracer.IsTracingOpLevelStorage && instruction == Instruction.SSTORE && stackHead >= 2)
+        if (tracer.IsTracingStack)
         {
             // Slots hold words in limb layout; TraceStack reverses the ones the tracer reads into the
             // big-endian words the EVM shows.
@@ -1896,13 +1896,7 @@ public partial class VirtualMachine<TGasPolicy>(
             {
                 _tracedStackWords = new byte[EvmStack.MaxStackSize * EvmStack.WordSize];
             }
-            TraceStack traceStack = new(slots, _tracedStackWords.AsMemory(0, slots.Length));
-            if (tracer.IsTracingStack) tracer.SetOperationStack(traceStack);
-            if (instruction == Instruction.SSTORE && traceStack.Count >= 2)
-                tracer.ForEach<ITraceOperationStorage, (Address Address, UInt256 Key, UInt256 Value)>(
-                    static inner => inner.IsTracingOpLevelStorage,
-                    (vmState.Env.ExecutingAccount, traceStack.PeekUInt256(0), traceStack.PeekUInt256(1)),
-                    static (inner, storage) => inner.ReportStorageAttempt(storage.Address, storage.Key, storage.Value));
+            tracer.SetOperationStack(new TraceStack(slots, _tracedStackWords.AsMemory(0, slots.Length)));
         }
 
         if (tracer.IsTracingReturnData)

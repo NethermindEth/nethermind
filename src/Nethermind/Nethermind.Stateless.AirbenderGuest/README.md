@@ -7,31 +7,31 @@ The full result is printed on the UART.
 
 ## Toolchain
 
-No published bflat image carries the riscv32 compiler yet, so `make build` takes
-three local builds:
-
-- `BFLAT_DIR`: the output directory of a bflat build with the Airbender layout,
-  that is, bflat built with `LocalCompilerDir` (a riscv32 ILCompiler and JIT) and
-  `AirbenderLibsDir` (see bflat's `BUILDING.md`).
-- `AIRBENDER_LIB_DIR`: a libairbender build
-  ([NethermindEth/bflat-airbender](https://github.com/NethermindEth/bflat-airbender)),
-  which holds the precompiles, the input and output, and the exit protocol.
-- `bflat-riscv64`: the bflat build image, from bflat's `Dockerfile.build`.
+`make build` compiles the guest in the bflat image with the riscv32 target
+(`BFLAT_IMAGE`), against the Airbender platform and libairbender of a
+[bflat-airbender](https://github.com/NethermindEth/bflat-airbender) release
+(`AIRBENDER_VERSION`), which it downloads to `obj/`. libairbender holds the
+precompiles, the input and output, and the exit protocol. `AIRBENDER_LIB_DIR`
+names another libairbender build (its `output/airbender`) instead.
 
 ```bash
-make build BFLAT_DIR=<bflat>/src/bflat/bin/Release/net11.0 AIRBENDER_LIB_DIR=<libairbender>/output/airbender
+make build
 ```
+
+bflat fails the build on an F, D, C or A instruction in the image, as
+Airbender decodes RV32IM only, and on an image that does not fit the ROM.
 
 The build writes `bin/nethermind` (ELF), `bin/nethermind.bin` (the ROM image) and
 `bin/nethermind.text` (the instructions).
 
 ## Run
 
-`make run` executes the guest on the Airbender CLI (`AIRBENDER_CLI`), built from
-the zksync-airbender revision with the 4 MiB ROM:
+`make run` executes the guest on the Airbender CLI of the zksync-airbender
+revision with the 4 MiB ROM, in the image that bflat-airbender publishes
+(`AIRBENDER_RUNNER`). `AIRBENDER_CLI` names another CLI instead.
 
 ```bash
-make run INPUT=<fixture>.ssz AIRBENDER_CLI=<zksync-airbender>/target/cli/cli
+make run INPUT=<fixture>.ssz
 ```
 
 The CLI prints the output words as `Result:`. The run does not generate or verify
@@ -42,7 +42,7 @@ also checks the public digest and fails on a mismatch. Block `11962427.ssz`
 exercises an unaligned fused PUSH2 jump target, which must work on RV32:
 
 ```bash
-make verify INPUT=11962427.ssz AIRBENDER_CLI=<zksync-airbender>/target/cli/cli
+make verify INPUT=11962427.ssz
 ```
 
 ## Notes
@@ -51,3 +51,7 @@ make verify INPUT=11962427.ssz AIRBENDER_CLI=<zksync-airbender>/target/cli/cli
   handler, which publishes the failure result.
 - The image has no reflection data, so the exception handler prints the message
   without the type name.
+- The guest carries a frame's gas in 32 bits. A transaction with a gas limit of
+  2^31 or more, possible only before EIP-7825 on a chain whose block gas limit
+  is that high, stops the guest, which then publishes the failure result for a
+  valid block.
