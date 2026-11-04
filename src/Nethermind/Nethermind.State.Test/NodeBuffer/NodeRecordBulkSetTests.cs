@@ -33,6 +33,11 @@ internal class NodeRecordBulkSetTests
     private static readonly byte[] NewValue = Bytes.FromHexString("0x010203");
     private static readonly byte[] FillerValue = Enumerable.Repeat((byte)0x77, 1000).ToArray();
 
+    private static readonly Hash256 CollapseKeyA = new("0x1000000000000000000000000000000000000000000000000000000000000001");
+    private static readonly Hash256 CollapseKeyB = new("0x1000000000000000000000000000000000000000000000000000000000000002");
+    private static readonly Hash256 CollapseKeyC = new("0x2000000000000000000000000000000000000000000000000000000000000000");
+    private static readonly Hash256 CollapseKeyD = new("0x1000000000000000000000000000000000000000000000000000000000000003");
+
     private readonly List<WarmedNodeBuffer> _warmedNodeLogs = [];
 
     [TearDown]
@@ -355,15 +360,10 @@ internal class NodeRecordBulkSetTests
             key[depth / 2] = depth % 2 == 0 ? (byte)0x10 : (byte)0x01;
             items.Add((new Hash256(key), ExistingValue));
         }
-        using NodeRecordBuffer original = new(0, SmallGenerationBytes);
-        using NodeRecordBufferPin retain = original.PinHead();
-        (ValueHash256 Hash, ulong Pointer) root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), NewWarmedNodeBuffer(1), null),
-            null, (ValueKeccak.EmptyTreeHash, 0), items, false);
-        Dictionary<TreePath, byte[]> nodes = Rlps(original, root);
-        WarmedNodeBuffer warmed = NewWarmedNodeBuffer(1024);
+        (DictionaryNodeSource source, WarmedNodeBuffer warmed, Dictionary<TreePath, byte[]> nodes, (ValueHash256 Hash, ulong Pointer) root) = PersistedTrie(items);
         using NodeRecordBuffer buffer = new(0, SmallGenerationBytes);
 
-        new DictionaryNodeSource(nodes, warmed, null).WarmUp(buffer, (root.Hash, 0), ValueKeccak.Zero, forDelete: false);
+        source.WarmUp(buffer, root, ValueKeccak.Zero, forDelete: false);
 
         TreePath path = TreePath.Empty;
         Assert.That(warmed.TryGet(null, path, out NodeRecord record, out _), Is.True);
@@ -380,39 +380,49 @@ internal class NodeRecordBulkSetTests
     [Test]
     public void Delete_warming_loads_only_the_sibling_needed_by_a_collapsing_branch([Values] bool forDelete, [Values] bool threeChildren, [Values] bool inlineDeletedLeaf)
     {
-        Hash256 keyA = new("0x1000000000000000000000000000000000000000000000000000000000000001");
-        Hash256 keyB = new("0x1000000000000000000000000000000000000000000000000000000000000002");
-        Hash256 keyC = new("0x2000000000000000000000000000000000000000000000000000000000000000");
-        Hash256 keyD = new("0x1000000000000000000000000000000000000000000000000000000000000003");
-        List<(Hash256 key, byte[] value)> items = [(keyA, inlineDeletedLeaf ? [1] : ExistingValue), (keyB, ExistingValue), (keyC, ExistingValue)];
-        if (threeChildren) items.Add((keyD, ExistingValue));
-        using NodeRecordBuffer original = new(0, SmallGenerationBytes);
-        using NodeRecordBufferPin retain = original.PinHead();
-        (ValueHash256 Hash, ulong Pointer) root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), NewWarmedNodeBuffer(1), null), null, (ValueKeccak.EmptyTreeHash, 0), items, false);
-        Dictionary<TreePath, byte[]> persisted = Rlps(original, root);
-        WarmedNodeBuffer warmed = NewWarmedNodeBuffer(1024);
-        DictionaryNodeSource source = new(persisted, warmed, null);
+        List<(Hash256 key, byte[] value)> items = [(CollapseKeyA, inlineDeletedLeaf ? [1] : ExistingValue), (CollapseKeyB, ExistingValue), (CollapseKeyC, ExistingValue)];
+        if (threeChildren) items.Add((CollapseKeyD, ExistingValue));
+        (DictionaryNodeSource source, WarmedNodeBuffer warmed, _, (ValueHash256 Hash, ulong Pointer) persistedRoot) = PersistedTrie(items);
         using NodeRecordBuffer buffer = new(0, SmallGenerationBytes);
         using NodeRecordBufferPin newRetain = buffer.PinHead();
-        (ValueHash256 Hash, ulong Pointer) persistedRoot = (root.Hash, 0);
 
-        source.WarmUp(buffer, persistedRoot, keyA.ValueHash256, forDelete);
-        TreePath branchPath = TreePath.FromPath(keyA.Bytes);
+        source.WarmUp(buffer, persistedRoot, CollapseKeyA.ValueHash256, forDelete);
+        TreePath branchPath = TreePath.FromPath(CollapseKeyA.Bytes);
         branchPath.TruncateOne();
         Assert.That(warmed.TryGet(null, branchPath, out NodeRecord warmedBranch, out _), Is.True);
         ChildRef warmedSibling = warmedBranch.View.Child(2);
         Assert.That(warmedSibling.Pointer, forDelete && !threeChildren ? Is.Not.Zero : Is.Zero, "only a required collapse sibling is linked");
         if (warmedSibling.Pointer != 0) Assert.That(warmed.TryLocate(warmedSibling.Pointer, out NodeRecord sibling) && sibling.Hash == warmedSibling.Data, Is.True);
         int before = source.FetchCount;
-        (ValueHash256 Hash, ulong Pointer) updated = BulkSet(buffer, source, null, persistedRoot, [(keyA, null)], false);
+        (ValueHash256 Hash, ulong Pointer) updated = BulkSet(buffer, source, null, persistedRoot, [(CollapseKeyA, null)], false);
         PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
-        foreach ((Hash256 key, byte[] value) in items.Where(item => item.key != keyA)) expected.Set(key.Bytes, value);
+        foreach ((Hash256 key, byte[] value) in items.Where(item => item.key != CollapseKeyA)) expected.Set(key.Bytes, value);
         expected.UpdateRootHash();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(before, Is.EqualTo(3 + (inlineDeletedLeaf ? 0 : 1) + (forDelete && !threeChildren ? 1 : 0)), "only a collapsing branch needs a node beyond the path");
             Assert.That(source.FetchCount - before, Is.EqualTo(forDelete || threeChildren ? 0 : 1), "only a path-only warm-up leaves the collapse sibling unread");
             Assert.That(updated.Hash, Is.EqualTo(expected.RootHash.ValueHash256));
+        }
+    }
+
+    [Test]
+    public void Delete_warming_of_an_already_warmed_path_loads_only_the_sibling()
+    {
+        (DictionaryNodeSource source, WarmedNodeBuffer warmed, Dictionary<TreePath, byte[]> persisted, (ValueHash256 Hash, ulong Pointer) persistedRoot) =
+            PersistedTrie([(CollapseKeyA, ExistingValue), (CollapseKeyB, ExistingValue), (CollapseKeyC, ExistingValue)]);
+        using NodeRecordBuffer buffer = new(0, SmallGenerationBytes);
+
+        source.WarmUp(buffer, persistedRoot, CollapseKeyA.ValueHash256, forDelete: false);
+        int pathFetches = source.FetchCount;
+        source.WarmUp(buffer, persistedRoot, CollapseKeyA.ValueHash256, forDelete: true);
+
+        TreePath siblingPath = TreePath.FromPath(CollapseKeyB.Bytes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.FetchCount - pathFetches, Is.EqualTo(1), "only the collapse sibling is read");
+            Assert.That(warmed.TryGet(null, siblingPath, out NodeRecord sibling, out _), Is.True);
+            Assert.That(sibling.Rlp.ToArray(), Is.EqualTo(persisted[siblingPath]));
         }
     }
 
@@ -735,6 +745,17 @@ internal class NodeRecordBulkSetTests
     {
         using INodeRecordBufferPin pin = buffer.PinHead();
         return pin.WriteBoundary;
+    }
+
+    /// <summary>Builds <paramref name="items"/> into a trie and returns a source that serves its persisted nodes through a new warmed buffer.</summary>
+    private (DictionaryNodeSource Source, WarmedNodeBuffer Warmed, Dictionary<TreePath, byte[]> Persisted, (ValueHash256 Hash, ulong Pointer) Root) PersistedTrie(List<(Hash256 key, byte[] value)> items)
+    {
+        using NodeRecordBuffer original = new(0, SmallGenerationBytes);
+        using NodeRecordBufferPin retain = original.PinHead();
+        (ValueHash256 Hash, ulong Pointer) root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), NewWarmedNodeBuffer(1), null), null, (ValueKeccak.EmptyTreeHash, 0), items, false);
+        Dictionary<TreePath, byte[]> persisted = Rlps(original, root);
+        WarmedNodeBuffer warmed = NewWarmedNodeBuffer(1024);
+        return (new DictionaryNodeSource(persisted, warmed, null), warmed, persisted, (root.Hash, 0));
     }
 
     private static (ValueHash256 Hash, ulong Pointer) BulkSet(INodeRecordBuffer buffer, DictionaryNodeSource source, Hash256 address, (ValueHash256 Hash, ulong Pointer) root, List<(Hash256 key, byte[] value)> items, bool canParallelize)

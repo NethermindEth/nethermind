@@ -83,9 +83,9 @@ public static unsafe partial class Bytes
     /// On ZisK, corelib copies more than 64 bytes through a GC-transition wrapper around the zkVM's <c>memmove</c>
     /// that spills every callee-saved register, ~60 steps a call whatever the length. On SP1 and OpenVM, corelib's
     /// <c>SpanHelpers.Memmove</c> adds ~13 instructions to each copy of more than 16 bytes before it reaches the same
-    /// routine. Where <see cref="ZiskFlag"/>, <see cref="Sp1Flag"/>, <see cref="OpenVmFlag"/> or <see cref="AirbenderFlag"/> is
-    /// on, this calls <c>memmove</c> directly, so overlapping spans stay safe; on Airbender, libc also copies a misaligned
-    /// span by whole words where corelib's copy moves bytes. Elsewhere it keeps corelib's copy. See
+    /// routine. On Airbender, its libc copies a misaligned span by whole words where corelib's copy moves bytes. Where
+    /// <see cref="ZiskFlag"/>, <see cref="Sp1Flag"/>, <see cref="OpenVmFlag"/> or <see cref="AirbenderFlag"/> is on, this
+    /// calls <c>memmove</c> directly, so overlapping spans stay safe; elsewhere it keeps corelib's copy. See
     /// <c>Bytes.std.cs</c> for the host form.
     /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="destination"/> is shorter than <paramref name="source"/>.</exception>

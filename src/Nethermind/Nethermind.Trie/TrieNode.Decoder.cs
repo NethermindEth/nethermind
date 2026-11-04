@@ -1090,7 +1090,8 @@ namespace Nethermind.Trie
             /// A null slot still holds the child <paramref name="previousRlp"/> encodes, so the bytes between changed children,
             /// and the unchanged ones after the last of them, are copied over as they are. Measuring the changed children
             /// first sizes the result, so they are written straight into it. Where <see cref="CopiesBranchValue"/>, the items
-            /// past the last changed child are never walked.
+            /// past the last changed child are never walked. Where <see cref="TracksTakenChildren"/>, a slot without its bit is
+            /// copied from <paramref name="previousRlp"/> like a null one.
             /// </remarks>
             [SkipLocalsInit]
             private static CappedArray<byte> SpliceBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item,
@@ -1107,15 +1108,17 @@ namespace Nethermind.Trie
                 ref object? child = ref FirstBranchChild(item);
                 ref object? end = ref Unsafe.Add(ref child, BranchesCount);
                 ref object? last = ref end;
-                while (Unsafe.IsAddressGreaterThan(ref last, ref child) && Unsafe.Add(ref last, -1) is null)
+                ushort taken = TakenChildren(item);
+                while (Unsafe.IsAddressGreaterThan(ref last, ref child)
+                    && ((TracksTakenChildren && (taken & 1 << (ChildIndex(ref last, ref end) - 1)) == 0) || Unsafe.Add(ref last, -1) is null))
                 {
                     last = ref Unsafe.Add(ref last, -1);
                 }
 
-                for (; Unsafe.IsAddressLessThan(ref child, ref last); child = ref Unsafe.Add(ref child, 1))
+                for (; Unsafe.IsAddressLessThan(ref child, ref last); child = ref Unsafe.Add(ref child, 1), taken >>= 1)
                 {
                     int itemEnd = cursor + (ZkEvmFlag.IsActive ? CanonicalChildRlpLength(previousRlp[cursor]) : nodeRlp.PeekNextRlpLength(cursor));
-                    object? data = child;
+                    object? data = TracksTakenChildren && (taken & 1) == 0 ? null : child;
                     if (data is not null)
                     {
                         int i = ChildIndex(ref child, ref end);
@@ -1228,7 +1231,9 @@ namespace Nethermind.Trie
             /// <remarks>
             /// The header and the empty value are the previous ones too, so the whole encoding is copied: both ends of the
             /// copy then sit on word boundaries, where the children alone start three bytes in.
+            /// Inlined into <see cref="RlpEncodeBranch"/>, whose inlining budget it otherwise exceeds on the guest.
             /// </remarks>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             private static bool TryPatchFullBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item,
                 ReadOnlySpan<byte> nodeRlp, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
@@ -1242,8 +1247,10 @@ namespace Nethermind.Trie
                 ref object? end = ref Unsafe.Add(ref child, BranchesCount);
                 // Slots are patched in order, so the bytes before the first patched hash are the previous ones.
                 int unchanged = FullBranchRlpLength;
-                for (; Unsafe.IsAddressLessThan(ref child, ref end); child = ref Unsafe.Add(ref child, 1))
+                ushort taken = TakenChildren(item);
+                for (; Unsafe.IsAddressLessThan(ref child, ref end) && (!TracksTakenChildren || taken != 0); child = ref Unsafe.Add(ref child, 1), taken >>= 1)
                 {
+                    if (TracksTakenChildren && (taken & 1) == 0) continue;
                     object? data = child;
                     if (data is null) continue;
                     if (ReferenceEquals(data, _nullNode)) return false;

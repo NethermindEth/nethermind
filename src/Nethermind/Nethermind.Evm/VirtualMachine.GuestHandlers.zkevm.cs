@@ -477,11 +477,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? ((nuint)bytes << 8) | Unsafe.Add(ref bytes, 1)
             : ReadBigEndianUInt16(Unsafe.ReadUnaligned<ushort>(ref bytes));
 
-        /// <summary>The four code bytes from <paramref name="start"/> past <paramref name="opcode"/>, read as one word, or <c>0</c> where <see cref="StrictAlignmentFlag"/> is on or on Airbender, which <see cref="CodeByte"/> and <see cref="CodeUInt16"/> then ignore.</summary>
+        /// <summary>The four code bytes from <paramref name="start"/> past <paramref name="opcode"/>, read as one word, or <c>0</c> where <see cref="StrictAlignmentFlag"/> or <see cref="AirbenderFlag"/> is on, which <see cref="CodeByte"/> and <see cref="CodeUInt16"/> then ignore.</summary>
         /// <remarks>
-        /// A fused handler tests a few bytes past its opcode. Where the JIT tests alignment, or on Airbender, which rejects
-        /// misaligned accesses, a misaligned word read assembles all four bytes behind a guard, so <see cref="CodeByte"/> reads
-        /// only the bytes a test needs.
+        /// A fused handler tests a few bytes past its opcode. Where the JIT tests alignment, a misaligned word read assembles all
+        /// four bytes behind a guard, so <see cref="CodeByte"/> reads only the bytes a test needs.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint CodeWord(ref byte opcode, int start) =>
@@ -575,7 +574,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     analyzed = destination;
                                     skipped = 1 + 3;
                                     // The analysis charges the jump itself.
-                                    gas += (nuint)(jumpGas);
+                                    gas += (nuint)jumpGas;
                                     goto AnalyzeBranch;
                                 }
 
@@ -620,7 +619,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                         analyzed = destination;
                                         skipped = 1 + 1 + 3;
                                         // The analysis charges the jump itself.
-                                        gas += (nuint)(jumpGas);
+                                        gas += (nuint)jumpGas;
                                         goto AnalyzeBranch;
                                     }
 
@@ -660,7 +659,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     analyzed = destination;
                                     skipped = 1 + 2;
                                     // The analysis charges the jump itself.
-                                    gas += (nuint)(jumpGas);
+                                    gas += (nuint)jumpGas;
                                     goto AnalyzeBranch;
                                 }
 
@@ -1464,11 +1463,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         (CodeByte(ref opcode, branch, 7, 7) == (byte)Instruction.PUSH2 && CodeByte(ref opcode, branch, 7, 10) == (byte)Instruction.JUMPI))
                     {
                         // The selector's word, reversed, holds it zero-extended above bit 32, where a 32-bit read needs extending.
-                        // Without Zbb a reversal is a long software sequence, so the four bytes are gathered instead.
+                        // Without Zbb a reversal is a long software sequence, so the four bytes are gathered instead, in
+                        // 32-bit math on a 32-bit guest.
                         ulong selector = ZkEvmBitOperations.HasByteReverse
                             ? BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref opcode, 2))) >> 32
-                            : ((ulong)Unsafe.Add(ref opcode, 2) << 24) | ((ulong)Unsafe.Add(ref opcode, 3) << 16) |
-                              ((ulong)Unsafe.Add(ref opcode, 4) << 8) | Unsafe.Add(ref opcode, 5);
+                            : IntPtr.Size == sizeof(uint)
+                                ? ((uint)Unsafe.Add(ref opcode, 2) << 24) | ((uint)Unsafe.Add(ref opcode, 3) << 16) |
+                                  ((uint)Unsafe.Add(ref opcode, 4) << 8) | Unsafe.Add(ref opcode, 5)
+                                : ((ulong)Unsafe.Add(ref opcode, 2) << 24) | ((ulong)Unsafe.Add(ref opcode, 3) << 16) |
+                                  ((ulong)Unsafe.Add(ref opcode, 4) << 8) | Unsafe.Add(ref opcode, 5);
                         // The fused step charges DUP1 with every opcode after it in one test.
                         if (((top ^ selector) | Unsafe.Add(ref top, 1) | Unsafe.Add(ref top, 2) | Unsafe.Add(ref top, 3)) != 0)
                         {
@@ -1493,7 +1496,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     head += 2;
                                     sp = ref Moved(ref sp, 2);
                                     // The analysis charges the jump itself.
-                                    gas += (nuint)(jumpGas);
+                                    gas += (nuint)jumpGas;
                                     ip = ref Unsafe.Add(ref ip, 10);
                                     nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OnFlag>);
                                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, analyze);
@@ -1589,7 +1592,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     head--;
                     sp = ref Moved(ref sp, -1);
-                    gas -= (nuint)(BaseGasCost.GasCost);
+                    gas -= (nuint)BaseGasCost.GasCost;
                     ip = ref Unsafe.Add(ref ip, 2);
                     nint fused = NextHandler(handlers, ref ip);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, fused);
@@ -1887,7 +1890,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!verified && !AlignedStack(ref stack).IsAnalyzedJumpDestination(value))
                     {
                         // The analysis charges the jump itself.
-                        gas += (nuint)(jumpGas);
+                        gas += (nuint)jumpGas;
                         analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OffFlag>);
                         goto Analyze;
                     }
@@ -1925,7 +1928,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!verified && !AlignedStack(ref stack).IsAnalyzedJumpDestination(value))
                     {
                         // The analysis charges the jump itself.
-                        gas += (nuint)(jumpGas);
+                        gas += (nuint)jumpGas;
                         analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OnFlag>);
                         goto Analyze;
                     }
@@ -2000,7 +2003,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                gas += (nuint)(VeryLowGasCost.GasCost);
+                gas += (nuint)VeryLowGasCost.GasCost;
             }
 
             nint growing = Entry(&ExecuteMStoreGrowing);
@@ -2043,7 +2046,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                gas += (nuint)(VeryLowGasCost.GasCost);
+                gas += (nuint)VeryLowGasCost.GasCost;
             }
 
             nint shared = Entry(&ExecuteOpcode<MStoreOpcode<OffFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
@@ -2082,7 +2085,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (!Covers(gas, cost))
                     return ExitChain(ref state, 0, (nint)Unsafe.ByteOffset(ref code, ref ip) + 1, head - 1, EvmExceptionType.OutOfGas);
 
-                gas -= (nuint)(cost);
+                gas -= (nuint)cost;
                 vm.WorldState.Get(in storageCell, out slot);
                 // Reloaded rather than held across the calls, where each would take a callee-saved register.
                 handlers = state.OpcodeHandlers;
@@ -2300,7 +2303,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             nint inputs = TOpCall.ExecutionType == ExecutionType.CALL ? 7 : 6;
             VirtualMachine<TGasPolicy> vm = state.Vm;
-            // A shortfall the other handlers left untested goes to the shared handler, which halts on it.
             if (head >= inputs && (nint)gas >= 0 && !vm.IsTracingActions && !TSpec.IsEip8279Enabled
                 && (TOpCall.ExecutionType != ExecutionType.CALL || Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 3)).IsZero))
             {
@@ -2432,14 +2434,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     {
                         if (size == 0)
                         {
-                            gas -= (nuint)(cost);
+                            gas -= (nuint)cost;
                             goto Dispatch;
                         }
 
                         ulong target = destination;
                         if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3) | (target >> 32)) == 0)
                         {
-                            gas -= (nuint)(cost);
+                            gas -= (nuint)cost;
                             ref byte range = ref AlignedMemory(ref state).TryPrepareRangeOverwrite(target, size, ref gas);
                             if (!Unsafe.IsNullRef(ref range))
                             {
@@ -2466,7 +2468,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 goto Dispatch;
                             }
 
-                            gas += (nuint)(cost);
+                            gas += (nuint)cost;
                         }
                     }
                 }
@@ -2580,7 +2582,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                gas += (nuint)(VeryLowGasCost.GasCost);
+                gas += (nuint)VeryLowGasCost.GasCost;
             }
 
             nint shared = Entry(&ExecuteOpcode<MStore8Opcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
@@ -2621,7 +2623,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                gas += (nuint)(VeryLowGasCost.GasCost);
+                gas += (nuint)VeryLowGasCost.GasCost;
             }
 
             nint shared = Entry(&ExecuteOpcode<MLoadOpcode<OffFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
@@ -2665,7 +2667,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
-                gas += (nuint)(VeryLowGasCost.GasCost);
+                gas += (nuint)VeryLowGasCost.GasCost;
             }
 
             nint shared = Entry(&ExecuteOpcode<CallDataLoadOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
@@ -2705,7 +2707,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     ref byte data = ref AlignedMemory(ref state).GetActiveInitializedRange(offset, length);
                     if (Covers(gas, cost) && !Unsafe.IsNullRef(ref data))
                     {
-                        gas -= (nuint)(cost);
+                        gas -= (nuint)cost;
                         head--;
                         // The memo keys on the bytes as memory holds them, which in swizzled memory name the input only
                         // from a group boundary.
@@ -3229,7 +3231,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(target))
                     {
-                        gas += (nuint)(jumpAndJumpDestGas);
+                        gas += (nuint)jumpAndJumpDestGas;
                         nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OffFlag>);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, analyze);
                     }
@@ -3241,7 +3243,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
-                gas += (nuint)(jumpAndJumpDestGas);
+                gas += (nuint)jumpAndJumpDestGas;
             }
 
             nint shared = Entry(&ExecuteOpcode<JumpOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
@@ -3275,7 +3277,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     head -= 2;
                     sp = ref Moved(ref sp, -2);
-                    gas -= (nuint)(JumpIGasCost.GasCost);
+                    gas -= (nuint)JumpIGasCost.GasCost;
                     ip = ref Unsafe.Add(ref ip, 1);
                     nint notTaken = NextHandler(handlers, ref ip);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, notTaken);
@@ -3294,7 +3296,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                     head -= 2;
                     sp = ref Moved(ref sp, -2);
-                    gas -= (nuint)(jumpIAndJumpDestGas);
+                    gas -= (nuint)jumpIAndJumpDestGas;
                     ip = ref Unsafe.Add(ref code, (nint)target + 1);
                     nint taken = NextHandler(handlers, ref ip);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, taken);

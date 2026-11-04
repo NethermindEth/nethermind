@@ -747,8 +747,8 @@ public class GuestDispatchDifferentialTests
 
     /// <remarks>
     /// Two calls reach an account with no code, first cold and then warm, and a third reaches the target: an account
-    /// with no code, one with code, one that delegates to code under EIP-7702, or the identity precompile. At code the
-    /// untraced chain runs the child frame nested and goes on; a precompile runs inline, and the chain goes on. The calls expand memory over their input or output, or need no expansion. Every amount
+    /// with no code, one with code, one that delegates to code under EIP-7702, or the identity precompile. At code its
+    /// frame runs nested in the chain; a precompile runs inline; the chain goes on either way. The calls expand memory over their input or output, or need no expansion. Every amount
     /// of gas up to the program's need puts the end of the gas inside each charge.
     /// The calls move no value, except in a static frame, where each CALL moves value and faults.
     /// The reference is the cancelable table: a traced call enters a frame even at no code, so that the tracer sees it.
@@ -805,7 +805,8 @@ public class GuestDispatchDifferentialTests
         {
             Assert.That(mismatches, Is.Empty);
             Assert.That(complete.Exception, Is.EqualTo(
-                isStatic && op == Instruction.CALL ? EvmExceptionType.StaticCallViolation : EvmExceptionType.Stop));
+                isStatic && op == Instruction.CALL ? EvmExceptionType.StaticCallViolation
+                : EvmExceptionType.Stop));
         }
 
         static byte[] Call(Instruction op, Address to, byte inputOffset, byte inputLength, byte outputOffset, byte outputLength, byte value) =>

@@ -75,6 +75,9 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
         Transaction[] transactions, byte[][] encodedTransactions, IEthereumEcdsa ecdsa, bool useSignatureChainId)
     {
         int count = transactions.Length;
+        if (count == 0)
+            return true;
+
         if (!TryPackSignatures(transactions, encodedTransactions, ecdsa, useSignatureChainId, count,
                 out byte[] messages, out byte[] signatures, out byte[] recoveryIds))
             return false;

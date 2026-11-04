@@ -71,7 +71,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        vm: [zisk, sp1, openvm]
+        vm: [zisk, sp1, openvm, airbender]
         # The input the guest takes: Ssz, the spec StatelessInput, or Trusted, the trusted-input format.
         input: [Ssz, Trusted]
         include:
@@ -81,6 +81,8 @@ jobs:
             project: Nethermind.Stateless.Sp1Guest
           - vm: openvm
             project: Nethermind.Stateless.OpenVMGuest
+          - vm: airbender
+            project: Nethermind.Stateless.AirbenderGuest
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -107,7 +109,8 @@ jobs:
         with:
           username: ${{ vars.DOCKERHUB_READ_ORGANIZATION }}
 
-      # One bflat image compiles all three; the layout, entry point and exit
+      # One bflat image compiles the ZisK, SP1 and OpenVM guests, and its
+      # riscv32 image the Airbender guest; the layout, entry point and exit
       # protocol differ per target and come from the guest's Makefile.
       - name: Build Nethermind
         working-directory: src/Nethermind/${{ matrix.project }}
@@ -117,7 +120,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nethermind-${{ matrix.vm }}${{ matrix.input == 'Trusted' && '-trusted' || '' }}
-          path: src/Nethermind/${{ matrix.project }}/bin/${{ matrix.input == 'Trusted' && 'nethermind-trusted' || 'nethermind' }}
+          # The Airbender CLI runs the ROM image and the instructions beside the ELF.
+          path: src/Nethermind/${{ matrix.project }}/bin/${{ matrix.input == 'Trusted' && 'nethermind-trusted' || 'nethermind' }}*
           if-no-files-found: error
           retention-days: 1
 
@@ -132,7 +136,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        vm: [zisk, sp1, openvm]
+        vm: [zisk, sp1, openvm, airbender]
         input: [Ssz, Trusted]
         block: ${{ fromJSON(needs.blocks.outputs.blocks) }}
         include:
@@ -155,6 +159,9 @@ jobs:
           - vm: openvm
             project: Nethermind.Stateless.OpenVMGuest
             minutes: 15
+          - vm: airbender
+            project: Nethermind.Stateless.AirbenderGuest
+            minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -222,7 +229,9 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.project }}
         run: |
           set -euo pipefail
-          make run INPUT="${{ steps.expected.outputs.input }}" GUEST_INPUT=${{ matrix.input }} 2>&1 | tee "$RUNNER_TEMP/run.log"
+          # make verify on Airbender also checks the digest it publishes in
+          # x10-x17, which is what gets proven there. Only the Ssz inputs have that digest listed.
+          make ${{ matrix.vm == 'airbender' && matrix.input == 'Ssz' && 'verify' || 'run' }} INPUT="${{ steps.expected.outputs.input }}" GUEST_INPUT=${{ matrix.input }} 2>&1 | tee "$RUNNER_TEMP/run.log"
           grep -q "${{ steps.expected.outputs.output }}" "$RUNNER_TEMP/run.log" || \
             { echo "::error::Output mismatch"; exit 1; }
           # The line above is a debug print on OpenVM. What gets proven is the

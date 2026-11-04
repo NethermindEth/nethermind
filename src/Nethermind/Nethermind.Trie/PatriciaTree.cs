@@ -933,7 +933,10 @@ namespace Nethermind.Trie
                 Span<TraverseStackFrame> frames = _entries[..(int)_count];
                 for (int i = frames.Length - 1; i >= 0; i--)
                 {
-                    TrieNode node = frames[i].Node;
+                    ref TraverseStackFrame frame = ref frames[i];
+                    TrieNode node = frame.Node;
+                    // The node's child on the path changed in place, so a re-encode that walks only changed slots takes it.
+                    node.MarkChildChanged((int)frame.ChildIdx);
                     if (node.Keccak is null && node.IsDirty) return;
                     node.Unseal();
                 }

@@ -151,7 +151,7 @@ public sealed partial class KeccakHash
             fixed (byte* to = destination)
             {
                 if (!FirstTouchMemoryFlag.IsActive || source.Length < HASH_DATA_AREA || ((nuint)from & 7) == 0
-                    || ((nuint)to & 7) != 0 || to > AlignedDown(from))
+                    || ((nuint)to & 7) != 0 || to > AlignedDown(from) || !CopyReadsOnlySource((nuint)from & 7, (nuint)(uint)source.Length))
                 {
                     source.CopyTo(destination);
                     return ComputeHash256(destination);
@@ -162,10 +162,15 @@ public sealed partial class KeccakHash
         }
     }
 
+    /// <summary>Whether <see cref="CopyAndSponge"/> reads no byte past a source of <paramref name="length"/> bytes that
+    /// starts <paramref name="offset"/> bytes into a word.</summary>
+    /// <remarks>Its last load is the whole word past the last whole block, which ends past the source unless the tail reaches its end.</remarks>
+    internal static bool CopyReadsOnlySource(nuint offset, nuint length) => offset + length % HASH_DATA_AREA >= sizeof(ulong);
+
     /// <summary>Copies the <paramref name="length"/> bytes that start <paramref name="shift"/> bits into the word at
     /// <paramref name="source"/> to <paramref name="destination"/>, and computes their Keccak-256 digest.</summary>
     /// <param name="shift">8 to 56.</param>
-    /// <param name="length">At least one rate block.</param>
+    /// <param name="length">At least one rate block, for which <see cref="CopyReadsOnlySource"/> holds.</param>
     /// <remarks><paramref name="destination"/> must not lie above <paramref name="source"/>: each word is stored only after
     /// the source word past it is loaded. The tail past the last whole block is copied first and absorbed from the copy.
     /// </remarks>

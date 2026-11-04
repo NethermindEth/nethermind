@@ -19,7 +19,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
     /// <remarks>
     /// Calls the body directly: a generic virtual call resolves through reflection metadata, which a guest built
-    /// without reflection data does not have.
+    /// without reflection data does not have. An override of <see cref="ExecuteTransaction{TTracingInst}"/> is therefore
+    /// not reached here.
     /// </remarks>
     public TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer) =>
         ExecuteTransactionCore<OffFlag>(vmState, worldState, txTracer);

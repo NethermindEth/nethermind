@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Settings shared by every zkVM guest (zisk, sp1, openvm); each guest's Makefile
+# Settings shared by every zkVM guest (zisk, sp1, openvm, airbender); each guest's Makefile
 # adds only what differs: the libc, the runtime package, the harness and the
 # exit protocol. Shared rather than copied because they have to agree - cycle
 # counts are comparable across targets only if the same closure is built by the
@@ -23,6 +23,7 @@ GUEST_PACKAGE_VERSION := $(shell sed -n 's/.*Include="$(GUEST_PACKAGE)" Version=
 GUEST_NUPKG := $(GUEST_PACKAGE_ID).$(GUEST_PACKAGE_VERSION).nupkg
 GUEST_NUPKG_PATH := $(NUGET_PACKAGES)/$(GUEST_PACKAGE_ID)/$(GUEST_PACKAGE_VERSION)/$(GUEST_NUPKG)
 PACKAGE_DIR := /nethermind/package
+COMMA := ,
 
 # The bflat RISC-V64 compiler and .NET runtime, pinned by digest because :latest
 # moves with every CI run there; the tag records the bflat-riscv64 commit.
@@ -36,7 +37,7 @@ PACKAGE_DIR := /nethermind/package
 # the nine stateless-tests blocks, and gives ~6.5% smaller binaries.
 BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:dd05dd8af0a14065a9974492007dd5e568acfecc@sha256:34235a4a8050b171dd03562a875752c08db5b6fdb33bb505be1eeeb7c4ea19be
 
-# Every target decodes rv64im only and reads the whole .text up front, so even
+# Every rv64 target decodes rv64im only and reads the whole .text up front, so even
 # unreachable F/D/C/A instructions reject the guest - fail at build time instead.
 # Floating point in the IL is not an error: the guest is soft-float (lp64), and
 # --error-on-float-binary checks that no F/D instruction is in the image.
@@ -58,17 +59,16 @@ TRIM_FLAGS ?= --no-stacktrace-data --ldflags=--strip-all
 # assembled from the .S of the same name in the guest's directory.
 GUEST_OBJECTS ?=
 
-# What a guest whose toolchain is not the published image overrides: the target
-# architecture, its bindings manifest, the bflat command and the docker arguments
-# that bring a local bflat into the image (the Airbender guest).
+# What a guest whose toolchain is not the default image overrides: the target
+# architecture, its bindings and the docker arguments that bring
+# its bindings into the image (the Airbender guest, which has no runtime package
+# and so leaves GUEST_PACKAGE unset).
 GUEST_ARCH ?= riscv64
-GUEST_EXTLIB_MANIFEST ?=
-comma := ,
-BFLAT ?= bflat
+GUEST_EXTLIB ?= $(PACKAGE_DIR)/$(GUEST_NUPKG)
 BFLAT_DOCKER_ARGS ?=
 
 # Main, the ZkvmThrow export and the failure protocol are one file shared by all
-# three guests; each guest's Program.cs supplies only WriteOutput. bflat compiles
+# guests; each guest's Program.cs supplies only WriteOutput. bflat compiles
 # sources, not the managed assembly, so the shared file has to be mounted and
 # named on its command line - the csproj <Compile Include> only covers the
 # solution build.
@@ -140,7 +140,6 @@ dotnet-build:
 # ILC embeds every manifest resource of every input assembly and the guest reads
 # none, so they are dead weight (6.9 MB of chainspecs once rode along).
 build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
-	@# A guest with no runtime package (Airbender's, built from a local libairbender) links its own manifest.
 	@[ -z "$(GUEST_PACKAGE)" ] || [ -n "$(GUEST_PACKAGE_VERSION)" ] || { echo "error: no version of $(GUEST_PACKAGE) in Directory.Packages.props; the pin must be exact: Version=\"[x]\"" >&2; exit 1; }
 	@[ -z "$(GUEST_PACKAGE)" ] || [ -f "$(GUEST_NUPKG_PATH)" ] || { echo "error: $(GUEST_NUPKG_PATH) is not there; restore puts it in NUGET_PACKAGES" >&2; exit 1; }
 	docker run --platform linux/amd64 --rm \
@@ -149,11 +148,11 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		-w $(SRC_DIR) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/$(GUEST_PROJECT)/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
-		$(if $(GUEST_PACKAGE),--mount type=bind$(comma)source="$(GUEST_NUPKG_PATH)"$(comma)target=$(PACKAGE_DIR)/$(GUEST_NUPKG)$(comma)readonly) \
+		$(if $(GUEST_PACKAGE),--mount type=bind$(COMMA)source="$(GUEST_NUPKG_PATH)"$(COMMA)target=$(PACKAGE_DIR)/$(GUEST_NUPKG)$(COMMA)readonly) \
 		$(SHARED_MOUNT) \
 		$(BFLAT_DOCKER_ARGS) \
 		$(BFLAT_IMAGE) \
-		$(BFLAT) build --arch $(GUEST_ARCH) --os linux --stdlib dotnet --libc $(GUEST_LIBC) \
+		bflat build --arch $(GUEST_ARCH) --os linux --stdlib dotnet --libc $(GUEST_LIBC) \
 		$(OPT_FLAGS) \
 		$(TRIM_FLAGS) \
 		--no-pie \
@@ -162,7 +161,7 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		--nostdlibrefs \
 		$(GUEST_SUBSTITUTIONS) \
 		$(BFLAT_REFS) \
-		--extlib $(if $(GUEST_PACKAGE),$(PACKAGE_DIR)/$(GUEST_NUPKG),$(GUEST_EXTLIB_MANIFEST)) \
+		--extlib $(GUEST_EXTLIB) \
 		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \

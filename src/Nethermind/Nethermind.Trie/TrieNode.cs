@@ -233,7 +233,11 @@ namespace Nethermind.Trie
         {
             _blockAndFlags = _dirtyMask;
             _nodeData = node._nodeData?.Clone();
+            CopyTakenChildrenFrom(node);
         }
+
+        /// <summary>Gives this clone the branch slots <paramref name="node"/> has recorded as changed.</summary>
+        partial void CopyTakenChildrenFrom(TrieNode node);
 
         public TrieNode(NodeType nodeType)
         {
