@@ -617,7 +617,7 @@ public class DebugRpcModule(
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {blockTrace}");
 
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace) { IncludeErrorResult = true });
         }
         catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
             || JavaScriptTraceFailure.IsRecoverable(exception))
@@ -676,7 +676,7 @@ public class DebugRpcModule(
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash}, result: {blockTrace}");
 
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace) { IncludeErrorResult = true });
         }
         catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
             || JavaScriptTraceFailure.IsRecoverable(exception))
