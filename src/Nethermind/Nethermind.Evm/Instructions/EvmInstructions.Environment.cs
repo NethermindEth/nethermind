@@ -953,29 +953,24 @@ public static partial class EvmInstructions
     /// Implements the SLOTNUM opcode.
     /// Returns the slot number from the block header.
     /// </summary>
+    /// <remarks>
+    /// A header without a slot number reads 0. Header validation requires the field once the opcode is active, so only
+    /// a synthetic header lacks it: an RPC block override or a simulated child that moves a pre-fork block past the fork.
+    /// </remarks>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gas">The available gas which is reduced by the operation's cost.</param>
     /// <returns>
-    /// <see cref="EvmExceptionType.None"/>, or <see cref="EvmExceptionType.BadInstruction"/> if slot number not set.
+    /// <see cref="EvmExceptionType.None"/> if successful; otherwise, an EVM exception type if an error occurs.
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionSlotNum<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ref readonly BlockExecutionContext context = ref vm.BlockExecutionContext;
-
-        ulong? slotNumber = context.Header.SlotNumber;
-        // If the slot number is missing this opcode is invalid.
-        if (!slotNumber.HasValue) goto BadInstruction;
-
         // Charge the base gas cost for this opcode.
         if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-        return stack.PushUInt64<TTracingInst, OnFlag>(slotNumber.Value);
-        // Jump forward to be unpredicted by the branch predictor.
-    BadInstruction:
-        return EvmExceptionType.BadInstruction;
+        return stack.PushUInt64<TTracingInst, OnFlag>(vm.BlockExecutionContext.Header.SlotNumber.GetValueOrDefault());
     }
 
 }

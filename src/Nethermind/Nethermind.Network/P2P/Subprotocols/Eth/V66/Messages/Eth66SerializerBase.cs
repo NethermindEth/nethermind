@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
@@ -9,24 +9,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
     /// <summary>
     /// Shared serializer for eth request/response messages that prefix their payload with a request id.
     /// </summary>
-    public abstract class Eth66SerializerBase<TMessage> : IZeroInnerMessageSerializer<TMessage>
+    public abstract class Eth66SerializerBase<TMessage> : IMessageSerializer<TMessage>
         where TMessage : Eth66MessageBase
     {
-        public void Serialize(IByteBuffer byteBuffer, TMessage message)
+        public int Serialize(Span<byte> destination, TMessage message)
         {
-            int totalLength = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
-
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            RlpWriter writer = new(destination);
+            writer.StartSequence(GetContentLength(message));
             writer.Encode(message.RequestId);
-            SerializeInternal(byteBuffer, message);
+            SerializeInternal(ref writer, message);
+            return writer.Position;
         }
 
-        public virtual TMessage Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
-
-        private TMessage Deserialize(ref RlpReader ctx)
+        public TMessage Deserialize(ReadOnlySpan<byte> data)
         {
+            RlpReader ctx = new(data);
             int sequenceLength = ctx.ReadSequenceLength();
             int checkPosition = ctx.Position + sequenceLength;
             long requestId = ctx.DecodeLong();
@@ -35,6 +32,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             try
             {
                 ctx.Check(checkPosition);
+                ctx.CheckEnd();
                 return message;
             }
             catch
@@ -44,13 +42,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             }
         }
 
-        public int GetLength(TMessage message, out int contentLength)
-        {
-            contentLength = Rlp.LengthOf(message.RequestId) + GetLengthInternal(message);
-            return Rlp.LengthOfSequence(contentLength);
-        }
+        public int GetLength(TMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
 
-        protected abstract void SerializeInternal(IByteBuffer byteBuffer, TMessage message);
+        private int GetContentLength(TMessage message) => Rlp.LengthOf(message.RequestId) + GetLengthInternal(message);
+
+        protected abstract void SerializeInternal(ref RlpWriter writer, TMessage message);
         protected abstract TMessage DeserializeInternal(ref RlpReader ctx, long requestId);
         protected abstract int GetLengthInternal(TMessage message);
     }
