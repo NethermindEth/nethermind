@@ -18,6 +18,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -99,7 +100,7 @@ public partial class DebugRpcModuleTests
                 break;
             case "barrier": syncConfig.AncientReceiptsBarrier = head; break;
         }
-        feed.InitializeFeed();
+        ((ReceiptsSyncFeed)feed).InitializeFeed();
         executed.Clear();
 
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString());
@@ -128,7 +129,7 @@ public partial class DebugRpcModuleTests
         chain.BlockTree.SyncPivot = (block.Number, block.Hash!);
         chain.Container.Resolve<ISyncPointers>().LowestInsertedReceiptBlockNumber = block.Number;
         ISyncFeed<ReceiptsSyncBatch?> feed = chain.Container.Resolve<ISyncFeed<ReceiptsSyncBatch?>>();
-        feed.InitializeFeed();
+        ((ReceiptsSyncFeed)feed).InitializeFeed();
         Assert.That(chain.Container.Resolve<ISyncProgressResolver>().IsFastBlocksReceiptsFinished(), Is.False);
 
         object[] parameters = method switch
