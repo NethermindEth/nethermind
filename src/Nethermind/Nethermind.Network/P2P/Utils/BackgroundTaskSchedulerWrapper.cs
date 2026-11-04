@@ -8,6 +8,8 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -45,12 +47,16 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
     /// <remarks>
     /// The scheduler queue is shared by all peers, so without a limit one peer can fill it and delay the requests of all other peers.
     /// A peer cannot have more requests in flight on this side than it has outstanding. go-ethereum has one request for each
-    /// request type. Nethermind with the default <c>ISyncConfig.AllocationSlots</c> has at most 9 sync requests on eth and 4 on snap,
-    /// plus the transaction requests. The extra requests are dropped, the same as when the scheduler queue is full.
+    /// request type. Nethermind with the default <c>ISyncConfig.AllocationSlots</c> has at most 9 sync requests on eth and 4 on snap.
+    /// The transaction requests (<see cref="GetPooledTransactionsMessage"/> and <see cref="GetCellsMessage72"/>) have their own
+    /// counter with the same limit: the requester sends one for each announcement, and they wait in the scheduler queue during
+    /// block processing, so they must not use up the slots of the sync requests.
+    /// The extra requests are dropped, the same as when the scheduler queue is full.
     /// </remarks>
     internal const int MaxSyncServeRequestsInFlight = 32;
 
     private int _syncServeRequestsInFlight;
+    private int _txServeRequestsInFlight;
 
     internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage
     {
@@ -59,7 +65,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         SyncServeTaskRequest<TReq, TRes> syncServeRequest = new(this, handler, request, fulfillFunc);
         if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, SyncServeTaskRequestRunner<TReq, TRes>.Run))
         {
-            ReleaseSyncServe();
+            ReleaseSyncServe<TReq>();
             request.TryDispose();
             return false;
         }
@@ -77,7 +83,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler> syncServeRequest = new(this, requestHandler, request);
         if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, HandlerSyncServeTaskRequestRunner<THandler, TReq, TRes, TRequestHandler>.Run))
         {
-            ReleaseSyncServe();
+            ReleaseSyncServe<TReq>();
             request.TryDispose();
             return false;
         }
@@ -92,7 +98,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         SyncServeValueTaskRequest<TReq, TRes> syncServeRequest = new(this, handler, request, fulfillFunc);
         if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, SyncServeValueTaskRequestRunner<TReq, TRes>.Run))
         {
-            ReleaseSyncServe();
+            ReleaseSyncServe<TReq>();
             request.TryDispose();
             return false;
         }
@@ -116,18 +122,24 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
 
     private bool TryReserveSyncServe<TReq>(TReq request)
     {
-        if (Interlocked.Increment(ref _syncServeRequestsInFlight) <= MaxSyncServeRequestsInFlight)
+        if (Interlocked.Increment(ref InFlightCounter<TReq>()) <= MaxSyncServeRequestsInFlight)
         {
             return true;
         }
 
-        ReleaseSyncServe();
+        ReleaseSyncServe<TReq>();
         request.TryDispose();
+        Interlocked.Increment(ref Metrics.SyncServeRequestsDroppedOverPeerLimit);
         if (handler.Logger.IsDebug) handler.Logger.Debug($"Dropping {typeof(TReq).Name} on session {handler.Session}, too many sync-serve requests in flight");
         return false;
     }
 
-    private void ReleaseSyncServe() => Interlocked.Decrement(ref _syncServeRequestsInFlight);
+    private void ReleaseSyncServe<TReq>() => Interlocked.Decrement(ref InFlightCounter<TReq>());
+
+    private ref int InFlightCounter<TReq>() =>
+        ref typeof(TReq) == typeof(GetPooledTransactionsMessage) || typeof(TReq) == typeof(GetCellsMessage72)
+            ? ref _txServeRequestsInFlight
+            : ref _syncServeRequestsInFlight;
 
     /// <summary>Disposes the request when the outbound buffer of the peer is full.</summary>
     /// <remarks>The session drops a message when the buffer is full, so making the response would only waste work.</remarks>
@@ -184,7 +196,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
             }
             finally
             {
-                owner.ReleaseSyncServe();
+                owner.ReleaseSyncServe<TReq>();
             }
         }
     }
@@ -219,7 +231,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
             }
             finally
             {
-                owner.ReleaseSyncServe();
+                owner.ReleaseSyncServe<TReq>();
             }
         }
     }
@@ -253,7 +265,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
             }
             finally
             {
-                owner.ReleaseSyncServe();
+                owner.ReleaseSyncServe<TReq>();
             }
         }
     }
