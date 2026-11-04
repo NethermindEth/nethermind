@@ -110,9 +110,13 @@ public sealed class ReceiptTxHashesMigration(
         ulong next = ReadNextBlock() ?? blockTree.Head?.Number ?? 0;
         // Until the pruner loads its pointers, the lowest block reads as at least the configured ancient barrier. Blocks below it
         // can still hold receipts, and a position saved below it would read as done.
-        _ = historyPruner.OldestBlockHeader;
+        BlockHeader? oldest = historyPruner.OldestBlockHeader;
         ulong lowest = GetLowestBlock();
-        if (next < lowest) return;
+        if (next < lowest)
+        {
+            if (oldest is null && _logger.IsDebug) _logger.Debug($"Receipt hashes: the history pruner has not loaded its pointers; blocks from #{next} down wait for a later start.");
+            return;
+        }
 
         if (_logger.IsInfo) _logger.Info($"Adding transaction hashes to stored receipts, blocks {lowest} to {next}.");
 
