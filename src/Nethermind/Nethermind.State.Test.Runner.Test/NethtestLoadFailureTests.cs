@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -11,19 +12,30 @@ using NUnit.Framework;
 namespace Nethermind.State.Test.Runner.Test;
 
 /// <summary>nethtest's transaction and zkEVM modes report a fixture file that cannot be parsed as one failed case.</summary>
+/// <remarks><c>TEST_CHUNK</c> is unset for each test, since the loader would otherwise split the single case away.</remarks>
+[NonParallelizable]
 public class NethtestLoadFailureTests
 {
+    private const string ChunkVariable = "TEST_CHUNK";
+
     private string _file = null!;
+    private string _testChunk = null!;
 
     [SetUp]
     public void SetUp()
     {
+        _testChunk = Environment.GetEnvironmentVariable(ChunkVariable);
+        Environment.SetEnvironmentVariable(ChunkVariable, null);
         _file = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
         File.WriteAllText(_file, "{\"broken\": ");
     }
 
     [TearDown]
-    public void TearDown() => File.Delete(_file);
+    public void TearDown()
+    {
+        Environment.SetEnvironmentVariable(ChunkVariable, _testChunk);
+        File.Delete(_file);
+    }
 
     [Test]
     public void Transaction_mode_reports_an_unreadable_file()

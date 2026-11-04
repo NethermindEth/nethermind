@@ -115,6 +115,7 @@ public abstract class BlockchainTestBase
         ITestBlockTracer? tracer = null,
         ISpecProvider? specProvider = null)
     {
+        QuarantinedFixtures.IgnoreIfQuarantined(test);
         Assert.That(test.LoadFailure, Is.Null, $"test data loading failure in {test.Name}");
         _logger.Info($"Running {test.Name}, Network: [{test.Network!.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
         if (test.NetworkAfterTransition is not null)

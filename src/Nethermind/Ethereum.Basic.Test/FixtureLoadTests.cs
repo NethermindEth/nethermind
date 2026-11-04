@@ -17,17 +17,25 @@ namespace Ethereum.Basic.Test;
 /// the unchanged cases of the files that load.
 /// </summary>
 [NonParallelizable]
-public class FixtureLoadTests
+public class FixtureLoadTests : UnchunkedFixture
 {
-    private const string ChunkVariable = "TEST_CHUNK";
     private const int ChunkCount = 8;
     private const string ZeroHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
+    private const string TransitionDirectory = "LegacyTests/Cancun/BlockchainTests/TransitionTests/bcArrowGlacierToParis";
+    private const string ValueOverflowDirectory = "LegacyTests/Cancun/GeneralStateTests/stTransactionTest";
+    private const string TotalDifficultyNetwork = "ArrowGlacierToParisAtDiffC0000";
+    private const string OverWideValue = "0x:bigint 0x10000000000000000000000000000000000000000000000000000000000000001";
 
     public enum Unreadable { Bom, MalformedJson, UnknownFork }
 
     public sealed record DirectoryStrategy(ITestLoadStrategy Strategy, TestType Type, bool IsLegacy)
     {
         public override string ToString() => Strategy.GetType().Name;
+    }
+
+    public sealed record QuarantinedFile(string RelativePath, TestType Type, string Reason)
+    {
+        public override string ToString() => Path.GetFileName(RelativePath);
     }
 
     private static readonly DirectoryStrategy[] DirectoryStrategies =
@@ -39,31 +47,35 @@ public class FixtureLoadTests
         new(new LoadLegacyBlockchainTestsStrategy(), TestType.Blockchain, IsLegacy: false),
     ];
 
+    private static readonly QuarantinedFile[] QuarantinedFiles =
+    [
+        new($"{TransitionDirectory}/difficultyFormula.json", TestType.Blockchain, "fork transition at a total difficulty"),
+        new($"{TransitionDirectory}/powToPosBlockRejection.json", TestType.Blockchain, "fork transition at a total difficulty"),
+        new($"{TransitionDirectory}/powToPosTest.json", TestType.Blockchain, "fork transition at a total difficulty"),
+        new($"{ValueOverflowDirectory}/ValueOverflow.json", TestType.State, "transaction value wider than 256 bits"),
+        new($"{ValueOverflowDirectory}/ValueOverflowParis.json", TestType.State, "transaction value wider than 256 bits"),
+    ];
+
     private string _directory;
-    private string _testChunk;
 
     [SetUp]
     public void SetUp()
     {
-        _testChunk = Environment.GetEnvironmentVariable(ChunkVariable);
         _directory = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
         Directory.CreateDirectory(_directory);
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        Environment.SetEnvironmentVariable(ChunkVariable, _testChunk);
-        Directory.Delete(_directory, true);
-    }
+    public void TearDown() => Directory.Delete(_directory, true);
 
     [Test]
     public void Directory_strategy_keeps_the_valid_cases_and_reports_the_unreadable_file(
         [ValueSource(nameof(DirectoryStrategies))] DirectoryStrategy strategy,
         [Values] Unreadable unreadable)
     {
-        File.WriteAllText(Path.Combine(_directory, "valid.json"), Fixture(strategy.Type, "Berlin"));
-        string unreadableFile = WriteUnreadable(strategy.Type, unreadable);
+        WriteFixture("valid.json", Fixture(strategy.Type, "Berlin"));
+        (string json, bool bom, string expectedError) = UnreadableFixture(strategy.Type, unreadable);
+        string unreadableFile = WriteFixture("unreadable.json", json, bom);
 
         TestsSourceLoader loader = new(strategy.Strategy, _directory);
         List<EthereumTest> tests = strategy.Type == TestType.State
@@ -80,14 +92,14 @@ public class FixtureLoadTests
             Assert.That(failures[0], Is.TypeOf(strategy.Type == TestType.State ? typeof(GeneralStateTest) : typeof(BlockchainTest)));
             Assert.That(failures[0].Name, Is.EqualTo(unreadableFile));
             Assert.That(failures[0].Category, Is.EqualTo(_directory));
-            Assert.That(failures[0].LoadFailure, Does.Contain(ExpectedError(unreadable)));
+            Assert.That(failures[0].LoadFailure, Does.Contain(expectedError));
         }
     }
 
     [Test]
     public void Raw_loads_keep_the_untyped_marker_and_the_single_file_strategy_its_typed_failure()
     {
-        string file = WriteUnreadable(TestType.State, Unreadable.MalformedJson);
+        string file = WriteFixture("unreadable.json", "{\"broken\": ");
         TestsSourceLoader loader = new(new LoadGeneralStateTestsStrategy(), _directory);
 
         using (Assert.EnterMultipleScope())
@@ -173,11 +185,66 @@ public class FixtureLoadTests
         await AssertFailsWithLoadFailure(() => new StateRunner().Run(test), test);
     }
 
+    [Test]
+    public async Task Quarantined_file_failing_with_its_listed_error_is_skipped_with_the_reason_and_the_error(
+        [ValueSource(nameof(QuarantinedFiles))] QuarantinedFile quarantined,
+        [Values] bool windowsSeparators)
+    {
+        EthereumTest test = LoadSingle(WriteFixture(quarantined.RelativePath, QuarantineFixture(quarantined.RelativePath, quarantined.Type)), quarantined.Type);
+        if (windowsSeparators)
+            test.Name = test.Name.Replace('/', '\\');
+
+        IgnoreException exception = await Assert.ThrowsAsync<IgnoreException>(RunInBase(test));
+
+        Assert.That(exception.Message, Does.Contain(quarantined.Reason).And.Contain(test.Name).And.Contain(test.LoadFailure));
+    }
+
+    private static IEnumerable<TestCaseData> LoadFailuresOutsideTheQuarantine()
+    {
+        string unlisted = $"{TransitionDirectory}/unlisted.json";
+        yield return new TestCaseData(unlisted, TestType.Blockchain, QuarantineFixture(unlisted, TestType.Blockchain))
+            .SetArgDisplayNames("unlisted file next to listed ones");
+        yield return new TestCaseData($"Not{TransitionDirectory}/difficultyFormula.json", TestType.Blockchain, QuarantineFixture(unlisted, TestType.Blockchain))
+            .SetArgDisplayNames("listed name under another directory");
+        yield return new TestCaseData($"{TransitionDirectory}/difficultyFormula.json", TestType.Blockchain, "{\"broken\": ")
+            .SetArgDisplayNames("listed blockchain file with another error");
+        yield return new TestCaseData($"{ValueOverflowDirectory}/Unlisted.json", TestType.State, QuarantineFixture($"{ValueOverflowDirectory}/ValueOverflow.json", TestType.State))
+            .SetArgDisplayNames("unlisted state file with a listed error");
+        yield return new TestCaseData($"{ValueOverflowDirectory}/ValueOverflow.json", TestType.State, "{\"broken\": ")
+            .SetArgDisplayNames("listed state file with another error");
+    }
+
+    [TestCaseSource(nameof(LoadFailuresOutsideTheQuarantine))]
+    public async Task Load_failure_outside_the_quarantine_still_fails(string relativePath, TestType type, string json)
+    {
+        EthereumTest test = LoadSingle(WriteFixture(relativePath, json), type);
+
+        await AssertFailsWithLoadFailure(RunInBase(test), test);
+    }
+
     private static async Task AssertFailsWithLoadFailure(Func<Task> run, EthereumTest test)
     {
         ResultStateException exception = await Assert.CatchAsync<ResultStateException>(run);
 
-        Assert.That(exception.Message, Does.Contain(test.Name).And.Contain(test.LoadFailure));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception, Is.Not.InstanceOf<IgnoreException>(), "a load failure outside the quarantine is not skipped");
+            Assert.That(exception.Message, Does.Contain(test.Name).And.Contain(test.LoadFailure));
+        }
+    }
+
+    private static Func<Task> RunInBase(EthereumTest test) => test switch
+    {
+        BlockchainTest blockchainTest => () => new BlockchainRunner().Run(blockchainTest, failOnInvalidRlp: true),
+        GeneralStateTest stateTest => () => new StateRunner().Run(stateTest),
+        _ => throw new ArgumentException($"No test base runs {test.GetType().Name}", nameof(test)),
+    };
+
+    private static EthereumTest LoadSingle(string file, TestType type)
+    {
+        TestsSourceLoader loader = new(type == TestType.State ? new LoadLegacyGeneralStateTestsStrategy() : new LoadLegacyBlockchainTestsStrategy(),
+            Path.GetDirectoryName(file));
+        return type == TestType.State ? loader.LoadTests<GeneralStateTest>().Single() : loader.LoadTests<BlockchainTest>().Single();
     }
 
     private static Type[] TypesOf(IEnumerable<EthereumTest> tests) => [.. tests.Select(static t => t.GetType())];
@@ -189,25 +256,25 @@ public class FixtureLoadTests
         _ => new GeneralStateTest { Name = $"case{index}" },
     };
 
-    private string WriteUnreadable(TestType type, Unreadable unreadable)
+    private string WriteFixture(string relativePath, string json, bool bom = false)
     {
-        string file = Path.Combine(_directory, "unreadable.json");
-        byte[] content = unreadable switch
-        {
-            Unreadable.Bom => [.. Encoding.UTF8.GetPreamble(), .. Encoding.UTF8.GetBytes(Fixture(type, "Berlin"))],
-            Unreadable.MalformedJson => Encoding.UTF8.GetBytes("{\"broken\": "),
-            _ => Encoding.UTF8.GetBytes(Fixture(type, "UnknownFork")),
-        };
-        File.WriteAllBytes(file, content);
+        string file = Path.Combine(_directory, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(file));
+        File.WriteAllText(file, json, new UTF8Encoding(encoderShouldEmitUTF8Identifier: bom));
         return file;
     }
 
-    private static string ExpectedError(Unreadable unreadable) => unreadable switch
+    private static (string Json, bool Bom, string Error) UnreadableFixture(TestType type, Unreadable unreadable) => unreadable switch
     {
-        Unreadable.Bom => "'0xEF' is an invalid start of a value",
-        Unreadable.MalformedJson => "JsonException",
-        _ => "Unknown fork name 'UnknownFork'",
+        Unreadable.Bom => (Fixture(type, "Berlin"), true, "'0xEF' is an invalid start of a value"),
+        Unreadable.MalformedJson => ("{\"broken\": ", false, "JsonException"),
+        _ => (Fixture(type, "UnknownFork"), false, "Unknown fork name 'UnknownFork'"),
     };
+
+    /// <summary>A fixture that fails to load the way the quarantined file at <paramref name="relativePath"/> does.</summary>
+    private static string QuarantineFixture(string relativePath, TestType type) => type == TestType.State
+        ? Fixture(type, "Berlin", Path.GetFileNameWithoutExtension(relativePath), OverWideValue)
+        : Fixture(type, TotalDifficultyNetwork);
 
     private string[] ValidCaseNames(TestType type)
     {
@@ -217,10 +284,10 @@ public class FixtureLoadTests
             : ["firstTest", "secondTest"];
     }
 
-    private static string Fixture(TestType type, string firstFork) => type == TestType.State
+    private static string Fixture(TestType type, string firstFork, string name = "validTest", string value = "0x01") => type == TestType.State
         ? $$"""
             {
-              "validTest": {
+              "{{name}}": {
                 "env": {
                   "currentCoinbase": "0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba",
                   "currentDifficulty": "0x20000",
@@ -235,7 +302,7 @@ public class FixtureLoadTests
                   "gasPrice": "0x0a",
                   "gasLimit": ["0x5208"],
                   "to": "0x1000000000000000000000000000000000000000",
-                  "value": ["0x01"],
+                  "value": ["{{value}}"],
                   "data": ["0x"],
                   "secretKey": "0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8"
                 },
@@ -268,27 +335,49 @@ public class FixtureLoadTests
 [TestFixture(typeof(GeneralStateTest))]
 [TestFixture(typeof(BlockchainTest))]
 [TestFixture(typeof(TransactionTest))]
-public class TypedLoadFailureTests<T> where T : EthereumTest, new()
+[NonParallelizable]
+public class TypedLoadFailureTests<T> : UnchunkedFixture where T : EthereumTest, new()
 {
     [Test]
     public void LoadTests_passes_tests_of_the_type_through_and_restates_a_load_failure_as_one()
     {
         T loaded = new() { Name = "loaded" };
+        T typedFailure = new() { Name = "/fixtures/typed.json", LoadFailure = "Failed to load: typed" };
         FailedToLoadTest failed = new() { Name = "/fixtures/broken.json", Category = "/fixtures", ChainId = 100, LoadFailure = "Failed to load: boom" };
 
-        List<T> tests = [.. new TestsSourceLoader(new FixedLoadStrategy([loaded, new UnrelatedTest { Name = "unrelated" }, failed]), "/fixtures").LoadTests<T>()];
+        List<T> tests = [.. new TestsSourceLoader(new FixedLoadStrategy([loaded, new UnrelatedTest { Name = "unrelated" }, typedFailure, failed]), "/fixtures").LoadTests<T>()];
 
-        Assert.That(tests, Has.Count.EqualTo(2), "a test of another type is left out");
+        Assert.That(tests, Has.Count.EqualTo(3), "a test of another type is left out");
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tests[0], Is.SameAs(loaded));
-            Assert.That(tests[1], Is.TypeOf<T>());
-            Assert.That(tests[1].Name, Is.EqualTo(failed.Name));
-            Assert.That(tests[1].Category, Is.EqualTo(failed.Category));
-            Assert.That(tests[1].ChainId, Is.EqualTo(failed.ChainId));
-            Assert.That(tests[1].LoadFailure, Is.EqualTo(failed.LoadFailure));
+            Assert.That(tests[1], Is.SameAs(typedFailure));
+            Assert.That(tests[2], Is.TypeOf<T>());
+            Assert.That(tests[2].Name, Is.EqualTo(failed.Name));
+            Assert.That(tests[2].Category, Is.EqualTo(failed.Category));
+            Assert.That(tests[2].ChainId, Is.EqualTo(failed.ChainId));
+            Assert.That(tests[2].LoadFailure, Is.EqualTo(failed.LoadFailure));
         }
     }
+}
+
+/// <summary>Runs each test with <c>TEST_CHUNK</c> unset, since the tests read whole, unchunked sequences.</summary>
+/// <remarks>Derived fixtures are <see cref="NonParallelizableAttribute"/>, so no other test reads the variable meanwhile.</remarks>
+public abstract class UnchunkedFixture
+{
+    protected const string ChunkVariable = "TEST_CHUNK";
+
+    private string _testChunk;
+
+    [SetUp]
+    public void UnsetTestChunk()
+    {
+        _testChunk = Environment.GetEnvironmentVariable(ChunkVariable);
+        Environment.SetEnvironmentVariable(ChunkVariable, null);
+    }
+
+    [TearDown]
+    public void RestoreTestChunk() => Environment.SetEnvironmentVariable(ChunkVariable, _testChunk);
 }
 
 file sealed class FixedLoadStrategy(IEnumerable<EthereumTest> tests) : ITestLoadStrategy

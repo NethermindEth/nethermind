@@ -70,6 +70,7 @@ namespace Ethereum.Test.Base
         protected async Task<EthereumTestResult> RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
             _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
+            QuarantinedFixtures.IgnoreIfQuarantined(test);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(test.LoadFailure, Is.Null, $"test data loading failure in {test.Name}");
