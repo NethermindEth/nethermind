@@ -146,6 +146,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     }
 
     /// <summary>Converts this typed ID to the legacy boxed representation.</summary>
+    /// <remarks>Non-integer numeric IDs have no legacy primitive form, so they are returned as the boxed <see cref="JsonRpcId"/> to keep the raw token intact through <see cref="FromObject"/>.</remarks>
     /// <returns>The boxed ID value, or null for missing and explicit-null IDs.</returns>
     internal object? ToObject()
     {
@@ -155,7 +156,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             JsonRpcIdKind.Long => _longValue,
             JsonRpcIdKind.Decimal => _decimalValue,
             JsonRpcIdKind.String => GetStringValue(),
-            JsonRpcIdKind.Number => double.Parse(_rawValue!, CultureInfo.InvariantCulture),
+            JsonRpcIdKind.Number => this,
             _ => ThrowInvalidKindObject()
         };
 
@@ -270,7 +271,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             JsonRpcIdKind.Long => HashCode.Combine(_kind, _longValue),
             JsonRpcIdKind.Decimal => HashCode.Combine(_kind, _decimalValue),
             JsonRpcIdKind.String => HashCode.Combine(_kind, StringComparer.Ordinal.GetHashCode(GetStringValue())),
-            JsonRpcIdKind.Number => HashCode.Combine(_kind, StringComparer.Ordinal.GetHashCode(ToString())),
+            JsonRpcIdKind.Number => HashRawToken(_kind, _rawValue!),
             _ => _kind.GetHashCode()
         };
 
@@ -287,6 +288,14 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             JsonRpcIdKind.Number => Encoding.UTF8.GetString(_rawValue!),
             _ => string.Empty
         };
+
+    private static int HashRawToken(JsonRpcIdKind kind, byte[] rawToken)
+    {
+        HashCode hash = new();
+        hash.Add(kind);
+        hash.AddBytes(rawToken);
+        return hash.ToHashCode();
+    }
 
     /// <summary>Converts an integer to a JSON-RPC ID.</summary>
     /// <param name="value">The integer value.</param>
