@@ -421,7 +421,8 @@ namespace Nethermind.Trie
         /// <remarks>
         /// A 32-bit guest writes the hash into the new object a word at a time, where the JIT reads an unaligned hash a byte
         /// at a time and copies it once more. An unaligned hash is read as the nine aligned words that hold it, shifted and
-        /// merged; each of the words holds a byte of the hash, so nothing outside the RLP is read.
+        /// merged. The last word can reach up to three bytes past the RLP when the hash ends it, but no further than the word
+        /// that holds the hash's last byte, so the read stays in the array's allocation; those bytes are shifted out.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe Hash256 ReadChildHash(ReadOnlySpan<byte> hash)
