@@ -154,7 +154,7 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
             }
             for (int i = 0; i < results.Length; i++)
                 results[i].CustomTracerResult!.Value = JsonSerializer.SerializeToElement(values[i],
-                    TypeInfoJsonSerializer.GetTypeInfo<Dictionary<string, JsonElement>>(JsonSerializerOptions.Default));
+                    TracingJsonContext.Default.DictionaryStringJsonElement);
             return _results = results;
         }
         finally
