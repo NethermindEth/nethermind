@@ -165,6 +165,41 @@ public class ReceiptTxHashesMigrationTests
     }
 
     [Test]
+    public async Task Keeps_its_position_at_the_ancient_barrier_until_the_pruner_loads_its_pointers()
+    {
+        using Chain chain = new(3);
+        for (ulong number = 1; number <= 3; number++)
+        {
+            chain.Store(number, CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
+        }
+
+        bool pointersLoaded = false;
+        chain.BlockTree.NewOldestBlock(3);
+        chain.HistoryPruner.OldestUnreclaimedBlockNumber.Returns(_ => pointersLoaded ? 2UL : 3UL);
+        chain.HistoryPruner.OldestBlockHeader.Returns(_ => pointersLoaded ? chain.Blocks[2].Header : null);
+
+        await chain.RunMigration();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.Read(2), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(2), RlpBehaviors.Storage)));
+            Assert.That(chain.ReadPosition(), Is.EqualTo(2UL));
+        }
+
+        pointersLoaded = true;
+        chain.BlockTree.NewOldestBlock(2);
+        await chain.RunMigration();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.Read(3), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithTxHashes(3), RlpBehaviors.Storage)));
+            Assert.That(chain.Read(2), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithTxHashes(2), RlpBehaviors.Storage)));
+            Assert.That(chain.Read(1), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(1), RlpBehaviors.Storage)));
+            Assert.That(chain.ReadPosition(), Is.EqualTo(1UL));
+        }
+    }
+
+    [Test]
     public async Task Keeps_a_margin_above_the_history_pruning_cutoff()
     {
         using Chain chain = new(2);
@@ -315,6 +350,11 @@ public class ReceiptTxHashesMigrationTests
 
         public void SavePosition(ulong next) =>
             _container.Resolve<IColumnsDb<ReceiptsColumns>>().GetColumnDb(ReceiptsColumns.Default).PutSpan(ReceiptTxHashesMigration.NextBlockKey.Bytes, next.ToBigEndianSpanWithoutLeadingZeros(out _));
+
+        public ulong? ReadPosition() =>
+            _container.Resolve<IColumnsDb<ReceiptsColumns>>().GetColumnDb(ReceiptsColumns.Default).Get(ReceiptTxHashesMigration.NextBlockKey.Bytes) is { } value
+                ? value.AsSpan().ToULongFromBigEndianByteArrayWithoutLeadingZeros()
+                : null;
 
         public void DeleteBody(ulong number) => _container.Resolve<IBlockStore>().Delete(number, Blocks[number].Hash!);
 
