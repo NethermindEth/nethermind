@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Runtime;
 using ModelContextProtocol.Server;
+using Nethermind.Tools.ProfilingMcp.EventPipe;
 
 namespace Nethermind.Tools.ProfilingMcp.Memory;
 
@@ -127,25 +128,43 @@ public sealed class MemoryTools(WorkspacePaths paths)
         return sb.Append($"\nTook: {report.Timings}\n").ToString();
     }
 
-    [McpServerTool(Name = "alloc_sample", Title = "Sample allocations by type", ReadOnly = true, OpenWorld = false)]
-    [Description("Samples which types a running process allocates over a time window, using the runtime's allocation tick events (about one per 100 KB). " +
-                 "Use it to find allocation hotspots that drive GC pressure, then trace_hotspots or trace_callstacks to find the allocating code.")]
+    [McpServerTool(Name = "alloc_sample", Title = "Sample allocations by type and code", ReadOnly = true, OpenWorld = false)]
+    [Description("Samples what a running process allocates over a time window, using the runtime's allocation tick events (about one per 100 KB) with their call stacks: " +
+                 "the types allocated, the methods allocating them (innermost frame outside System.* and Microsoft.*), and the heaviest call stacks. " +
+                 "Use it to find allocation hotspots that drive GC pressure; include narrows it to the allocations of one component.")]
     public async Task<string> AllocSampleAsync(
         [Description("Process ID.")] int pid,
         [Description("Seconds to sample.")] int seconds = 10,
-        [Description("Number of types to list.")] int top = 30,
+        [Description("Number of rows per table.")] int top = 20,
+        [Description("Only count allocations with a call-stack frame matching this regex, e.g. Kademlia or ^Nethermind\\.Network\\.")] string? include = null,
+        [Description("Number of heaviest call stacks to show.")] int stacks = 5,
         CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<AllocationStat> stats = await EventPipeCollector.SampleAllocationsAsync(pid, TimeSpan.FromSeconds(seconds), cancellationToken);
-        long total = 0;
-        foreach (AllocationStat stat in stats)
-            total += stat.SampledBytes;
+        string trace = Path.Combine(paths.Snapshots, WorkspacePaths.NewFileName($"pid{pid}-alloc", ".nettrace"));
+        await AllocationSampler.CollectAsync(pid, TimeSpan.FromSeconds(seconds), trace, cancellationToken);
+        AllocationProfile profile = AllocationSampler.Read(trace, include is null ? null : new Regex(include, RegexOptions.CultureInvariant));
 
-        TextTable table = new("~bytes", "% allocs", "~bytes/s", "events", "type");
-        foreach (AllocationStat stat in stats.Take(top))
-            table.Add(Size(stat.SampledBytes), Percent(stat.SampledBytes, total), Size(stat.SampledBytes / Math.Max(seconds, 1)), Count(stat.Events), stat.TypeName);
+        long total = profile.ByType.Sum(static s => s.SampledBytes);
+        long perSecond = total / Math.Max(seconds, 1);
+        StringBuilder sb = new();
+        sb.Append($"Trace saved: {paths.ForPerson(trace)}\n");
+        sb.Append($"~{Size(total)} allocated in {seconds} s (~{Size(perSecond)}/s){(include is null ? "" : $" with a frame matching '{include}'")}, approximated from allocation ticks.\n");
+        if (total == 0)
+            return sb.ToString();
 
-        return $"~{Size(total)} allocated in {seconds} s (~{Size(total / Math.Max(seconds, 1))}/s), approximated from allocation ticks.\n{table}";
+        sb.Append("\nBy type:\n").Append(Table(profile.ByType, "type", "mostly allocated in"));
+        sb.Append("\nBy allocating method:\n").Append(Table(profile.BySite, "method", "mostly of type"));
+        foreach ((IReadOnlyList<string> frames, long events, long bytes) in profile.Stacks.Take(stacks))
+            sb.Append($"\n~{Size(bytes)} ({Percent(bytes, total)}, {Count(events)} events):\n  {string.Join("\n  ", frames)}\n");
+        return sb.ToString();
+
+        TextTable Table(IReadOnlyList<AllocationStat> stats, string name, string topHeader)
+        {
+            TextTable table = new("~bytes", "% allocs", "~bytes/s", "events", name, topHeader);
+            foreach (AllocationStat stat in stats.Take(top))
+                table.Add(Size(stat.SampledBytes), Percent(stat.SampledBytes, total), Size(stat.SampledBytes / Math.Max(seconds, 1)), Count(stat.Events), stat.Name, stat.Top);
+            return table;
+        }
     }
 
     [McpServerTool(Name = "runtime_counters", Title = "Read .NET runtime counters", ReadOnly = true, OpenWorld = false)]

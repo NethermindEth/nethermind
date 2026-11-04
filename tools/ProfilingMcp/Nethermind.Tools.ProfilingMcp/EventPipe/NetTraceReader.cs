@@ -129,11 +129,12 @@ public sealed partial class NetTraceReader
     /// <summary>Turns <c>module!Namespace.Type`1[Arg].Method(args)</c> into <c>Namespace.Type`1.Method</c>, the form dotTrace reports.</summary>
     internal static string CleanFrameName(string frame)
     {
-        int bang = frame.IndexOf('!');
-        string name = bang >= 0 ? frame[(bang + 1)..] : frame;
-        int arguments = name.IndexOf('(');
-        if (arguments > 0)
-            name = name[..arguments];
+        // Arguments go first: a frame without a module, as in event stacks, has its only '!' in them, e.g. Start(!!0&).
+        int arguments = frame.IndexOf('(');
+        string name = arguments > 0 ? frame[..arguments] : frame;
+        int bang = name.IndexOf('!');
+        if (bang >= 0)
+            name = name[(bang + 1)..];
 
         string previous;
         do
@@ -190,7 +191,7 @@ public sealed partial class NetTraceReader
             (string, string) key = (data.ExceptionType, data.ExceptionMessage);
             exceptions[key] = exceptions.TryGetValue(key, out (int Count, string Site) seen)
                 ? (seen.Count + 1, seen.Site)
-                : (1, ThrowSite(data.CallStack()));
+                : (1, InnermostApplicationFrame(Frames(data.CallStack())));
         };
         source.Process();
 
@@ -201,20 +202,30 @@ public sealed partial class NetTraceReader
         return (gc.ToSummary(), stats);
     }
 
-    private static string ThrowSite(TraceCallStack? stack)
+    /// <summary>Returns the cleaned names of an event's stack frames, innermost first, without unresolved frames.</summary>
+    internal static string[] Frames(TraceCallStack? stack)
     {
-        string? innermost = null;
+        List<string> frames = [];
         for (; stack is not null; stack = stack.Caller)
         {
             string name = CleanFrameName(stack.CodeAddress.FullMethodName);
-            if (name.Length == 0)
-                continue;
-            innermost ??= name;
+            if (name.Length > 0 && name != "?")
+                frames.Add(name);
+        }
+
+        return [.. frames];
+    }
+
+    /// <summary>Returns the innermost frame outside the framework (<c>System.*</c>, <c>Microsoft.*</c>, <c>Interop</c>), or the innermost frame when there is none.</summary>
+    internal static string InnermostApplicationFrame(IReadOnlyList<string> frames)
+    {
+        foreach (string name in frames)
+        {
             if (!name.StartsWith("System.", StringComparison.Ordinal) && !name.StartsWith("Microsoft.", StringComparison.Ordinal) && !name.StartsWith("Interop", StringComparison.Ordinal))
                 return name;
         }
 
-        return innermost ?? "?";
+        return frames.Count > 0 ? frames[0] : "?";
     }
 
     private sealed class PathNode(string name, PathNode? parent)

@@ -33,7 +33,7 @@ internal static class ServerInstructions
         1. heap_stats on the PID (baseline), exercise the workload, heap_stats again.
         2. heap_diff the two ids; types that keep growing are leak candidates.
         3. heap_retention on a growing type shows what references it and the reference chains from GC roots, largest first.
-        GC pressure: alloc_sample shows which types are allocated most; find the allocating code with trace_callstacks.
+        GC pressure: alloc_sample shows which types are allocated most, by which methods and call stacks; include narrows it to one component.
 
         heap_stats and heap_retention read a PID over EventPipe: the runtime runs one full blocking GC (about 0.5 s for an 800 MB heap) and reports the objects that survive it.
         This works in containers and can be repeated. Nested types are named without their declaring type (Bucket[], Entry<...>); heap_retention shows who holds them.

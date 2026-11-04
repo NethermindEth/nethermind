@@ -26,10 +26,6 @@ public sealed record GcSummary(
     IReadOnlyDictionary<string, long>? LastHeapBytes,
     long LastPromotedBytes);
 
-/// <summary>Allocations of one type sampled from <c>GCAllocationTick</c> events.</summary>
-/// <param name="SampledBytes">Bytes attributed to the type; the runtime raises one event roughly per 100 KB allocated, so this approximates allocated bytes.</param>
-public sealed record AllocationStat(string TypeName, long Events, long SampledBytes);
-
 /// <summary>
 /// Collects runtime diagnostics from a live .NET process over EventPipe.
 /// </summary>
@@ -80,28 +76,6 @@ internal static class EventPipeCollector
 
         summaries.Sort(static (a, b) => string.CompareOrdinal(a.Name, b.Name));
         return (summaries, gc.ToSummary());
-    }
-
-    public static async Task<IReadOnlyList<AllocationStat>> SampleAllocationsAsync(int pid, TimeSpan duration, CancellationToken cancellationToken)
-    {
-        Dictionary<string, (long Events, long Bytes)> byType = [];
-        EventPipeProvider provider = new(ClrTraceEventParser.ProviderName, EventLevel.Verbose, (long)ClrTraceEventParser.Keywords.GC);
-
-        await RunSessionAsync(pid, [provider], duration, source =>
-        {
-            source.Clr.GCAllocationTick += (GCAllocationTickTraceData data) =>
-            {
-                string type = string.IsNullOrEmpty(data.TypeName) ? "?" : data.TypeName;
-                (long events, long bytes) = byType.GetValueOrDefault(type);
-                byType[type] = (events + 1, bytes + data.AllocationAmount64);
-            };
-        }, cancellationToken);
-
-        List<AllocationStat> stats = [];
-        foreach ((string type, (long events, long bytes)) in byType)
-            stats.Add(new AllocationStat(type, events, bytes));
-        stats.Sort(static (a, b) => b.SampledBytes.CompareTo(a.SampledBytes));
-        return stats;
     }
 
     private static string? Field(IDictionary<string, object> payload, string name) =>

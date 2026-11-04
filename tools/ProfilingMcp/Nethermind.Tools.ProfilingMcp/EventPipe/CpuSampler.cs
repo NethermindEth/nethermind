@@ -20,14 +20,16 @@ internal static class CpuSampler
     /// <summary>The keywords of <c>dotnet-trace</c>'s <c>dotnet-common</c> profile: GC, loader, JIT, exceptions, threading and IL-to-native maps.</summary>
     private const long RuntimeKeywords = 0x100003801D;
 
-    public static async Task CollectAsync(int pid, TimeSpan duration, string output, CancellationToken cancellationToken)
-    {
-        EventPipeProvider[] providers =
+    public static Task CollectAsync(int pid, TimeSpan duration, string output, CancellationToken cancellationToken) =>
+        RecordAsync(pid,
         [
             new(SampleProfilerProvider, EventLevel.Informational),
             new(ClrTraceEventParser.ProviderName, EventLevel.Informational, RuntimeKeywords),
-        ];
+        ], duration, output, cancellationToken);
 
+    /// <summary>Records the providers' events, with the rundown that names JIT-compiled methods, to a <c>.nettrace</c> file.</summary>
+    public static async Task RecordAsync(int pid, IReadOnlyList<EventPipeProvider> providers, TimeSpan duration, string output, CancellationToken cancellationToken)
+    {
         DiagnosticsClient client = new(pid);
         using EventPipeSession session = await client.StartEventPipeSessionAsync(providers, requestRundown: true, token: cancellationToken);
         await using FileStream file = File.Create(output);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using Nethermind.Tools.ProfilingMcp.DotTrace;
 using Nethermind.Tools.ProfilingMcp.EventPipe;
 using NUnit.Framework;
@@ -13,6 +14,7 @@ public class NetTraceTests
     [TestCase("System.Private.CoreLib!System.Threading.Monitor.Wait(class System.Object,int32)", ExpectedResult = "System.Threading.Monitor.Wait")]
     [TestCase("System.Private.CoreLib!System.Runtime.CompilerServices.TaskAwaiter`1[System.Int32].GetResult()", ExpectedResult = "System.Runtime.CompilerServices.TaskAwaiter`1.GetResult")]
     [TestCase("Nethermind.Consensus!Scheduler.Activity`1+<Do>d__14[Wrapper+Request`1[System.Int32]].MoveNext()", ExpectedResult = "Scheduler.Activity`1+<Do>d__14.MoveNext")]
+    [TestCase("System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[System.__Canon](!!0&)", ExpectedResult = "System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start")]
     [TestCase("?", ExpectedResult = "?")]
     public string Cleans_frame_names_to_the_dottrace_form(string frame) => NetTraceReader.CleanFrameName(frame);
 
@@ -63,6 +65,45 @@ public class NetTraceTests
         {
             File.Delete(trace);
         }
+    }
+
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task Samples_own_allocations_with_the_allocating_method(CancellationToken cancellationToken)
+    {
+        string trace = Path.Combine(Path.GetTempPath(), $"alloc-{Guid.NewGuid():N}.nettrace");
+        using CancellationTokenSource stop = new();
+        Thread worker = new(() => AllocatingWork(stop.Token)) { IsBackground = true };
+        worker.Start();
+        try
+        {
+            await AllocationSampler.CollectAsync(Environment.ProcessId, TimeSpan.FromSeconds(2), trace, cancellationToken);
+            stop.Cancel();
+            worker.Join();
+
+            AllocationProfile all = AllocationSampler.Read(trace, include: null);
+            AllocationProfile filtered = AllocationSampler.Read(trace, new Regex(@"\.AllocatingWork$"));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(all.BySite.Single(static s => s.Name.EndsWith(".AllocatingWork", StringComparison.Ordinal)).Top, Is.EqualTo("System.Byte[]"));
+                Assert.That(filtered.BySite.Select(static s => s.Name), Has.All.EndsWith(".AllocatingWork"));
+                Assert.That(filtered.Stacks[0].Frames.Take(2), Is.EqualTo(new[] { "new System.Byte[]", filtered.BySite[0].Name }));
+            }
+        }
+        finally
+        {
+            File.Delete(trace);
+        }
+    }
+
+    private static byte[]? s_allocated;
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void AllocatingWork(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+            s_allocated = new byte[1000];
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
