@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Test;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -159,7 +160,8 @@ public class HistoryBackedPersistenceReaderTests
         HistoryReader historyReader = new(db, historyColumns, availability, rowFormat, LimboLogs.Instance);
 
         HistoryBackedPersistenceReader baselineReader = new(historyReader, new StateId(10, Keccak.EmptyTreeHash), new HistoryScopeGate());
-        long baselineAllocated = MeasureAllocatedBytes(() => baselineReader.GetAccount(Address));
+        baselineReader.GetAccount(Address);
+        long baselineAllocated = AllocationWindows.AllocatedBytes(() => baselineReader.GetAccount(Address));
 
         for (int i = 0; i < 200; i++)
         {
@@ -169,7 +171,8 @@ public class HistoryBackedPersistenceReaderTests
         }
 
         HistoryBackedPersistenceReader readerWithScopesConfigured = new(historyReader, new StateId(10, Keccak.EmptyTreeHash), new HistoryScopeGate());
-        long allocatedWithScopesConfigured = MeasureAllocatedBytes(() => readerWithScopesConfigured.GetAccount(Address));
+        readerWithScopesConfigured.GetAccount(Address);
+        long allocatedWithScopesConfigured = AllocationWindows.AllocatedBytes(() => readerWithScopesConfigured.GetAccount(Address));
 
         Assert.That(allocatedWithScopesConfigured, Is.EqualTo(baselineAllocated),
             "a Normal-mode reader must never consult the scope list at all - its per-call allocation must be identical whether zero or many scopes are configured");
@@ -201,8 +204,8 @@ public class HistoryBackedPersistenceReaderTests
         int eoaRead = 0;
         int contractRead = 0;
 
-        long eoaAllocated = MeasureAllocatedBytes(() => eoaReaders[eoaRead++].GetAccount(Address));
-        long contractAllocated = MeasureAllocatedBytes(() => contractReaders[contractRead++].GetAccount(ContractAddress));
+        long eoaAllocated = AllocationWindows.AllocatedBytes(() => eoaReaders[eoaRead++].GetAccount(Address));
+        long contractAllocated = AllocationWindows.MinAllocatedBytes(() => contractReaders[contractRead++].GetAccount(ContractAddress));
         Dispose(eoaReaders);
         Dispose(contractReaders);
 
@@ -216,7 +219,7 @@ public class HistoryBackedPersistenceReaderTests
         using HistoryBackedPersistenceReader reader = Reader(10);
         Account? first = reader.GetAccount(Address);
 
-        long allocated = MeasureAllocatedBytes(() => reader.GetAccount(Address));
+        long allocated = AllocationWindows.AllocatedBytes(() => reader.GetAccount(Address));
 
         using (Assert.EnterMultipleScope())
         {
@@ -228,38 +231,18 @@ public class HistoryBackedPersistenceReaderTests
     [Test]
     public void StorageClearsScopeCache_BeforeAnyStorageRead_AllocatesNoMemo()
     {
-        long allocated = MeasureAllocatedBytes(static () => _ = new StorageClearsScopeCache());
+        long allocated = AllocationWindows.AllocatedBytes(static () => _ = new StorageClearsScopeCache());
 
         Assert.That(allocated, Is.LessThan(MaxEmptyClearsCacheBytes),
             "a scope that reads no storage must not build the per-account clears memos");
     }
 
-    private const int MeasureRuns = 6;
-
-    /// <remarks>
-    /// Takes the minimum over several calls: one call can also pay one-off runtime costs
-    /// (lazy thread-local or static initialization) that do not belong to the code under test.
-    /// </remarks>
-    private static long MeasureAllocatedBytes(Action action)
-    {
-        action();
-        long min = long.MaxValue;
-        for (int i = 1; i < MeasureRuns; i++)
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            action();
-            min = Math.Min(min, GC.GetAllocatedBytesForCurrentThread() - before);
-        }
-
-        return min;
-    }
-
     private HistoryBackedPersistenceReader Reader(ulong block) => Reader(block, new HistoryScopeGate());
 
-    // One reader per MeasureAllocatedBytes run.
+    // One reader per allocation window.
     private static HistoryBackedPersistenceReader[] ReadersFrom(HistoryReader history, ulong firstBlock)
     {
-        HistoryBackedPersistenceReader[] readers = new HistoryBackedPersistenceReader[MeasureRuns];
+        HistoryBackedPersistenceReader[] readers = new HistoryBackedPersistenceReader[AllocationWindows.Count];
         for (int i = 0; i < readers.Length; i++)
             readers[i] = new HistoryBackedPersistenceReader(history, new StateId(firstBlock + (ulong)i, Keccak.EmptyTreeHash), new HistoryScopeGate());
         return readers;
