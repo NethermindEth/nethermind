@@ -99,7 +99,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             GetTrieNodesMessageSerializer serializer = new();
 
             using GetTrieNodesMessage? msg = serializer.Deserialize(data);
-            byte[] recode = serializer.Serialize(msg);
+            byte[] recode = serializer.SerializeToArray(msg);
 
             Assert.That(recode, Is.EqualTo(data));
         }

@@ -29,7 +29,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V2.Messages
 
             GetBlockAccessListsMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg);
         }
 
         [Test]
@@ -44,7 +44,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V2.Messages
 
             GetBlockAccessListsMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg, "c301c00a");
+            SerializerTester.Test(serializer, msg, "c301c00a");
         }
 
         [Test]
@@ -59,7 +59,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V2.Messages
             };
 
             GetBlockAccessListsMessageSerializer serializer = new();
-            byte[] serialized = serializer.Serialize(msg);
+            byte[] serialized = serializer.SerializeToArray(msg);
 
             Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
         }

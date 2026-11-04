@@ -133,6 +133,10 @@ public class MessageDecodingCompatibilityTests
     public void Accepts_a_trailing_byte_only_where_the_handlers_always_did([ValueSource(nameof(Samples))] Sample sample, [Values] bool trailingByte) =>
         AssertTrailingByteHandling(Service, sample, trailingByte);
 
+    [Test]
+    public void Releases_the_received_buffer_however_decoding_ends([ValueSource(nameof(Samples))] Sample sample) =>
+        AssertReleasesBuffer(Service, sample);
+
     private static IEnumerable<TestCaseData> Payloads()
     {
         Func<IMessageSerializationService, IByteBuffer, P2PMessage> getBlockBodies66 = Deserializer<Eth66.GetBlockBodiesMessage>();
