@@ -16,14 +16,15 @@ namespace Nethermind.FlatPriorityRead;
 /// which supports neither range deletes nor ordered scans, so the store only ever issues point writes.
 /// </para>
 /// <para>
-/// The first <see cref="BeginRead"/> ends the load phase. Until then nothing can see a commit, so writes skip the
-/// WAL, which also lets the database split them into smaller writes. After that every commit is one atomic write
-/// with the WAL on, so a snapshot never sees half of one. The first reader also compacts what the load wrote.
+/// Commits skip the WAL, since the database is rebuilt at every start, and each is one atomic write, so a snapshot
+/// never sees half of one. The first <see cref="BeginRead"/> ends the load: it compacts what the load wrote.
 /// </para>
 /// </remarks>
 public sealed class RocksDbPrioritySlotStore : IPrioritySlotStore
 {
     public const string DbName = "FlatPriorityRead";
+
+    private const WriteFlags CommitFlags = WriteFlags.DisableWAL | WriteFlags.Atomic;
 
     private readonly Lock _loadLock = new();
     private readonly IDb _db;
@@ -43,8 +44,7 @@ public sealed class RocksDbPrioritySlotStore : IPrioritySlotStore
         return new Reader(_snapshots.CreateSnapshot());
     }
 
-    public IPrioritySlotStore.IWriter BeginWrite() =>
-        new Writer(_db.StartWriteBatch(), Volatile.Read(ref _loaded) ? WriteFlags.None : WriteFlags.DisableWAL);
+    public IPrioritySlotStore.IWriter BeginWrite() => new Writer(_db.StartWriteBatch());
 
     public void Dispose() => _db.Dispose();
 
@@ -90,7 +90,7 @@ public sealed class RocksDbPrioritySlotStore : IPrioritySlotStore
         public void Dispose() => _snapshot.Dispose();
     }
 
-    private sealed class Writer(IWriteBatch batch, WriteFlags flags) : IPrioritySlotStore.IWriter
+    private sealed class Writer(IWriteBatch batch) : IPrioritySlotStore.IWriter
     {
         private bool _committed;
 
@@ -100,21 +100,21 @@ public sealed class RocksDbPrioritySlotStore : IPrioritySlotStore
             PrioritySlotEncoding.WriteKey(key, contract, slotKey);
             Span<byte> encoded = stackalloc byte[PrioritySlotEncoding.ValueLength];
             PrioritySlotEncoding.WriteValue(encoded, value);
-            batch.PutSpan(key, encoded, flags);
+            batch.PutSpan(key, encoded, CommitFlags);
         }
 
         public void Remove(byte contract, in ValueHash256 slotKey)
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteKey(key, contract, slotKey);
-            batch.Set(key, null, flags);
+            batch.Set(key, null, CommitFlags);
         }
 
         public void Commit(in StateId state)
         {
             Span<byte> encoded = stackalloc byte[PrioritySlotEncoding.StateLength];
             PrioritySlotEncoding.WriteState(encoded, state);
-            batch.PutSpan(PrioritySlotEncoding.StateKey, encoded, flags);
+            batch.PutSpan(PrioritySlotEncoding.StateKey, encoded, CommitFlags);
             batch.Dispose();
             _committed = true;
         }

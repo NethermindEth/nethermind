@@ -289,5 +289,9 @@ namespace Nethermind.Core
         DisableWAL = 2,
 
         LowPriorityAndNoWAL = LowPriority | DisableWAL,
+
+        // Keeps a DisableWAL write batch one atomic write. Without it such a batch may be written in parts as it
+        // fills, so that a large batch does not stall concurrent writes.
+        Atomic = 4,
     }
 }
