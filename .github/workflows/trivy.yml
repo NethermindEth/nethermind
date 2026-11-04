@@ -42,16 +42,6 @@ jobs:
       - name: Build Docker image
         run: docker build -t $IMAGE_TAG .
 
-      # A cache saved by a PR is visible only to that PR, so PRs restore master's Trivy DB
-      # instead of each saving another copy that evicts caches other workflows share.
-      - name: Restore Trivy DB
-        if: github.event_name == 'pull_request'
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ github.workspace }}/.cache/trivy
-          key: cache-trivy-${{ github.sha }}
-          restore-keys: cache-trivy-
-
       - name: Scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 #v0.36.0
         with:
@@ -60,7 +50,6 @@ jobs:
           template: '@/contrib/sarif.tpl'
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
-          cache: ${{ github.event_name != 'pull_request' }}
 
       - name: Upload scan results
         uses: github/codeql-action/upload-sarif@0c0c5dc2f136b98cb0537075ccfa21f94cd9a63e #v2.24.3
