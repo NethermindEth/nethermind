@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,6 +19,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.History.Walk;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -361,6 +363,199 @@ public class HistoryWalkVerifierTests
     private static readonly Address BucketOwner = new("0x000000000000000000000000000000000000ea16");
     private static readonly Address BucketMate = new("0x0000000000000000000000000000000000010590");
     private const int BucketOwnerSlots = 64;
+
+    [Test]
+    public void LatestClear_AtFixedBoundary_MatchesTheClearRangePredicate([Values(0UL, 2UL, 3UL, 4UL, 8UL)] ulong from)
+    {
+        ValueHash256 owner = StorageIdentity(BucketOwner);
+        ValueHash256 mate = StorageIdentity(BucketMate);
+        ValueHash256 absent = StorageIdentity(AddrA);
+        ClearRecord[] records = [new(owner, 5), new(mate, 4), new(owner, 2), new(owner, 3), new(mate, 0), new(owner, 2), new(owner, 9)];
+        CountingClears clears = new(records);
+        StorageClearIndex index = new(clears, from);
+        Assert.That(clears.Reads, Is.Zero, "constructing an unused index must not scan clear records");
+
+        foreach (ValueHash256 identity in new[] { owner, mate, absent })
+        {
+            for (ulong writtenAt = 0; writtenAt <= 9; writtenAt++)
+            {
+                bool expected = records.Any(clear => clear.Identity == identity && clear.Block > writtenAt && clear.Block <= from);
+                Assert.That(writtenAt < index.LatestClear(identity), Is.EqualTo(expected),
+                    $"only a clear strictly after write {writtenAt} and at or before {from} kills that identity's value");
+            }
+        }
+
+        Assert.That(clears.Reads, Is.EqualTo(records.Length), "all slot lookups must reuse the single pass over clear records");
+    }
+
+    [Test]
+    public void LatestClear_WithNoEligibleRecords_RemembersTheEmptyIndex([Values] bool futureOnly)
+    {
+        ValueHash256 identity = StorageIdentity(BucketOwner);
+        ClearRecord[] records = futureOnly ? [new(identity, 9), new(identity, 10)] : [];
+        CountingClears clears = new(records);
+        StorageClearIndex index = new(clears, atOrBefore: 5);
+
+        for (int i = 0; i < 3; i++) Assert.That(index.LatestClear(identity), Is.Zero);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clears.Reads, Is.EqualTo(records.Length), "an empty result must not trigger another scan");
+            Assert.That(clears.CountReads, Is.EqualTo(records.Length + 1), "even an empty source is initialized only once");
+        }
+    }
+
+    [Test]
+    public void StorageRowCollector_WithSeveralSlots_IndexesClearsOnlyForInitialValues([Values] bool initialValues)
+    {
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns,
+            new FlatDbConfig { HistoryEnabled = true });
+        ValueHash256 identity = StorageIdentity(BucketOwner);
+        CountingClears clears = new([new(identity, 3), new(identity, 4)]);
+        using StoragePartitionRows rows = new();
+        StorageRowCollector collector = new(rows, clears, from: 5, to: 8, maxRows: 10, rowFormat);
+        Span<byte> key = stackalloc byte[HistoryRowScanner.StorageRowKeyLength];
+        ValueHash256[] slots = [TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, TestItem.KeccakC.ValueHash256];
+        for (int i = 0; i < slots.Length; i++)
+        {
+            HistoryRowScanner.WriteStorageFlatKey(key, identity, slots[i]);
+            rowFormat.EncodeSuffixBlock(key[BaseFlatPersistence.StorageKeyLength..], initialValues ? 4UL : (ulong)(6 + i));
+            Assert.That(collector.TryAdd(key, [0x01]), Is.True);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rows.Start.Count, Is.EqualTo(initialValues ? 3 : 0), "precondition: initial rows survive clears no later than their own write");
+            Assert.That(rows.Deltas.Count, Is.EqualTo(initialValues ? 0 : 3), "precondition: future rows remain deltas");
+            Assert.That(clears.Reads, Is.EqualTo(initialValues ? 2 : 0), "all slots share one index and future-only partitions do not build it");
+            Assert.That(clears.CountReads, Is.EqualTo(initialValues ? 3 : 0), "even the count must not be read by unused or already initialized lookups");
+        }
+    }
+
+    [Test]
+    public void StorageSubtreeReplayer_WithStreamedRows_IndexesClearsOnlyForAnInitialValue([Values] bool hasInitialValue)
+    {
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns,
+            new FlatDbConfig { HistoryEnabled = true });
+        ValueHash256 identity = StorageIdentity(BucketOwner);
+        Account initial = hasInitialValue
+            ? new(1, 50, StorageRootOf((Slot, [0xA4])), Keccak.OfAnEmptyString)
+            : new(1, 50, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, BucketOwner, 4, initial);
+        if (hasInitialValue) HistoryColumnsWriter.RecordStorage(_historyColumns, BucketOwner, Slot, 4, [0xA4]);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, BucketOwner, Slot, 6, [0xA6]);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, BucketOwner, 6,
+            new Account(2, 50, StorageRootOf((Slot, [0xA6])), Keccak.OfAnEmptyString));
+        CountingClears clears = new([new(identity, 1), new(identity, 3)]);
+        using StoragePartitionRows rows = new();
+        ValueHash256 slotHash = ValueKeccak.Zero;
+        StorageTree.ComputeKeyWithLookup(Slot, ref slotHash);
+        rows.StreamedSlots.Add((rows.ContractOf(identity), slotHash));
+        using SeriesWriter series = new(_historyColumns);
+        using WalkProgress progress = new(LimboLogs.Instance.GetClassLogger<HistoryWalkVerifierTests>(), 1, 5, 6);
+        WalkReplayContext context = new(5, 6, null, series, progress, 0, CancellationToken.None);
+        MismatchSink sink = new();
+        StorageSubtreeReplayer replayer = new(
+            (ISortedKeyValueStore)_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory),
+            (ISortedKeyValueStore)_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory), rowFormat, true, LimboLogs.Instance);
+
+        replayer.Replay(TreePath.Empty, rows, clears, context, writeSeries: false, sink);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sink.Count, Is.Zero, "the streamed slot must match its recorded account roots");
+            Assert.That(clears.Reads, Is.EqualTo(hasInitialValue ? 4 : 2),
+                "future-event enumeration is always required, but only an initial value needs a second pass to build the index");
+        }
+    }
+
+    [Test]
+    public void StorageRowCollector_WithClearAtAnchor_PreservesSameBlockWrites([Values] bool windowed, [Values] bool writtenAtClear)
+    {
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns,
+            new FlatDbConfig
+            {
+                HistoryEnabled = true,
+                HistoryRetention = windowed ? HistoryRetentionMode.Rolling : HistoryRetentionMode.None,
+                HistoryRetentionBlocks = 20
+            });
+        ValueHash256 identity = StorageIdentity(BucketOwner);
+        Span<byte> key = stackalloc byte[HistoryRowScanner.StorageRowKeyLength];
+        HistoryRowScanner.WriteStorageFlatKey(key, identity, TestItem.KeccakA.ValueHash256);
+        rowFormat.EncodeSuffixBlock(key[BaseFlatPersistence.StorageKeyLength..], writtenAtClear ? 5UL : 4UL);
+        using StoragePartitionRows rows = new();
+        StorageRowCollector collector = new(rows, [new ClearRecord(identity, 5)], from: 5, to: 6, maxRows: 10, rowFormat);
+
+        bool added = collector.TryAdd(key, [0x01]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(added, Is.True);
+            Assert.That(rows.Start.Count, Is.EqualTo(writtenAtClear ? 1 : 0),
+                "clear bounds must be independent of suffix encoding and must not erase a write in the clear's block");
+        }
+    }
+
+    [Test]
+    public void VerifyRange_WithRepeatedAndFutureClears_PreservesEachSharedPrefixContract(
+        [Values] bool clearAtFrom,
+        [Values(1L, 100L)] long maxRowsPerPartition)
+    {
+        // 1. Two contracts share a storage prefix and a slot hash, so the walk must keep their clears separate.
+        // 2. The owner writes at its clear block; an optional later clear is exactly at the range anchor.
+        // 3. Both contracts change after the anchor; the owner's future clear must still reset its trie.
+        // 4. The one-row budget forces both slot histories through the streamed replay path.
+        Assert.That(BucketOwner.ToAccountPath.Bytes[..HistoryRowScanner.StoragePrefixLength].SequenceEqual(
+            BucketMate.ToAccountPath.Bytes[..HistoryRowScanner.StoragePrefixLength]), Is.True,
+            "precondition: the accounts must share the indexed storage prefix");
+
+        Account owner2 = new(2, 50, StorageRootOf((Slot, [0xA2])), Keccak.OfAnEmptyString);
+        Account owner3 = clearAtFrom ? new(3, 50, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString) : owner2;
+        Account owner4 = new(4, 50, StorageRootOf((Slot, [0xA4])), Keccak.OfAnEmptyString);
+        Account owner5 = new(5, 50, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+        Account owner6 = new(6, 50, StorageRootOf((Slot, [0xA6])), Keccak.OfAnEmptyString);
+        Account mate2 = new(2, 60, StorageRootOf((Slot, [0xB2])), Keccak.OfAnEmptyString);
+        Account mate4 = new(4, 60, StorageRootOf((Slot, [0xB4])), Keccak.OfAnEmptyString);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, BucketOwner, 2, owner2);
+        if (clearAtFrom) HistoryColumnsWriter.RecordAccount(_historyColumns, BucketOwner, 3, owner3);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, BucketOwner, 4, owner4);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, BucketOwner, 5, owner5);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, BucketOwner, 6, owner6);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, BucketMate, 2, mate2);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, BucketMate, 4, mate4);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, BucketOwner, Slot, 0, [0xA0]);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, BucketOwner, Slot, 2, [0xA2]);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, BucketOwner, Slot, 4, [0xA4]);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, BucketOwner, Slot, 6, [0xA6]);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, BucketMate, Slot, 2, [0xB2]);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, BucketMate, Slot, 4, [0xB4]);
+        RecordClear(BucketOwner, 1);
+        RecordClear(BucketOwner, 2);
+        if (clearAtFrom) RecordClear(BucketOwner, 3);
+        RecordClear(BucketOwner, 5);
+        FakeHeaders headers = new();
+        headers.Roots[3] = StateRootOf((BucketOwner, owner3), (BucketMate, mate2));
+        headers.Roots[4] = StateRootOf((BucketOwner, owner4), (BucketMate, mate4));
+        headers.Roots[5] = StateRootOf((BucketOwner, owner5), (BucketMate, mate4));
+        headers.Roots[6] = StateRootOf((BucketOwner, owner6), (BucketMate, mate4));
+        MarkAll(headers);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers, maxRowsPerPartition).VerifyRange(3, 6, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Mismatches, Is.Empty, "clears must neither erase another identity nor discard a write in their own block");
+            Assert.That(verdict.Verified, Is.True, "buffered and streamed replay must rebuild the same state roots");
+            Assert.That(verdict.BlocksCompared, Is.EqualTo(4UL), "the future clear and later recreation must be checked as well as the anchor");
+        }
+    }
+
+    private static ValueHash256 StorageIdentity(Address address)
+    {
+        ValueHash256 identity = default;
+        address.ToAccountPath.Bytes[..HistoryRowScanner.IdentityLength].CopyTo(identity.BytesAsSpan);
+        return identity;
+    }
 
     [Test]
     public void VerifyRange_WhenAccountSharesStoragePrefixWithLargerContract_RequiresItsOwnSlotHistory([Values] bool hasSlotHistory)
@@ -1161,6 +1356,37 @@ public class HistoryWalkVerifierTests
         public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
 
         public void Dispose() { }
+    }
+
+    private sealed class CountingClears(ClearRecord[] records) : IReadOnlyList<ClearRecord>
+    {
+        public int Reads { get; private set; }
+        public int CountReads { get; private set; }
+
+        public int Count
+        {
+            get
+            {
+                CountReads++;
+                return records.Length;
+            }
+        }
+
+        public ClearRecord this[int index]
+        {
+            get
+            {
+                Reads++;
+                return records[index];
+            }
+        }
+
+        public IEnumerator<ClearRecord> GetEnumerator()
+        {
+            for (int i = 0; i < records.Length; i++) yield return this[i];
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     private sealed class CountingView(ISortedView inner, CountingStorageHistory counts, bool groupScan, bool wholeBucket, uint bucket) : ISortedView

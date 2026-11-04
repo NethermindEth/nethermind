@@ -31,6 +31,7 @@ internal sealed class StorageSubtreeReplayer(
         long replayed = 0;
         Contract[] contracts = new Contract[rows.Identities.Count];
         List<StreamedSlot> streams = [];
+        StorageClearIndex clearIndex = rows.StreamedSlots.Count == 0 ? default : new(clears, from);
         Span<byte> flatKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
         try
         {
@@ -51,7 +52,7 @@ internal sealed class StorageSubtreeReplayer(
                 HistoryRowCursor cursor = new(storageHistory, rowFormat, flatKey, from, to, token);
                 StreamedSlot stream = new(contractIndex, slot, cursor, hasRow: false);
                 streams.Add(stream);
-                if (cursor.TryReadStart(out ulong writtenAt, out byte[] start) && start.Length > 0 && !HistoryRowScanner.KilledByClear(clears, contract.Identity, writtenAt, asOf: from))
+                if (cursor.TryReadStart(out ulong writtenAt, out byte[] start) && start.Length > 0 && writtenAt >= clearIndex.LatestClear(contract.Identity))
                 {
                     AccountRowRlp.SetSlot(contract.Tree!, slot, start, rlpWrapSlots);
                 }

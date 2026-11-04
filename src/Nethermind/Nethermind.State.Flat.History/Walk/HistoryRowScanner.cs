@@ -249,17 +249,6 @@ internal sealed class HistoryRowScanner(
         return account.StorageRoot;
     }
 
-    public static bool KilledByClear(IReadOnlyList<ClearRecord> clears, in ValueHash256 identity, ulong writtenAt, ulong asOf)
-    {
-        for (int i = 0; i < clears.Count; i++)
-        {
-            ClearRecord clear = clears[i];
-            if (clear.Identity == identity && clear.Block > writtenAt && clear.Block <= asOf) return true;
-        }
-
-        return false;
-    }
-
     public static void WriteAccountBounds(in TreePath prefix, Span<byte> lower, Span<byte> upper)
     {
         lower.Clear();

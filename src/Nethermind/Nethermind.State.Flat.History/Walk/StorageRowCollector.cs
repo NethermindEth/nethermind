@@ -9,6 +9,7 @@ namespace Nethermind.State.Flat.History.Walk;
 internal sealed class StorageRowCollector(StoragePartitionRows rows, IReadOnlyList<ClearRecord> clears, ulong from, ulong to, long maxRows, HistoryRowFormat rowFormat)
 {
     private readonly byte[] _currentFlatKey = new byte[BaseFlatPersistence.StorageKeyLength];
+    private StorageClearIndex _clearIndex = new(clears, from);
     private bool _haveKey;
     private bool _skipping;
     private bool _startTaken;
@@ -52,7 +53,7 @@ internal sealed class StorageRowCollector(StoragePartitionRows rows, IReadOnlyLi
 
         _startTaken = true;
         if (value.IsEmpty) return true;
-        if (HistoryRowScanner.KilledByClear(clears, _identity, writtenAt: block, asOf: from)) return true;
+        if (block < _clearIndex.LatestClear(_identity)) return true;
         if (rows.Count >= maxRows) return false;
 
         rows.Start.Add(new StorageRowRef(_contract, _slot, from, rows.Arena.Append(value), value.Length));
