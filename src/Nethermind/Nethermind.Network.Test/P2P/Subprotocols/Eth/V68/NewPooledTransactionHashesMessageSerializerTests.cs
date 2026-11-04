@@ -178,6 +178,19 @@ public class NewPooledTransactionHashesMessageSerializerTests
         }
     }
 
+    [Test, NonParallelizable]
+    public void Trailing_bytes_return_the_pooled_lists()
+    {
+        NewPooledTransactionHashesMessageSerializer serializer = new();
+        byte[] bytes = Convert.FromHexString("c380c0c0");
+        NewPooledTransactionHashesMessage68 first = serializer.Deserialize(bytes);
+        first.Dispose();
+
+        Assert.That(() => serializer.Deserialize([.. bytes, 0]), Throws.InstanceOf<RlpException>());
+        using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(bytes);
+        Assert.That(next.Types, Is.SameAs(first.Types));
+    }
+
     [Test]
     public void Concurrent_batches_keep_independent_message_leases()
     {
