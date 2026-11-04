@@ -195,6 +195,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig, IInitConfig initCo
         if (flatDbConfig.ImportFromPruningTrieState)
             builder.SelectStepTarget(typeof(ImportFlatDb));
 
+        // For development testing: `nethermind convert-to-paprika-flat`, run with the Flat layout.
+        builder
+            .AddSingleton<PaprikaFlatConverter>()
+            .AddStep(typeof(ConvertToPaprikaFlat));
+
         // Only pulls the state DB open during init; PruningTrieStoreModule still decides.
         if (flatDbConfig.DropPruningTrieState)
         {
