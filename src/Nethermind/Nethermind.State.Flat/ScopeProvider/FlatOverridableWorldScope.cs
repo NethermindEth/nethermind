@@ -228,10 +228,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                     baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
             }
 
-            StateTrieStoreAdapter trieStoreAdapter = new(snapshotBundle);
-
-            PatriciaTree patriciaTree = new(trieStoreAdapter, LimboLogs.Instance);
-            patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
+            snapshotBundle.RunTreeVisitor(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions ?? VisitingOptions.Default, diagnostics);
         }
 
         public bool HasStateForBlock(BlockHeader? baseBlock) => overridableWorldScope.HasStateForBlock(baseBlock);

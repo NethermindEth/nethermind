@@ -1499,8 +1499,9 @@ public class FlatWorldStateScopeProviderTests
             }
         }
 
-        Assert.That(CollectNodes(new StateTrieStoreAdapter(ctx.SnapshotBundle), scope.RootHash).Nodes,
-            Is.EquivalentTo(CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Nodes));
+        NodeCollector bundleNodes = new();
+        ctx.SnapshotBundle.RunTreeVisitor(bundleNodes, scope.RootHash, VisitingOptions.Default, diagnostics: null);
+        Assert.That(bundleNodes.Nodes, Is.EquivalentTo(CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Nodes));
     }
 
     [Test]
