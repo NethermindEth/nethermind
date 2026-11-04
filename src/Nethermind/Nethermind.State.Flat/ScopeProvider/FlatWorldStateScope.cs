@@ -836,7 +836,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
                 {
                     (AddressAsKey key, Hash256 storageRoot) = entry;
-                    if (!_dirtyAccounts.TryGetValue(key, out Account? account)) account = _scope.Get(key);
+                    ref Account? slot = ref CollectionsMarshal.GetValueRefOrNullRef(_dirtyAccounts, key);
+                    bool isDirty = !Unsafe.IsNullRef(ref slot);
+                    Account? account = isDirty ? slot : _scope.Get(key);
                     if (account is null)
                     {
                         if (storageRoot == Keccak.EmptyTreeHash) continue;
@@ -845,7 +847,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         continue;
                     }
                     account = account.WithChangedStorageRoot(storageRoot);
-                    _dirtyAccounts[key] = account;
+                    if (isDirty) slot = account;
+                    else _dirtyAccounts[key] = account;
 
                     _scope._snapshotBundle.SetAccount(key, account);
 

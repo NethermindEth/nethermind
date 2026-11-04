@@ -1305,6 +1305,50 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCase(100, null, null, 7, 93)]
+    [TestCase(null, 100, 2, 7, 2)]
+    [TestCase(null, 100, 100, 7, 93)]
+    [TestCase(100, null, null, 0, 100)]
+    [TestCase(null, 100, 2, 0, 2)]
+    [TestCase(100, null, null, null, 100)]
+    [TestCase(null, 100, 2, null, 2)]
+    [TestCase(null, 100, 100, null, 100)]
+    public async Task Debug_traceCall_javascript_gasPrice_is_effective_gas_tip(
+        int? gasPrice, int? maxFeePerGas, int? maxPriorityFeePerGas, int? baseFeeOverride, int expectedGasPrice)
+    {
+        OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
+        using Context ctx = await Context.Create(new TestSpecProvider(releaseSpec));
+        // Without an override the live base fee applies, so the fee caps are raised by it to keep the expected tips.
+        UInt256 feeCapShift = baseFeeOverride is null ? ctx.Blockchain.BlockTree.Head!.Header.BaseFeePerGas : UInt256.Zero;
+        Address sender = Build.An.Address.TestObject;
+        Dictionary<string, object?> transaction = new() { ["from"] = $"{sender}", ["to"] = $"{TestItem.AddressD}", ["gas"] = "0x186a0" };
+        if (gasPrice is not null)
+            transaction["gasPrice"] = (feeCapShift + (UInt256)gasPrice.Value).ToHexString(true);
+        if (maxFeePerGas is not null)
+            transaction["maxFeePerGas"] = (feeCapShift + (UInt256)maxFeePerGas.Value).ToHexString(true);
+        if (maxPriorityFeePerGas is not null)
+            transaction["maxPriorityFeePerGas"] = ((UInt256)maxPriorityFeePerGas.Value).ToHexString(true);
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [$"{sender}"] = new { balance = "0x56BC75E2D63100000" },
+            [$"{TestItem.AddressD}"] = new { code = "0x00" }
+        };
+        const string tracer = "{step:function(){},fault:function(){},result:function(ctx){return ctx.gasPrice.toString(10);}}";
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, "latest",
+            new
+            {
+                tracer,
+                stateOverrides,
+                blockOverrides = baseFeeOverride is null ? null : new { baseFeePerGas = $"0x{baseFeeOverride:x}" }
+            });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((string?)json["result"], Is.EqualTo(expectedGasPrice.ToString()), response);
+        }
+    }
+
     [Test]
     public async Task Debug_traceCall_rejects_conflicting_storage_before_fee_validation(
         [Values] bool streaming, [Values] bool mixedFees, [Values] bool explicitType)

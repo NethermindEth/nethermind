@@ -26,6 +26,7 @@ using Nethermind.Logging;
 using Nethermind.TurboPForBindings;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
+using Testably.Abstractions;
 using static Nethermind.Db.LogIndex.LogIndexStorage;
 
 namespace Nethermind.Db.Test.LogIndex
@@ -239,7 +240,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             DbConfig config = new();
             RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
-            _dbFactory = new RocksDbFactory(configFactory, config, new HyperClockCacheWrapper(), new TestLogManager(), _dbPath);
+            _dbFactory = new RocksDbFactory(configFactory, config, new HyperClockCacheWrapper(), new RealFileSystem(), new TestLogManager(), _dbPath);
         }
 
         [TearDown]
