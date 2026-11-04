@@ -130,8 +130,9 @@ public class BlockTreeTests
     [TestCase(1UL, 0UL, 0UL)]
     [TestCase(2UL, 0UL, 2UL)]
     [TestCase(1UL, 3UL, 3UL)]
+    [TestCase(10UL, 0UL, null)] // Floor above the stored chain, as while headers still sync down to the barrier.
     [MaxTime(Timeout.MaxTestTime)]
-    public void Earliest_resolves_to_the_lowest_served_block(ulong oldestBlock, ulong servedFrontier, ulong expected)
+    public void Earliest_resolves_to_the_lowest_served_block(ulong oldestBlock, ulong servedFrontier, ulong? expected)
     {
         BlockTree tree = Build.A.BlockTree().OfChainLength(5).TestObject;
         tree.NewOldestBlock(oldestBlock);

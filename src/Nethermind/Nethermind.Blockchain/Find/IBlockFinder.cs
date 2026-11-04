@@ -96,11 +96,11 @@ namespace Nethermind.Blockchain.Find
 
         public BlockHeader FindGenesisHeader() => FindHeader(GenesisHash, BlockTreeLookupOptions.RequireCanonical) ?? throw new Exception("Genesis header could not be found");
 
-        /// <summary>Finds the header of <see cref="FindEarliestBlock"/>.</summary>
-        public BlockHeader FindEarliestHeader() => EarliestBlockNumber switch
+        /// <summary>Finds the header of <see cref="FindEarliestBlock"/>, or <c>null</c> while it is not stored yet.</summary>
+        public BlockHeader? FindEarliestHeader() => EarliestBlockNumber switch
         {
             0 => FindGenesisHeader(),
-            var number => FindHeader(number, BlockTreeLookupOptions.RequireCanonical) ?? throw new Exception($"Earliest header {number} could not be found")
+            var number => FindHeader(number, BlockTreeLookupOptions.RequireCanonical)
         };
 
         /// <remarks>The served floor is clamped to at least 1 because genesis is never synced, so a floor of 1 means no history is pruned.</remarks>
