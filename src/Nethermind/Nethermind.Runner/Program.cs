@@ -502,19 +502,7 @@ RootCommand CreateRootCommand()
     return rootCommand;
 }
 
-ILogger GetCriticalLogger()
-{
-    try
-    {
-        return new NLogManager("nethermind.log").GetClassLogger<Program>();
-    }
-    catch
-    {
-        if (logger.IsWarn) logger.Warn("File logging failed. Using console logging.");
-
-        return logger;
-    }
-}
+ILogger GetCriticalLogger() => NLogConfigurator.GetCriticalLogger(logger);
 
 void ResolveDatabaseDirectory(string? path, IInitConfig initConfig)
 {
