@@ -58,12 +58,6 @@ public partial class EngineRpcModule : IEngineRpcModule
         ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
         _engineRequestsTracker.OnForkchoiceUpdatedCalled();
-        // cancun.md engine_forkchoiceUpdatedV3 (1), carried into later versions.
-        if (version >= EngineApiVersions.Fcu.V3 && forkchoiceState is not { HeadBlockHash: not null, SafeBlockHash: not null, FinalizedBlockHash: not null })
-        {
-            return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail("Forkchoice state must set headBlockHash, safeBlockHash and finalizedBlockHash", ErrorCodes.InvalidParams);
-        }
-
         if (await _locker.WaitAsync(LockTimeout))
         {
             long startTime = Stopwatch.GetTimestamp();
