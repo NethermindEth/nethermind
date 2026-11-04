@@ -15,7 +15,7 @@ use alloy_rlp::{Decodable, Encodable, RlpDecodable, RlpEncodable};
 use anyhow::{Context, Result, bail, ensure};
 use futures_util::{SinkExt, StreamExt};
 use reth_chainspec::{ChainSpec, Head};
-use reth_ecies::ECIESStream;
+use reth_ecies::stream::ECIESStream;
 use reth_eth_wire::{
     BasicNetworkPrimitives, BlockBodies, BlockHeaders, Capability, EthVersion, GetBlockHeaders,
     HeadersDirection, HelloMessageWithProtocols, P2PStream, Receipts, UnauthedEthStream,
