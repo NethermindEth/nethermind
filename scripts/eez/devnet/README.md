@@ -85,3 +85,10 @@ The existing `*-peer.json` files prove SNAP state serving only.
 an independent database, post-pivot transactions, and distinct process identities
 before and after restart. A compile, peer connection or idle sync mode cannot
 produce a passing bootstrap report. Runtime qualification depends on the CI result.
+
+The native fixtures bind all candidates and probe peers to loopback. Repeated
+short-lived peers therefore share one IP. `Network.FilterPeersByRecentIp=false`
+applies only to these isolated fixtures; otherwise the normal five-minute
+inbound-IP filter rejects the second probe before its handshake. Production
+network defaults and all proof/root/receipt assertions remain unchanged. Static
+and trusted peer files live in each candidate's writable `/data` mount.

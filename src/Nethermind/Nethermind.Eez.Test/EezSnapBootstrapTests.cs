@@ -76,7 +76,9 @@ public class EezSnapBootstrapTests
             .AddSingleton<EezSnapBootstrap>()
             .Build();
         _blocks = _container.Resolve<IBlockTree>();
-        _container.Resolve<IMainProcessingContext>().GenesisLoader.Load();
+        IMainProcessingContext processing = _container.Resolve<IMainProcessingContext>();
+        processing.BlockProcessingQueue.Start();
+        processing.GenesisLoader.Load();
         _pivot = Build.A.Block.WithParent(_blocks.Genesis!).WithTimestamp(101)
             .WithStateRoot(_blocks.Genesis!.StateRoot!).WithWithdrawals([]).TestObject;
         _sync.PivotNumber = _pivot.Number;

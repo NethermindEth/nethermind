@@ -61,6 +61,8 @@ impl Candidate {
         if interval == 0 || interval % 1000 != 0 || !matches!(skip.as_str(), "true" | "false") {
             bail!("unsupported execution timing/profile");
         }
+        fs::write(directory.path().join("static-nodes.json"), "[]")?;
+        fs::write(directory.path().join("trusted-nodes.json"), "[]")?;
         let profile = std::env::var("EEZ_PROFILE")?;
         let native = profile == "rollupx";
         let settings = json!({
@@ -93,6 +95,10 @@ impl Candidate {
             "/data/jwt".into(),
             "--KeyStore.KeyStoreDirectory".into(),
             "/data/keystore".into(),
+            "--Init.StaticNodesPath".into(),
+            "/data/static-nodes.json".into(),
+            "--Init.TrustedNodesPath".into(),
+            "/data/trusted-nodes.json".into(),
             "--Eez.Enabled".into(),
             "true".into(),
             "--Eez.SkipConsensusLayerCalls".into(),
@@ -153,6 +159,8 @@ impl Candidate {
                 "true".into(),
                 "--Init.StateDbKeyScheme".into(),
                 "HalfPath".into(),
+                "--Network.FilterPeersByRecentIp".into(),
+                "false".into(),
                 "--Network.LocalIp".into(),
                 "127.0.0.1".into(),
                 "--Network.ExternalIp".into(),
@@ -233,6 +241,12 @@ impl Candidate {
             if let Ok(response) = probe {
                 if let Ok(body) = response.json::<Value>().await {
                     if body["result"].as_str().is_some() {
+                        let log = fs::read_to_string(self.directory.path().join("console.log"))?;
+                        if log.contains("Unable to init the peer manager")
+                            || log.contains("Unable to start the peer manager")
+                        {
+                            bail!("candidate peer startup failed: {log}");
+                        }
                         return Ok(());
                     }
                 }

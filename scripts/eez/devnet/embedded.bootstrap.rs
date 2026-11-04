@@ -125,6 +125,7 @@ pub async fn verify(server: &Candidate, reference: &str, settings: &Value) -> Re
             directory.path().join(file),
         )?;
     }
+    fs::write(directory.path().join("trusted-nodes.json"), "[]")?;
     fs::write(
         directory.path().join("static-nodes.json"),
         serde_json::to_vec(&json!([enode]))?,
