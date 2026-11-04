@@ -621,9 +621,9 @@ public partial class DebugRpcModuleTests
         if (tracer.Length != 0) options["tracer"] = tracer;
         if (filtered) options["txHash"] = block.Transactions[^1].Hash!;
 
-        foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash" })
+        foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock" })
         {
-            object selector = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
+            object selector = TraceBlockSelector(method, block);
             string response = await RpcTest.TestSerializedRequest(module, method, selector, options);
             JToken json = JToken.Parse(response);
             if (timeout == "1s" || tracer == "noopTracer")
@@ -854,6 +854,12 @@ public partial class DebugRpcModuleTests
             }));
         module.debug_traceBlockByHash(Arg.Any<Hash256>(), Arg.Any<GethTraceOptions>()).Returns(call =>
             inner.debug_traceBlockByHash(call.Arg<Hash256>(), call.Arg<GethTraceOptions>() with
+            {
+                DeadlineClock = clock,
+                NoBaseFee = noBaseFee || call.Arg<GethTraceOptions>().NoBaseFee
+            }));
+        module.debug_traceBlock(Arg.Any<byte[]>(), Arg.Any<GethTraceOptions>()).Returns(call =>
+            inner.debug_traceBlock(call.Arg<byte[]>(), call.Arg<GethTraceOptions>() with
             {
                 DeadlineClock = clock,
                 NoBaseFee = noBaseFee || call.Arg<GethTraceOptions>().NoBaseFee
@@ -2800,25 +2806,26 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public Task Debug_traceBlock_opcode_logger_limit_resets_per_transaction([Values] bool streamMode) =>
-        AssertOpcodeStepLimit("debug_traceBlockByNumber", streamMode, 1);
+    public Task Debug_traceBlock_opcode_logger_limit_resets_per_transaction(
+        [Values("debug_traceBlockByNumber", "debug_traceBlock")] string method, [Values] bool streamMode) =>
+        AssertOpcodeStepLimit(method, streamMode, 1);
 
     [Test]
     public Task Debug_traceBlock_opcode_logger_limit_counts_steps(
-        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
         [Values] bool streamMode, [Values(0, 2, 4, 10, 20)] int limit) =>
         AssertOpcodeStepLimit(method, streamMode, limit);
 
     [Test]
     public Task Debug_traceBlock_opcode_logger_step_limit_preserves_buffered_byte_cap(
-        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method) =>
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method) =>
         AssertOpcodeStepLimit(method, streamMode: false, limit: 4, capBufferedTrace: true);
 
     private static async Task AssertOpcodeStepLimit(string method, bool streamMode, int limit, bool capBufferedTrace = false)
     {
         using Context context = await Context.Create();
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
-        object selector = method == "debug_traceBlockByNumber" ? "latest" : block.Hash!;
+        object selector = TraceBlockSelector(method, block);
         string unlimited = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector, new { streamMode });
         if (capBufferedTrace) context.Blockchain.Container.Resolve<IJsonRpcConfig>().MaxBufferedTraceLogSize = 1;
         string limited = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector, new { streamMode, limit });
@@ -2839,10 +2846,18 @@ public partial class DebugRpcModuleTests
         Assert.That(JToken.DeepEquals(JToken.Parse(limited), expected), Is.True, limited);
     }
 
+    private static object TraceBlockSelector(string method, Block block) => method switch
+    {
+        "debug_traceBlockByNumber" => block.Number,
+        "debug_traceBlockByHash" => block.Hash!,
+        _ => Rlp.Encode(block).ToString()
+    };
+
     [Test]
     public async Task Debug_traceBlock_native_tracer_streams_the_buffered_json(
         [Values("debug_traceBlock", "debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
-        [Values(NativeCallTracer.CallTracer, NativePrestateTracer.PrestateTracer)] string tracer)
+        [Values(NativeCallTracer.CallTracer, NativePrestateTracer.PrestateTracer)] string tracer,
+        [Values(0, 1)] int limit)
     {
         using Context context = await Context.Create();
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
@@ -2853,15 +2868,17 @@ public partial class DebugRpcModuleTests
             _ => block.Hash!
         };
 
-        using JsonRpcResponse response = await RpcTest.TestRequest(context.DebugRpcModule, method, blockParameter, new { tracer, streamMode = true });
-        string streamed = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, blockParameter, new { tracer, streamMode = true });
+        using JsonRpcResponse response = await RpcTest.TestRequest(context.DebugRpcModule, method, blockParameter, new { tracer, streamMode = true, limit });
+        string streamed = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, blockParameter, new { tracer, streamMode = true, limit });
         string buffered = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, blockParameter, new { tracer, streamMode = false });
+        string limitedBuffered = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, blockParameter, new { tracer, streamMode = false, limit });
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.TryGetStreamableResult(out IStreamableResult? result) ? result : null, Is.InstanceOf<GethLikeTxTraceStreamingBlockResult>(), "precondition: the block is streamed");
             Assert.That((JArray)JToken.Parse(streamed)["result"]!, Has.Count.EqualTo(block.Transactions.Length), streamed);
             Assert.That(streamed, Is.EqualTo(buffered));
+            Assert.That(limitedBuffered, Is.EqualTo(buffered));
         }
     }
 
