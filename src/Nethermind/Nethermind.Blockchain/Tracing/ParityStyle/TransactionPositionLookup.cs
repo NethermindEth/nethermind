@@ -50,12 +50,14 @@ internal struct TransactionPositionLookup : IDisposable
         if (_buckets is null)
         {
             _scanned += index < 0 ? transactions.Length : index + 1;
-            if (CanRecordScan(transactions) && _scanned > 4L * transactions.Length)
+            if (CanRecordScan(transactions) && ShouldBuildIndex(_scanned, transactions.Length))
             {
                 Build(transactions);
             }
         }
     }
+
+    internal static bool ShouldBuildIndex(long scanWork, int transactionCount) => scanWork > 4L * transactionCount;
 
     internal readonly bool TryFindIndexed(Transaction[] transactions, Transaction transaction, out int index)
     {
@@ -74,6 +76,17 @@ internal struct TransactionPositionLookup : IDisposable
             }
             slot = (slot + 1) & _mask;
         }
+    }
+
+    internal void EnsureIndex(Transaction[] transactions)
+    {
+        if (!ReferenceEquals(_transactions, transactions))
+        {
+            Dispose();
+            _transactions = transactions;
+        }
+
+        if (_buckets is null && CanRecordScan(transactions)) Build(transactions);
     }
 
     private void Build(Transaction[] transactions)

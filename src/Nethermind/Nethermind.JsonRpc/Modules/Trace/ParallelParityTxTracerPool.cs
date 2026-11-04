@@ -26,6 +26,7 @@ internal sealed class ParallelParityTxTracerPool(Utf8JsonWriter writer, Cancella
     private readonly Stack<StreamingParityLikeTxTracer> _idle = new();
     private readonly Stack<TxTracer> _idleResults = new();
     private TransactionPositionLookup _positions;
+    private long _positionScanWork;
     private bool _disposed;
 
     /// <summary>Traces the transaction <paramref name="txHash"/>; its result returns the transaction tracer to the pool when disposed.</summary>
@@ -56,11 +57,12 @@ internal sealed class ParallelParityTxTracerPool(Utf8JsonWriter writer, Cancella
         if (includeTransactionPosition && !indexed)
         {
             position = Array.IndexOf(block.Transactions, tx);
-            if (recordScan)
+            if (recordScan && TransactionPositionLookup.ShouldBuildIndex(
+                Interlocked.Add(ref _positionScanWork, position < 0 ? block.Transactions.Length : position + 1), block.Transactions.Length))
             {
                 lock (_lock)
                 {
-                    if (!_disposed) _positions.RecordScan(block.Transactions, position);
+                    if (!_disposed) _positions.EnsureIndex(block.Transactions);
                 }
             }
         }

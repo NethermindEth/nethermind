@@ -118,11 +118,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         }
     }
 
-    public void ResetForNextTx(Block block, Transaction? tx)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+    public void ResetForNextTx(Block block, Transaction? tx) =>
         ResetForNextTx(block, tx, tx is null ? null : Array.IndexOf(block.Transactions!, tx));
-    }
 
     internal void ResetForNextTx(Block block, Transaction? tx, int? transactionPosition)
     {
