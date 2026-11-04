@@ -23,6 +23,7 @@ export VALIDATOR_DIR="$GENESIS_DIR/$DIR" FEE_RECIPIENT
 mkdir -p "$GENESIS_DIR"/{nethermind,beacon}
 if [[ ! -s "$GENESIS_DIR/data/jwt/jwtsecret" ]]; then
   JWT=$(openssl rand -hex 32)
-  mkdir -p "$GENESIS_DIR/data/jwt" && printf "0x%s" "$JWT" > "$GENESIS_DIR/data/jwt/jwtsecret"
+  (umask 077 && mkdir -p "$GENESIS_DIR/data/jwt" && printf "0x%s" "$JWT" > "$GENESIS_DIR/data/jwt/jwtsecret")
 fi
+chmod 700 "$GENESIS_DIR/data/jwt" && chmod 600 "$GENESIS_DIR/data/jwt/jwtsecret"
 docker compose up -d

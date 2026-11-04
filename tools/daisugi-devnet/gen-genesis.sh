@@ -120,7 +120,7 @@ DAISUGI_FORK_EPOCH: $DAISUGI_EPOCH
 EOF
 echo 0 > "$OUT/data/metadata/deploy_block.txt"
 JWT=$(openssl rand -hex 32)
-mkdir -p "$OUT/data/jwt" && printf "0x%s" "$JWT" > "$OUT/data/jwt/jwtsecret"
+(umask 077 && mkdir -p "$OUT/data/jwt" && printf "0x%s" "$JWT" > "$OUT/data/jwt/jwtsecret")
 echo "[]" > "$OUT/data/metadata/boot_enr.yaml"
 rm -f "$OUT/data/metadata/mnemonics.yaml"
 rc=0; grep -rqFf "$SECRETS/mnemonic" "$OUT/data" || rc=$?
