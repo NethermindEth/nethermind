@@ -608,7 +608,7 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceBlockByNumber_buffered_execution_deadline(
-        [Values("callTracer", "prestateTracer", "4byteTracer", "noopTracer", "")] string tracer,
+        [Values("callTracer", "prestateTracer", "4byteTracer", "noopTracer", "", "{fault:function(){},result:function(){return {};}}")] string tracer,
         [Values("0s", "-1s", "1s")] string timeout, [Values] bool filtered)
     {
         DeadlineExecution clock = new();
@@ -623,6 +623,7 @@ public partial class DebugRpcModuleTests
 
         foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock" })
         {
+            int timersBefore = clock.Timers.Count;
             object selector = TraceBlockSelector(method, block);
             string response = await RpcTest.TestSerializedRequest(module, method, selector, options);
             JToken json = JToken.Parse(response);
@@ -642,11 +643,12 @@ public partial class DebugRpcModuleTests
                     Assert.That(json["result"], Is.Null, response);
                 }
             }
-        }
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(clock.Timers, tracer == "noopTracer" ? Is.Empty : Is.Not.Empty);
-            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(clock.Timers, tracer == "noopTracer" ? Is.Empty : Is.Not.Empty);
+                Assert.That(clock.Timers.Count, tracer == "noopTracer" ? Is.EqualTo(timersBefore) : Is.GreaterThan(timersBefore));
+                Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+            }
         }
     }
 
@@ -701,25 +703,30 @@ public partial class DebugRpcModuleTests
         if (configuration is not null) options["tracerConfig"] = JsonSerializer.Deserialize<JsonElement>(configuration);
         if (filtered) options["txHash"] = block.Transactions[^1].Hash!;
 
-        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
-            "debug_traceBlockByNumber", block.Number, options);
-        JToken json = JToken.Parse(response);
-        using (Assert.EnterMultipleScope())
+        foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock" })
         {
-            if (deadlineSupported)
+            int timersBefore = clock.Timers.Count;
+            string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
+                method, TraceBlockSelector(method, block), options);
+            JToken json = JToken.Parse(response);
+            using (Assert.EnterMultipleScope())
             {
-                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-                Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"), response);
-                Assert.That(json["result"], Is.Null, response);
+                if (deadlineSupported)
+                {
+                    Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                    Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"), response);
+                    Assert.That(json["result"], Is.Null, response);
+                }
+                else
+                {
+                    Assert.That(json["error"], Is.Null, response);
+                    Assert.That(json["result"] as JArray, Has.Count.EqualTo(filtered ? 1 : block.Transactions.Length), response);
+                }
+                Assert.That(clock.Calls, Is.GreaterThan(0));
+                Assert.That(clock.Timers, deadlineSupported ? Is.Not.Empty : Is.Empty);
+                Assert.That(clock.Timers.Count, deadlineSupported ? Is.GreaterThan(timersBefore) : Is.EqualTo(timersBefore));
+                Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
             }
-            else
-            {
-                Assert.That(json["error"], Is.Null, response);
-                Assert.That(json["result"] as JArray, Has.Count.EqualTo(filtered ? 1 : block.Transactions.Length), response);
-            }
-            Assert.That(clock.Calls, Is.GreaterThan(0));
-            Assert.That(clock.Timers, deadlineSupported ? Is.Not.Empty : Is.Empty);
-            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
         }
     }
 
