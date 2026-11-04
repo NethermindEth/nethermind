@@ -340,7 +340,7 @@ public class DebugRpcModule(
                     : selector?.Type == BlockParameterType.BlockNumber ? $"block #{selector.BlockNumber} not found" : $"Block body not found for {header.Hash}");
         }
 
-        GethTraceOptions effective = options ?? GethTraceOptions.Default;
+        GethTraceOptions effective = (options ?? GethTraceOptions.Default) with { EnforceExecutionDeadline = true };
         if (validateStructLogTimeout && string.IsNullOrEmpty(effective.Tracer))
         {
             bool hasTransactionToTrace = effective.TxHash is { } txHash
