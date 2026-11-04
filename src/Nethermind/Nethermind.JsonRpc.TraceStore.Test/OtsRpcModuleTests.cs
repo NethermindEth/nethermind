@@ -42,6 +42,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
+using Testably.Abstractions;
 
 namespace Nethermind.JsonRpc.TraceStore.Test;
 
@@ -2146,7 +2147,7 @@ public class OtsRpcModuleTests
             _observe = observe;
             DbConfig config = new();
             RocksDbConfigFactory rocksConfig = new(config, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
-            _factory = new(rocksConfig, config, _cache, LimboLogs.Instance, _path.Path);
+            _factory = new(rocksConfig, config, _cache, new RealFileSystem(), LimboLogs.Instance, _path.Path);
         }
         public IDb CreateDb(DbSettings settings) => _factory.CreateDb(settings);
         public IColumnsDb<T> CreateColumnsDb<T>(DbSettings settings) where T : struct, Enum
