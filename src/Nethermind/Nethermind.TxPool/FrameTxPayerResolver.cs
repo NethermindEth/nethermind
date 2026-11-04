@@ -124,7 +124,7 @@ internal static class FrameTxPayerResolver
     /// can owe, mirroring <c>FrameTxContext.NonceStateGas</c> at its worst case.</summary>
     /// <remarks>The branches are exclusive as they are there, and both bounds read no chain state: a keyed set
     /// never creates the sender and writes at most one <c>NONCE_MANAGER</c> slot per key, while the account-nonce
-    /// set (<c>null</c> or <c>[0]</c>) writes no slot and owes a creation only for a sender that does not exist —
+    /// set (<c>null</c> or empty) writes no slot and owes a creation only for a sender that does not exist —
     /// which an account reading back as empty may be.</remarks>
     private static bool NonceStateGasIsCovered(TxFrame verifyFrame, Transaction tx, in AccountStruct senderAccount)
     {

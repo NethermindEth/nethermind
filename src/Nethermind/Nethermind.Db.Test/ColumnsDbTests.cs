@@ -40,15 +40,13 @@ public class ColumnsDbTests
     }
 
     private static ColumnsDb<ReceiptsColumns> CreateDb(string path, DbConfig dbConfig, IRocksDbConfigFactory? factory = null) =>
-        new(path,
+        TestRocksDbFactory.OpenColumnsDb<ReceiptsColumns>(path,
             new("Blocks", path)
             {
                 DeleteOnStart = true,
             },
             dbConfig,
-            factory ?? new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
-            LimboLogs.Instance,
-            Enum.GetValues<ReceiptsColumns>()
+            factory ?? new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false)
         );
 
     [TearDown]
@@ -63,6 +61,7 @@ public class ColumnsDbTests
         IDb column = db.GetColumnDb(ReceiptsColumns.Blocks);
         column.Set([1], [2]);
         int checksumReads = factory.TableConfig.VerifyChecksumReads;
+        Assert.That(checksumReads, Is.GreaterThan(0), "Opening must resolve the checksum setting");
         int readAheadReads = factory.TableConfig.ReadAheadSizeReads;
 
         for (int i = 0; i < 3; i++)
@@ -74,14 +73,12 @@ public class ColumnsDbTests
             AssertView((ISortedKeyValueStore)column);
             using IKeyValueStoreSnapshot columnSnapshot = ((ColumnDb)column).CreateSnapshot();
             AssertView((ISortedKeyValueStore)columnSnapshot);
-            using IKeyValueStoreSnapshot tableSnapshot = ((DbOnTheRocks)db).CreateSnapshot();
         }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(factory.TableConfig.VerifyChecksumReads, Is.EqualTo(checksumReads));
             Assert.That(factory.TableConfig.ReadAheadSizeReads, Is.EqualTo(readAheadReads));
-            Assert.That(factory.VerifyChecksumReadsBeforeColumns, Is.GreaterThan(0), "Init must see the resolved checksum setting");
         }
 
         static void AssertView(ISortedKeyValueStore store)
@@ -122,14 +119,11 @@ public class ColumnsDbTests
     private sealed class CountingRocksDbConfigFactory(IRocksDbConfigFactory inner) : IRocksDbConfigFactory
     {
         public CountingRocksDbConfig TableConfig { get; private set; } = null!;
-        public int? VerifyChecksumReadsBeforeColumns { get; private set; }
 
         public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
         {
             IRocksDbConfig config = inner.GetForDatabase(databaseName, columnName);
-            if (columnName is null) return TableConfig = new CountingRocksDbConfig(config);
-            VerifyChecksumReadsBeforeColumns ??= TableConfig.VerifyChecksumReads;
-            return config;
+            return columnName is null ? TableConfig = new CountingRocksDbConfig(config) : config;
         }
     }
 
@@ -202,8 +196,11 @@ public class ColumnsDbTests
         using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)reopened).CreateSnapshot();
         IReadPrefetcher prefetcher = (IReadPrefetcher)snapshot.GetColumn(ReceiptsColumns.Blocks);
 
-        Assert.That(prefetcher.IsCached(key), Is.False);
-        Assert.That(reopened.GetColumnDb(ReceiptsColumns.Blocks).Get(key), Is.EqualTo(new byte[] { 9, 9 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prefetcher.IsCached(key), Is.False);
+            Assert.That(reopened.GetColumnDb(ReceiptsColumns.Blocks).Get(key), Is.EqualTo(new byte[] { 9, 9 }));
+        }
         Assert.That(prefetcher.IsCached(key), Is.True);
     }
 
@@ -303,8 +300,8 @@ public class ColumnsDbTests
     }
 
     private static ColumnsDb<ReceiptsColumns> Reopen(string path, IContainer container) =>
-        new(path, new(nameof(DbNames.Receipts), path), container.Resolve<IDbConfig>(), container.Resolve<IRocksDbConfigFactory>(),
-            LimboLogs.Instance, Enum.GetValues<ReceiptsColumns>());
+        TestRocksDbFactory.OpenColumnsDb<ReceiptsColumns>(path, new(nameof(DbNames.Receipts), path), container.Resolve<IDbConfig>(),
+            container.Resolve<IRocksDbConfigFactory>());
 
     [Test]
     public void SmokeTest()
@@ -316,10 +313,13 @@ public class ColumnsDbTests
         colA.Set(TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
         colB.Set(TestItem.KeccakA, TestItem.KeccakB.BytesToArray());
 
-        Assert.That(colA.Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
-        Assert.That(colB.Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(colA.Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+            Assert.That(colB.Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
 
-        Assert.That(defaultCol.Get(TestItem.KeccakB), Is.Null);
+            Assert.That(defaultCol.Get(TestItem.KeccakB), Is.Null);
+        }
     }
 
     [Test]
@@ -348,9 +348,13 @@ public class ColumnsDbTests
 
         Assert.That(defaultCol.Get(TestItem.KeccakB), Is.Null);
         defaultCol.Set(TestItem.KeccakB, TestItem.KeccakC.BytesToArray());
-        Assert.That(defaultCol.Get(TestItem.KeccakB), Is.EqualTo(TestItem.KeccakC.BytesToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(defaultCol.Get(TestItem.KeccakB), Is.EqualTo(TestItem.KeccakC.BytesToArray()));
 
-        Assert.That(_db.Get(TestItem.KeccakB), Is.EqualTo(TestItem.KeccakC.BytesToArray()));
+            // "Default" is RocksDB's own default column family, where data written without a column lives.
+            Assert.That(defaultCol.Name, Is.EqualTo("default"));
+        }
     }
 
     [Test]
@@ -365,8 +369,11 @@ public class ColumnsDbTests
 
         batch.Dispose();
 
-        Assert.That(_db.GetColumnDb(ReceiptsColumns.Blocks).Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
-        Assert.That(_db.GetColumnDb(ReceiptsColumns.Transactions).Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_db.GetColumnDb(ReceiptsColumns.Blocks).Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+            Assert.That(_db.GetColumnDb(ReceiptsColumns.Transactions).Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
+        }
     }
 
     [Test]
@@ -404,10 +411,13 @@ public class ColumnsDbTests
         using IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
 
         colA.Set(TestItem.KeccakA, TestItem.KeccakB.BytesToArray());
-        Assert.That(colA.Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(colA.Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
 
-        Assert.That(snapshot.GetColumn(ReceiptsColumns.Blocks)
-            .Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+            Assert.That(snapshot.GetColumn(ReceiptsColumns.Blocks)
+                .Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+        }
     }
 
     [TestCase(3)]
@@ -553,12 +563,10 @@ public class ColumnsDbTests
         _db.Dispose();
 
         // Reopen the same on-disk DB (no DeleteOnStart) — the value must survive.
-        _db = new ColumnsDb<ReceiptsColumns>(DbPath,
+        _db = TestRocksDbFactory.OpenColumnsDb<ReceiptsColumns>(DbPath,
             new("Blocks", DbPath),
             new DbConfig(),
-            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
-            LimboLogs.Instance,
-            Enum.GetValues<ReceiptsColumns>());
+            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false));
 
         Assert.That(_db.GetColumnDb(ReceiptsColumns.Blocks).Get(TestItem.KeccakA), Is.EqualTo(value));
     }

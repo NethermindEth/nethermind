@@ -11,7 +11,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// ranges. Shared by both the metadata arena (<see cref="ArenaFile"/>, mmap-backed) and the
 /// blob arena (<see cref="BlobArenaFile"/>, pread-backed).
 /// </summary>
-internal static class PosixReclaim
+internal static partial class PosixReclaim
 {
     internal enum PunchHoleOutcome
     {
@@ -34,14 +34,14 @@ internal static class PosixReclaim
     private const int EOPNOTSUPP = 95;
     private static readonly long PageSize = Environment.SystemPageSize;
 
-    [DllImport("libc", EntryPoint = "fallocate", SetLastError = true)]
-    private static extern int Fallocate(int fd, int mode, long offset, long len);
+    [LibraryImport("libc", EntryPoint = "fallocate", SetLastError = true)]
+    private static partial int Fallocate(int fd, int mode, long offset, long len);
 
-    [DllImport("libc", EntryPoint = "posix_fadvise", SetLastError = true)]
-    private static extern int PosixFadvise(int fd, long offset, long len, int advice);
+    [LibraryImport("libc", EntryPoint = "posix_fadvise", SetLastError = true)]
+    private static partial int PosixFadvise(int fd, long offset, long len, int advice);
 
-    [DllImport("libc", EntryPoint = "fdatasync", SetLastError = true)]
-    private static extern int FdatasyncSyscall(int fd);
+    [LibraryImport("libc", EntryPoint = "fdatasync", SetLastError = true)]
+    private static partial int FdatasyncSyscall(int fd);
 
     /// <summary>
     /// <c>fdatasync(2)</c> on <paramref name="fd"/> — block until every byte previously

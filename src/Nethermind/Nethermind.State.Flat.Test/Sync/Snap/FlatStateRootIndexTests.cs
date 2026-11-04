@@ -68,9 +68,12 @@ public class FlatStateRootIndexTests
         using (index)
         {
             Hash256 root = blocks[^1].StateRoot!;
-            Assert.That(index.TryGetStateId(root, out StateId stateId), Is.True);
-            Assert.That(stateId.StateRoot, Is.EqualTo(root));
-            Assert.That(stateId.BlockNumber, Is.EqualTo(blocks[^1].Number));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(index.TryGetStateId(root, out StateId stateId), Is.True);
+                Assert.That(stateId.StateRoot, Is.EqualTo(root));
+                Assert.That(stateId.BlockNumber, Is.EqualTo(blocks[^1].Number));
+            }
         }
     }
 

@@ -28,8 +28,11 @@ public class PrecompileOverrideCodeInfoRepositoryTests
     public void ResetPrecompileOverrides_drops_code_override_at_address_the_next_spec_makes_a_precompile()
     {
         Address bls12G1Add = Address.FromNumber(0x0b);
-        Assert.That(Cancun.Instance.IsPrecompile(bls12G1Add), Is.False);
-        Assert.That(Prague.Instance.IsPrecompile(bls12G1Add), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Cancun.Instance.IsPrecompile(bls12G1Add), Is.False);
+            Assert.That(Prague.Instance.IsPrecompile(bls12G1Add), Is.True);
+        }
 
         IWorldState worldState = TestWorldStateFactory.CreateForTest();
         using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);

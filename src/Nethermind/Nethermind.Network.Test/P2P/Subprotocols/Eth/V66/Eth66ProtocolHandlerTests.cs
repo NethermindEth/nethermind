@@ -595,8 +595,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 int peer = worker % peers;
                 InboundTransactionBudget budget = budgets[peer];
                 using InboundTransactionBudget.Reservation? rejected = budget.TryReserve(InboundTransactionBudget.MinimumCharge);
-                Assert.That(start.SignalAndWait(TimeSpan.FromSeconds(30)), Is.True);
-                Assert.That(rejected, Is.Null);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(start.SignalAndWait(TimeSpan.FromSeconds(30)), Is.True);
+                    Assert.That(rejected, Is.Null);
+                }
 
                 for (int i = 0; i < 2000; i++)
                 {
@@ -607,8 +610,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                     int sharedTotal = Interlocked.Add(ref sharedBytes, charge);
                     try
                     {
-                        Assert.That(peerTotal, Is.LessThanOrEqualTo(InboundTransactionBudget.PeerLimit));
-                        Assert.That(sharedTotal, Is.LessThanOrEqualTo(InboundTransactionBudget.PeerLimit));
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(peerTotal, Is.LessThanOrEqualTo(InboundTransactionBudget.PeerLimit));
+                            Assert.That(sharedTotal, Is.LessThanOrEqualTo(InboundTransactionBudget.PeerLimit));
+                        }
                         Thread.Yield();
                     }
                     finally

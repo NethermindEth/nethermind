@@ -8,6 +8,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -15,6 +16,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
@@ -25,6 +27,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -181,6 +184,27 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCall_with_time_override_past_amsterdam_reads_a_missing_slot_as_zero()
+    {
+        const ulong amsterdamTime = 4_000_000_000;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<ISpecProvider>(
+                new CustomSpecProvider(((ForkActivation)0, BPO2.Instance), (new ForkActivation(0, amsterdamTime), Amsterdam.Instance))));
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressD.ToString(), gas = "0x30d40" };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest",
+            new
+            {
+                stateOverrides = new Dictionary<string, object> { [TestItem.AddressD.ToString()] = new { code = "0x4b60005260206000f3" } },
+                blockOverrides = new { time = $"0x{amsterdamTime:x}" }
+            });
+
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        string output = (string)json["result"]!["returnValue"]!;
+        Assert.That(output.StartsWith("0x") ? output[2..] : output, Is.EqualTo(new string('0', 64)), response);
+    }
+
+    [Test]
     public async Task Debug_traceCall_txIndex_keeps_block_overrides_out_of_prefix([Values] bool blockAccessLists)
     {
         OverridableReleaseSpec spec = new(blockAccessLists ? Amsterdam.Instance : Prague.Instance) { Eip1559TransitionBlock = 1 };
@@ -194,12 +218,18 @@ public partial class DebugRpcModuleTests
         Transaction transfer = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + 1).WithGasPrice(1_000_000_000)
             .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         Block block = await chain.AddBlock(create, transfer);
-        Assert.That(block.Transactions, Has.Length.EqualTo(2));
-        Assert.That(block.Header.BaseFeePerGas, Is.Not.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Has.Length.EqualTo(2));
+            Assert.That(block.Header.BaseFeePerGas, Is.Not.EqualTo(UInt256.Zero));
+        }
         Address contract = ContractAddress.From(TestItem.AddressB, nonce);
         TxReceipt receipt = chain.ReceiptStorage.Get(block)[0];
-        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(receipt.ContractAddress, Is.EqualTo(contract));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.ContractAddress, Is.EqualTo(contract));
+        }
         byte[] probe = Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).PushData(0).Op(Instruction.MSTORE)
             .PushData(1).Op(Instruction.SLOAD).PushData(32).Op(Instruction.MSTORE)
             .Op(Instruction.NUMBER).PushData(64).Op(Instruction.MSTORE)
@@ -433,6 +463,76 @@ public partial class DebugRpcModuleTests
 
     private sealed class UnsupportedTraceValidationModule : Module, IBlockValidationModule;
 
+    [Test]
+    public async Task Debug_traceCall_stops_after_the_call([Values("prestateTracer", "callTracer", null)] string? tracer)
+    {
+        int requestsProcessed = 0;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { Timeout = -1 })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddDecorator<IExecutionRequestsProcessor>((_, inner) => new CountingExecutionRequestsProcessor(inner, () => requestsProcessed++)));
+        requestsProcessed = 0;
+
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressC.ToString(), value = "0x1", gas = "0x186a0" };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", new { tracer });
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That(json["result"], Is.Not.Null, response);
+            Assert.That(requestsProcessed, Is.Zero, "nothing after the call reaches the trace, so the block must not be finalized");
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_state_override_is_not_replaced_by_the_block_system_calls([Values] bool blockAccessLists)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(blockAccessLists ? Amsterdam.Instance : Prague.Instance) { AllowTestChainOverride = false }));
+        Block block = await chain.AddBlock();
+        UInt256 parentNumber = (UInt256)(block.Number - 1);
+        UInt256 slot = (UInt256)((block.Number - 1) % Eip2935Constants.RingBufferSize);
+        Hash256 overridden = TestItem.KeccakA;
+
+        object call = new
+        {
+            from = TestItem.AddressA.ToString(),
+            to = Eip2935Constants.BlockHashHistoryAddress.ToString(),
+            gas = "0x186a0",
+            input = parentNumber.ToBigEndian().ToHexString(true)
+        };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", new
+        {
+            tracer = "callTracer",
+            stateOverrides = new Dictionary<string, object>
+            {
+                [Eip2935Constants.BlockHashHistoryAddress.ToString()] = new
+                {
+                    stateDiff = new Dictionary<string, string> { [slot.ToBigEndian().ToHexString(true)] = overridden.ToString() }
+                }
+            }
+        });
+
+        // The block's EIP-2935 system call writes this slot before the call runs; as in eth_call, the override wins.
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((string?)json["result"]?["output"], Is.EqualTo(overridden.ToString()), response);
+        }
+    }
+
+    private sealed class CountingExecutionRequestsProcessor(IExecutionRequestsProcessor inner, Action onProcess) : IExecutionRequestsProcessor
+    {
+        public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
+        {
+            onProcess();
+            inner.ProcessExecutionRequests(block, state, receipts, spec);
+        }
+    }
+
     private class Context : IDisposable
     {
         public IDebugRpcModule DebugRpcModule { get; }
@@ -456,6 +556,42 @@ public partial class DebugRpcModuleTests
         public void Dispose() => Blockchain.Dispose();
     }
 
+    private static IEnumerable<TestCaseData> DebugConfigSpecProviders()
+    {
+        yield return new TestCaseData(MainnetSpecProvider.Instance, 0).SetArgDisplayNames("pre-merge genesis");
+        // Cancun is folded into genesis and the next fork is scheduled after the test chain's head.
+        yield return new TestCaseData(new TestSpecProvider(Cancun.Instance) { TransitionActivations = [new ForkActivation(0, 2_000_000_000)] }, 0)
+            .SetArgDisplayNames("post-merge genesis");
+        yield return new TestCaseData(new TestSpecProvider(Cancun.Instance) { TransitionActivations = [new ForkActivation(0, 1), new ForkActivation(0, 2_000_000_000)] }, 1)
+            .SetArgDisplayNames("timestamp fork");
+    }
+
+    [TestCaseSource(nameof(DebugConfigSpecProviders))]
+    public async Task Debug_config_returns_all_forks_with_current_marked_active(ISpecProvider specProvider, int activeIndex)
+    {
+        using Context ctx = await Context.Create(specProvider);
+        JArray forks = (JArray)JToken.Parse(await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_config"))["result"]!["forks"]!;
+        JToken current = JToken.Parse(await ctx.Blockchain.TestEthRpc("eth_config"))["result"]!["current"]!;
+        string[] scheduledForkIds = ctx.Blockchain.ForkInfo.GetAllForks().ToArray().Select(static fork => fork.Id.HashBytes.ToHexString(true)).ToArray();
+        JObject[] active = forks.Children<JObject>().Where(static fork => fork.ContainsKey("active")).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forks, Has.Count.GreaterThan(1));
+            Assert.That(forks.Select(static fork => (string?)fork["forkId"]), Is.EqualTo(scheduledForkIds));
+            Assert.That(active, Has.Length.EqualTo(1));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forks.IndexOf(active[0]), Is.EqualTo(activeIndex));
+            Assert.That((bool?)active[0]["active"], Is.True);
+        }
+
+        active[0].Remove("active");
+        Assert.That(active[0], Is.EqualTo(current).Using(JToken.EqualityComparer));
+    }
+
     [TestCaseSource(nameof(TraceCallGethCompatFailureCases))]
     public async Task Debug_traceCall_failure_returns_geth_compatible_error(object txArgs, string expectedErrorPrefix, int expectedErrorCode)
     {
@@ -464,10 +600,13 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", txArgs);
 
         JToken result = JToken.Parse(response)["result"]!;
-        Assert.That(((bool)result["failed"]!), Is.True, "pre-flight failures surface as failed:true under streaming");
-        Assert.That(((string)result["returnValue"]!), Is.EqualTo("0x"));
-        Assert.That(((string)result["error"]!), Does.StartWith(expectedErrorPrefix), "Geth-compatible wording must be preserved verbatim");
-        Assert.That(((int)result["errorCode"]!), Is.EqualTo(expectedErrorCode), "errorCode mirrors Geth's per-scenario JSON-RPC code");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((bool)result["failed"]!), Is.True, "pre-flight failures surface as failed:true under streaming");
+            Assert.That(((string)result["returnValue"]!), Is.EqualTo("0x"));
+            Assert.That(((string)result["error"]!), Does.StartWith(expectedErrorPrefix), "Geth-compatible wording must be preserved verbatim");
+            Assert.That(((int)result["errorCode"]!), Is.EqualTo(expectedErrorCode), "errorCode mirrors Geth's per-scenario JSON-RPC code");
+        }
     }
 
     private static IEnumerable<TestCaseData> TraceCallGethCompatFailureCases()
@@ -892,9 +1031,9 @@ public partial class DebugRpcModuleTests
     {
         (string Json, string? Error, int? Code)[] cases =
         [
-            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\"}", "block override \"beaconRoot\" is not supported for this RPC method", ErrorCodes.InvalidInput),
-            ("{\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
-            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\"}", BlockOverride.BeaconRootNotSupported, ErrorCodes.InvalidInput),
+            ("{\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidInput),
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"withdrawals\":[]}", BlockOverride.BeaconRootNotSupported, ErrorCodes.InvalidInput),
             ("{\"beaconRoot\":null,\"withdrawals\":null}", null, null)
         ];
         foreach ((string json, string? error, int? code) in cases)
@@ -1184,6 +1323,50 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(result["failed"]?.Value<bool>(), Is.False);
             Assert.That(ParseReturnValue(response).ToUInt256(), Is.EqualTo(expectedBaseFee));
+        }
+    }
+
+    [TestCase(100, null, null, 7, 93)]
+    [TestCase(null, 100, 2, 7, 2)]
+    [TestCase(null, 100, 100, 7, 93)]
+    [TestCase(100, null, null, 0, 100)]
+    [TestCase(null, 100, 2, 0, 2)]
+    [TestCase(100, null, null, null, 100)]
+    [TestCase(null, 100, 2, null, 2)]
+    [TestCase(null, 100, 100, null, 100)]
+    public async Task Debug_traceCall_javascript_gasPrice_is_effective_gas_tip(
+        int? gasPrice, int? maxFeePerGas, int? maxPriorityFeePerGas, int? baseFeeOverride, int expectedGasPrice)
+    {
+        OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
+        using Context ctx = await Context.Create(new TestSpecProvider(releaseSpec));
+        // Without an override the live base fee applies, so the fee caps are raised by it to keep the expected tips.
+        UInt256 feeCapShift = baseFeeOverride is null ? ctx.Blockchain.BlockTree.Head!.Header.BaseFeePerGas : UInt256.Zero;
+        Address sender = Build.An.Address.TestObject;
+        Dictionary<string, object?> transaction = new() { ["from"] = $"{sender}", ["to"] = $"{TestItem.AddressD}", ["gas"] = "0x186a0" };
+        if (gasPrice is not null)
+            transaction["gasPrice"] = (feeCapShift + (UInt256)gasPrice.Value).ToHexString(true);
+        if (maxFeePerGas is not null)
+            transaction["maxFeePerGas"] = (feeCapShift + (UInt256)maxFeePerGas.Value).ToHexString(true);
+        if (maxPriorityFeePerGas is not null)
+            transaction["maxPriorityFeePerGas"] = ((UInt256)maxPriorityFeePerGas.Value).ToHexString(true);
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [$"{sender}"] = new { balance = "0x56BC75E2D63100000" },
+            [$"{TestItem.AddressD}"] = new { code = "0x00" }
+        };
+        const string tracer = "{step:function(){},fault:function(){},result:function(ctx){return ctx.gasPrice.toString(10);}}";
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, "latest",
+            new
+            {
+                tracer,
+                stateOverrides,
+                blockOverrides = baseFeeOverride is null ? null : new { baseFeePerGas = $"0x{baseFeeOverride:x}" }
+            });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((string?)json["result"], Is.EqualTo(expectedGasPrice.ToString()), response);
         }
     }
 
@@ -1544,18 +1727,21 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceCall_selects_block_and_state_before_conflicting_storage(
-        [Values("pending", "missing", "unavailable", "unavailable-parent", "unavailable-with-withdrawals")] string selection, [Values] bool streaming, [Values] bool movePrecompile)
+        [Values("pending", "missing", "unavailable", "unavailable-parent", "unavailable-with-withdrawals", "pending-with-withdrawals", "missing-with-withdrawals", "unavailable-parent-with-withdrawals")] string selection,
+        [Values] bool streaming, [Values] bool movePrecompile)
     {
+        bool withWithdrawals = selection.EndsWith("-with-withdrawals", StringComparison.Ordinal);
+        string blockSelection = withWithdrawals ? selection[..^"-with-withdrawals".Length] : selection;
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
-        if (selection is "unavailable" or "unavailable-with-withdrawals") chain.BlockTree.Head!.Header.StateRoot = TestItem.KeccakA;
-        if (selection == "unavailable-parent")
+        if (blockSelection == "unavailable") chain.BlockTree.Head!.Header.StateRoot = TestItem.KeccakA;
+        if (blockSelection == "unavailable-parent")
         {
             Block parent = chain.BlockTree.Head!;
             await chain.AddBlock();
             parent.Header.StateRoot = TestItem.KeccakA;
         }
-        string selector = selection switch
+        string selector = blockSelection switch
         {
             "pending" => "pending",
             "missing" => TestItem.KeccakA.ToString(),
@@ -1565,8 +1751,8 @@ public partial class DebugRpcModuleTests
             new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, selector,
             new
             {
-                txIndex = selection == "unavailable-parent" ? "0x0" : null,
-                blockOverrides = selection == "unavailable-with-withdrawals" ? new { withdrawals = Array.Empty<object>() } : null,
+                txIndex = blockSelection == "unavailable-parent" ? "0x0" : null,
+                blockOverrides = withWithdrawals ? new { withdrawals = Array.Empty<object>() } : null,
                 stateOverrides = new Dictionary<string, object>
                 {
                     [TestItem.AddressC.ToString()] = new
@@ -1577,9 +1763,8 @@ public partial class DebugRpcModuleTests
                     }
                 }
             });
-        (int code, string message) = selection switch
+        (int code, string message) = blockSelection switch
         {
-            "unavailable-with-withdrawals" => (ErrorCodes.InvalidParams, BlockOverride.WithdrawalsNotSupported),
             "pending" => (ErrorCodes.InvalidInput, "tracing on top of pending is not supported"),
             "missing" => (ErrorCodes.ResourceNotFound, "header not found"),
             _ => (ErrorCodes.ResourceUnavailable, "No state available")
@@ -1750,9 +1935,12 @@ public partial class DebugRpcModuleTests
         );
 
         JToken result = JToken.Parse(response)["result"]!;
-        Assert.That(result["failed"]?.Value<bool>(), Is.True);
-        Assert.That(result["error"]?.Value<string>(), Does.Contain("intrinsic gas too low"));
-        Assert.That(result["gas"]?.Value<long>(), Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["failed"]?.Value<bool>(), Is.True);
+            Assert.That(result["error"]?.Value<string>(), Does.Contain("intrinsic gas too low"));
+            Assert.That(result["gas"]?.Value<long>(), Is.EqualTo(0));
+        }
     }
 
     private static byte[] ParseReturnValue(string responseJson)
@@ -1813,8 +2001,11 @@ public partial class DebugRpcModuleTests
             tracerConfig = new { withLog = false }
         });
 
-        Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
-        Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+            Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+        }
     }
 
     private static IEnumerable<TestCaseData> PrestateFieldOptionCases =>
@@ -2027,13 +2218,13 @@ public partial class DebugRpcModuleTests
         Assert.That(parsed["error"], Is.Null, "a revert is a traced result, not a JSON-RPC error");
 
         JToken frame = parsed["result"]!;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That((string?)frame["type"], Is.EqualTo("CALL"));
             Assert.That((string?)frame["error"], Is.EqualTo("execution reverted"));
             Assert.That((string?)frame["revertReason"], Is.EqualTo("user error"));
             Assert.That((string?)frame["output"], Is.EqualTo("0x" + RevertPayload));
-        });
+        }
     }
 
     [Test]
@@ -2050,12 +2241,12 @@ public partial class DebugRpcModuleTests
         Assert.That(parsed["error"], Is.Null, "a failed deployment is a traced result, not a JSON-RPC error");
 
         JToken frame = parsed["result"]!;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That((string?)frame["type"], Is.EqualTo("CREATE"));
             Assert.That((string?)frame["error"], Is.EqualTo("execution reverted"));
             Assert.That(frame["to"], Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
-        });
+        }
     }
 
     private sealed class PrefixCountingAdapter(ITransactionProcessorAdapter inner, List<Hash256?> executed) : ITransactionProcessorAdapter

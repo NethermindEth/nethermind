@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -261,10 +262,12 @@ namespace Nethermind.Trie
 
         /// <summary>Rents the scratch for the depth of <paramref name="path"/>, holding at least <paramref name="length"/> bytes.</summary>
         /// <remarks>Valid until the next branch at that depth is encoded; <see cref="StorableBranchRlp"/> copies out what a node keeps.</remarks>
-        private static CappedArray<byte> RentBranchRlpScratch(int length, in TreePath path)
+        internal static CappedArray<byte> RentBranchRlpScratch(int length, in TreePath path)
         {
-            ref byte[]? scratch = ref (BranchRlpScratch.ByDepth ??= new byte[2 * Hash256.Size][])[path.Length];
-            if (scratch is null || scratch.Length < length) scratch = new byte[Math.Max(length, FullBranchRlpLength)];
+            // Read by value: a reference to an element of an array of references costs a covariance check call.
+            byte[]?[] byDepth = BranchRlpScratch.ByDepth ??= new byte[2 * Hash256.Size][];
+            byte[]? scratch = byDepth[path.Length];
+            if (scratch is null || scratch.Length < length) byDepth[path.Length] = scratch = new byte[Math.Max(length, FullBranchRlpLength)];
             return new CappedArray<byte>(scratch, length);
         }
 
@@ -413,5 +416,50 @@ namespace Nethermind.Trie
         /// <summary>Undoes <see cref="EnterChildPath"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void LeaveChildPath(ref TreePath path) => path.TruncateDepth();
+
+        /// <summary>The child hash <paramref name="hash"/>, read from its parent's RLP.</summary>
+        /// <remarks>
+        /// A 32-bit guest writes the hash into the new object a word at a time, where the JIT reads an unaligned hash a byte
+        /// at a time and copies it once more. An unaligned hash is read as the nine aligned words that hold it, shifted and
+        /// merged. The last word can reach up to three bytes past the RLP when the hash ends it, but no further than the word
+        /// that holds the hash's last byte, so the read stays in the array's allocation; those bytes are shifted out.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe Hash256 ReadChildHash(ReadOnlySpan<byte> hash)
+        {
+            if (IntPtr.Size != sizeof(uint))
+                return new(MemoryMarshal.Read<ValueHash256>(hash));
+
+            nuint address = (nuint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(hash));
+            int misalignment = (int)(address % sizeof(uint));
+            uint* words = (uint*)(address - (nuint)misalignment);
+            Hash256 keccak = new(default(ValueHash256));
+            // Written in place before anything else can read it: the new object is not yet shared.
+            ref uint merged = ref Unsafe.As<ValueHash256, uint>(ref Unsafe.AsRef(in keccak.ValueHash256));
+            if (misalignment == 0)
+            {
+                merged = words[0];
+                Unsafe.Add(ref merged, 1) = words[1];
+                Unsafe.Add(ref merged, 2) = words[2];
+                Unsafe.Add(ref merged, 3) = words[3];
+                Unsafe.Add(ref merged, 4) = words[4];
+                Unsafe.Add(ref merged, 5) = words[5];
+                Unsafe.Add(ref merged, 6) = words[6];
+                Unsafe.Add(ref merged, 7) = words[7];
+                return keccak;
+            }
+
+            int right = misalignment * 8;
+            int left = 32 - right;
+            merged = (words[0] >> right) | (words[1] << left);
+            Unsafe.Add(ref merged, 1) = (words[1] >> right) | (words[2] << left);
+            Unsafe.Add(ref merged, 2) = (words[2] >> right) | (words[3] << left);
+            Unsafe.Add(ref merged, 3) = (words[3] >> right) | (words[4] << left);
+            Unsafe.Add(ref merged, 4) = (words[4] >> right) | (words[5] << left);
+            Unsafe.Add(ref merged, 5) = (words[5] >> right) | (words[6] << left);
+            Unsafe.Add(ref merged, 6) = (words[6] >> right) | (words[7] << left);
+            Unsafe.Add(ref merged, 7) = (words[7] >> right) | (words[8] << left);
+            return keccak;
+        }
     }
 }

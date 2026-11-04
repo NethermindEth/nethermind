@@ -135,6 +135,19 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     bool IsTracingStack { get; }
 
     /// <summary>
+    /// Stack pushes during instruction tracing
+    /// </summary>
+    /// <remarks>
+    /// Controls
+    /// - <see cref="ReportStackPush(in ReadOnlySpan{byte})"/>
+    /// Defaults to <see cref="IsTracingInstructions"/>. A tracer that reads the stack only through
+    /// <see cref="SetOperationStack"/> snapshots returns <c>false</c>. Pushes are then skipped unless another tracer in
+    /// the chain traces them, in which case this tracer receives them too. The value is read once per transaction, so
+    /// it must stay stable for the transaction.
+    /// </remarks>
+    bool IsTracingStackPushes => IsTracingInstructions;
+
+    /// <summary>
     /// Traces blockhash calls
     /// </summary>
     /// <remarks>
@@ -249,13 +262,13 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     ///
     /// </summary>
     /// <param name="stackItem"></param>
-    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
+    /// <remarks>Depends on <see cref="IsTracingStackPushes"/></remarks>
     void ReportStackPush(in ReadOnlySpan<byte> stackItem);
 
     /// <summary>
     /// </summary>
     /// <param name="stackItem"></param>
-    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
+    /// <remarks>Depends on <see cref="IsTracingStackPushes"/></remarks>
     void ReportStackPush(byte stackItem) => ReportStackPush(new ReadOnlySpan<byte>(in stackItem));
 
     /// <summary>

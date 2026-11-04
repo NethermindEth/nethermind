@@ -33,8 +33,11 @@ namespace Nethermind.Evm.Test
 
             Transaction tx = Build.A.Transaction.WithData(rlp.Bytes).TestObject;
             EthereumIntrinsicGas gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
-            Assert.That(gasCost.FloorGas, Is.EqualTo(0));
-            Assert.That(gasCost.Standard, Is.LessThan(21000 + 9600));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(gasCost.FloorGas, Is.EqualTo(0));
+                Assert.That(gasCost.Standard, Is.LessThan(21000 + 9600));
+            }
         }
 
         [Test]
@@ -44,8 +47,11 @@ namespace Nethermind.Evm.Test
 
             Transaction tx = Build.A.Transaction.WithData(rlp.Bytes).TestObject;
             EthereumIntrinsicGas gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
-            Assert.That(gasCost.FloorGas, Is.EqualTo(0));
-            Assert.That(gasCost.Standard, Is.LessThan(21000 + 9600));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(gasCost.FloorGas, Is.EqualTo(0));
+                Assert.That(gasCost.Standard, Is.LessThan(21000 + 9600));
+            }
 
             byte[] bytecode =
                 Prepare.EvmCode

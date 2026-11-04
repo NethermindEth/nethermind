@@ -185,7 +185,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 // Can't set globally as that would cause block production to fail with invalid stateroot
                 // as the reward is being applied.
                 // TODO: Double check if block production have the same reward calculator
-                builder.UpdateSingleton<IRpcModuleFactory<ITraceRpcModule>>(builder => builder.AddSingleton<IRewardCalculatorSource, RewardCalculator>());
+                builder.UpdateSingleton<IRpcModuleFactory<ITraceRpcModule>>(builder => builder.AddSingleton<IRewardCalculator, RewardCalculator>());
 
                 if (_blockFinderOverride is not null) builder.AddSingleton(_blockFinderOverride);
                 if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);

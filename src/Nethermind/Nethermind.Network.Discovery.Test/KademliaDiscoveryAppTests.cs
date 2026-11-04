@@ -28,9 +28,12 @@ public class KademliaDiscoveryAppTests
         await app.DisposeAsync();
         await app.DisposeAsync();
 
-        Assert.That(app.Stopped.Task.IsCompletedSuccessfully, Is.True);
-        Assert.That(app.StopAsyncCoreCalls, Is.EqualTo(1));
-        Assert.That(app.DisposeAsyncCoreCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(app.Stopped.Task.IsCompletedSuccessfully, Is.True);
+            Assert.That(app.StopAsyncCoreCalls, Is.EqualTo(1));
+            Assert.That(app.DisposeAsyncCoreCalls, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -44,10 +47,13 @@ public class KademliaDiscoveryAppTests
 
         InvalidOperationException? exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => await app.DisposeAsync());
 
-        Assert.That(exception?.Message, Is.EqualTo("Stop failed"));
-        Assert.That(app.Stopped.Task.IsCompletedSuccessfully, Is.True);
-        Assert.That(app.StopAsyncCoreCalls, Is.EqualTo(1));
-        Assert.That(app.DisposeAsyncCoreCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception?.Message, Is.EqualTo("Stop failed"));
+            Assert.That(app.Stopped.Task.IsCompletedSuccessfully, Is.True);
+            Assert.That(app.StopAsyncCoreCalls, Is.EqualTo(1));
+            Assert.That(app.DisposeAsyncCoreCalls, Is.EqualTo(1));
+        }
     }
 
     [Test]

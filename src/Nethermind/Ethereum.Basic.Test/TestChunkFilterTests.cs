@@ -39,8 +39,11 @@ public class TestChunkFilterTests
             result.Add(value);
         }
 
-        Assert.That(result, Is.EqualTo(new[] { 1, 4, 7 }));
-        Assert.That(enumeratedCount, Is.EqualTo(9));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(new[] { 1, 4, 7 }));
+            Assert.That(enumeratedCount, Is.EqualTo(9));
+        }
     }
 
     [TestCase("1of3", new[] { 0, 3, 6 })]
@@ -64,9 +67,12 @@ public class TestChunkFilterTests
     {
         Environment.SetEnvironmentVariable("TEST_CHUNK", null);
 
-        Assert.That(TestChunkFilter.ShouldRunInChunk(""), Is.True);
-        Assert.That(TestChunkFilter.ShouldRunInChunk("Some.Test.FullName"), Is.True);
-        Assert.That(TestChunkFilter.ShouldRunInChunk("Another.Test"), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestChunkFilter.ShouldRunInChunk(""), Is.True);
+            Assert.That(TestChunkFilter.ShouldRunInChunk("Some.Test.FullName"), Is.True);
+            Assert.That(TestChunkFilter.ShouldRunInChunk("Another.Test"), Is.True);
+        }
     }
 
     [Test]
@@ -127,8 +133,11 @@ public class TestChunkFilterTests
         (int Index, int Total)? config = TestChunkFilter.TryGetChunkConfig();
 
         Assert.That(config, Is.Not.Null);
-        Assert.That(config!.Value.Index, Is.EqualTo(expectedIndex));
-        Assert.That(config.Value.Total, Is.EqualTo(expectedTotal));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(config!.Value.Index, Is.EqualTo(expectedIndex));
+            Assert.That(config.Value.Total, Is.EqualTo(expectedTotal));
+        }
     }
 
     [Test]

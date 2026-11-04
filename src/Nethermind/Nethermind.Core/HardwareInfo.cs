@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Core;
 
-public class HardwareInfo : IHardwareInfo
+public partial class HardwareInfo : IHardwareInfo
 {
     public long AvailableMemoryBytes { get; }
     public int? MaxOpenFilesLimit { get; }
@@ -60,6 +60,6 @@ public class HardwareInfo : IHardwareInfo
         public ulong rlim_max; // Hard limit
     }
 
-    [DllImport("libc", SetLastError = true)]
-    private static extern int getrlimit(int resource, ref RLimit rlim);
+    [LibraryImport("libc", SetLastError = true)]
+    private static partial int getrlimit(int resource, ref RLimit rlim);
 }

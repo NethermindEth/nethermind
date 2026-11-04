@@ -30,4 +30,6 @@ public sealed partial class JournalSet<T> where T : notnull, IEquatable<T>
     }
 
     private partial void Truncate(int count) => CollectionsMarshal.SetCount(_items, count);
+
+    private partial void AddItem(in T item) => _items.Add(item);
 }

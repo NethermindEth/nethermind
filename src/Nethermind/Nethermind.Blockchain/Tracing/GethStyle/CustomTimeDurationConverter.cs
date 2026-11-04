@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -38,9 +37,6 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
     // Matches Go's int64 nanosecond range (positive values must be < MaxNs).
     private const ulong MaxNs = 1UL << 63;
 
-    // 18 decimal digits always fit in a ulong; extra fractional digits are dropped.
-    private const int MaxFractionalDigits = 18;
-
     // Largest possible Format output is "-256204778h59m59.999999999s" = 27 chars.
     private const int FormatBufferSize = 32;
 
@@ -49,14 +45,17 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
     private static readonly SearchValues<char> Digits = SearchValues.Create("0123456789");
     private static readonly SearchValues<char> UnitTerminators = SearchValues.Create(".0123456789");
 
-    private static ReadOnlySpan<ulong> Pow10 =>
-    [
-        1, 10, 100, 1_000, 10_000,
-        100_000, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000,
-        10_000_000_000, 100_000_000_000, 1_000_000_000_000, 10_000_000_000_000,
-        100_000_000_000_000, 1_000_000_000_000_000, 10_000_000_000_000_000,
-        100_000_000_000_000_000, 1_000_000_000_000_000_000,
-    ];
+    // Go scales fractions by repeated *= 10; Math.Pow(10, k) can round differently once k > 22.
+    // Inputs are capped at MaxInputBytes, so a fraction never has that many digits.
+    private static readonly double[] FractionScales = CreateFractionScales();
+
+    private static double[] CreateFractionScales()
+    {
+        double[] scales = new double[MaxInputBytes];
+        scales[0] = 1;
+        for (int i = 1; i < scales.Length; i++) scales[i] = scales[i - 1] * 10;
+        return scales;
+    }
 
     public override TimeSpan? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -231,7 +230,7 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
         if (!TryTakeInteger(ref s, out ulong v, out bool hasInt)) return false;
 
         ulong f = 0;
-        ulong scale = 1;
+        double scale = 1;
         bool hasFrac = false;
         if (!s.IsEmpty && s[0] == '.')
         {
@@ -248,8 +247,8 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
 
         if (f > 0)
         {
-            // UInt128 keeps the fraction exact; Go uses float64 here.
-            ns += (ulong)((UInt128)f * unitNs / scale);
+            // Preserve Go's floating-point evaluation order before truncating to nanoseconds.
+            ns += (ulong)((double)f * ((double)unitNs / scale));
             if (ns > MaxNs) return false;
         }
         return true;
@@ -260,25 +259,30 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
         ReadOnlySpan<char> digits = TakeDigits(ref s);
         hasInt = !digits.IsEmpty;
         if (!hasInt) { v = 0; return true; }
-        return ulong.TryParse(digits, out v) && v <= MaxNs;
+        return ulong.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out v) && v <= MaxNs;
     }
 
-    private static void TakeFraction(ref ReadOnlySpan<char> s, out ulong f, out ulong scale, out bool hasFrac)
+    private static void TakeFraction(ref ReadOnlySpan<char> s, out ulong f, out double scale, out bool hasFrac)
     {
         ReadOnlySpan<char> digits = TakeDigits(ref s);
         hasFrac = !digits.IsEmpty;
-        if (!hasFrac)
+        f = 0;
+        scale = 1;
+        int leadingZeros = digits.IndexOfAnyExcept('0');
+        if (leadingZeros < 0) return;
+
+        // Go's leadingFraction stops accumulating once the value would exceed 1<<63:
+        // 18 significant digits always fit, a 19th only if the result stays <= 1<<63.
+        ReadOnlySpan<char> significant = digits[leadingZeros..];
+        int taken = Math.Min(significant.Length, 19);
+        ulong.TryParse(significant[..taken], NumberStyles.None, CultureInfo.InvariantCulture, out f); // <= 19 ASCII digits always fit in ulong
+        if (f > MaxNs)
         {
-            f = 0;
-            scale = 1;
-            return;
+            f /= 10;
+            taken--;
         }
 
-        // Excess fractional digits are below the tick boundary — drop them.
-        int take = Math.Min(digits.Length, MaxFractionalDigits);
-        bool ok = ulong.TryParse(digits[..take], out f);
-        Debug.Assert(ok, "digits are ASCII 0-9 and fit in 18 chars");
-        scale = Pow10[take];
+        scale = FractionScales[leadingZeros + taken];
     }
 
     private static ReadOnlySpan<char> TakeDigits(ref ReadOnlySpan<char> s)

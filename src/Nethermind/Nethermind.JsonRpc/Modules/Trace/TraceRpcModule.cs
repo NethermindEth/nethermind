@@ -790,7 +790,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             using ParallelParityTxTracerPool txTracers = streamingTracer.CreateParallelTxTracers(block, types & ~ParityTraceTypes.Rewards);
             return parallelTracer.TryStream(block, parent,
-                (_, txHash) => txTracers.For(txHash), Rewards(types), streamingTracer.WriteTraces, cancellationToken);
+                (_, txHash) => txTracers.For(txHash), Rewards(types), streamingTracer, cancellationToken);
         }
 
         private Func<IWorldState, Hash256, IBlockTracer<ParityLikeTxTrace>> PerTransaction(ParityTraceTypes types)

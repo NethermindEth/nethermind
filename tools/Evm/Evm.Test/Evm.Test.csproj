@@ -13,4 +13,8 @@
     <ProjectReference Include="../../../src/Nethermind/Nethermind.Core.Test/Nethermind.Core.Test.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="testdata/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

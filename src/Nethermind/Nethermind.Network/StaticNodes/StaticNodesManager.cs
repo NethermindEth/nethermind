@@ -32,7 +32,7 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
     public async Task<bool> AddAsync(NetworkNode networkNode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
         bool added = TryAddNode(networkNode);
-        if (_logger.IsInfo) _logger.Info(added ? $"Static node added: {networkNode}" : $"Static node was already added: {networkNode}");
+        if (_logger.IsInfo) _logger.Info($"Static node {(added ? "added" : "was already added")}: {networkNode:hide}");
 
         if (added)
         {
@@ -45,7 +45,7 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
     public async Task<bool> RemoveAsync(NetworkNode networkNode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
         bool removed = TryRemoveNode(networkNode.NodeId);
-        if (_logger.IsInfo) _logger.Info(removed ? $"Static node was removed: {networkNode}" : $"Static node was not found: {networkNode}");
+        if (_logger.IsInfo) _logger.Info($"Static node {(removed ? "was removed" : "was not found")}: {networkNode:hide}");
 
         return await UnpersistAsync(removed, networkNode, updateFile, cancellationToken);
     }

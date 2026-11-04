@@ -39,8 +39,11 @@ public class GethLikeTxFileTracerTests : GethLikeTracerTestsBase
     {
         GethLikeTxTrace trace = ExecuteAndTraceToFile(static e => { }, GetBytecode(), GethTraceOptions.Default);
 
-        Assert.That(trace.Gas, Is.EqualTo(24));
-        Assert.That(trace.ReturnValue.Length, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Gas, Is.EqualTo(24));
+            Assert.That(trace.ReturnValue.Length, Is.EqualTo(0));
+        }
     }
 
     [Test]

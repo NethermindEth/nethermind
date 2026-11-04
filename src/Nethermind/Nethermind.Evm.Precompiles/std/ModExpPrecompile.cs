@@ -16,8 +16,6 @@ public unsafe partial class ModExpPrecompile
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        Metrics.ModExpPrecompile++;
-
         if (!TryPrepareInput(
             inputData,
             releaseSpec,

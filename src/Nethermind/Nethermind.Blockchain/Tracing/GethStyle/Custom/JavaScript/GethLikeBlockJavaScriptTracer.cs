@@ -78,7 +78,8 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         _ctx.error = Undefined.Value;
         _ctx.Output = null;
         _ctx.gasUsed = 0;
-        _ctx.GasPrice = tx!.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _baseFee);
+        // Geth exposes the effective gas tip, not the effective gas price, as ctx.gasPrice.
+        _ctx.GasPrice = tx!.CalculateMaxPriorityFeePerGas(spec.IsEip1559Enabled, _baseFee);
         _ctx.TxHash = tx.Hash;
         _ctx.txIndex = tx.Hash is not null ? _index++ : null;
         _ctx.gas = tx.GasLimit;
@@ -89,7 +90,23 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         _ctx.Input = tx.Data;
     }
 
-    protected override bool ShouldTraceTx(Transaction? tx) => base.ShouldTraceTx(tx) && tx is not null;
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The base calls this once per transaction start. Skipping an ownerless prefix advances its hashed-transaction
+    /// index and appends an alignment placeholder for recovery and mux children. Filtered replay must discard and
+    /// dispose these prefix entries through <c>KeepTrace</c> before publishing results.
+    /// </remarks>
+    protected override bool ShouldTraceTx(Transaction? tx)
+    {
+        if (tx is null || !base.ShouldTraceTx(tx)) return false;
+        if (options.DeadlineScope is { Current: null })
+        {
+            if (tx.Hash is not null) _index++;
+            AddTrace(new GethLikeTxTrace { TxHash = tx.Hash });
+            return false;
+        }
+        return true;
+    }
 
     protected override GethLikeTxTrace OnEnd(GethLikeJavaScriptTxTracer txTracer)
     {

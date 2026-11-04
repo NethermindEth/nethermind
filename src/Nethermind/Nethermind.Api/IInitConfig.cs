@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using System.ComponentModel;
@@ -27,13 +28,13 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "Whether to start the peer manager. If disabled, Nethermind doesn't initiate connections to any peers, including static and trusted nodes, `Network.StaticPeers`, and peers added via `admin_addPeer`, and doesn't persist peers to the peer database.", DefaultValue = "true")]
     bool PeerManagerEnabled { get; set; }
 
-    [ConfigItem(Description = "The path to the chain spec file.", DefaultValue = "chainspec/foundation.json")]
+    [ConfigItem(Description = "The path to the chain spec file.", DefaultValue = "chainspec/foundation.json", IsSensitiveWhenMasked = true)]
     string ChainSpecPath { get; set; }
 
-    [ConfigItem(Description = "The base path for all Nethermind databases.", DefaultValue = "db")]
+    [ConfigItem(Description = "The base path for all Nethermind databases.", DefaultValue = "db", IsSensitiveWhenMasked = true)]
     string BaseDbPath { get; set; }
 
-    [ConfigItem(Description = "The path to KZG trusted setup file.", DefaultValue = "null")]
+    [ConfigItem(Description = "The path to KZG trusted setup file.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? KzgSetupPath { get; set; }
 
     [ConfigItem(Description = "The hash of the genesis block. If not specified, the genesis block validity is not checked which is useful in the case of ad hoc test/private networks.", DefaultValue = "null")]
@@ -42,20 +43,26 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The network id. If not specified, taken from the chain spec file.", DefaultValue = "null", HiddenFromDocs = true)]
     ulong? NetworkId { get; set; }
 
-    [ConfigItem(Description = "The path to the static nodes file.", DefaultValue = "static-nodes.json")]
+    [ConfigItem(Description = "The path to the static nodes file.", DefaultValue = "static-nodes.json", IsSensitiveWhenMasked = true)]
     string StaticNodesPath { get; set; }
 
-    [ConfigItem(Description = "The path to the trusted nodes file.", DefaultValue = "trusted-nodes.json")]
+    [ConfigItem(Description = "The path to the trusted nodes file.", DefaultValue = "trusted-nodes.json", IsSensitiveWhenMasked = true)]
     string TrustedNodesPath { get; set; }
 
-    [ConfigItem(Description = "The name of the log file.", DefaultValue = "log.txt")]
+    [ConfigItem(Description = "The name of the log file.", DefaultValue = "log.txt", IsSensitiveWhenMasked = true)]
     string LogFileName { get; set; }
 
-    [ConfigItem(Description = "The path to the Nethermind logs directory.", DefaultValue = "logs")]
+    [ConfigItem(Description = "The path to the Nethermind logs directory.", DefaultValue = "logs", IsSensitiveWhenMasked = true)]
     string LogDirectory { get; set; }
 
-    [ConfigItem(Description = "The logs format as `LogPath:LogLevel;*`", DefaultValue = "null")]
+    [ConfigItem(Description = "The logs format as `LogPath:LogLevel;*`", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? LogRules { get; set; }
+
+    [ConfigItem(Description = "Whether to mask :hide fields in interpolated logs and marked configuration values in startup diagnostics.", DefaultValue = "false")]
+    bool MaskSensitiveData { get; set; }
+
+    [ConfigItem(Description = "Whether to mask IP addresses, enode URLs and ENR records in logs. Loopback and unspecified addresses are not masked.", DefaultValue = "false")]
+    bool MaskIpsInLogs { get; set; }
 
     [ConfigItem(Description = "The diagnostic mode.", DefaultValue = "None")]
     DiagnosticMode DiagnosticMode { get; set; }
@@ -66,13 +73,14 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = $"The URL of the remote node used as a database source when `{nameof(DiagnosticMode)}` is set to `RpcDb`.", DefaultValue = "", IsSensitive = true)]
     string RpcDbUrl { get; set; }
 
-    [ConfigItem(Description = "The hint on the max memory limit, in bytes, to configure the database and networking memory allocations.", DefaultValue = "null")]
+    [Obsolete("Has no effect. Set Db.SharedBlockCacheSize to set the database cache size.")]
+    [ConfigItem(Description = "Deprecated. Has no effect. Use `Db.SharedBlockCacheSize` to set the database cache size.", DefaultValue = "null", HiddenFromDocs = true)]
     ulong? MemoryHint { get; set; }
 
     [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored on disk.", DefaultValue = "100")]
     long? BadBlocksStored { get; set; }
 
-    [ConfigItem(Description = "The path to the Nethermind data directory. Defaults to Nethermind's current directory.", DefaultValue = "null", HiddenFromDocs = true)]
+    [ConfigItem(Description = "The path to the Nethermind data directory. Defaults to Nethermind's current directory.", DefaultValue = "null", HiddenFromDocs = true, IsSensitiveWhenMasked = true)]
     string? DataDir { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Disable garbage collector on newPayload", DefaultValue = "true", HiddenFromDocs = true)]

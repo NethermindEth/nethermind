@@ -12,6 +12,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -56,6 +57,8 @@ ManualResetEventSlim exit = new(true);
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
 string unhandledError = "A critical error has occurred";
+int maskingConfigLoaded = 0;
+SensitiveLogMasking.Enabled = true;
 Option<string>[] deprecatedOptions =
 [
     BasicOptions.ConfigurationDirectory,
@@ -69,9 +72,9 @@ AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
     ILogger criticalLogger = GetCriticalLogger();
 
     if (e.ExceptionObject is Exception ex)
-        criticalLogger.Error($"{unhandledError}.", ex);
+        LogCriticalException(criticalLogger, $"{unhandledError}.", ex);
     else
-        criticalLogger.Error($"{unhandledError}: {e.ExceptionObject}");
+        criticalLogger.Error($"{unhandledError}: {e.ExceptionObject:hide}");
 };
 
 try
@@ -84,13 +87,30 @@ catch (Exception ex)
 
     ex = ex is AggregateException aex ? aex.InnerException : ex;
 
-    criticalLogger.Error($"{unhandledError}.", ex);
+    LogCriticalException(criticalLogger, $"{unhandledError}.", ex);
 
     return ex is IExceptionWithExitCode exc ? exc.ExitCode : ExitCodes.GeneralError;
 }
 finally
 {
     NLogManager.Shutdown();
+}
+
+void LogCriticalException(ILogger criticalLogger, string message, Exception ex)
+{
+    if (Volatile.Read(ref maskingConfigLoaded) == 0 || SensitiveLogMasking.Enabled)
+    {
+        string detail = ex switch
+        {
+            ConfigurationFileNotFoundException => ex.Message,
+            System.Configuration.ConfigurationErrorsException { InnerException: JsonException jsonError } =>
+                $"Invalid JSON at line {jsonError.LineNumber + 1}, byte position {jsonError.BytePositionInLine + 1}.",
+            _ => $"Exception: {ex.GetType().Name}"
+        };
+        criticalLogger.Error($"{message} {detail}");
+    }
+    else
+        criticalLogger.Error(message, ex);
 }
 
 async Task<int> ConfigureAsync(string[] args)
@@ -127,36 +147,41 @@ async Task<int> ConfigureAsync(string[] args)
     );
     pluginLoader.Load();
 
-    CheckForDeprecatedOptions(parseResult);
-
-    // leaving here as an example of adding Debug plugin
-    // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
-    // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
-
-    TypeDiscovery.Initialize(typeof(INethermindPlugin));
-
-    AddConfigurationOptions(rootCommand);
-
-    rootCommand.SetAction((result, token) => RunAsync(result, pluginLoader, token));
-
-    parseResult = rootCommand.Parse(args);
-    parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
-    parseResult.InvocationConfiguration.ProcessTerminationTimeout = Timeout.InfiniteTimeSpan;
-
     try
     {
+        CheckForDeprecatedOptions(parseResult);
+
+        // leaving here as an example of adding Debug plugin
+        // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
+        // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
+
+        TypeDiscovery.Initialize(typeof(INethermindPlugin));
+
+        AddConfigurationOptions(rootCommand);
+
+        rootCommand.SetAction((result, token) => RunAsync(result, pluginLoader, token));
+
+        parseResult = rootCommand.Parse(args);
+        parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
+        parseResult.InvocationConfiguration.ProcessTerminationTimeout = Timeout.InfiniteTimeSpan;
+
         return await parseResult.InvokeAsync();
     }
     finally
     {
+        pluginLoader.LogDiagnostics();
         exit.Wait();
     }
 }
 
 async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
 {
-    IConfigProvider configProvider = CreateConfigProvider(parseResult);
+    (IConfigProvider configProvider, string? configFile) = CreateConfigProvider(parseResult);
     IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+    SensitiveLogMasking.Enabled = initConfig.MaskSensitiveData;
+    Volatile.Write(ref maskingConfigLoaded, 1);
+    pluginLoader.LogDiagnostics();
+    if (configFile is not null) logger.Info($"Loading configuration from {configFile:hide}");
     IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
     ISnapshotConfig snapshotConfig = configProvider.GetConfig<ISnapshotConfig>();
     IPluginConfig pluginConfig = configProvider.GetConfig<IPluginConfig>();
@@ -166,6 +191,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     ResolveDataDirectory(parseResult.GetValue(BasicOptions.DataDirectory),
         initConfig, keyStoreConfig, snapshotConfig);
 
+    IpMasker.Enabled = initConfig.MaskIpsInLogs;
     NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
     DotNettyLoggerFactory.DefaultFactory = new NethermindLoggerFactory(logManager, lowerLogLevel: true);
 #if !DEBUG
@@ -205,7 +231,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
         {
             nonDefaults.Append("\n  ");
             if (entry.Category is not null) nonDefaults.Append(entry.Category).Append('.');
-            nonDefaults.Append(entry.Name).Append(" = ").Append(serializer.Serialize(entry.CurrentValue));
+            nonDefaults.Append(entry.Name).Append(" = ").Append(serializer.Serialize(entry.ValueForLog(SensitiveLogMasking.Enabled)));
             count++;
         }
 
@@ -222,8 +248,6 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     if (logger.IsDebug)
     {
-        logger.Debug($"Nethermind configuration:\n{serializer.Serialize(initConfig, true)}");
-
         logger.Debug($"Server GC:           {GCSettings.IsServerGC}");
         logger.Debug($"GC latency mode:     {GCSettings.LatencyMode}");
         logger.Debug($"LOH compaction mode: {GCSettings.LargeObjectHeapCompactionMode}");
@@ -247,7 +271,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     }
     catch (Exception ex)
     {
-        if (logger.IsError) logger.Error(unhandledError, ex);
+        if (logger.IsError) LogCriticalException(logger, unhandledError, ex);
 
         processExitSource.Exit(ex is IExceptionWithExitCode withExit ? withExit.ExitCode : ExitCodes.GeneralError);
     }
@@ -346,7 +370,7 @@ void ConfigureLogger(ParseResult parseResult)
     }
     catch (Exception ex)
     {
-        logger.Error($"Failed to load logging configuration file.", ex);
+        logger.Error($"Failed to load logging configuration file: {ex.GetType().Name}.");
         return;
     }
 
@@ -365,12 +389,12 @@ void ConfigureSeqLogger(IConfigProvider configProvider)
     ISeqConfig seqConfig = configProvider.GetConfig<ISeqConfig>();
 
     if (!seqConfig.MinLevel.Equals("Off", StringComparison.Ordinal) && logger.IsInfo)
-        logger.Info($"Seq logging is enabled on {seqConfig.ServerUrl} with level of {seqConfig.MinLevel}");
+        logger.Info($"Seq logging is enabled on {SensitiveLogMasking.SafeUrl(seqConfig.ServerUrl)} with level of {seqConfig.MinLevel}");
 
     NLogConfigurator.ConfigureSeq(seqConfig, logger);
 }
 
-IConfigProvider CreateConfigProvider(ParseResult parseResult)
+(IConfigProvider ConfigProvider, string? ConfigFile) CreateConfigProvider(ParseResult parseResult)
 {
     ConfigProvider configProvider = new();
     Dictionary<string, string> configArgs = [];
@@ -393,54 +417,12 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(argsSource);
     configProvider.AddSource(new EnvConfigSource());
 
-    string configFile = parseResult.GetValue(BasicOptions.Configuration)
+    string config = parseResult.GetValue(BasicOptions.Configuration)
         ?? Environment.GetEnvironmentVariable("NETHERMIND_CONFIG")
         ?? "mainnet";
 
-    // If configFile is not a path, handle it
-    if (string.IsNullOrEmpty(Path.GetDirectoryName(configFile)))
-    {
-        string configsDir = parseResult.GetValue(BasicOptions.ConfigurationDirectory)
-            ?? "configs".GetApplicationResourcePath();
-
-        configFile = Path.Join(configsDir, configFile);
-
-        // If the configFile doesn't have an extension, try with supported file extensions
-        if (!Path.HasExtension(configFile))
-        {
-            string? fallback;
-
-            foreach (string ext in new[] { ".json", ".cfg" })
-            {
-                fallback = $"{configFile}{ext}";
-
-                if (File.Exists(fallback))
-                {
-                    configFile = fallback;
-                    break;
-                }
-            }
-        }
-        // For backward compatibility. To be removed in the future.
-        else if (Path.GetExtension(configFile).Equals(".cfg", StringComparison.Ordinal))
-        {
-            string name = Path.GetFileNameWithoutExtension(configFile)!;
-
-            configFile = $"{configFile[..^4]}.json";
-
-            logger.Warn($"'{name}.cfg' is deprecated. Use '{name}' instead.");
-        }
-    }
-
-    // Resolve the full path for logging purposes
-    configFile = Path.GetFullPath(configFile);
-
-    if (!File.Exists(configFile))
-        throw new FileNotFoundException("Configuration file not found.", configFile);
-
-    logger.Info($"Loading configuration from {configFile}");
-
-    configProvider.AddSource(new JsonConfigSource(configFile));
+    (JsonConfigSource source, string? configFile) = CreateConfigSource(config, parseResult.GetValue(BasicOptions.ConfigurationDirectory));
+    configProvider.AddSource(source);
     configProvider.Initialize();
 
     (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
@@ -448,7 +430,36 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     if (Errors.Any())
         logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");
 
-    return configProvider;
+    foreach (string warning in configProvider.GetObsoleteSettingWarnings())
+        logger.Warn(warning);
+
+    return (configProvider, configFile);
+}
+
+(JsonConfigSource Source, string? ConfigFile) CreateConfigSource(string config, string? configsDir)
+{
+    string? configFile = ConfigFileLocator.Find(config, configsDir);
+
+    if (configFile is not null)
+    {
+        return (new JsonConfigSource(configFile), configFile);
+    }
+
+    using Stream stream = BuiltInConfigs.Open(config)
+        ?? throw new ConfigurationFileNotFoundException(config);
+
+    if (configsDir is not null)
+        logger.Warn($"Configuration '{config}' not found in --configs-dir. Loading the built-in configuration.");
+    else
+        logger.Info($"Loading built-in configuration {config}");
+
+    // The node used to read configs/ next to the binary, so an edited or mounted file there is now ignored.
+    string oldConfigFile = Path.Join(AppContext.BaseDirectory, "configs", Path.ChangeExtension(config, ".json"));
+
+    if (File.Exists(oldConfigFile))
+        logger.Warn("A configuration file next to the binary is ignored. To use it, set --config to its path.");
+
+    return (new JsonConfigSource(stream), null);
 }
 
 RootCommand CreateRootCommand()
@@ -491,19 +502,7 @@ RootCommand CreateRootCommand()
     return rootCommand;
 }
 
-ILogger GetCriticalLogger()
-{
-    try
-    {
-        return new NLogManager("nethermind.log").GetClassLogger<Program>();
-    }
-    catch
-    {
-        if (logger.IsWarn) logger.Warn("File logging failed. Using console logging.");
-
-        return logger;
-    }
-}
+ILogger GetCriticalLogger() => NLogConfigurator.GetCriticalLogger(logger);
 
 void ResolveDatabaseDirectory(string? path, IInitConfig initConfig)
 {
@@ -515,7 +514,7 @@ void ResolveDatabaseDirectory(string? path, IInitConfig initConfig)
     {
         string dbPath = initConfig.BaseDbPath.GetApplicationResourcePath(path);
 
-        if (logger.IsDebug) logger.Debug($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(dbPath)}");
+        if (logger.IsDebug) logger.Debug($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(dbPath):hide}");
 
         initConfig.BaseDbPath = dbPath;
     }
@@ -541,12 +540,12 @@ void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig 
 
         if (logger.IsInfo)
         {
-            logger.Info($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(newDbPath)}");
-            logger.Info($"{nameof(initConfig.LogDirectory)}: {Path.GetFullPath(newLogDirectory)}");
-            logger.Info($"{nameof(keyStoreConfig.KeyStoreDirectory)}: {Path.GetFullPath(newKeyStorePath)}");
+            logger.Info($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(newDbPath):hide}");
+            logger.Info($"{nameof(initConfig.LogDirectory)}: {Path.GetFullPath(newLogDirectory):hide}");
+            logger.Info($"{nameof(keyStoreConfig.KeyStoreDirectory)}: {Path.GetFullPath(newKeyStorePath):hide}");
 
             if (snapshotConfig.Enabled)
-                logger.Info($"{nameof(snapshotConfig.SnapshotDirectory)}: {Path.GetFullPath(newSnapshotPath)}");
+                logger.Info($"{nameof(snapshotConfig.SnapshotDirectory)}: {Path.GetFullPath(newSnapshotPath):hide}");
         }
 
         initConfig.BaseDbPath = newDbPath;
@@ -568,14 +567,14 @@ static class BasicOptions
     public static Option<string> Configuration { get; } =
         new("--config", "-c")
         {
-            Description = "The path to the configuration file or the file name (also without extension) of any of the configuration files in the configuration files directory.",
+            Description = "The path to a configuration file, or the name of a built-in configuration (for example, mainnet or sepolia).",
             HelpName = "network or file name"
         };
 
     public static Option<string> ConfigurationDirectory { get; } =
         new("--configs-dir", "--configsDirectory", "-cd")
         {
-            Description = "The path to the configuration files directory.",
+            Description = "The path to a directory with your own configuration files. A name given with --config is looked up in this directory before the built-in configurations.",
             HelpName = "path"
         };
 
@@ -651,3 +650,5 @@ class AsynchronousCommandLineAction(Func<ParseResult, int> action) : Synchronous
     /// <inheritdoc />
     public override int Invoke(ParseResult parseResult) => _action(parseResult);
 }
+
+file sealed class ConfigurationFileNotFoundException(string config) : FileNotFoundException(ConfigFileLocator.NotFoundMessage(config));

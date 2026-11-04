@@ -66,9 +66,12 @@ public class MempoolStatePrewarmerTests
 
         Transaction[] delta = MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender);
 
-        Assert.That(delta.Length, Is.EqualTo(5), "the first pass warms every selected transaction");
-        Assert.That(warmedPerSender[TestItem.AddressA], Is.EqualTo(3), "sender A's warmed count is recorded");
-        Assert.That(warmedPerSender[TestItem.AddressB], Is.EqualTo(2), "sender B's warmed count is recorded");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delta.Length, Is.EqualTo(5), "the first pass warms every selected transaction");
+            Assert.That(warmedPerSender[TestItem.AddressA], Is.EqualTo(3), "sender A's warmed count is recorded");
+            Assert.That(warmedPerSender[TestItem.AddressB], Is.EqualTo(2), "sender B's warmed count is recorded");
+        }
     }
 
     [Test]
@@ -113,8 +116,11 @@ public class MempoolStatePrewarmerTests
         Assert.That(MempoolStatePrewarmer.SelectDelta(interleaved, warmed, scratch), Is.Empty);
 
         Transaction[] extended = BuildSenderTxs(TestItem.PrivateKeyB, count + 1);
-        Assert.That(MempoolStatePrewarmer.SelectDelta(extended.Concat(a), warmed, scratch), Is.EqualTo(extended));
-        Assert.That(scratch, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MempoolStatePrewarmer.SelectDelta(extended.Concat(a), warmed, scratch), Is.EqualTo(extended));
+            Assert.That(scratch, Is.Empty);
+        }
     }
 
     [Test]
