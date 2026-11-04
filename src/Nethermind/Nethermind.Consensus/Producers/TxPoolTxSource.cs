@@ -511,6 +511,8 @@ namespace Nethermind.Consensus.Producers
         {
             static abstract TResult Select(Transaction transaction, ulong resource);
             static abstract ulong GetResource(Transaction transaction, IReleaseSpec spec);
+            /// <summary>The part of a candidate's <paramref name="resource"/> that counts against its sender's later transactions.</summary>
+            static abstract ulong GetChainResource(Transaction transaction, ulong resource, IReleaseSpec spec);
             static abstract bool EnforceSequentialNonces { get; }
         }
 
@@ -525,13 +527,26 @@ namespace Nethermind.Consensus.Producers
                 spec.IsEip8037Enabled && Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(transaction, spec, out ulong executionReservation, out _)
                     ? Math.Min(transaction.BlockGasUsed, executionReservation)
                     : transaction.BlockGasUsed;
+            /// <remarks>
+            /// A transaction that has not run must fit at its gas limit, but it uses no less than the base cost of a
+            /// transaction, so only that counts against its sender's later ones. The picker still checks each of them
+            /// against the gas left in the block.
+            /// </remarks>
+            public static ulong GetChainResource(Transaction transaction, ulong resource, IReleaseSpec spec) =>
+                transaction.HasBlockGasUsed ? resource : Math.Min(resource, MinimumGas(transaction, spec));
             public static bool EnforceSequentialNonces => false;
+
+            private static ulong MinimumGas(Transaction transaction, IReleaseSpec spec) =>
+                transaction.SupportsFrames ? (ulong)Eip8141Constants.IntrinsicGasCost
+                : spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780
+                : GasCostOf.Transaction;
         }
 
         private readonly struct BlobOrdering : IOrdering<(Transaction, ulong)>
         {
             public static (Transaction, ulong) Select(Transaction transaction, ulong resource) => (transaction, resource);
             public static ulong GetResource(Transaction transaction, IReleaseSpec spec) => (ulong)transaction.GetBlobCount();
+            public static ulong GetChainResource(Transaction transaction, ulong resource, IReleaseSpec spec) => resource;
             public static bool EnforceSequentialNonces => true;
         }
 
@@ -557,8 +572,8 @@ namespace Nethermind.Consensus.Producers
                 int entryIndex = entries[0].heapIndex;
                 (Transaction[] bucket, int index, _, ulong resource) = entries[entryIndex];
                 Transaction candidateTx = bucket[index];
-                ulong totalResource = resource + TOrdering.GetResource(candidateTx, spec);
-                bool accepted = totalResource <= resourceLimit && filter(candidateTx);
+                ulong candidateResource = TOrdering.GetResource(candidateTx, spec);
+                bool accepted = resource + candidateResource <= resourceLimit && filter(candidateTx);
                 int nextIndex = index + 1;
                 if (accepted && nextIndex < bucket.Length
                     && (!TOrdering.EnforceSequentialNonces
@@ -566,7 +581,7 @@ namespace Nethermind.Consensus.Producers
                         && bucket[nextIndex].Nonce == candidateTx.Nonce + 1))
                 {
                     entries.AsSpan()[entryIndex].index = nextIndex;
-                    entries.AsSpan()[entryIndex].resource = totalResource;
+                    entries.AsSpan()[entryIndex].resource = resource + TOrdering.GetChainResource(candidateTx, candidateResource, spec);
                     SiftDown(entries.AsSpan(), count, entryIndex, 0, comparer);
                 }
                 else

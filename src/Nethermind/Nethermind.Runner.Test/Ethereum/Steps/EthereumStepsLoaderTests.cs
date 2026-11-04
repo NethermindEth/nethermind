@@ -77,10 +77,13 @@ public class EthereumStepsLoaderTests
                 new StepInfo(typeof(StepE)),
                 new StepInfo(typeof(CommandStep)),
                 new StepInfo(typeof(SelfCancellingStep)),
+                new StepInfo(typeof(SelfCancellingStepDependent)),
+                new StepInfo(typeof(SelfCancellingStepGrandDependent)),
                 new StepInfo(typeof(FailedConstructorWithInvalidConfigurationStep)),
                 new StepInfo(typeof(StepObservingCancellation)),
                 new StepInfo(typeof(FailingOptionalStep)),
                 new StepInfo(typeof(RequiredDependentStep)),
+                new StepInfo(typeof(RequiredGrandDependentStep)),
         ]);
 
     [Test]

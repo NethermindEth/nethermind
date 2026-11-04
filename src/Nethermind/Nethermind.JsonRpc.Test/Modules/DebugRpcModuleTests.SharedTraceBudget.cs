@@ -45,7 +45,14 @@ public partial class DebugRpcModuleTests
     }
 
     [TestCaseSource(nameof(BufferedDeadlineRoutes))]
-    public async Task Buffered_deadline_runs_through_seeded_parallel_and_filtered_execution(bool indexed, bool filtered, string expiry)
+    public Task Buffered_deadline_runs_through_seeded_parallel_and_filtered_execution(bool indexed, bool filtered, string expiry) =>
+        AssertBufferedDeadlineRoute(indexed, filtered, expiry, byHash: false);
+
+    [TestCaseSource(nameof(BufferedDeadlineRoutes))]
+    public Task Buffered_deadline_runs_through_seeded_parallel_and_filtered_execution_by_hash(bool indexed, bool filtered, string expiry) =>
+        AssertBufferedDeadlineRoute(indexed, filtered, expiry, byHash: true);
+
+    private static async Task AssertBufferedDeadlineRoute(bool indexed, bool filtered, string expiry, bool byHash)
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
@@ -64,11 +71,7 @@ public partial class DebugRpcModuleTests
                 .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
-        Transaction[] transactions = new Transaction[3];
-        for (int i = 0; i < transactions.Length; i++)
-            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
-                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        Block block = await chain.AddBlock(transactions);
+        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
         if (indexed) IndexThroughTheCapture(chain, index, block, parent);
         clock.Enabled = true;
         clock.Target = nonce + (filtered ? 2UL : 1UL);
@@ -82,6 +85,9 @@ public partial class DebugRpcModuleTests
             DeadlineClock = clock,
             TxHash = filtered ? block.Transactions[2].Hash : null
         };
+        ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> Trace() => byHash
+            ? chain.DebugRpcModule.debug_traceBlockByHash(block.Hash!, options)
+            : chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options);
         // Keep parallel routing enabled but serialize execution so fake-clock advancement is deterministic.
         budget.Wait(CancellationToken.None);
         ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> result;
@@ -89,7 +95,7 @@ public partial class DebugRpcModuleTests
         {
             if (expiry == "external")
             {
-                Assert.Catch<OperationCanceledException>(() => chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options));
+                Assert.Catch<OperationCanceledException>(() => Trace());
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(probe.Attempts, Is.EqualTo(1));
@@ -98,7 +104,7 @@ public partial class DebugRpcModuleTests
                 }
                 return;
             }
-            result = chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options);
+            result = Trace();
         }
         finally { budget.Release(); }
         using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = result;
@@ -143,8 +149,8 @@ public partial class DebugRpcModuleTests
             return completed;
         }
         public bool TryStream<TTrace>(Block block, BlockHeader parent, Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction,
-            Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions, Action<IReadOnlyCollection<TTrace>> emit, CancellationToken token) =>
-            inner.TryStream(block, parent, forTransaction, afterTransactions, emit, token);
+            Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions, IParallelTraceStream<TTrace> stream, CancellationToken token) =>
+            inner.TryStream(block, parent, forTransaction, afterTransactions, stream, token);
     }
 
     private sealed class DeadlineAdapter(ITransactionProcessorAdapter inner, DeadlineExecution clock) : ITransactionProcessorAdapter
@@ -162,10 +168,21 @@ public partial class DebugRpcModuleTests
         public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) => inner.PrepareForInclusionCheck(transaction, stateGasAvailable);
     }
 
+    private static Transaction[] CreateDeadlineTransactions(ulong nonce)
+    {
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        return transactions;
+    }
+
     private sealed class DeadlineExecution : TimeProvider
     {
         private long _timestamp;
         internal bool Enabled;
+        internal bool FailTimerChange;
+        internal bool DeliverOnlyAtTarget;
         internal bool Prefix;
         internal ulong Target;
         internal string Expiry = "reset";
@@ -176,7 +193,7 @@ public partial class DebugRpcModuleTests
         public override long GetTimestamp() => _timestamp;
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
-            ExecutionTimer timer = new(callback, state);
+            ExecutionTimer timer = new(callback, state, FailTimerChange);
             Timers.Add(timer);
             return timer;
         }
@@ -184,14 +201,16 @@ public partial class DebugRpcModuleTests
         {
             if (Expiry == "external" && nonce == Target) Cancel!();
             _timestamp += TimeSpan.FromMilliseconds(Prefix && nonce < Target ? 10_000 : Expiry is "before" or "after" && nonce == Target ? 1_200 : 600).Ticks;
-            foreach (ExecutionTimer timer in Timers) timer.Fire();
+            if (!DeliverOnlyAtTarget || nonce == Target)
+                foreach (ExecutionTimer timer in Timers) timer.Fire();
         }
     }
 
-    private sealed class ExecutionTimer(TimerCallback callback, object? state) : ITimer
+    private sealed class ExecutionTimer(TimerCallback callback, object? state, bool failChange = false) : ITimer
     {
         internal bool Disposed { get; private set; }
-        public bool Change(TimeSpan dueTime, TimeSpan period) => !Disposed;
+        public bool Change(TimeSpan dueTime, TimeSpan period) => failChange
+            ? throw new InvalidOperationException("timer change failure") : !Disposed;
         internal void Fire() { if (!Disposed) callback(state); }
         public void Dispose() => Disposed = true;
         public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
@@ -250,6 +269,52 @@ public partial class DebugRpcModuleTests
                 for (int i = revertFirst ? 1 : 0; i < traces.Count; i++)
                     Assert.That((string?)traces[i]["result"]?["logs"]?[0]?["index"], Is.EqualTo($"0x{i - (revertFirst ? 1 : 0):x}"), response);
             }
+        }
+    }
+
+    [Test]
+    public async Task ByNumber_filtered_javascript_skip_preserves_mux_prefix_log_indices_and_alignment(
+        [Values] bool revertFirst, [Values("blockOverrides", "stateOverrides")] string replay)
+    {
+        DeadlineExecution clock = new();
+        Hash256? selectedHash = null;
+        const string script = "{fault:function(){},result:function(ctx){return {txIndex:ctx.txIndex};}}";
+        string[] responses = await TraceLogsBeforeAndAfterIndexing(revertFirst, (chain, block) =>
+        {
+            selectedHash = block.Transactions[2].Hash!;
+            Dictionary<string, object> options = new()
+            {
+                ["tracer"] = "muxTracer",
+                ["tracerConfig"] = new Dictionary<string, object> { [script] = new { }, ["callTracer"] = new { withLog = true } },
+                ["txHash"] = selectedHash,
+                ["timeout"] = "0s",
+                ["streamMode"] = false,
+                [replay] = new { }
+            };
+            return RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
+                "debug_traceBlockByNumber", block.Number, options);
+        });
+        foreach (string response in responses)
+        {
+            JToken json = JToken.Parse(response);
+            Assert.That(json["result"], Is.TypeOf<JArray>(), response);
+            JArray entries = (JArray)json["result"]!;
+            Assert.That(entries, Has.Count.EqualTo(1), response);
+            Assert.That(entries[0]["result"], Is.TypeOf<JObject>(), response);
+            JObject children = (JObject)entries[0]["result"]!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((string?)entries[0]["txHash"], Is.EqualTo(selectedHash!.ToString()), response);
+                Assert.That(children, Has.Count.EqualTo(2), response);
+                Assert.That((int?)children[script]?["txIndex"], Is.EqualTo(2), response);
+                Assert.That((string?)children["callTracer"]?["logs"]?[0]?["index"], Is.EqualTo(revertFirst ? "0x1" : "0x2"), response);
+            }
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers, Has.Count.EqualTo(2), "each replay has exactly one selected transaction owner");
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
         }
     }
 

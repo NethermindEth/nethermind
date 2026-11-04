@@ -22,7 +22,7 @@ public class ReceiptsMessageSerializer70Tests
     {
         ReceiptsMessageSerializer70 serializer = new(new TestSpecProvider(Prague.Instance));
 
-        SerializerTester.TestZero(serializer, buildMessage(), expectedData);
+        SerializerTester.Test(serializer, buildMessage(), expectedData);
     }
 
     [Test]

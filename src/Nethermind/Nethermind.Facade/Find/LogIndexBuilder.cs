@@ -14,6 +14,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Synchronization;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
@@ -275,7 +276,10 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             return false;
 
         number = Math.Max(MinTargetBlockNumber, number);
-        number = Math.Min(MaxTargetBlockNumber, number);
+        // MaxTargetBlockNumber stays at 0 while fast sync holds the head at genesis and the finalized header is not canonical yet,
+        // but the blocks below the sync pivot are already canonical history.
+        ulong maxTarget = MaxTargetBlockNumber;
+        number = Math.Min(maxTarget is 0 && _syncConfig.FastSync ? _blockTree.SyncPivot.BlockNumber : maxTarget, number);
 
         if (number is 0)
             return false;
@@ -296,14 +300,31 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             _receiptStorage.ReceiptsInserted -= OnReceiptsInserted;
     }
 
-    public ulong MaxTargetBlockNumber => _blockTree.BestKnownNumber >= MaxReorgDepth
-        ? _blockTree.BestKnownNumber - MaxReorgDepth
-        : 0UL;
+    /// <summary>The highest block the forward index may reach: the finalized block, or the head minus the max reorg depth without one.</summary>
+    /// <remarks>
+    /// The index never reverts blocks, so it is kept to canonical blocks that are not expected to reorg.
+    /// The best known number is not used, as it also counts side branches that may never become canonical.
+    /// </remarks>
+    public ulong MaxTargetBlockNumber =>
+        _blockTree.FinalizedHash is { } finalizedHash && _blockTree.FindHeader(finalizedHash, BlockTreeLookupOptions.RequireCanonical) is { } finalized
+            ? finalized.Number
+            : (_blockTree.Head?.Number ?? 0UL).SaturatingSub(MaxReorgDepth);
 
     // Block 0 should always be present
-    public ulong MinTargetBlockNumber => _syncConfig.AncientReceiptsBarrierCalc <= 1
+    public ulong MinTargetBlockNumber => AncientReceiptsBarrier <= 1
         ? 0UL
-        : _syncConfig.AncientReceiptsBarrierCalc;
+        : AncientReceiptsBarrier;
+
+    /// <summary>The lowest block the receipts download keeps.</summary>
+    /// <remarks>
+    /// With fast sync it is keyed on the tree pivot, like the receipts feed: a CL-discovered pivot never reaches the sync config.
+    /// Without fast sync no feed runs and it keeps the config value.
+    /// It stays at the configured barrier even when an earlier feed run from a lower pivot left receipts below it: the barrier names the oldest receipts
+    /// the operator asked for, and queries below the index are still answered from receipts.
+    /// </remarks>
+    private ulong AncientReceiptsBarrier => !_syncConfig.FastSync
+        ? _syncConfig.AncientReceiptsBarrierCalc
+        : ulong.Max(1UL, ulong.Min(_blockTree.SyncPivot.BlockNumber, ulong.Max(_syncConfig.AncientBodiesBarrier, _syncConfig.AncientReceiptsBarrier)));
 
     // Nothing below the lowest body the node ever downloaded can be a retained island, so the sliced
     // descent stops there instead of fabricating down to the barrier. Clamped by the published boundary:
@@ -438,7 +459,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                 int end = isForward ? start + batchSize - 1 : start - batchSize + 1;
                 if (!isForward)
                     end = Math.Max(end, backwardFloor);
-                end = Math.Min(end, (int)MaxTargetBlockNumber);
+                else
+                    end = Math.Min(end, (int)MaxTargetBlockNumber);
 
                 // from - inclusive, to - exclusive
                 (int from, int to) = isForward
@@ -529,9 +551,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         ref DirectionState forward = ref Direction(isForward: true);
         if (forward.Progress is { HasEnded: false } forwardProgress)
         {
-            ulong bestKnown = _blockTree.BestKnownNumber;
-            forwardProgress.TargetValue = bestKnown >= MaxReorgDepth + _forwardProgressStart
-                ? bestKnown - MaxReorgDepth - _forwardProgressStart + 1UL
+            ulong maxTarget = MaxTargetBlockNumber;
+            forwardProgress.TargetValue = maxTarget >= _forwardProgressStart
+                ? maxTarget - _forwardProgressStart + 1UL
                 : 0UL;
             forwardProgress.Update(_logIndexStorage.MaxBlockNumber is { } max && (ulong)max >= _forwardProgressStart
                 ? (ulong)max - _forwardProgressStart + 1UL
@@ -602,7 +624,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     {
         blockReceipts = default;
 
-        if (_blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.ExcludeTxHashes) is not { Hash: not null } block)
+        if (_blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.ExcludeTxHashes | BlockTreeLookupOptions.RequireCanonical) is not { Hash: not null } block)
         {
             // A height absent below the published boundary and above the lowest downloaded body was reclaimed -
             // not late, not undownloaded - so an empty entry is the truth. A boundary persisted by an older

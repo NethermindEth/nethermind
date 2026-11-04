@@ -16,9 +16,10 @@ public enum ReaderFlags
     Sync = 1,
 
     /// <summary>
-    /// The reader serves long sequential scans (e.g. flat-trie verification): backing snapshots may enable
-    /// readahead iterators for <see cref="ReadFlags.HintReadAhead"/> reads, and the shared reader cache in
-    /// <see cref="CachedReaderPersistence"/> is bypassed so the hint reaches the storage layer.
+    /// The reader serves long sequential scans (e.g. flat-trie verification, snap range serving): backing
+    /// snapshots may enable readahead iterators for <see cref="ReadFlags.HintReadAhead"/> reads, which do not
+    /// fill the block cache, and the shared reader cache in <see cref="CachedReaderPersistence"/> is bypassed so
+    /// the hint reaches the storage layer.
     /// </summary>
     FullScan = 2,
 }

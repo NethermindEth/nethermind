@@ -12,7 +12,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using DotNetty.Buffers;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
@@ -1380,16 +1379,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             TxReceipt[][] wrappedReceipts = [receipts];
             using ReceiptsMessage asReceiptsMessage = new(wrappedReceipts.ToPooledList());
 
-            IByteBuffer bb = PooledByteBufferAllocator.Default.Buffer(1024);
-            try
-            {
-                _receiptsMessageSerializer.Serialize(bb, asReceiptsMessage);
-                return bb.AsSpan().ToArray();
-            }
-            finally
-            {
-                bb.Release();
-            }
+            byte[] encoded = new byte[_receiptsMessageSerializer.GetLength(asReceiptsMessage)];
+            _receiptsMessageSerializer.Serialize(encoded, asReceiptsMessage);
+            return encoded;
         }
 
         public async Task SyncFromServer(IContainer server, CancellationToken cancellationToken) =>

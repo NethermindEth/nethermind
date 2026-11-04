@@ -40,15 +40,13 @@ public class ColumnsDbTests
     }
 
     private static ColumnsDb<ReceiptsColumns> CreateDb(string path, DbConfig dbConfig, IRocksDbConfigFactory? factory = null) =>
-        new(path,
+        TestRocksDbFactory.OpenColumnsDb<ReceiptsColumns>(path,
             new("Blocks", path)
             {
                 DeleteOnStart = true,
             },
             dbConfig,
-            factory ?? new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
-            LimboLogs.Instance,
-            Enum.GetValues<ReceiptsColumns>()
+            factory ?? new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false)
         );
 
     [TearDown]
@@ -63,6 +61,7 @@ public class ColumnsDbTests
         IDb column = db.GetColumnDb(ReceiptsColumns.Blocks);
         column.Set([1], [2]);
         int checksumReads = factory.TableConfig.VerifyChecksumReads;
+        Assert.That(checksumReads, Is.GreaterThan(0), "Opening must resolve the checksum setting");
         int readAheadReads = factory.TableConfig.ReadAheadSizeReads;
 
         for (int i = 0; i < 3; i++)
@@ -74,14 +73,12 @@ public class ColumnsDbTests
             AssertView((ISortedKeyValueStore)column);
             using IKeyValueStoreSnapshot columnSnapshot = ((ColumnDb)column).CreateSnapshot();
             AssertView((ISortedKeyValueStore)columnSnapshot);
-            using IKeyValueStoreSnapshot tableSnapshot = ((DbOnTheRocks)db).CreateSnapshot();
         }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(factory.TableConfig.VerifyChecksumReads, Is.EqualTo(checksumReads));
             Assert.That(factory.TableConfig.ReadAheadSizeReads, Is.EqualTo(readAheadReads));
-            Assert.That(factory.VerifyChecksumReadsBeforeColumns, Is.GreaterThan(0), "Init must see the resolved checksum setting");
         }
 
         static void AssertView(ISortedKeyValueStore store)
@@ -122,14 +119,11 @@ public class ColumnsDbTests
     private sealed class CountingRocksDbConfigFactory(IRocksDbConfigFactory inner) : IRocksDbConfigFactory
     {
         public CountingRocksDbConfig TableConfig { get; private set; } = null!;
-        public int? VerifyChecksumReadsBeforeColumns { get; private set; }
 
         public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
         {
             IRocksDbConfig config = inner.GetForDatabase(databaseName, columnName);
-            if (columnName is null) return TableConfig = new CountingRocksDbConfig(config);
-            VerifyChecksumReadsBeforeColumns ??= TableConfig.VerifyChecksumReads;
-            return config;
+            return columnName is null ? TableConfig = new CountingRocksDbConfig(config) : config;
         }
     }
 
@@ -306,8 +300,8 @@ public class ColumnsDbTests
     }
 
     private static ColumnsDb<ReceiptsColumns> Reopen(string path, IContainer container) =>
-        new(path, new(nameof(DbNames.Receipts), path), container.Resolve<IDbConfig>(), container.Resolve<IRocksDbConfigFactory>(),
-            LimboLogs.Instance, Enum.GetValues<ReceiptsColumns>());
+        TestRocksDbFactory.OpenColumnsDb<ReceiptsColumns>(path, new(nameof(DbNames.Receipts), path), container.Resolve<IDbConfig>(),
+            container.Resolve<IRocksDbConfigFactory>());
 
     [Test]
     public void SmokeTest()
@@ -358,7 +352,8 @@ public class ColumnsDbTests
         {
             Assert.That(defaultCol.Get(TestItem.KeccakB), Is.EqualTo(TestItem.KeccakC.BytesToArray()));
 
-            Assert.That(_db.Get(TestItem.KeccakB), Is.EqualTo(TestItem.KeccakC.BytesToArray()));
+            // "Default" is RocksDB's own default column family, where data written without a column lives.
+            Assert.That(defaultCol.Name, Is.EqualTo("default"));
         }
     }
 
@@ -501,6 +496,46 @@ public class ColumnsDbTests
             "ReadAheadSize = 0 must opt snapshots out of readahead iterators, as it does for DbOnTheRocks");
     }
 
+    [Test]
+    public void Snapshot_ReadAhead_DoesNotFillBlockCache([Values] bool sequentialReadAhead)
+    {
+        const int keyCount = 4096;
+        const int valueSize = 256;
+        ColumnDb column = (ColumnDb)_db.GetColumnDb(ReceiptsColumns.Blocks);
+        Random random = new(42);
+        byte[][] values = new byte[keyCount][];
+        for (int i = 0; i < keyCount; i++)
+        {
+            values[i] = new byte[valueSize];
+            random.NextBytes(values[i]);
+            column.Set(Key(i), values[i]);
+        }
+
+        _db.Flush();
+        long usageBefore = BlockCacheUsage();
+
+        using (IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot(sequentialReadAhead))
+        {
+            IReadOnlyKeyValueStore snapshotColumn = snapshot.GetColumn(ReceiptsColumns.Blocks);
+            for (int i = 0; i < keyCount; i++)
+            {
+                Assert.That(snapshotColumn.Get(Key(i), ReadFlags.HintReadAhead), Is.EqualTo(values[i]));
+            }
+        }
+
+        long added = BlockCacheUsage() - usageBefore;
+        Assert.That(added, sequentialReadAhead ? Is.LessThan(keyCount * valueSize / 10) : Is.GreaterThan(keyCount * valueSize / 2));
+
+        static byte[] Key(int i)
+        {
+            byte[] key = new byte[8];
+            BinaryPrimitives.WriteInt64BigEndian(key, i);
+            return key;
+        }
+
+        long BlockCacheUsage() => long.Parse(column.GatherProperty("rocksdb.block-cache-usage")!);
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public void Snapshot_ReadAhead_ConcurrentColumnsKeepIndependentSnapshotValues(bool flush)
@@ -568,12 +603,10 @@ public class ColumnsDbTests
         _db.Dispose();
 
         // Reopen the same on-disk DB (no DeleteOnStart) — the value must survive.
-        _db = new ColumnsDb<ReceiptsColumns>(DbPath,
+        _db = TestRocksDbFactory.OpenColumnsDb<ReceiptsColumns>(DbPath,
             new("Blocks", DbPath),
             new DbConfig(),
-            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
-            LimboLogs.Instance,
-            Enum.GetValues<ReceiptsColumns>());
+            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false));
 
         Assert.That(_db.GetColumnDb(ReceiptsColumns.Blocks).Get(TestItem.KeccakA), Is.EqualTo(value));
     }

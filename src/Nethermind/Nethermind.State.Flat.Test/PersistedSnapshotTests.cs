@@ -14,9 +14,12 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using Nethermind.State.Flat.Test.Io;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 using NUnit.Framework;
@@ -1201,5 +1204,218 @@ public class PersistedSnapshotTests
 
         // Fresh miss for an unrelated address still works after AdviseDontNeed.
         Assert.That(persisted.TryGetAccount(TestItem.AddressB, out _), Is.False);
+    }
+
+    [Test]
+    public void Merge_of_random_sources_matches_model_bytes_and_bloom_adds(
+        [Values(2, 3, 6, 70)] int sourceCount, [Values(1, 2, 3)] int seed)
+    {
+        Random random = new(seed * 1000 + sourceCount);
+        using PersistedSnapshotList sources = new(sourceCount);
+        for (int i = 0; i < sourceCount; i++)
+        {
+            StateId from = new((ulong)i, i == 0 ? Keccak.EmptyTreeHash : Keccak.Compute(i.ToString()));
+            StateId to = new((ulong)i + 1, Keccak.Compute((i + 1).ToString()));
+            INodeRecordBufferPin pin = _buffer.PinHead();
+            SnapshotContent content = new();
+            Populate(content, random, i, sourceCount);
+            using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing, pin);
+            sources.Add(TestFixtureHelpers.CreatePersistedSnapshot(
+                _memArena, _blobs, from, to, PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs)));
+        }
+
+        (byte[] actual, long actualBloomAdds) = Merge(sources);
+        (byte[] expected, long expectedBloomAdds) = ModelMerge(sources);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(actualBloomAdds, Is.EqualTo(expectedBloomAdds));
+        }
+    }
+
+    private void Populate(SnapshotContent content, Random random, int source, int sourceCount)
+    {
+        const int addressPool = 6;
+        Address[] addresses = TestItem.Addresses[..addressPool];
+        Array.Sort(addresses, static (x, y) => x.Bytes.SequenceCompareTo(y.Bytes));
+        for (int a = 0; a < addressPool; a++)
+        {
+            Address address = addresses[a];
+            // The last address in key order never self-destructs, and the address before it is destructed by the
+            // newest source. The merge must not apply that barrier to slot 0 of the last address, which only source 0 writes.
+            bool lastAddress = a == addressPool - 1;
+            if (random.Next(2) == 0)
+                content.Accounts[address] = random.Next(4) == 0 ? null : new Account((ulong)source, (UInt256)random.Next(1000));
+            if (a == addressPool - 2 && source == sourceCount - 1)
+                content.SelfDestructedStorageAddresses[address] = false;
+            else if (!lastAddress && random.Next(4) == 0)
+                content.SelfDestructedStorageAddresses[address] = random.Next(2) == 0;
+            for (int slot = 0; slot < 8; slot++)
+            {
+                if (lastAddress && slot == 0)
+                {
+                    if (source == 0) content.Storages[(address, UInt256.Zero)] = 1;
+                    continue;
+                }
+                if (random.Next(3) != 0) continue;
+                content.Storages[(address, (UInt256)slot)] = random.Next(5) == 0 ? null : (UInt256?)(source * 100 + random.Next(100) + 1);
+            }
+        }
+
+        content.SetStateNodeRlp(_buffer, FlatTestHelpers.CanonicalPath(Keccak.Compute("shared"), 4), FlatTestHelpers.LeafRlp(0xC1, (byte)source));
+
+        for (int p = 0; p < 12; p++)
+        {
+            if (random.Next(2) == 0) continue;
+            TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute($"state{p}"), 1 + p % 9);
+            content.SetStateNodeRlp(_buffer, path, FlatTestHelpers.LeafRlp(0xC1, (byte)source, (byte)p));
+        }
+
+        for (int p = 0; p < 12; p++)
+        {
+            if (random.Next(2) == 0) continue;
+            Hash256 owner = Keccak.Compute($"owner{p % 3}");
+            TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute($"storage{p}"), 1 + p % 7);
+            content.SetStorageNodeRlp(_buffer, owner, path, FlatTestHelpers.LeafRlp(0xC2, (byte)source, (byte)p));
+        }
+    }
+
+    private static (byte[] Data, long BloomAdds) Merge(PersistedSnapshotList snapshots)
+    {
+        int n = snapshots.Count;
+        using PooledByteBufferWriter pooled = new(MergeCapacity(snapshots));
+        using BloomFilter bloom = new(1024, 10);
+        using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
+        WholeReadSession[] sessionArr = sessionsList.UnsafeGetInternalArray();
+        try
+        {
+            for (int i = 0; i < n; i++)
+                sessionArr[i] = snapshots[i].BeginWholeReadSession();
+            PersistedSnapshotMerger.NWayMergeSnapshots<PooledByteBufferWriter.Writer, WholeReadSession, WholeReadSessionReader, NoOpPin>(
+                sessionsList.AsSpan(), ref pooled.GetWriter(), bloom);
+        }
+        finally
+        {
+            for (int i = 0; i < n; i++) sessionArr[i]?.Dispose();
+        }
+        return (pooled.WrittenSpan.ToArray(), bloom.Count);
+    }
+
+    /// <summary>
+    /// Independent model of the merge: per key the newest source wins, a self-destruct is destructed when
+    /// any source destructed, and a slot is dropped when its newest source is older than the newest
+    /// destruct of its address. The model writes its entries with the production table builder, so the
+    /// bytes must match exactly. The bloom gets one key per address, per kept slot and per trie node.
+    /// </summary>
+    private static (byte[] Data, long BloomAdds) ModelMerge(PersistedSnapshotList snapshots)
+    {
+        int n = snapshots.Count;
+        SortedDictionary<byte[], (int Source, byte[] Value)> entries =
+            new(Comparer<byte[]>.Create(static (x, y) => x.AsSpan().SequenceCompareTo(y)));
+        Dictionary<Address, int> barriers = [];
+        List<(byte[] Key, byte[] Value)> oldest = [];
+        List<(byte[] Key, byte[] Value)> newest = [];
+        for (int i = 0; i < n; i++)
+        {
+            List<(byte[] Key, byte[] Value)> source = ReadEntries(snapshots[i]);
+            if (i == 0) oldest = source;
+            if (i == n - 1) newest = source;
+            foreach ((byte[] key, byte[] value) in source)
+            {
+                if (key[0] == PersistedSnapshotKey.MetadataColumn) continue;
+                entries[key] = (i, value);
+                if (key[0] == PersistedSnapshotKey.AccountColumn
+                    && PersistedSnapshotKey.PerAddressSubColumn(key) == PersistedSnapshotKey.SelfDestructSub
+                    && value[0] == PersistedSnapshotTags.SelfDestructDestructedMarkerByte)
+                    barriers[new Address(PersistedSnapshotKey.PerAddressAddress(key))] = i;
+            }
+        }
+
+        using PooledByteBufferWriter pooled = new(MergeCapacity(snapshots));
+        long bloomAdds = 0;
+        Address? group = null;
+        SortedTableBuilder<PooledByteBufferWriter.Writer> table = new(ref pooled.GetWriter());
+        try
+        {
+            foreach (KeyValuePair<byte[], (int Source, byte[] Value)> entry in entries)
+            {
+                byte[] key = entry.Key;
+                byte[] value = entry.Value.Value;
+                if (key[0] == PersistedSnapshotKey.AccountColumn)
+                {
+                    Address address = new(PersistedSnapshotKey.PerAddressAddress(key));
+                    if (address != group)
+                    {
+                        group = address;
+                        bloomAdds++;
+                    }
+
+                    int barrier = barriers.GetValueOrDefault(address, -1);
+                    byte sub = PersistedSnapshotKey.PerAddressSubColumn(key);
+                    if (sub == PersistedSnapshotKey.SelfDestructSub)
+                    {
+                        value = barrier >= 0 ? PersistedSnapshotTags.SelfDestructDestructedMarker : PersistedSnapshotTags.SelfDestructNewMarker;
+                    }
+                    else if (sub == PersistedSnapshotKey.SlotSub)
+                    {
+                        if (entry.Value.Source < barrier) continue;
+                        bloomAdds++;
+                    }
+                }
+                else if (key[0] != PersistedSnapshotKey.RefIdColumn)
+                {
+                    bloomAdds++;
+                }
+
+                table.Add(key, value);
+            }
+
+            AddMetadata(ref table, oldest, PersistedSnapshotTags.MetadataFromBlockKey);
+            AddMetadata(ref table, oldest, PersistedSnapshotTags.MetadataFromHashKey);
+            table.Add([PersistedSnapshotKey.MetadataColumn, .. PersistedSnapshotTags.MetadataNodeRefsKey], PersistedSnapshotTags.MetadataNodeRefsPresentMarker);
+            AddMetadata(ref table, newest, PersistedSnapshotTags.MetadataToBlockKey);
+            AddMetadata(ref table, newest, PersistedSnapshotTags.MetadataToHashKey);
+            table.Build();
+        }
+        finally
+        {
+            table.Dispose();
+        }
+        return (pooled.WrittenSpan.ToArray(), bloomAdds);
+    }
+
+    private static void AddMetadata(ref SortedTableBuilder<PooledByteBufferWriter.Writer> table, List<(byte[] Key, byte[] Value)> source, byte[] name)
+    {
+        byte[] metadataKey = [PersistedSnapshotKey.MetadataColumn, .. name];
+        foreach ((byte[] key, byte[] value) in source)
+        {
+            if (key.AsSpan().SequenceEqual(metadataKey))
+            {
+                table.Add(key, value);
+                return;
+            }
+        }
+    }
+
+    private static List<(byte[] Key, byte[] Value)> ReadEntries(PersistedSnapshot snapshot)
+    {
+        List<(byte[] Key, byte[] Value)> result = [];
+        using WholeReadSession session = snapshot.BeginWholeReadSession();
+        WholeReadSessionReader reader = session.CreateReader();
+        using SortedTableEnumerator<WholeReadSessionReader, NoOpPin> enumerator = new(in reader, new Bound(0, reader.Length));
+        while (enumerator.MoveNext(in reader))
+        {
+            using NoOpPin pin = reader.PinBuffer(enumerator.CurrentValue);
+            result.Add((enumerator.CurrentKey.ToArray(), pin.Buffer.ToArray()));
+        }
+        return result;
+    }
+
+    private static int MergeCapacity(PersistedSnapshotList snapshots)
+    {
+        long totalSize = 4096;
+        for (int i = 0; i < snapshots.Count; i++) totalSize += snapshots[i].Size;
+        return checked((int)totalSize);
     }
 }
