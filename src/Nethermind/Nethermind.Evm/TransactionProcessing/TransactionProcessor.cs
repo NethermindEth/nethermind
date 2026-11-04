@@ -1887,9 +1887,11 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             UInt256 fees = premiumPerGas * spentGas;
 
-            // n.b. destroyed accounts already set to zero balance
-            // EIP-8037: always pay coinbase — deferred finalization will burn the balance
-            if (statusCode == StatusCode.Failure || spec.IsEip8037Enabled || !substate.DestroyListContains(header.GasBeneficiary))
+            // Without EIP-8037 the destroy list is already finalized, so a destroyed beneficiary of a successful tx is not paid,
+            // even with EIP-8246.
+            // EIP-8037 always pays it. With EIP-7708 too, finalization runs after PayFees and burns the fee with the balance
+            // (EIP-8246 keeps it). Without EIP-7708 the account is already destroyed, so it keeps the fee.
+            if (statusCode == StatusCode.Failure || !substate.DestroyListContains(header.GasBeneficiary) || spec.IsEip8037Enabled)
             {
                 WorldState.AddToBalanceAndCreateIfNotEmpty(header.GasBeneficiary!, fees, spec);
             }
