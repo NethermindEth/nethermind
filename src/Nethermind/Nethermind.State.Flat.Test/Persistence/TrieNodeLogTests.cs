@@ -202,6 +202,7 @@ public class TrieNodeLogTests
         }
     }
 
+    // Propagate deletion failure to exercise the same lease invariant as a Handle.Dispose failure.
     private TrieNodeLogGeneration CreateTrimGeneration(int index, IFileSystem? fileSystem = null) =>
         new((ulong)index + 1, Path.Combine(_directory.Path, $"trim-{index}.log"), fileSystem ?? FileSystem, 1024,
             static (_, exception) => throw exception);
