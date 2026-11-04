@@ -640,6 +640,12 @@ namespace Nethermind.Network
                     continue;
                 }
 
+                // Static peers are added once, together with the other static peers, below
+                if (preCandidate.Node.IsStatic)
+                {
+                    continue;
+                }
+
                 _currentSelection.Candidates.Add(preCandidate);
             }
 
