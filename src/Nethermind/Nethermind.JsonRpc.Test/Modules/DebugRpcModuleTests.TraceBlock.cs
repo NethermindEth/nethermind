@@ -2051,33 +2051,25 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceBlockByNumber_mux_reports_a_cyclic_javascript_result_on_its_transaction([Values] bool nested)
+    public async Task Debug_traceBlockByNumber_mux_fails_the_request_on_a_cyclic_javascript_result([Values] bool nested)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
-        UInt256 initial = chain.WorldStateManager.GlobalStateReader.GetBalance(chain.BlockTree.Head!.Header, TestItem.AddressC);
         Block block = await AddTraceCallPrefixTransfers(chain, 2);
-        string script = "{fault:function(){},result:function(ctx,db){if(ctx.txIndex===0){var o={};o.self=o;return o;}"
-            + "return {index:ctx.txIndex,balance:db.getBalance(toAddress('" + TestItem.AddressC + "')).toString()};}}";
+        string script = "{fault:function(){},result:function(ctx){if(ctx.txIndex===0){var o={};o.self=o;return o;}return {index:ctx.txIndex};}}";
         Dictionary<string, object> children = new() { [script] = new { }, ["noopTracer"] = new { } };
         object config = nested ? new Dictionary<string, object> { ["muxTracer"] = children } : children;
 
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
             new { tracer = "muxTracer", tracerConfig = config });
 
+        // The mux is a native tracer, so a child's failure fails the whole block trace, as in
+        // Debug_traceBlockByNumber_mux_preserves_javascript_result_errors; the cyclic result is reported, not overflowed.
         JToken json = JToken.Parse(response);
-        Assert.That(json["error"], Is.Null, response);
-        JArray entries = (JArray)json["result"]!;
-        JToken? second = entries.Count == 2 ? entries[1]["result"] : null;
-        if (nested) second = second?["muxTracer"];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(entries, Has.Count.EqualTo(2), response);
-            Assert.That((string?)entries[0]["error"], Is.EqualTo(JavaScriptResultDepthError), response);
-            Assert.That(entries[0]["result"], Is.Null, response);
-            Assert.That(entries[1]["error"], Is.Null, response);
-            Assert.That((int?)second?[script]?["index"], Is.EqualTo(1), response);
-            Assert.That((string?)second?[script]?["balance"], Is.EqualTo((initial + 2).ToString()),
-                "the first transaction still executes, so the second one sees both transfers");
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(JavaScriptResultDepthError), response);
+            Assert.That(json["result"], Is.Null, response);
         }
     }
 
