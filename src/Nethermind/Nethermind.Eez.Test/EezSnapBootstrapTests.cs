@@ -46,8 +46,16 @@ public class EezSnapBootstrapTests
     {
         _l1 = Substitute.For<IEezL1Api>();
         _source = Substitute.For<IEezSequencerApi>();
-        _config = new EezConfig { SnapBootstrapEnabled = true, FollowerEnabled = true, RegistryAddress = Registry.ToString(),
-            RollupId = 1, RegistryDeployBlock = 2, L1ChainId = 10200, SequencerRpcUrl = "http://127.0.0.1:8545" };
+        _config = new EezConfig
+        {
+            SnapBootstrapEnabled = true,
+            FollowerEnabled = true,
+            RegistryAddress = Registry.ToString(),
+            RollupId = 1,
+            RegistryDeployBlock = 2,
+            L1ChainId = 10200,
+            SequencerRpcUrl = "http://127.0.0.1:8545"
+        };
         _sync = new SyncConfig { SynchronizationEnabled = false, FastSync = true };
         _rules = EezChainRules.NativeRollupX(new RollupXSchedule(1, 1,
             new RollupXL1Reference(10200, 1, TestItem.KeccakA, 100, TestItem.KeccakB), 100), TestItem.AddressB, NativeSystemTxFormat.ContractV7);
@@ -93,9 +101,9 @@ public class EezSnapBootstrapTests
         _source.GetRawBlock(_pivot.Hash!, Arg.Any<CancellationToken>()).Returns(Rlp.Encode(_pivot).Bytes);
         _l1.GetChainId(Arg.Any<CancellationToken>()).Returns(10200UL);
         _l1.GetBlockByNumber(1, Arg.Any<CancellationToken>()).Returns(new EezL1Block
-            { Number = 1, Hash = TestItem.KeccakA, Timestamp = 100, MixHash = TestItem.KeccakB });
+        { Number = 1, Hash = TestItem.KeccakA, Timestamp = 100, MixHash = TestItem.KeccakB });
         _l1.GetBlockByNumber(2, Arg.Any<CancellationToken>()).Returns(new EezL1Block
-            { Number = 2, Hash = TestItem.KeccakC, Timestamp = 101, MixHash = TestItem.KeccakB });
+        { Number = 2, Hash = TestItem.KeccakC, Timestamp = 101, MixHash = TestItem.KeccakB });
         _l1.GetFinalizedBlock(Arg.Any<CancellationToken>()).Returns(new EezL1Block { Number = 2, Hash = TestItem.KeccakC });
         _settlements = [Settlement(_pivot.Hash!, 0)];
         _l1.GetLogs(Registry, L1BatchScanner.L2ExecutionPerformedTopic, L1BatchScanner.RollupTopic(1),
