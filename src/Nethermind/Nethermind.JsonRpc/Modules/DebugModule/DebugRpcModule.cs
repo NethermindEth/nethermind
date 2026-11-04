@@ -747,7 +747,7 @@ public class DebugRpcModule(
         {
             roots = debugBridge.GetBlockIntermediateRoots(blockHash, cancellationToken, options);
         }
-        catch (GenesisNotTraceableException e)
+        catch (Exception e) when (e is GenesisNotTraceableException or NotSupportedException)
         {
             return ResultWrapper<IReadOnlyCollection<Hash256>>.Fail(e.Message, ErrorCodes.InvalidInput);
         }
