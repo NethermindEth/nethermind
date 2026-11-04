@@ -28,6 +28,7 @@ namespace Nethermind.TxPool.Collections
         private readonly List<Transaction> _transactionsToRemove = [];
         private readonly Dictionary<AddressAsKey, int> _keyedNonceCounts = [];
         private readonly long[] _removalGenerations = new long[RemovalGenerationStripes];
+        private bool _requiresReplacementScan;
         protected int _poolCapacity;
 
         public TxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
@@ -82,6 +83,7 @@ namespace Nethermind.TxPool.Collections
         {
             if (!base.RemoveFromBucket(value, out bucketSet))
             {
+                _requiresReplacementScan = true;
                 return false;
             }
 
@@ -103,6 +105,30 @@ namespace Nethermind.TxPool.Collections
             }
 
             return true;
+        }
+
+        /// <summary>Finds the pending transaction with the same competing key.</summary>
+        /// <remarks>A failed bucket removal can leave an unindexed entry behind. Once that happens, retain the
+        /// bucket's original first-match behavior, including after a later insert replaces its dictionary entry.</remarks>
+        internal Transaction? FindPendingReplacement(Transaction tx)
+        {
+            using (McsLock.Disposable lockRelease = Lock.Acquire())
+            {
+                if (!_requiresReplacementScan) return FindCompetingValue(tx);
+            }
+
+            ReplacementSearch search = new(tx);
+            VisitBucket(tx.SenderAddress!, ref search, static (Transaction pending, ref ReplacementSearch state) =>
+            {
+                if (pending.Nonce < state.Nonce) return true;
+                if (pending.Nonce > state.Nonce) return false;
+                if (!CompetingTransactionEqualityComparer.Instance.Equals(state.Tx, pending)) return true;
+
+                state.Replaced = pending;
+                return false;
+            });
+
+            return search.Replaced;
         }
 
         /// <summary>Counts removals of <paramref name="sender"/>'s transactions, and of every sender sharing its stripe.</summary>
@@ -259,5 +285,12 @@ namespace Nethermind.TxPool.Collections
         }
 
         protected override string ShortPoolName => "TxPool";
+
+        private struct ReplacementSearch(Transaction tx)
+        {
+            public readonly Transaction Tx = tx;
+            public readonly ulong Nonce = tx.Nonce;
+            public Transaction? Replaced;
+        }
     }
 }

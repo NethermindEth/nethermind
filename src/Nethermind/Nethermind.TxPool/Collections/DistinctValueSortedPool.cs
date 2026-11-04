@@ -45,6 +45,11 @@ namespace Nethermind.TxPool.Collections
 
         protected virtual IComparer<TValue> GetReplacementComparer(IComparer<TValue> comparer) => comparer;
 
+        /// <summary>Finds the pending value with the same competing key.</summary>
+        /// <remarks>The caller must hold the pool lock.</remarks>
+        private protected TValue? FindCompetingValue(TValue value) =>
+            _distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> existing) ? existing.Value : default;
+
         protected override bool InsertCore(TKey key, TValue value, TGroupKey groupKey)
         {
             if (_distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> oldKvp))

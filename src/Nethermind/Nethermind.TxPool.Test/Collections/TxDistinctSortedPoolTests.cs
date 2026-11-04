@@ -11,6 +11,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.TxPool.Collections;
+using Nethermind.TxPool.Comparison;
+using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.TxPool.Test.FrameTxFilterTestPools;
@@ -23,6 +25,58 @@ public class TxDistinctSortedPoolTests
 {
     private static readonly Address Sender = TestItem.AddressA;
     private const ulong SharedNonce = 5;
+
+    [Test]
+    public void FindPendingReplacement_ThroughReplacementAndRemoval_ReturnsCurrentCompetingEntry([Values] bool blobs, [Values] bool keyed)
+    {
+        Transaction original = ReplacementTx(blobs, keyed, TestItem.KeccakA, 100);
+        Transaction replacement = ReplacementTx(blobs, keyed, TestItem.KeccakB, 300);
+        Transaction probe = ReplacementTx(blobs, keyed, TestItem.KeccakC, 600);
+        Transaction otherDomain = ReplacementTx(blobs, !keyed, TestItem.KeccakD, 100);
+        TxDistinctSortedPool pool = Pool(blobs, original, otherDomain);
+        TxDistinctSortedPool otherPool = Pool(!blobs);
+        TxDistinctSortedPool standardPool = blobs ? otherPool : pool;
+        TxDistinctSortedPool blobPool = blobs ? pool : otherPool;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.GetBucketCount(Sender), Is.EqualTo(2), "precondition: the nonce is shared by independent nonce domains");
+            Assert.That(PendingReplacement.Find(probe, standardPool, blobPool), Is.SameAs(original), "only the same nonce domain competes");
+        }
+
+        bool inserted = pool.TryInsert(replacement.Hash!, replacement);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inserted, Is.True, "precondition: the higher fees replace the original");
+            Assert.That(PendingReplacement.Find(probe, standardPool, blobPool), Is.SameAs(replacement), "a lookup must see the newly indexed replacement");
+        }
+
+        bool removed = pool.TryRemove(replacement.Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removed, Is.True, "precondition: the competing entry leaves the pool");
+            Assert.That(PendingReplacement.Find(probe, standardPool, blobPool), Is.Null, "the remaining nonce domain must not become a replacement");
+        }
+    }
+
+    private static Transaction ReplacementTx(bool blobs, bool keyed, Hash256 hash, uint fee)
+    {
+        Transaction tx = Build.A.Transaction
+            .WithType(keyed ? TxType.FrameTx : blobs ? TxType.Blob : TxType.Legacy)
+            .WithNonce(SharedNonce)
+            .WithNonceKeys(keyed ? [0xbeef] : null)
+            .WithSenderAddress(Sender)
+            .WithGasPrice(fee)
+            .WithMaxFeePerGas(fee)
+            .WithMaxFeePerBlobGas(fee)
+            .WithGasBottleneck(fee)
+            .WithBlobVersionedHashes(blobs ? 1 : null)
+            .WithHash(hash)
+            .TestObject;
+        tx.MaxFee = fee;
+        return tx;
+    }
 
     private static Transaction AccountTx(ulong nonce, uint gasBottleneck, Hash256 hash) => Build.A.Transaction
         .WithNonce(nonce)
@@ -80,6 +134,8 @@ public class TxDistinctSortedPoolTests
             Assert.That(pool.GetBucketCount(Sender), Is.EqualTo(5), "the failed bucket removal leaves the keyed entry behind");
             Assert.That(pool.GetAccountDomainBucketCount(Sender), Is.EqualTo(4),
                 "an entry the bucket still holds must stay counted, or GapNonceFilter admits a nonce nothing can fill");
+            Assert.That(pool.FindPendingReplacement(keyedTx), Is.SameAs(keyedTx),
+                "a failed removal must retain the bucket's replacement even though its dictionary entry is gone");
         }
     }
 
@@ -219,6 +275,19 @@ public class TxDistinctSortedPoolTests
             }
 
             Assert.That(pool.GetBucketSnapshot(Sender), Is.EqualTo(TreeOrder(pool)).Using<Transaction>(ReferenceEquals), $"step {step}");
+            Transaction probe = candidates[random.Next(candidates.Length)];
+            Transaction? expectedReplacement = null;
+            foreach (Transaction pending in pool.GetBucketSnapshot(Sender))
+            {
+                if (pending.Nonce > probe.Nonce) break;
+                if (pending.Nonce == probe.Nonce && CompetingTransactionEqualityComparer.Instance.Equals(probe, pending))
+                {
+                    expectedReplacement = pending;
+                    break;
+                }
+            }
+            Assert.That(ReferenceEquals(pool.FindPendingReplacement(probe), expectedReplacement), Is.True,
+                $"replacement lookup must match the bucket walk at step {step}");
         }
     }
 
