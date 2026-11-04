@@ -154,7 +154,7 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public async Task Idle_static_peer_is_selected_once_alongside_other_candidates()
+        public async Task Idle_static_peer_is_contacted_and_dialed_once_alongside_other_candidates([Values] bool staticPeerAcceptsDial)
         {
             Node staticNode = new(TestItem.PublicKeyB, "52.141.78.53", 30303, isStatic: true);
             Node otherNode = new(TestItem.PublicKeyC, "52.141.78.54", 30303);
@@ -162,7 +162,8 @@ namespace Nethermind.Network.Test
             Peer otherPeer = new(otherNode, Substitute.For<INodeStats>());
 
             int staticContactChecks = 0;
-            TaskCompletionSource<int> otherDialed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            int staticDials = 0;
+            TaskCompletionSource<(int ContactChecks, int Dials)> otherDialed = new(TaskCreationOptions.RunContinuationsAsynchronously);
             IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
             rlpxHost.ShouldContact(Arg.Any<IPAddress>(), Arg.Any<bool>()).Returns(callInfo =>
             {
@@ -171,7 +172,14 @@ namespace Nethermind.Network.Test
             });
             rlpxHost.ConnectAsync(Arg.Any<Node>(), Arg.Any<CancellationToken>()).Returns(callInfo =>
             {
-                if (callInfo.Arg<Node>() == otherNode) otherDialed.TrySetResult(Volatile.Read(ref staticContactChecks));
+                Node dialed = callInfo.Arg<Node>();
+                if (dialed == staticNode)
+                {
+                    Interlocked.Increment(ref staticDials);
+                    return Task.FromResult(staticPeerAcceptsDial);
+                }
+
+                if (dialed == otherNode) otherDialed.TrySetResult((Volatile.Read(ref staticContactChecks), Volatile.Read(ref staticDials)));
                 return Task.FromResult(true);
             });
 
@@ -179,17 +187,21 @@ namespace Nethermind.Network.Test
                 peers: [staticPeer, otherPeer], staticPeers: [staticPeer]);
 
             manager.Start();
-            int staticContactChecksBeforeOtherDial;
+            (int ContactChecks, int Dials) staticBeforeOtherDial;
             try
             {
-                staticContactChecksBeforeOtherDial = await otherDialed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                staticBeforeOtherDial = await otherDialed.Task.WaitAsync(TimeSpan.FromSeconds(5));
             }
             finally
             {
                 await manager.StopAsync();
             }
 
-            Assert.That(staticContactChecksBeforeOtherDial, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(staticBeforeOtherDial.ContactChecks, Is.EqualTo(1));
+                Assert.That(staticBeforeOtherDial.Dials, Is.EqualTo(1));
+            }
         }
 
         private static PeerManager CreatePeerManager(IRlpxHost rlpxHost, int maxActivePeers, Peer[] peers, Peer[] staticPeers)
