@@ -1661,6 +1661,31 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Earliest_resolves_to_the_lowest_served_block_when_history_is_pruned(
+        [Values("eth_getBlockByNumber", "eth_getHeaderByNumber", "eth_getBlockReceipts", "eth_getBlockTransactionCountByNumber",
+            "eth_getTransactionByBlockNumberAndIndex", "eth_feeHistory")] string method)
+    {
+        using Context ctx = await Context.Create();
+        ctx.Test.BlockTree.NewOldestBlock(2);
+
+        string earliest = await ctx.Test.TestEthRpc(method, EarliestTestParameters(method, "earliest"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(earliest, Is.EqualTo(await ctx.Test.TestEthRpc(method, EarliestTestParameters(method, "0x2"))));
+            Assert.That(earliest, Is.Not.EqualTo(await ctx.Test.TestEthRpc(method, EarliestTestParameters(method, "0x0"))));
+        }
+    }
+
+    private static object?[] EarliestTestParameters(string method, string block) => method switch
+    {
+        "eth_getBlockByNumber" => [block, true],
+        "eth_getTransactionByBlockNumberAndIndex" => [block, "0x0"],
+        "eth_feeHistory" => ["0x1", block, Array.Empty<double>()],
+        _ => [block],
+    };
+
+    [Test]
     public async Task Eth_getBlockByNumber_pending_fields_should_be_null([Values("hash", "nonce", "miner")] string field)
     {
         using Context ctx = await Context.Create();

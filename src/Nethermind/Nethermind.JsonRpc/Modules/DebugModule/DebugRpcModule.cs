@@ -100,6 +100,7 @@ public class DebugRpcModule(
             return stateError;
         }
 
+        options = WithOpcodeStepLimit(options);
         if (CanStreamStructLogs(options))
         {
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
@@ -296,6 +297,9 @@ public class DebugRpcModule(
             return false;
         }
     }
+
+    private static GethTraceOptions? WithOpcodeStepLimit(GethTraceOptions? options) =>
+        options is { Limit: > 0 } ? options with { OpcodeStepLimit = options.Limit, Limit = 0 } : options;
 
     /// <summary>
     /// Lowers the opcode log byte budget of a trace held in memory to <see cref="IJsonRpcConfig.MaxBufferedTraceLogSize"/>.
@@ -594,6 +598,8 @@ public class DebugRpcModule(
             return stateError;
         }
 
+        options = WithOpcodeStepLimit(options);
+
         // A malformed native duration must reach the real constructor before it can fail.
         if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
             return StreamBlockTrace(header, options, blockNumber, validateStructLogTimeout: true);
@@ -656,6 +662,7 @@ public class DebugRpcModule(
             return stateError;
         }
 
+        options = WithOpcodeStepLimit(options);
         if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
             return StreamBlockTrace(header, options, validateStructLogTimeout: true, missingBodyHash: blockHash);
 
@@ -664,7 +671,8 @@ public class DebugRpcModule(
 
         try
         {
-            IReadOnlyCollection<GethLikeTxTrace> blockTrace = debugBridge.GetBlockTrace(new BlockParameter(blockHash), cancellationToken, WithBufferedLimit(options));
+            IReadOnlyCollection<GethLikeTxTrace> blockTrace = debugBridge.GetBlockTrace(new BlockParameter(blockHash), cancellationToken,
+                WithBufferedLimit(options) with { EnforceExecutionDeadline = true });
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash}, result: {blockTrace}");
 
@@ -678,6 +686,10 @@ public class DebugRpcModule(
         catch (ArgumentNullException)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockHash}", ErrorCodes.InvalidInput);
+        }
+        catch (GethTraceDeadlineException exception)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
         catch (TraceDurationFormatException exception)
         {

@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using Nethermind.Core;
@@ -229,6 +230,19 @@ namespace Nethermind.Trie
         /// <remarks>Not on the host, which persists the new RLP. See <c>TrieNode.zkevm.cs</c> for the guest.</remarks>
         private static bool KeepsRlpOfHashedBranch => false;
 
+        /// <summary>Whether a walk over a branch's children skips the slots whose child cannot differ from its RLP.</summary>
+        /// <remarks>Not on the host. See <c>TrieNode.zkevm.cs</c> for the guest.</remarks>
+        private static bool TracksTakenChildren => false;
+
+        /// <summary>The slots of <paramref name="item"/>, a branch, whose child may differ from its RLP: all of them on the host.</summary>
+        private static ushort TakenChildren(TrieNode item) => ushort.MaxValue;
+
+        /// <summary>Records that the child in branch slot <paramref name="i"/> may differ from the one this node's RLP encodes:
+        /// nothing to record on the host.</summary>
+        internal void MarkChildChanged(int i)
+        {
+        }
+
         /// <summary>Rents the buffer the encoding of the branch at <paramref name="path"/> is written into: from <paramref name="pool"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static CappedArray<byte> RentBranchRlp(ICappedArrayPool? pool, int length, in TreePath path) => pool.SafeRent(length);
@@ -281,5 +295,9 @@ namespace Nethermind.Trie
         /// <summary>Climbs <paramref name="path"/> back out of the child <see cref="EnterChildPath"/> entered.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void LeaveChildPath(ref TreePath path) => path.TruncateOne();
+
+        /// <summary>The child hash <paramref name="hash"/>, read from its parent's RLP.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Hash256 ReadChildHash(ReadOnlySpan<byte> hash) => new(MemoryMarshal.Read<ValueHash256>(hash));
     }
 }
