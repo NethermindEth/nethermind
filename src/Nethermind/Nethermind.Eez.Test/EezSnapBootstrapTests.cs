@@ -48,7 +48,7 @@ public class EezSnapBootstrapTests
         _source = Substitute.For<IEezSequencerApi>();
         _config = new EezConfig { SnapBootstrapEnabled = true, FollowerEnabled = true, RegistryAddress = Registry.ToString(),
             RollupId = 1, RegistryDeployBlock = 2, L1ChainId = 10200, SequencerRpcUrl = "http://127.0.0.1:8545" };
-        _sync = new SyncConfig { SynchronizationEnabled = false };
+        _sync = new SyncConfig { SynchronizationEnabled = false, FastSync = true };
         _rules = EezChainRules.NativeRollupX(new RollupXSchedule(1, 1,
             new RollupXL1Reference(10200, 1, TestItem.KeccakA, 100, TestItem.KeccakB), 100), TestItem.AddressB, NativeSystemTxFormat.ContractV7);
         ChainSpec chainSpec = new()
@@ -85,6 +85,11 @@ public class EezSnapBootstrapTests
         _sync.PivotHash = _pivot.Hash!.ToString();
         _blocks.SyncPivot = (_pivot.Number, _pivot.Hash!);
         Store(_pivot);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_sync.PivotNumber, Is.EqualTo(_pivot.Number), "the configured pivot must remain readable with synchronization disabled");
+            Assert.That(_sync.PivotHash, Is.EqualTo(_pivot.Hash!.ToString()));
+        }
         _source.GetRawBlock(_pivot.Hash!, Arg.Any<CancellationToken>()).Returns(Rlp.Encode(_pivot).Bytes);
         _l1.GetChainId(Arg.Any<CancellationToken>()).Returns(10200UL);
         _l1.GetBlockByNumber(1, Arg.Any<CancellationToken>()).Returns(new EezL1Block
@@ -251,8 +256,12 @@ public class EezSnapBootstrapTests
     public void EnsureSnapBootstrapConfig_NativeBootstrapDisabledByDefault_LeavesOtherChainsUnchanged() =>
         Assert.That(new EezConfig().SnapBootstrapEnabled, Is.False);
 
-    private void Store(Block block) => Assert.That(_blocks.Insert(block, BlockTreeInsertBlockOptions.SaveHeader,
-        BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded), Is.EqualTo(AddBlockResult.Added));
+    private void Store(Block block)
+    {
+        block.Header.TotalDifficulty = UInt256.Zero;
+        Assert.That(_blocks.Insert(block, BlockTreeInsertBlockOptions.SaveHeader,
+            BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded), Is.EqualTo(AddBlockResult.Added));
+    }
 
     private static Block Next(BlockHeader parent, ulong timestamp) => Build.A.Block.WithParent(parent)
         .WithTimestamp(timestamp).WithStateRoot(Keccak.EmptyTreeHash).WithWithdrawals([]).TestObject;

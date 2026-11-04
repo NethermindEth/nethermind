@@ -121,15 +121,75 @@ class EmbeddedCoverageTests(unittest.TestCase):
     sources.push(send(2).await.unwrap());
     wait_for_safe_prefix_convergence(&[&world.node, &follower], covered, TIMEOUT)
         .await
-        .unwrap();''')))
+        .unwrap();
+    assert_eq!(onchain_nonce(), nonce + 3);
+    for hash in sources {
+        wait_for(TIMEOUT, || async { Ok(committed(hash)) })
+        .await
+        .unwrap();
+    }''')))
         adapted, restored = embedded.adapt_native(source)
         self.assertEqual(source, restored)
+        self.assertEqual(1, adapted.count(".finalize_to("))
+        self.assertEqual(1, adapted.count(".verify_snap_bootstrap("))
+        self.assertLess(adapted.index("assert_eq!(onchain_nonce()"), adapted.index(".finalize_to("))
+        self.assertLess(adapted.index("Ok(committed(hash))"), adapted.index(".finalize_to("))
+        self.assertLess(adapted.index(".finalize_to("), adapted.index(".verify_snap_bootstrap("))
         self.assertEqual(6, adapted.count("candidate.verify_unsafe("))
         self.assertEqual(2, adapted.count("candidate.restart().await.unwrap();"))
         self.assertEqual(2, adapted.count("Candidate::start_native("))
-        for marker in ("assert!(ancestor.number >= setup_tip);", "assert_eq!(after_chain.state_root, before_chain.state_root);", "assert!(settled.status());"):
+        for marker in ("assert!(ancestor.number >= setup_tip);", "assert_eq!(after_chain.state_root, before_chain.state_root);", "assert!(settled.status());", "    for hash in sources {"):
             with self.subTest(marker=marker), self.assertRaises((ValueError, AssertionError)):
                 embedded.adapt_native(source.replace(marker, "upstream boundary changed"))
+
+    def test_native_finality_control_preserves_upstream_code_and_checks_boundaries(self):
+        controller = "while True:\n        delay_path = args.control / 'delay-slot.json'\n        break\n"
+        control = "struct L1ReorgControl;\n"
+        for failure in (None, "changed-boundary", "upstream-finality-api"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                driver = root / "scripts/native-l1-consensus.py"
+                driver.parent.mkdir(parents=True)
+                original = controller.replace("delay-slot.json", "changed.json") if failure == "changed-boundary" else controller
+                driver.write_text(original)
+                rust = root / "crates/eez-testkit/src/l1_reorg.rs"
+                rust.parent.mkdir(parents=True)
+                original_rust = control + ("pub async fn finalize_to(" if failure == "upstream-finality-api" else "")
+                rust.write_text(original_rust)
+                if failure:
+                    with self.assertRaises(ValueError): embedded.prepare_native_finality(root)
+                    self.assertEqual(original, driver.read_text())
+                    self.assertEqual(original_rust, rust.read_text())
+                    continue
+                embedded.prepare_native_finality(root)
+                changed = driver.read_text()
+                start = changed.index("        finalize_path =")
+                end = changed.index("        delay_path =")
+                self.assertEqual(original, changed[:start] + changed[end:])
+                self.assertEqual(original_rust + "\n" + Path(embedded.__file__).with_name("embedded.finality-control.rs").read_text(), rust.read_text())
+                for failure in (None, "fork", "future", "backward", "negative", "boolean", "no-finalized-future", "engine-invalid"):
+                    with self.subTest(request=failure):
+                        checkpoint = {"number": "0x2", "hash": "canonical"}
+                        number = {"future": 4, "backward": 0, "negative": -1, "boolean": True, "no-finalized-future": 4}.get(failure, 2)
+                        pending = {"number": number, "hash": "fork" if failure == "fork" else "canonical"}
+                        (root / "finalize.json").write_text(json.dumps(pending))
+                        rpc = Mock(return_value=checkpoint)
+                        fcu = Mock(side_effect=RuntimeError("invalid forkchoice") if failure == "engine-invalid" else None)
+                        write = Mock()
+                        env = {"args": SimpleNamespace(control=root), "json": json, "rpc": rpc, "fcu": fcu, "write": write,
+                               "head": {"number": "0x3", "hash": "head"}, "final_hash": "old",
+                               "finalized": None if failure == "no-finalized-future" else {"number": "0x1", "hash": "old"}}
+                        if failure:
+                            with self.assertRaises((ValueError, RuntimeError)): exec(changed, env)
+                            write.assert_not_called()
+                            self.assertNotEqual(checkpoint, env["finalized"])
+                        else:
+                            exec(changed, env)
+                            rpc.assert_called_once_with("eth_getBlockByNumber", ["0x2", False])
+                            fcu.assert_called_once_with("head")
+                            write.assert_called_once_with("finalize-result.json", {"number": 2, "hash": "canonical"})
+                            self.assertEqual(checkpoint, env["finalized"])
+                            self.assertEqual("canonical", env["final_hash"])
 
     def test_native_report_rejects_settled_only_execution_and_fake_restart(self):
         revision, image = "a" * 40, "sha256:" + "b" * 64

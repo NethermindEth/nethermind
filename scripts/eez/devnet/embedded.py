@@ -104,6 +104,23 @@ def adapt_native(source):
           '    candidate.verify(&world.l2_rpc(), covered, "after-settlement").await.unwrap();\n'
           '    candidate.restart().await.unwrap();\n'
           '    candidate.verify_unsafe(&world.l2_rpc(), &serde_json::json!(sources), "after-settled-restart").await.unwrap();')
+    marker = "    for hash in sources {"
+    start = source.index("async fn " + second + "(")
+    stop = source.find("#[tokio::test", start + 1)
+    stop = len(source) if stop < 0 else stop
+    if source[start:stop].count(marker) != 1:
+        raise ValueError("upstream native source completion boundary changed")
+    position = source.index(marker, start, stop)
+    capture = "    let snap_sources = sources.clone();\n"
+    source = source[:position] + capture + source[position:]
+    additions.append(capture)
+    marker = '\n        .await\n        .unwrap();\n    }\n}'
+    end = source.index(marker, position, stop + len(capture)) + len(marker) - 1
+    finalization = ('    let finalized = l1.get_block_by_number(alloy_rpc_types_eth::BlockNumberOrTag::Latest).await.unwrap().unwrap();\n'
+                    '    world.l1_reorg_control.as_mut().unwrap().finalize_to(finalized.header.number, finalized.header.hash).await.unwrap();\n'
+                    '    candidate.verify_snap_bootstrap(&world.l2_rpc(), &serde_json::json!(snap_sources)).await.unwrap();\n')
+    source = source[:end] + finalization + source[end:]
+    additions.append(finalization)
     restored = source
     for addition in reversed(additions):
         if restored.count(addition) != 1:
@@ -294,11 +311,43 @@ def candidate_helper(profile):
         source = "mod peer;\nmod bootstrap;\n\n" + source
         marker = '            bail!("candidate prefix verification failed: {status}");\n        }\n'
         source = insert(source, marker,
-                        '        peer::verify(&self.url(), reference, &self.directory.path().join("genesis.json"), &settings).await?;\n'
-                        '        if settings["case"] == "native-source-reorg" && phase == "after-settled-restart" && settings["snap_consumer"] != true {\n'
-                        '            Box::pin(bootstrap::verify(self, reference, &settings)).await?;\n'
-                        '        }\n')
+                        '        peer::verify(&self.url(), reference, &self.directory.path().join("genesis.json"), &settings).await?;\n')
+        source += '\n' + Path(__file__).with_name("embedded.finality.rs").read_text()
     return source
+
+
+def prepare_native_finality(upstream):
+    controller = upstream / "scripts/native-l1-consensus.py"
+    source = controller.read_text()
+    marker = "        delay_path = args.control / 'delay-slot.json'\n"
+    if source.count(marker) != 1 or "finalize-result.json" in source:
+        raise ValueError("native finality controller boundary changed")
+    extra = """        finalize_path = args.control / 'finalize.json'
+        if finalize_path.exists():
+            pending = json.loads(finalize_path.read_text())
+            finalize_path.rename(args.control / 'finalize.used.json')
+            number = pending['number']
+            if (type(number) is not int or number < 0 or number > int(head['number'], 16)
+                    or (finalized is not None and number < int(finalized['number'], 16))):
+                raise ValueError('invalid finalized fixture height')
+            canonical = rpc('eth_getBlockByNumber', [hex(number), False])
+            if canonical is None or canonical['hash'] != pending['hash']:
+                raise ValueError('finalized fixture block is not canonical')
+            final_hash = canonical['hash']
+            fcu(head['hash'])
+            finalized = canonical
+            write('finalize-result.json', {'number': number, 'hash': final_hash})
+"""
+    changed = source.replace(marker, extra + marker)
+    if changed.replace(extra, "", 1) != source:
+        raise ValueError("native finality adapter changed existing controller code")
+    control = upstream / "crates/eez-testkit/src/l1_reorg.rs"
+    original = control.read_text()
+    if "pub async fn finalize_to(" in original:
+        raise ValueError("upstream now provides finality control; use its API")
+    method = Path(__file__).with_name("embedded.finality-control.rs").read_text()
+    controller.write_text(changed)
+    control.write_text(original + "\n" + method)
 
 
 def prepare_peer_dependencies(upstream):
@@ -372,6 +421,7 @@ def prepare(args):
         helper.with_name("peer.rs").write_text(Path(__file__).with_name("embedded.peer.rs").read_text())
         helper.with_name("bootstrap.rs").write_text(Path(__file__).with_name("embedded.bootstrap.rs").read_text())
         prepare_peer_dependencies(upstream)
+        prepare_native_finality(upstream)
     for path, changed in changes:
         path.write_text(changed)
     args.output.write_text(json.dumps({"upstream": manifest, "cases": cases}, indent=2) + "\n")
