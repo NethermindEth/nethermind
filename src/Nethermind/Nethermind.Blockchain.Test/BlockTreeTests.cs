@@ -2120,6 +2120,49 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_deleting_invalid_block_deletes_all_its_descendants([Values] bool levelHasMissingHeader)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        Block block2Missing = Build.A.Block.WithNumber(2).WithDifficulty(3).WithExtraData([2]).WithParent(block1).TestObject;
+        Block block2a = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+        Block block2b = Build.A.Block.WithNumber(2).WithDifficulty(3).WithExtraData([1]).WithParent(block1).TestObject;
+        Block block3b = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2b).TestObject;
+
+        tree.SuggestBlock(block0);
+        tree.SuggestBlock(block1);
+        if (levelHasMissingHeader)
+        {
+            tree.SuggestBlock(block2Missing);
+            builder.HeaderStore.Delete(block2Missing.Hash!);
+        }
+
+        tree.SuggestBlock(block2a);
+        tree.SuggestBlock(block2b);
+        tree.SuggestBlock(block3b);
+
+        tree.DeleteInvalidBlock(block1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(levelHasMissingHeader ? 2UL : 0UL), "best known");
+            foreach (Block deleted in new[] { block1, block2a, block2b, block3b })
+            {
+                Assert.That(builder.BlockStore.Get(deleted.Number, deleted.Hash!), Is.Null, $"block {deleted.Hash}");
+                Assert.That(tree.FindHeader(deleted.Hash!, BlockTreeLookupOptions.None), Is.Null, $"header {deleted.Hash}");
+            }
+
+            Assert.That(tree.FindLevel(1), Is.Null, "level 1");
+            Assert.That(tree.FindLevel(2)?.BlockInfos.Select(static bi => bi.BlockHash),
+                levelHasMissingHeader ? Is.EqualTo(new[] { block2Missing.Hash }) : Is.Null, "level 2");
+            Assert.That(tree.FindLevel(3), Is.Null, "level 3");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void After_removing_invalid_block_will_not_accept_it_again()
     {
         BlockTree tree = Build.A.BlockTree()

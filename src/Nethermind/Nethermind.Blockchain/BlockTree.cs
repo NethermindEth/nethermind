@@ -919,8 +919,8 @@ namespace Nethermind.Blockchain
             }
 
             ulong currentNumber = deleteHeader.Number;
-            Hash256 currentHash = deleteHeader.Hash;
-            Hash256? nextHash = null;
+            List<Hash256> currentHashes = [deleteHeader.Hash];
+            ulong highestRemainingLevel = currentNumber.SaturatingSub(1ul);
             ChainLevelInfo? nextLevel = null;
 
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
@@ -932,27 +932,25 @@ namespace Nethermind.Blockchain
                 bool shouldRemoveLevel = false;
                 if (currentLevel is not null) // preparing update of the level (removal of the invalid branch block)
                 {
-                    if (currentLevel.BlockInfos.Length == 1)
+                    BlockInfo[] remainingBlockInfos = currentLevel.BlockInfos.Where(bi => !currentHashes.Contains(bi.BlockHash)).ToArray();
+                    if (remainingBlockInfos.Length == 0)
                     {
                         shouldRemoveLevel = true;
                     }
                     else
                     {
-                        currentLevel.BlockInfos = currentLevel.BlockInfos.Where(bi => bi.BlockHash != currentHash).ToArray();
+                        currentLevel.BlockInfos = remainingBlockInfos;
+                        highestRemainingLevel = currentNumber;
                     }
                 }
 
-                // just finding what the next descendant will be
-                if (nextLevel is not null)
-                {
-                    nextHash = FindChild(nextLevel, currentHash);
-                }
+                // just finding what the next descendants will be
+                List<Hash256> nextHashes = nextLevel is null ? [] : FindChildren(nextLevel, currentHashes);
 
-                UpdateDeletePointer(nextHash);
+                UpdateDeletePointer(nextHashes.Count == 0 ? null : nextHashes[0]);
 
                 if (shouldRemoveLevel)
                 {
-                    BestKnownNumber = Math.Min(BestKnownNumber, currentNumber.SaturatingSub(1ul));
                     _chainLevelInfoRepository.Delete(currentNumber, batch);
                 }
                 else if (currentLevel is not null)
@@ -960,25 +958,32 @@ namespace Nethermind.Blockchain
                     _chainLevelInfoRepository.PersistLevel(currentNumber, currentLevel, batch);
                 }
 
-                if (Logger.IsInfo) Logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
-                _blockStore.Delete(currentNumber, currentHash);
-                _headerStore.Delete(currentHash);
-                _balStore.Delete(currentNumber, currentHash);
+                foreach (Hash256 currentHash in currentHashes)
+                {
+                    if (Logger.IsInfo) Logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
+                    _blockStore.Delete(currentNumber, currentHash);
+                    _headerStore.Delete(currentHash);
+                    _balStore.Delete(currentNumber, currentHash);
+                }
 
-                if (nextHash is null)
+                if (nextHashes.Count == 0)
                 {
                     break;
                 }
 
                 currentNumber++;
-                currentHash = nextHash;
-                nextHash = null;
+                currentHashes = nextHashes;
+            }
+
+            if (BestKnownNumber <= currentNumber)
+            {
+                BestKnownNumber = Math.Min(BestKnownNumber, highestRemainingLevel);
             }
         }
 
-        private Hash256? FindChild(ChainLevelInfo level, Hash256 parentHash)
+        private List<Hash256> FindChildren(ChainLevelInfo level, List<Hash256> parentHashes)
         {
-            Hash256 childHash = null;
+            List<Hash256> childHashes = [];
             for (int i = 0; i < level.BlockInfos.Length; i++)
             {
                 Hash256 potentialChildHash = level.BlockInfos[i].BlockHash;
@@ -986,17 +991,16 @@ namespace Nethermind.Blockchain
                 if (potentialChild is null)
                 {
                     if (Logger.IsWarn) Logger.Warn($"Block with hash {potentialChildHash} has been found on chain level but its header is missing from the DB.");
-                    return null;
+                    continue;
                 }
 
-                if (potentialChild.ParentHash == parentHash)
+                if (parentHashes.Contains(potentialChild.ParentHash))
                 {
-                    childHash = potentialChildHash;
-                    break;
+                    childHashes.Add(potentialChildHash);
                 }
             }
 
-            return childHash;
+            return childHashes;
         }
 
         public bool IsMainChain(BlockHeader blockHeader) =>
