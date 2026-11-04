@@ -24,7 +24,7 @@ public class FixtureLoadTests : UnchunkedFixture
     private const string TransitionDirectory = "LegacyTests/Cancun/BlockchainTests/TransitionTests/bcArrowGlacierToParis";
     private const string ValueOverflowDirectory = "LegacyTests/Cancun/GeneralStateTests/stTransactionTest";
     private const string TotalDifficultyNetwork = "ArrowGlacierToParisAtDiffC0000";
-    private const string OverWideValue = "0x:bigint 0x10000000000000000000000000000000000000000000000000000000000000001";
+    private const string OverWideValue = "\"0x:bigint 0x10000000000000000000000000000000000000000000000000000000000000001\"";
 
     public enum Unreadable { Bom, MalformedJson, UnknownFork }
 
@@ -202,16 +202,28 @@ public class FixtureLoadTests : UnchunkedFixture
     private static IEnumerable<TestCaseData> LoadFailuresOutsideTheQuarantine()
     {
         string unlisted = $"{TransitionDirectory}/unlisted.json";
+        string valueOverflow = $"{ValueOverflowDirectory}/ValueOverflow.json";
         yield return new TestCaseData(unlisted, TestType.Blockchain, QuarantineFixture(unlisted, TestType.Blockchain))
-            .SetArgDisplayNames("unlisted file next to listed ones");
+            .SetArgDisplayNames("unlisted blockchain file with a listed error");
         yield return new TestCaseData($"Not{TransitionDirectory}/difficultyFormula.json", TestType.Blockchain, QuarantineFixture(unlisted, TestType.Blockchain))
-            .SetArgDisplayNames("listed name under another directory");
+            .SetArgDisplayNames("listed blockchain name under another directory");
         yield return new TestCaseData($"{TransitionDirectory}/difficultyFormula.json", TestType.Blockchain, "{\"broken\": ")
             .SetArgDisplayNames("listed blockchain file with another error");
-        yield return new TestCaseData($"{ValueOverflowDirectory}/Unlisted.json", TestType.State, QuarantineFixture($"{ValueOverflowDirectory}/ValueOverflow.json", TestType.State))
+        yield return new TestCaseData($"{ValueOverflowDirectory}/Unlisted.json", TestType.State, QuarantineFixture(valueOverflow, TestType.State))
             .SetArgDisplayNames("unlisted state file with a listed error");
-        yield return new TestCaseData($"{ValueOverflowDirectory}/ValueOverflow.json", TestType.State, "{\"broken\": ")
+        yield return new TestCaseData($"Not{valueOverflow}", TestType.State, QuarantineFixture(valueOverflow, TestType.State))
+            .SetArgDisplayNames("listed state name under another directory");
+        yield return new TestCaseData(valueOverflow, TestType.State, "{\"broken\": ")
             .SetArgDisplayNames("listed state file with another error");
+
+        // The reader rejects these at the same value path with the same exception, but neither is an over-wide value.
+        foreach (QuarantinedFile file in QuarantinedFiles.Where(static f => f.Type == TestType.State))
+        {
+            yield return new TestCaseData(file.RelativePath, TestType.State, QuarantineFixture(file.RelativePath, TestType.State, "\"0x\""))
+                .SetArgDisplayNames($"{file} with a bare 0x value");
+            yield return new TestCaseData(file.RelativePath, TestType.State, QuarantineFixture(file.RelativePath, TestType.State, "true"))
+                .SetArgDisplayNames($"{file} with a boolean value");
+        }
     }
 
     [TestCaseSource(nameof(LoadFailuresOutsideTheQuarantine))]
@@ -220,6 +232,22 @@ public class FixtureLoadTests : UnchunkedFixture
         EthereumTest test = LoadSingle(WriteFixture(relativePath, json), type);
 
         await AssertFailsWithLoadFailure(RunInBase(test), test);
+    }
+
+    [Test]
+    public async Task Listed_file_that_loads_runs_normally()
+    {
+        string relativePath = $"{ValueOverflowDirectory}/ValueOverflow.json";
+        string file = WriteFixture(relativePath, QuarantineFixture(relativePath, TestType.State, "\"0x01\""));
+        List<GeneralStateTest> tests = [.. new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), Path.GetDirectoryName(file)).LoadTests<GeneralStateTest>()];
+
+        EthereumTestResult result = await new StateRunner().Run(tests[0]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tests.Select(static t => t.LoadFailure), Is.All.Null);
+            Assert.That(result.Name, Is.EqualTo(tests[0].Name), "the case ran instead of being skipped");
+        }
     }
 
     private static async Task AssertFailsWithLoadFailure(Func<Task> run, EthereumTest test)
@@ -271,9 +299,12 @@ public class FixtureLoadTests : UnchunkedFixture
         _ => (Fixture(type, "UnknownFork"), false, "Unknown fork name 'UnknownFork'"),
     };
 
-    /// <summary>A fixture that fails to load the way the quarantined file at <paramref name="relativePath"/> does.</summary>
-    private static string QuarantineFixture(string relativePath, TestType type) => type == TestType.State
-        ? Fixture(type, "Berlin", Path.GetFileNameWithoutExtension(relativePath), OverWideValue)
+    /// <summary>
+    /// A fixture shaped like the quarantined file at <paramref name="relativePath"/>, which by default fails to load the
+    /// way that file does; a state fixture takes its transaction value as the raw JSON token <paramref name="value"/>.
+    /// </summary>
+    private static string QuarantineFixture(string relativePath, TestType type, string value = OverWideValue) => type == TestType.State
+        ? Fixture(type, "Berlin", Path.GetFileNameWithoutExtension(relativePath), value)
         : Fixture(type, TotalDifficultyNetwork);
 
     private string[] ValidCaseNames(TestType type)
@@ -284,7 +315,7 @@ public class FixtureLoadTests : UnchunkedFixture
             : ["firstTest", "secondTest"];
     }
 
-    private static string Fixture(TestType type, string firstFork, string name = "validTest", string value = "0x01") => type == TestType.State
+    private static string Fixture(TestType type, string firstFork, string name = "validTest", string value = "\"0x01\"") => type == TestType.State
         ? $$"""
             {
               "{{name}}": {
@@ -302,7 +333,7 @@ public class FixtureLoadTests : UnchunkedFixture
                   "gasPrice": "0x0a",
                   "gasLimit": ["0x5208"],
                   "to": "0x1000000000000000000000000000000000000000",
-                  "value": ["{{value}}"],
+                  "value": [{{value}}],
                   "data": ["0x"],
                   "secretKey": "0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8"
                 },
