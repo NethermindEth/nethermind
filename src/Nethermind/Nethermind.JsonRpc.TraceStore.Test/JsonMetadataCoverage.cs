@@ -7,6 +7,8 @@ using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core.Test;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.JsonRpc.TraceStore.Ots;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 /// <inheritdoc cref="JsonMetadataCoverageBase"/>
@@ -14,9 +16,16 @@ using NUnit.Framework;
 [SetUpFixture]
 internal class JsonMetadataCoverage() : JsonMetadataCoverageBase(TestOnly)
 {
+    [OneTimeSetUp]
+    public void UseProductionRequestParsing() =>
+        EthereumJsonSerializer.StrictHexFormat = new JsonRpcConfig().StrictHexFormat;
+
     /// <summary>Values the tests serialize to compare with the module's results; the node writes results through the response writer.</summary>
     private static readonly Dictionary<Type, string> TestOnly = new()
     {
+        [typeof(JsonRpcContext)] = "subscription context accessor visited by the production module registration test",
+        [typeof(ResultWrapper<OtsSearchResult>)] = "test expected value",
+        [typeof(ResultWrapper<List<OtsTraceEntry>>)] = "test expected value",
         [typeof(ParityLikeTxTrace[])] = "test size reference",
         [typeof(ResultWrapper<ParityTxTraceFromReplay>)] = "test expected value",
         [typeof(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>)] = "test expected value",

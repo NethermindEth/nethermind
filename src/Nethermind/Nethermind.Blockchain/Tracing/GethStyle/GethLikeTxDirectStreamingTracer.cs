@@ -72,6 +72,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     private PooledDictionary<UInt256, UInt256>? _pendingStorageMap;
 
     private readonly long _limit;
+    private readonly long _stepLimit;
+    private long _capturedSteps;
     private long _resultSize;
     private long _flushedBytes;
     private bool _disposed;
@@ -91,6 +93,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
 
         _transaction = transaction;
         _limit = options.Limit;
+        _stepLimit = options.OpcodeStepLimit;
         _writer = writer;
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
@@ -132,6 +135,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _storageByAddress.Dispose();
         _pendingStorageMap = null;
         _resultSize = 0;
+        _capturedSteps = 0;
         ResetTrace();
     }
 
@@ -144,7 +148,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         FinalizePendingOpcode();
-        if (_limit != 0 && _resultSize > _limit) return;
+        if ((_limit != 0 && _resultSize > _limit) || (_stepLimit > 0 && _capturedSteps >= _stepLimit)) return;
 
         _hasPendingOpcode = true;
         _pendingPc = pc;
@@ -357,6 +361,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         if (IsTracingReturnData && _returnDataByteCount > 0) WriteReturnDataValue();
 
         _writer.WriteEndObject();
+        if (_stepLimit > 0) _capturedSteps++;
         if (_limit > 0)
             _resultSize += _writer.BytesCommitted + _writer.BytesPending - entryStart;
     }
