@@ -22,6 +22,7 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
 {
     internal const string TracerName = "muxTracer";
     private const string CleanupExceptionKey = "MuxCleanupException";
+    private static readonly JsonSerializerOptions _snapshotOptions = new(EthereumJsonSerializer.JsonOptions) { DictionaryKeyPolicy = null };
 
     private readonly Hash256? _txHash;
     private readonly CompositeBlockTracer _composite = new();
@@ -154,7 +155,7 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
             }
             for (int i = 0; i < results.Length; i++)
                 results[i].CustomTracerResult!.Value = JsonSerializer.SerializeToElement(values[i],
-                    TracingJsonContext.Default.DictionaryStringJsonElement);
+                    TypeInfoJsonSerializer.GetTypeInfo<Dictionary<string, JsonElement>>(_snapshotOptions));
             return _results = results;
         }
         finally
