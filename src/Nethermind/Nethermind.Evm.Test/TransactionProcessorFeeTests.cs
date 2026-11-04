@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
@@ -14,6 +15,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -154,6 +156,56 @@ public class TransactionProcessorFeeTests
         {
             Assert.That(tracer.Fees, Is.EqualTo((UInt256)525213));
             Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)58357));
+        }
+    }
+
+    [Test]
+    public void Destroyed_gas_beneficiary_is_paid_before_destruction([Values] bool eip8037, [Values] bool eip7708, [Values] bool eip8246)
+    {
+        OverridableReleaseSpec spec = new(Amsterdam.Instance) { IsEip8037Enabled = eip8037, IsEip7708Enabled = eip7708, IsEip8246Enabled = eip8246 };
+        Address creator = ContractAddress.From(TestItem.AddressA, 0);
+        Address beneficiary = ContractAddress.From(creator, 1);
+
+        byte[] selfDestructInitCode = Prepare.EvmCode
+            .PushData(beneficiary)
+            .Op(Instruction.SELFDESTRUCT)
+            .Done;
+        byte[] initCode = Prepare.EvmCode
+            .Create(selfDestructInitCode, UInt256.Zero)
+            .Op(Instruction.POP)
+            .Done;
+
+        Transaction tx = Build.A.Transaction
+            .WithGasPrice(10)
+            .WithMaxFeePerGas(10)
+            .WithType(TxType.EIP1559)
+            .WithGasLimit(5_000_000)
+            .WithCode(initCode)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(beneficiary).WithBaseFeePerGas(1).WithTransactions(tx).WithGasLimit(30_000_000)
+            .TestObject;
+
+        FeesTracer feesTracer = new();
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.SetOtherTracer(feesTracer);
+        receiptsTracer.StartNewBlockTrace(block);
+        receiptsTracer.StartNewTxTrace(tx);
+        _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), receiptsTracer);
+        receiptsTracer.EndTxTrace();
+        receiptsTracer.EndBlockTrace();
+
+        // execution-specs pay the coinbase, then destroy: the fee is burned unless EIP-8246 keeps the balance.
+        bool feeKept = eip8246;
+        bool burnLogged = eip8037 && eip7708 && !eip8246;
+        TxReceipt receipt = receiptsTracer.TxReceipts[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(feesTracer.Fees, Is.GreaterThan(UInt256.Zero));
+            Assert.That(_stateProvider.GetBalance(beneficiary), Is.EqualTo(feeKept ? feesTracer.Fees : UInt256.Zero));
+            Assert.That(_stateProvider.AccountExists(beneficiary), Is.EqualTo(feeKept));
+            Assert.That(receipt.Logs!.Count(static log => log.Topics[0] == TransferLog.BurnSignature), Is.EqualTo(burnLogged ? 1 : 0));
         }
     }
 
