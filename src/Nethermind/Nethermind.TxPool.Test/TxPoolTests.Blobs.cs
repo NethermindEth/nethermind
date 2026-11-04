@@ -3666,26 +3666,38 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.ForgetInvalidBlobProofs(valid.Hash!), Is.False, "a pooled transaction stays known");
         }
 
+        public enum OtherRejection
+        {
+            NonceGap,
+            IntrinsicGas,
+            IntrinsicGasAndProofVersion
+        }
+
         [Test]
-        public void should_not_forget_blob_hash_rejected_for_another_reason()
+        public void should_not_forget_blob_hash_rejected_for_another_reason([Values] OtherRejection rejection)
         {
             _txPool = CreatePool(
                 new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
                 GetOsakaSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-            Transaction gap = Build.A.Transaction
+            TransactionBuilder<Transaction> builder = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-                .WithNonce(2UL)
                 .WithMaxFeePerGas(1.GWei)
-                .WithMaxPriorityFeePerGas(1.GWei)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
-                .TestObject;
+                .WithMaxPriorityFeePerGas(1.GWei);
+            builder = rejection is OtherRejection.NonceGap ? builder.WithNonce(2UL) : builder.WithGasLimit(1);
+            Transaction rejected = builder.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            if (rejection is OtherRejection.IntrinsicGasAndProofVersion)
+            {
+                rejected.NetworkWrapper = (ShardBlobNetworkWrapper)rejected.NetworkWrapper! with { Version = ProofVersion.V0 };
+            }
+
+            AcceptTxResult expected = rejection is OtherRejection.NonceGap ? AcceptTxResult.NonceGap : AcceptTxResult.Invalid;
 
 #pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
-            Assert.That(_txPool.SubmitTx(gap, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.NonceGap));
+            Assert.That(_txPool.SubmitTx(rejected, TxHandlingOptions.None), Is.EqualTo(expected));
 #pragma warning restore NUnit2045
-            Assert.That(_txPool.ForgetInvalidBlobProofs(gap.Hash!), Is.False);
-            Assert.That(_txPool.SubmitTx(gap, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+            Assert.That(_txPool.ForgetInvalidBlobProofs(rejected.Hash!), Is.False);
+            Assert.That(_txPool.SubmitTx(rejected, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
         }
 
         [Test]

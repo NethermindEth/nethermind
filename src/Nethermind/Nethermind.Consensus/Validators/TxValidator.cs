@@ -67,10 +67,11 @@ public sealed class TxValidator : ITxValidator
             GasFieldsTxValidator.Instance,
             ContractSizeTxValidator.Instance,
             BlobFieldsTxValidator.Instance,
-            MempoolBlobTxProofVersionValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
             GasLimitCapTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
+            // Sidecar checks run last: the pool forgets a sidecar-only rejection, so hash-covered defects must be reported first.
+            MempoolBlobTxProofVersionValidator.Instance,
             MempoolBlobTxValidator.Instance
         ]));
         RegisterValidator(TxType.SetCode, new CompositeTxValidator([
