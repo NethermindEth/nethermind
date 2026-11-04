@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Comparison;
 
@@ -20,6 +18,7 @@ namespace Nethermind.TxPool.Filters;
 /// MATCHA is that policy. An overlap, not only an equal set, correlates invalidation: one on-chain change to a
 /// shared key invalidates every pending transaction naming it. A transaction that replaces the same competing
 /// slot is not an overlap and is left to the replacement rules.
+/// MalformedTxFilter validates incoming key order before this filter; restored pending entries retain their admitted order.
 /// </remarks>
 internal sealed class KeyedNonceDisjointnessFilter(
     TxDistinctSortedPool standardPool,
@@ -55,7 +54,7 @@ internal sealed class KeyedNonceDisjointnessFilter(
             return true;
         }
 
-        if (pending.NonceKeys is { } pendingKeys && Intersects(state.Keys, pendingKeys, ref state.KeysWellFormed))
+        if (CompetingTransactionEqualityComparer.OverlapsNonceDomain(state.Tx, pending))
         {
             state.Overlaps = true;
             return false;
@@ -64,37 +63,9 @@ internal sealed class KeyedNonceDisjointnessFilter(
         return true;
     }
 
-    private static bool Intersects(ReadOnlySpan<UInt256> incoming, ReadOnlySpan<UInt256> pending, ref bool? incomingWellFormed)
-    {
-        if (incoming.IsEmpty || pending.IsEmpty) return false;
-        if (incoming[0] == pending[0]) return true;
-
-        if (incoming.Length > 2 && pending.Length > 2
-            && (incomingWellFormed ??= KeyedNonceManager.AreNonceKeysWellFormed(incoming))
-            && KeyedNonceManager.AreNonceKeysWellFormed(pending))
-        {
-            return CompetingTransactionEqualityComparer.OverlapsNonceDomain(incoming, pending);
-        }
-
-        foreach (UInt256 key in incoming)
-        {
-            foreach (UInt256 other in pending)
-            {
-                if (key == other)
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
     private struct OverlapSearch(Transaction tx)
     {
         public readonly Transaction Tx = tx;
-        public readonly UInt256[] Keys = tx.NonceKeys ?? [];
-        public bool? KeysWellFormed;
         public bool Overlaps;
     }
 }

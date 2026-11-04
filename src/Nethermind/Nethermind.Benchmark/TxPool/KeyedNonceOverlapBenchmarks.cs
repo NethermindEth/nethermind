@@ -2,9 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Reflection;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Collections;
+using Nethermind.TxPool.Comparison;
 using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Benchmarks.TxPool;
@@ -12,35 +18,24 @@ namespace Nethermind.Benchmarks.TxPool;
 [MemoryDiagnoser]
 public class KeyedNonceOverlapBenchmarks
 {
-    private delegate bool Intersection(ReadOnlySpan<UInt256> incoming, ReadOnlySpan<UInt256> pending, ref bool? incomingWellFormed);
+    private IIncomingTxFilter _filter = null!;
+    private Transaction _incoming = null!;
 
-    private UInt256[] _incoming = [];
-    private UInt256[] _pending = [];
-    private Intersection _production = null!;
-    private readonly Intersection _cartesian = Cartesian;
-
-    [Params(1, 2, 4, 8, 16)]
+    [Params(1, 3, 16)]
     public int KeyCount { get; set; }
 
     [ParamsAllValues]
     public OverlapPosition Position { get; set; }
 
-    [Params(false, true)]
-    public bool Sorted { get; set; }
-
     [GlobalSetup]
     public void Setup()
     {
-        Type filter = typeof(IIncomingTxFilter).Assembly.GetType("Nethermind.TxPool.Filters.KeyedNonceDisjointnessFilter", throwOnError: true)!;
-        MethodInfo intersection = filter.GetMethod("Intersects", BindingFlags.NonPublic | BindingFlags.Static)!;
-        _production = intersection.CreateDelegate<Intersection>();
-
-        _incoming = new UInt256[KeyCount];
-        _pending = new UInt256[KeyCount];
+        UInt256[] incoming = new UInt256[KeyCount];
+        UInt256[] pending = new UInt256[KeyCount];
         for (int i = 0; i < KeyCount; i++)
         {
-            _incoming[i] = (UInt256)(2 * i);
-            _pending[i] = (UInt256)(2 * i + 1);
+            incoming[i] = (UInt256)(2 * i);
+            pending[i] = (UInt256)(2 * i + 1);
         }
         int overlapIndex = Position switch
         {
@@ -50,41 +45,45 @@ public class KeyedNonceOverlapBenchmarks
             OverlapPosition.Last => KeyCount - 1,
             _ => throw new ArgumentOutOfRangeException()
         };
-        if (overlapIndex >= 0) _pending[overlapIndex] = _incoming[overlapIndex];
-        if (!Sorted) Array.Reverse(_incoming);
+        if (overlapIndex >= 0) pending[overlapIndex] = incoming[overlapIndex];
+        if (!KeyedNonceManager.AreNonceKeysWellFormed(incoming) || !KeyedNonceManager.AreNonceKeysWellFormed(pending))
+            throw new InvalidOperationException("The benchmark requires valid nonce key sets.");
 
-        bool? incomingWellFormed = null;
-        if (_production(_incoming, _pending, ref incomingWellFormed) != _cartesian(_incoming, _pending, ref incomingWellFormed))
-        {
-            throw new InvalidOperationException("The production intersection differs from the reference.");
-        }
-    }
+        _incoming = FrameTransaction(incoming, nonce: 1);
+        Transaction pendingTx = FrameTransaction(pending, nonce: 0);
+        TxDistinctSortedPool standardPool = new(1, CompareTxByNonce.Instance, LimboLogs.Instance);
+        TxDistinctSortedPool blobPool = new(1, CompareTxByNonce.Instance, LimboLogs.Instance);
+        if (!standardPool.TryInsert(pendingTx.Hash!, pendingTx))
+            throw new InvalidOperationException("The benchmark pool is incomplete.");
 
-    [Benchmark(Baseline = true)]
-    public bool CartesianIntersection()
-    {
-        bool? incomingWellFormed = null;
-        return _cartesian(_incoming, _pending, ref incomingWellFormed);
+        Type filterType = typeof(IIncomingTxFilter).Assembly.GetType("Nethermind.TxPool.Filters.KeyedNonceDisjointnessFilter", throwOnError: true)!;
+        _filter = (IIncomingTxFilter)Activator.CreateInstance(filterType, standardPool, blobPool)!;
+        AcceptTxResult expected = overlapIndex >= 0 ? AcceptTxResult.KeyedNonceOverlap : AcceptTxResult.Accepted;
+        if (Accept() != expected)
+            throw new InvalidOperationException("The benchmark filter result does not match its case.");
     }
 
     [Benchmark]
-    public bool ProductionIntersection()
+    public AcceptTxResult Accept()
     {
-        bool? incomingWellFormed = null;
-        return _production(_incoming, _pending, ref incomingWellFormed);
+        TxFilteringState state = default;
+        return _filter.Accept(_incoming, ref state, TxHandlingOptions.None);
     }
 
-    private static bool Cartesian(ReadOnlySpan<UInt256> incoming, ReadOnlySpan<UInt256> pending, ref bool? incomingWellFormed)
-    {
-        foreach (UInt256 key in incoming)
+    private static Transaction FrameTransaction(UInt256[] keys, ulong nonce) =>
+        new()
         {
-            foreach (UInt256 other in pending)
-            {
-                if (key == other) return true;
-            }
-        }
-        return false;
-    }
+            Type = TxType.FrameTx,
+            Hash = nonce == 0 ? TestItem.KeccakA : TestItem.KeccakB,
+            SenderAddress = TestItem.AddressA,
+            Nonce = nonce,
+            NonceKeys = keys,
+            Frames = [],
+            FrameSignatures = [],
+            GasLimit = 1_000_000,
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 1,
+        };
 
     public enum OverlapPosition
     {

@@ -9,6 +9,7 @@ using System.Text;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Spec;
@@ -7667,6 +7668,38 @@ namespace Nethermind.TxPool.Test
                 Assert.That(second, Is.EqualTo(widthEnabled ? AcceptTxResult.KeyedNonceOverlap : AcceptTxResult.Accepted));
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(widthEnabled ? 1 : 2));
             }
+        }
+
+        [TestCaseSource(nameof(MalformedNonceKeySets))]
+        public async Task SubmitTx_MalformedNonceKeys_AreRejectedBeforePendingAdmission(UInt256[] keys)
+        {
+            ISpecProvider specProvider = KeyedNonceSpecProvider();
+            await using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(new TxPoolConfig { FrameTxWidthEnabled = true }))
+                .AddSingleton(specProvider)
+                .Build();
+            ITxPool pool = container.Resolve<ITxPool>();
+            Transaction tx = BuildKeyedFrameTx(TestItem.PrivateKeyA.Address, nonceKey: 1, seq: 0, value: UInt256.Zero, maxFee: 1.GWei);
+            tx.ChainId = specProvider.ChainId;
+            tx.NonceKeys = keys;
+            tx.Hash = tx.CalculateHash();
+
+            AcceptTxResult result = pool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+                Assert.That(result.ToString(), Does.Contain(FrameTxValidation.MalformedNonceKeySet));
+                Assert.That(pool.GetPendingTransactionsCount(), Is.Zero);
+            }
+        }
+
+        private static IEnumerable<TestCaseData> MalformedNonceKeySets()
+        {
+            yield return new TestCaseData(new UInt256[] { 2, 1 }).SetName("descending nonce keys are rejected before pending admission");
+            yield return new TestCaseData(new UInt256[] { 1, 1 }).SetName("duplicate nonce keys are rejected before pending admission");
+            yield return new TestCaseData(Enumerable.Range(1, 17).Select(static key => (UInt256)key).ToArray())
+                .SetName("oversized nonce key set is rejected before pending admission");
         }
 
         [Test]
