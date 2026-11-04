@@ -1282,6 +1282,54 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCase("invalid-data", false)]
+    [TestCase("invalid-data", true)]
+    [TestCase("argument", false)]
+    [NonParallelizable]
+    public async Task Debug_traceCall_native_constructor_failures_are_not_selector_errors(string failureKind, bool serialized)
+    {
+        using Context ctx = await Context.Create();
+        Exception failure = failureKind == "invalid-data"
+            ? new InvalidDataException("native constructor sentinel")
+            : new ArgumentException("trace object must expose a function result()");
+        int constructions = 0;
+        string name = $"native-selector-boundary-{Guid.NewGuid():N}";
+        System.Collections.IDictionary registrations = (System.Collections.IDictionary)typeof(Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.GethLikeNativeTracerFactory)
+            .GetField("_tracers", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
+        Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.GethLikeNativeTracerFactory.RegisterTracer(name, (_, _, _, _) =>
+        {
+            constructions++;
+            throw failure;
+        });
+        try
+        {
+            if (serialized)
+            {
+                string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+                    new { to = TestItem.AddressC.ToString() }, "latest", new { tracer = name });
+                JToken json = JToken.Parse(response);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InternalError), response);
+                    Assert.That((string?)json["error"]?["message"], Is.EqualTo("Internal error"), response);
+                    Assert.That(json["result"], Is.Null, response);
+                }
+            }
+            else
+            {
+                Assert.That(() => ctx.DebugRpcModule.debug_traceCall(
+                    new Nethermind.Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = TestItem.AddressC },
+                    Nethermind.Blockchain.Find.BlockParameter.Latest, new GethTraceOptions { Tracer = name }), Throws.Exception.SameAs(failure));
+            }
+            Assert.That(constructions, Is.EqualTo(1));
+        }
+        finally
+        {
+            registrations.Remove(name);
+        }
+        Assert.That(Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.GethLikeNativeTracerFactory.IsNativeTracer(name), Is.False);
+    }
+
     [Test]
     [NonParallelizable]
     public async Task Debug_traceCall_mux_disposes_started_native_children_when_initialization_fails()

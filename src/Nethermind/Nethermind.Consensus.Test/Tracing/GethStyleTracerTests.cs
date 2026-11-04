@@ -537,9 +537,8 @@ public class GethStyleTracerTests
     }
 
     /// <remarks>
-    /// A tracer that is neither native nor loadable as JavaScript, an unknown name or inline code that does not
-    /// compile, used to reach the JavaScript block tracer, which built a V8 engine per traced transaction only to
-    /// fail loading the script.
+    /// Selectors outside native registrations and shipped JavaScript tracers are compiled as JavaScript
+    /// expressions. Evaluation and callback validation are deferred until a transaction is traced.
     /// </remarks>
     [TestCase("flatCallTracer", true)]
     [TestCase("_bigInteger", true)]
