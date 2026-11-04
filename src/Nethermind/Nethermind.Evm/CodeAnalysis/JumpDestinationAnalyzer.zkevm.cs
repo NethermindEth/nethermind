@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.CodeAnalysis;
@@ -233,9 +234,37 @@ public sealed partial class JumpDestinationAnalyzer
         nint skew = Skew(ref end);
         ref ulong row = ref Aligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_reachBiases), skew * ReachRowLength));
         ref ulong word = ref Aligned(ref FirstWindowWord(ref end, skew));
+        if (AirbenderFlag.IsActive)
+            return MayHoldReachingPushIn32BitWords(ref word, ref row);
+
         ulong reach = ReachingBytes(ref word, ref row, 0) | ReachingBytes(ref word, ref row, 1) |
             ReachingBytes(ref word, ref row, 2) | ReachingBytes(ref word, ref row, 3);
         return ((reach | ReachingBytes(ref word, ref row, 4)) & Unsafe.Add(ref row, ReachHighBits)) != 0;
+    }
+
+    /// <summary><see cref="MayHoldReachingPush"/> in 32-bit halves of the window's aligned words, for Airbender.</summary>
+    /// <remarks>
+    /// A 32-bit core adds a 64-bit word with a carry chain. This sums each half against its half of the row instead: the
+    /// carry a 64-bit sum passes between the halves can only make a lane look like a reaching PUSH, never hide one.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool MayHoldReachingPushIn32BitWords(ref ulong word, ref ulong row)
+    {
+        ref uint halves = ref Unsafe.As<ulong, uint>(ref word);
+        ref uint biases = ref Unsafe.As<ulong, uint>(ref row);
+        uint reach = Reach(ref halves, ref biases, 0) | Reach(ref halves, ref biases, 1) |
+            Reach(ref halves, ref biases, 2) | Reach(ref halves, ref biases, 3) |
+            Reach(ref halves, ref biases, 4) | Reach(ref halves, ref biases, 5) |
+            Reach(ref halves, ref biases, 6) | Reach(ref halves, ref biases, 7) |
+            Reach(ref halves, ref biases, 8) | Reach(ref halves, ref biases, 9);
+        return (reach & Unsafe.Add(ref biases, 2 * ReachHighBits)) != 0;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static uint Reach(ref uint halves, ref uint biases, int index)
+        {
+            uint half = Unsafe.Add(ref halves, index);
+            return (half + Unsafe.Add(ref biases, index)) & ~half;
+        }
     }
 
     /// <summary>The offset of <paramref name="end"/> in its aligned word, which picks the look-back's row of biases.</summary>
