@@ -37,6 +37,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.History;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
@@ -57,7 +58,9 @@ public partial class DebugRpcModuleTests
         foreach (string scenario in new[]
         {
             "unfinished", "not-started", "completed", "no-fast-sync", "no-download", "no-pivot", "no-index",
-            "horizon-next", "horizon-boundary", "horizon-below", "pivot-outside-horizon", "barrier"
+            "horizon-next", "horizon-boundary", "horizon-below", "pivot-outside-horizon", "barrier",
+            "uninitialized-completed-receipts", "uninitialized-completed-bodies", "uninitialized-unfinished",
+            "uninitialized-completed-history", "uninitialized-unfinished-history"
         })
             foreach (bool stream in new[] { false, true })
                 yield return new TestCaseData(scenario, stream);
@@ -67,11 +70,24 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceTransaction_indexing_miss(string scenario, bool stream)
     {
         List<Hash256?> executed = [];
+        bool history = scenario is "uninitialized-completed-history" or "uninitialized-unfinished-history";
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain { SealEngineType = SealEngineType.NethDev })
             .WithFlatDb(false)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = stream })
             .WithReceiptConfig(new ReceiptConfig { TxLookupLimit = 0 })
-            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new PrefixCountingAdapter(inner, executed)));
+            .Build(builder =>
+            {
+                builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new PrefixCountingAdapter(inner, executed));
+                if (history)
+                {
+                    ReleaseSpec spec = Berlin.Instance.Clone();
+                    spec.MinHistoryRetentionEpochs = 0;
+                    builder.AddSingleton<ISpecProvider>(new TestSpecProvider(spec));
+                    builder.AddSingleton<IHistoryConfig>(new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 0 });
+                }
+            });
+        if (history)
+            for (int i = 0; i < 40; i++) await chain.AddBlock();
         await chain.AddBlock();
         await chain.AddBlock();
         ulong head = chain.BlockTree.Head!.Number;
@@ -100,13 +116,21 @@ public partial class DebugRpcModuleTests
                 pointers.LowestInsertedReceiptBlockNumber = null;
                 break;
             case "barrier": syncConfig.AncientReceiptsBarrier = head; break;
+            case "uninitialized-completed-receipts": syncConfig.AncientReceiptsBarrier = head; break;
+            case "uninitialized-completed-bodies": syncConfig.AncientBodiesBarrier = head; break;
+            case "uninitialized-unfinished": syncConfig.AncientReceiptsBarrier = head - 2; break;
+            case "uninitialized-completed-history": pointers.LowestInsertedReceiptBlockNumber = head - 32; break;
+            case "uninitialized-unfinished-history": pointers.LowestInsertedReceiptBlockNumber = head - 31; break;
         }
-        ((ReceiptsSyncFeed)feed).InitializeFeed();
+        if (history)
+            Assert.That(chain.Container.Resolve<IHistoryPruner>().CutoffBlockNumber, Is.EqualTo(head - 32));
+        if (!scenario.StartsWith("uninitialized-", StringComparison.Ordinal))
+            ((ReceiptsSyncFeed)feed).InitializeFeed();
         executed.Clear();
 
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString());
         JToken json = JToken.Parse(response);
-        bool indexing = scenario is "unfinished" or "not-started" or "horizon-next";
+        bool indexing = scenario is "unfinished" or "not-started" or "horizon-next" or "uninitialized-unfinished" or "uninitialized-unfinished-history";
         string message = indexing ? "transaction indexing is in progress" : "transaction not found";
         using (Assert.EnterMultipleScope())
         {
