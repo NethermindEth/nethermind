@@ -1996,13 +1996,18 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceBlockByNumber_mux_preserves_javascript_result_errors(
         [Values] bool nested,
         [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
-        [Values("result", "step")] string callback)
+        [Values("result", "step", "cyclic")] string callback)
     {
         using Context ctx = await Context.Create();
         Block block = await ctx.Blockchain.AddBlock(CreateTraceBlockTransactions(ctx.Blockchain));
-        string script = callback == "result"
-            ? "{fault:function(){},result:function(){throw Error('mux result failure');}}"
-            : "{fault:function(){},step:function(){throw Error('mux step failure');},result:function(){return {};}}";
+        string script = callback switch
+        {
+            "result" => "{fault:function(){},result:function(){throw Error('mux result failure');}}",
+            "step" => "{fault:function(){},step:function(){throw Error('mux step failure');},result:function(){return {};}}",
+            // A cyclic result is reported as the depth error, not a stack overflow.
+            _ => "{fault:function(){},result:function(){var o={};o.self=o;return o;}}"
+        };
+        string expected = callback == "cyclic" ? JavaScriptResultDepthError : $"mux {callback} failure";
         Dictionary<string, object> children = new() { [script] = new { }, ["noopTracer"] = new { } };
         object config = nested ? new Dictionary<string, object> { ["muxTracer"] = children } : children;
 
@@ -2020,7 +2025,7 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That((int?)error["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-            Assert.That((string?)error["message"], Does.Contain($"mux {callback} failure"), response);
+            Assert.That((string?)error["message"], Does.Contain(expected), response);
             Assert.That(json["result"], Is.Null, response);
         }
     }
@@ -2047,29 +2052,6 @@ public partial class DebugRpcModuleTests
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InternalError), response);
             Assert.That((string?)json["error"]?["data"], Does.Contain(expected), response);
             Assert.That(JToken.DeepEquals(JToken.Parse(next)["result"], JToken.Parse("""{"ok":[1]}""")), Is.True, next);
-        }
-    }
-
-    [Test]
-    public async Task Debug_traceBlockByNumber_mux_fails_the_request_on_a_cyclic_javascript_result([Values] bool nested)
-    {
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
-        Block block = await AddTraceCallPrefixTransfers(chain, 2);
-        string script = "{fault:function(){},result:function(ctx){if(ctx.txIndex===0){var o={};o.self=o;return o;}return {index:ctx.txIndex};}}";
-        Dictionary<string, object> children = new() { [script] = new { }, ["noopTracer"] = new { } };
-        object config = nested ? new Dictionary<string, object> { ["muxTracer"] = children } : children;
-
-        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
-            new { tracer = "muxTracer", tracerConfig = config });
-
-        // The mux is a native tracer, so a child's failure fails the whole block trace, as in
-        // Debug_traceBlockByNumber_mux_preserves_javascript_result_errors; the cyclic result is reported, not overflowed.
-        JToken json = JToken.Parse(response);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-            Assert.That((string?)json["error"]?["message"], Is.EqualTo(JavaScriptResultDepthError), response);
-            Assert.That(json["result"], Is.Null, response);
         }
     }
 
