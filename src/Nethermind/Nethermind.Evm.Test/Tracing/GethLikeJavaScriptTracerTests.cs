@@ -109,7 +109,12 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
     [TestCase("fe", "INVALID")]
     [TestCase("0c", "opcode 0xc not defined")]
-    public void Invalid_opcode_callbacks_have_geth_cost_and_error(string code, string opcode)
+    [TestCase("5e", "MCOPY", MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp)]
+    [TestCase("f5", "CREATE2", MainnetSpecProvider.ByzantiumBlockNumber, 0UL)]
+    [TestCase("3f", "EXTCODEHASH", MainnetSpecProvider.ByzantiumBlockNumber, 0UL)]
+    [TestCase("fd", "REVERT", MainnetSpecProvider.SpuriousDragonBlockNumber, 0UL)]
+    public void Invalid_opcode_callbacks_have_geth_cost_and_error(string code, string opcode,
+        ulong blockNumber = MainnetSpecProvider.ParisBlockNumber + 2, ulong timestamp = MainnetSpecProvider.CancunBlockTimestamp)
     {
         const string userTracer = """
             {
@@ -120,7 +125,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             }
             """;
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
-            GetTracer(userTracer), Bytes.FromHexString(code), MainnetSpecProvider.CancunActivation);
+            GetTracer(userTracer), Bytes.FromHexString(code), (blockNumber, timestamp));
         using GethLikeTxTrace trace = tracer.BuildResult().First();
         AssertResult(trace, new[] { $"step:{opcode}:0:", $"fault:{opcode}:0:invalid opcode: {opcode}" });
     }
@@ -251,6 +256,28 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("600160005d", 21006UL, "step:TSTORE:100:out of gas:2:0,1:0", null)]
     [TestCase("600160005d", 21106UL, "step:TSTORE:100::2:0,1:0", null)]
     [TestCase("600160005d60005c", 100000UL, "step:TLOAD:100::1:0:0", null)]
+    [TestCase("0a", 21000UL, "step:EXP:0:stack underflow (0 <=> 2):0::0", null)]
+    [TestCase("61ffff60020a", 21115UL, "step:EXP:110:out of gas:2:2,65535:0", null)]
+    [TestCase("61ffff60020a", 100000UL, "step:EXP:110::2:2,65535:0", null)]
+    [TestCase("600160010b", 21010UL, "step:SIGNEXTEND:5:out of gas:2:1,1:0", null)]
+    [TestCase("6001600020", 21035UL, "step:KECCAK256:30:out of gas:2:0,1:0", null)]
+    [TestCase("6001600020", 100000UL, "step:KECCAK256:39::2:0,1:0", null)]
+    [TestCase("3c", 21000UL, "step:EXTCODECOPY:100:stack underflow (0 <=> 4):0::0", null)]
+    [TestCase("60016000600061beef3c", 21062UL, "step:EXTCODECOPY:100:out of gas:4:48879,0,0,1:0", null)]
+    [TestCase("60016000600061beef3c", 23617UL, "step:EXTCODECOPY:2606:out of gas:4:48879,0,0,1:0", null)]
+    [TestCase("60016000600061beef3c", 100000UL, "step:EXTCODECOPY:2606::4:48879,0,0,1:0", null)]
+    [TestCase("600040", 21022UL, "step:BLOCKHASH:20:out of gas:1:0:0", null)]
+    [TestCase("600049", 21005UL, "step:BLOBHASH:3:out of gas:1:0:0", null)]
+    [TestCase("6020600060005e", 21017UL, "step:MCOPY:9:out of gas:3:0,0,32:0", null)]
+    [TestCase("6020600060005e", 100000UL, "step:MCOPY:9::3:0,0,32:0", null)]
+    [TestCase("5f5f60205fa2", 22392UL, "step:LOG2:1384:out of gas:4:0,32,0,0:0", null)]
+    [TestCase("5f5f60205fa2", 100000UL, "step:LOG2:1384::4:0,32,0,0:0", null)]
+    [TestCase("5f5f5ff0", 53005UL, "step:CREATE:32000:out of gas:3:0,0,0:0", null)]
+    [TestCase("5f5f5f5ff5", 53007UL, "step:CREATE2:32000:out of gas:4:0,0,0,0:0", null)]
+    [TestCase("6200c0015f5ff0", 100000UL, "step:CREATE:32000:out of gas: max initcode size exceeded:3:0,0,49153:0", null)]
+    [TestCase("6420000000005f5ff0", 100000UL, "step:CREATE:32000:out of gas: gas uint64 overflow:3:0,0,137438953472:0", null)]
+    [TestCase("680100000000000000005f5ff0", 100000UL, "step:CREATE:32000:gas uint64 overflow:3:0,0,18446744073709551616:0", null)]
+    [TestCase("5fff", 26001UL, "step:SELFDESTRUCT:5000:out of gas:1:0:0", null)]
     [TestCase("6001600360003e", 100000UL, "step:RETURNDATACOPY:9::3:0,3,1:0", "fault:RETURNDATACOPY:9:return data out of bounds:3:0,4,1:0")]
     [TestCase("60006801000000000000000060003e", 100000UL, "step:RETURNDATACOPY:3::3:0,18446744073709551616,0:0", "fault:RETURNDATACOPY:3:return data out of bounds:3:0,18446744073709551616,0:0")]
     [TestCase("600167ffffffffffffffff60003e", 100000UL, "step:RETURNDATACOPY:9::3:0,18446744073709551615,1:0", "fault:RETURNDATACOPY:9:return data out of bounds:3:0,18446744073709551616,1:0")]
@@ -365,13 +392,17 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
     [TestCase("5d", "step:100:stack underflow (0 <=> 2)", null)]
     [TestCase("600160005d", "step:100:", "fault:100:write protection")]
-    public void Static_transient_store_preserves_precondition_and_execution_failure_callbacks(string childCode, string step, string? fault)
+    [TestCase("5f5f5ff0", "step:32000:out of gas: write protection", null)]
+    [TestCase("5f5f5f5ff5", "step:32000:out of gas: write protection", null)]
+    [TestCase("680100000000000000005f5ff0", "step:32000:gas uint64 overflow", null)]
+    [TestCase("5f5f5f5fa2", "step:0:", "fault:0:write protection")]
+    public void Static_context_preserves_precondition_and_execution_failure_callbacks(string childCode, string step, string? fault)
     {
         const string userTracer = """
             {
                 events: [],
-                step: function(log) { if (log.op.toNumber() === 0x5d) this.events.push("step:" + log.getCost() + ":" + (log.getError() || "")); },
-                fault: function(log) { if (log.op.toNumber() === 0x5d) this.events.push("fault:" + log.getCost() + ":" + log.getError()); },
+                step: function(log) { if (log.op.toNumber() === 0x$opcode) this.events.push("step:" + log.getCost() + ":" + (log.getError() || "")); },
+                fault: function(log) { if (log.op.toNumber() === 0x$opcode) this.events.push("fault:" + log.getCost() + ":" + log.getError()); },
                 result: function() { return this.events; }
             }
             """;
@@ -379,7 +410,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(childCode), Spec);
         byte[] code = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0)
             .PushData(TestItem.AddressC).PushData(50000).Op(Instruction.STATICCALL).Op(Instruction.STOP).Done;
-        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(userTracer), code, MainnetSpecProvider.CancunActivation);
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+            GetTracer(userTracer.Replace("$opcode", childCode[^2..], StringComparison.Ordinal)), code, MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace trace = tracer.BuildResult().First();
         AssertResult(trace, fault is null ? new[] { step } : new[] { step, fault });
     }
@@ -746,9 +778,19 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     // every other failure faults from EndInstructionTrace, i.e. after postStep.
     [TestCase("5f5ffd", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:REVERT,F2:REVERT,P2:REVERT", 1, TestName = "Callbacks_ordered_explicit_revert")]
     [TestCase("5fff", "S0:PUSH0,P0:PUSH0,S1:SELFDESTRUCT,P1:SELFDESTRUCT", 0, TestName = "Callbacks_ordered_explicit_self_destruct")]
-    // Other implementations call only step (with the error set) and no fault for stack underflow and out of gas; these rows pin current behaviour.
-    [TestCase("20", "S0:KECCAK256,P0:KECCAK256,F0:KECCAK256", 1, TestName = "Callbacks_ordered_stack_underflow")]
-    [TestCase("63ffffffff5f20", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:KECCAK256,P6:KECCAK256,F6:KECCAK256", 1, TestName = "Callbacks_ordered_out_of_gas")]
+    [TestCase("5f5f0a00", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:EXP,P2:EXP,S3:STOP,P3:STOP", 0, TestName = "Callbacks_ordered_exp_zero_exponent")]
+    // As in Geth, an opcode that fails before it runs reports the error from step and calls no fault.
+    [TestCase("20", "S0:KECCAK256(stack underflow (0 <=> 2)),P0:KECCAK256", 0, TestName = "Callbacks_ordered_stack_underflow")]
+    [TestCase("0a", "S0:EXP(stack underflow (0 <=> 2)),P0:EXP", 0, TestName = "Callbacks_ordered_exp_stack_underflow")]
+    [TestCase("5e", "S0:MCOPY(stack underflow (0 <=> 3)),P0:MCOPY", 0, TestName = "Callbacks_ordered_mcopy_stack_underflow")]
+    [TestCase("a2", "S0:LOG2(stack underflow (0 <=> 4)),P0:LOG2", 0, TestName = "Callbacks_ordered_log2_stack_underflow")]
+    [TestCase("f5", "S0:CREATE2(stack underflow (0 <=> 4)),P0:CREATE2", 0, TestName = "Callbacks_ordered_create2_stack_underflow")]
+    [TestCase("ff", "S0:SELFDESTRUCT(stack underflow (0 <=> 1)),P0:SELFDESTRUCT", 0, TestName = "Callbacks_ordered_self_destruct_stack_underflow")]
+    [TestCase("63ffffffff5f20", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:KECCAK256(out of gas),P6:KECCAK256", 0, TestName = "Callbacks_ordered_out_of_gas")]
+    [TestCase("63ffffffff51", "S0:PUSH4,P0:PUSH4,S5:MLOAD(out of gas),P5:MLOAD", 0, TestName = "Callbacks_ordered_memory_out_of_gas")]
+    [TestCase("63ffffffff5f5f5e", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:PUSH0,P6:PUSH0,S7:MCOPY(out of gas),P7:MCOPY", 0, TestName = "Callbacks_ordered_mcopy_out_of_gas")]
+    [TestCase("5f5f63ffffffff5fa2", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:PUSH4,P2:PUSH4,S7:PUSH0,P7:PUSH0,S8:LOG2(out of gas),P8:LOG2", 0, TestName = "Callbacks_ordered_log2_out_of_gas")]
+    [TestCase("5f600163ffffffff5ff5", "S0:PUSH0,P0:PUSH0,S1:PUSH1,P1:PUSH1,S3:PUSH4,P3:PUSH4,S8:PUSH0,P8:PUSH0,S9:CREATE2(out of gas),P9:CREATE2", 0, TestName = "Callbacks_ordered_create2_out_of_gas")]
     [TestCase("5f5f57", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:JUMPI,P2:JUMPI,S3:STOP,P3:STOP", 0, TestName = "Callbacks_ordered_jumpi_falls_off_code")]
     [TestCase("fe", "S0:INVALID,P0:INVALID,F0:INVALID", 1, TestName = "Callbacks_ordered_invalid_opcode")]
     [TestCase("0f", "S0:opcode 0xf not defined,P0:opcode 0xf not defined,F0:opcode 0xf not defined", 1, TestName = "Callbacks_ordered_undefined_opcode")]
@@ -757,7 +799,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         string userTracer = @"{
                     sequence: [],
                     faults: 0,
-                    step: function(log, db) { this.sequence.push('S' + log.getPC() + ':' + log.op.toString()) },
+                    step: function(log, db) { this.sequence.push('S' + log.getPC() + ':' + log.op.toString() + (log.getError() ? '(' + log.getError() + ')' : '')) },
                     postStep: function(log, db) { this.sequence.push('P' + log.getPC() + ':' + log.op.toString()) },
                     fault: function(log, db) { this.sequence.push('F' + log.getPC() + ':' + log.op.toString()); this.faults++ },
                     result: function(ctx, db) { return this.sequence.join(',') + '|' + this.faults }
@@ -770,6 +812,24 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
         AssertResult(traces, $"{sequence}|{faults}");
+    }
+
+    [Test]
+    public void Self_destruct_post_step_reports_the_charge_beyond_its_static_cost()
+    {
+        const string userTracer = """
+            {
+                events: [],
+                step: function(log) { },
+                postStep: function(log) { if (log.op.toNumber() === 0xff) this.events.push("postStep:" + log.getCost()); },
+                fault: function(log) { this.events.push("fault:" + log.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        // A cold beneficiary that does not exist adds 2600 and 25000 to the static 5000.
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(userTracer), Bytes.FromHexString("61beefff"), MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, new[] { "postStep:32600" });
     }
 
     [Test]
@@ -1028,7 +1088,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
-        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"type\":\"CALL\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gas\":\"0x186a0\",\"gasUsed\":\"0xdbd1\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"DELEGATECALL\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"gas\":\"0xc350\",\"gasUsed\":\"0x7f8f\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"CREATE\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\",\"value\":\"0x0\",\"gas\":\"0x4513\",\"gasUsed\":\"0x7f6e\",\"input\":\"0x7f000000000000000000000000000000000000000000000000000000000000000060005260036000f3\",\"output\":\"0x000000\"}]}]}"));
+        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"type\":\"CALL\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gas\":\"0x186a0\",\"gasUsed\":\"0xdbd1\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"DELEGATECALL\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"gas\":\"0xc350\",\"gasUsed\":\"0x7f8f\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"CREATE\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\",\"value\":\"0x0\",\"gas\":\"0x4513\",\"gasUsed\":\"0x26a\",\"input\":\"0x7f000000000000000000000000000000000000000000000000000000000000000060005260036000f3\",\"output\":\"0x000000\"}]}]}"));
     }
 
     [Test]
@@ -2654,8 +2714,10 @@ public class GethLikeJavaScriptCallTracerTests : VirtualMachineTestsBase
             step: function(log, db) {
                 if ([0xf1,0xf2,0xf4].indexOf(log.op.toNumber()) < 0) return;
                 var target = toAddress(log.stack.peek(1).toString(16).padStart(40, "0"));
+                this.stepCost = log.getCost();
                 this.events.push("step:" + log.getCost() + ":" + log.getGas() + ":" + log.getRefund() + ":" + log.stack.length() + ":" + log.stack.peek(0).toString() + ":" + log.memory.length() + ":" + db.getBalance(target).toString() + ":" + db.exists(target));
             },
+            postStep: function(log) { if ([0xf1,0xf2,0xf4].indexOf(log.op.toNumber()) >= 0 && log.getCost() !== this.stepCost) this.events.push("postStep:" + log.getCost()); },
             fault: function(log) { this.events.push("fault:" + log.getError()); },
             enter: function(frame) { this.events.push("enter:" + frame.getGas()); },
             exit: function(frame) { this.events.push("exit:" + frame.getGasUsed() + ":" + (frame.getError() || "")); },
