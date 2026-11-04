@@ -1215,8 +1215,11 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
             new { to = TestItem.AddressC.ToString() }, "latest", options);
         JToken json = JToken.Parse(response);
-        Assert.That(json["error"], Is.Null);
-        Assert.That((mux ? json["result"]![tracer] : json["result"])!.Value<int>(), Is.EqualTo(7));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null);
+            Assert.That((mux ? json["result"]![tracer] : json["result"])!.Value<int>(), Is.EqualTo(7));
+        }
     }
 
     [Test]
@@ -1250,8 +1253,11 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
             new { to = TestItem.AddressC.ToString() }, "latest", options);
         JToken json = JToken.Parse(response);
-        Assert.That(json["error"], Is.Null, response);
-        Assert.That((mux ? json["result"]![tracer] : json["result"])!.Value<string>(), Is.EqualTo(expected), response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((mux ? json["result"]![tracer] : json["result"])!.Value<string>(), Is.EqualTo(expected), response);
+        }
     }
 
     [TestCase("[]", "json: cannot unmarshal array into Go value of type map[string]jsontext.Value")]
