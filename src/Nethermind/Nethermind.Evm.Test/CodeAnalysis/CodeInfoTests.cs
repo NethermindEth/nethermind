@@ -14,6 +14,7 @@ using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
@@ -202,13 +203,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             code.CopyTo(memory.AsSpan(sourceOffset));
             ReadOnlySpan<byte> source = sourceOffset == 0 ? code : memory.AsSpan(sourceOffset, code.Length);
 
-            ReadOnlyMemory<byte> placed = ExecutableCodeMemory.Place(memory, source);
+            ReadOnlyMemory<byte> placed = ExecutableCodeMemory.Place(memory, source, out ValueHash256 codeHash);
 
             using MemoryHandle whole = placed.Pin();
             using MemoryHandle tail = placed[1..].Pin();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(placed.ToArray(), Is.EqualTo(code));
+                Assert.That(codeHash, Is.EqualTo(ValueKeccak.Compute(code)));
                 Assert.That(memory.AsSpan(code.Length, CodeInfo.ExecutionPadding).ToArray(), Is.All.EqualTo(0));
                 Assert.That(memory[code.Length + CodeInfo.ExecutionPadding], Is.EqualTo(0xff));
                 Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(placed.Span), ref memory[0]), Is.True);
@@ -223,7 +225,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public void Only_the_whole_of_placed_code_memory_is_recognised()
         {
             byte[] memory = GC.AllocateArray<byte>(64, pinned: true);
-            ReadOnlyMemory<byte> placed = ExecutableCodeMemory.Place(memory, [0x60, 0x01, 0x5b]);
+            ReadOnlyMemory<byte> placed = ExecutableCodeMemory.Place(memory, [0x60, 0x01, 0x5b], out _);
 
             using (Assert.EnterMultipleScope())
             {
