@@ -1183,7 +1183,7 @@ jobs:
           SNAPSHOT_BLOCK: ${{ inputs.snapshot_block }}
         run: |
           set -euo pipefail
-          printf '%s' "$TOOL_CONFIG" | jq -e '(.compare_config // "" | test("^config/compare/log-data-(filtering|huge|receipts|shapes|long|long-qualify)\\.yaml$")) or (.benchmark_config // "" | test("^config/benchmark/log-data-(filtering|huge|receipts|shapes|long|long-qualify)\\.yaml$"))' > /dev/null
+          printf '%s' "$TOOL_CONFIG" | jq -e '(.compare_config // "" | test("^config/compare/log-data-(filtering|huge|receipts|shapes|long|long-qualify|long-weighted)\\.yaml$")) or (.benchmark_config // "" | test("^config/benchmark/log-data-(filtering|huge|receipts|shapes|long|long-qualify|long-weighted)\\.yaml$"))' > /dev/null
           bash scripts/rpc-bench/prepare-log-index.sh "$CONTAINER_NAME" http://localhost:8545 "$SNAPSHOT_BLOCK" \
             25390001 25489936 "$OUT_DIR/index-preparation/primary"
           if [[ "$COMPARISON" == "true" ]]; then
