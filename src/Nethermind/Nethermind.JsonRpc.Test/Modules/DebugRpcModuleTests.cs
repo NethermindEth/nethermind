@@ -127,8 +127,11 @@ public partial class DebugRpcModuleTests
             .WithFlatDb(false)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = stream }).Build();
         Block block = chain.BlockTree.Head!;
-        Assert.That(block.Number, Is.GreaterThan(1UL), "the pivot must be above the receipt barrier");
-        Assert.That(block.Transactions, Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Number, Is.GreaterThan(1UL), "the pivot must be above the receipt barrier");
+            Assert.That(block.Transactions, Is.Not.Empty);
+        }
         chain.BlockTree.SyncPivot = (block.Number, block.Hash!);
         ISyncPointers pointers = chain.Container.Resolve<ISyncPointers>();
         pointers.LowestInsertedReceiptBlockNumber = 1;
@@ -146,14 +149,16 @@ public partial class DebugRpcModuleTests
         };
         string baselineResponse = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, parameters);
         JToken baseline = JToken.Parse(baselineResponse);
-        Assert.That(baseline["error"], Is.Null, baselineResponse);
-        Assert.That(baseline["result"], Is.Not.Null, baselineResponse);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baseline["error"], Is.Null, baselineResponse);
+            Assert.That(baseline["result"], Is.Not.Null, baselineResponse);
+        }
         JToken expected = baseline["result"]!;
         bool blockTrace = method is "debug_traceBlockByNumber" or "debug_traceBlockByHash";
         if (blockTrace)
         {
-            Assert.That(expected, Is.TypeOf<JArray>(), baselineResponse);
-            Assert.That(((JArray)expected).Count, Is.EqualTo(block.Transactions.Length), baselineResponse);
+            Assert.That(expected, Is.TypeOf<JArray>().And.Property(nameof(JArray.Count)).EqualTo(block.Transactions.Length), baselineResponse);
         }
         for (int i = 0; i < (blockTrace ? block.Transactions.Length : 1); i++)
         {
