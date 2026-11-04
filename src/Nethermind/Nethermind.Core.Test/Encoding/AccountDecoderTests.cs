@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
@@ -136,6 +137,23 @@ namespace Nethermind.Core.Test.Encoding
             }
         }
 
+        // A nonce with a leading zero, a nonce of 0x00, a one-byte nonce in the long form, and the long list prefix for a
+        // short payload. The fast path must decline each one, so that the reader rejects it.
+        [Test]
+        public void Full_checks_reject_a_non_canonical_account(
+            [Values("c6820001808080", "c400808080", "c58105808080", "f80401808080")] string hex, [Values] bool asStruct)
+        {
+            byte[] bytes = Bytes.FromHexString(hex);
+            Action decode = asStruct
+                ? () => AccountDecoder.Slim.TryDecodeStruct(bytes, out _)
+                : () =>
+                {
+                    RlpReader reader = new(bytes);
+                    AccountDecoder.Slim.Decode(ref reader);
+                };
+
+            Assert.That(decode, Throws.TypeOf<RlpReaderException>());
+        }
         private static RlpReader Encode(AccountDecoder decoder, Account account)
         {
             byte[] bytes = new byte[decoder.GetLength(account)];

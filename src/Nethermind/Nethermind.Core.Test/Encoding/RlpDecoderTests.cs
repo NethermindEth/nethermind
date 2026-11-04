@@ -250,6 +250,19 @@ public class RlpDecoderTests
         Assert.That(result, Is.EqualTo(new[] { TestItem.KeccakA }));
     }
 
+    // The exact-size buffers are not initialized, so an encoder that writes fewer bytes than it reports would leave
+    // stale bytes. 2 bytes take the stack buffer of the hash and 513 bytes take a pooled one.
+    [Test]
+    public void Encoder_that_writes_less_than_its_length_throws([Values(2, 513)] int reportedLength)
+    {
+        ShortWritingDecoder decoder = new(reportedLength);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => decoder.EncodeAsBytes(new NonNullableItem()), Throws.InvalidOperationException);
+            Assert.That(() => decoder.ComputeValueHash(new NonNullableItem()), Throws.InvalidOperationException);
+        }
+    }
     private static void AssertEncodedNullItem(WithdrawalDecoder decoder, ReadOnlySpan<byte> bytes)
     {
         RlpReader context = new RlpReader(bytes).EnterSequence(out _);
@@ -289,6 +302,18 @@ public class RlpDecoderTests
             ArgumentNullException.ThrowIfNull(item);
             writer.Encode(Rlp.OfEmptyByteArray);
         }
+
+        protected override NonNullableItem DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            throw new NotSupportedException();
+    }
+
+    /// <summary>Reports <paramref name="length"/> bytes and writes one, as a scalar, so that no sequence check throws first.</summary>
+    private sealed class ShortWritingDecoder(int length) : RlpDecoder<NonNullableItem>
+    {
+        public override int GetLength(NonNullableItem? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => length;
+
+        public override void Encode(ref RlpWriter writer, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            writer.Encode(Rlp.OfEmptyByteArray);
 
         protected override NonNullableItem DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();

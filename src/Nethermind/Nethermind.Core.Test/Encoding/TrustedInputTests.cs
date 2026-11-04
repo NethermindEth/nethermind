@@ -93,4 +93,63 @@ public class TrustedInputTests
             Assert.That(() => decoderCase.DecodeAndEncode(truncated, mode), Throws.InstanceOf<RlpReaderException>(), $"length {length}");
         }
     }
+
+    [TestCaseSource(nameof(Cases))]
+    public void Full_checks_reject_a_longer_outer_prefix_than_needed(IDecoderCase decoderCase)
+    {
+        byte[] canonical = decoderCase.Canonical;
+        byte prefix = canonical[0];
+        // A zero byte in front of a long-form length, or the long form for a payload of less than 56 bytes.
+        byte[] longer = prefix switch
+        {
+            >= 0xf8 or (>= 0xb8 and < 0xc0) => [(byte)(prefix + 1), 0, .. canonical.AsSpan(1)],
+            >= 0xc0 => [0xf8, (byte)(prefix - 0xc0), .. canonical.AsSpan(1)],
+            _ => [0xb8, (byte)(prefix - 0x80), .. canonical.AsSpan(1)],
+        };
+
+        Assert.That(() => decoderCase.DecodeAndEncode(longer, RlpBehaviors.None), Throws.InstanceOf<RlpReaderException>());
+    }
+
+    public sealed record ExtraFieldCase(IDecoderCase DecoderCase, int[] Path)
+    {
+        public override string ToString() => DecoderCase.ToString()!;
+    }
+
+    // Stored values can hold more fields than this version writes, so the stores read them with AllowExtraBytes.
+    private static IEnumerable<ExtraFieldCase> ExtraFieldCases()
+    {
+        LogEntry log = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).TestObject;
+        TxReceipt frameReceipt = new()
+        {
+            TxType = TxType.FrameTx,
+            StatusCode = TxFrameReceipt.StatusSuccess,
+            GasUsedTotal = 21_000,
+            Sender = TestItem.AddressC,
+            Payer = TestItem.AddressA,
+            Logs = [log],
+            Bloom = new Bloom([log]),
+            FrameReceipts = [new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 5_000, [log])],
+        };
+        BlockHeader header = Build.A.BlockHeader.WithBaseFee(7).WithWithdrawalsRoot(TestItem.KeccakA).WithBlobGasUsed(1)
+            .WithExcessBlobGas(2).WithParentBeaconBlockRoot(TestItem.KeccakB).WithRequestsHash(TestItem.KeccakC)
+            .WithBlockAccessListHash(TestItem.KeccakD).WithSlotNumber(3).TestObject;
+
+        // The block info is the first item of the list that is the second field of the level.
+        yield return new ExtraFieldCase(new DecoderCase<ChainLevelInfo>("chain level", new ChainLevelDecoder(),
+            new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1000) { Metadata = BlockMetadata.Finalized })), [1, 0]);
+        yield return new ExtraFieldCase(new DecoderCase<BlockHeader>("header", new HeaderDecoder(), header), []);
+        yield return new ExtraFieldCase(new DecoderCase<TxReceipt>("compact frame receipt", CompactReceiptStorageDecoder.Instance,
+            frameReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts), []);
+    }
+
+    [Test]
+    public void Extra_field_reads_like_canonical_with_allow_extra_bytes(
+        [ValueSource(nameof(ExtraFieldCases))] ExtraFieldCase extraFieldCase,
+        [Values(RlpBehaviors.None, RlpBehaviors.TrustedInput)] RlpBehaviors mode)
+    {
+        IDecoderCase decoderCase = extraFieldCase.DecoderCase;
+        byte[] extended = RlpTestHelper.WithTrailingItem(decoderCase.Canonical, extraFieldCase.Path);
+
+        Assert.That(decoderCase.DecodeAndEncode(extended, mode | RlpBehaviors.AllowExtraBytes), Is.EqualTo(decoderCase.Canonical));
+    }
 }
