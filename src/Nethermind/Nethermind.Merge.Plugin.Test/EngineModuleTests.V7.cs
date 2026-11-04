@@ -2035,8 +2035,8 @@ public partial class EngineModuleTests
     /// when the helper awaits the block with <see cref="MergeTestBlockchain.WaitForCommitted"/>; without it that wait
     /// returns on the verdict while the hold outlasts the head update.
     /// A head update sent while the commit is held gets SYNCING once the budget runs out and leaves the head on the
-    /// parent. Queuing the payload before its verdict also checks that the helper calls the gated wait before updating
-    /// the head when newPayload exhausts its processing budget before execution starts.
+    /// parent. Queuing the payload before its verdict also checks that the helper calls the gated wait when newPayload
+    /// exhausts its processing budget before execution starts.
     /// </remarks>
     [Test]
     public async Task BuildAndInsertEmptyBlock_makes_its_block_the_head_when_its_commit_lags_its_verdict(
@@ -2076,7 +2076,7 @@ public partial class EngineModuleTests
         {
             if (queueBeforeVerdict)
             {
-                Assert.That(verdictWaitPending, Is.True, "the helper must call the gated wait before updating the head");
+                Assert.That(verdictWaitPending, Is.True, "the gated wait must still be pending on the queued block's verdict");
             }
             if (waitReachesCommit)
             {
