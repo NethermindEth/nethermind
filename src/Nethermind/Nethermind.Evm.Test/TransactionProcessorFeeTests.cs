@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -14,6 +15,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -154,6 +156,59 @@ public class TransactionProcessorFeeTests
         {
             Assert.That(tracer.Fees, Is.EqualTo((UInt256)525213));
             Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)58357));
+        }
+    }
+
+    [TestCase(false, false, true, TestName = "Destroyed_gas_beneficiary_of_successful_transaction_is_not_paid_without_EIP8037")]
+    [TestCase(false, true, true, TestName = "Destroyed_gas_beneficiary_of_successful_transaction_is_paid_and_kept_by_EIP8246_with_EIP8037_and_EIP7708")]
+    [TestCase(false, true, false, TestName = "Destroyed_gas_beneficiary_of_successful_transaction_is_paid_after_destruction_with_EIP8037_without_EIP7708")]
+    [TestCase(true, false, true, TestName = "Destroyed_gas_beneficiary_of_failed_transaction_is_paid_without_EIP8037")]
+    [TestCase(true, true, true, TestName = "Destroyed_gas_beneficiary_of_failed_transaction_is_paid_with_EIP8037")]
+    public void Destroyed_gas_beneficiary_payment(bool revert, bool eip8037, bool eip7708)
+    {
+        // Without EIP-7708 the destroy list is finalized before PayFees, so the fee is kept even without EIP-8246.
+        // This pins the current behaviour; no fork enables EIP-8037 without EIP-7708.
+        IReleaseSpec spec = !eip8037 ? Amsterdam.NoEip8037Instance
+            : eip7708 ? Amsterdam.Instance
+            : new OverridableReleaseSpec(Amsterdam.Instance) { IsEip7708Enabled = false, IsEip8246Enabled = false };
+        Address creator = ContractAddress.From(TestItem.AddressA, 0);
+        Address beneficiary = ContractAddress.From(creator, 1);
+
+        byte[] selfDestructInitCode = Prepare.EvmCode
+            .PushData(beneficiary)
+            .Op(Instruction.SELFDESTRUCT)
+            .Done;
+        Prepare initCode = Prepare.EvmCode
+            .Create(selfDestructInitCode, UInt256.Zero)
+            .Op(Instruction.POP);
+        if (revert)
+        {
+            initCode.Revert(0, 0);
+        }
+
+        Transaction tx = Build.A.Transaction
+            .WithGasPrice(10)
+            .WithMaxFeePerGas(10)
+            .WithType(TxType.EIP1559)
+            .WithGasLimit(5_000_000)
+            .WithCode(initCode.Done)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(beneficiary).WithBaseFeePerGas(1).WithTransactions(tx).WithGasLimit(30_000_000)
+            .TestObject;
+
+        FeesTracer feesTracer = new();
+        CallOutputTracer callOutputTracer = new();
+        _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), new CompositeTxTracer(feesTracer, callOutputTracer));
+
+        bool paid = revert || eip8037;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callOutputTracer.StatusCode, Is.EqualTo(revert ? StatusCode.Failure : StatusCode.Success));
+            Assert.That(feesTracer.Fees, Is.GreaterThan(UInt256.Zero));
+            Assert.That(_stateProvider.GetBalance(beneficiary), Is.EqualTo(paid ? feesTracer.Fees : UInt256.Zero));
+            Assert.That(_stateProvider.AccountExists(beneficiary), Is.EqualTo(paid));
+            Assert.That(_stateProvider.GetNonce(beneficiary), Is.EqualTo(0UL));
         }
     }
 

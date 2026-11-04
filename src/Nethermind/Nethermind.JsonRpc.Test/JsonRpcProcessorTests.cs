@@ -18,17 +18,21 @@ using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Threading;
-using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test;
 
-[Parallelizable(ParallelScope.Self)]
+[NonParallelizable]
 [TestFixture]
 public class JsonRpcProcessorTests
 {
@@ -76,7 +80,7 @@ public class JsonRpcProcessorTests
     }
 
     private static IBatchConcurrencyStrategy[] BatchConcurrencyStrategies(IJsonRpcConfig config) =>
-        [new EthCallBatchConcurrency(), new DebugTraceCallBatchConcurrency(config)];
+        [new EthCallBatchConcurrency(), new DebugTraceBatchConcurrency(config), new TraceTransactionBatchConcurrency(config)];
 
     private static JsonRpcContext CreateHttpContext() => new(RpcEndpoint.Http);
 
@@ -177,39 +181,149 @@ public class JsonRpcProcessorTests
         }
     }
 
-    [TestCase("203.0.113.7", null, " from 203.0.113.7")]
-    [TestCase("203.0.113.7", "198.51.100.1, 192.0.2.4", " from 203.0.113.7 (X-Forwarded-For: 198.51.100.1, 192.0.2.4)")]
-    [TestCase(null, null, "", TestName = "No remote address keeps the existing format")]
-    [TestCase(null, "198.51.100.1", "", TestName = "Forwarded header without a remote address keeps the existing format")]
-    public async Task Debug_logs_include_remote_address(string? remoteAddress, string? forwardedFor, string expectedSuffix)
+    private static IEnumerable<TestCaseData> RemoteAddressLogCases()
     {
+        (string? RemoteAddress, string? ForwardedFor, string Suffix)[] cases =
+        [
+            ("203.0.113.7", null, " from 203.0.113.7"),
+            ("203.0.113.7", "198.51.100.1, 192.0.2.4", " from 203.0.113.7 (X-Forwarded-For: 198.51.100.1, 192.0.2.4)"),
+            ("203.0.113.7", "private-forwarded-host", " from 203.0.113.7 (X-Forwarded-For: private-forwarded-host)"),
+            (null, null, ""),
+            (null, "198.51.100.1", "")
+        ];
+        foreach ((string? remoteAddress, string? forwardedFor, string suffix) in cases)
+        {
+            foreach (bool masked in new[] { false, true })
+                yield return new TestCaseData(remoteAddress, forwardedFor, masked && remoteAddress is not null ? " from [redacted]" : suffix, masked);
+        }
+    }
+
+    [TestCaseSource(nameof(RemoteAddressLogCases))]
+    public async Task Debug_logs_include_remote_address(string? remoteAddress, string? forwardedFor, string expectedSuffix, bool maskSensitiveData)
+    {
+        bool previous = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = maskSensitiveData;
+        try
+        {
+            IJsonRpcService service = CreateService(request => new JsonRpcErrorResponse
+            {
+                Id = request.Id,
+                Error = new Error { Code = ErrorCodes.MethodNotFound, Message = "test message" }
+            });
+            TestLogger logger = new();
+            JsonRpcProcessor processor = CreateProcessorWithLogger(service, logger);
+            JsonRpcContext context = new(RpcEndpoint.Http) { RemoteAddress = remoteAddress is null ? null : IPAddress.Parse(remoteAddress), ForwardedFor = forwardedFor };
+            await ProcessAsync(processor, CreateRequest("1", "eth_chainId"), context);
+            await ProcessAsync(processor, "{", context);
+            await ProcessAsync(processor, $"[{CreateRequest("2", "eth_chainId")}]", context);
+            await ProcessAsync(processor, "[1]", context);
+
+            string message = maskSensitiveData ? "[redacted]" : "test message";
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(logger.LogList, Is.SupersetOf(new[]
+                {
+                    $"JSON RPC request eth_chainId{expectedSuffix}",
+                    $"Error response handling JsonRpc Id:1 Method:eth_chainId | Code: {ErrorCodes.MethodNotFound} Message: {message}{expectedSuffix}",
+                    $"JSON RPC batch request 1/1 eth_chainId{expectedSuffix}",
+                    $"Invalid JSON-RPC batch item 1/1{expectedSuffix}."
+                }), string.Join(" | ", logger.LogList));
+                Assert.That(logger.LogList.IndexOf($"JSON RPC batch request 1/1 eth_chainId{expectedSuffix}"),
+                    Is.LessThan(logger.LogList.FindIndex(l => l.StartsWith("Error response handling JsonRpc Id:2 ", StringComparison.Ordinal))),
+                    "a batch item is logged before it runs");
+                Assert.That(logger.LogList, Has.Some.Match($@"^DEBUG/ERROR: Error during parsing/validation[^\n]*\.{Regex.Escape(expectedSuffix)}$"));
+                if (maskSensitiveData)
+                {
+                    if (remoteAddress is not null) Assert.That(logger.LogList, Has.None.Contains(remoteAddress));
+                    if (forwardedFor is not null) Assert.That(logger.LogList, Has.None.Contains(forwardedFor));
+                }
+            }
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+        }
+    }
+
+    [Test]
+    public async Task Missing_trie_diagnostics_mask_all_logs_without_changing_response([Values] bool maskSensitiveData, [Values] bool inBatch)
+    {
+        const string secret = "private-trie-address-path-98127";
+        bool previous = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = maskSensitiveData;
+        try
+        {
+            TestLogger logger = new();
+            OneLoggerLogManager logs = new(new(logger));
+            JsonRpcConfig config = CreateRecorderConfig(RpcRecorderState.Response);
+            List<string> records = [];
+            RpcModuleProvider provider = new(new Testably.Abstractions.RealFileSystem(), config, new EthereumJsonSerializer(), logs);
+            IEthRpcModule module = Substitute.For<IEthRpcModule>();
+            module.eth_getLogs(Arg.Any<Filter>()).Returns(_ => throw new MissingTrieNodeException(secret, null, TreePath.Empty, TestItem.KeccakA));
+            provider.Register(new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(module), true));
+            using GCKeeper gcKeeper = new(NoGCStrategy.Instance, logs);
+            JsonRpcService service = new(provider, logs, config, gcKeeper);
+            JsonRpcProcessor processor = new(service, config, CreateRecordingFileSystem(records), logs, null, BatchConcurrencyStrategies(config));
+            string request = CreateRequest("1", "eth_getLogs", "[{}]");
+            if (inBatch) request = CreateBatchRequest(request);
+
+            using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, CreateHttpContext());
+
+            CollectedJsonRpcResult only = AssertOnlyResult(result);
+            JsonRpcResponse response = inBatch ? only.BatchItems!.Single() : only.Response!;
+            Assert.That(response, Is.TypeOf<JsonRpcErrorResponse>());
+            Error error = ((JsonRpcErrorResponse)response).Error!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(error.Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
+                Assert.That(error.Message, Is.EqualTo(secret));
+                Assert.That(error.Data?.ToString(), Does.Contain(secret));
+                Assert.That(logger.LogList, Has.Some.Contains("Missing trie node during eth_getLogs"));
+                Assert.That(logger.LogList, Has.Some.Contains("Error response handling JsonRpc Id:1"));
+                Assert.That(logger.LogList, Has.Some.Contains("Error when handling Id:1"));
+                Assert.That(logger.LogList, Has.Some.Contains("Sending JSON RPC response:"));
+                Assert.That(logger.LogList.Any(line => line.Contains(secret)), Is.EqualTo(!maskSensitiveData));
+                if (maskSensitiveData) Assert.That(logger.LogList, Has.None.Contains(TestItem.KeccakA.ToString()));
+                Assert.That(records, Has.Some.Contains(secret));
+            }
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+        }
+    }
+
+    [Test]
+    public async Task Trace_logs_omit_request_parameters([Values] bool inBatch)
+    {
+        const string secret = "private-passphrase-74031";
         IJsonRpcService service = CreateService(request => new JsonRpcErrorResponse
         {
             Id = request.Id,
-            Error = new Error { Code = ErrorCodes.MethodNotFound, Message = "test message" }
+            Error = new Error { Code = ErrorCodes.InvalidParams, Message = "Invalid params" }
         });
         TestLogger logger = new();
-        JsonRpcProcessor processor = CreateProcessorWithLogger(service, logger);
-        JsonRpcContext context = new(RpcEndpoint.Http) { RemoteAddress = remoteAddress is null ? null : IPAddress.Parse(remoteAddress), ForwardedFor = forwardedFor };
-        await ProcessAsync(processor, CreateRequest("1", "eth_chainId"), context);
-        await ProcessAsync(processor, "{", context);
-        await ProcessAsync(processor, $"[{CreateRequest("2", "eth_chainId")}]", context);
-        await ProcessAsync(processor, "[1]", context);
+        string request = CreateRequest("1", "personal_unlockAccount", $"[\"0x1234\",\"{secret}\"]");
+        if (inBatch) request = CreateBatchRequest(request);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(logger.LogList, Is.SupersetOf(new[]
-            {
-                $"JSON RPC request eth_chainId{expectedSuffix}",
-                $"Error response handling JsonRpc Id:1 Method:eth_chainId | Code: {ErrorCodes.MethodNotFound} Message: test message{expectedSuffix}",
-                $"JSON RPC batch request 1/1 eth_chainId{expectedSuffix}",
-                $"Invalid JSON-RPC batch item 1/1{expectedSuffix}."
-            }), string.Join(" | ", logger.LogList));
-            Assert.That(logger.LogList.IndexOf($"JSON RPC batch request 1/1 eth_chainId{expectedSuffix}"),
-                Is.LessThan(logger.LogList.FindIndex(l => l.StartsWith("Error response handling JsonRpc Id:2 ", StringComparison.Ordinal))),
-                "a batch item is logged before it runs");
-            Assert.That(logger.LogList, Has.Some.Match($@"^DEBUG/ERROR: Error during parsing/validation[^\n]*\.{Regex.Escape(expectedSuffix)} Data"));
-        }
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateProcessorWithLogger(service, logger), request, CreateHttpContext());
+
+        Assert.That(logger.LogList, Has.Some.Contains("personal_unlockAccount(params omitted)"));
+        Assert.That(logger.LogList, Has.None.Contains(secret));
+    }
+
+    [Test]
+    public async Task Parse_error_log_omits_request_body()
+    {
+        const string secret = "private-passphrase-74031";
+        TestLogger logger = new();
+        string request = $"{{\"jsonrpc\":\"2.0\",\"params\":[\"{secret}\"]";
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(
+            CreateProcessorWithLogger(CreateService(r => new JsonRpcSuccessResponse { Id = r.Id }), logger), request, CreateHttpContext());
+
+        Assert.That(logger.LogList, Has.Some.Contains("Error during parsing/validation"));
+        Assert.That(logger.LogList, Has.None.Contains(secret));
     }
 
     [Test]
@@ -510,6 +624,50 @@ public class JsonRpcProcessorTests
             Assert.That(events.IndexOf("start 4"), Is.GreaterThan(events.IndexOf("end 3")), "a JavaScript tracer runs alone");
             Assert.That(events.IndexOf("start 5"), Is.GreaterThan(events.IndexOf("end 4")));
             Assert.That(events.IndexOf("start 6"), Is.GreaterThan(events.IndexOf("end 5")), "a tracer name that cannot be read runs alone");
+        }
+    }
+
+    [Test]
+    public async Task Batch_executes_buffered_transaction_traces_concurrently()
+    {
+        List<string> events = [];
+        TaskCompletionSource allBufferedStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int bufferedStartedCount = 0;
+        IJsonRpcService service = CreateAsyncService(async request =>
+        {
+            string id = request.Id.ToString();
+            lock (events) events.Add($"start {id}");
+            if (id is not "5")
+            {
+                if (Interlocked.Increment(ref bufferedStartedCount) == 4) allBufferedStarted.SetResult();
+                await allBufferedStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+
+            lock (events) events.Add($"end {id}");
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+
+        using CollectedJsonRpcResponses responses = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig
+        {
+            BatchProcessingConcurrency = 4,
+            EthModuleConcurrentInstances = 4,
+            DebugModuleConcurrentInstances = 4,
+            TraceModuleConcurrentInstances = 4,
+            EnableTracingStreamMode = false
+        }),
+            CreateBatchRequest(
+                CreateRequest("1", "debug_traceTransaction", """["0x01",{"tracer":"callTracer"}]"""),
+                CreateRequest("2", "trace_transaction", """["0x02"]"""),
+                CreateRequest("3", "debug_traceTransaction", """["0x03",{"tracer":"prestateTracer"}]"""),
+                CreateRequest("4", "trace_transaction", """["0x04",true]"""),
+                CreateRequest("5", "debug_traceTransaction", """["0x05"]""")),
+            CreateHttpContext());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AssertBatchResponse(responses, 5).BatchItems!.Select(static r => r.Id.ToString()), Is.EqualTo(new[] { "1", "2", "3", "4", "5" }));
+            Assert.That(events.IndexOf("start 4"), Is.LessThan(events.IndexOf("end 1")), "buffered transaction traces overlap");
+            Assert.That(events.IndexOf("start 5"), Is.GreaterThan(new[] { "end 1", "end 2", "end 3", "end 4" }.Max(events.IndexOf)), "a struct log trace may stream, so it runs alone");
         }
     }
 

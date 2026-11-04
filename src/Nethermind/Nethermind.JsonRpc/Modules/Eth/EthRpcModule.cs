@@ -538,8 +538,8 @@ public partial class EthRpcModule(
         ulong chainId = _blockchainBridge.GetChainId();
 
         LegacyTransactionForRpc legacyTx = (LegacyTransactionForRpc)rpcTx;
-        if (legacyTx.From is not { } from)
-            return ResultWrapper<FillTransactionResult>.Fail("from address not specified", ErrorCodes.InvalidInput);
+        // A missing sender is the zero address, as in geth and as the spec leaves from optional.
+        Address from = legacyTx.From ?? Address.Zero;
 
         // Fees are checked before the chain id, as they are when a transaction to send is filled; a request carrying
         // blobs has its sidecar checked first.

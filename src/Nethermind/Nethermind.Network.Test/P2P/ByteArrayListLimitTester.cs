@@ -37,6 +37,29 @@ namespace Nethermind.Network.Test.P2P
             Func<TMessage, int> itemCount,
             int items,
             bool shouldThrow)
+            where TMessage : P2PMessage =>
+            AssertLimitEnforced(serializer.Serialize, serializer.Deserialize, createMessage, itemCount, items, shouldThrow);
+
+        /// <remarks>Decodes through <see cref="MessageSerializationService"/>, which hands the packet buffer to an <see cref="IOwningMessageSerializer{T}"/>.</remarks>
+        public static void AssertLimitEnforced<TMessage>(
+            IMessageSerializer<TMessage> serializer,
+            Func<IByteArrayList, TMessage> createMessage,
+            Func<TMessage, int> itemCount,
+            int items,
+            bool shouldThrow)
+            where TMessage : P2PMessage
+        {
+            MessageSerializationService service = new(SerializerInfo.Create(serializer));
+            AssertLimitEnforced(serializer.Serialize, service.Deserialize<TMessage>, createMessage, itemCount, items, shouldThrow);
+        }
+
+        private static void AssertLimitEnforced<TMessage>(
+            Action<IByteBuffer, TMessage> serialize,
+            Func<IByteBuffer, TMessage> deserialize,
+            Func<IByteArrayList, TMessage> createMessage,
+            Func<TMessage, int> itemCount,
+            int items,
+            bool shouldThrow)
             where TMessage : P2PMessage
         {
             ArrayPoolList<byte[]> entries = new(items);
@@ -48,28 +71,28 @@ namespace Nethermind.Network.Test.P2P
             using TMessage message = createMessage(new ByteArrayListAdapter(entries));
 
             using DisposableByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer(items + 64).AsDisposable();
-            serializer.Serialize(buffer, message);
+            serialize(buffer, message);
             int referenceCountBeforeDecode = buffer.ReferenceCount;
 
             if (shouldThrow)
             {
-                Assert.Throws<RlpLimitException>(() => serializer.Deserialize(buffer));
+                Assert.Throws<RlpLimitException>(() => deserialize(buffer));
             }
             else
             {
-                DecodeAndAssertItemCount(serializer, buffer, itemCount, items);
+                DecodeAndAssertItemCount(deserialize, buffer, itemCount, items);
             }
 
             Assert.That(buffer.ReferenceCount, Is.EqualTo(referenceCountBeforeDecode), "packet buffer must not stay retained");
 
             // Scoped so the message is disposed before the reference count is read.
             static void DecodeAndAssertItemCount(
-                IZeroMessageSerializer<TMessage> serializer,
+                Func<IByteBuffer, TMessage> deserialize,
                 IByteBuffer buffer,
                 Func<TMessage, int> itemCount,
                 int items)
             {
-                using TMessage deserialized = serializer.Deserialize(buffer);
+                using TMessage deserialized = deserialize(buffer);
                 Assert.That(itemCount(deserialized), Is.EqualTo(items));
             }
         }

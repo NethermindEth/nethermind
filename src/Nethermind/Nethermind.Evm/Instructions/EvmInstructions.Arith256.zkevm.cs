@@ -37,7 +37,9 @@ public static unsafe partial class EvmInstructions
         if (!ZiskFlag.IsActive)
         {
             // Only SP1's runtime exports zkvm_uint256_mulmod, and only OpenVM's the division hint and its check.
-            if (Sp1Flag.IsActive)
+            if (AirbenderFlag.IsActive)
+                AirbenderMulMod256(in a, in b, in m, out result);
+            else if (Sp1Flag.IsActive)
                 Sp1MulMod256(in a, in b, in m, out result);
             else if (!OpenVmFlag.IsActive || a >= m || b >= m || !TryMulModHint(in a, in b, in m, out result))
                 UInt256.MultiplyMod(in a, in b, in m, out result);
@@ -70,10 +72,39 @@ public static unsafe partial class EvmInstructions
         public UInt256 Modulus;
     }
 
+    /// <remarks>
+    /// The delegation forms the 512-bit product from 32-byte aligned copies of the factors, which can come from
+    /// unaligned locals, and <see cref="WordDivision"/> reduces it on 32-bit digits.
+    /// </remarks>
+    [SkipLocalsInit]
+    private static void AirbenderMulMod256(in UInt256 a, in UInt256 b, in UInt256 m, out UInt256 result)
+    {
+        if (m.IsZero)
+        {
+            result = default;
+            return;
+        }
+
+        byte* buffer = stackalloc byte[3 * 32 + 31];
+        UInt256* words = (UInt256*)(((nuint)buffer + 31) & ~(nuint)31);
+        words[0] = a;
+        words[1] = a;
+        words[2] = b;
+        AirbenderArithmetic.MultiplyLow(words, words + 2);
+        AirbenderArithmetic.MultiplyHigh(words + 1, words + 2);
+        WordDivision.Remainder((uint*)words, in m, out result);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result)
     {
         Debug.Assert(!b.IsZero);
+        if (AirbenderFlag.IsActive)
+        {
+            WordDivision.DivRem(in a, in b, out result, out _);
+            return;
+        }
+
         if (!ZiskFlag.IsActive)
         {
             UInt256.Divide(in a, in b, out result);
@@ -89,6 +120,15 @@ public static unsafe partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void Mod256(in UInt256 a, in UInt256 b, out UInt256 result)
     {
+        if (AirbenderFlag.IsActive)
+        {
+            if (b.IsZero)
+                result = default;
+            else
+                WordDivision.DivRem(in a, in b, out _, out result);
+            return;
+        }
+
         if (!ZiskFlag.IsActive)
         {
             UInt256.Mod(in a, in b, out result);
@@ -98,6 +138,36 @@ public static unsafe partial class EvmInstructions
         Unsafe.SkipInit(out result);
         fixed (UInt256* pa = &a, pb = &b, pr = &result)
             ZiskArithmetic.Mod((ulong*)pa, (ulong*)pb, (ulong*)pr);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial void SignedDivide256(in UInt256 a, in UInt256 b, out UInt256 result)
+    {
+        if (!AirbenderFlag.IsActive)
+        {
+            Unsafe.SkipInit(out result);
+            Int256.Divide(
+                in Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in a)),
+                in Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in b)),
+                out Unsafe.As<UInt256, Int256>(ref result));
+            return;
+        }
+
+        // Truncating division of the magnitudes, negated when the signs differ.
+        bool negativeDividend = (long)a.u3 < 0;
+        bool negativeDivisor = (long)b.u3 < 0;
+        UInt256 dividend = negativeDividend ? Negate(in a) : a;
+        UInt256 divisor = negativeDivisor ? Negate(in b) : b;
+        WordDivision.DivRem(in dividend, in divisor, out result, out _);
+        if (negativeDividend != negativeDivisor)
+            result = Negate(in result);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static UInt256 Negate(in UInt256 value)
+    {
+        UInt256.Subtract(default, in value, out UInt256 negated);
+        return negated;
     }
 
     /// <summary>Takes <c>(a * b) mod m</c> from the runner, for <paramref name="a"/> and <paramref name="b"/> below <paramref name="m"/>.</summary>

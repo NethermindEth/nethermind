@@ -153,7 +153,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             }
 
             PublicKey nodeId = authMessage.PublicKey;
-            if (_logger.IsTrace) _logger.Trace($"Received AUTH v{authMessage.Version} from {nodeId}");
+            if (_logger.IsTrace) _logger.Trace($"Received AUTH v{authMessage.Version} from {nodeId:hide}");
 
             handshake.RemoteNodeId = nodeId;
             handshake.RecipientNonce = _cryptoRandom.GenerateRandomBytes(32);
@@ -245,11 +245,11 @@ namespace Nethermind.Network.Rlpx.Handshake
 
             SetSecrets(handshake, HandshakeRole.Initiator);
 
-            if (_logger.IsTrace) _logger.Trace($"Agreed secrets with {handshake.RemoteNodeId}");
+            if (_logger.IsTrace) _logger.Trace($"Agreed secrets with {handshake.RemoteNodeId:hide}");
 #if DEBUG
             if (_logger.IsTrace)
             {
-                _logger.Trace($"{handshake.RemoteNodeId} handshake secrets established (auth: {handshake.AuthPacket.Data.Length} bytes, ack: {handshake.AckPacket.Data.Length} bytes)");
+                _logger.Trace($"{handshake.RemoteNodeId:hide} handshake secrets established (auth: {handshake.AuthPacket.Data.Length} bytes, ack: {handshake.AckPacket.Data.Length} bytes)");
             }
 #endif
         }
