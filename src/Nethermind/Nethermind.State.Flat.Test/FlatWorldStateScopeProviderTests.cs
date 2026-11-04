@@ -392,6 +392,50 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void ClearStorage_WithOtherAccountsAndRewrites_RemovesOnlyTargetSlots([Values(0, 1, 128)] int slots)
+    {
+        using TestContext ctx = new();
+        SnapshotBundle bundle = ctx.SnapshotBundle;
+        Address target = TestItem.AddressA;
+        Address other = TestItem.AddressB;
+        Hash256 targetHash = Keccak.Compute(target.Bytes);
+        for (int i = 0; i < slots; i++)
+        {
+            bundle.SetChangedSlot(target, (UInt256)(ulong)i, i % 2 == 0 ? UInt256.Zero : (UInt256)11);
+            bundle.SetChangedSlot(other, (UInt256)(ulong)i, (UInt256)22);
+        }
+        if (slots > 0)
+        {
+            bundle.GetSlot(other, UInt256.Zero, bundle.DetermineSelfDestructSnapshotIdx(other), out UInt256? before);
+            Assert.That(before, Is.EqualTo((UInt256)22), "precondition: both accounts have current slot entries");
+        }
+
+        bundle.ClearStorage(target, targetHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < slots; i++)
+            {
+                UInt256 slot = (ulong)i;
+                bundle.GetSlot(target, slot, bundle.DetermineSelfDestructSnapshotIdx(target), out UInt256? cleared);
+                bundle.GetSlot(other, slot, bundle.DetermineSelfDestructSnapshotIdx(other), out UInt256? retained);
+                Assert.That(cleared, Is.Null, "the target's values and deletion entries must both be removed");
+                Assert.That(retained, Is.EqualTo((UInt256)22), "clearing one account must retain the other account's slots");
+            }
+        }
+
+        bundle.SetChangedSlot(target, UInt256.Zero, (UInt256)33);
+        bundle.GetSlot(target, UInt256.Zero, bundle.DetermineSelfDestructSnapshotIdx(target), out UInt256? rewritten);
+        Assert.That(rewritten, Is.EqualTo((UInt256)33), "writes after a clear register the account again");
+
+        bundle.ClearStorage(target, targetHash);
+        bundle.ClearStorage(target, targetHash);
+
+        bundle.GetSlot(target, UInt256.Zero, bundle.DetermineSelfDestructSnapshotIdx(target), out UInt256? clearedAgain);
+        Assert.That(clearedAgain, Is.Null, "a later clear must remove rewritten slots and a repeated clear must remain empty");
+    }
+
+    [Test]
     public void ClearStorage_empties_the_storage_root([Values] bool historical)
     {
         using TestContext ctx = new(historical: historical);
