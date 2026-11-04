@@ -499,7 +499,10 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/eest-fixtures
-          key: eest-${{ env.EEST_REPOSITORY }}-${{ steps.eest_release.outputs.version }}-${{ steps.eest_release.outputs.archive }}-${{ steps.eest_release.outputs.fixture_name }}
+          # Without an exact hit, actions/cache restores the newest key that starts with this one,
+          # so a fixture name that prefixes another (blockchain_tests, blockchain_tests_sync) must
+          # not end the key.
+          key: eest-${{ steps.eest_release.outputs.fixture_name }}-${{ env.EEST_REPOSITORY }}-${{ steps.eest_release.outputs.version }}-${{ steps.eest_release.outputs.archive }}
 
       - name: Download EEST fixtures
         env:
