@@ -27,6 +27,8 @@ namespace Nethermind.BeaconChain.P2P.Gossip;
 /// <paramref name="maxPendingVotes"/> instead, the import worker's vote queue, so their volume cannot take the room of a block.
 /// A peer none of whose votes was accepted yet gets a smaller fraction of that bound, and all such peers together a quarter of it:
 /// a new peer id costs nothing, so a fraction per peer alone grows with the ids one host makes.
+/// A peer with no accepted vote that sent a rejected vote has its other votes skipped unchecked for the rest of the wall slot. Each skip
+/// counts against it as a rejection, so it is dropped no later than if they were checked.
 /// Columns have a separate count and byte budget of the same size as the main budget; a column parked for its unseen block leaves it,
 /// held to the parking bounds of <see cref="ColumnGossipRouter"/> instead.
 /// A verdict not given within <paramref name="timeout"/> is abandoned, which the router treats the same way.
@@ -69,6 +71,9 @@ internal sealed class DeferredGossipValidation(
     private int _pendingColumns;
     private long _pendingColumnBytes;
     private int _pendingNewSourceVotes;
+    private readonly Lock _rejectedVoteSourcesLock = new();
+    private readonly HashSet<PeerId> _rejectedVoteSources = [];
+    private ulong _rejectedVoteSourcesSlot;
 
     internal Action<PeerId, string>? ReportRejectedMessage { get; init; }
 
@@ -159,25 +164,30 @@ internal sealed class DeferredGossipValidation(
     {
         // A message whose reservation expired before dispatch was released already; it is validated unreserved.
         Action? release = _reservations.TryRemove(message, out Reservation? reservation) ? reservation.Release : null;
+        bool vote = GossipMessageValidator.IsVote(message.Topic);
         GossipVerdict verdict = new(validity =>
         {
             bool applied = router.CompleteValidation(message, validity);
-            if (validity == MessageValidity.Accepted && GossipMessageValidator.IsVote(message.Topic))
+            if (validity == MessageValidity.Accepted && vote)
             {
                 _voteAcceptedSources.Set(source);
             }
             else if (validity == MessageValidity.Rejected)
             {
+                if (vote) MarkVoteSourceRejected(source);
                 ReportRejectedMessage?.Invoke(source, $"rejected gossip on {message.Topic}");
             }
             return applied;
-        }, release);
+        }, release)
+        {
+            SkipForRejectedSource = vote ? () => SkipVoteOfRejectedSource(source, message.Topic) : null,
+        };
         try
         {
             MessageValidity validity;
             try
             {
-                validity = validator.Validate(message, verdict, source);
+                validity = verdict.TrySkipForRejectedSource() ? MessageValidity.Throttled : validator.Validate(message, verdict, source);
             }
             catch (Exception e) when (e is not OutOfMemoryException)
             {
@@ -197,6 +207,53 @@ internal sealed class DeferredGossipValidation(
         {
             verdict.Abandon();
         }
+    }
+
+    // As GossipRouter's payload attestation rule, but for every vote: the cap bounds the set against peer id churn.
+    private void MarkVoteSourceRejected(PeerId source)
+    {
+        // An honest relay may forward one forged vote it could not check; a peer that delivered a valid vote keeps having its votes checked.
+        if (_voteAcceptedSources.Get(source))
+        {
+            return;
+        }
+
+        lock (_rejectedVoteSourcesLock)
+        {
+            HashSet<PeerId> sources = RejectedVoteSourcesOfThisSlot();
+            if (sources.Count < maxPendingVotes)
+            {
+                sources.Add(source);
+            }
+        }
+    }
+
+    // Every skip is charged, not only the first few of the slot: a peer id dropped for them may reconnect within the slot, and its new session
+    // must be dropped as fast, or the id never collects the drops that ban it.
+    private bool SkipVoteOfRejectedSource(PeerId source, string topic)
+    {
+        lock (_rejectedVoteSourcesLock)
+        {
+            if (!RejectedVoteSourcesOfThisSlot().Contains(source))
+            {
+                return false;
+            }
+        }
+
+        ReportRejectedMessage?.Invoke(source, $"skipped gossip on {topic} after a rejected vote this slot");
+        return true;
+    }
+
+    private HashSet<PeerId> RejectedVoteSourcesOfThisSlot()
+    {
+        ulong slot = validator.CurrentSlot;
+        if (slot != _rejectedVoteSourcesSlot)
+        {
+            _rejectedVoteSourcesSlot = slot;
+            _rejectedVoteSources.Clear();
+        }
+
+        return _rejectedVoteSources;
     }
 
     /// <summary>The room <see cref="Verify"/> reserved for one deferred message, released exactly once: by its verdict, or by expiry if never dispatched.</summary>
