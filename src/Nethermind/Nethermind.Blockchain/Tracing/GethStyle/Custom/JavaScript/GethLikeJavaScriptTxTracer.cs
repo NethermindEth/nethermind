@@ -462,7 +462,11 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         TracerFunctions functions = Capture(TracerFunctions.result, required: true) | Capture(TracerFunctions.fault, required: true);
         functions |= Capture(TracerFunctions.step) | Capture(TracerFunctions.enter) | Capture(TracerFunctions.exit);
         if (functions.HasFlag(TracerFunctions.enter) != functions.HasFlag(TracerFunctions.exit))
-            throw new ArgumentException("trace object must expose either both or none of enter() and exit()");
+        {
+            const string message = "trace object must expose either both or none of enter() and exit()";
+            if (_captureErrors) throw new ArgumentException(message);
+            throw new InvalidDataException(message);
+        }
 
         return functions | Capture(TracerFunctions.postStep) | Capture(TracerFunctions.setup);
 
@@ -475,9 +479,11 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
                 _callbacks.Add(function, callback);
                 return function;
             }
-            if (required) throw new ArgumentException(_captureErrors
-                ? $"trace object must expose required function {name}"
-                : $"trace object must expose a function {name}()");
+            if (required)
+            {
+                if (_captureErrors) throw new ArgumentException($"trace object must expose required function {name}");
+                throw new InvalidDataException($"trace object must expose a function {name}()");
+            }
             return TracerFunctions.none;
         }
     }

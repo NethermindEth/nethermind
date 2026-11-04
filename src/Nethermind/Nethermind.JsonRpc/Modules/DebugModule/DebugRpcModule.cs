@@ -218,13 +218,12 @@ public class DebugRpcModule(
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ErrorWrapper.DebugTrace(ex.Message), ErrorCodes.InvalidInput);
         }
-        catch (InvalidDataException ex) when (!string.IsNullOrEmpty(effective.Tracer))
+        catch (InvalidDataException ex) when (!string.IsNullOrEmpty(effective.Tracer)
+            && (effective.Tracer == "muxTracer" || !GethLikeNativeTracerFactory.IsNativeTracer(effective.Tracer)))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
-        catch (ArgumentException ex) when ((effective.Tracer == "prestateTracer" && ex.Message == "cannot use diffMode with includeEmpty")
-            || ex.Message is "trace object must expose a function result()" or "trace object must expose a function fault()"
-                or "trace object must expose either both or none of enter() and exit()")
+        catch (ArgumentException ex) when (effective.Tracer == "prestateTracer" && ex.Message == "cannot use diffMode with includeEmpty")
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }

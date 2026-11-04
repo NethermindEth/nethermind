@@ -239,6 +239,7 @@ public class Engine : IDisposable
         catch (ScriptEngineException ex) when (Regex.IsMatch(tracer.Trim(), @"\A[A-Za-z_$][A-Za-z0-9_$]*\z")
             && ex.Message == $"ReferenceError: {tracer.Trim()} is not defined")
         {
+            // Pack adds a leading '(', so the selector starts in column 2.
             int line = 1, column = 2;
             foreach (char character in tracer.AsSpan(0, tracer.Length - tracer.TrimStart().Length))
             {
