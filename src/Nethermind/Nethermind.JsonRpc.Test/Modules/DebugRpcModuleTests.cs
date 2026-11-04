@@ -16,6 +16,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -1161,6 +1162,63 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCase("unknownTracer", "ReferenceError: unknownTracer is not defined at <eval>:1:2(0)", false)]
+    [TestCase("unknownTracer", "ReferenceError: unknownTracer is not defined at <eval>:1:2(0)", true)]
+    [TestCase("_unknownTracer", "ReferenceError: _unknownTracer is not defined at <eval>:1:2(0)", false)]
+    [TestCase("_unknownTracer", "ReferenceError: _unknownTracer is not defined at <eval>:1:2(0)", true)]
+    [TestCase("$unknownTracer", "ReferenceError: $unknownTracer is not defined at <eval>:1:2(0)", false)]
+    [TestCase("$unknownTracer", "ReferenceError: $unknownTracer is not defined at <eval>:1:2(0)", true)]
+    [TestCase(" unknownTracer ", "ReferenceError: unknownTracer is not defined at <eval>:1:3(0)", false)]
+    [TestCase(" unknownTracer ", "ReferenceError: unknownTracer is not defined at <eval>:1:3(0)", true)]
+    [TestCase("toHex", "trace object must expose a function result()", false)]
+    [TestCase("toHex", "trace object must expose a function result()", true)]
+    [TestCase("{}", "trace object must expose a function result()", false)]
+    [TestCase("{}", "trace object must expose a function result()", true)]
+    [TestCase("{result:1,fault:function(){}}", "trace object must expose a function result()", false)]
+    [TestCase("{result:1,fault:function(){}}", "trace object must expose a function result()", true)]
+    [TestCase("{result:function(){return 7;}}", "trace object must expose a function fault()", false)]
+    [TestCase("{result:function(){return 7;}}", "trace object must expose a function fault()", true)]
+    [TestCase("{result:function(){},fault:1}", "trace object must expose a function fault()", false)]
+    [TestCase("{result:function(){},fault:1}", "trace object must expose a function fault()", true)]
+    [TestCase("{result:function(){},fault:function(){},enter:function(){},exit:1}", "trace object must expose either both or none of enter() and exit()", false)]
+    [TestCase("{result:function(){},fault:function(){},enter:function(){},exit:1}", "trace object must expose either both or none of enter() and exit()", true)]
+    public async Task Debug_traceCall_javascript_selector_errors(string tracer, string message, bool mux)
+    {
+        using Context ctx = await Context.Create();
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }) }
+            : new { tracer };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, "latest", options);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["result"], Is.Null);
+            Assert.That(json["error"]!["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(json["error"]!["message"]!.Value<string>(), Is.EqualTo(message));
+            Assert.That(json["error"]!["data"], Is.Null);
+        }
+    }
+
+    [TestCase("({fault:function(){},result:function(){return 7;}})", false)]
+    [TestCase("({fault:function(){},result:function(){return 7;}})", true)]
+    [TestCase("Object.create({fault:function(){},result:function(){return 7;}})", false)]
+    [TestCase("Object.create({fault:function(){},result:function(){return 7;}})", true)]
+    [TestCase("{fault:function(){},result:function(){return 7;},step:1,enter:1,exit:1,setup:1}", false)]
+    [TestCase("{fault:function(){},result:function(){return 7;},step:1,enter:1,exit:1,setup:1}", true)]
+    public async Task Debug_traceCall_javascript_selector_expressions(string tracer, bool mux)
+    {
+        using Context ctx = await Context.Create();
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }) }
+            : new { tracer };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, "latest", options);
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null);
+        Assert.That((mux ? json["result"]![tracer] : json["result"])!.Value<int>(), Is.EqualTo(7));
+    }
+
     [TestCase("[]", "json: cannot unmarshal array into Go value of type map[string]jsontext.Value")]
     [TestCase("1", "json: cannot unmarshal number into Go value of type map[string]jsontext.Value")]
     [TestCase("true", "json: cannot unmarshal bool into Go value of type map[string]jsontext.Value")]
@@ -1244,6 +1302,69 @@ public partial class DebugRpcModuleTests
             Assert.That(JToken.Parse(response)["error"], Is.Not.Null);
             Assert.That(disposed, Is.EqualTo(resultFailure ? 2 : 1));
         }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Debug_traceCall_mux_releases_engines_when_a_child_fails([Values] bool resultFailure)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        const string first = "{step:function(){},fault:function(){},result:function(){return {};}}";
+        const string failing = "{step:function(){},fault:function(){},result:function(){throw Error('mux child result failure');}}";
+        List<GethLikeBlockJavaScriptTracer> children = [];
+        List<Microsoft.ClearScript.V8.V8Runtime> runtimes = [];
+        List<Engine> engines = [];
+        GethTraceOptions options = new()
+        {
+            TracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [first] = new { }, [failing] = new { } })
+        };
+        Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> createChild = childOptions =>
+        {
+            if (!resultFailure && children.Count == 1) throw new ArgumentException("child construction failure");
+            GethLikeBlockJavaScriptTracer child = (GethLikeBlockJavaScriptTracer)Nethermind.Consensus.Tracing.GethStyleTracer.CreateOptionsTracer(
+                ctx.Blockchain.BlockTree.Head!.Header, childOptions, ctx.Blockchain.MainProcessingContext.WorldState, ctx.Blockchain.SpecProvider);
+            children.Add(child);
+            runtimes.Add(Field<Microsoft.ClearScript.V8.V8Runtime>(Field<object>(child, "_runtime"), "_runtime"));
+            return child;
+        };
+        Type muxType = typeof(Nethermind.Consensus.Tracing.GethStyleTracer).Assembly.GetType("Nethermind.Consensus.Tracing.GethLikeBlockMuxTracer", throwOnError: true)!;
+        IBlockTracer<GethLikeTxTrace>? mux = null;
+        try
+        {
+            if (!resultFailure)
+            {
+                System.Reflection.TargetInvocationException? failure = Assert.Throws<System.Reflection.TargetInvocationException>(() => CreateMux());
+                Assert.That(failure!.InnerException, Is.TypeOf<ArgumentException>().With.Message.EqualTo("child construction failure"));
+            }
+            else
+            {
+                mux = CreateMux();
+                mux.StartNewBlockTrace(Build.A.Block.TestObject);
+                mux.StartNewTxTrace(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithTo(TestItem.AddressB).TestObject);
+                foreach (GethLikeBlockJavaScriptTracer child in children)
+                    engines.Add(Field<Engine>(Field<object>(child, "_currentTxTracer"), "_engine"));
+                Assert.That(() => mux.EndTxTrace(), Throws.Exception.With.Message.Contains("mux child result failure"));
+            }
+        }
+        finally
+        {
+            (mux as IDisposable)?.Dispose();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtimes.Count, Is.EqualTo(resultFailure ? 2 : 1));
+            Assert.That(engines.Count, Is.EqualTo(resultFailure ? 2 : 0));
+            foreach (Microsoft.ClearScript.V8.V8Runtime runtime in runtimes)
+                Assert.That(() => { using Microsoft.ClearScript.V8.V8ScriptEngine engine = runtime.CreateScriptEngine(); }, Throws.TypeOf<ObjectDisposedException>());
+            foreach (Engine engine in engines)
+                Assert.That(() => engine.CreateTracer(first), Throws.TypeOf<ObjectDisposedException>());
+        }
+
+        IBlockTracer<GethLikeTxTrace> CreateMux() => (IBlockTracer<GethLikeTxTrace>)Activator.CreateInstance(muxType,
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [options, createChild], null)!;
+        static T Field<T>(object instance, string name) => (T)instance.GetType()
+            .GetField(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(instance)!;
     }
 
     [Test]
