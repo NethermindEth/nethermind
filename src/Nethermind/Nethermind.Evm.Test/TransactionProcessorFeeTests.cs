@@ -159,13 +159,18 @@ public class TransactionProcessorFeeTests
         }
     }
 
-    [TestCase(false, false, TestName = "Destroyed_gas_beneficiary_of_successful_transaction_is_not_paid_without_EIP8037")]
-    [TestCase(false, true, TestName = "Destroyed_gas_beneficiary_of_successful_transaction_is_paid_and_kept_by_EIP8246_with_EIP8037")]
-    [TestCase(true, false, TestName = "Destroyed_gas_beneficiary_of_failed_transaction_is_paid_without_EIP8037")]
-    [TestCase(true, true, TestName = "Destroyed_gas_beneficiary_of_failed_transaction_is_paid_with_EIP8037")]
-    public void Destroyed_gas_beneficiary_payment(bool revert, bool eip8037)
+    [TestCase(false, false, true, TestName = "Destroyed_gas_beneficiary_of_successful_transaction_is_not_paid_without_EIP8037")]
+    [TestCase(false, true, true, TestName = "Destroyed_gas_beneficiary_of_successful_transaction_is_paid_and_kept_by_EIP8246_with_EIP8037_and_EIP7708")]
+    [TestCase(false, true, false, TestName = "Destroyed_gas_beneficiary_of_successful_transaction_is_paid_after_destruction_with_EIP8037_without_EIP7708")]
+    [TestCase(true, false, true, TestName = "Destroyed_gas_beneficiary_of_failed_transaction_is_paid_without_EIP8037")]
+    [TestCase(true, true, true, TestName = "Destroyed_gas_beneficiary_of_failed_transaction_is_paid_with_EIP8037")]
+    public void Destroyed_gas_beneficiary_payment(bool revert, bool eip8037, bool eip7708)
     {
-        IReleaseSpec spec = eip8037 ? Amsterdam.Instance : Amsterdam.NoEip8037Instance;
+        // Without EIP-7708 the destroy list is finalized before PayFees, so the fee is kept even without EIP-8246.
+        // This pins the current behaviour; no fork enables EIP-8037 without EIP-7708.
+        IReleaseSpec spec = !eip8037 ? Amsterdam.NoEip8037Instance
+            : eip7708 ? Amsterdam.Instance
+            : new OverridableReleaseSpec(Amsterdam.Instance) { IsEip7708Enabled = false, IsEip8246Enabled = false };
         Address creator = ContractAddress.From(TestItem.AddressA, 0);
         Address beneficiary = ContractAddress.From(creator, 1);
 
@@ -203,6 +208,7 @@ public class TransactionProcessorFeeTests
             Assert.That(feesTracer.Fees, Is.GreaterThan(UInt256.Zero));
             Assert.That(_stateProvider.GetBalance(beneficiary), Is.EqualTo(paid ? feesTracer.Fees : UInt256.Zero));
             Assert.That(_stateProvider.AccountExists(beneficiary), Is.EqualTo(paid));
+            Assert.That(_stateProvider.GetNonce(beneficiary), Is.EqualTo(0UL));
         }
     }
 
