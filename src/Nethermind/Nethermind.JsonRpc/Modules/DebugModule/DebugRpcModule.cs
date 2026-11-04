@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.History;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Core;
@@ -60,7 +61,9 @@ public class DebugRpcModule(
     ICodeInfoRepository codeInfoRepository,
     IReceiptConfig receiptConfig,
     ISyncPointers syncPointers,
-    ISyncProgressResolver syncProgressResolver)
+    ISyncProgressResolver syncProgressResolver,
+    ISyncConfig syncConfig,
+    IHistoryPruner historyPruner)
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
@@ -157,13 +160,17 @@ public class DebugRpcModule(
     {
         if (receiptConfig.TxLookupLimit == ulong.MaxValue || syncProgressResolver.IsFastBlocksReceiptsFinished()) return false;
 
-        ulong highestPendingBlock = syncProgressResolver.SyncPivot.BlockNumber;
+        ulong pivotNumber = syncProgressResolver.SyncPivot.BlockNumber;
+        // The feed's cached barrier is unset until activation, unlike persisted receipt progress.
+        ulong barrier = Math.Max(1UL, Math.Min(pivotNumber, Math.Max(syncConfig.AncientBodiesBarrier, syncConfig.AncientReceiptsBarrier)));
+        barrier = Math.Max(barrier, historyPruner.CutoffBlockNumber ?? 0);
+        ulong highestPendingBlock = pivotNumber;
         if (syncPointers.LowestInsertedReceiptBlockNumber is { } lowestInserted)
         {
-            if (lowestInserted == 0) return false;
+            if (lowestInserted <= barrier) return false;
             highestPendingBlock = Math.Min(highestPendingBlock, lowestInserted - 1);
         }
-        if (highestPendingBlock == 0) return false;
+        if (highestPendingBlock < barrier) return false;
 
         ulong lastBlock = blockFinder.FindBestSuggestedHeader()?.Number ?? 0;
         return receiptConfig.TxLookupLimit is not > 0 || lastBlock < receiptConfig.TxLookupLimit.Value

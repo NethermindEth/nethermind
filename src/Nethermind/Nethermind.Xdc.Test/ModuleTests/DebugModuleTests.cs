@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.History;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Test;
@@ -64,7 +65,9 @@ public class DebugModuleTests
         Substitute.For<ICodeInfoRepository>(),
         new ReceiptConfig(),
         Substitute.For<ISyncPointers>(),
-        Substitute.For<ISyncProgressResolver>());
+        Substitute.For<ISyncProgressResolver>(),
+        new SyncConfig(),
+        Substitute.For<IHistoryPruner>());
 
     private Task<JsonRpcResponse> Request(string method, params object?[]? parameters) =>
         RpcTest.TestRequest<IDebugRpcModule>(CreateModule(), method, parameters);
