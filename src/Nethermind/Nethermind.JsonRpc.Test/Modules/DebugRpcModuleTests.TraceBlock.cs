@@ -1362,6 +1362,66 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCase("pending", "pending block is not available")]
+    [TestCase("safe", "safe block not found")]
+    [TestCase("finalized", "finalized block not found")]
+    public async Task Debug_traceBlockByNumber_unavailable_tag_returns_lookup_error(
+        string tag, string message, [Values] bool streamMode, [Values(null, "unknownTracer")] string? tracer)
+    {
+        using Context context = await Context.Create();
+        await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        context.Blockchain.BlockTree.ForkChoiceUpdated(null, null);
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
+            tag, new { tracer, streamMode });
+        JToken json = JToken.Parse(response);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(message), response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByNumber_available_tag_matches_number_and_sibling_traces(
+        [Values("latest", "safe", "finalized", "earliest")] string tag,
+        [Values] bool streamMode, [Values(null, "callTracer")] string? tracer)
+    {
+        using Context context = await Context.Create();
+        Block selected = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        await context.Blockchain.AddBlock([]);
+        context.Blockchain.BlockTree.ForkChoiceUpdated(selected.Hash, selected.Hash);
+        context.Blockchain.BlockTree.UpdateLowestServedBlock(selected.Number);
+        Block expected = tag == "latest" ? context.Blockchain.BlockTree.Head! : selected;
+        object options = new { tracer, streamMode };
+
+        JToken baseline = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule,
+            "debug_traceBlockByNumber", expected.Number, options));
+        Assert.That(baseline["error"], Is.Null, baseline.ToString());
+        JToken actual = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule,
+            "debug_traceBlockByNumber", tag, options));
+        JToken byHash = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule,
+            "debug_traceBlockByHash", expected.Hash!, options));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(baseline).Using(JToken.EqualityComparer));
+            Assert.That(byHash, Is.EqualTo(baseline).Using(JToken.EqualityComparer));
+        }
+        if (expected.Transactions.Length > 0)
+        {
+            JToken transaction = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule,
+                "debug_traceTransaction", expected.Transactions[0].Hash!, options));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(transaction["error"], Is.Null, transaction.ToString());
+                Assert.That(transaction["result"], Is.EqualTo(baseline["result"]![0]!["result"]).Using(JToken.EqualityComparer));
+            }
+        }
+    }
+
     [Test]
     public async Task Debug_traceBlockByNumber_streaming_matches_buffered_output([Values] bool enableMemory)
     {
