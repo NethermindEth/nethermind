@@ -60,8 +60,8 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 
     /// <summary>Whether this CPU has the features the published backend is built for.</summary>
     /// <remarks>The backend selects its arithmetic at compile time with no runtime fallback, so a missing feature would fault
-    /// on an illegal instruction at the first native call. The release images build it for x86-64-v3 with PCLMULQDQ or
-    /// aarch64 with AES (which includes PMULL), and this lists exactly the features those add (Dockerfile). It is checked only
+    /// on an illegal instruction at the first native call. The Nethermind.Crypto.Lean package builds it for x86-64-v3 with
+    /// PCLMULQDQ or aarch64 with AES (which includes PMULL), and this lists exactly the features those add. It is checked only
     /// when EIP-8288 is scheduled, so other chains keep the runtime's own minimum.</remarks>
     private static bool HasRequiredCpuFeatures() => RuntimeInformation.ProcessArchitecture switch
     {

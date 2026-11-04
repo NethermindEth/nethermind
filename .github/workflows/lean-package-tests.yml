@@ -1,0 +1,73 @@
+name: Lean package tests
+
+# Release builds take the EIP-8288 Lean backend from the pinned Nethermind.Crypto.Lean package. These jobs run the native
+# startup checks and real verifications against that package's library on a host of each architecture.
+on:
+  pull_request:
+    paths:
+      - Directory.Packages.props
+      - nuget.config
+      - tools/lean-ffi/**
+      - src/Nethermind/Nethermind.Crypto/NativeLeanProofVerifier.cs
+      - src/Nethermind/Nethermind.Crypto/Nethermind.Crypto.csproj
+      - src/Nethermind/Nethermind.Crypto.LeanFfi.Test/**
+      - .github/workflows/lean-package-tests.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test the package's Lean backend (${{ matrix.rid }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    env:
+      NATIVE_TEST_PROJECT: Nethermind.Crypto.LeanFfi.Test
+      LEANVM_NUM_THREADS: 1
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: linux-x64
+            runner: ubuntu-latest
+          - rid: linux-arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Set up Rust
+        run: |
+          toolchain=$(sed -n 's/^channel = "\(.*\)"$/\1/p' tools/lean-ffi/rust-toolchain.toml)
+          test -n "$toolchain"
+          rustup toolchain install "$toolchain" --profile minimal
+
+      # BuildLeanFfi builds the fixtures and a host-native library; the package's library then replaces the latter.
+      - name: Build the native tests
+        run: dotnet build "src/Nethermind/$NATIVE_TEST_PROJECT/$NATIVE_TEST_PROJECT.csproj" -c release --disable-build-servers -m:1 -p:BuildLeanFfi=true
+
+      - name: Restore the pinned package
+        run: dotnet restore src/Nethermind/Nethermind.Crypto/Nethermind.Crypto.csproj
+
+      - name: Replace the host-native library
+        run: |
+          version=$(sed -n 's|.*Include="Nethermind.Crypto.Lean" Version="\[\(.*\)\]".*|\1|p' Directory.Packages.props)
+          test -n "$version"
+          library="${NUGET_PACKAGES:-$HOME/.nuget/packages}/nethermind.crypto.lean/$version/runtimes/${{ matrix.rid }}/native/libnethermind_lean.so"
+          output="src/Nethermind/artifacts/bin/$NATIVE_TEST_PROJECT/release"
+          test -f "$output/libnethermind_lean.so"
+          cp "$library" "$output/libnethermind_lean.so"
+          sha256sum "$output/libnethermind_lean.so"
+
+      - name: Run startup checks and verifications
+        run: >-
+          dotnet test --project "src/Nethermind/$NATIVE_TEST_PROJECT/$NATIVE_TEST_PROJECT.csproj" -c release --no-build -p:BuildLeanFfi=true --
+          --filter "FullyQualifiedName~NativeBackendStartupTests|FullyQualifiedName~NativeLeanProofVerifierTests|FullyQualifiedName~NativeBlockValidationTests"

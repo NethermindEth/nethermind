@@ -2,37 +2,6 @@
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-# The EIP-8288 native Lean backend, loaded only on chains that schedule EIP-8288. It is cross-compiled on the build
-# platform for a fixed CPU baseline: tools/lean-ffi's target-cpu=native would tie the image to the builder's CPU.
-# leanVM needs carry-less multiply (pclmulqdq on x86-64, aes on aarch64; src/lib.rs fails the build without it) and has
-# no runtime fallback, so NativeLeanProofVerifier checks these baselines at startup and the two must stay in step.
-# EIP-8288 nodes therefore need x86-64-v3 with PCLMULQDQ (AVX2, BMI2, FMA: Haswell/Zen-class Core, Xeon, Ryzen or
-# EPYC) or ARMv8 with the AES and PMULL crypto extension. x86-64-v3 enables leanVM's AVX2 hash path, which proves and
-# verifies close to a native build.
-FROM --platform=$BUILDPLATFORM rust:1.99.0-slim-trixie@sha256:2752b332db73fdbb7dc576f06c82ed1f312005784ef913d7e04a28f5f55dc581 AS lean
-
-ARG BUILDARCH
-ARG TARGETARCH
-
-WORKDIR /lean
-
-COPY tools/lean-ffi .
-
-RUN case "$TARGETARCH" in \
-    amd64) target=x86_64-unknown-linux-gnu cc=x86_64-linux-gnu pkg=gcc-x86-64-linux-gnu flags="-C target-cpu=x86-64-v3 -C target-feature=+pclmulqdq" ;; \
-    arm64) target=aarch64-unknown-linux-gnu cc=aarch64-linux-gnu pkg=gcc-aarch64-linux-gnu flags="-C target-feature=+aes" ;; \
-    *) echo "Unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
-  esac && \
-  if [ "$TARGETARCH" != "$BUILDARCH" ]; then \
-    apt-get update && apt-get install -y --no-install-recommends $pkg libc6-dev-$TARGETARCH-cross && \
-    rm -rf /var/lib/apt/lists/* && \
-    export "CARGO_TARGET_$(echo $target | tr a-z- A-Z_)_LINKER=$cc-gcc"; \
-  fi && \
-  rustup target add $target && \
-  RUSTFLAGS="$flags --remap-path-prefix=$CARGO_HOME=/cargo" cargo build --release --locked --lib --target $target && \
-  cp target/$target/release/libnethermind_lean.so / && \
-  rm -rf target
-
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.403-resolute@sha256:667f3cee6f24afb202d3e32c7941e3800bbac57dd70bb68f89e52a6245aff88f AS build
 
 ARG BUILD_CONFIG=release
@@ -86,7 +55,6 @@ VOLUME /nethermind/nethermind_db
 EXPOSE 8545 8551 30303 30303/udp
 
 COPY --from=build /publish .
-COPY --from=lean /libnethermind_lean.so .
 COPY scripts/entrypoint.sh .
 
 ENTRYPOINT ["./entrypoint.sh"]
