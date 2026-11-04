@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -1018,7 +1019,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
         await request.WaitAsync(AnswerWait);
 
-        object copy = ((Array)QueuedCopiesField!.GetValue(handler)!).GetValue(0)!;
+        object copy = ((IList)QueuedCopiesField!.GetValue(handler)!)[0]!;
         await ((Task)copy.GetType().GetProperty("Left")!.GetValue(copy)!).WaitAsync(TimeSpan.FromSeconds(10));
         ValueHash256 sameList = (ValueHash256)copy.GetType().GetProperty("InclusionListDigest")!.GetValue(copy)!;
         processingQueue.ClearReceivedCalls();
@@ -1574,6 +1575,43 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
     }
 
+    /// <summary>
+    /// Tracking a copy drops the copies that have left the queue and keeps the others in the order they were queued,
+    /// with the new copy last.
+    /// </summary>
+    [Test]
+    public void TrackQueuedCopy_drops_copies_that_left_and_keeps_order()
+    {
+        MethodInfo? trackMethod = typeof(NewPayloadHandler).GetMethod("TrackQueuedCopy", BindingFlags.Instance | BindingFlags.NonPublic);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trackMethod, Is.Not.Null, "TrackQueuedCopy method not found - was it renamed?");
+            Assert.That(QueuedCopiesField, Is.Not.Null, "_queuedCopies field not found - was it renamed?");
+        }
+
+        using NewPayloadHandler handler = CreateHandler(PostMergeBlock(), AddBlockResult.Added, wasProcessed: false, validateSuggestedBlock: true);
+        Action<Hash256, ValueHash256?, Task> track = trackMethod!.CreateDelegate<Action<Hash256, ValueHash256?, Task>>(handler);
+        IList queuedCopies = (IList)QueuedCopiesField!.GetValue(handler)!;
+        PropertyInfo blockHashProperty = QueuedCopiesField.FieldType.GetGenericArguments()[0].GetProperty("BlockHash")!;
+
+        TaskCompletionSource first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        track(TestItem.KeccakA, null, first.Task);
+        track(TestItem.KeccakB, null, Task.CompletedTask);
+        track(TestItem.KeccakC, null, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+        track(TestItem.KeccakD, null, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+        Hash256[] afterD = [.. queuedCopies.Cast<object>().Select(copy => (Hash256)blockHashProperty.GetValue(copy)!)];
+
+        first.SetResult();
+        track(TestItem.KeccakE, null, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+        Hash256[] afterE = [.. queuedCopies.Cast<object>().Select(copy => (Hash256)blockHashProperty.GetValue(copy)!)];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterD, Is.EqualTo(new[] { TestItem.KeccakA, TestItem.KeccakC, TestItem.KeccakD }), "the completed copy is dropped, the rest keep their order");
+            Assert.That(afterE, Is.EqualTo(new[] { TestItem.KeccakC, TestItem.KeccakD, TestItem.KeccakE }), "a copy that left since the last call is dropped");
+        }
+    }
+
     private static int GetPendingValidationTaskCount(NewPayloadHandler handler)
     {
         Assert.That(BlockValidationTasksField, Is.Not.Null, "_blockValidationTasks field not found - was it renamed?");
@@ -1587,7 +1625,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     {
         Assert.That(QueuedCopiesField, Is.Not.Null, "_queuedCopies field not found - was it renamed?");
 
-        return [.. ((Array)QueuedCopiesField!.GetValue(handler)!).Cast<object>().Where(copy =>
+        return [.. ((IList)QueuedCopiesField!.GetValue(handler)!).Cast<object>().Where(copy =>
             (Hash256)copy.GetType().GetProperty("BlockHash")!.GetValue(copy)! == blockHash
             && !((Task)copy.GetType().GetProperty("Left")!.GetValue(copy)!).IsCompleted)];
     }

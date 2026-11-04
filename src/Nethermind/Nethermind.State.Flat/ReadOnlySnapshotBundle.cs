@@ -62,16 +62,16 @@ public sealed class ReadOnlySnapshotBundle(
         ? SlotFilterNotBuilt
         : SlotFilterSkipped;
 
-    private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
-    private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");
-    private static readonly StringLabel _readAccountPersistenceNullLabel = new("account_persistence_null");
-    private static readonly StringLabel _readStorageSnapshotLabel = new("storage_snapshot");
-    private static readonly StringLabel _readStoragePersistenceLabel = new("storage_persistence");
-    private static readonly StringLabel _readStoragePersistenceNullLabel = new("storage_persistence_null");
-    private static readonly StringLabel _readStateNodeSnapshotLabel = new("state_node_snapshot");
-    private static readonly StringLabel _readStorageNodeSnapshotLabel = new("storage_node_snapshot");
-    private static readonly StringLabel _readStateRlpLabel = new("state_rlp");
-    private static readonly StringLabel _readStorageRlpLabel = new("storage_rlp");
+    private static readonly StableStringLabel _readAccountSnapshotLabel = StableStringLabel.Get("account_snapshot");
+    private static readonly StableStringLabel _readAccountPersistenceLabel = StableStringLabel.Get("account_persistence");
+    private static readonly StableStringLabel _readAccountPersistenceNullLabel = StableStringLabel.Get("account_persistence_null");
+    private static readonly StableStringLabel _readStorageSnapshotLabel = StableStringLabel.Get("storage_snapshot");
+    private static readonly StableStringLabel _readStoragePersistenceLabel = StableStringLabel.Get("storage_persistence");
+    private static readonly StableStringLabel _readStoragePersistenceNullLabel = StableStringLabel.Get("storage_persistence_null");
+    private static readonly StableStringLabel _readStateNodeSnapshotLabel = StableStringLabel.Get("state_node_snapshot");
+    private static readonly StableStringLabel _readStorageNodeSnapshotLabel = StableStringLabel.Get("storage_node_snapshot");
+    private static readonly StableStringLabel _readStateRlpLabel = StableStringLabel.Get("state_rlp");
+    private static readonly StableStringLabel _readStorageRlpLabel = StableStringLabel.Get("storage_rlp");
 
     /// <summary>Starts reading persisted accounts and slots ahead of use. Keys held by the in-memory snapshots are read from there later, so a prefetch of them only warms a cache.</summary>
     public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
