@@ -1132,14 +1132,18 @@ public partial class DebugRpcModuleTests
         AssertJavascriptOwnedExpiry("debug_traceBlockByNumber", false, timeout, expiry, "none", selectedAt, mux);
 
     [Test]
-    public Task Specified_block_javascript_owned_expiry_discards_partial_results(
+    public async Task Specified_block_javascript_owned_expiry_discards_partial_results(
         [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
         [Values] bool streamMode, [Values("before", "after")] string expiry,
-        [Values("none", "step", "setup", "construction")] string failure) =>
-        AssertJavascriptOwnedExpiry(method, streamMode, "1s", expiry, failure);
+        [Values("none", "step", "setup", "construction")] string failure)
+    {
+        await AssertJavascriptOwnedExpiry(method, streamMode, "1s", expiry, failure);
+        if (failure == "step")
+            await AssertJavascriptOwnedExpiry(method, streamMode, "1s", expiry, failure, ordinaryMessage: "ordinary failure");
+    }
 
     private static async Task AssertJavascriptOwnedExpiry(string method, bool streamMode, string timeout, string expiry,
-        string failure, int? selectedAt = null, bool mux = false)
+        string failure, int? selectedAt = null, bool mux = false, string ordinaryMessage = "execution timeout")
     {
         DeadlineExecution clock = new() { Expiry = expiry, DeliverOnlyAtTarget = selectedAt.HasValue };
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -1157,7 +1161,7 @@ public partial class DebugRpcModuleTests
         string script = selectedAt.HasValue ? "{fault:function(){},result:function(){return {};}}"
             : failure == "construction" ? "{"
             : "{fault:function(){}," + (failure == "setup" ? "setup:function(){throw Error('ordinary setup failure');}," : "")
-                + "step:function(){" + (failure == "step" ? "throw Error('execution timeout');" : "") + "},result:function(){return {};}}";
+                + "step:function(){" + (failure == "step" ? $"throw Error('{ordinaryMessage}');" : "") + "},result:function(){return {};}}";
         Dictionary<string, object> options = new()
         {
             ["tracer"] = mux ? "muxTracer" : script,
