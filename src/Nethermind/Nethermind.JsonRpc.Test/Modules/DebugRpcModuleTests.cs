@@ -68,6 +68,7 @@ public partial class DebugRpcModuleTests
     {
         List<Hash256?> executed = [];
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain())
+            .WithFlatDb(false)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = stream })
             .WithReceiptConfig(new ReceiptConfig { TxLookupLimit = 0 })
             .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new PrefixCountingAdapter(inner, executed)));
@@ -123,6 +124,7 @@ public partial class DebugRpcModuleTests
         [Values] bool stream)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain())
+            .WithFlatDb(false)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = stream }).Build();
         Block block = chain.BlockTree.Head!;
         Assert.That(block.Transactions, Is.Not.Empty);
