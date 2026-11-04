@@ -224,7 +224,6 @@ public sealed class FlatStateActivationPolicy(
         {
             { Layout: FlatLayout.PreimageFlat or FlatLayout.PreimageFlatV1 } => $"FlatDb.{nameof(IFlatDbConfig.Layout)}={flatDbConfig.Layout}, which keys state by preimages the trie state does not hold",
             { HistoryEnabled: true } => $"FlatDb.{nameof(IFlatDbConfig.HistoryEnabled)}, whose capture reads flat state the migration has not copied yet",
-            { TrieNodeLogEnabled: true } => $"FlatDb.{nameof(IFlatDbConfig.TrieNodeLogEnabled)}, whose writes can block block processing behind the migration",
             _ => null,
         };
         if (conflict is not null)

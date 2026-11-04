@@ -264,13 +264,14 @@ public class FlatStateActivationPolicyTests
         }
     }
 
-    [TestCase(Flags.MigrateFromPruningTrieState | Flags.PatriciaHasData, true, Description = "Starts migrating")]
-    [TestCase(Flags.MigrateFromPruningTrieState | Flags.PatriciaHasData | Flags.FastSync, true, Description = "Starts migrating, fast without snap")]
-    [TestCase(Flags.MigrateFromPruningTrieState, false, Description = "Nothing to migrate on a fresh node")]
-    [TestCase(Flags.Migrating | Flags.FlatHasData | Flags.PatriciaHasData, true, Description = "A restart keeps migrating without the flag")]
-    public void Migrating_from_patricia_runs_on_flat_and_records_the_start(Flags flags, bool expectMigrating)
+    [TestCase(Flags.MigrateFromPruningTrieState | Flags.PatriciaHasData, false, true, Description = "Starts migrating")]
+    [TestCase(Flags.MigrateFromPruningTrieState | Flags.PatriciaHasData | Flags.FastSync, false, true, Description = "Starts migrating, fast without snap")]
+    [TestCase(Flags.MigrateFromPruningTrieState, false, false, Description = "Nothing to migrate on a fresh node")]
+    [TestCase(Flags.Migrating | Flags.FlatHasData | Flags.PatriciaHasData, false, true, Description = "A restart keeps migrating without the flag")]
+    [TestCase(Flags.Migrating | Flags.FlatHasData | Flags.PatriciaHasData, true, true, Description = "A restart keeps migrating with the trie node log")]
+    public void Migrating_from_patricia_runs_on_flat_and_records_the_start(Flags flags, bool trieNodeLogEnabled, bool expectMigrating)
     {
-        PolicySetup setup = CreateSetup(flags | Flags.Enabled, FlatLayout.Flat, 32.GiB, LimboLogs.Instance);
+        PolicySetup setup = CreateSetup(flags | Flags.Enabled, FlatLayout.Flat, 32.GiB, LimboLogs.Instance, trieNodeLogEnabled: trieNodeLogEnabled);
 
         using (Assert.EnterMultipleScope())
         {
@@ -279,16 +280,16 @@ public class FlatStateActivationPolicyTests
         }
     }
 
-    [TestCase(Flags.MigrateFromPruningTrieState | Flags.FlatDataKeys, FlatLayout.Flat, false, false, "leftover data", Description = "Leftover flat data")]
-    [TestCase(Flags.MigrateFromPruningTrieState, FlatLayout.PreimageFlat, false, false, "Layout=PreimageFlat", Description = "Preimage layout")]
-    [TestCase(Flags.MigrateFromPruningTrieState, FlatLayout.Flat, true, false, "HistoryEnabled", Description = "Flat history")]
-    [TestCase(Flags.Migrating | Flags.FlatHasData, FlatLayout.Flat, false, true, "TrieNodeLogEnabled", Description = "Trie node log on a restart")]
-    public void Migrating_from_patricia_refuses_what_it_cannot_serve(Flags flags, FlatLayout layout, bool historyEnabled, bool trieNodeLogEnabled, string expected)
+    [TestCase(Flags.MigrateFromPruningTrieState | Flags.FlatDataKeys, FlatLayout.Flat, false, "leftover data", Description = "Leftover flat data")]
+    [TestCase(Flags.MigrateFromPruningTrieState, FlatLayout.PreimageFlat, false, "Layout=PreimageFlat", Description = "Preimage layout")]
+    [TestCase(Flags.MigrateFromPruningTrieState, FlatLayout.Flat, true, "HistoryEnabled", Description = "Flat history")]
+    [TestCase(Flags.Migrating | Flags.FlatHasData, FlatLayout.Flat, true, "HistoryEnabled", Description = "Flat history on a restart")]
+    public void Migrating_from_patricia_refuses_what_it_cannot_serve(Flags flags, FlatLayout layout, bool historyEnabled, string expected)
     {
         SpyFlatColumnsDb flatDb = new();
 
         InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(() => CreateSetup(flags | Flags.Enabled | Flags.PatriciaHasData, layout, 32.GiB,
-            LimboLogs.Instance, historyEnabled: historyEnabled, trieNodeLogEnabled: trieNodeLogEnabled, flatDb: flatDb))!;
+            LimboLogs.Instance, historyEnabled: historyEnabled, flatDb: flatDb))!;
 
         using (Assert.EnterMultipleScope())
         {
