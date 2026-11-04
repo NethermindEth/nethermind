@@ -52,7 +52,13 @@ public partial class DebugRpcModuleTests
     public Task Buffered_deadline_runs_through_seeded_parallel_and_filtered_execution_by_hash(bool indexed, bool filtered, string expiry) =>
         AssertBufferedDeadlineRoute(indexed, filtered, expiry, byHash: true);
 
-    private static async Task AssertBufferedDeadlineRoute(bool indexed, bool filtered, string expiry, bool byHash)
+    [Test]
+    public Task Specified_block_native_deadlines_cover_seeded_parallel_and_filtered_execution(
+        [Values] bool byHash, [Values("noopTracer", "keccak256PreimageTracer", "stateGasTracer")] string tracer,
+        [Values] bool filtered, [Values("reset", "before", "after")] string expiry) =>
+        AssertBufferedDeadlineRoute(indexed: true, filtered: filtered, expiry: expiry, byHash: byHash, tracer: tracer);
+
+    private static async Task AssertBufferedDeadlineRoute(bool indexed, bool filtered, string expiry, bool byHash, string tracer = "callTracer")
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
@@ -80,7 +86,7 @@ public partial class DebugRpcModuleTests
         clock.Cancel = () => probe.Cancel!();
         GethTraceOptions options = new()
         {
-            Tracer = "callTracer",
+            Tracer = tracer,
             Timeout = TimeSpan.FromSeconds(1),
             DeadlineClock = clock,
             TxHash = filtered ? block.Transactions[2].Hash : null
