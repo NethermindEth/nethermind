@@ -302,6 +302,36 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(trace, fault is null ? new[] { step } : new[] { step, fault });
     }
 
+    /// <remarks>
+    /// Before Berlin, Geth prices SELFDESTRUCT wholly as dynamic gas: its constant gas, which an underflow reports, is 0,
+    /// and a new beneficiary costs 30000 in one charge.
+    /// </remarks>
+    [TestCase(false, "ff", 21000UL, new[] { "step:0:stack underflow (0 <=> 1)", "postStep:0" })]
+    [TestCase(true, "ff", 21000UL, new[] { "step:5000:stack underflow (0 <=> 1)", "postStep:5000" })]
+    [TestCase(false, "61beefff", 26002UL, new[] { "step:30000:out of gas", "postStep:30000" })]
+    [TestCase(false, "61beefff", 100000UL, new[] { "step:30000:", "postStep:30000" })]
+    [TestCase(true, "61beefff", 100000UL, new[] { "step:32600:", "postStep:32600" })]
+    public void Self_destruct_callbacks_report_geth_cost(bool berlin, string code, ulong gasLimit, string[] expected)
+    {
+        const string userTracer = """
+            {
+                events: [],
+                step: function(log) { if (log.op.toNumber() === 0xff) this.events.push("step:" + log.getCost() + ":" + (log.getError() || "")); },
+                postStep: function(log) { if (log.op.toNumber() === 0xff) this.events.push("postStep:" + log.getCost()); },
+                fault: function(log) { if (log.op.toNumber() === 0xff) this.events.push("fault:" + log.getCost() + ":" + log.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(userTracer);
+        ForkActivation activation = berlin ? MainnetSpecProvider.CancunActivation : (MainnetSpecProvider.ByzantiumBlockNumber, 0);
+        (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, Bytes.FromHexString(code));
+        tracer.StartNewBlockTrace(block);
+        ExecuteTraced(tracer, block, transaction);
+        tracer.EndBlockTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, expected);
+    }
+
     [TestCase("600051", 3, "0", "aa", false)]
     [TestCase("60bb600052", 3, "0,187", "bb", true)]
     [TestCase("60bb600053", 3, "0,187", "bb", false)]

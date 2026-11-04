@@ -226,10 +226,9 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.BLOCKHASH).Done, 22UL, GasCostOf.BlockHash).SetArgDisplayNames("BLOCKHASH"),
         new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).PushData(0).PushData(TestItem.AddressC).Op(Instruction.EXTCODECOPY).Done, 715UL,
             GasCostOf.ExtCodeEip150 + GasCostOf.Memory + GasCostOf.Memory).SetArgDisplayNames("EXTCODECOPY"),
-        new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.SELFDESTRUCT).Done, 4000UL, GasCostOf.SelfDestructEip150).SetArgDisplayNames("SELFDESTRUCT"),
-        new TestCaseData(Prepare.EvmCode.PushData(32).PushData(0).PushData(0).PushData(TestItem.AddressC).Op(Instruction.EXTCODECOPY).Done, 711UL, GasCostOf.ExtCodeEip150).SetArgDisplayNames("EXTCODECOPY base"),
         // Before Berlin, Geth prices SELFDESTRUCT's base cost as part of its dynamic cost.
-        new TestCaseData(Prepare.EvmCode.PushData(TestItem.AddressF).Op(Instruction.SELFDESTRUCT).Done, 5002UL, GasCostOf.SelfDestructEip150 + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT base"),
+        new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.SELFDESTRUCT).Done, 4000UL, GasCostOf.SelfDestructEip150 + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT"),
+        new TestCaseData(Prepare.EvmCode.PushData(32).PushData(0).PushData(0).PushData(TestItem.AddressC).Op(Instruction.EXTCODECOPY).Done, 711UL, GasCostOf.ExtCodeEip150).SetArgDisplayNames("EXTCODECOPY base"),
         new TestCaseData(Prepare.EvmCode.PushData(TestItem.AddressF).Op(Instruction.SELFDESTRUCT).Done, 30002UL, GasCostOf.SelfDestructEip150 + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT new account"),
     ];
 
