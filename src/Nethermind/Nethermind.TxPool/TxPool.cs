@@ -2325,8 +2325,8 @@ namespace Nethermind.TxPool
             {
                 _broadcaster.StopBroadcast(tx.Hash!);
                 if (allowLaterPoolReentrance) _hashCache.DeleteFromLongTerm(tx.Hash!);
-                // A tx dropped for its balance that starts the blob cascade is marked again by it in the same step,
-                // so a repeat is always the last entry.
+                // A tx dropped for its balance is marked again in the same iteration when it starts the blob
+                // cascade or the cascade is already on, so a repeat is always the last entry.
                 if (drops is not null && (drops.Count == 0 || !ReferenceEquals(drops[^1], tx))) drops.Add(tx);
                 updateTx(transactions, tx, null, lastElement);
                 // Evict all following txs to prevent nonce gaps between blob tx, but a keyed tx spends no account

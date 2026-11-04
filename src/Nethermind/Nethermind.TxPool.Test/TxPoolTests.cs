@@ -2543,9 +2543,9 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task Head_update_completes_when_the_head_state_of_a_dropped_tx_sender_is_missing()
+        public async Task Head_update_completes_when_the_head_state_of_a_dropped_tx_sender_is_missing([Values] bool senderAStateMissing)
         {
-            bool senderAStateMissing = false;
+            Address missingSender = null;
             IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
             state.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(callInfo =>
             {
@@ -2553,18 +2553,21 @@ namespace Nethermind.TxPool.Test
                 return true;
             });
             state.GetNonce(Arg.Any<Address>()).Returns(callInfo =>
-                senderAStateMissing && callInfo.Arg<Address>() == TestItem.AddressA ? throw MissingHeadState() : 0ul);
+                callInfo.Arg<Address>() == missingSender ? throw MissingHeadState() : 0ul);
             _txPool = CreatePool(
                 specProvider: GetCancunSpecProvider(),
                 chainHeadInfoProvider: new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, state));
 
-            // Nonce 1 leaves a gap behind the account nonce, so the bucket update drops both on the next head.
-            Transaction[] txs = [.. new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB }.Select(key => Build.A.Transaction
-                .WithNonce(1)
+            // Nonces 1 and 2 leave a gap behind the account nonce, so the bucket update drops all four on the next
+            // head. A second drop per sender takes the cached nonce, which must stay unknown for the missing sender
+            // and must not carry over from the sender before it.
+            PrivateKey[] keys = [TestItem.PrivateKeyA, TestItem.PrivateKeyB];
+            Transaction[][] txs = [.. keys.Select(key => Enumerable.Range(1, 2).Select(nonce => Build.A.Transaction
+                .WithNonce((ulong)nonce)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .SignedAndResolved(_ethereumEcdsa, key).TestObject)];
-            foreach (Transaction tx in txs)
+                .SignedAndResolved(_ethereumEcdsa, key).TestObject).ToArray())];
+            foreach (Transaction tx in txs.SelectMany(senderTxs => senderTxs))
             {
                 Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             }
@@ -2572,13 +2575,14 @@ namespace Nethermind.TxPool.Test
             List<Transaction> evicted = [];
             _txPool.EvictedPending += (_, e) => evicted.Add(e.Transaction);
 
-            senderAStateMissing = true;
+            int missing = senderAStateMissing ? 0 : 1;
+            missingSender = keys[missing].Address;
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
-                Assert.That(evicted, Is.EqualTo(new[] { txs[1] }), "only the drop whose inclusion the head state rules out is surfaced");
+                Assert.That(evicted, Is.EqualTo(txs[1 - missing]), "only the drops whose inclusion the head state rules out are surfaced");
             }
         }
 
