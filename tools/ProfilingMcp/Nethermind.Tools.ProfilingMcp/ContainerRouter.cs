@@ -76,7 +76,7 @@ internal sealed class ContainerRouter : IAsyncDisposable
                 McpClient client = await sidecar.Value.WaitAsync(cancellationToken);
                 return await client.CallToolAsync(new CallToolRequestParams { Name = call.Name, Arguments = arguments }, cancellationToken);
             }
-            catch (Exception e) when (e is not OperationCanceledException)
+            catch (Exception e) when (e is not OperationCanceledException && IsGone(sidecar.Value))
             {
                 // A sidecar that failed to start, or ended with its container, is started afresh by the next call.
                 if (_sidecars.TryRemove(new KeyValuePair<(string?, string), Lazy<Task<McpClient>>>(key, sidecar)) && sidecar.Value.IsCompletedSuccessfully)
@@ -84,6 +84,10 @@ internal sealed class ContainerRouter : IAsyncDisposable
                 throw;
             }
         };
+
+    /// <summary>Whether a sidecar failed to start or its connection closed, as opposed to one call failing while others still use it.</summary>
+    internal static bool IsGone(Task<McpClient> sidecar) =>
+        sidecar.IsCompleted && (!sidecar.IsCompletedSuccessfully || sidecar.Result.Completion.IsCompleted);
 
     /// <summary>Splits the container and engine arguments from the ones for the tool.</summary>
     /// <returns>Whether the call names a container.</returns>

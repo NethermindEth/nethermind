@@ -66,24 +66,35 @@ public sealed class DotTraceLocator(WorkspacePaths paths, ILogger<DotTraceLocato
         Uri url = new($"https://api.nuget.org/v3-flatcontainer/{lowerId}/{Version}/{lowerId}.{Version}.nupkg");
         logger.LogInformation("Downloading {Url}", url);
 
-        string tempDir = installDir + ".partial";
-        if (Directory.Exists(tempDir))
-            Directory.Delete(tempDir, recursive: true);
+        // Names of their own, because other server processes sharing this home may be downloading at the same time.
+        string tempDir = $"{installDir}.{Guid.NewGuid():N}.partial";
+        string packageFile = $"{installDir}.{Guid.NewGuid():N}.nupkg";
+        try
+        {
+            // Zip extraction needs a seekable stream, so download to disk first.
+            using (HttpClient http = new())
+            await using (Stream download = await http.GetStreamAsync(url, cancellationToken))
+            await using (FileStream file = File.Create(packageFile))
+                await download.CopyToAsync(file, cancellationToken);
 
-        // Zip extraction needs a seekable stream, so download to disk first.
-        string packageFile = installDir + ".nupkg";
-        using (HttpClient http = new())
-        await using (Stream download = await http.GetStreamAsync(url, cancellationToken))
-        await using (FileStream file = File.Create(packageFile))
-            await download.CopyToAsync(file, cancellationToken);
+            await ZipFile.ExtractToDirectoryAsync(packageFile, tempDir, cancellationToken);
 
-        await ZipFile.ExtractToDirectoryAsync(packageFile, tempDir, cancellationToken);
-        File.Delete(packageFile);
+            if (!OperatingSystem.IsWindows())
+                MarkExecutable(Path.Combine(tempDir, "tools"));
 
-        if (!OperatingSystem.IsWindows())
-            MarkExecutable(Path.Combine(tempDir, "tools"));
+            Directory.Move(tempDir, installDir);
+        }
+        catch (IOException) when (Directory.Exists(toolsDir))
+        {
+            // Another process installed it first.
+        }
+        finally
+        {
+            File.Delete(packageFile);
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
 
-        Directory.Move(tempDir, installDir);
         return toolsDir;
     }
 

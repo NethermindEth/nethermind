@@ -175,9 +175,11 @@ internal static class ContainerSidecar
         if (environment.GetValueOrDefault("DOTNET_EnableDiagnostics") == "0" || environment.GetValueOrDefault("DOTNET_EnableDiagnostics_IPC") == "0")
             throw new InvalidOperationException($"Container '{container}' disables the .NET diagnostics port (DOTNET_EnableDiagnostics=0), so it cannot be profiled.");
 
-        string temp = environment.GetValueOrDefault("TMPDIR") is { Length: > 0 } tmpdir ? tmpdir.TrimEnd('/') : "/tmp";
-        return new Target(config.GetProperty("Image").GetString()!, temp);
+        return new Target(config.GetProperty("Image").GetString()!, TempFolder(environment.GetValueOrDefault("TMPDIR")));
     }
+
+    internal static string TempFolder(string? tmpdir) =>
+        tmpdir is not { Length: > 0 } ? "/tmp" : tmpdir.TrimEnd('/') is { Length: > 0 } trimmed ? trimmed : "/";
 
     /// <summary>Returns the sidecar image for this server, pulling or building it when the engine does not have it.</summary>
     /// <remarks>

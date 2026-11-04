@@ -138,6 +138,17 @@ public sealed class Reporter(DotTraceLocator locator)
             startInfo.ArgumentList.Add("--overwrite");
 
             using Process process = Process.Start(startInfo)!;
+            await using CancellationTokenRegistration kill = cancellationToken.Register(() =>
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch (InvalidOperationException)
+                {
+                    // It has already exited.
+                }
+            });
             Task<string> stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
             Task<string> stderr = process.StandardError.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);

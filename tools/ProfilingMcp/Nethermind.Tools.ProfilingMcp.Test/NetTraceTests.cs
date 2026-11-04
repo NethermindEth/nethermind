@@ -69,6 +69,32 @@ public class NetTraceTests
 
     [Test]
     [CancelAfter(120_000)]
+    public async Task Caches_a_bounded_number_of_traces(CancellationToken cancellationToken)
+    {
+        string directory = Directory.CreateTempSubdirectory("nettrace-cache-").FullName;
+        try
+        {
+            string first = Path.Combine(directory, "0.nettrace");
+            await CpuSampler.CollectAsync(Environment.ProcessId, TimeSpan.FromSeconds(1), first, cancellationToken);
+            NetTraceReader reader = new();
+            for (int i = 0; i <= NetTraceReader.CachedTraces; i++)
+            {
+                string trace = Path.Combine(directory, $"{i}.nettrace");
+                if (i > 0)
+                    File.Copy(first, trace);
+                reader.Read(trace);
+            }
+
+            Assert.That(reader.CachedCount, Is.LessThanOrEqualTo(NetTraceReader.CachedTraces));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Test]
+    [CancelAfter(120_000)]
     public async Task Samples_own_allocations_with_the_allocating_method(CancellationToken cancellationToken)
     {
         string trace = Path.Combine(Path.GetTempPath(), $"alloc-{Guid.NewGuid():N}.nettrace");

@@ -38,7 +38,7 @@ public sealed class TraceTools(DotTraceSessionManager sessions, Reporter reporte
 
         NetTraceProfile profile = netTrace.Read(trace);
         StringBuilder sb = new();
-        sb.Append($"Trace saved: {trace} ({new FileInfo(trace).Length / (1 << 20):N0} MB)\n");
+        sb.Append($"Trace saved: {paths.ForPerson(trace)} ({new FileInfo(trace).Length / (1 << 20):N0} MB)\n");
         sb.Append($"{profile.Threads} managed threads over {profile.DurationMs / 1000:N1} s.\n");
 
         GcSummary gc = profile.Gc;

@@ -60,4 +60,21 @@ public class ContainerRouterTests
     [TestCase("1.0.0+", ExpectedResult = null)]
     [TestCase(null, ExpectedResult = null)]
     public string? Names_the_published_sidecar_image_by_commit(string? serverVersion) => ContainerSidecar.PublishedImage(serverVersion);
+
+    [TestCase(null, ExpectedResult = "/tmp")]
+    [TestCase("", ExpectedResult = "/tmp")]
+    [TestCase("/", ExpectedResult = "/")]
+    [TestCase("//", ExpectedResult = "/")]
+    [TestCase("/data/tmp/", ExpectedResult = "/data/tmp")]
+    public string Finds_the_target_temp_folder(string? tmpdir) => ContainerSidecar.TempFolder(tmpdir);
+
+    [Test]
+    public void Keeps_a_sidecar_that_is_starting_and_drops_one_that_failed_to_start()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ContainerRouter.IsGone(new TaskCompletionSource<ModelContextProtocol.Client.McpClient>().Task), Is.False);
+            Assert.That(ContainerRouter.IsGone(Task.FromException<ModelContextProtocol.Client.McpClient>(new InvalidOperationException())), Is.True);
+        }
+    }
 }

@@ -28,8 +28,11 @@ public sealed record NetTraceProfile(
     IReadOnlyList<ExceptionStat> Exceptions);
 
 /// <summary>Reads EventPipe traces written by <see cref="CpuSampler"/> or <c>dotnet-trace</c>, caching the result per file.</summary>
+/// <remarks>A parsed trace keeps every call path, so the cache is cleared, but for the trace being read, when it grows past <see cref="CachedTraces"/>.</remarks>
 public sealed partial class NetTraceReader
 {
+    internal const int CachedTraces = 4;
+
     private readonly ConcurrentDictionary<string, (DateTime Written, Lazy<NetTraceProfile> Profile)> _cache = new(StringComparer.Ordinal);
 
     public static bool IsNetTrace(string path) => path.EndsWith(".nettrace", StringComparison.OrdinalIgnoreCase);
@@ -45,7 +48,21 @@ public sealed partial class NetTraceReader
             path,
             p => (written, new Lazy<NetTraceProfile>(() => Load(p))),
             (p, existing) => existing.Written == written ? existing : (written, new Lazy<NetTraceProfile>(() => Load(p))));
+        if (_cache.Count > CachedTraces)
+            Evict(keep: path);
+
         return entry.Profile.Value;
+    }
+
+    internal int CachedCount => _cache.Count;
+
+    private void Evict(string keep)
+    {
+        foreach (string other in _cache.Keys)
+        {
+            if (other != keep)
+                _cache.TryRemove(other, out _);
+        }
     }
 
     /// <remarks>

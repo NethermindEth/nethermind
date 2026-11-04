@@ -75,7 +75,7 @@ Nothing is copied into the target container. No bind mounts are used, so nothing
   3. else one built from the install's `linux-x64` folder with `sidecar.Dockerfile`, on .NET's `mcr.microsoft.com/dotnet/runtime-deps:10.0` image, or on the target's image when the engine cannot pull that. Building sends about 70 MB to the engine.
 
   Set `PROFILING_MCP_SIDECAR_IMAGE` in the server's environment to `local` to skip the pull, as for a server built with uncommitted changes, or to an image to use instead. Old images and sidecars can be removed with `docker image rm` and `docker rm -f`.
-- Traces, reports, heap statistics and dumps go to a `profmcp-home-<container>` volume and are kept across sessions. `trace_report` gives the `docker cp` command that copies the page to this machine. A dump is first written to the target's temp folder, then moved into the volume; it is as large as the target's memory and needs that much free disk in both places.
+- Traces, reports, heap statistics and dumps go to a `profmcp-home-<container>` volume and are kept across sessions until the volume is removed with `docker volume rm profmcp-home-<container>` (stop the sidecar first). `cpu_sample`, `alloc_sample` and `trace_report` give the `docker cp` command that copies their file to this machine. A dump is first written to the target's temp folder, then moved into the volume; it is as large as the target's memory and needs that much free disk in both places.
 
 Verified against a hoodi node on `nethermindeth/nethermind:master` (.NET 10.0.14), and on a separate Docker engine against targets running as root, as an unprivileged user, and with a custom `TMPDIR`. Things that differ from a local Windows process:
 
@@ -88,7 +88,7 @@ Verified against a hoodi node on `nethermindeth/nethermind:master` (.NET 10.0.14
 
 - Reading a PID makes the runtime run a full blocking GC, during which it reports every surviving object; expect a pause of roughly 0.5 s per GB of live heap. The server holds the object graph in memory for `heap_retention`: on a heap of 2.2 million objects it peaked at 340 MB, and it grows with the object and reference count.
 - The runtime names nested types without their declaring type (`Bucket[]`, `Entry<System.String, System.Int32>[]`), so unrelated nested types of the same name are counted together. `heap_retention` shows which types hold them; a dump gives full names.
-- `heap_retention` keeps a visited-object map for its root search; `maxVisited` bounds its memory on very large heaps.
+- `heap_retention` keeps a visited-object map for its root search; `maxVisited` bounds that map on very large heaps, but not the object graph read before it, which takes memory in proportion to the heap's objects and references.
 - Sizes from `heap_stats` are shallow (an object's own size, excluding what it references).
 - EventPipe samples managed threads only. Time a thread spends in native code, whether working (such as KZG) or blocked, is own time of the managed method that called it, so blocking waits are told apart by method name as with dotTrace.
 - dotTrace Sampling times are wall-clock milliseconds summed over all threads, so idle threads dominate a mostly idle process. `trace_hotspots` hides known blocking waits by default (`hideWaits`), but total times of callers still include them. Bracketed rows such as `[Native or optimized code]` are profiler pseudo-frames, and on Linux they also absorb time native threads spend blocked.
