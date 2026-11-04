@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -234,7 +233,11 @@ namespace Nethermind.Trie
         {
             _blockAndFlags = _dirtyMask;
             _nodeData = node._nodeData?.Clone();
+            CopyTakenChildrenFrom(node);
         }
+
+        /// <summary>Gives this clone the branch slots <paramref name="node"/> has recorded as changed.</summary>
+        partial void CopyTakenChildrenFrom(TrieNode node);
 
         public TrieNode(NodeType nodeType)
         {
@@ -1343,7 +1346,7 @@ namespace Nethermind.Trie
         private static TrieNode ResolveHashedChild(ITrieNodeResolver tree, ref TreePath childPath, ref object? data, ReadOnlySpan<byte> hash)
         {
             // Not interned: both interned hashes are of payloads short enough to be embedded rather than hashed.
-            Hash256 keccak = new(in MemoryMarshal.AsRef<ValueHash256>(hash));
+            Hash256 keccak = ReadChildHash(hash);
             TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
             data = child;
             return child;

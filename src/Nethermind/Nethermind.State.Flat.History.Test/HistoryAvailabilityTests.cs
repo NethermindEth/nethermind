@@ -14,7 +14,9 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Test;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.State.Flat.History.Test;
 
@@ -32,9 +34,11 @@ public class HistoryAvailabilityTests
     public void SetUp()
     {
         _directory = TempPath.GetTempDirectory();
-        _columns = new ColumnsDb<FlatHistoryColumns>(_directory.Path, new DbSettings(nameof(HistoryAvailabilityTests), _directory.Path), new DbConfig(),
-            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
-            LimboLogs.Instance, Enum.GetValues<FlatHistoryColumns>());
+        DbConfig dbConfig = new();
+        _columns = (ColumnsDb<FlatHistoryColumns>)new RocksDbFactory(
+                new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+                dbConfig, new HyperClockCacheWrapper(), new RealFileSystem(), LimboLogs.Instance, _directory.Path)
+            .CreateColumnsDb<FlatHistoryColumns>(new DbSettings(nameof(HistoryAvailabilityTests), _directory.Path));
         using (IWriteBatch batch = AvailableBlocks.StartWriteBatch())
         {
             HistoryAvailability.MarkBlock(batch, MarkedBlock, TestItem.KeccakA, HistoryAvailability.FormatVersion);
@@ -57,9 +61,10 @@ public class HistoryAvailabilityTests
         bool matched = true;
         for (int i = 0; i < 10; i++) matched &= _availability.RootMatches(MarkedBlock, TestItem.KeccakA);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Reads; i++) matched &= _availability.RootMatches(MarkedBlock, TestItem.KeccakA);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = AllocationWindows.AllocatedBytes(() =>
+        {
+            for (int i = 0; i < Reads; i++) matched &= _availability.RootMatches(MarkedBlock, TestItem.KeccakA);
+        });
 
         using (Assert.EnterMultipleScope())
         {
@@ -133,9 +138,10 @@ public class HistoryAvailabilityTests
         availability.PublishGlobalFloor(MarkedBlock - 2);
         bool matched = availability.Matches(MarkedBlock, TestItem.KeccakA);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Reads; i++) matched &= availability.Matches(MarkedBlock, TestItem.KeccakA);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = AllocationWindows.AllocatedBytes(() =>
+        {
+            for (int i = 0; i < Reads; i++) matched &= availability.Matches(MarkedBlock, TestItem.KeccakA);
+        });
 
         using (Assert.EnterMultipleScope())
         {

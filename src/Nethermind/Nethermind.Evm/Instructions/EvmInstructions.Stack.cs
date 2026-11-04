@@ -146,7 +146,7 @@ public static partial class EvmInstructions
                 : (nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size)) is Instruction.JUMP or Instruction.JUMPI))
         {
             // If next instruction is a JUMP we can skip the PUSH+POP from stack
-            ushort destination = Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter));
+            ushort destination = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref bytes, programCounter));
             destination = BinaryPrimitives.ReverseEndianness(destination);
             // With lazy analysis the destination may not be analyzed yet, and analyzing it here would put a call into
             // this handler, so unless a JUMPI will not be taken, and so never validates it, the push and the jump run

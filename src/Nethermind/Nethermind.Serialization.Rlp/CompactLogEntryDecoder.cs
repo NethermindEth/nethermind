@@ -94,6 +94,13 @@ namespace Nethermind.Serialization.Rlp
             return topics.ToArray();
         }
 
+        /// <inheritdoc cref="IReceiptRefTopicDecoder.StartDecodingTopics"/>
+        public static int StartDecodingTopics(ref RlpReader reader) => reader.ReadSequenceLength() + reader.Position;
+
+        /// <inheritdoc cref="IReceiptRefTopicDecoder.DecodeTopic"/>
+        /// <remarks>Every topic is checked as <see cref="DecodeTopics"/> checks it: an RLP null throws.</remarks>
+        public static void DecodeTopic(ref RlpReader reader, scoped Span<byte> topic) => reader.DecodeZeroPrefixKeccakNonNull(topic);
+
         public override void Encode<TWriter>(ref TWriter writer, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)

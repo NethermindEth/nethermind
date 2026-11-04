@@ -11,6 +11,7 @@ using System.Threading;
 using System.Xml;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Logging.NLog;
 using Nethermind.Seq.Config;
 using NLog;
 using NLog.Common;
@@ -231,6 +232,29 @@ public static class NLogConfigurator
                 // Clear it up; otherwise, internally it will keep requesting localhost as `all` target includes this.
                 ClearSeqTarget();
             }
+        }
+    }
+
+    /// <summary>Returns the logger for errors that end the process.</summary>
+    /// <remarks>
+    /// Reuses the configured <see cref="NLogManager"/> so the errors reach the configured log file: setting up another
+    /// one retargets the shared file target to its own file. A default <c>nethermind.log</c> setup is created only when
+    /// none has been configured yet, and <paramref name="fallback"/> is returned when that fails.
+    /// </remarks>
+    internal static ILogger GetCriticalLogger(ILogger fallback)
+    {
+        if (Nethermind.Logging.Static.LogManager is NLogManager configured)
+            return configured.GetClassLogger<Program>();
+
+        try
+        {
+            return new NLogManager("nethermind.log").GetClassLogger<Program>();
+        }
+        catch
+        {
+            if (fallback.IsWarn) fallback.Warn("File logging failed. Using console logging.");
+
+            return fallback;
         }
     }
 

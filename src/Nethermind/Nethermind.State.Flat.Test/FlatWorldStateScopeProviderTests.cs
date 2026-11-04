@@ -727,6 +727,11 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(() =>
         {
             using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+            if (hasStorage)
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
+                storageBatch.Set((UInt256)1, (UInt256)0xBEEF);
+            }
             writeBatch.Set(address, null);
         }, Throws.Nothing);
         Assert.That(scope.Get(address), Is.Null);
@@ -1452,6 +1457,34 @@ public class FlatWorldStateScopeProviderTests
 
         Assert.That(CollectNodes(new StateTrieStoreAdapter(ctx.SnapshotBundle), scope.RootHash).Nodes,
             Is.EquivalentTo(CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Nodes));
+    }
+
+    [Test]
+    public void Storage_root_of_an_account_set_in_the_same_write_batch_reaches_the_state_root()
+    {
+        Account account = new(1, 1);
+        UInt256 slot = 1;
+        UInt256 value = 42;
+
+        RawTrieStore expectedStore = new(new TestMemDb());
+        StateTree expectedState = new(expectedStore.GetTrieStore(null), LimboLogs.Instance);
+        StorageTree expectedStorage = new(expectedStore.GetTrieStore(TestItem.AddressA.ToAccountPath.ToHash256()), LimboLogs.Instance);
+        expectedStorage.Set(slot, value.ToMinimalBigEndian());
+        expectedStorage.Commit();
+        expectedState.Set(TestItem.AddressA, account.WithChangedStorageRoot(expectedStorage.RootHash));
+        expectedState.Commit();
+
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(TestItem.AddressA, account);
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+            storageBatch.Set(slot, value);
+        }
+        scope.Commit(1);
+
+        Assert.That(scope.RootHash, Is.EqualTo(expectedState.RootHash));
     }
 
     [Test]
