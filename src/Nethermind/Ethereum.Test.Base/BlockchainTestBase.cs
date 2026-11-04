@@ -115,10 +115,10 @@ public abstract class BlockchainTestBase
         ITestBlockTracer? tracer = null,
         ISpecProvider? specProvider = null)
     {
+        Assert.That(test.LoadFailure, Is.Null, $"test data loading failure in {test.Name}");
         _logger.Info($"Running {test.Name}, Network: [{test.Network!.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
         if (test.NetworkAfterTransition is not null)
             _logger.Info($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
-        Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
         specProvider ??= CreateSpecProvider(test);
 
