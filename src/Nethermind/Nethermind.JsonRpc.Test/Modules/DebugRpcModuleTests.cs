@@ -1219,6 +1219,41 @@ public partial class DebugRpcModuleTests
         Assert.That((mux ? json["result"]![tracer] : json["result"])!.Value<int>(), Is.EqualTo(7));
     }
 
+    [Test]
+    public async Task Debug_traceCall_javascript_retains_selected_callbacks(
+        [Values("accessor-order", "selected-result", "function-alias")] string scenario, [Values] bool mux)
+    {
+        (string tracer, string expected) = scenario switch
+        {
+            "accessor-order" => ("""
+                {events:[],
+                 get result(){this.events.push('result');return function(){this.events.push('result-call');return this.events.join(',');};},
+                 get fault(){this.events.push('fault');return function(){};},
+                 get step(){this.events.push('step');return function(){};},
+                 get enter(){this.events.push('enter');return function(){};},
+                 get exit(){this.events.push('exit');return function(){};},
+                 get setup(){this.events.push('setup');return function(){this.events.push('setup-call');};}}
+                """, "result,fault,step,enter,exit,setup,setup-call,result-call"),
+            "selected-result" => ("""
+                {reads:0,get result(){return ++this.reads===1
+                    ? function(){return 'retained';}:function(){return 'reselected';};},fault:function(){}}
+                """, "retained"),
+            "function-alias" => ("""
+                (function(){function tracer(){return 'aliased';}tracer.result=tracer;tracer.fault=tracer;return tracer;})()
+                """, "aliased"),
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario))
+        };
+        using Context ctx = await Context.Create();
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }) }
+            : new { tracer };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, "latest", options);
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        Assert.That((mux ? json["result"]![tracer] : json["result"])!.Value<string>(), Is.EqualTo(expected), response);
+    }
+
     [TestCase("[]", "json: cannot unmarshal array into Go value of type map[string]jsontext.Value")]
     [TestCase("1", "json: cannot unmarshal number into Go value of type map[string]jsontext.Value")]
     [TestCase("true", "json: cannot unmarshal bool into Go value of type map[string]jsontext.Value")]
