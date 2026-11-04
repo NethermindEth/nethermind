@@ -568,10 +568,10 @@ public class GethStyleTracerTests
             if (!cancelDuringRelease) external.Cancel();
             failure = Assert.Throws<OperationCanceledException>(() => scope!.BeforeEmission!())!;
         }
+        Assert.That(clock.Timers, Has.Count.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(failure.CancellationToken, Is.EqualTo(external.Token));
-            Assert.That(clock.Timers, Has.Count.EqualTo(1));
             Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(1));
         }
     }
