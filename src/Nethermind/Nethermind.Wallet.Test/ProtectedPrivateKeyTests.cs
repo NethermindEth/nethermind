@@ -28,11 +28,13 @@ public class ProtectedPrivateKeyTests
 
         try
         {
-            ProtectedPrivateKey key;
+            PrivateKey unprotected;
             Directory.SetCurrentDirectory(otherDirectory.FullName);
             try
             {
-                key = new(TestItem.PrivateKeyA, keyStoreDir);
+                // Both Protect and Unprotect run while the working directory is switched.
+                ProtectedPrivateKey key = new(TestItem.PrivateKeyA, keyStoreDir);
+                unprotected = key.Unprotect();
             }
             finally
             {
@@ -44,7 +46,7 @@ public class ProtectedPrivateKeyTests
                 Assert.That(Directory.EnumerateFiles(Path.Combine(keyStoreDir.GetApplicationResourcePath(), "protection_keys")).Count(), Is.EqualTo(1));
                 Assert.That(otherDirectory.EnumerateFileSystemInfos(), Is.Empty);
 
-                Assert.That(key.Unprotect(), Is.EqualTo(TestItem.PrivateKeyA));
+                Assert.That(unprotected, Is.EqualTo(TestItem.PrivateKeyA));
             }
         }
         finally
