@@ -86,6 +86,7 @@ internal class EraReaderTests
     [TestCase(3U, 0U, 2UL, TestName = "Duplicate number in pre-merge epoch")]
     [TestCase(3U, 0U, 3UL, TestName = "Number past the last block")]
     [TestCase(0U, 3U, 2UL, TestName = "Duplicate number in post-merge epoch")]
+    [TestCase(0U, 3U, 0UL, TestName = "Number below its slot in post-merge epoch")]
     public async Task VerifyContent_HeaderNumberDiffersFromSlot_ThrowsEraVerificationException(uint preMergeCount, uint postMergeCount, ulong storedNumber)
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount, postMergeCount);
