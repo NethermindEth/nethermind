@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -108,6 +109,102 @@ public class TrieNodeLogTests
 
     private static long SecondLevelStoredStateBytes() =>
         Metrics.TrieNodeLogSecondLevelStoredBytes.TryGetValue(TrieNodeLogLabel.State, out long bytes) ? bytes : 0;
+
+    [Test]
+    public void TrimFlushedGenerations_WithFlushedPrefix_ReleasesOnlyThatPrefix(
+        [Values(0, 1, 7)] int flushedCount, [Values(0, 1, 4)] int retainedCount)
+    {
+        using ArrayPoolList<TrieNodeLogGeneration> pinned = new(flushedCount + retainedCount);
+        List<TrieNodeLogGeneration> generations = [];
+        try
+        {
+            for (int i = 0; i < flushedCount + retainedCount; i++)
+            {
+                TrieNodeLogGeneration generation = CreateTrimGeneration(i);
+                generations.Add(generation);
+                pinned.Add(generation);
+            }
+
+            Assert.That(pinned.Count, Is.EqualTo(flushedCount + retainedCount), "precondition: the list owns every generation");
+
+            TrieNodeLogView.TrimFlushedGenerations(pinned, (ulong)flushedCount);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pinned.Count, Is.EqualTo(retainedCount), "only generations after the flushed marker remain pinned");
+                for (int i = 0; i < generations.Count; i++)
+                {
+                    Assert.That(generations[i].Handle.IsClosed, Is.EqualTo(i < flushedCount), "the removed prefix releases its files while the suffix stays live");
+                }
+                for (int i = 0; i < retainedCount; i++)
+                {
+                    Assert.That(pinned[i], Is.SameAs(generations[flushedCount + i]), "survivors retain their original order and leases");
+                }
+            }
+        }
+        finally
+        {
+            foreach (TrieNodeLogGeneration generation in generations)
+            {
+                if (!generation.Handle.IsClosed) generation.Dispose();
+            }
+        }
+    }
+
+    [Test]
+    public void TrimFlushedGenerations_WhenCleanupFails_DropsReleasedEntriesAndRetainsUntouchedLeases()
+    {
+        IFile file = Substitute.For<IFile>();
+        IFileSystem failingFileSystem = Substitute.For<IFileSystem>();
+        failingFileSystem.File.Returns(file);
+        file.OpenHandle(Arg.Any<string>(), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite)
+            .Returns(call => FileSystem.File.OpenHandle(call.ArgAt<string>(0), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite));
+        file.When(f => f.Delete(Arg.Any<string>())).Do(static _ => throw new IOException("delete failed"));
+
+        using ArrayPoolList<TrieNodeLogGeneration> pinned = new(4);
+        List<TrieNodeLogGeneration> generations = [];
+        try
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                TrieNodeLogGeneration generation = CreateTrimGeneration(i, i == 1 ? failingFileSystem : FileSystem);
+                generations.Add(generation);
+                pinned.Add(generation);
+            }
+            Assert.That(pinned.Count, Is.EqualTo(4), "precondition: three flushed generations precede a retained generation");
+
+            Assert.That(() => TrieNodeLogView.TrimFlushedGenerations(pinned, 3),
+                Throws.TypeOf<IOException>().With.Message.EqualTo("delete failed"));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pinned.Count, Is.EqualTo(2), "both released entries must leave the list even when the second cleanup throws");
+                Assert.That(generations[0].Handle.IsClosed, Is.True, "the first generation was released normally");
+                Assert.That(generations[1].Handle.IsClosed, Is.True, "the failing cleanup already released its file handle");
+                Assert.That(pinned[0], Is.SameAs(generations[2]), "the unvisited flushed generation keeps its lease and position");
+                Assert.That(pinned[1], Is.SameAs(generations[3]), "the retained generation stays after the unvisited prefix");
+            }
+
+            TrieNodeLogView.TrimFlushedGenerations(pinned, 3);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(generations[2].Handle.IsClosed, Is.True, "retry releases only the remaining flushed entry");
+                Assert.That(pinned.Count, Is.EqualTo(1), "released entries must not be disposed a second time");
+                Assert.That(pinned[0], Is.SameAs(generations[3]), "retry preserves the retained generation");
+            }
+        }
+        finally
+        {
+            foreach (TrieNodeLogGeneration generation in generations)
+            {
+                if (!generation.Handle.IsClosed) generation.Dispose();
+            }
+        }
+    }
+
+    private TrieNodeLogGeneration CreateTrimGeneration(int index, IFileSystem? fileSystem = null) =>
+        new((ulong)index + 1, Path.Combine(_directory.Path, $"trim-{index}.log"), fileSystem ?? FileSystem, 1024,
+            static (_, exception) => throw exception);
 
     [Test]
     public void Readers_see_the_version_of_their_snapshot_across_overwrites_and_merges()
