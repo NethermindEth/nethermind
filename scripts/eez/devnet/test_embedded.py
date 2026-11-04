@@ -24,6 +24,47 @@ class EmbeddedCoverageTests(unittest.TestCase):
             self.assertEqual(1, source.count("pub async fn start(case:"))
             self.assertIn("pub async fn restart(", source)
 
+    def test_native_peer_probe_is_added_only_to_native_helpers(self):
+        legacy = embedded.candidate_helper("rollup0")
+        native = embedded.candidate_helper("rollupx")
+        self.assertNotIn("mod peer;", legacy)
+        self.assertNotIn("peer::verify(", legacy)
+        self.assertEqual(1, native.count("mod peer;"))
+        self.assertEqual(1, native.count("peer::verify("))
+        self.assertLess(native.index('bail!("candidate prefix verification failed'), native.index("peer::verify("))
+
+    def test_wire_dependencies_only_add_direct_edges_to_already_locked_packages(self):
+        packages = ["futures-util", "reth-network-peers", "reth-trie-common", "reth-eth-wire", "reth-ecies", "secp256k1"]
+        for missing in (None, "reth-ecies", "unreviewed-api"):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                cargo = root / "crates/eez-node-e2e/Cargo.toml"
+                cargo.parent.mkdir(parents=True)
+                tag = "v2.8.0" if missing == "unreviewed-api" else "v2.7.0"
+                (root / "Cargo.toml").write_text('[workspace.dependencies]\nreth-eth-wire-types = { git = "https://github.com/paradigmxyz/reth", tag = "' + tag + '" }\n')
+                original_cargo = '[package]\nname = "eez-node-e2e"\nversion = "0.1.0"\n[dev-dependencies]\ntokio = { workspace = true }\n'
+                cargo.write_text(original_cargo)
+                lock = root / "Cargo.lock"
+                original_lock = 'version = 4\n\n[[package]]\nname = "eez-node-e2e"\nversion = "0.1.0"\ndependencies = [\n "tokio",\n]\n'
+                for package in [*packages, "tokio"]:
+                    if package != missing:
+                        original_lock += '\n[[package]]\nname = "' + package + '"\nversion = "0.30.0"\n'
+                lock.write_text(original_lock)
+                if missing is not None:
+                    with self.assertRaisesRegex(ValueError, "absent from the pinned lockfile|native wire API changed"):
+                        embedded.prepare_peer_dependencies(root)
+                    self.assertEqual(original_cargo, cargo.read_text())
+                    self.assertEqual(original_lock, lock.read_text())
+                else:
+                    embedded.prepare_peer_dependencies(root)
+                    entry = lock.read_text().split('name = "eez-node-e2e"', 1)[1].split("[[package]]", 1)[0]
+                    self.assertIn(' "secp256k1 0.30.0",', entry)
+                    self.assertIn(' "tokio",', entry)
+                    for package in packages:
+                        self.assertIn(package + " = ", cargo.read_text())
+                    with self.assertRaisesRegex(ValueError, "direct dependencies changed"):
+                        embedded.prepare_peer_dependencies(root)
+
     def test_live_native_verification_requires_receipts_above_l1_safe_and_canonical_roots(self):
         transaction = "0x" + "12" * 32
         for failure in (None, "settled-only", "missing-receipt", "bad-receipt", "state-root", "finalized-overclaim", "reorg"):
@@ -85,7 +126,7 @@ class EmbeddedCoverageTests(unittest.TestCase):
     def test_native_report_rejects_settled_only_execution_and_fake_restart(self):
         revision, image = "a" * 40, "sha256:" + "b" * 64
         for name, (label, phases) in embedded.NATIVE_CASES["queue_reorg"].items():
-            for failure in (None, "settled-only", "missing-receipts", "missing-mode", "source", "image", "missing-phase", "database", "container", "zero-safe", "safe-regressed", "finalized-regressed"):
+            for failure in (None, "settled-only", "missing-receipts", "missing-mode", "source", "image", "missing-phase", "database", "container", "zero-safe", "safe-regressed", "finalized-regressed", "peer-missing", "peer-empty", "peer-source", "peer-container", "peer-responses", "peer-native"):
                 if label != "native-source-reorg" and failure in ("zero-safe", "safe-regressed", "finalized-regressed"):
                     continue
                 with self.subTest(label=label, failure=failure), tempfile.TemporaryDirectory() as directory:
@@ -112,6 +153,20 @@ class EmbeddedCoverageTests(unittest.TestCase):
                             if failure == "database": observation["database_id"] = "fresh"
                             if failure == "container": observation["container"] = "original"
                         (root / (label + "-" + phase + ".json")).write_text(json.dumps(observation))
+                        peer = {"result": "pass", "scope": "snap/1-state-serving", "full_node_bootstrap": False,
+                                "candidate_revision": revision, "image_id": image, "case": label, "phase": phase,
+                                "container": observation["container"], "transactions": 1, "transaction_types": [0x46],
+                                "accounts": 5, "storage_slots": 10, "code_bytes": 20, "code_hashes": 2,
+                                "wire_requests": 10, "wire_responses": 10, "wire_response_bytes": 100,
+                                "hash": "0x" + "1" * 64, "state_root": "0x" + "2" * 64, "pivot": "0x4"}
+                        if phase == "after-reorg":
+                            if failure == "peer-empty": peer["accounts"] = 0
+                            if failure == "peer-source": peer["candidate_revision"] = "c" * 40
+                            if failure == "peer-container": peer["container"] = "another"
+                            if failure == "peer-responses": peer["wire_responses"] = 0
+                            if failure == "peer-native": peer["transaction_types"] = [2]
+                            if failure == "peer-missing": continue
+                        (root / (label + "-" + phase + "-peer.json")).write_text(json.dumps(peer))
                     args = SimpleNamespace(inventory=inventory, directory=root)
                     with patch.dict(os.environ, {"GITHUB_SHA": revision, "EEZ_CANDIDATE_IMAGE": image, "EEZ_SUITE": "embedded-queue_reorg"}):
                         if failure is None:

@@ -128,7 +128,12 @@ impl Candidate {
             "--JsonRpc.Host".into(),
             "127.0.0.1".into(),
             "--JsonRpc.EnabledModules".into(),
-            "Eth,Net,Web3,Debug,Trace".into(),
+            if native {
+                "Eth,Net,Web3,Debug,Trace,Admin"
+            } else {
+                "Eth,Net,Web3,Debug,Trace"
+            }
+            .into(),
         ];
         if native {
             fs::copy(
@@ -136,6 +141,24 @@ impl Candidate {
                 directory.path().join("l1.json"),
             )?;
             args.extend([
+                "--Sync.NetworkingEnabled".into(),
+                "true".into(),
+                "--Sync.SynchronizationEnabled".into(),
+                "false".into(),
+                "--Sync.SnapServingEnabled".into(),
+                "true".into(),
+                "--Sync.BlockGossipEnabled".into(),
+                "false".into(),
+                "--Init.PeerManagerEnabled".into(),
+                "true".into(),
+                "--Init.StateDbKeyScheme".into(),
+                "HalfPath".into(),
+                "--Network.LocalIp".into(),
+                "127.0.0.1".into(),
+                "--Network.ExternalIp".into(),
+                "127.0.0.1".into(),
+                "--Network.EnableExternalIpResolution".into(),
+                "false".into(),
                 "--Eez.L1ChainConfigPath".into(),
                 "/data/l1.json".into(),
                 "--Eez.L1BeaconUrl".into(),

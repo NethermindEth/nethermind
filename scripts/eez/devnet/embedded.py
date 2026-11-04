@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import time
+import tomllib
 
 from verify import HEADER, Rpc, SYSTEM, equal, registry, verify_prefix
 
@@ -288,7 +289,55 @@ def candidate_helper(profile):
     unused, following = ("start_native(", "start(case:") if profile == "rollup0" else ("start_cross_chain(", "start_native(")
     start = source.index("    pub async fn " + unused)
     end = source.index("    pub async fn " + following, start)
-    return source[:start] + source[end:]
+    source = source[:start] + source[end:]
+    if profile == "rollupx":
+        source = "mod peer;\n\n" + source
+        marker = '            bail!("candidate prefix verification failed: {status}");\n        }\n'
+        source = insert(source, marker,
+                        '        peer::verify(&self.url(), reference, &self.directory.path().join("genesis.json"), &settings).await?;\n')
+    return source
+
+
+def prepare_peer_dependencies(upstream):
+    cargo = upstream / "crates/eez-node-e2e/Cargo.toml"
+    source = cargo.read_text()
+    # All packages already belong to the selected source's lockfile. Add direct test edges only.
+    workspace = tomllib.loads((upstream / "Cargo.toml").read_text())["workspace"]["dependencies"]
+    wire = workspace["reth-eth-wire-types"]
+    if wire.get("git") != "https://github.com/paradigmxyz/reth" or wire.get("tag") != "v2.7.0":
+        raise ValueError("native wire API changed; review the probe before adapting")
+    transport = "{ git = " + json.dumps(wire["git"]) + ", tag = " + json.dumps(wire["tag"]) + " }"
+    dependencies = {
+        "futures-util": "{ workspace = true }",
+        "reth-network-peers": "{ workspace = true }",
+        "reth-trie-common": "{ workspace = true }",
+        "reth-eth-wire": transport,
+        "reth-ecies": transport,
+        "secp256k1": '"0.30"',
+    }
+    if source.count("[dev-dependencies]\n") != 1:
+        raise ValueError("native test dependency boundary changed")
+    lines = "".join(name + " = " + value + "\n" for name, value in dependencies.items())
+    updated_cargo = source.replace("[dev-dependencies]\n", "[dev-dependencies]\n" + lines)
+    lock = upstream / "Cargo.lock"
+    source = lock.read_text()
+    start = source.index('name = "eez-node-e2e"\n')
+    end = source.index("\n[[package]]", start)
+    entry = source[start:end]
+    names = list(dependencies)
+    names[names.index("secp256k1")] = "secp256k1 0.30.0"
+    for name in names:
+        package = name.split(" ", 1)[0]
+        if '\nname = "' + package + '"\n' not in source:
+            raise ValueError("wire test package is absent from the pinned lockfile: " + package)
+    original = entry[entry.index("dependencies = [\n") + len("dependencies = [\n"):entry.index("\n]")]
+    existing = [line.strip().strip(',').strip('"') for line in original.splitlines()]
+    if set(existing) & set(names):
+        raise ValueError("native direct dependencies changed; review before adapting")
+    replacement = "\n".join(' "' + name + '",' for name in sorted(existing + names))
+    updated = entry.replace(original, replacement)
+    cargo.write_text(updated_cargo)
+    lock.write_text(source[:start] + updated + source[end:])
 
 
 def prepare(args):
@@ -316,6 +365,9 @@ def prepare(args):
         raise ValueError("candidate module already exists")
     helper.parent.mkdir()
     helper.write_text(candidate_helper(profile))
+    if profile == "rollupx":
+        helper.with_name("peer.rs").write_text(Path(__file__).with_name("embedded.peer.rs").read_text())
+        prepare_peer_dependencies(upstream)
     for path, changed in changes:
         path.write_text(changed)
     args.output.write_text(json.dumps({"upstream": manifest, "cases": cases}, indent=2) + "\n")
@@ -494,6 +546,26 @@ def report(args):
             equal(observation["image_id"], os.environ["EEZ_CANDIDATE_IMAGE"], "candidate test image")
             observations.append(observation)
         if suite == "queue_reorg":
+            for observation in observations:
+                phase = observation["phase"]
+                peer = json.loads((args.directory / (label + "-" + phase + "-peer.json")).read_text())
+                equal((peer["result"], peer["scope"], peer["full_node_bootstrap"]),
+                      ("pass", "snap/1-state-serving", False), "peer serving scope")
+                for field in ("candidate_revision", "image_id", "case", "phase", "container"):
+                    equal(peer[field], observation[field], "peer execution " + field)
+                if any(not isinstance(peer.get(field), int) or peer[field] <= 0 for field in
+                       ("transactions", "accounts", "storage_slots", "code_bytes", "code_hashes", "wire_requests", "wire_response_bytes")):
+                    raise ValueError("missing nonempty peer state transfer")
+                equal(peer["wire_requests"], peer["wire_responses"], "peer response accounting")
+                if not set(peer["transaction_types"]) & {0x45, 0x46}:
+                    raise ValueError("missing native wire transactions")
+                for field in ("hash", "state_root"):
+                    if not re.fullmatch(r"0x[a-fA-F0-9]{64}", peer.get(field, "")):
+                        raise ValueError("missing peer commitment")
+                height = observation.get("unsafe_height", observation.get("height"))
+                if not 0 < int(peer["pivot"], 16) <= height:
+                    raise ValueError("peer pivot is outside the observed candidate chain")
+                observation["peer_serving"] = peer
             for observation in observations:
                 if observation["phase"] != "after-settlement":
                     if observation.get("mode") != "unsafe" or not observation.get("unsafe_transactions") or observation.get("unsafe_height", 0) <= observation.get("safe_height", 0):
