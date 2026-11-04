@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
 using ModelContextProtocol.Client;
@@ -15,9 +16,9 @@ namespace Nethermind.Tools.ProfilingMcp;
 /// EventPipe reaches a process through a socket in its own <c>/tmp</c>, which a server outside the container cannot see.
 /// The sidecar sees the target's processes under their own PIDs and reaches the socket through <c>/proc/1/root/tmp</c>, so nothing is
 /// copied into the target and the target needs no capability.
-/// There is one sidecar per target and server version, shared by every session: each connection runs its own server in it with
+/// There is one sidecar per target and sidecar image, shared by every session: each connection runs its own server in it with
 /// <c>docker exec</c>. It ends with the target, since the target's process namespace ends with the target's first process.
-/// The Linux build published next to this executable is copied into a Docker volume once per version, and results go to a volume
+/// The image is pulled from Docker Hub or built from the Linux build published next to this executable, and results go to a volume
 /// per target. Neither needs a bind mount, so the engine can be remote.
 /// </remarks>
 internal static class ContainerSidecar
@@ -36,12 +37,18 @@ internal static class ContainerSidecar
 
     private const string TargetTempVariable = "PROFILING_MCP_TARGET_TMPDIR";
 
+    /// <summary>
+    /// Set to an image to run the sidecar in instead of the published one, or to <c>local</c> to build the image from this server's Linux build.
+    /// </summary>
+    public const string ImageVariable = "PROFILING_MCP_SIDECAR_IMAGE";
+
+    private const string LocalChoice = "local";
+    private const string PublishedRepository = "nethermindeth/profiling-mcp";
+    private const string LocalRepository = "profiling-mcp";
     private const string TargetLabel = "nethermind.profmcp.target";
-    private const string LauncherLabel = "nethermind.profmcp.launcher";
     private const string RuntimeImage = "mcr.microsoft.com/dotnet/runtime-deps:10.0";
     private const string BuildFolder = "linux-x64";
-    private const string CompleteMarker = ".complete";
-    private static readonly TimeSpan LoaderWait = TimeSpan.FromMinutes(10);
+    private const string Dockerfile = "sidecar.Dockerfile";
     private const string Executable = "Nethermind.Tools.ProfilingMcp";
 
     /// <summary>Returns the docker CLI options that select an engine: a context name, or an address such as <c>ssh://user@host</c>.</summary>
@@ -54,7 +61,7 @@ internal static class ContainerSidecar
     };
 
     /// <summary>Starts a server in the container's sidecar, starting the sidecar unless another session already did, and connects to it.</summary>
-    /// <remarks>The first start on an engine pulls the sidecar image and copies the Linux build, which can take minutes.</remarks>
+    /// <remarks>The first start on an engine pulls or builds the sidecar image, which can take minutes.</remarks>
     public static async Task<McpClient> StartAsync(string? dockerHost, string container, CancellationToken cancellationToken)
     {
         string[] engine = EngineArguments(dockerHost);
@@ -73,18 +80,12 @@ internal static class ContainerSidecar
     private static async Task<string> EnsureSidecarAsync(string[] engine, string container)
     {
         Target target = await InspectAsync(engine, container);
-        string version = BuildVersion();
-        string name = $"profmcp-{container}-{version}";
+        string image = await SidecarImageAsync(engine, target.Image);
+        string imageId = await DockerAsync(engine, "image", "inspect", "--format", "{{.Id}}", image);
+        string name = $"profmcp-{container}-{imageId.Replace("sha256:", "", StringComparison.Ordinal)[..12]}";
         if (await IsRunningAsync(engine, name))
             return name;
 
-        string platform = await DockerAsync(engine, "version", "--format", "{{.Server.Os}}/{{.Server.Arch}}");
-        if (platform != "linux/amd64")
-            throw new InvalidOperationException($"The Docker engine runs {platform}; only linux/amd64 is supported.");
-
-        string image = await SidecarImageAsync(engine, target.Image);
-        await RemoveOrphansAsync(engine, container);
-        string buildVolume = await EnsureBuildVolumeAsync(engine, image, container, version);
         try
         {
             await DockerAsync(engine,
@@ -94,7 +95,6 @@ internal static class ContainerSidecar
                 "--pid", $"container:{container}",
                 // Reaching the target's files through /proc/1/root needs it when the target runs as another user than root.
                 "--cap-add", "SYS_PTRACE",
-                "--volume", $"{buildVolume}:/profmcp:ro",
                 "--volume", $"profmcp-home-{container}:/profmcp-home",
                 // The client finds diagnostic sockets in its temp folder; the sidecar's own runtime must not create one there.
                 "--env", $"TMPDIR={TargetRoot}{target.TempFolder}",
@@ -103,8 +103,7 @@ internal static class ContainerSidecar
                 "--env", $"{NameVariable}={name}",
                 "--env", $"{TargetTempVariable}={target.TempFolder}",
                 "--env", $"{DockerCommandVariable}={string.Join(' ', ["docker", .. engine])}",
-                "--entrypoint", $"/profmcp/{Executable}",
-                image, IdleOption,
+                image,
             ]);
         }
         catch (InvalidOperationException)
@@ -180,134 +179,67 @@ internal static class ContainerSidecar
         return new Target(config.GetProperty("Image").GetString()!, temp);
     }
 
-    /// <summary>Returns the image to run the sidecar in: .NET's runtime-deps image, or the target's when that cannot be pulled.</summary>
+    /// <summary>Returns the sidecar image for this server, pulling or building it when the engine does not have it.</summary>
+    /// <remarks>
+    /// In order: the image named by <see cref="ImageVariable"/>; one built earlier from this server's Linux build; the published image of
+    /// the commit this server was built from; and last, one built from the Linux build. The published image serves the same tools, so it
+    /// suits any server built from that commit, but not one built with uncommitted changes, which sets <see cref="ImageVariable"/> to
+    /// <c>local</c> to skip it.
+    /// </remarks>
+    private static async Task<string> SidecarImageAsync(string[] engine, string targetImage)
+    {
+        string platform = await DockerAsync(engine, "version", "--format", "{{.Server.Os}}/{{.Server.Arch}}");
+        if (platform != "linux/amd64")
+            throw new InvalidOperationException($"The Docker engine runs {platform}; only linux/amd64 is supported.");
+
+        string? choice = Environment.GetEnvironmentVariable(ImageVariable);
+        if (choice is { Length: > 0 } && choice != LocalChoice)
+            return await IsPresentOrPulledAsync(engine, choice) ? choice : throw new InvalidOperationException($"Could not pull {choice}, the sidecar image set in {ImageVariable}.");
+
+        string? local = BuildVersion() is { } version ? $"{LocalRepository}:{version}" : null;
+        if (local is not null && await SucceedsAsync(engine, "image", "inspect", local))
+            return local;
+
+        if (choice != LocalChoice && PublishedImage(ServerVersion) is { } published && await IsPresentOrPulledAsync(engine, published))
+            return published;
+
+        if (local is null)
+            throw new InvalidOperationException($"Could not pull {PublishedImage(ServerVersion) ?? "a published sidecar image"} and there is no Linux build in {Path.Combine(AppContext.BaseDirectory, BuildFolder)} to build one from. Publish the server without a Linux runtime identifier, which also publishes it there.");
+
+        await DockerAsync(engine, "build", "--quiet", "--tag", local, "--build-arg", $"BASE={await BaseImageAsync(engine, targetImage)}",
+            "--file", Path.Combine(AppContext.BaseDirectory, Dockerfile), Path.Combine(AppContext.BaseDirectory, BuildFolder));
+        return local;
+    }
+
+    /// <summary>Returns the published sidecar image for a server version such as <c>1.0.0+&lt;commit&gt;</c>, or null without a commit.</summary>
+    internal static string? PublishedImage(string? serverVersion) =>
+        serverVersion?.IndexOf('+') is int plus and >= 0 && plus < serverVersion.Length - 1 ? $"{PublishedRepository}:{serverVersion[(plus + 1)..]}" : null;
+
+    private static string? ServerVersion => typeof(ContainerSidecar).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+
+    private static async Task<bool> IsPresentOrPulledAsync(string[] engine, string image) =>
+        await SucceedsAsync(engine, "image", "inspect", image) || await SucceedsAsync(engine, "pull", "--quiet", image);
+
+    /// <summary>Returns the image to build the sidecar image on: .NET's runtime-deps image, or the target's when that cannot be pulled.</summary>
     /// <remarks>
     /// The sidecar needs only the native libraries of a self-contained .NET app. Using a fixed image keeps it independent of the target's,
     /// which may lack them (Alpine, distroless). An engine without access to the registry falls back to the target's image.
     /// </remarks>
-    private static async Task<string> SidecarImageAsync(string[] engine, string targetImage)
+    private static async Task<string> BaseImageAsync(string[] engine, string targetImage)
     {
-        if (await SucceedsAsync(engine, "image", "inspect", RuntimeImage) || await SucceedsAsync(engine, "pull", "--quiet", RuntimeImage))
+        if (await IsPresentOrPulledAsync(engine, RuntimeImage))
             return RuntimeImage;
 
-        await Console.Error.WriteLineAsync($"Could not pull {RuntimeImage}; running the sidecar in the target's image {targetImage}.");
+        await Console.Error.WriteLineAsync($"Could not pull {RuntimeImage}; building the sidecar image on the target's image {targetImage}.");
         return targetImage;
     }
 
-    /// <summary>Removes helper containers of the container whose launching server, on this machine, is no longer running.</summary>
-    /// <remarks>
-    /// These are build loaders left by a server killed while copying the build, and sidecars of earlier versions of this server,
-    /// which ran one per session.
-    /// </remarks>
-    private static async Task RemoveOrphansAsync(string[] engine, string container)
+    /// <summary>Identifies the Linux build by a hash of the server assembly, or returns null when the server was published without one.</summary>
+    private static string? BuildVersion()
     {
-        string sidecars = await DockerAsync(engine, "ps", "--all", "--filter", $"label={TargetLabel}={container}", "--format", $"{{{{.ID}}}} {{{{.Label \"{LauncherLabel}\"}}}}");
-        foreach (string line in sidecars.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            string[] parts = line.Split(' ');
-            if (parts.Length == 2 && IsOrphan(parts[1]))
-                await DockerAsync(engine, "rm", "--force", parts[0]);
-        }
-    }
-
-    private static bool IsOrphan(string launcher)
-    {
-        int slash = launcher.LastIndexOf('/');
-        if (slash < 0 || launcher[..slash] != Environment.MachineName || !int.TryParse(launcher[(slash + 1)..], out int pid))
-            return false;
-
-        try
-        {
-            using Process process = Process.GetProcessById(pid);
-            return process.ProcessName != Process.GetCurrentProcess().ProcessName;
-        }
-        catch (ArgumentException)
-        {
-            return true;
-        }
-    }
-
-    private static string Launcher(int pid) => $"{Environment.MachineName}/{pid}";
-
-    /// <summary>Returns a volume holding this version of the Linux build, copying it in on first use.</summary>
-    /// <remarks>
-    /// A marker file copied last tells a complete volume from one whose copy was cut short, as when <c>claude mcp list</c> kills a
-    /// server whose first start, pulling the image and copying the build, outlasts its health check.
-    /// The container used for copying has a fixed name per volume, so servers starting at the same time copy one after another
-    /// instead of overwriting files a sidecar may already run.
-    /// </remarks>
-    private static async Task<string> EnsureBuildVolumeAsync(string[] engine, string image, string container, string version)
-    {
-        string build = Path.Combine(AppContext.BaseDirectory, BuildFolder);
-        string volume = $"profmcp-{version}";
-
-        // docker cp reaches a volume through a container that mounts it; this one is never started. Its launcher label lets another
-        // server remove it if this process is killed before it does.
-        string loader = $"{volume}-load";
-        await AcquireLoaderAsync(engine, loader,
-            "--volume", $"{volume}:/profmcp",
-            "--label", $"{TargetLabel}={container}", "--label", $"{LauncherLabel}={Launcher(Environment.ProcessId)}",
-            "--entrypoint", "/bin/true", image);
-        string marker = Path.GetTempFileName();
-        try
-        {
-            if (!await SucceedsAsync(engine, "cp", $"{loader}:/profmcp/{CompleteMarker}", "-"))
-            {
-                await DockerAsync(engine, "cp", build + Path.DirectorySeparatorChar + ".", $"{loader}:/profmcp");
-                await DockerAsync(engine, "cp", marker, $"{loader}:/profmcp/{CompleteMarker}");
-            }
-        }
-        finally
-        {
-            File.Delete(marker);
-            await DockerAsync(engine, "rm", loader);
-        }
-
-        return volume;
-    }
-
-    /// <summary>Creates the loader container, waiting while another server holds one of that name.</summary>
-    private static async Task AcquireLoaderAsync(string[] engine, string loader, params string[] options)
-    {
-        string[] create = ["create", "--name", loader, .. options];
-        Stopwatch waited = Stopwatch.StartNew();
-        while (!await SucceedsAsync(engine, create))
-        {
-            // Without a holder, creating failed for another reason, which this reports.
-            if (await LauncherOfAsync(engine, loader) is not { } holder)
-            {
-                await DockerAsync(engine, create);
-                return;
-            }
-
-            if (IsOrphan(holder))
-                await SucceedsAsync(engine, "rm", "--force", loader);
-            else if (waited.Elapsed > LoaderWait)
-                throw new InvalidOperationException($"Waited {LoaderWait.TotalMinutes:N0} min for the server {holder} to finish copying the build with {loader}; remove that container if the server is gone.");
-            else
-                await Task.Delay(TimeSpan.FromSeconds(1));
-        }
-    }
-
-    private static async Task<string?> LauncherOfAsync(string[] engine, string loader)
-    {
-        try
-        {
-            return await DockerAsync(engine, "inspect", "--type", "container", "--format", $"{{{{index .Config.Labels \"{LauncherLabel}\"}}}}", loader);
-        }
-        catch (InvalidOperationException)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>Identifies the Linux build by a hash of the server assembly.</summary>
-    private static string BuildVersion()
-    {
-        string build = Path.Combine(AppContext.BaseDirectory, BuildFolder);
-        string server = Path.Combine(build, Executable + ".dll");
+        string server = Path.Combine(AppContext.BaseDirectory, BuildFolder, Executable + ".dll");
         if (!File.Exists(server))
-            throw new InvalidOperationException($"No Linux build in {build}. Publish the server without a Linux runtime identifier, which also publishes it there.");
+            return null;
 
         using FileStream stream = File.OpenRead(server);
         return Convert.ToHexStringLower(SHA256.HashData(stream))[..12];

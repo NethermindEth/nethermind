@@ -57,19 +57,24 @@ The same server profiles containers; nothing is registered per container. Every 
 - `container`: the container's name or ID, from `list_containers`.
 - `dockerHost`: the engine running it, as a Docker context name (`list_containers` lists them) or an address such as `ssh://user@node1`. Omitted, the docker CLI's default engine is used.
 
-A server on the host cannot see processes in a container: EventPipe reaches a process through a socket in the process's own temp folder. So the first call naming a container starts a sidecar container that shares the target's process namespace and runs the Linux build from the install folder. Each session then runs its own server in that sidecar with `docker exec` and sends the calls naming the container there. PIDs and file paths in those calls are the container's: pass the same `container` to analyze a trace taken there.
+A server on the host cannot see processes in a container: EventPipe reaches a process through a socket in the process's own temp folder. So the first call naming a container starts a sidecar container that shares the target's process namespace and runs the same server, built for Linux. Each session then runs its own server in that sidecar with `docker exec` and sends the calls naming the container there. PIDs and file paths in those calls are the container's: pass the same `container` to analyze a trace taken there.
 
 What the target needs, and what it doesn't:
 
-- **Any image.** The sidecar runs .NET's `mcr.microsoft.com/dotnet/runtime-deps:10.0` image, pulled once per engine, so Alpine, distroless or shell-less targets work. An engine that cannot pull it runs the sidecar in the target's image instead.
+- **Any image.** The sidecar runs its own image, so Alpine, distroless or shell-less targets work.
 - **Any user and temp folder.** The sidecar gets `SYS_PTRACE` (the target gets nothing), so it reaches targets running as non-root users, and it follows a `TMPDIR` set in the target's environment.
 - **Diagnostics enabled.** A target with `DOTNET_EnableDiagnostics=0` cannot be profiled; the first call naming it says so.
 - **A `linux/amd64` engine.**
 
 Nothing is copied into the target container. No bind mounts are used, so nothing depends on Docker Desktop's file sharing:
 
-- There is one sidecar per container and server version, `profmcp-<container>-<hash>`, shared by all sessions. It stays running and idle between sessions, so later sessions connect in about 3 s, and it ends with its target: recreating or upgrading the target needs nothing more than the next call.
-- The Linux build is copied once per server version into a `profmcp-<hash>` volume. The first call for a container on an engine pulls the image and copies the build, about 30 s locally; a copy cut short is completed by the next call. Old volumes and sidecars of old versions can be removed with `docker volume rm` and `docker rm -f`.
+- There is one sidecar per container and sidecar image, `profmcp-<container>-<image id>`, shared by all sessions. It stays running and idle between sessions, so later sessions connect in about 3 s, and it ends with its target: recreating or upgrading the target needs nothing more than the next call.
+- The first call for a container on an engine gets the sidecar image, once per server version:
+  1. a `profiling-mcp:<hash>` image built earlier from this install's Linux build;
+  2. else `nethermindeth/profiling-mcp:<commit>`, pulled from Docker Hub, where `<commit>` is the commit the server was built from;
+  3. else one built from the install's `linux-x64` folder with `sidecar.Dockerfile`, on .NET's `mcr.microsoft.com/dotnet/runtime-deps:10.0` image, or on the target's image when the engine cannot pull that. Building sends about 70 MB to the engine.
+
+  Set `PROFILING_MCP_SIDECAR_IMAGE` in the server's environment to `local` to skip the pull, as for a server built with uncommitted changes, or to an image to use instead. Old images and sidecars can be removed with `docker image rm` and `docker rm -f`.
 - Traces, reports, heap statistics and dumps go to a `profmcp-home-<container>` volume and are kept across sessions. `trace_report` gives the `docker cp` command that copies the page to this machine. A dump is first written to the target's temp folder, then moved into the volume; it is as large as the target's memory and needs that much free disk in both places.
 
 Verified against a hoodi node on `nethermindeth/nethermind:master` (.NET 10.0.14), and on a separate Docker engine against targets running as root, as an unprivileged user, and with a custom `TMPDIR`. Things that differ from a local Windows process:

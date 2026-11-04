@@ -18,6 +18,10 @@
     <InternalsVisibleTo Include="Nethermind.Tools.ProfilingMcp.Test" />
   </ItemGroup>
 
+  <ItemGroup Condition="!$(RuntimeIdentifier.StartsWith('linux'))">
+    <None Include="sidecar.Dockerfile" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- Container mode (ContainerSidecar) runs a Linux build in a sidecar container, so a publish that is not one includes one. -->
   <Target Name="PublishLinuxBuildForContainers" AfterTargets="Publish" Condition="!$(RuntimeIdentifier.StartsWith('linux'))">
     <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="Publish" Properties="RuntimeIdentifier=linux-x64;SelfContained=true;Configuration=$(Configuration);PublishDir=$([MSBuild]::EnsureTrailingSlash('$(PublishDir)'))linux-x64/" />

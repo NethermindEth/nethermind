@@ -54,4 +54,10 @@ public class ContainerRouterTests
     [TestCase("ssh://ahk@node1", new[] { "--host", "ssh://ahk@node1" })]
     public void Selects_the_engine(string? dockerHost, string[] expected) =>
         Assert.That(ContainerSidecar.EngineArguments(dockerHost), Is.EqualTo(expected));
+
+    [TestCase("1.0.0+4f761854596684de2666471afc8d8c6f694b3a12", ExpectedResult = "nethermindeth/profiling-mcp:4f761854596684de2666471afc8d8c6f694b3a12")]
+    [TestCase("1.0.0", ExpectedResult = null)]
+    [TestCase("1.0.0+", ExpectedResult = null)]
+    [TestCase(null, ExpectedResult = null)]
+    public string? Names_the_published_sidecar_image_by_commit(string? serverVersion) => ContainerSidecar.PublishedImage(serverVersion);
 }
