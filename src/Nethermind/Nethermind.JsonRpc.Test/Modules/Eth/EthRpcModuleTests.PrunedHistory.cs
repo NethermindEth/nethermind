@@ -54,6 +54,9 @@ public partial class EthRpcModuleTests
     public static IEnumerable<TestCaseData> BlockBodyReads() =>
         BlockBodyReadsOneIndex().Select(static read => new TestCaseData(read).SetArgDisplayNames(read.ToString()));
 
+    public static IEnumerable<TestCaseData> BlockBodyReadsByNumber() =>
+        BlockBodyReads().Where(static data => data.Arguments[0] is BlockBodyRead { ByHash: false });
+
     /// <summary><see cref="BlockBodyReads"/>, plus the indexed reads with an index past the block's two transactions:
     /// a missing body cannot tell whether an index is in range.</summary>
     public static IEnumerable<TestCaseData> BlockBodyReadsAnyIndex() =>
@@ -89,7 +92,7 @@ public partial class EthRpcModuleTests
     }
 
     [TestCaseSource(nameof(BlockBodyReads))]
-    public async Task Eth_block_read_of_an_unknown_block_below_or_above_the_served_floor_returns_null(BlockBodyRead read)
+    public async Task Eth_block_read_of_an_unknown_hash_or_a_height_above_the_served_floor_returns_null(BlockBodyRead read)
     {
         using Context ctx = await Context.Create();
         TestRpcBlockchain test = ctx.Test;
@@ -100,6 +103,21 @@ public partial class EthRpcModuleTests
         string serialized = await test.TestEthRpc(read.Method, read.Parameters(selector));
 
         Assert.That(serialized, Is.EqualTo(NullResult));
+    }
+
+    [TestCaseSource(nameof(BlockBodyReadsByNumber))]
+    public async Task Eth_block_read_by_number_of_a_headerless_height_below_the_served_floor_returns_4444(BlockBodyRead read)
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain test = ctx.Test;
+        // A floor above the head, as at startup: a height between them has no header and still reads as pruned history.
+        ulong number = test.BlockTree.Head!.Number + 50;
+        test.BlockTree.UpdateLowestServedBlock(number + 50);
+        Assert.That(test.BlockTree.FindHeader(number), Is.Null, "precondition: no header at the requested height");
+
+        string serialized = await test.TestEthRpc(read.Method, read.Parameters($"0x{number:x}"));
+
+        Assert.That(serialized, Is.EqualTo(PrunedHistory(number)));
     }
 
     [Test]
