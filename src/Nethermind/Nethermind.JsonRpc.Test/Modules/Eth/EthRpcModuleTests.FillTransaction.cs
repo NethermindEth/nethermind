@@ -67,7 +67,11 @@ public partial class EthRpcModuleTests
 
         LegacyTransactionForRpc filled = (LegacyTransactionForRpc)await FillTransactionForResult(rpcTx);
 
-        Assert.That(filled.Nonce, Is.EqualTo(0UL), "a missing from is the zero address, as in geth");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filled.From, Is.EqualTo(Address.Zero), "a missing from is the zero address, as in geth");
+            Assert.That(filled.Nonce, Is.EqualTo(0UL), "nonce must come from the zero address's pending nonce");
+        }
     }
 
     [Test]
