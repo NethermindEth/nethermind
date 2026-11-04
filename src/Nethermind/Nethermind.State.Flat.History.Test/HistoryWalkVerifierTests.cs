@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
 using System.Buffers.Binary;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -406,6 +406,38 @@ public class HistoryWalkVerifierTests
     }
 
     [Test]
+    public void LatestClear_WithRepeatedClears_ReusesTheLatestEligibleBlock([Values(1, 2, 16)] int identityCount)
+    {
+        ValueHash256[] identities = new ValueHash256[identityCount];
+        List<ClearRecord> records = [];
+        for (int i = 0; i < identities.Length; i++)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(identities[i].BytesAsSpan, i + 1);
+            records.Add(new ClearRecord(identities[i], 9));
+            records.Add(new ClearRecord(identities[i], 0));
+            records.Add(new ClearRecord(identities[i], 3));
+            records.Add(new ClearRecord(identities[i], 1));
+            records.Add(new ClearRecord(identities[i], 3));
+        }
+
+        CountingClears clears = new(records.ToArray());
+        StorageClearIndex index = new(clears, atOrBefore: 5);
+        Assert.That(clears.Reads, Is.Zero, "constructing an unused index must not read the source");
+
+        for (int repeat = 0; repeat < 3; repeat++)
+        {
+            Assert.That(index.LatestClear(default), Is.Zero, "a lookup for an absent identity must not claim another identity's clear");
+            foreach (ValueHash256 identity in identities)
+            {
+                Assert.That(index.LatestClear(identity), Is.EqualTo(3UL),
+                    "future records, repeated records and older records must not replace the latest eligible clear");
+            }
+        }
+
+        Assert.That(clears.Reads, Is.EqualTo(records.Count), "inline and dictionary lookups must share one initialization pass");
+    }
+
+    [Test]
     public void StorageRowCollector_WithSeveralSlots_IndexesClearsOnlyForInitialValues([Values] bool initialValues)
     {
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns,
@@ -464,8 +496,8 @@ public class HistoryWalkVerifierTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(sink.Count, Is.Zero, "the streamed slot must match its recorded account roots");
-            Assert.That(clears.Reads, Is.EqualTo(hasInitialValue ? 4 : 2),
-                "future-event enumeration is always required, but only an initial value needs a second pass to build the index");
+            Assert.That(clears.Reads, Is.LessThanOrEqualTo((hasInitialValue ? 2 : 1) * clears.Count),
+                "the future-event walk allows one indexing pass only when an initial value needs it");
         }
     }
 

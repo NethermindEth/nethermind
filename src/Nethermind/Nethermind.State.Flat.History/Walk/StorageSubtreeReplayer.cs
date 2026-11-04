@@ -28,10 +28,10 @@ internal sealed class StorageSubtreeReplayer(
         MismatchSink sink)
     {
         (ulong from, ulong to, CommitmentEmitter? emitter, SeriesWriter series, WalkProgress progress, int item, CancellationToken token) = context;
+        StorageClearIndex clearIndex = new(clears, from);
         long replayed = 0;
         Contract[] contracts = new Contract[rows.Identities.Count];
         List<StreamedSlot> streams = [];
-        StorageClearIndex clearIndex = rows.StreamedSlots.Count == 0 ? default : new(clears, from);
         Span<byte> flatKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
         try
         {
