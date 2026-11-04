@@ -515,7 +515,9 @@ jobs:
             RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
           fi
           EEST_DIR="$RUNNER_TMP/eest-fixtures/$RESOLVED_EEST_VERSION"
-          if [ ! -d "$EEST_DIR" ]; then
+          # Looks for this job's directory, not just the release's: a restored cache must not skip
+          # the download unless it holds the fixtures this job reads.
+          if [ -z "$(find "$EEST_DIR" -type d -name "$FIXTURE_NAME" -print -quit 2>/dev/null)" ]; then
             mkdir -p "$EEST_DIR"
             ARCHIVE_URL="https://github.com/$EEST_REPOSITORY/releases/download/$RESOLVED_EEST_VERSION/$EEST_ARCHIVE"
             echo "Downloading EEST fixtures from $ARCHIVE_URL"
