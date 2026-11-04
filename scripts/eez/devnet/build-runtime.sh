@@ -11,7 +11,7 @@ if [[ "$EEZ_PROFILE" == rollup0 ]]; then
   if test ! -x "$EEZ_RUNTIME_DIR/eez-composer"; then
     runtime_targets=(-p eez-node -p eez-follower -p eez-prover-stateless --bins --examples)
   fi
-  cargo build --locked --profile ci-e2e -p eez-node-e2e "${runtime_targets[@]}" --message-format=json --timings \
+  cargo build --locked --profile ci-e2e -p eez-node-e2e "${runtime_targets[@]}" --message-format=json-render-diagnostics --timings \
     --test durability --test resumption --test resumption_append --test native_system --test contract_post --test partial_consumption --test nethermind_streaming_controls \
     > "$EEZ_CI_RESULT_DIR/test-build.jsonl"
   cp target/cargo-timings/cargo-timing.html "$EEZ_CI_RESULT_DIR/cargo-timing.html"
@@ -23,7 +23,7 @@ if [[ "$EEZ_PROFILE" == rollupx ]]; then
   python3 "$HERE/embedded.py" prepare --upstream "$EEZ_UPSTREAM" \
     --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --output "$EEZ_CI_RESULT_DIR/embedded/inventory.json"
   CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_SPLIT_DEBUGINFO=off \
-    cargo build --locked -p eez-node-e2e --test node_e2e --message-format=json --timings \
+    cargo build --locked -p eez-node-e2e --test node_e2e --message-format=json-render-diagnostics --timings \
     > "$EEZ_CI_RESULT_DIR/test-build.jsonl"
   cp target/cargo-timings/cargo-timing.html "$EEZ_CI_RESULT_DIR/cargo-timing.html"
   python3 "$HERE/bundle.py" tests --directory "$EEZ_CI_RESULT_DIR"
