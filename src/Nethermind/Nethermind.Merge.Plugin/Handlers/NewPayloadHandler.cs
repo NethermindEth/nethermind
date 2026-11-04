@@ -71,10 +71,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     /// <summary>The copies this handler handed to the processing queue that have not left it yet.</summary>
     /// <remarks>
-    /// Replaced whole and only by the request in progress: the engine API runs one newPayload at a time, so a
-    /// request finds here what the requests before it left behind and nothing changes it meanwhile.
+    /// The engine API runs one newPayload at a time, so a request finds here what the requests before it left
+    /// behind. The lock is uncontended then; it keeps the list whole on a node that serves newPayload through two
+    /// engine modules, each with its own request lock.
     /// </remarks>
-    private QueuedCopy[] _queuedCopies = [];
+    private readonly List<QueuedCopy> _queuedCopies = [];
+    private readonly Lock _queuedCopiesLock = new();
 
     private ulong _lastBlockNumber;
     private ulong _lastBlockGasLimit;
@@ -934,11 +936,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         bool tracked = false;
         List<Task>? anotherList = null;
-        foreach (QueuedCopy copy in _queuedCopies)
+        lock (_queuedCopiesLock)
         {
-            if (copy.BlockHash != blockHash || copy.Left.IsCompleted) continue;
-            tracked = true;
-            if (copy.InclusionListDigest != ilDigest) (anotherList ??= []).Add(copy.Left);
+            foreach (QueuedCopy copy in _queuedCopies)
+            {
+                if (copy.BlockHash != blockHash || copy.Left.IsCompleted) continue;
+                tracked = true;
+                if (copy.InclusionListDigest != ilDigest) (anotherList ??= []).Add(copy.Left);
+            }
         }
 
         bool carriesSameList = anotherList is null && (tracked || ilDigest == default);
@@ -950,8 +955,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private void TrackQueuedCopy(Hash256 blockHash, ValueHash256? inclusionListDigest, Task left)
     {
-        QueuedCopy[] stillQueued = Array.FindAll(_queuedCopies, static copy => !copy.Left.IsCompleted);
-        _queuedCopies = [.. stillQueued, new QueuedCopy(blockHash, inclusionListDigest, left)];
+        lock (_queuedCopiesLock)
+        {
+            _queuedCopies.RemoveAll(static copy => copy.Left.IsCompleted);
+            _queuedCopies.Add(new QueuedCopy(blockHash, inclusionListDigest, left));
+        }
     }
 
     private async Task EnqueueOnceAddedAsync(Task<AddBlockResult> suggest, Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)

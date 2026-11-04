@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
@@ -25,45 +26,40 @@ public sealed class ValueHash256KademliaDistance : IKademliaDistance<ValueHash25
     public ValueHash256 Zero => default;
 
     /// <inheritdoc/>
-    [SkipLocalsInit]
     public int CalculateLogDistance(ValueHash256 left, ValueHash256 right)
     {
-        Span<byte> xorDistance = stackalloc byte[ValueHash256.MemorySize];
-        XorDistance(left.Bytes, right.Bytes, xorDistance);
-        int zeros = 0;
-
-        for (int i = 0; i < ValueHash256.MemorySize; i++)
+        ReadOnlySpan<byte> leftBytes = left.Bytes;
+        ReadOnlySpan<byte> rightBytes = right.Bytes;
+        for (int i = 0; i < ValueHash256.MemorySize; i += sizeof(ulong))
         {
-            byte xor = xorDistance[i];
-            if (xor == 0)
+            ulong xor = BinaryPrimitives.ReadUInt64BigEndian(leftBytes[i..]) ^ BinaryPrimitives.ReadUInt64BigEndian(rightBytes[i..]);
+            if (xor != 0)
             {
-                zeros += 8;
-                continue;
+                return MaxDistance - i * 8 - BitOperations.LeadingZeroCount(xor);
             }
-
-            int nonZeroPostfix = 1;
-            while ((xor >>= 1) != 0)
-            {
-                nonZeroPostfix++;
-            }
-
-            zeros += 8 - nonZeroPostfix;
-            break;
         }
 
-        return MaxDistance - zeros;
+        return 0;
     }
 
     /// <inheritdoc/>
-    [SkipLocalsInit]
     public int Compare(ValueHash256 left, ValueHash256 right, ValueHash256 target)
     {
-        Span<byte> leftDistance = stackalloc byte[ValueHash256.MemorySize];
-        Span<byte> rightDistance = stackalloc byte[ValueHash256.MemorySize];
-        XorDistance(left.Bytes, target.Bytes, leftDistance);
-        XorDistance(right.Bytes, target.Bytes, rightDistance);
+        ReadOnlySpan<byte> leftBytes = left.Bytes;
+        ReadOnlySpan<byte> rightBytes = right.Bytes;
+        ReadOnlySpan<byte> targetBytes = target.Bytes;
+        for (int i = 0; i < ValueHash256.MemorySize; i += sizeof(ulong))
+        {
+            ulong targetWord = BinaryPrimitives.ReadUInt64BigEndian(targetBytes[i..]);
+            ulong leftDistance = BinaryPrimitives.ReadUInt64BigEndian(leftBytes[i..]) ^ targetWord;
+            ulong rightDistance = BinaryPrimitives.ReadUInt64BigEndian(rightBytes[i..]) ^ targetWord;
+            if (leftDistance != rightDistance)
+            {
+                return leftDistance < rightDistance ? -1 : 1;
+            }
+        }
 
-        return leftDistance.SequenceCompareTo(rightDistance);
+        return 0;
     }
 
     /// <inheritdoc/>
@@ -82,19 +78,5 @@ public sealed class ValueHash256KademliaDistance : IKademliaDistance<ValueHash25
         key.Bytes.CopyTo(bytes);
         bytes[index / 8] |= (byte)(1 << (7 - (index % 8)));
         return new ValueHash256(bytes);
-    }
-
-    private static void XorDistance(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> destination)
-    {
-        int i = 0;
-        for (; i <= destination.Length - Vector<byte>.Count; i += Vector<byte>.Count)
-        {
-            (new Vector<byte>(left[i..]) ^ new Vector<byte>(right[i..])).CopyTo(destination[i..]);
-        }
-
-        for (; i < destination.Length; i++)
-        {
-            destination[i] = (byte)(left[i] ^ right[i]);
-        }
     }
 }

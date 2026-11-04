@@ -2061,6 +2061,9 @@ namespace Nethermind.Blockchain
                 }
             }
 
+            if (BestKnownNumber <= endNumber)
+                BestKnownNumber = Math.Min(BestKnownNumber, startNumber - 1);
+
             // Suggestions above a deleted level lose their ancestry; reset bodies before using them as header fallbacks.
             if (newHeadBlock is not null || (deleted > 0 && BestSuggestedBody?.Number >= startNumber))
                 BestSuggestedBody = newHeadBlock ?? Head;

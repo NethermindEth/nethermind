@@ -82,7 +82,7 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "0", Description = "EIP-8141 MATCHA `width_cap`: the max width, in gas, a sender or a paymaster may hold. Newly finalized gas earns width only up to this cap; lowering it never shrinks width already earned. `0` lifts the cap. Used only when `FrameTxWidthEnabled` is set.")]
     ulong FrameTxWidthCap { get; set; }
 
-    [ConfigItem(DefaultValue = "524288",
+    [ConfigItem(DefaultValue = "131072",
         Description = "The max number of cached hashes of already known transactions.")]
     int HashCacheSize { get; set; }
 
