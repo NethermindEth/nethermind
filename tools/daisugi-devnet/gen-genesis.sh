@@ -123,7 +123,8 @@ JWT=$(openssl rand -hex 32)
 mkdir -p "$OUT/data/jwt" && printf "0x%s" "$JWT" > "$OUT/data/jwt/jwtsecret"
 echo "[]" > "$OUT/data/metadata/boot_enr.yaml"
 rm -f "$OUT/data/metadata/mnemonics.yaml"
-! grep -rqF -- "$MNEMONIC" "$OUT/data" || fail "the mnemonic leaked into $OUT/data"
+rc=0; grep -rqFf "$SECRETS/mnemonic" "$OUT/data" || rc=$?
+(( rc == 1 )) || fail "the mnemonic leaked into $OUT/data, or the leak check failed (grep exit $rc)"
 
 KEYSTORE_FLAGS=()
 [[ "$LOCAL" == 1 ]] && KEYSTORE_FLAGS=(--insecure)

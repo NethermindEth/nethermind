@@ -121,7 +121,7 @@ CHAIN_ID=<new id> DEVNET_MNEMONIC_FILE=~/devnet.mnemonic OPERATORS='alice:0:32 b
   ./gen-genesis.sh run/shared-1 <genesis timestamp> 3
 ```
 
-- Each operator's keystores go to `data/operators/<name>`. Give each operator only `data/metadata` and their own directory. No two validator clients ever load the same key.
+- Each operator's keystores go to `data/operators/<name>`. Give each operator only `params.json`, `data/metadata` and their own directory. `up.sh` creates a separate JWT secret on each operator host, so `data/jwt` is not handed out. No two validator clients ever load the same key.
 - No `mnemonic` file and no `config/values.env` are left in the output directory; a failed run deletes it. `eth2-val-tools` takes the mnemonic only as an argument, so run `gen-genesis.sh` on a host where no other user can list processes. Premined accounts derive from your mnemonic, so none has a publicly known key. `proof.sh send` reads `mnemonic`, so it runs only on `LOCAL=1` outputs.
 - `up.sh` needs `OPERATOR=<name>` and `FEE_RECIPIENT=<address you control>`. It refuses the well-known fee recipients.
 - `DEVNET_PREFIX`, `EL_RPC_PORT` and `CL_HTTP_PORT` change the container names, compose project, network and host ports. Pass the same values to `check.sh`.
