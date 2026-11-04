@@ -26,23 +26,35 @@ public class ProtectedPrivateKeyTests
         string workingDirectory = Directory.GetCurrentDirectory();
         DirectoryInfo otherDirectory = Directory.CreateTempSubdirectory();
 
-        ProtectedPrivateKey key;
-        Directory.SetCurrentDirectory(otherDirectory.FullName);
         try
         {
-            key = new(TestItem.PrivateKeyA, keyStoreDir);
+            ProtectedPrivateKey key;
+            Directory.SetCurrentDirectory(otherDirectory.FullName);
+            try
+            {
+                key = new(TestItem.PrivateKeyA, keyStoreDir);
+            }
+            finally
+            {
+                Directory.SetCurrentDirectory(workingDirectory);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Directory.EnumerateFiles(Path.Combine(keyStoreDir.GetApplicationResourcePath(), "protection_keys")).Count(), Is.EqualTo(1));
+                Assert.That(otherDirectory.EnumerateFileSystemInfos(), Is.Empty);
+
+                Assert.That(key.Unprotect(), Is.EqualTo(TestItem.PrivateKeyA));
+            }
         }
         finally
         {
-            Directory.SetCurrentDirectory(workingDirectory);
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Directory.EnumerateFiles(Path.Combine(keyStoreDir.GetApplicationResourcePath(), "protection_keys")).Count(), Is.EqualTo(1));
-            Assert.That(otherDirectory.EnumerateFileSystemInfos(), Is.Empty);
-
-            Assert.That(key.Unprotect(), Is.EqualTo(TestItem.PrivateKeyA));
+            otherDirectory.Delete(recursive: true);
+            string resolvedKeyStoreDir = keyStoreDir.GetApplicationResourcePath();
+            if (Directory.Exists(resolvedKeyStoreDir))
+            {
+                Directory.Delete(resolvedKeyStoreDir, recursive: true);
+            }
         }
     }
 }
