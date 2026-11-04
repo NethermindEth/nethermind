@@ -247,8 +247,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             filterInMemorySlotReads: filterInMemorySlotReads);
     }
 
-    private static readonly StringLabel _depthInMemoryLabel = new("in_memory");
-    private static readonly StringLabel _depthPersistedLabel = new("persisted");
+    private static readonly StableStringLabel _depthInMemoryLabel = StableStringLabel.Get("in_memory");
+    private static readonly StableStringLabel _depthPersistedLabel = StableStringLabel.Get("persisted");
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
         GatherReadOnlySnapshotBundle(baseBlock, ReaderFlags.None);

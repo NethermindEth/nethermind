@@ -154,8 +154,14 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         result.TxHash = _ctx.TxHash;
         if (!_captureErrors)
         {
-            result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(Invoke(TracerFunctions.result)) };
-            Dispose();
+            try
+            {
+                result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(Invoke(TracerFunctions.result)) };
+            }
+            finally
+            {
+                Dispose();
+            }
             return result;
         }
         try
@@ -195,15 +201,21 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     /// <remarks>
     /// Renders with the static <see cref="EthereumJsonSerializer.JsonOptions"/>, since the request's serializer
     /// is not reachable from the tracer; the response serializer's depth limit is applied when the bytes are
-    /// written, see <see cref="RenderedJsonConverter"/>.
+    /// written, see <see cref="RenderedJsonConverter"/>. A result nested too deep to render, or cyclic, fails the
+    /// trace like an error the script throws.
     /// </remarks>
-    private static RenderedJson MaterializeResult(object? scriptResult)
+    private RenderedJson MaterializeResult(object? scriptResult)
     {
         NumberConversion previousConversion = ForcedNumberConversion.Value;
         ForcedNumberConversion.Value = NumberConversion.Raw;
         try
         {
             return new RenderedJson(TypeInfoJsonSerializer.SerializeToUtf8Bytes(scriptResult, EthereumJsonSerializer.JsonOptions));
+        }
+        catch (JavaScriptResultDepthException exception)
+        {
+            _engine.ThrowIfInterrupted();
+            throw new JavaScriptTraceFailure(exception);
         }
         finally
         {
