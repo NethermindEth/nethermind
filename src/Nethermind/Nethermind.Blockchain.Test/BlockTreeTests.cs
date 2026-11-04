@@ -1081,7 +1081,7 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Find_headers_forward_stops_when_next_level_resolves_to_another_branch()
+    public void Find_headers_forward_stops_when_next_level_resolves_to_another_branch([Values(0, 1)] int skip)
     {
         // Head is 1, while levels 2 and 3 only hold a branch that forks below 1, as when a reorg lands between two level lookups
         BlockTree blockTree = BuildBlockTree();
@@ -1097,8 +1097,37 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block2b);
         blockTree.SuggestBlock(block3b);
 
-        using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block1.Hash, 4, 0, false);
+        using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block1.Hash, 4, skip, false);
         Assert.That(headers.TakeWhile(static header => header is not null).Select(static header => header.Hash), Is.EqualTo(new[] { block1.Hash }));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Find_headers_forward_stops_at_branch_change_after_valid_steps([Values(0, 1)] int skip)
+    {
+        // Head is A4, while levels 5 and 6 only hold a suggested branch S1-S6 that forks at A0, so the walk from A1 has valid steps before the branch change
+        BlockTree blockTree = BuildBlockTree();
+        Block[] main = new Block[5];
+        main[0] = Build.A.Block.WithNumber(0).TestObject;
+        AddToMain(blockTree, main[0]);
+        for (int i = 1; i < main.Length; i++)
+        {
+            main[i] = Build.A.Block.WithParent(main[i - 1]).TestObject;
+            AddToMain(blockTree, main[i]);
+        }
+
+        Block parent = main[0];
+        for (int i = 1; i <= 6; i++)
+        {
+            parent = Build.A.Block.WithParent(parent).WithExtraData([1]).TestObject;
+            blockTree.SuggestBlock(parent);
+        }
+
+        Hash256[] expected = skip == 0
+            ? [main[1].Hash!, main[2].Hash!, main[3].Hash!, main[4].Hash!]
+            : [main[1].Hash!, main[3].Hash!];
+
+        using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(main[1].Hash, 5, skip, false);
+        Assert.That(headers.TakeWhile(static header => header is not null).Select(static header => header.Hash), Is.EqualTo(expected));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

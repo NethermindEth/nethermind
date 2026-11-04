@@ -781,8 +781,8 @@ namespace Nethermind.Blockchain
                             return headers;
                         }
 
+                        // The end level resolved to a branch the origin is not on, so fall back to the by-number walk below
                         headers.Dispose();
-                        return new ArrayPoolList<BlockHeader>(1) { startHeader };
                     }
                 }
             }
@@ -814,9 +814,10 @@ namespace Nethermind.Blockchain
 
                 // Later headers are resolved by number, so check at every step that the next header still descends from the previous one,
                 // like geth: by parent hash when contiguous, otherwise by the previous header still being the block its number resolves to
+                // and the next header being on the main chain
                 if (!reverse && current is not null && (skip == 0
                         ? current.ParentHash != previous.Hash
-                        : GetBlockHashOnMainOrBestDifficultyHash(previous.Number) != previous.Hash))
+                        : GetBlockHashOnMainOrBestDifficultyHash(previous.Number) != previous.Hash || !IsMainChain(current)))
                 {
                     break;
                 }
