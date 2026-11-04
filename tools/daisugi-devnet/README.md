@@ -68,15 +68,17 @@ NM=daisugi/nethermind:0260e692fc LH=daisugi/lighthouse:eip8288-lean
 ## 2. Genesis and fork schedule
 
 ```bash
-./gen-genesis.sh run/devnet-1 $(( $(date +%s) + 30 )) 3
+LOCAL=1 ./gen-genesis.sh run/devnet-1 $(( $(date +%s) + 30 )) 3
 ```
 
 - Arguments: output directory (must not exist), genesis timestamp, Daisugi fork epoch.
-- Chain ID 1337, 2-second slots, 32 slots per epoch, 64 validators, gas limit 60M, `MAX_PAYLOAD_SIZE` 20 MiB.
+- `LOCAL=1` is a single-host throwaway run. A shared network runs without it, see "Shared network" below.
+- Chain ID 1337 with `LOCAL=1`, 2-second slots, 32 slots per epoch, 64 validators, gas limit 60M, `MAX_PAYLOAD_SIZE` 20 MiB.
 - EL: Prague and EIP-8141 (`eip8141PrototypeTime`) from genesis, EIP-8288 (`eip8288PrototypeTime`) at the fork boundary. Osaka, Amsterdam and Bogota removed.
 - CL: Electra from genesis, `DAISUGI_FORK_VERSION 0xd0000038` at `DAISUGI_FORK_EPOCH`. Fulu and Gloas unscheduled.
 - Writes `run/devnet-1/params.json` (schedule and EL genesis hash), `mnemonic`, `data/metadata/{genesis.json,genesis.ssz,config.yaml}`, `data/jwt/jwtsecret`, `data/validators/`.
-- `DEVNET_MNEMONIC="<24 words>"` reuses a mnemonic. With the same mnemonic and timestamp, `genesis.json`, `genesis.ssz` and `config.yaml` are byte-identical.
+- `data/metadata` holds no mnemonic: the generator's `mnemonics.yaml` is deleted.
+- `DEVNET_MNEMONIC="<24 words>"` or `DEVNET_MNEMONIC_FILE` reuses a mnemonic. With the same mnemonic and timestamp, `genesis.json`, `genesis.ssz` and `config.yaml` are byte-identical.
 
 ## 3. Start and check
 
@@ -105,6 +107,24 @@ PASS
 ```
 
 A few beacon and validator `ERROR` lines at startup are expected: they connect before Nethermind or the beacon node listens.
+
+### Shared network
+
+Without `LOCAL=1`, `gen-genesis.sh` refuses to run unless all of these hold:
+
+- `CHAIN_ID` is set and is not 1 or 1337.
+- `DEVNET_MNEMONIC_FILE` (owned by you, mode 0600 or 0400) or `DEVNET_MNEMONIC` is set, and it is not a public test mnemonic.
+- `OPERATORS` gives each operator a disjoint validator index range (`name:first:count`) and the ranges cover every validator.
+
+```bash
+CHAIN_ID=<new id> DEVNET_MNEMONIC_FILE=~/devnet.mnemonic OPERATORS='alice:0:32 bob:32:32' \
+  ./gen-genesis.sh run/shared-1 <genesis timestamp> 3
+```
+
+- Each operator's keystores go to `data/operators/<name>`. Give each operator only `params.json`, `data/metadata` and their own directory. `up.sh` creates a separate JWT secret on each operator host, so `data/jwt` is not handed out. No two validator clients ever load the same key.
+- No `mnemonic` file and no `config/values.env` are left in the output directory; a failed run deletes it. `eth2-val-tools` takes the mnemonic only as an argument, so run `gen-genesis.sh` on a host where no other user can list processes. Premined accounts derive from your mnemonic, so none has a publicly known key. `proof.sh send` reads `mnemonic`, so it runs only on `LOCAL=1` outputs.
+- `up.sh` needs `OPERATOR=<name>` and `FEE_RECIPIENT=<address you control>`. It refuses the well-known fee recipients.
+- `DEVNET_PREFIX`, `EL_RPC_PORT` and `CL_HTTP_PORT` change the container names, compose project, network and host ports. Pass the same values to `check.sh`.
 
 ## 4. Proof-bearing block
 
@@ -147,7 +167,11 @@ until curl -s -X POST -H 'content-type: application/json' --data "{\"jsonrpc\":\
 | Variable | Used by | Default |
 | --- | --- | --- |
 | `COMPOSE_FILE` | every `docker compose` call | must include `lighthouse-distroless.override.yml` for the reproducible Lighthouse image |
-| `DEVNET_MNEMONIC` | `gen-genesis.sh` | random per run |
+| `LOCAL` | `gen-genesis.sh` | `0`; `1` allows chain ID 1337, a random or public mnemonic and one operator with all validators |
+| `CHAIN_ID`, `OPERATORS`, `VALIDATORS` | `gen-genesis.sh` | required without `LOCAL=1`; `VALIDATORS` is `64` |
+| `DEVNET_MNEMONIC`, `DEVNET_MNEMONIC_FILE` | `gen-genesis.sh` | random per run with `LOCAL=1`; required otherwise |
+| `OPERATOR`, `FEE_RECIPIENT` | `up.sh` | required on a shared network |
+| `DEVNET_PREFIX`, `EL_RPC_PORT`, `CL_HTTP_PORT` | compose, `check.sh` | `daisugi`, `28545`, `25052` |
 | `EL_RPC` | `proof.sh send` | `http://127.0.0.1:28545` |
 | `BLOBS_SUPPORT` | compose, Nethermind `TxPoolConfig.BlobsSupport` | `StorageWithReorgs`; `Disabled` lets the node negotiate eth/73 before PeerDAS |
 | `GENESIS_DIR`, `NETHERMIND_IMAGE`, `LIGHTHOUSE_IMAGE`, `DEVNET_USER`, `BEACON_MULTIADDR` | compose | set by the scripts |
@@ -163,8 +187,7 @@ rm -rf run/devnet-1
 
 - Wallet, RPC gateway and explorer in AA-PQ still use the live chain's formats: wrapper `[dep, [witness]]` instead of `[[deps], [witnesses]]`, a 24-field header with the proof in it instead of 25 fields with the proof in the body, keccak instead of BLAKE2s dependency hash. The gateway also accepts only 7-field frame transactions while the wallet sends 8. None of them works against this devnet yet. This devnet tests clients only.
 - Not configured: Osaka/Fulu (PeerDAS), Amsterdam, Gloas, Bogota, adaptive aggregation.
-- Chain ID 1337 is the live Daisugi chain's ID. Pick a new one for the public re-genesis.
 - Single host, Docker network only. No bootnodes, discovery, public ENRs or multi-host topology yet.
 - arm64: no runtime-validated Lighthouse image (lock `binarySha256` for arm64 is `null`); Nethermind arm64 not run here.
 - Nethermind pin is interim; the Lean library is built locally until the NuGet package exists.
-- `check.sh` and `sync-check.sh` read container names and fixed host ports, so one devnet per host.
+- `proof.sh`, `sync.sh` and `sync-check.sh` read fixed container names and host ports, so they run only against the default `DEVNET_PREFIX`.
