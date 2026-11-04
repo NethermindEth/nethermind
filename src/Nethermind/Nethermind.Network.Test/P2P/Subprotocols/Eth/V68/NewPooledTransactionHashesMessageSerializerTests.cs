@@ -24,7 +24,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
         using NewPooledTransactionHashesMessage68 message = new(types.Select(static t => (byte)t).ToPooledList(types.Length), sizes.ToPooledList(), hashes.ToPooledList());
         NewPooledTransactionHashesMessageSerializer serializer = new();
 
-        SerializerTester.TestZero(serializer, message, expected);
+        SerializerTester.Test(serializer, message, expected);
     }
 
     [Test]
@@ -91,7 +91,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
             Enumerable.Repeat((byte)2, count).ToPooledList(count),
             Enumerable.Repeat(100, count).ToPooledList(count),
             Enumerable.Repeat(TestItem.KeccakA.ValueHash256, count).ToPooledList(count));
-        byte[] bytes = serializer.Serialize(source);
+        byte[] bytes = serializer.SerializeToArray(source);
         NewPooledTransactionHashesMessage68 first = serializer.Deserialize(bytes);
         Assert.That(first.Hashes, Is.EqualTo(source.Hashes));
         first.AdaptivePacketType = 123;
@@ -133,7 +133,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
         {
             Assert.That(hash, Is.EqualTo(TestItem.KeccakA.ValueHash256));
             Assert.That(next.Hashes[0], Is.EqualTo(TestItem.KeccakB.ValueHash256));
-            Assert.That(serializer.Serialize(next), Is.EqualTo(nextBytes));
+            Assert.That(serializer.SerializeToArray(next), Is.EqualTo(nextBytes));
         }
     }
 
@@ -147,7 +147,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
             Enumerable.Repeat((byte)2, count).ToPooledList(count),
             Enumerable.Repeat(100, count).ToPooledList(count),
             Enumerable.Repeat(TestItem.KeccakA.ValueHash256, count).ToPooledList(count));
-        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(serializer.Serialize(source)).AsDisposable();
+        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(serializer.SerializeToArray(source)).AsDisposable();
         for (int i = 0; i < 100; i++)
         {
             buffer.SetReaderIndex(0);
@@ -187,6 +187,19 @@ public class NewPooledTransactionHashesMessageSerializerTests
         }
     }
 
+    [Test, NonParallelizable]
+    public void Trailing_bytes_return_the_pooled_lists()
+    {
+        NewPooledTransactionHashesMessageSerializer serializer = new();
+        byte[] bytes = Convert.FromHexString("c380c0c0");
+        NewPooledTransactionHashesMessage68 first = serializer.Deserialize(bytes);
+        first.Dispose();
+
+        Assert.That(() => serializer.Deserialize([.. bytes, 0]), Throws.InstanceOf<RlpException>());
+        using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(bytes);
+        Assert.That(next.Types, Is.SameAs(first.Types));
+    }
+
     [Test]
     public void Concurrent_batches_keep_independent_message_leases()
     {
@@ -224,7 +237,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
             new byte[] { 0, 1, 2 }.ToPooledList(),
             new[] { 1, 128, 65536 }.ToPooledList(),
             new[] { TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, TestItem.KeccakC.ValueHash256 }.ToPooledList());
-        byte[] bytes = serializer.Serialize(source);
+        byte[] bytes = serializer.SerializeToArray(source);
         using DisposableByteBuffer buffer = Unpooled.Buffer(bytes.Length + 7).WriteZero(7).WriteBytes(bytes).AsDisposable();
         for (int length = 0; length < bytes.Length; length++)
         {
@@ -234,7 +247,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
             Assert.That(error, Is.InstanceOf<RlpException>().Or.InstanceOf<IndexOutOfRangeException>()
                 .Or.InstanceOf<ArgumentOutOfRangeException>(), $"cut {length}");
             using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(bytes);
-            Assert.That(serializer.Serialize(next), Is.EqualTo(bytes), $"lease after cut {length}");
+            Assert.That(serializer.SerializeToArray(next), Is.EqualTo(bytes), $"lease after cut {length}");
         }
     }
 
@@ -248,7 +261,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
             Enumerable.Repeat((byte)2, field == "types" ? count : 1).ToPooledList(count),
             Enumerable.Repeat(100, field == "sizes" ? count : 1).ToPooledList(count),
             Enumerable.Repeat(TestItem.KeccakA.ValueHash256, field == "hashes" ? count : 1).ToPooledList(count));
-        byte[] bytes = serializer.Serialize(source);
+        byte[] bytes = serializer.SerializeToArray(source);
         if (delta > 0)
         {
             Assert.That(() => serializer.Deserialize(bytes), Throws.InstanceOf<RlpException>());
@@ -256,7 +269,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
         else
         {
             using NewPooledTransactionHashesMessage68 decoded = serializer.Deserialize(bytes);
-            Assert.That(serializer.Serialize(decoded), Is.EqualTo(bytes));
+            Assert.That(serializer.SerializeToArray(decoded), Is.EqualTo(bytes));
         }
         using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(Convert.FromHexString("c380c0c0"));
         using (Assert.EnterMultipleScope())

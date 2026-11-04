@@ -514,6 +514,22 @@ public class Eth72MessageSerializerTests
         hashesPool.Received(1).Return(hashesArray, Arg.Any<bool>());
     }
 
+    [Test]
+    public void Announcement_with_trailing_bytes_returns_its_rented_arrays()
+    {
+        NewPooledTransactionHashesMessageSerializer72 serializer = new();
+        using NewPooledTransactionHashesMessage72 source = new([1], [1], [Hash256.Zero], BlobCellMask.Empty.ToBytes());
+        byte[] bytes = serializer.SerializeToArray(source);
+        NewPooledTransactionHashesMessage72 first = serializer.Deserialize(bytes);
+        ValueHash256[] hashes = ((ArrayPoolList<ValueHash256>)first.Hashes).UnsafeGetInternalArray();
+        first.Dispose();
+
+        // ArrayPool<T>.Shared hands the array returned last on this thread to the next rental of its size.
+        Assert.That(() => serializer.Deserialize([.. bytes, 0]), Throws.InstanceOf<RlpException>());
+        using NewPooledTransactionHashesMessage72 next = serializer.Deserialize(bytes);
+        Assert.That(((ArrayPoolList<ValueHash256>)next.Hashes).UnsafeGetInternalArray(), Is.SameAs(hashes));
+    }
+
     [Test, NonParallelizable]
     [ReleaseOnly("Debug builds box each decoded size and hash in the decoder's generic null check, so the per-hash allocation ceiling does not apply.")]
     public void Announcement_decoding_and_reading_hashes_has_bounded_allocations([Values(128, 4096)] int count)
