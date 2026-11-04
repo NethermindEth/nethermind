@@ -779,6 +779,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         try
         {
             ObjectDisposedException.ThrowIf(_isDisposing, this);
+            UpdateReadMetrics();
 
             ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions;
             PinnedSlice slice;
