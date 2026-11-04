@@ -514,18 +514,12 @@ public sealed class SnapshotBundle : IDisposable
             return;
         }
 
-        using ArrayPoolListRef<HashedKey<(Address, UInt256)>> slotKeysToRemove = new(16);
         foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kvp in _changedSlots)
         {
             if (kvp.Key.Key.Item1 == address)
             {
-                slotKeysToRemove.Add(kvp.Key);
+                _changedSlots.TryRemove(kvp.Key, out _);
             }
-        }
-
-        foreach (HashedKey<(Address, UInt256)> key in slotKeysToRemove)
-        {
-            _changedSlots.TryRemove(key, out _);
         }
     }
 

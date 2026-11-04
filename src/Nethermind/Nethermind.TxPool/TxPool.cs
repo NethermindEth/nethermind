@@ -57,7 +57,7 @@ namespace Nethermind.TxPool
         private readonly IIncomingTxFilter[] _hashFilters;
         private readonly IIncomingTxFilter[] _postHashFilters;
 
-        private readonly HashCache _hashCache = new();
+        private readonly HashCache _hashCache;
         private readonly TxBroadcaster _broadcaster;
 
         private readonly TxDistinctSortedPool _transactions;
@@ -151,6 +151,8 @@ namespace Nethermind.TxPool
         private Hash256? _lastBlockHash;
         // Headers of blocks the head moved back past, waiting to have their transactions re-added. Head loop only.
         private readonly List<BlockHeader> _rewoundHeaders = [];
+        // Transactions the current bucket update drops, a set as the update can mark one twice. Under _newHeadLock.
+        private readonly HashSet<Transaction> _bucketUpdateDrops = [];
 
         /// <summary>
         /// The release specification every transaction currently in the pool has been validated against, or
@@ -218,6 +220,7 @@ namespace Nethermind.TxPool
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
+            _hashCache = new(txPoolConfig.HashCacheSize);
             _peerValidationShares = txPoolConfig.FrameTxPeerSimulationFairShare && txPoolConfig.FrameTxSimulationBudgetPerHeadMs > 0
                 ? new PeerValidationShares(txPoolConfig.FrameTxSimulationBudgetPerHeadMs * Stopwatch.Frequency / 1000)
                 : null;
@@ -393,7 +396,7 @@ namespace Nethermind.TxPool
             postHashFilters.Add(new FrameTxPayerFilter(_logger));
 
             // EIP-8141: after FrameTxPayerFilter, so the natively-resolved fast path bypasses it.
-            postHashFilters.Add(new FrameTxSimulationFilter(frameTxPrefixSimulator, _logger, _headInfo, _codeDependencies, _txPoolConfig.FrameTxMaxPendingPerDelegatingCode));
+            postHashFilters.Add(new FrameTxSimulationFilter(frameTxPrefixSimulator, _logger, _headInfo, _codeDependencies, _txPoolConfig.FrameTxMaxPendingPerDelegatingCode, _transactions, _blobTransactions));
 
             // EIP-8141: must follow both resolvers — it prices whichever payer they recorded, and a
             // second registration would reserve every frame tx's cost twice.
@@ -631,7 +634,7 @@ namespace Nethermind.TxPool
         /// Two kinds of dependency sit outside the set (EIP8141-GAP): helper contracts an opaque prefix reaches
         /// through <c>CALL*</c>, so a code change at one does not trigger revalidation; and block context it
         /// reads (<c>TIMESTAMP</c>, <c>NUMBER</c>), which no change list can describe. The exception is a helper
-        /// whose code can change under EIP-8298 by delegating, or an account EIP-8151 ecRecover recovered, which
+        /// whose code can change under EIP-8298 by delegating, or an account EIP-8151 ecRecover returned, which
         /// admission records and this indexes; a record restored without simulation carries none.
         /// A persistent blob pool holds a frameless light record, which is indexed all the same: the set is
         /// addresses that record carries, and <see cref="RevalidateFrameTransactions"/> reloads the prefix
@@ -1620,7 +1623,7 @@ namespace Nethermind.TxPool
                     }
                     payer = simulated.Payer;
                     // The prefix may now rely on different accounts whose code can change, re-judged against the cap.
-                    if (!_codeDependencies.TryUpdate(tx.Hash!.ValueHash256, simulated.CodeDependencies, _txPoolConfig.FrameTxMaxPendingPerDelegatingCode, out bool added)) return false;
+                    if (!_codeDependencies.TryUpdate(tx.Hash!.ValueHash256, simulated.CodeDependencies, PendingCodeDependencyCache.SlotPaymaster(tx, state), _txPoolConfig.FrameTxMaxPendingPerDelegatingCode, out bool added)) return false;
                     // An eviction that landed before the entry was added has already released, so release again.
                     if (added && !_transactions.ContainsKey(tx.Hash!.ValueHash256) && !_blobTransactions.ContainsKey(tx.Hash!.ValueHash256))
                     {
@@ -2154,7 +2157,7 @@ namespace Nethermind.TxPool
                 UInt256 balance = account.Balance;
                 ulong currentNonce = account.Nonce;
 
-                UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx, revalidation: null);
+                UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx, revalidation: null, drops: null);
             }
         }
 
@@ -2180,6 +2183,7 @@ namespace Nethermind.TxPool
             return false;
         }
 
+        /// <param name="drops">Collects the transactions marked for eviction, when given.</param>
         /// <returns>How many transactions were dropped as invalid under <paramref name="revalidation"/>.</returns>
         private int UpdateGasBottleneckAndMarkForEviction(
             EnhancedSortedSet<Transaction> transactions,
@@ -2187,7 +2191,8 @@ namespace Nethermind.TxPool
             UInt256 balance,
             Transaction? lastElement,
             UpdateTransactionDelegate updateTx,
-            ForkRevalidation? revalidation)
+            ForkRevalidation? revalidation,
+            HashSet<Transaction>? drops)
         {
             UInt256 previousTxBottleneck = default;
             bool hasPreviousTxBottleneck = false;
@@ -2320,6 +2325,7 @@ namespace Nethermind.TxPool
             {
                 _broadcaster.StopBroadcast(tx.Hash!);
                 if (allowLaterPoolReentrance) _hashCache.DeleteFromLongTerm(tx.Hash!);
+                drops?.Add(tx);
                 updateTx(transactions, tx, null, lastElement);
                 // Evict all following txs to prevent nonce gaps between blob tx, but a keyed tx spends no account
                 // nonce, so removing it leaves no gap for the account-domain txs sorted behind it.
@@ -2329,8 +2335,46 @@ namespace Nethermind.TxPool
 
         private void UpdateBucketsWithoutRevalidation()
         {
-            _transactions.UpdatePool(_accounts, _updateBucket);
-            _blobTransactions.UpdatePool(_accounts, _updateBucket);
+            try
+            {
+                _transactions.UpdatePool(_accounts, _updateBucket);
+                _blobTransactions.UpdatePool(_accounts, _updateBucket);
+                SurfaceBucketUpdateDrops();
+            }
+            finally
+            {
+                _bucketUpdateDrops.Clear();
+            }
+        }
+
+        /// <summary>Raises <see cref="EvictedPending"/> for each transaction the bucket update dropped that no block up
+        /// to the current head includes.</summary>
+        /// <remarks>The pool can lag the block tree head, so a dropped transaction may be in a block it has not processed
+        /// yet. That is decided from the head state itself: the account cache can lag it too. A transaction whose
+        /// nonce the head state has not passed is in no block up to the head.</remarks>
+        private void SurfaceBucketUpdateDrops()
+        {
+            foreach (Transaction tx in _bucketUpdateDrops)
+            {
+                bool nonceSpent;
+                try
+                {
+                    nonceSpent = KeyedNonceManager.UsesKeyedNonce(tx)
+                        ? IsKeyedNonceBehind(tx)
+                        : tx.Nonce < _headInfo.ReadOnlyStateProvider.GetNonce(tx.SenderAddress!);
+                }
+                catch (MissingTrieNodeException)
+                {
+                    // Unknown head state cannot rule out the tx's inclusion, and escaping here would cut the rest of
+                    // the head update short after the buckets have already changed.
+                    continue;
+                }
+
+                if (nonceSpent) continue;
+
+                EvictedPending?.Invoke(this, new TxEventArgs(tx));
+                Metrics.PendingTransactionsEvicted++;
+            }
         }
 
         private void InitializeValidatedSpec()
@@ -2814,6 +2858,7 @@ namespace Nethermind.TxPool
                 return 0;
             }
 
+            HashSet<Transaction>? drops = revalidation is null ? _bucketUpdateDrops : null;
             UInt256 balance = account.Balance;
             ulong currentNonce = account.Nonce;
             Transaction? tx = null;
@@ -2854,13 +2899,14 @@ namespace Nethermind.TxPool
                         _hashCache.DeleteFromLongTerm(transaction.Hash!);
                     }
 
+                    drops?.Add(transaction);
                     updateTx(transactions, transaction, changedGasBottleneck: null, lastElement);
                 }
 
                 return invalidatedByFork;
             }
 
-            return UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx, revalidation);
+            return UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx, revalidation, drops);
         }
 
         public bool RemoveTransaction(Hash256? hash) => RemoveTransaction(hash, out _);

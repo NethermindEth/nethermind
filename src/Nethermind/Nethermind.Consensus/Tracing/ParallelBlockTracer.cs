@@ -219,9 +219,7 @@ public sealed partial class ParallelBlockTracer : IParallelBlockTracer, IDisposa
             IBlockTracer<TTrace> tracer = forTransaction(scope.Component.WorldState, hash);
             try
             {
-                IBlockTracer cancelable = tracer is GethLikeBlockDeadlineTracer deadline
-                    ? GethLikeBlockDeadlineTracer.WithCancellation(deadline, token)
-                    : tracer.WithCancellation(token);
+                IBlockTracer cancelable = GethLikeBlockDeadlineTracer.WithCancellation(tracer, token);
                 IBlockTracer bounded = TransactionTraceBoundary.WrapAt(cancelable, hash, index, seeds);
                 if (bounded is not TransactionTraceBoundary boundary)
                 {

@@ -1478,7 +1478,7 @@ public class Eth70ProtocolHandlerTests
     }
 
     private int GetReceiptsMessageLength(ReceiptsMessage70 message) =>
-        new ReceiptsMessageSerializer70(_specProvider).GetLength(message, out _);
+        new ReceiptsMessageSerializer70(_specProvider).GetLength(message);
 
     public enum EmptyReceiptsPayloadScenario
     {
