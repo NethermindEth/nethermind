@@ -256,6 +256,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("6001600020", 21035UL, "step:KECCAK256:30:out of gas:2:0,1:0", null)]
     [TestCase("6001600020", 100000UL, "step:KECCAK256:39::2:0,1:0", null)]
     [TestCase("3c", 21000UL, "step:EXTCODECOPY:100:stack underflow (0 <=> 4):0::0", null)]
+    [TestCase("60016000600061beef3c", 21062UL, "step:EXTCODECOPY:100:out of gas:4:48879,0,0,1:0", null)]
     [TestCase("60016000600061beef3c", 23617UL, "step:EXTCODECOPY:2606:out of gas:4:48879,0,0,1:0", null)]
     [TestCase("60016000600061beef3c", 100000UL, "step:EXTCODECOPY:2606::4:48879,0,0,1:0", null)]
     [TestCase("600040", 21022UL, "step:BLOCKHASH:20:out of gas:1:0:0", null)]
@@ -266,6 +267,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("5f5f60205fa2", 100000UL, "step:LOG2:1384::4:0,32,0,0:0", null)]
     [TestCase("5f5f5ff0", 53005UL, "step:CREATE:32000:out of gas:3:0,0,0:0", null)]
     [TestCase("5f5f5f5ff5", 53007UL, "step:CREATE2:32000:out of gas:4:0,0,0,0:0", null)]
+    [TestCase("6200c0015f5ff0", 100000UL, "step:CREATE:32000:out of gas: max initcode size exceeded:3:0,0,49153:0", null)]
+    [TestCase("6420000000005f5ff0", 100000UL, "step:CREATE:32000:out of gas: gas uint64 overflow:3:0,0,137438953472:0", null)]
+    [TestCase("680100000000000000005f5ff0", 100000UL, "step:CREATE:32000:gas uint64 overflow:3:0,0,18446744073709551616:0", null)]
     [TestCase("5fff", 26001UL, "step:SELFDESTRUCT:5000:out of gas:1:0:0", null)]
     [TestCase("6001600360003e", 100000UL, "step:RETURNDATACOPY:9::3:0,3,1:0", "fault:RETURNDATACOPY:9:return data out of bounds:3:0,4,1:0")]
     [TestCase("60006801000000000000000060003e", 100000UL, "step:RETURNDATACOPY:3::3:0,18446744073709551616,0:0", "fault:RETURNDATACOPY:3:return data out of bounds:3:0,18446744073709551616,0:0")]
@@ -381,8 +385,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
     [TestCase("5d", "step:100:stack underflow (0 <=> 2)", null)]
     [TestCase("600160005d", "step:100:", "fault:100:write protection")]
-    [TestCase("5f5f5ff0", "step:32000:write protection", null)]
-    [TestCase("5f5f5f5ff5", "step:32000:write protection", null)]
+    [TestCase("5f5f5ff0", "step:32000:out of gas: write protection", null)]
+    [TestCase("5f5f5f5ff5", "step:32000:out of gas: write protection", null)]
+    [TestCase("680100000000000000005f5ff0", "step:32000:gas uint64 overflow", null)]
     [TestCase("5f5f5f5fa2", "step:0:", "fault:0:write protection")]
     public void Static_context_preserves_precondition_and_execution_failure_callbacks(string childCode, string step, string? fault)
     {
@@ -766,6 +771,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     // every other failure faults from EndInstructionTrace, i.e. after postStep.
     [TestCase("5f5ffd", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:REVERT,F2:REVERT,P2:REVERT", 1, TestName = "Callbacks_ordered_explicit_revert")]
     [TestCase("5fff", "S0:PUSH0,P0:PUSH0,S1:SELFDESTRUCT,P1:SELFDESTRUCT", 0, TestName = "Callbacks_ordered_explicit_self_destruct")]
+    [TestCase("5f5f0a00", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:EXP,P2:EXP,S3:STOP,P3:STOP", 0, TestName = "Callbacks_ordered_exp_zero_exponent")]
     // As in Geth, an opcode that fails before it runs reports the error from step and calls no fault.
     [TestCase("20", "S0:KECCAK256(stack underflow (0 <=> 2)),P0:KECCAK256", 0, TestName = "Callbacks_ordered_stack_underflow")]
     [TestCase("0a", "S0:EXP(stack underflow (0 <=> 2)),P0:EXP", 0, TestName = "Callbacks_ordered_exp_stack_underflow")]
@@ -777,7 +783,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("63ffffffff51", "S0:PUSH4,P0:PUSH4,S5:MLOAD(out of gas),P5:MLOAD", 0, TestName = "Callbacks_ordered_memory_out_of_gas")]
     [TestCase("63ffffffff5f5f5e", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:PUSH0,P6:PUSH0,S7:MCOPY(out of gas),P7:MCOPY", 0, TestName = "Callbacks_ordered_mcopy_out_of_gas")]
     [TestCase("5f5f63ffffffff5fa2", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:PUSH4,P2:PUSH4,S7:PUSH0,P7:PUSH0,S8:LOG2(out of gas),P8:LOG2", 0, TestName = "Callbacks_ordered_log2_out_of_gas")]
-    [TestCase("5f63ffffffff5f5ff5", "S0:PUSH0,P0:PUSH0,S1:PUSH4,P1:PUSH4,S6:PUSH0,P6:PUSH0,S7:PUSH0,P7:PUSH0,S8:CREATE2(out of gas),P8:CREATE2", 0, TestName = "Callbacks_ordered_create2_out_of_gas")]
+    [TestCase("5f600163ffffffff5ff5", "S0:PUSH0,P0:PUSH0,S1:PUSH1,P1:PUSH1,S3:PUSH4,P3:PUSH4,S8:PUSH0,P8:PUSH0,S9:CREATE2(out of gas),P9:CREATE2", 0, TestName = "Callbacks_ordered_create2_out_of_gas")]
     [TestCase("5f5f57", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:JUMPI,P2:JUMPI,S3:STOP,P3:STOP", 0, TestName = "Callbacks_ordered_jumpi_falls_off_code")]
     [TestCase("fe", "S0:INVALID,P0:INVALID,F0:INVALID", 1, TestName = "Callbacks_ordered_invalid_opcode")]
     [TestCase("0f", "S0:opcode 0xf not defined,P0:opcode 0xf not defined,F0:opcode 0xf not defined", 1, TestName = "Callbacks_ordered_undefined_opcode")]
@@ -799,6 +805,24 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
         AssertResult(traces, $"{sequence}|{faults}");
+    }
+
+    [Test]
+    public void Self_destruct_post_step_reports_the_charge_beyond_its_static_cost()
+    {
+        const string userTracer = """
+            {
+                events: [],
+                step: function(log) { },
+                postStep: function(log) { if (log.op.toNumber() === 0xff) this.events.push("postStep:" + log.getCost()); },
+                fault: function(log) { this.events.push("fault:" + log.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        // A cold beneficiary that does not exist adds 2600 and 25000 to the static 5000.
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(userTracer), Bytes.FromHexString("61beefff"), MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, new[] { "postStep:32600" });
     }
 
     [Test]
