@@ -621,25 +621,27 @@ public partial class DebugRpcModuleTests
         if (tracer.Length != 0) options["tracer"] = tracer;
         if (filtered) options["txHash"] = block.Transactions[^1].Hash!;
 
-        string response = await RpcTest.TestSerializedRequest(module, "debug_traceBlockByNumber", block.Number, options);
-        JToken json = JToken.Parse(response);
-        if (timeout == "1s" || tracer == "noopTracer")
+        foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash" })
         {
-#pragma warning disable NUnit2045 // The operation must succeed before inspecting its result.
-            Assert.That(json["error"], Is.Null, response);
-#pragma warning restore NUnit2045
-            Assert.That((JArray)json["result"]!, Has.Count.EqualTo(filtered ? 1 : block.Transactions.Length));
-        }
-        else
-        {
-            using (Assert.EnterMultipleScope())
+            object selector = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
+            string response = await RpcTest.TestSerializedRequest(module, method, selector, options);
+            JToken json = JToken.Parse(response);
+            if (timeout == "1s" || tracer == "noopTracer")
             {
-                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-                Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"), response);
-                Assert.That(json["result"], Is.Null, response);
+#pragma warning disable NUnit2045 // The operation must succeed before inspecting its result.
+                Assert.That(json["error"], Is.Null, response);
+#pragma warning restore NUnit2045
+                Assert.That((JArray)json["result"]!, Has.Count.EqualTo(filtered ? 1 : block.Transactions.Length));
             }
-            string byHash = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash!, options);
-            Assert.That(JToken.Parse(byHash)["error"], Is.Null, "ByHash deadline behavior is outside this change");
+            else
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                    Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"), response);
+                    Assert.That(json["result"], Is.Null, response);
+                }
+            }
         }
         using (Assert.EnterMultipleScope())
         {
@@ -846,6 +848,12 @@ public partial class DebugRpcModuleTests
         IDebugRpcModule module = Substitute.For<IDebugRpcModule>();
         module.debug_traceBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>()).Returns(call =>
             inner.debug_traceBlockByNumber(call.Arg<BlockParameter>(), call.Arg<GethTraceOptions>() with
+            {
+                DeadlineClock = clock,
+                NoBaseFee = noBaseFee || call.Arg<GethTraceOptions>().NoBaseFee
+            }));
+        module.debug_traceBlockByHash(Arg.Any<Hash256>(), Arg.Any<GethTraceOptions>()).Returns(call =>
+            inner.debug_traceBlockByHash(call.Arg<Hash256>(), call.Arg<GethTraceOptions>() with
             {
                 DeadlineClock = clock,
                 NoBaseFee = noBaseFee || call.Arg<GethTraceOptions>().NoBaseFee
@@ -1303,7 +1311,6 @@ public partial class DebugRpcModuleTests
             for (int i = 0; i < traces.Count; i++)
                 Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
         }
-
     }
 
     private static IEnumerable<TestCaseData> BlockTimeoutPrecedenceCases()
@@ -2793,14 +2800,28 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceBlock_opcode_logger_limit_resets_per_transaction([Values] bool streamMode)
+    public Task Debug_traceBlock_opcode_logger_limit_resets_per_transaction([Values] bool streamMode) =>
+        AssertOpcodeStepLimit("debug_traceBlockByNumber", streamMode, 1);
+
+    [Test]
+    public Task Debug_traceBlock_opcode_logger_limit_counts_steps(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values] bool streamMode, [Values(0, 2, 4, 10, 20)] int limit) =>
+        AssertOpcodeStepLimit(method, streamMode, limit);
+
+    [Test]
+    public Task Debug_traceBlock_opcode_logger_step_limit_preserves_buffered_byte_cap(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method) =>
+        AssertOpcodeStepLimit(method, streamMode: false, limit: 4, capBufferedTrace: true);
+
+    private static async Task AssertOpcodeStepLimit(string method, bool streamMode, int limit, bool capBufferedTrace = false)
     {
         using Context context = await Context.Create();
-        await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
-        string unlimited = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
-            "latest", new { streamMode });
-        string limited = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
-            "latest", new { streamMode, limit = 1 });
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object selector = method == "debug_traceBlockByNumber" ? "latest" : block.Hash!;
+        string unlimited = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector, new { streamMode });
+        if (capBufferedTrace) context.Blockchain.Container.Resolve<IJsonRpcConfig>().MaxBufferedTraceLogSize = 1;
+        string limited = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector, new { streamMode, limit });
 
         JToken expected = JToken.Parse(unlimited);
         JArray transactions = (JArray)expected["result"]!;
@@ -2809,8 +2830,10 @@ public partial class DebugRpcModuleTests
         {
             JArray entries = (JArray)transaction["result"]!["structLogs"]!;
             Assert.That(entries.Count, Is.GreaterThan(1));
-            while (entries.Count > 1)
-                entries.RemoveAt(entries.Count - 1);
+            int expectedLimit = capBufferedTrace ? 1 : limit;
+            if (expectedLimit > 0)
+                while (entries.Count > expectedLimit)
+                    entries.RemoveAt(entries.Count - 1);
         }
 
         Assert.That(JToken.DeepEquals(JToken.Parse(limited), expected), Is.True, limited);
