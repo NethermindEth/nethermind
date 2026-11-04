@@ -19,6 +19,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -894,9 +895,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Blob_transaction_forgets_an_invalid_blob_proofs_verdict_before_its_only_submission()
+        public void Blob_transaction_forgets_an_invalid_blob_proofs_verdict_before_its_only_submission([Values] bool frameTx)
         {
             Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+            if (frameTx)
+            {
+                tx.Type = TxType.FrameTx;
+                tx.Frames = [];
+                tx.FrameSignatures = [];
+                tx.Hash = tx.CalculateHash();
+            }
+
             Hash256 hash = tx.Hash!;
             _transactionPool.ForgetInvalidBlobProofs(hash).Returns(true);
             _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
