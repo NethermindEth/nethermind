@@ -451,6 +451,52 @@ public class GethStyleTracerTests
     }
 
     [Test]
+    public void Execution_deadline_excludes_paused_time_without_resetting_remaining_budget([Values(1, 2)] int pauses)
+    {
+        DeadlineClock clock = new();
+        using GethTraceDeadline deadline = new(clock: clock);
+        deadline.Start(TimeSpan.FromSeconds(1));
+        for (int i = 0; i < pauses; i++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(200));
+            Assert.That(deadline.Expired, Is.False);
+            deadline.Pause();
+            clock.Advance(TimeSpan.FromSeconds(10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deadline.Expired, Is.False);
+                Assert.That(clock.Timers[0].Due, Is.EqualTo(Timeout.InfiniteTimeSpan));
+            }
+            deadline.Resume();
+        }
+        clock.Advance(TimeSpan.FromMilliseconds(1_000 - 200 * pauses - 1));
+        Assert.That(deadline.Expired, Is.False);
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.That(deadline.Expired, Is.True);
+        deadline.Dispose();
+        Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Paused_deadline_keeps_external_cancellation_provenance()
+    {
+        DeadlineClock clock = new();
+        using CancellationTokenSource external = new();
+        using GethTraceDeadline deadline = new(external.Token, clock);
+        deadline.Start(TimeSpan.FromSeconds(1));
+        deadline.Pause();
+        external.Cancel();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deadline.Token.IsCancellationRequested, Is.True);
+            Assert.That(deadline.Expired, Is.False);
+            Assert.That(clock.Timers[0].Due, Is.EqualTo(Timeout.InfiniteTimeSpan));
+        }
+        deadline.Resume();
+        Assert.That(deadline.Token.IsCancellationRequested, Is.True);
+    }
+
+    [Test]
     public void Execution_deadline_excludes_paused_time(
         [Values(1, 8_640_000)] int seconds, [Values(1, 2)] int repetitions)
     {
@@ -561,7 +607,7 @@ public class GethStyleTracerTests
         {
             scope = effective.DeadlineScope;
             return inner;
-        }, options, external.Token, streaming: true))
+        }, options, external.Token, true))
         {
             using ITxTracer transaction = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
             Assert.That(scope, Is.Not.Null);

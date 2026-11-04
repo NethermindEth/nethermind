@@ -44,6 +44,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -267,25 +268,26 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task ByNumber_execution_deadline_preserves_buffered_native_compatibility(
+    public Task ByNumber_execution_deadline_preserves_buffered_native_compatibility(
         [Values("callTracer", "prestateTracer", "4byteTracer", "noopTracer", "")] string tracer,
-        [Values("0s", "-1s", "1s")] string timeout, [Values] bool filtered, [Values] bool streamMode)
+        [Values("0s", "-1s", "1s")] string timeout, [Values] bool filtered, [Values] bool streamMode) =>
+        AssertNamedNativeDeadline(nameof(IDebugRpcModule.debug_traceBlockByNumber), tracer, timeout, filtered, streamMode);
+
+    private static async Task AssertNamedNativeDeadline(string method, string tracer, string timeout, bool filtered, bool streamMode, bool deliver = true)
     {
-        DeadlineExecution clock = new();
+        DeadlineExecution clock = new() { DeliverOnlyAtTarget = !deliver, Target = ulong.MaxValue };
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
-        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
-        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
+        Block block = await chain.AddBlock(CreateTraceBlockTransactions(chain));
         Assert.That(block.Transactions, Has.Length.EqualTo(3));
         clock.Enabled = true;
         Dictionary<string, object> options = new() { ["timeout"] = timeout, ["streamMode"] = streamMode };
         if (tracer.Length != 0) options["tracer"] = tracer;
         if (filtered) options["txHash"] = block.Transactions[2].Hash!;
-        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
-            nameof(IDebugRpcModule.debug_traceBlockByNumber), block.Number, options);
+        object selector = method == nameof(IDebugRpcModule.debug_traceBlockByNumber) ? block.Number : block.Hash!;
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock), method, selector, options);
         JToken json = JToken.Parse(response);
-        bool bufferedNoop = tracer == NativeNoopTracer.NoopTracer && (!streamMode || filtered);
-        if (timeout == "1s" || bufferedNoop)
+        if (timeout == "1s" || !deliver)
         {
             JToken? result = json["result"];
             using (Assert.EnterMultipleScope())
@@ -306,9 +308,92 @@ public partial class DebugRpcModuleTests
         }
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(clock.Timers, bufferedNoop ? Is.Empty : Is.Not.Empty);
+            Assert.That(clock.Timers, Is.Not.Empty);
             Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
         }
+    }
+
+    [Test]
+    public async Task Specified_block_empty_tracer_uses_default_opcode_logger(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method, [Values] bool streamMode)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object selector = method == nameof(IDebugRpcModule.debug_traceBlockByNumber) ? block.Number : block.Hash!;
+        JToken baseline = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector, new { streamMode }));
+        Assert.That(baseline["error"], Is.Null, baseline.ToString());
+        JArray traces = (JArray)baseline["result"]!;
+        Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length));
+        foreach (JToken entry in traces) Assert.That((JArray)entry["result"]!["structLogs"]!, Is.Not.Empty);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector, new { tracer = "", streamMode });
+        Assert.That(JToken.DeepEquals(JToken.Parse(response), baseline), Is.True, response);
+    }
+
+    [Test]
+    [NonParallelizable]
+    public Task Specified_block_registered_native_tracers_enforce_reached_timeout(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values(NativeNoopTracer.NoopTracer, NativeKeccakPreimageTracer.KeccakPreimageTracer, "registered", Native4ByteTracer.FourByteTracer,
+            NativeCallTracer.CallTracer, NativePrestateTracer.PrestateTracer, NativeStateGasTracer.StateGasTracer)] string tracer,
+        [Values("before", "after")] string expiry) => AssertNamedBlockDeadline(tracer, expiry, streamMode: false, method: method);
+
+    [Test]
+    public Task Specified_block_streamed_tracers_enforce_reached_timeout(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values("", NativeCallTracer.CallTracer, NativeNoopTracer.NoopTracer, Native4ByteTracer.FourByteTracer)] string tracer,
+        [Values("before", "after")] string expiry) => AssertNamedBlockDeadline(tracer, expiry, streamMode: true, method: method);
+
+    [Test]
+    public Task Specified_block_mux_tracers_enforce_reached_timeout(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values("mux-native", "mux-js-constructor-error")] string tracer,
+        [Values("before", "after")] string expiry) => AssertNamedBlockDeadline(tracer, expiry, streamMode: false, method: method);
+
+    [Test]
+    public Task Specified_block_streamed_timeout_respects_response_commitment(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values("", NativeCallTracer.CallTracer)] string tracer,
+        [Values("staged", "committed", "buffered")] string transport) => AssertStreamedTimeoutCommitment(method, tracer, transport);
+
+    [Test]
+    public Task Specified_block_nonpositive_noop_timeout_requires_watcher_delivery(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values("0s", "-1s")] string timeout, [Values] bool filtered, [Values] bool streamMode, [Values] bool deliver) =>
+        AssertNamedNativeDeadline(method, NativeNoopTracer.NoopTracer, timeout, filtered, streamMode, deliver);
+
+    [Test]
+    public async Task Raw_native_deadlines_do_not_inherit_named_block_policy(
+        [Values("debug_traceBlock", "debug_traceBadBlock")] string method,
+        [Values(NativeNoopTracer.NoopTracer, NativeKeccakPreimageTracer.KeccakPreimageTracer, NativeStateGasTracer.StateGasTracer,
+            NativeCallTracer.CallTracer, NativePrestateTracer.PrestateTracer, Native4ByteTracer.FourByteTracer)] string tracer,
+        [Values("0s", "-1s")] string timeout, [Values] bool streamMode)
+    {
+        DeadlineExecution clock = new() { Expiry = "before" };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        Block block = await chain.AddBlock(CreateTraceBlockTransactions(chain));
+        chain.Container.Resolve<IBadBlockStore>().Insert(block);
+        clock.Enabled = true;
+        clock.Target = block.Transactions[0].Nonce;
+        object selector = method == nameof(IDebugRpcModule.debug_traceBlock) ? Rlp.Encode(block).ToString() : block.Hash!;
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock), method, selector,
+            new { tracer, timeout, streamMode });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["result"], Is.TypeOf<JArray>(), response);
+        JArray traces = (JArray)json["result"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length));
+            Assert.That(clock.Calls, Is.EqualTo(block.Transactions.Length));
+            Assert.That(clock.Timers, Is.Empty, "raw and bad-block routes do not opt into named-block execution budgets");
+        }
+        for (int i = 0; i < traces.Count; i++)
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()));
+                if (tracer == NativeNoopTracer.NoopTracer) Assert.That(JToken.DeepEquals(traces[i]["result"], new JObject()), Is.True);
+            }
     }
 
     [Test]
@@ -444,8 +529,17 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task ByNumber_streamed_backpressure_preserves_execution_deadline_scope(
-        [Values("", NativeCallTracer.CallTracer)] string tracer, [Values] bool cancelExternal)
+    public Task ByNumber_streamed_backpressure_preserves_execution_deadline_scope(
+        [Values("", NativeCallTracer.CallTracer)] string tracer, [Values] bool cancelExternal) =>
+        AssertNamedBlockBackpressure(nameof(IDebugRpcModule.debug_traceBlockByNumber), tracer, cancelExternal);
+
+    [Test]
+    public Task Specified_block_streamed_backpressure_preserves_execution_deadline_scope(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values("", NativeCallTracer.CallTracer)] string tracer, [Values] bool cancelExternal) =>
+        AssertNamedBlockBackpressure(method, tracer, cancelExternal);
+
+    private static async Task AssertNamedBlockBackpressure(string method, string tracer, bool cancelExternal)
     {
         DeadlineExecution clock = new();
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -454,10 +548,11 @@ public partial class DebugRpcModuleTests
         clock.Enabled = true;
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 1, resumeWriterThreshold: 1));
         DeadlineBackpressureWriter writer = new(pipe.Writer, () => clock.Advance(block.Transactions[0].Nonce));
+        object selector = method == nameof(IDebugRpcModule.debug_traceBlockByNumber) ? block.Number : block.Hash!;
         using CancellationTokenSource external = new();
         JsonRpcResponseWriterStreamingIdTests.RecordingObserver observer = new();
         Task writing = Task.Run(() => RpcTest.TestStreamedRequest(WithDeadlineClock(chain.DebugRpcModule, clock), writer,
-            external.Token, observer, nameof(IDebugRpcModule.debug_traceBlockByNumber), block.Number,
+            external.Token, observer, method, selector,
             new { tracer, timeout = "1s", streamMode = true }));
         Task? reading = null;
         Exception? failure = null;
@@ -543,14 +638,22 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public Task Streaming_deadline_selection_preserves_execution_and_owner_lifetime(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
         [Values("full", "selected", "unmatched", "empty")] string selection,
-        [Values("reset", "before", "after", "external")] string expiry) => AssertStreamingDeadlineSelection(selection, expiry);
+        [Values("reset", "before", "after", "external")] string expiry) => AssertStreamingDeadlineSelection(selection, expiry, method: method);
+
+    [Test]
+    public Task Streaming_js_nonpositive_timeout_does_not_start_without_a_selected_transaction(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values("empty", "unmatched")] string selection) =>
+        AssertStreamingDeadlineSelection(selection, "reset", immediateJavaScript: true, method: method);
 
     [Test]
     public Task ByNumber_javascript_stream_request_without_selection_preserves_buffered_fallback(
         [Values("empty", "unmatched")] string selection) => AssertStreamingDeadlineSelection(selection, "reset", immediateJavaScript: true);
 
-    private static async Task AssertStreamingDeadlineSelection(string selection, string expiry, bool immediateJavaScript = false)
+    private static async Task AssertStreamingDeadlineSelection(string selection, string expiry, bool immediateJavaScript = false,
+        string method = nameof(IDebugRpcModule.debug_traceBlockByNumber))
     {
         DeadlineExecution clock = new();
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -573,8 +676,9 @@ public partial class DebugRpcModuleTests
             TxHash = selection == "selected" ? block.Transactions[2].Hash : selection == "unmatched" ? TestItem.KeccakH : null
         };
         if (immediateJavaScript) options = options with { Tracer = "{fault:function(){},result:function(){return {};}}" };
-        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response =
-            chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options);
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = method == nameof(IDebugRpcModule.debug_traceBlockByHash)
+            ? chain.DebugRpcModule.debug_traceBlockByHash(block.Hash!, options)
+            : chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options);
         Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
         IReadOnlyCollection<GethLikeTxTrace> traces = response.Data;
         if (immediateJavaScript)
@@ -1021,30 +1125,71 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task ByNumber_buffered_javascript_owned_expiry_discards_partial_results(
+    public Task ByNumber_buffered_javascript_owned_expiry_discards_partial_results(
         [Values("0s", "-1s")] string timeout, [Values("before", "after")] string expiry,
-        [Values(-1, 0, 1, 2)] int selectedAt, [Values] bool mux)
+        [Values(-1, 0, 1, 2)] int selectedAt, [Values] bool mux) =>
+        AssertJavascriptOwnedExpiry("debug_traceBlockByNumber", false, timeout, expiry, "none", selectedAt, mux);
+
+    [Test]
+    public Task Specified_block_javascript_owned_expiry_discards_partial_results(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values] bool streamMode, [Values("before", "after")] string expiry,
+        [Values("none", "step", "setup", "construction")] string failure) =>
+        AssertJavascriptOwnedExpiry(method, streamMode, "1s", expiry, failure);
+
+    private static async Task AssertJavascriptOwnedExpiry(string method, bool streamMode, string timeout, string expiry,
+        string failure, int? selectedAt = null, bool mux = false)
     {
-        DeadlineExecution clock = new() { Expiry = expiry, DeliverOnlyAtTarget = true };
+        DeadlineExecution clock = new() { Expiry = expiry, DeliverOnlyAtTarget = selectedAt.HasValue };
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
-        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
-        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
-        Assert.That(block.Transactions, Has.Length.EqualTo(3));
+        Block block;
+        if (selectedAt.HasValue)
+        {
+            ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+            block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
+            Assert.That(block.Transactions, Has.Length.EqualTo(3));
+        }
+        else block = await chain.AddBlock(CreateTraceBlockTransactions(chain));
         clock.Enabled = true;
-        clock.Target = block.Transactions[selectedAt >= 0 ? selectedAt : expiry == "before" ? 1 : 0].Nonce;
-        const string script = "{fault:function(){},result:function(){return {};}}";
+        clock.Target = block.Transactions[selectedAt is >= 0 ? selectedAt.Value : expiry == "before" ? 1 : 0].Nonce;
+        string script = selectedAt.HasValue ? "{fault:function(){},result:function(){return {};}}"
+            : failure == "construction" ? "{"
+            : "{fault:function(){}," + (failure == "setup" ? "setup:function(){throw Error('ordinary setup failure');}," : "")
+                + "step:function(){" + (failure == "step" ? "throw Error('execution timeout');" : "") + "},result:function(){return {};}}";
         Dictionary<string, object> options = new()
         {
             ["tracer"] = mux ? "muxTracer" : script,
             ["timeout"] = timeout,
-            ["streamMode"] = false
+            ["streamMode"] = streamMode
         };
         if (mux) options["tracerConfig"] = new Dictionary<string, object> { [script] = new { }, ["callTracer"] = new { } };
-        if (selectedAt >= 0) options["txHash"] = block.Transactions[selectedAt].Hash!;
-        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
-            "debug_traceBlockByNumber", block.Number, options);
+        if (selectedAt is >= 0) options["txHash"] = block.Transactions[selectedAt.Value].Hash!;
+        object selector = method == nameof(IDebugRpcModule.debug_traceBlockByNumber) ? block.Number : block.Hash!;
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock), method, selector, options);
         JToken json = JToken.Parse(response);
+        if (failure is "setup" or "construction")
+        {
+            Assert.That(json["result"], Is.TypeOf<JArray>(), response);
+            JArray entries = (JArray)json["result"]!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That(entries, Has.Count.EqualTo(block.Transactions.Length));
+                Assert.That(clock.Calls, Is.EqualTo(block.Transactions.Length));
+                Assert.That(clock.Timers, Is.Empty, "standalone recovery precedes owner start; this is not owned expiry");
+                Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+            }
+            string expectedError = failure == "setup" ? "Error: ordinary setup failure" : "Tracer '{' not found";
+            for (int i = 0; i < entries.Count; i++)
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((string?)entries[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
+                    Assert.That((string?)entries[i]["error"], Is.EqualTo(expectedError), response);
+                    Assert.That(entries[i]["result"], Is.Null, response);
+                }
+            return;
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
@@ -1221,43 +1366,8 @@ public partial class DebugRpcModuleTests
         [Values("callTracer", "prestateTracer", "4byteTracer", "noopTracer", "")] string tracer,
         [Values("0s", "-1s", "1s")] string timeout, [Values] bool filtered)
     {
-        DeadlineExecution clock = new();
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
-        Block block = await chain.AddBlock(CreateTraceBlockTransactions(chain));
-        clock.Enabled = true;
-        IDebugRpcModule module = WithDeadlineClock(chain.DebugRpcModule, clock);
-        Dictionary<string, object> options = new() { ["timeout"] = timeout, ["streamMode"] = false };
-        if (tracer.Length != 0) options["tracer"] = tracer;
-        if (filtered) options["txHash"] = block.Transactions[^1].Hash!;
-
-        foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash" })
-        {
-            object selector = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
-            string response = await RpcTest.TestSerializedRequest(module, method, selector, options);
-            JToken json = JToken.Parse(response);
-            if (timeout == "1s" || tracer == "noopTracer")
-            {
-#pragma warning disable NUnit2045 // The operation must succeed before inspecting its result.
-                Assert.That(json["error"], Is.Null, response);
-#pragma warning restore NUnit2045
-                Assert.That((JArray)json["result"]!, Has.Count.EqualTo(filtered ? 1 : block.Transactions.Length));
-            }
-            else
-            {
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-                    Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"), response);
-                    Assert.That(json["result"], Is.Null, response);
-                }
-            }
-        }
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(clock.Timers, tracer == "noopTracer" ? Is.Empty : Is.Not.Empty);
-            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
-        }
+        foreach (string method in new[] { nameof(IDebugRpcModule.debug_traceBlockByNumber), nameof(IDebugRpcModule.debug_traceBlockByHash) })
+            await AssertNamedNativeDeadline(method, tracer, timeout, filtered, streamMode: false);
     }
 
     private static IEnumerable<TestCaseData> BufferedMuxDeadlineCases()
@@ -1265,9 +1375,9 @@ public partial class DebugRpcModuleTests
         const string script = "{fault:function(){},result:function(){return {};}}";
         (string Child, string Name, bool Supported)[] graphs =
         [
-            ("noopTracer", "noop", false),
-            ("stateGasTracer", "stateGas", false),
-            ("", "both", false),
+            ("noopTracer", "noop", true),
+            ("stateGasTracer", "stateGas", true),
+            ("", "both", true),
             (script, "javascript", true),
             ("callTracer", "call", true),
             ("prestateTracer", "prestate", true),
@@ -1276,7 +1386,7 @@ public partial class DebugRpcModuleTests
         foreach (bool filtered in new[] { false, true })
         {
             foreach (string tracer in new[] { "noopTracer", "stateGasTracer" })
-                yield return new TestCaseData(tracer, null, false, filtered)
+                yield return new TestCaseData(tracer, null, true, filtered)
                     .SetName($"{nameof(Debug_traceBlockByNumber_buffered_mux_execution_deadline)}_bare_{tracer}_{filtered}");
 
             foreach (bool nested in new[] { false, true })
@@ -1285,7 +1395,7 @@ public partial class DebugRpcModuleTests
                 {
                     Dictionary<string, object> children = [];
                     if (child.Length != 0) children[child] = new { };
-                    if (child.Length == 0 || supported)
+                    if (child.Length == 0 || name is "javascript" or "call" or "prestate" or "4byte")
                     {
                         children["noopTracer"] = new { };
                         children["stateGasTracer"] = new { };
@@ -1468,6 +1578,16 @@ public partial class DebugRpcModuleTests
                 DeadlineClock = clock,
                 NoBaseFee = noBaseFee || call.Arg<GethTraceOptions>().NoBaseFee
             }));
+        module.debug_traceBlock(Arg.Any<byte[]>(), Arg.Any<GethTraceOptions>()).Returns(call =>
+        {
+            Assert.That(call.Arg<GethTraceOptions>().EnforceExecutionDeadline, Is.False);
+            return inner.debug_traceBlock(call.Arg<byte[]>(), call.Arg<GethTraceOptions>() with { DeadlineClock = clock });
+        });
+        module.debug_traceBadBlock(Arg.Any<Hash256>(), Arg.Any<GethTraceOptions>()).Returns(call =>
+        {
+            Assert.That(call.Arg<GethTraceOptions>().EnforceExecutionDeadline, Is.False);
+            return inner.debug_traceBadBlock(call.Arg<Hash256>(), call.Arg<GethTraceOptions>() with { DeadlineClock = clock });
+        });
         return module;
     }
 
@@ -1788,7 +1908,7 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceBlock_setup_failure_precedes_timeout_policy(
         [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
         [Values("0s", "-1s", "121s", "5s")] string timeout,
-        [Values("error", "null", "primitive")] string failure, [Values] bool mux)
+        [Values("error", "null", "primitive", "timeout-message")] string failure, [Values] bool mux)
     {
         using Context context = await Context.Create();
         DeadlineExecution clock = new();
@@ -1799,11 +1919,11 @@ public partial class DebugRpcModuleTests
             "debug_traceBlockByHash" => block.Hash!,
             _ => Rlp.Encode(block).ToString()
         };
-        string thrown = failure switch { "null" => "null", "primitive" => "42", _ => "Error('setup-before-timeout')" };
+        string thrown = failure switch { "null" => "null", "primitive" => "42", "timeout-message" => "Error('execution timeout')", _ => "Error('setup-before-timeout')" };
         string script = "{fault:function(){},setup:function(){throw " + thrown + ";},result:function(){return {};}}";
         Dictionary<string, object> options = new() { ["tracer"] = mux ? "muxTracer" : script, ["timeout"] = timeout };
         if (mux) options["tracerConfig"] = new Dictionary<string, object> { [script] = new { }, [script + " "] = new { } };
-        IDebugRpcModule module = method == "debug_traceBlockByNumber" ? WithDeadlineClock(context.DebugRpcModule, clock) : context.DebugRpcModule;
+        IDebugRpcModule module = method == "debug_traceBlock" ? context.DebugRpcModule : WithDeadlineClock(context.DebugRpcModule, clock);
         string response = await RpcTest.TestSerializedRequest(module, method, selector, options);
         JToken json = JToken.Parse(response);
         if (mux)
@@ -1815,10 +1935,11 @@ public partial class DebugRpcModuleTests
                 Assert.That((int?)error["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
                 Assert.That((string?)error["message"], Is.Not.Null.And.Not.Empty, response);
                 Assert.That(json["result"], Is.Null, response);
-                if (failure != "null")
+                if (failure == "timeout-message") Assert.That((string?)error["message"], Is.EqualTo("Error: execution timeout"), response);
+                else if (failure != "null")
                     Assert.That((string?)error["message"], Does.Contain(failure == "primitive" ? "42" : "setup-before-timeout"), response);
             }
-            if (method == "debug_traceBlockByNumber") Assert.That(clock.Timers, Is.Empty, "a failed mux setup must never arm an execution timer");
+            Assert.That(clock.Timers, Is.Empty, "a failed mux setup must never arm an execution timer");
             return;
         }
         Assert.That(json["error"], Is.Null, response);
@@ -1830,12 +1951,13 @@ public partial class DebugRpcModuleTests
             {
                 Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
                 Assert.That((string?)traces[i]["error"], Is.Not.Null.And.Not.Empty, response);
-                if (failure != "null")
+                if (failure == "timeout-message") Assert.That((string?)traces[i]["error"], Is.EqualTo("Error: execution timeout"), response);
+                else if (failure != "null")
                     Assert.That((string?)traces[i]["error"], Does.Contain(failure == "primitive" ? "42" : "setup-before-timeout"), response);
                 Assert.That(traces[i]["result"], Is.Null, response);
             }
         }
-        if (method == "debug_traceBlockByNumber") Assert.That(clock.Timers, Is.Empty, "a recovered setup failure must never arm an execution timer");
+        Assert.That(clock.Timers, Is.Empty, "a recovered setup failure must never arm an execution timer");
     }
 
     private static IEnumerable<TestCaseData> RawBlockTimeoutCases()
@@ -3334,16 +3456,19 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceBlockByHash_checks_genesis_body_before_rejecting_replay([Values] bool streaming, [Values] bool bodyAvailable)
+    public async Task Debug_traceBlockByHash_checks_genesis_body_before_rejecting_replay(
+        [Values] bool streaming, [Values] bool bodyAvailable, [Values] bool historyPruned)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
         BlockHeader genesis = chain.BlockTree.Genesis!;
+        chain.BlockTree.NewOldestBlock(0);
+        chain.BlockTree.UpdateLowestServedBlock(historyPruned ? 1UL : 0UL);
         if (!bodyAvailable) chain.BlockTree.DeleteOldBlock(genesis.Number, genesis.Hash!);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chain.BlockTree.GetLowestBlock(), Is.EqualTo(1));
-            Assert.That(chain.BlockTree.LowestServedBlock, Is.EqualTo(1));
+            Assert.That(chain.BlockTree.GetLowestBlock(), Is.Zero);
+            Assert.That(chain.BlockTree.LowestServedBlock, Is.EqualTo(historyPruned ? 1UL : 0UL));
             Assert.That(chain.BlockTree.FindHeader(genesis.Hash!), Is.Not.Null);
             Assert.That(chain.BlockTree.FindBlock(genesis.Hash!), bodyAvailable ? Is.Not.Null : Is.Null);
         }
@@ -3352,9 +3477,10 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual["result"], Is.Null);
-            Assert.That((int?)actual["error"]?["code"], Is.EqualTo(bodyAvailable ? ErrorCodes.InvalidInput : ErrorCodes.PrunedHistoryUnavailable));
-            Assert.That((string?)actual["error"]?["message"], Is.EqualTo(bodyAvailable
-                ? "genesis is not traceable" : ErrorMessages.PrunedHistoryUnavailable));
+            Assert.That((int?)actual["error"]?["code"], Is.EqualTo(bodyAvailable ? ErrorCodes.InvalidInput
+                : historyPruned ? ErrorCodes.PrunedHistoryUnavailable : ErrorCodes.ResourceNotFound));
+            Assert.That((string?)actual["error"]?["message"], Is.EqualTo(bodyAvailable ? "genesis is not traceable"
+                : historyPruned ? ErrorMessages.PrunedHistoryUnavailable : $"block {genesis.Hash} not found"));
         }
     }
 
