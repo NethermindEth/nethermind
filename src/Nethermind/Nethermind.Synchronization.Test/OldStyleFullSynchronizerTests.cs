@@ -319,9 +319,10 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
-        public void Node_values_response_stops_after_the_byte_limit()
+        public void Node_values_response_stops_after_the_byte_limit([Values] bool code)
         {
-            _stateDb.Set(TestItem.KeccakA, new byte[Synchronization.SyncServer.NodeDataSoftResponseByteLimit / 2 + 1]);
+            IDbProvider dbProvider = _container.Resolve<IDbProvider>();
+            (code ? dbProvider.CodeDb : dbProvider.StateDb).Set(TestItem.KeccakA, new byte[Synchronization.SyncServer.NodeDataSoftResponseByteLimit / 2 + 1]);
             using IByteArrayList data = SyncServer.GetNodeData([TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakA], CancellationToken.None);
 
             Assert.That(data.Count, Is.EqualTo(2));
