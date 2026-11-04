@@ -1091,6 +1091,33 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Call_resolves_blockhash_from_the_base_block_under_a_number_override(
+        [Values("eth_call", "debug_traceCall", "debug_traceCall at index")] string mode,
+        [Values(1, 10)] int offset,
+        [Values(0, 1)] int depth)
+    {
+        using Context ctx = await Context.Create();
+        BlockHeader head = ctx.Blockchain.BlockTree.Head!.Header;
+        ulong queried = head.Number - (ulong)depth;
+        const string address = "0xc200000000000000000000000000000000000000";
+        byte[] code = Prepare.EvmCode.PushData(queried).Op(Instruction.BLOCKHASH)
+            .PushData(0).Op(Instruction.MSTORE).PushData(32).PushData(0).Op(Instruction.RETURN).Done;
+        object stateOverrides = new Dictionary<string, object> { [address] = new { code = code.ToHexString(true) } };
+        object blockOverrides = new { number = $"0x{head.Number + (ulong)offset:x}" };
+        object call = new { to = address, gas = "0x186a0" };
+
+        string response = mode == "eth_call"
+            ? await RpcTest.TestSerializedRequest(ctx.Blockchain.EthRpcModule, "eth_call", call, "latest", stateOverrides, blockOverrides)
+            : await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", call, "latest",
+                new { stateOverrides, blockOverrides, txIndex = mode == "debug_traceCall" ? null : "0x0" });
+
+        // As in Geth's debug_traceCall, the base block's own hash is served only to its immediate successor (go-ethereum#32175).
+        byte[] expected = depth == 0 && offset != 1 ? new byte[32] : ctx.Blockchain.BlockTree.FindHeader(queried, BlockTreeLookupOptions.None)!.Hash!.BytesToArray();
+        byte[] actual = mode == "eth_call" ? Bytes.FromHexString(JToken.Parse(response)["result"]!.Value<string>()!) : ParseReturnValue(response);
+        Assert.That(actual, Is.EqualTo(expected), response);
+    }
+
+    [Test]
     public async Task Debug_traceCall_mux_accepts_empty_configuration([Values(null, "null", "{}")] string? config)
     {
         using Context ctx = await Context.Create();
