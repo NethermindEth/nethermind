@@ -247,8 +247,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             filterInMemorySlotReads: filterInMemorySlotReads);
     }
 
-    private static readonly StringLabel _depthInMemoryLabel = new("in_memory");
-    private static readonly StringLabel _depthPersistedLabel = new("persisted");
+    private static readonly StableStringLabel _depthInMemoryLabel = StableStringLabel.Get("in_memory");
+    private static readonly StableStringLabel _depthPersistedLabel = StableStringLabel.Get("persisted");
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
         GatherReadOnlySnapshotBundle(baseBlock, ReaderFlags.None);
@@ -330,7 +330,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             ReportBundleMetrics(assembled);
 
-            // Flagged bundles are one-off full scans (trie verification) that never read through the slot filter, so
+            // Flagged bundles are one-off full scans (trie verification, snap range serving) that never read through the slot filter, so
             // only shared bundles get bits per key. Nothing is built here: the first filtered read builds the filter.
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
                 new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics), _nodeRecordBuffer.PinAll(),

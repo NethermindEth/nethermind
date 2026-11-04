@@ -47,6 +47,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private string? _traceError;
     private bool _failedBeforeExecution;
     private bool _pendingStep;
+    private bool _pendingPostStep;
+    private bool _gasCostIsStatic;
     private TraceStack _operationStack;
     private Stack<ulong>? _frameGas;
     private Stack<Log.Contract>? _contracts;
@@ -154,8 +156,14 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         result.TxHash = _ctx.TxHash;
         if (!_captureErrors)
         {
-            result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(Invoke(TracerFunctions.result)) };
-            Dispose();
+            try
+            {
+                result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(Invoke(TracerFunctions.result)) };
+            }
+            finally
+            {
+                Dispose();
+            }
             return result;
         }
         try
@@ -195,15 +203,21 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     /// <remarks>
     /// Renders with the static <see cref="EthereumJsonSerializer.JsonOptions"/>, since the request's serializer
     /// is not reachable from the tracer; the response serializer's depth limit is applied when the bytes are
-    /// written, see <see cref="RenderedJsonConverter"/>.
+    /// written, see <see cref="RenderedJsonConverter"/>. A result nested too deep to render, or cyclic, fails the
+    /// trace like an error the script throws.
     /// </remarks>
-    private static RenderedJson MaterializeResult(object? scriptResult)
+    private RenderedJson MaterializeResult(object? scriptResult)
     {
         NumberConversion previousConversion = ForcedNumberConversion.Value;
         ForcedNumberConversion.Value = NumberConversion.Raw;
         try
         {
             return new RenderedJson(TypeInfoJsonSerializer.SerializeToUtf8Bytes(scriptResult, EthereumJsonSerializer.JsonOptions));
+        }
+        catch (JavaScriptResultDepthException exception)
+        {
+            _engine.ThrowIfInterrupted();
+            throw new JavaScriptTraceFailure(exception);
         }
         finally
         {
@@ -263,15 +277,20 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         _log.error = null;
         _log.gasCost = null;
         _failedBeforeExecution = false;
-        _pendingStep = opcode is Instruction.RETURNDATACOPY or Instruction.RETURN or Instruction.REVERT
+        _pendingPostStep = false;
+        _gasCostIsStatic = false;
+        _pendingStep = opcode is Instruction.KECCAK256 or Instruction.RETURNDATACOPY or Instruction.RETURN or Instruction.REVERT
             or Instruction.MLOAD or Instruction.MSTORE or Instruction.MSTORE8 or Instruction.CALLDATACOPY or Instruction.CODECOPY
-            or Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.SLOAD or Instruction.SSTORE or Instruction.STATICCALL or Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL;
+            or Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.SLOAD or Instruction.SSTORE or Instruction.STATICCALL or Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL
+            or Instruction.EXP or Instruction.EXTCODECOPY or Instruction.MCOPY or Instruction.CREATE or Instruction.CREATE2
+            or Instruction.LOG0 or Instruction.LOG1 or Instruction.LOG2 or Instruction.LOG3 or Instruction.LOG4;
     }
 
     /// <inheritdoc/>
     public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth)
     {
         _log.gasCost = gasCost;
+        _gasCostIsStatic = true;
         if (stackHead < stackInputs)
             _log.error = $"stack underflow ({stackHead} <=> {stackInputs})";
         else if (stackGrowth > 0 && stackHead >= EvmStack.MaxStackSize - stackGrowth)
@@ -282,7 +301,11 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     }
 
     /// <inheritdoc/>
-    public void ReportOperationGasCost(ulong gasCost) => _log.gasCost = gasCost;
+    public void ReportOperationGasCost(ulong gasCost)
+    {
+        _log.gasCost = gasCost;
+        _gasCostIsStatic = false;
+    }
 
     /// <inheritdoc/>
     public void ReportOperationReady(ulong gasCost, string? error)
@@ -291,6 +314,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             return;
 
         _log.gasCost = gasCost;
+        _gasCostIsStatic = false;
         _log.error = error ?? (_log.gas < gasCost ? "out of gas" : null);
         _failedBeforeExecution = _log.error is not null;
         InvokeStep();
@@ -298,12 +322,19 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
 
     public override void ReportOperationRemainingGas(ulong gas)
     {
-        if (!_pendingStep)
-            _log.gasCost ??= _log.gas - gas;
-        if (_functions.HasFlag(TracerFunctions.postStep))
+        // A step still pending failed before it could run; postStep follows the step that reports the error.
+        if (_pendingStep)
         {
-            Invoke(TracerFunctions.postStep);
+            _pendingPostStep = true;
+            return;
         }
+
+        if (_log.gasCost is null)
+            _log.gasCost = _log.gas - gas;
+        else if (_gasCostIsStatic && !_failedBeforeExecution)
+            // The static cost a step reported leaves out what an opcode that ran paid beyond it.
+            _log.gasCost = Math.Max(_log.gasCost.Value, _log.gas - gas);
+        InvokePostStep();
     }
 
     public override void ReportOperationError(EvmExceptionType error)
@@ -325,9 +356,18 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         }
         if (_pendingStep)
         {
+            if (error != EvmExceptionType.BadInstruction)
+            {
+                InvokeStep();
+                _failedBeforeExecution = true;
+                return;
+            }
+
+            // Geth raises an invalid opcode while executing it, after a step that carries no error.
+            string? executionError = _log.error;
+            _log.error = null;
             InvokeStep();
-            _failedBeforeExecution = true;
-            return;
+            _log.error = executionError;
         }
         if (error == EvmExceptionType.AccessViolation && _log.op?.Value == Instruction.RETURNDATACOPY)
         {
@@ -436,6 +476,20 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         if (_functions.HasFlag(TracerFunctions.step))
         {
             Invoke(TracerFunctions.step);
+        }
+
+        if (_pendingPostStep)
+        {
+            _pendingPostStep = false;
+            InvokePostStep();
+        }
+    }
+
+    private void InvokePostStep()
+    {
+        if (_functions.HasFlag(TracerFunctions.postStep))
+        {
+            Invoke(TracerFunctions.postStep);
         }
     }
 

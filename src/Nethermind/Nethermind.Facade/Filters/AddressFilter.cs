@@ -64,14 +64,15 @@ namespace Nethermind.Facade.Filters
 
         public bool Matches(Bloom bloom)
         {
-            if (AddressesBloomExtracts.Length == 0)
+            Bloom.BloomExtract[] extracts = AddressesBloomExtracts;
+            if (extracts.Length == 0)
             {
                 return true;
             }
 
-            for (int i = 0; i < AddressesBloomExtracts.Length; i++)
+            for (int i = 0; i < extracts.Length; i++)
             {
-                if (bloom.Matches(AddressesBloomExtracts[i]))
+                if (bloom.Matches(extracts[i]))
                 {
                     return true;
                 }
@@ -82,14 +83,15 @@ namespace Nethermind.Facade.Filters
 
         public bool Matches(ref BloomStructRef bloom)
         {
-            if (AddressesBloomExtracts.Length == 0)
+            Bloom.BloomExtract[] extracts = AddressesBloomExtracts;
+            if (extracts.Length == 0)
             {
                 return true;
             }
 
-            for (int i = 0; i < AddressesBloomExtracts.Length; i++)
+            for (int i = 0; i < extracts.Length; i++)
             {
-                if (bloom.Matches(AddressesBloomExtracts[i]))
+                if (bloom.Matches(extracts[i]))
                 {
                     return true;
                 }
