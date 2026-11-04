@@ -775,7 +775,14 @@ namespace Nethermind.Blockchain
                     BlockHeader endHeader = FindHeader(startHeader.Number + (ulong)(numberOfBlocks - 1), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (endHeader is not null)
                     {
-                        return FindHeadersReversedFast(this, endHeader, numberOfBlocks);
+                        ArrayPoolList<BlockHeader> headers = FindHeadersReversedFast(this, endHeader, numberOfBlocks);
+                        if (headers[0] is null || headers[0].Hash == startHeader.Hash)
+                        {
+                            return headers;
+                        }
+
+                        // The end level resolved to a branch the origin is not on, so fall back to the by-number walk below
+                        headers.Dispose();
                     }
                 }
             }
@@ -802,7 +809,18 @@ namespace Nethermind.Blockchain
                     nextNumber = startHeader.Number + offset;
                 }
 
+                BlockHeader previous = current;
                 current = FindHeader(nextNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
+                // Later headers are resolved by number, so check at every step that the next header still descends from the previous one,
+                // like geth: by parent hash when contiguous, otherwise by the previous header still being the block its number resolves to
+                // and the next header being on the main chain
+                if (!reverse && current is not null && (skip == 0
+                        ? current.ParentHash != previous.Hash
+                        : GetBlockHashOnMainOrBestDifficultyHash(previous.Number) != previous.Hash || !IsMainChain(current)))
+                {
+                    break;
+                }
             } while (current is not null && responseIndex < numberOfBlocks);
 
             return result;
