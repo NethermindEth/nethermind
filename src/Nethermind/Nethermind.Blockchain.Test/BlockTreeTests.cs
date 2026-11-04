@@ -127,6 +127,24 @@ public class BlockTreeTests
         Assert.That(tree.LowestServedBlock, Is.EqualTo(published), "the served floor never reports below the published boundary");
     }
 
+    [TestCase(1UL, 0UL, 0UL)]
+    [TestCase(2UL, 0UL, 2UL)]
+    [TestCase(1UL, 3UL, 3UL)]
+    [TestCase(10UL, 0UL, null)] // Floor above the stored chain, as while headers still sync down to the barrier.
+    [MaxTime(Timeout.MaxTestTime)]
+    public void Earliest_resolves_to_the_lowest_served_block(ulong oldestBlock, ulong servedFrontier, ulong? expected)
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(5).TestObject;
+        tree.NewOldestBlock(oldestBlock);
+        tree.UpdateLowestServedBlock(servedFrontier);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((IBlockFinder)tree).FindBlock(BlockParameter.Earliest)?.Number, Is.EqualTo(expected));
+            Assert.That(((IBlockFinder)tree).FindHeader(BlockParameter.Earliest)?.Number, Is.EqualTo(expected));
+        }
+    }
+
     private IContainer? _rewindContainer;
 
     private TestMemDb _blocksInfosDb = null!;
@@ -2750,6 +2768,25 @@ public class BlockTreeTests
             Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.None), Is.Not.Null);
             Assert.That(blockTree.FindHeader(1, BlockTreeLookupOptions.None), Is.Not.Null);
             Assert.That(blockTree.FindLevel(1), Is.Not.Null);
+        }
+    }
+
+    [TestCase(null, 1UL, 1)]
+    [TestCase(2UL, 3UL, 2)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void Delete_slice_sets_best_known_number_to_the_highest_remaining_level(ulong? endNumber, ulong expectedBestKnown, int expectedDeletedBySecondCall)
+    {
+        BlockTree blockTree = Build.A.BlockTree().OfChainLength(4).TestObject;
+
+        blockTree.DeleteChainSlice(2, endNumber);
+        Assert.That(blockTree.BestKnownNumber, Is.EqualTo(expectedBestKnown));
+
+        int deleted = blockTree.DeleteChainSlice(1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deleted, Is.EqualTo(expectedDeletedBySecondCall));
+            Assert.That(blockTree.BestKnownNumber, Is.EqualTo(0UL));
+            Assert.That(blockTree.FindLevel(3), Is.Null);
         }
     }
 

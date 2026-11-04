@@ -18,7 +18,7 @@ GUEST_PACKAGE := Nethermind.ZiskOS.Runtime
 # as $(SRC_DIR)/nmffi.
 RUST_EVM ?= 0
 ifeq ($(RUST_EVM),1)
-GUEST_EXTLIB_PATH := $(SRC_DIR)/nmffi/libnmffi.bflat.manifest
+GUEST_EXTLIB := $(SRC_DIR)/nmffi/libnmffi.bflat.manifest
 GUEST_BUILD_PROPS := -p:EnableRustEvm=true
 # The Rust library carries atomic instructions, which ziskemu runs.
 ISA_GATES := --error-on-float --error-on-float-binary --error-on-compressed

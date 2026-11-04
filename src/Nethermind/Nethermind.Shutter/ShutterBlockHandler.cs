@@ -149,6 +149,11 @@ public class ShutterBlockHandler : IShutterBlockHandler
             {
                 return;
             }
+
+            if (slotWaitTasks.Count == 0)
+            {
+                _blockWaitTasks.Remove(slot);
+            }
         }
 
         if (timeout)

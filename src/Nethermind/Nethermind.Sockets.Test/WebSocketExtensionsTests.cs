@@ -182,11 +182,12 @@ public class WebSocketExtensionsTests
         localStats.Received(3).ReportCall(Arg.Any<RpcReport>());
     }
 
-    [TestCase(null, " from 203.0.113.7 Data")]
-    [TestCase("198.51.100.1", " from 203.0.113.7 (X-Forwarded-For: 198.51.100.1) Data")]
+    [TestCase(null, " from 203.0.113.7")]
+    [TestCase("198.51.100.1", " from 203.0.113.7 (X-Forwarded-For: 198.51.100.1)")]
     public async Task Created_client_logs_caller_address(string forwardedFor, string expectedFragment)
     {
-        const string request = "{";
+        const string secret = "private-rpc-parameter";
+        const string request = "{\"params\":[\"" + secret + "\"]";
         Queue<WebSocketReceiveResult> receiveResult = new();
         receiveResult.Enqueue(new WebSocketReceiveResult(request.Length, WebSocketMessageType.Text, true));
         receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
@@ -217,7 +218,12 @@ public class WebSocketExtensionsTests
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
         await client.ReceiveLoopAsync(cts.Token);
 
-        Assert.That(logger.ReceivedCalls().SelectMany(static call => call.GetArguments()).OfType<string>(), Has.Some.Contains(expectedFragment));
+        string[] messages = logger.ReceivedCalls().SelectMany(static call => call.GetArguments()).OfType<string>().ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(messages, Has.Some.Contains(expectedFragment));
+            Assert.That(messages, Has.None.Contains(secret));
+        }
     }
 
     [Test]
