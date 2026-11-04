@@ -67,7 +67,7 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceTransaction_indexing_miss(string scenario, bool stream)
     {
         List<Hash256?> executed = [];
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain())
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain { SealEngineType = SealEngineType.NethDev })
             .WithFlatDb(false)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = stream })
             .WithReceiptConfig(new ReceiptConfig { TxLookupLimit = 0 })
@@ -123,10 +123,11 @@ public partial class DebugRpcModuleTests
         [Values("debug_traceTransaction", "debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceTransactionByBlockhashAndIndex")] string method,
         [Values] bool stream)
     {
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain())
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain { SealEngineType = SealEngineType.NethDev })
             .WithFlatDb(false)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = stream }).Build();
         Block block = chain.BlockTree.Head!;
+        Assert.That(block.Number, Is.GreaterThan(1UL), "the pivot must be above the receipt barrier");
         Assert.That(block.Transactions, Is.Not.Empty);
         chain.BlockTree.SyncPivot = (block.Number, block.Hash!);
         ISyncPointers pointers = chain.Container.Resolve<ISyncPointers>();
