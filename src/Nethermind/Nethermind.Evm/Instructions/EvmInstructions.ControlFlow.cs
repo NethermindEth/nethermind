@@ -523,6 +523,9 @@ public static partial class EvmInstructions
     /// <remarks>
     /// A cold access the frame cannot pay ends Geth's dynamic pricing early, so the step reports the base cost
     /// alone, or with the access since Amsterdam.
+    /// Pricing reads the beneficiary before the access and EIP-8279 metering charges, so if those then run out of gas
+    /// a recorded block access list gains a read-only entry an untraced run lacks; execution ignores read-only entries
+    /// and trace replays do not validate the list.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void TraceSelfDestructGasCost<TGasPolicy, TEip8037, TSpec>(VirtualMachine<TGasPolicy> vm, Address inheritor, ulong gasAfterBaseCost)
