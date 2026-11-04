@@ -841,6 +841,47 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         AssertStreamingMatchesInMemory(code);
     }
 
+    /// <remarks>As in Geth, a step that halts with an error does not execute its opcode, so it records no storage.</remarks>
+    [TestCase(Instruction.CALL, 25112L, "out of gas", 2)]
+    [TestCase(Instruction.CALL, 24412L, "out of gas: not enough gas for reentrancy sentry", 2)]
+    [TestCase(Instruction.STATICCALL, 50000L, "out of gas: write protection", 1)]
+    public void Failed_SSTORE_step_has_no_storage(Instruction callOpcode, long callGas, string expectedError, int expectedSStoreSteps)
+    {
+        byte[] calleeCode = Prepare.EvmCode
+            .PersistData("0x0", "0x1")
+            .PersistData("0x1", "0x1")
+            .Done;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+        TestState.Commit(Spec);
+
+        Prepare caller = Prepare.EvmCode;
+        byte[] code = (callOpcode == Instruction.CALL ? caller.Call(TestItem.AddressC, callGas) : caller.StaticCall(TestItem.AddressC, callGas))
+            .Op(Instruction.STOP)
+            .Done;
+        ForkActivation activation = MainnetSpecProvider.CancunActivation;
+
+        (Block block, Transaction transaction) = PrepareTx(activation, 100000UL, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using JsonDocument inMemory = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((string tracerName, JsonElement[] entries) in (ReadOnlySpan<(string, JsonElement[])>)[
+                ("in-memory", inMemory.RootElement.GetProperty("structLogs").EnumerateArray().ToArray()),
+                ("streaming", ExecuteStreamingTracerEntries(code, activation))])
+            {
+                JsonElement[] sstores = [.. entries.Where(static e => e.GetProperty("op").GetString() == "SSTORE")];
+                Assert.That(sstores, Has.Length.EqualTo(expectedSStoreSteps), $"{tracerName}: SSTORE steps");
+                Assert.That(sstores[^1].GetProperty("error").GetString(), Is.EqualTo(expectedError), $"{tracerName}: failed SSTORE error");
+                Assert.That(sstores[^1].TryGetProperty("storage", out _), Is.False, $"{tracerName}: failed SSTORE storage");
+                Assert.That(sstores[..^1].All(static e => e.TryGetProperty("storage", out _)), Is.True, $"{tracerName}: successful SSTORE storage");
+            }
+        }
+    }
+
     [Test]
     public void Streamed_deep_stack_of_mixed_width_words_matches_in_memory()
     {
@@ -879,9 +920,9 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         }
     }
 
-    private JsonElement[] ExecuteStreamingTracerEntries(byte[] code)
+    private JsonElement[] ExecuteStreamingTracerEntries(byte[] code, ForkActivation? activation = null)
     {
-        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
+        (Block block, Transaction transaction) = PrepareTx(activation ?? Activation, 100000, code);
 
         ArrayBufferWriter<byte> buffer = new();
         using (Utf8JsonWriter writer = new(buffer))
