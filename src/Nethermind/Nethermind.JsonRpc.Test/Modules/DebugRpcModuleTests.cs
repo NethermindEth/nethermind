@@ -184,6 +184,27 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCall_with_time_override_past_amsterdam_reads_a_missing_slot_as_zero()
+    {
+        const ulong amsterdamTime = 4_000_000_000;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<ISpecProvider>(
+                new CustomSpecProvider(((ForkActivation)0, BPO2.Instance), (new ForkActivation(0, amsterdamTime), Amsterdam.Instance))));
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressD.ToString(), gas = "0x30d40" };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest",
+            new
+            {
+                stateOverrides = new Dictionary<string, object> { [TestItem.AddressD.ToString()] = new { code = "0x4b60005260206000f3" } },
+                blockOverrides = new { time = $"0x{amsterdamTime:x}" }
+            });
+
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        string output = (string)json["result"]!["returnValue"]!;
+        Assert.That(output.StartsWith("0x") ? output[2..] : output, Is.EqualTo(new string('0', 64)), response);
+    }
+
+    [Test]
     public async Task Debug_traceCall_txIndex_keeps_block_overrides_out_of_prefix([Values] bool blockAccessLists)
     {
         OverridableReleaseSpec spec = new(blockAccessLists ? Amsterdam.Instance : Prague.Instance) { Eip1559TransitionBlock = 1 };
