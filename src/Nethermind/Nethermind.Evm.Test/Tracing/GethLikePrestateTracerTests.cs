@@ -173,7 +173,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         .Build();
 
     [Test]
-    public void BuildResult_DiffWithUnchangedCode_DoesNotReadCodeAgain([Values] bool disableCode)
+    public void MarkAsSuccess_DiffWithUnchangedCode_DoesNotReadCodeAgain([Values] bool disableCode)
     {
         StorageReadCounter reads = new() { CodeReadTarget = TestItem.AddressB };
         using IContainer container = CreateStorageReadContainer(reads);
@@ -184,6 +184,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         Assert.That(reads.CodeReads, Is.EqualTo(disableCode ? 0 : 1), "precondition: the initial code was captured once");
 
         state.AddToBalance(TestItem.AddressB, 1, Cancun.Instance);
+        tracer.MarkAsSuccess(TestItem.AddressB, default, [], []);
         NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value!;
 
         using (Assert.EnterMultipleScope())
@@ -196,7 +197,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void BuildResult_DiffWithChangedCode_ReadsAndReportsNewCode(
+    public void MarkAsSuccess_DiffWithChangedCode_ReadsAndReportsNewCode(
         [Values] bool disableCode, [Values(CodeChange.Replace, CodeChange.Clear, CodeChange.DeleteAccount)] CodeChange change)
     {
         StorageReadCounter reads = new() { CodeReadTarget = TestItem.AddressB };
@@ -210,6 +211,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         if (change == CodeChange.DeleteAccount) state.DeleteAccount(TestItem.AddressB);
         else state.InsertCode(TestItem.AddressB, postCode, Cancun.Instance);
         int readsBeforeResult = reads.CodeReads;
+        tracer.MarkAsSuccess(TestItem.AddressB, default, [], []);
         NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value!;
 
         using (Assert.EnterMultipleScope())
