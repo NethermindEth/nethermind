@@ -59,3 +59,29 @@ The RollupX lane selects current public RollupX main and its Core gitlink. It fi
 This lane tests the candidate **RollupX follower with the upstream prover**. Its separate `candidate-follower.json` report never claims the upstream signatures came from Nethermind. The currently published RollupX composer calls `prove.v1`. The native Nethermind prover also accepts inline-window v1, and implements preparation/cache operations. The composer still requires its implementation-specific validation identity. A shared identity contract remains a separate upstream gate. Direct composer/candidate-prover interoperability remains a separate gate. The existing Rollup0 candidate-prover evidence checks stay mandatory and unchanged.
 
 Rollup0 streaming quota conformance follows PR229. Before its merge, CI uses the exact reviewed vector snapshot `ad5792d8044fd2c3a584a82c9b08d1e76aef67ce`. After merge, CI reads the selected upstream main revision and records its file hashes. Replays from before that merge are rejected. The older authenticated calldata profile keeps its separate fixed regression vectors. Neither request bytes nor expected responses are rewritten in the conditional replay.
+
+## Native SNAP bootstrap gate
+
+The native embedded suite also starts a second Nethermind node with an empty
+state database. It selects a non-genesis L2 endpoint committed by finalized L1
+history, then uses the existing static-pivot SNAP synchronizer to download and
+heal state over P2P. Processing and RPC are disabled during this process.
+
+After the verified download exits, the test reopens the same database with
+synchronization disabled. EEZ startup checks the L1 commitment again, verifies
+header ancestry and trie/code completeness, installs the checkpoint, and starts
+the ordinary follower. The test checks known native transactions executed after
+the pivot and replaces the follower process again to verify restart.
+
+`Eez.SnapBootstrapEnabled` is false by default and applies only to native EEZ
+followers. The download and follower processes use the same `Sync.PivotNumber`
+and `Sync.PivotHash`. The second process changes `Sync.SynchronizationEnabled`
+to false and `Init.ProcessingEnabled` to true. Retained finalized state must be
+available from the selected peer. The CI fixture uses its own bounded serving
+window; this does not change public network defaults or qualify a public bootnode.
+
+The existing `*-peer.json` files prove SNAP state serving only.
+`snap-bootstrap.json` is a separate required result with source/image identity,
+an independent database, post-pivot transactions, and distinct process identities
+before and after restart. A compile, peer connection or idle sync mode cannot
+produce a passing bootstrap report. Runtime qualification depends on the CI result.

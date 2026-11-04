@@ -147,8 +147,8 @@ impl Candidate {
                 "false".into(),
                 "--Sync.SnapServingEnabled".into(),
                 "true".into(),
-                "--Sync.BlockGossipEnabled".into(),
-                "false".into(),
+                "--Sync.SnapServingMaxDepth".into(),
+                "8192".into(),
                 "--Init.PeerManagerEnabled".into(),
                 "true".into(),
                 "--Init.StateDbKeyScheme".into(),
@@ -180,7 +180,7 @@ impl Candidate {
         Ok(candidate)
     }
 
-    async fn launch(&mut self) -> Result<()> {
+    fn spawn(&mut self) -> Result<()> {
         let rpc = TcpListener::bind("127.0.0.1:0")?;
         let p2p = TcpListener::bind("127.0.0.1:0")?;
         self.port = rpc.local_addr()?.port();
@@ -209,6 +209,11 @@ impl Candidate {
                 .stdout(log)
                 .spawn()?,
         );
+        Ok(())
+    }
+
+    async fn launch(&mut self) -> Result<()> {
+        self.spawn()?;
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(2))
             .build()?;
@@ -321,9 +326,14 @@ impl Candidate {
         let path = self.directory.path().join("verify.json");
         fs::write(&path, serde_json::to_vec(&settings)?)?;
         let script = std::env::var("EEZ_EMBEDDED_SCRIPT")?;
+        let result_directory = self.settings["result_directory"]
+            .as_str()
+            .context("result directory missing")?
+            .to_owned();
         let status = tokio::task::spawn_blocking(move || {
             Command::new("python3")
                 .args([script.as_str(), "verify"])
+                .env("EEZ_EMBEDDED_RESULTS", result_directory)
                 .arg(path)
                 .status()
         })

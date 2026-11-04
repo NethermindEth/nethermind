@@ -291,10 +291,13 @@ def candidate_helper(profile):
     end = source.index("    pub async fn " + following, start)
     source = source[:start] + source[end:]
     if profile == "rollupx":
-        source = "mod peer;\n\n" + source
+        source = "mod peer;\nmod bootstrap;\n\n" + source
         marker = '            bail!("candidate prefix verification failed: {status}");\n        }\n'
         source = insert(source, marker,
-                        '        peer::verify(&self.url(), reference, &self.directory.path().join("genesis.json"), &settings).await?;\n')
+                        '        peer::verify(&self.url(), reference, &self.directory.path().join("genesis.json"), &settings).await?;\n'
+                        '        if settings["case"] == "native-source-reorg" && phase == "after-settled-restart" && settings["snap_consumer"] != true {\n'
+                        '            Box::pin(bootstrap::verify(self, reference, &settings)).await?;\n'
+                        '        }\n')
     return source
 
 
@@ -367,6 +370,7 @@ def prepare(args):
     helper.write_text(candidate_helper(profile))
     if profile == "rollupx":
         helper.with_name("peer.rs").write_text(Path(__file__).with_name("embedded.peer.rs").read_text())
+        helper.with_name("bootstrap.rs").write_text(Path(__file__).with_name("embedded.bootstrap.rs").read_text())
         prepare_peer_dependencies(upstream)
     for path, changed in changes:
         path.write_text(changed)
@@ -546,6 +550,25 @@ def report(args):
             equal(observation["image_id"], os.environ["EEZ_CANDIDATE_IMAGE"], "candidate test image")
             observations.append(observation)
         if suite == "queue_reorg":
+            if label == "native-source-reorg":
+                bootstrap = json.loads((args.directory / "snap-bootstrap.json").read_text())
+                equal((bootstrap["result"], bootstrap["scope"], bootstrap["fresh_database"]),
+                      ("pass", "snap-bootstrap-and-follow", True), "fresh SNAP consumer")
+                equal(bootstrap["candidate_revision"], os.environ["GITHUB_SHA"], "bootstrap source")
+                equal(bootstrap["image_id"], os.environ["EEZ_CANDIDATE_IMAGE"], "bootstrap image")
+                if bootstrap["post_pivot_height"] <= int(bootstrap["pivot"]["number"], 16) or bootstrap["post_pivot_transactions"] <= 0:
+                    raise ValueError("bootstrap must execute native blocks after the pivot")
+                before, after = bootstrap["before_restart"], bootstrap["after_restart"]
+                for item, phase in ((before, "before-reorg"), (after, "after-settled-restart")):
+                    equal((item["result"], item["case"], item["phase"]), ("pass", label, phase), "bootstrap observation")
+                    equal(item["candidate_revision"], os.environ["GITHUB_SHA"], "bootstrap observation source")
+                    equal(item["image_id"], os.environ["EEZ_CANDIDATE_IMAGE"], "bootstrap observation image")
+                    if not item["unsafe_transactions"] or item["verified_native_transactions"] <= 0:
+                        raise ValueError("SNAP follower must execute and verify native traffic")
+                if before["database_id"] != after["database_id"] or before["database_id"] == bootstrap["server_database"]:
+                    raise ValueError("SNAP consumer must restart its own fresh database")
+                if before["container"] == after["container"] or min(before["verified_receipts"], after["verified_receipts"]) <= 0:
+                    raise ValueError("SNAP consumer must verify real receipts across process restart")
             for observation in observations:
                 phase = observation["phase"]
                 peer = json.loads((args.directory / (label + "-" + phase + "-peer.json")).read_text())

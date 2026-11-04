@@ -18,6 +18,9 @@ public interface IEezConfig : IConfig
         "The follower must be the only driver of the node's engine API: a consensus client that moves the forkchoice shuts the node down.", DefaultValue = "false")]
     bool FollowerEnabled { get; set; }
 
+    [ConfigItem(Description = "Whether to bootstrap a native EEZ follower from a finalized L1-authorized static SNAP pivot. First run with synchronization enabled and processing and RPC disabled. After the verified download exits, restart with synchronization disabled and processing enabled on the same database and pivot.", DefaultValue = "false")]
+    bool SnapBootstrapEnabled { get; set; }
+
     [ConfigItem(Description = "The JSON-RPC URL of the rollup's sequencer. When set, the follower also takes the sequencer's latest blocks as the " +
         "unsafe head before L1 settles them; the safe and finalized heads still follow L1 alone.", DefaultValue = "null")]
     string? SequencerRpcUrl { get; set; }

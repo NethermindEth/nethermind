@@ -27,6 +27,9 @@ class EmbeddedCoverageTests(unittest.TestCase):
     def test_native_peer_probe_is_added_only_to_native_helpers(self):
         legacy = embedded.candidate_helper("rollup0")
         native = embedded.candidate_helper("rollupx")
+        self.assertNotIn("mod bootstrap;", legacy)
+        self.assertIn("mod bootstrap;", native)
+        self.assertNotIn("--Sync.BlockGossipEnabled", native)
         self.assertNotIn("mod peer;", legacy)
         self.assertNotIn("peer::verify(", legacy)
         self.assertEqual(1, native.count("mod peer;"))
@@ -126,8 +129,10 @@ class EmbeddedCoverageTests(unittest.TestCase):
     def test_native_report_rejects_settled_only_execution_and_fake_restart(self):
         revision, image = "a" * 40, "sha256:" + "b" * 64
         for name, (label, phases) in embedded.NATIVE_CASES["queue_reorg"].items():
-            for failure in (None, "settled-only", "missing-receipts", "missing-mode", "source", "image", "missing-phase", "database", "container", "zero-safe", "safe-regressed", "finalized-regressed", "peer-missing", "peer-empty", "peer-source", "peer-container", "peer-responses", "peer-native"):
+            for failure in (None, "settled-only", "missing-receipts", "missing-mode", "source", "image", "missing-phase", "database", "container", "zero-safe", "safe-regressed", "finalized-regressed", "peer-missing", "peer-empty", "peer-source", "peer-container", "peer-responses", "peer-native", "bootstrap-missing", "bootstrap-same-db", "bootstrap-no-execution", "bootstrap-no-restart", "bootstrap-source", "bootstrap-image", "bootstrap-no-receipts", "bootstrap-no-native"):
                 if label != "native-source-reorg" and failure in ("zero-safe", "safe-regressed", "finalized-regressed"):
+                    continue
+                if label != "native-source-reorg" and failure and failure.startswith("bootstrap-"):
                     continue
                 with self.subTest(label=label, failure=failure), tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)
@@ -167,6 +172,22 @@ class EmbeddedCoverageTests(unittest.TestCase):
                             if failure == "peer-native": peer["transaction_types"] = [2]
                             if failure == "peer-missing": continue
                         (root / (label + "-" + phase + "-peer.json")).write_text(json.dumps(peer))
+                    bootstrap = {"result": "pass", "scope": "snap-bootstrap-and-follow", "fresh_database": True,
+                        "candidate_revision": revision, "image_id": image, "server_database": "same",
+                        "pivot": {"number": "0x2"}, "post_pivot_height": 4, "post_pivot_transactions": 3,
+                        "before_restart": {"database_id": "fresh", "container": "consumer-1", "verified_receipts": 3},
+                        "after_restart": {"database_id": "fresh", "container": "consumer-2", "verified_receipts": 3}}
+                    for item, phase in ((bootstrap["before_restart"], "before-reorg"), (bootstrap["after_restart"], "after-settled-restart")):
+                        item.update(result="pass", case=label, phase=phase, candidate_revision=revision, image_id=image,
+                                    unsafe_transactions=["0x" + "12" * 32], verified_native_transactions=1)
+                    if failure == "bootstrap-source": bootstrap["after_restart"]["candidate_revision"] = "c" * 40
+                    if failure == "bootstrap-image": bootstrap["after_restart"]["image_id"] = "wrong"
+                    if failure == "bootstrap-no-receipts": bootstrap["after_restart"]["verified_receipts"] = 0
+                    if failure == "bootstrap-no-native": bootstrap["after_restart"]["verified_native_transactions"] = 0
+                    if failure == "bootstrap-same-db": bootstrap["server_database"] = "fresh"
+                    if failure == "bootstrap-no-execution": bootstrap["post_pivot_height"] = 2
+                    if failure == "bootstrap-no-restart": bootstrap["after_restart"]["container"] = "consumer-1"
+                    if failure != "bootstrap-missing": (root / "snap-bootstrap.json").write_text(json.dumps(bootstrap))
                     args = SimpleNamespace(inventory=inventory, directory=root)
                     with patch.dict(os.environ, {"GITHUB_SHA": revision, "EEZ_CANDIDATE_IMAGE": image, "EEZ_SUITE": "embedded-queue_reorg"}):
                         if failure is None:

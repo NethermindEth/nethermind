@@ -403,7 +403,12 @@ impl Probe {
     }
 }
 
-async fn rpc(client: &reqwest::Client, url: &str, method: &str, params: Value) -> Result<Value> {
+pub(super) async fn rpc(
+    client: &reqwest::Client,
+    url: &str,
+    method: &str,
+    params: Value,
+) -> Result<Value> {
     let response: Value = client
         .post(url)
         .json(&json!({"jsonrpc":"2.0", "id":1, "method":method, "params":params}))

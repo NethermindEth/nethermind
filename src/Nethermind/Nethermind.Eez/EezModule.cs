@@ -33,6 +33,7 @@ using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.TxPool;
+using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Eez;
 
@@ -103,8 +104,20 @@ public partial class EezModule(IEezConfig config, EezChainRules rules) : Module
             .AddSingleton<EezFollower>()
             .AddSingleton<EezDriver>(static ctx => new EezDriver(ctx.Resolve<EezFollower>(),
                 ctx.Resolve<IEezConfig>().SequencerEnabled ? ctx.Resolve<IEezSequencer>() : null, ctx.Resolve<IEezConfig>(), ctx.Resolve<ITimestamper>(),
-                ctx.Resolve<IProcessExitSource>(), ctx.Resolve<ILogManager>()))
-            .AddStep(typeof(StartEezDriver));
+                ctx.Resolve<IProcessExitSource>(), ctx.Resolve<ILogManager>()));
+
+        if (config.SnapBootstrapEnabled)
+        {
+            builder.AddSingleton<StartEezDriver>()
+                .AddSingleton<EezSnapBootstrap>()
+                .AddDecorator<IStateSyncRunner, EezSnapSyncRunner>()
+                .AddStep(typeof(PrepareEezSnapBootstrap))
+                .AddStep(typeof(StartEezSnapBootstrap));
+        }
+        else
+        {
+            builder.AddStep(typeof(StartEezDriver));
+        }
 
         if (rules.IsRollupX)
         {

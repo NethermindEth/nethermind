@@ -1,24 +1,26 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.IO;
 using Autofac.Core;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Posting;
 using Nethermind.Eez.Proving;
 using Nethermind.Eez.Rpc;
 using Nethermind.Eez.Sequencer;
+using Nethermind.JsonRpc;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
+using System.Collections.Generic;
+using System.IO;
+using System;
 
 namespace Nethermind.Eez;
 
@@ -37,6 +39,8 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig, IInitConfig in
         EnsureEezGenesis(chainSpec, Rules);
         EnsureRolesSupported(eezConfig, Rules);
         EnsureFollowerConfig(eezConfig);
+        if (eezConfig.SnapBootstrapEnabled)
+            EnsureSnapBootstrapConfig(eezConfig, Rules, api.Config<ISyncConfig>(), initConfig, api.Config<IJsonRpcConfig>());
         EnsureSequencerConfig(eezConfig, api.Config<IKeyStoreConfig>());
         if (Rules.UsesNativeContract)
         {
@@ -97,6 +101,22 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig, IInitConfig in
         {
             throw new InvalidConfigurationException($"{nameof(IEezConfig)}.{refused}.", ExitCodes.ConflictingConfigurations);
         }
+    }
+
+    internal static void EnsureSnapBootstrapConfig(IEezConfig config, EezChainRules rules, ISyncConfig sync, IInitConfig init, IJsonRpcConfig rpc)
+    {
+        string? violation = !rules.UsesNativeContract || !config.FollowerEnabled || config.SequencerEnabled
+            ? "requires a native EEZ follower"
+            : string.IsNullOrEmpty(config.SequencerRpcUrl) ? "requires a pivot block source in Eez.SequencerRpcUrl"
+            : sync.PivotNumber == 0 || sync.PivotHash is not { Length: 66 } pivot || !pivot.StartsWith("0x", StringComparison.Ordinal) || pivot.AsSpan(2).ContainsAnyExcept("0123456789abcdefABCDEF") ? "requires Sync.PivotNumber and Sync.PivotHash"
+            : sync.SynchronizationEnabled && (!sync.NetworkingEnabled || !sync.FastSync || !sync.SnapSync || !sync.StaticSnapPivot
+                || !sync.DownloadHeadersInFastSync
+                || sync.ExitOnSynced || init.ProcessingEnabled || rpc.Enabled || !init.PeerManagerEnabled)
+                ? "download requires networking, peer management, fast/static SNAP sync, all headers, and disabled processing, RPC and automatic sync exit"
+            : !sync.SynchronizationEnabled && !init.ProcessingEnabled ? "checkpoint installation requires Init.ProcessingEnabled=true"
+            : null;
+        if (violation is not null)
+            throw new InvalidConfigurationException($"Eez.SnapBootstrapEnabled {violation}.", ExitCodes.ConflictingConfigurations);
     }
 
     internal static void EnsureFollowerConfig(IEezConfig config)
