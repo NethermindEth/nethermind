@@ -2079,6 +2079,33 @@ public class JsonRpcProcessorTests
     }
 
     [Test]
+    public async Task Disabled_namespace_is_method_not_found_and_keeps_its_report_label([Values] bool inBatch)
+    {
+        IRpcModuleProvider moduleProvider = Substitute.For<IRpcModuleProvider>();
+        moduleProvider.Check(Arg.Any<string>(), Arg.Any<JsonRpcContext>(), out Arg.Any<string?>(), out Arg.Any<RpcModuleProvider.ResolvedMethodInfo?>())
+            .Returns(callInfo =>
+            {
+                callInfo[2] = "Debug";
+                callInfo[3] = null;
+                return ModuleResolution.Disabled;
+            });
+        using GCKeeper gcKeeper = new(NoGCStrategy.Instance, NullLogManager.Instance);
+        JsonRpcProcessor processor = CreateProcessor(new JsonRpcService(moduleProvider, LimboLogs.Instance, new JsonRpcConfig(), gcKeeper));
+        string request = CreateRequest("1", "debug_traceCall");
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, inBatch ? CreateBatchRequest(request) : request, CreateHttpContext());
+
+        CollectedJsonRpcResult only = AssertOnlyResult(result);
+        Error? error = ((inBatch ? only.BatchItems!.Single() : only.Response) as JsonRpcErrorResponse)?.Error;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?.Code, Is.EqualTo(ErrorCodes.MethodNotFound));
+            Assert.That(error?.Message, Does.Contain("namespace 'Debug' is disabled"));
+            if (!inBatch) Assert.That(only.Report?.Method, Is.EqualTo("debug_traceCall"));
+        }
+    }
+
+    [Test]
     public async Task Request_without_a_method_is_an_invalid_request_and_reports_safely(
         [Values("""{"jsonrpc":"2.0","id":1}""", """{"jsonrpc":"2.0","id":1,"method":null}""", """{"jsonrpc":"2.0","id":1,"method":" \t"}""")] string request)
     {
