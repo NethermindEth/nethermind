@@ -136,13 +136,13 @@ public partial class EthRpcModuleTests
             Assert.That(emptyTransactionCount, Is.EqualTo("""{"jsonrpc":"2.0","result":"0x0","id":67}"""));
             Assert.That(uncleCount, Is.EqualTo("""{"jsonrpc":"2.0","result":"0x0","id":67}"""));
             Assert.That(emptyReceipts, Is.EqualTo("""{"jsonrpc":"2.0","result":[],"id":67}"""));
-            Assert.That(receipts["result"]!.Select(static r => (string?)r["transactionHash"]),
+            Assert.That(receipts.SelectTokens("result[*].transactionHash").Select(static hash => (string?)hash),
                 Is.EqualTo(block.Transactions.Select(static tx => tx.Hash!.ToString())));
-            Assert.That(hashesOnly["result"]!["transactions"]!.Select(static tx => (string?)tx),
+            Assert.That(hashesOnly.SelectTokens("result.transactions[*]").Select(static hash => (string?)hash),
                 Is.EqualTo(block.Transactions.Select(static tx => tx.Hash!.ToString())));
-            Assert.That(full["result"]!["transactions"]!.Select(static tx => (string?)tx["hash"]),
+            Assert.That(full.SelectTokens("result.transactions[*].hash").Select(static hash => (string?)hash),
                 Is.EqualTo(block.Transactions.Select(static tx => tx.Hash!.ToString())));
-            Assert.That((string?)transaction["result"]!["hash"], Is.EqualTo(block.Transactions[1].Hash!.ToString()));
+            Assert.That((string?)transaction.SelectToken("result.hash"), Is.EqualTo(block.Transactions[1].Hash!.ToString()));
             Assert.That((string?)rawTransaction["result"], Does.StartWith("0x").And.Length.GreaterThan(2));
             Assert.That(transactionPastTheEnd, Is.EqualTo(NullResult), "an index past the end of a kept body has no transaction");
             Assert.That(rawTransactionPastTheEnd, Is.EqualTo(NullResult), "an index past the end of a kept body has no raw transaction");

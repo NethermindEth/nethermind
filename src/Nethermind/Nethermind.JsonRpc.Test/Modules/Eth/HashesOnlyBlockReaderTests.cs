@@ -499,7 +499,7 @@ public class HashesOnlyBlockReaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(readThroughTheReader, Is.True, "a body the store keeps is read through the reader below the lowest served block");
-            Assert.That((string?)JObject.Parse(kept[0])["result"]!["hash"], Is.EqualTo(block.Hash!.ToString()), "the block");
+            Assert.That((string?)JObject.Parse(kept[0]).SelectToken("result.hash"), Is.EqualTo(block.Hash!.ToString()), "the block");
             Assert.That(kept[1], Is.EqualTo($$"""{"jsonrpc":"2.0","result":"0x{{block.Transactions.Length:x}}","id":67}"""), "the transaction count");
             Assert.That(kept[2], Is.EqualTo("""{"jsonrpc":"2.0","result":"0x0","id":67}"""), "the uncle count");
             Assert.That(pruned, Is.All.EqualTo(prunedHistory), "a pruned body below the lowest served block");

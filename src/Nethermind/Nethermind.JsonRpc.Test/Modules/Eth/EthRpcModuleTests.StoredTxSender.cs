@@ -91,13 +91,13 @@ public partial class EthRpcModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            LegacyTransactionForRpc fromNumber = (LegacyTransactionForRpc)byNumber.Data;
-            Assert.That(fromNumber.Hash, Is.EqualTo(expected.Hash));
-            Assert.That(fromNumber.From, Is.EqualTo(TestItem.AddressB));
-            Assert.That(fromNumber.BlockHash, Is.EqualTo(block.Hash));
-            Assert.That(fromNumber.TransactionIndex, Is.EqualTo((long?)1));
-            Assert.That(((LegacyTransactionForRpc)byHash.Data).Hash, Is.EqualTo(expected.Hash));
-            Assert.That(raw.Data!.ToArray(), Is.EqualTo(expectedRaw));
+            LegacyTransactionForRpc? fromNumber = byNumber.Data as LegacyTransactionForRpc;
+            Assert.That(fromNumber?.Hash, Is.EqualTo(expected.Hash));
+            Assert.That(fromNumber?.From, Is.EqualTo(TestItem.AddressB));
+            Assert.That(fromNumber?.BlockHash, Is.EqualTo(block.Hash));
+            Assert.That(fromNumber?.TransactionIndex, Is.EqualTo((long?)1));
+            Assert.That((byHash.Data as LegacyTransactionForRpc)?.Hash, Is.EqualTo(expected.Hash));
+            Assert.That(raw.Data?.ToArray(), Is.EqualTo(expectedRaw));
             Assert.That(pastEnd.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(pastEnd.Data, Is.Null);
             Assert.That(rawPastEnd.Result.ResultType, Is.EqualTo(ResultType.Success));
