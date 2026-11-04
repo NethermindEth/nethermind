@@ -8,7 +8,7 @@ P="$GENESIS_DIR/params.json"
 fail() { echo "$*" >&2; exit 1; }
 PUBLIC_FEE_RECIPIENTS="0x8943545177806ed17b9f23f0a21ee5948ecaa776 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 0x0000000000000000000000000000000000000000"
 
-if [[ $(jq -r '.local // true' "$P") == true ]]; then
+if [[ $(jq -r 'if has("local") then .local else true end' "$P") == true ]]; then
   OPERATOR=${OPERATOR:-$(jq -r '.operators[0].name // "default"' "$P")}
   FEE_RECIPIENT=${FEE_RECIPIENT:-0x8943545177806ED17B9F23F0a21ee5948eCaa776}
 else
