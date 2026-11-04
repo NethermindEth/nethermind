@@ -842,10 +842,10 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     }
 
     /// <remarks>As in Geth, a step that halts with an error does not execute its opcode, so it records no storage.</remarks>
-    [TestCase(Instruction.CALL, 25112L, "out of gas")]
-    [TestCase(Instruction.CALL, 24412L, "out of gas: not enough gas for reentrancy sentry")]
-    [TestCase(Instruction.STATICCALL, 50000L, "out of gas: write protection")]
-    public void Failed_SSTORE_step_has_no_storage(Instruction callOpcode, long callGas, string expectedError)
+    [TestCase(Instruction.CALL, 25112L, "out of gas", 2)]
+    [TestCase(Instruction.CALL, 24412L, "out of gas: not enough gas for reentrancy sentry", 2)]
+    [TestCase(Instruction.STATICCALL, 50000L, "out of gas: write protection", 1)]
+    public void Failed_SSTORE_step_has_no_storage(Instruction callOpcode, long callGas, string expectedError, int expectedSStoreSteps)
     {
         byte[] calleeCode = Prepare.EvmCode
             .PersistData("0x0", "0x1")
@@ -874,6 +874,7 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
                 ("streaming", ExecuteStreamingTracerEntries(code, activation))])
             {
                 JsonElement[] sstores = [.. entries.Where(static e => e.GetProperty("op").GetString() == "SSTORE")];
+                Assert.That(sstores, Has.Length.EqualTo(expectedSStoreSteps), $"{tracerName}: SSTORE steps");
                 Assert.That(sstores[^1].GetProperty("error").GetString(), Is.EqualTo(expectedError), $"{tracerName}: failed SSTORE error");
                 Assert.That(sstores[^1].TryGetProperty("storage", out _), Is.False, $"{tracerName}: failed SSTORE storage");
                 Assert.That(sstores[..^1].All(static e => e.TryGetProperty("storage", out _)), Is.True, $"{tracerName}: successful SSTORE storage");
