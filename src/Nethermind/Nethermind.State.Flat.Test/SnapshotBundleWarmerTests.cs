@@ -369,6 +369,7 @@ public class SnapshotBundleWarmerTests
     // The free-running churn alone can retire every transient before a reader publishes into it, so before the clock starts
     // one reader warms the first epoch and the owner retires that same epoch, witnessing a warmed retirement and a prewarm.
     // The churn then runs for ChurnMilliseconds and, within the bail-out, until the readers have warmed and prewarmed during it.
+    // The reader counts are captured when the churn ends, before cleanup, so work done while stopping cannot stand in for them.
     [Test]
     public async Task Warm_ups_survive_owner_churn_without_foreign_records()
     {
@@ -489,6 +490,8 @@ public class SnapshotBundleWarmerTests
         (int Retirements, int Disposals, long WarmUps, long QueuedPrewarms, int RetiredRecords) startup = default;
         bool readersFinished = false;
         long churnMilliseconds = 0;
+        long churnWarmUps = 0;
+        long churnQueuedPrewarms = 0;
 
         // Whether the readers have warmed up and had a prewarm accepted since the startup witness, i.e. during the timed churn.
         bool ReadersWorkedDuringChurn() =>
@@ -511,7 +514,10 @@ public class SnapshotBundleWarmerTests
             }
             while (!Volatile.Read(ref stop) && (sw.ElapsedMilliseconds < ChurnMilliseconds || (!ReadersWorkedDuringChurn() && sw.Elapsed < BailOutTimeout)));
 
+            // Captured before cleanup sets the stop flag and releases the readers.
             churnMilliseconds = sw.ElapsedMilliseconds;
+            churnWarmUps = Volatile.Read(ref warmUps) - startup.WarmUps;
+            churnQueuedPrewarms = Volatile.Read(ref queuedPrewarms) - startup.QueuedPrewarms;
         }
         finally
         {
@@ -529,8 +535,10 @@ public class SnapshotBundleWarmerTests
             $"startup: retirements={startup.Retirements} disposals={startup.Disposals} warmUps={startup.WarmUps} " +
             $"queuedPrewarms={startup.QueuedPrewarms} retiredRecords={startup.RetiredRecords}; " +
             $"stress: retirements={retirements - startup.Retirements} disposals={disposals - startup.Disposals} " +
-            $"warmUps={totalWarmUps - startup.WarmUps} queuedPrewarms={totalQueuedPrewarms - startup.QueuedPrewarms} " +
-            $"retiredRecords={retiredRecords - startup.RetiredRecords} churnMs={churnMilliseconds}; foreignRecords={foreignRecords}");
+            $"warmUps={churnWarmUps} queuedPrewarms={churnQueuedPrewarms} " +
+            $"retiredRecords={retiredRecords - startup.RetiredRecords} churnMs={churnMilliseconds}; " +
+            $"cleanup: warmUps={totalWarmUps - startup.WarmUps - churnWarmUps} queuedPrewarms={totalQueuedPrewarms - startup.QueuedPrewarms - churnQueuedPrewarms}; " +
+            $"foreignRecords={foreignRecords}");
 
         using (Assert.EnterMultipleScope())
         {
@@ -545,8 +553,8 @@ public class SnapshotBundleWarmerTests
             Assert.That(totalQueuedPrewarms, Is.GreaterThan(0));
             Assert.That(retirements - startup.Retirements, Is.GreaterThan(0), "the timed churn retired a transient");
             Assert.That(disposals - startup.Disposals, Is.GreaterThan(0), "the timed churn disposed a bundle");
-            Assert.That(totalWarmUps - startup.WarmUps, Is.GreaterThan(0), $"no reader warmed up during the timed churn, which ran {churnMilliseconds} ms (bail-out {BailOutTimeout})");
-            Assert.That(totalQueuedPrewarms - startup.QueuedPrewarms, Is.GreaterThan(0), $"no reader prewarm was accepted during the timed churn, which ran {churnMilliseconds} ms (bail-out {BailOutTimeout})");
+            Assert.That(churnWarmUps, Is.GreaterThan(0), $"no reader warmed up during the timed churn, which ran {churnMilliseconds} ms (bail-out {BailOutTimeout})");
+            Assert.That(churnQueuedPrewarms, Is.GreaterThan(0), $"no reader prewarm was accepted during the timed churn, which ran {churnMilliseconds} ms (bail-out {BailOutTimeout})");
         }
     }
 
