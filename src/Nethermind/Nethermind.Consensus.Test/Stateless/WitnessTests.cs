@@ -106,7 +106,7 @@ public class WitnessTests
         };
         ExecutionWitness.Decode(ExecutionWitness.Encode(ExecutionWitness.From(original)), out ExecutionWitness decoded);
         using Witness witness = decoded.ToWitness();
-        IReadOnlyList<ReadOnlyMemory<byte>> decodedCodes = (IReadOnlyList<ReadOnlyMemory<byte>>)witness.Codes;
+        IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)> decodedCodes = (IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)>)witness.Codes;
 
         IKeyValueStoreWithBatching codeDb = witness.CreateCodeDb();
         TrieStoreScopeProvider provider = new(new RawTrieStore(witness.CreateNodeStorage()), codeDb, UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
@@ -124,7 +124,7 @@ public class WitnessTests
             {
                 ReadOnlyMemory<byte> code = opened.CodeDb.GetCode(ValueKeccak.Compute(codes[i]));
                 Assert.That(code.ToArray(), Is.EqualTo(codes[i]));
-                Assert.That(code.Equals(decodedCodes[i]), Is.True, "served as decoded rather than copied");
+                Assert.That(code.Equals(decodedCodes[i].Code), Is.True, "served as decoded rather than copied");
                 Assert.That(codeDb.Get(ValueKeccak.Compute(codes[i]).Bytes), Is.EqualTo(codes[i]), "key-value view");
             }
 

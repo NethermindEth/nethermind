@@ -3,7 +3,6 @@
 
 using System;
 using CkzgLib;
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -12,7 +11,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
-public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage72>
+public class CellsMessageSerializer72 : IMessageSerializer<CellsMessage72>
 {
     private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<CellsMessage72>(Eth72ProtocolHandler.MaxCellsResponseHashes, nameof(CellsMessage72.Hashes));
     private readonly int _maxBlobsPerTransaction;
@@ -34,13 +33,10 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         _cellsPerTransactionRlpLimit = RlpLimit.For<CellsMessage72>(maxCellsPerTransaction, nameof(CellsMessage72.Cells));
     }
 
-    public void Serialize(IByteBuffer byteBuffer, CellsMessage72 message)
+    public int Serialize(Span<byte> destination, CellsMessage72 message)
     {
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
-
-        ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(contentLength);
+        RlpWriter writer = new(destination);
+        writer.StartSequence(GetContentLength(message));
         writer.Encode(message.RequestId);
 
         int hashesLength = checked(message.Hashes.Length * Rlp.LengthOfKeccakRlp);
@@ -54,18 +50,22 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         int cellsLength = GetCellsContentLength(message.Cells);
         writer.StartSequence(cellsLength);
 
-        int cellIndexCount = message.CellMask.Length == BlobCellMask.FixedByteLength
-            ? BlobCellMask.FromBytes(message.CellMask).Count
-            : 0;
         foreach (byte[][] cells in message.Cells)
         {
-            EncodeCellGroup(ref writer, cells, cellIndexCount);
+            EncodeCellGroup(ref writer, cells);
         }
 
         writer.Encode(message.CellMask);
+        return writer.Position;
     }
 
-    public CellsMessage72 Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
+    public CellsMessage72 Deserialize(ReadOnlySpan<byte> data)
+    {
+        RlpReader ctx = new(data);
+        CellsMessage72 message = Deserialize(ref ctx);
+        ctx.CheckEnd();
+        return message;
+    }
 
     private CellsMessage72 Deserialize(ref RlpReader ctx)
     {
@@ -106,7 +106,7 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         int cellIndexCount = BlobCellMask.FromBytes(cellMask).Count;
         for (int i = 0; i < cellsByTx.Length; i++)
         {
-            cellsByTx[i] = ToBlobMajor(cellsByTx[i], cellIndexCount);
+            ValidateCellGroup(cellsByTx[i], cellIndexCount);
         }
 
         return new CellsMessage72(requestId, hashes.AsSpan().ToArray(), cellsByTx, cellMask);
@@ -114,14 +114,13 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
 
     private static ValueHash256 DecodeTransactionHash(ref RlpReader ctx) => ctx.DecodeValueKeccakNonNull();
 
-    public int GetLength(CellsMessage72 message, out int contentLength)
-    {
-        contentLength = Rlp.LengthOf(message.RequestId)
-            + Rlp.LengthOfSequence(checked(message.Hashes.Length * Rlp.LengthOfKeccakRlp))
-            + Rlp.LengthOfSequence(GetCellsContentLength(message.Cells))
-            + Rlp.LengthOf(message.CellMask);
-        return Rlp.LengthOfSequence(contentLength);
-    }
+    public int GetLength(CellsMessage72 message) => Rlp.LengthOfSequence(GetContentLength(message));
+
+    private static int GetContentLength(CellsMessage72 message) =>
+        Rlp.LengthOf(message.RequestId)
+        + Rlp.LengthOfSequence(checked(message.Hashes.Length * Rlp.LengthOfKeccakRlp))
+        + Rlp.LengthOfSequence(GetCellsContentLength(message.Cells))
+        + Rlp.LengthOf(message.CellMask);
 
     private static int GetCellsContentLength(byte[][][] cellsByTx)
     {
@@ -135,63 +134,33 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         return contentLength;
     }
 
-    private static void EncodeCellGroup(ref ByteBufferRlpWriter writer, byte[][] blobMajorCells, int cellIndexCount)
+    private static void EncodeCellGroup(ref RlpWriter writer, byte[][] cells)
     {
         int contentLength = 0;
-        for (int i = 0; i < blobMajorCells.Length; i++)
+        for (int i = 0; i < cells.Length; i++)
         {
-            contentLength += Rlp.LengthOf(blobMajorCells[i]);
+            contentLength += Rlp.LengthOf(cells[i]);
         }
 
         writer.StartSequence(contentLength);
-        if (cellIndexCount == 0 || blobMajorCells.Length % cellIndexCount != 0)
+        for (int i = 0; i < cells.Length; i++)
         {
-            for (int i = 0; i < blobMajorCells.Length; i++)
-            {
-                writer.Encode(blobMajorCells[i]);
-            }
-
-            return;
-        }
-
-        int blobCount = blobMajorCells.Length / cellIndexCount;
-        for (int cellIndex = 0; cellIndex < cellIndexCount; cellIndex++)
-        {
-            for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
-            {
-                writer.Encode(blobMajorCells[blobIndex * cellIndexCount + cellIndex]);
-            }
+            writer.Encode(cells[i]);
         }
     }
 
-    private byte[][] ToBlobMajor(byte[][] indexMajorCells, int cellIndexCount)
+    private void ValidateCellGroup(byte[][] cells, int cellIndexCount)
     {
-        if (cellIndexCount == 0 || indexMajorCells.Length == 0 || indexMajorCells.Length % cellIndexCount != 0)
+        if (cellIndexCount == 0 || cells.Length == 0 || cells.Length % cellIndexCount != 0)
         {
             throw new RlpException($"Cell group in {nameof(CellsMessage72)} is inconsistent with its cell mask.");
         }
 
-        int blobCount = indexMajorCells.Length / cellIndexCount;
+        int blobCount = cells.Length / cellIndexCount;
         if (blobCount > _maxBlobsPerTransaction)
         {
             throw new RlpLimitException($"Too many blobs in {nameof(CellsMessage72)} cell group: {blobCount}.");
         }
-
-        if (blobCount == 1 || cellIndexCount == 1)
-        {
-            return indexMajorCells;
-        }
-
-        byte[][] blobMajorCells = new byte[indexMajorCells.Length][];
-        for (int cellIndex = 0; cellIndex < cellIndexCount; cellIndex++)
-        {
-            for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
-            {
-                blobMajorCells[blobIndex * cellIndexCount + cellIndex] = indexMajorCells[cellIndex * blobCount + blobIndex];
-            }
-        }
-
-        return blobMajorCells;
     }
 
     private static int GetMaxCellsPerTransaction(ISpecProvider specProvider)
