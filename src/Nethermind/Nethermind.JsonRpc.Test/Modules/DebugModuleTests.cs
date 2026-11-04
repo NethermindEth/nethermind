@@ -14,6 +14,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Facade.Eth;
 using Nethermind.Config;
 using Nethermind.Core;

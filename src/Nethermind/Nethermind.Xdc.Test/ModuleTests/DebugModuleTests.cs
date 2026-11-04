@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;

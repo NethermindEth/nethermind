@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.History;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
