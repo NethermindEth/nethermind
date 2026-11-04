@@ -120,8 +120,10 @@ namespace Nethermind.TxPool.Collections
             ReplacementSearch search = new(tx);
             VisitBucket(tx.SenderAddress!, ref search, static (Transaction pending, ref ReplacementSearch state) =>
             {
+                // Buckets are visited in ascending nonce order, so skip below and stop past the replaced nonce.
                 if (pending.Nonce < state.Nonce) return true;
                 if (pending.Nonce > state.Nonce) return false;
+                // Same nonce, another domain: only one entry can compete, so keep looking for it.
                 if (!CompetingTransactionEqualityComparer.Instance.Equals(state.Tx, pending)) return true;
 
                 state.Replaced = pending;

@@ -17,7 +17,7 @@ namespace Nethermind.Benchmarks.TxPool;
 [MemoryDiagnoser]
 public class PendingReplacementBenchmarks
 {
-    private Func<Transaction, TxDistinctSortedPool, TxDistinctSortedPool, Transaction?> _find = null!;
+    private Func<Transaction, TxDistinctSortedPool, TxDistinctSortedPool, Transaction> _find = null!;
     private TxDistinctSortedPool _pool = null!;
     private TxDistinctSortedPool _otherPool = null!;
     private Transaction _probe = null!;
@@ -32,8 +32,9 @@ public class PendingReplacementBenchmarks
     public void Setup()
     {
         Type helper = typeof(IIncomingTxFilter).Assembly.GetType("Nethermind.TxPool.Filters.PendingReplacement", throwOnError: true)!;
-        MethodInfo find = helper.GetMethod("Find", BindingFlags.Public | BindingFlags.Static)!;
-        _find = find.CreateDelegate<Func<Transaction, TxDistinctSortedPool, TxDistinctSortedPool, Transaction?>>();
+        MethodInfo find = helper.GetMethod("Find", BindingFlags.Public | BindingFlags.Static)
+            ?? throw new MissingMethodException(helper.FullName, "Find");
+        _find = find.CreateDelegate<Func<Transaction, TxDistinctSortedPool, TxDistinctSortedPool, Transaction>>();
         _pool = new TxDistinctSortedPool(Pending + 1, CompareTxByNonce.Instance, LimboLogs.Instance);
         _otherPool = new TxDistinctSortedPool(1, CompareTxByNonce.Instance, LimboLogs.Instance);
 
@@ -57,5 +58,5 @@ public class PendingReplacementBenchmarks
     }
 
     [Benchmark]
-    public Transaction? FindReplacement() => _find(_probe, _pool, _otherPool);
+    public Transaction FindReplacement() => _find(_probe, _pool, _otherPool);
 }
