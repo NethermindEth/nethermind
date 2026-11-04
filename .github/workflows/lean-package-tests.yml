@@ -7,6 +7,7 @@ on:
     paths:
       - Directory.Packages.props
       - nuget.config
+      - src/Nethermind/Nethermind.Runner/packages.lock.json
       - tools/lean-ffi/**
       - src/Nethermind/Nethermind.Crypto/NativeLeanProofVerifier.cs
       - src/Nethermind/Nethermind.Crypto/Nethermind.Crypto.csproj

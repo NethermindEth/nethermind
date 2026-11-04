@@ -31,7 +31,7 @@ across proofs; it allows one proof per process at a time, which the backend's pr
 `BuildLeanFfi=true` builds and copies the host native library into consumer build/publish
 outputs and rejects a different target RID. Build on each target platform. Other builds take
 the library from the pinned `Nethermind.Crypto.Lean` package (NethermindEth/lean-bindings),
-built from this directory for x86-64-v3 with PCLMULQDQ or arm64 with AES/PMULL, so they do not
+built from the same FFI source for x86-64-v3 with PCLMULQDQ or arm64 with AES/PMULL, so they do not
 require Rust.
 A chain with a scheduled EIP-8288 fork checks the CPU features, native ABI and guest key at startup
 and fails with installation instructions if the backend is unavailable. Other chains do
