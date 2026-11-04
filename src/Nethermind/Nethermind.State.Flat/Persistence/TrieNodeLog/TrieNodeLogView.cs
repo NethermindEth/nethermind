@@ -34,16 +34,34 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<Trie
             _flushedGeneration = ReadUInt64(merged.Get(shard.FlushedGenerationKey));
             shard.PinNewer(pinned);
 
-            while (pinned.Count > 0 && pinned[0].Number <= _flushedGeneration)
-            {
-                pinned[0].Dispose();
-                pinned.RemoveAt(0);
-            }
+            TrimFlushedGenerations(pinned, _flushedGeneration);
         }
         finally
         {
             _bound = true;
             shard.EndOpening();
+        }
+    }
+
+    internal static void TrimFlushedGenerations(ArrayPoolList<TrieNodeLogGeneration> generations, ulong flushedGeneration)
+    {
+        int removed = 0;
+        try
+        {
+            while (removed < generations.Count && generations[removed].Number <= flushedGeneration)
+            {
+                TrieNodeLogGeneration generation = generations[removed++];
+                generation.Dispose();
+            }
+        }
+        finally
+        {
+            if (removed != 0)
+            {
+                Span<TrieNodeLogGeneration> items = generations.AsSpan();
+                items[removed..].CopyTo(items);
+                generations.Truncate(items.Length - removed);
+            }
         }
     }
 

@@ -496,6 +496,46 @@ public class ColumnsDbTests
             "ReadAheadSize = 0 must opt snapshots out of readahead iterators, as it does for DbOnTheRocks");
     }
 
+    [Test]
+    public void Snapshot_ReadAhead_DoesNotFillBlockCache([Values] bool sequentialReadAhead)
+    {
+        const int keyCount = 4096;
+        const int valueSize = 256;
+        ColumnDb column = (ColumnDb)_db.GetColumnDb(ReceiptsColumns.Blocks);
+        Random random = new(42);
+        byte[][] values = new byte[keyCount][];
+        for (int i = 0; i < keyCount; i++)
+        {
+            values[i] = new byte[valueSize];
+            random.NextBytes(values[i]);
+            column.Set(Key(i), values[i]);
+        }
+
+        _db.Flush();
+        long usageBefore = BlockCacheUsage();
+
+        using (IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot(sequentialReadAhead))
+        {
+            IReadOnlyKeyValueStore snapshotColumn = snapshot.GetColumn(ReceiptsColumns.Blocks);
+            for (int i = 0; i < keyCount; i++)
+            {
+                Assert.That(snapshotColumn.Get(Key(i), ReadFlags.HintReadAhead), Is.EqualTo(values[i]));
+            }
+        }
+
+        long added = BlockCacheUsage() - usageBefore;
+        Assert.That(added, sequentialReadAhead ? Is.LessThan(keyCount * valueSize / 10) : Is.GreaterThan(keyCount * valueSize / 2));
+
+        static byte[] Key(int i)
+        {
+            byte[] key = new byte[8];
+            BinaryPrimitives.WriteInt64BigEndian(key, i);
+            return key;
+        }
+
+        long BlockCacheUsage() => long.Parse(column.GatherProperty("rocksdb.block-cache-usage")!);
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public void Snapshot_ReadAhead_ConcurrentColumnsKeepIndependentSnapshotValues(bool flush)

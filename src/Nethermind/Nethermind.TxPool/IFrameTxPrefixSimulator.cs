@@ -100,7 +100,7 @@ public readonly struct FrameTxSimulationResult(
     public bool Yielded { get; } = yielded;
 
     /// <summary>Accounts an accepted prefix relied on whose code could change: EIP-8298 targets reachable through DELEGATECALL
-    /// or CALLCODE, and accounts EIP-8151 ecRecover recovered.</summary>
+    /// or CALLCODE, and accounts EIP-8151 ecRecover returned.</summary>
     public IReadOnlyList<FrameTxCodeDependency> CodeDependencies { get; } = codeDependencies ?? [];
 
     /// <summary>The prefix ran to <paramref name="payer"/>.</summary>

@@ -932,6 +932,28 @@ public class SnapProviderTests
     }
 
     [Test]
+    public void AddCodes_ShouldPersistOnlyRequestedCodes()
+    {
+        using IContainer container = CreateContainer();
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        IDb codeDb = container.ResolveNamed<IDb>(DbNames.Code);
+
+        byte[] requestedCode = [0x60, 0x01, 0x60, 0x02];
+        byte[] unrequestedCode = [0x60, 0x03];
+        ValueHash256 requestedHash = ValueKeccak.Compute(requestedCode);
+        ValueHash256 unrequestedHash = ValueKeccak.Compute(unrequestedCode);
+
+        using IByteArrayList codes = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { unrequestedCode, requestedCode });
+        snapProvider.AddCodes([requestedHash, TestItem.ValueKeccaks[0]], codes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeDb.Get(requestedHash.Bytes), Is.EqualTo(requestedCode));
+            Assert.That(codeDb.KeyExists(unrequestedHash.Bytes), Is.False);
+        }
+    }
+
+    [Test]
     public void AddAccountRange_SetStartRange_ToAfterLastPath()
     {
         (Hash256, Account)[] entries =

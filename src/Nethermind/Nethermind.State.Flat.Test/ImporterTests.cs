@@ -128,18 +128,17 @@ public class ImporterTests(FlatLayout layout)
         SeedTree(10);
         ManualTimer timer = new();
         InterfaceLogger logger = CreateInfoLogger();
-        Importer importer = new(new NodeStorage(_trieDb), new OrderRecordingPersistence(_persistence, [], timer.Tick),
-            new OneLoggerLogManager(new ILogger(logger)), timer.TimeProvider);
         // Two back-to-back ticks: each writes a line
         int ticked = 0;
-        logger.When(l => l.Info(Arg.Is<string>(line => line.Contains("Ingest thread started")))).Do(_ =>
-        {
-            if (Interlocked.Exchange(ref ticked, 1) == 0)
+        Importer importer = new(new NodeStorage(_trieDb), new OrderRecordingPersistence(_persistence, [], timer.Tick, () =>
             {
-                timer.Tick();
-                timer.Tick();
-            }
-        });
+                if (Interlocked.Exchange(ref ticked, 1) == 0)
+                {
+                    timer.Tick();
+                    timer.Tick();
+                }
+            }),
+            new OneLoggerLogManager(new ILogger(logger)), timer.TimeProvider);
 
         await importer.Copy(new StateId(0, _stateTree.RootHash));
 
@@ -148,8 +147,8 @@ public class ImporterTests(FlatLayout layout)
         logger.Received(4).Info(Arg.Is<string>(line => line.Contains("Flat Import")));
         Received.InOrder(() =>
         {
-            logger.Info(Arg.Is<string>(line => line.Contains("Flat Import") && line.Contains("written:") && line.Contains("queued:")));
-            logger.Info(Arg.Is<string>(line => line.Contains("Flat Import") && line.Contains("written:") && line.Contains("queued:")));
+            logger.Info(Arg.Is<string>(line => line.Contains("Flat Import") && line.Contains("written:")));
+            logger.Info(Arg.Is<string>(line => line.Contains("Flat Import") && line.Contains("written:")));
             // One tick per final flush, after the traversal
             logger.Info(Arg.Is<string>(line => line.Contains("Flat Import") && line.Contains("100.00 %")));
             logger.Info(Arg.Is<string>(line => line.Contains("Flat Import") && line.Contains("100.00 %")));
@@ -215,7 +214,7 @@ public class ImporterTests(FlatLayout layout)
 
         public ITimer Timer { get; } = Substitute.For<ITimer>();
 
-        // The timer is created after the ingest threads start, so a tick from one of them waits for it
+        // The timer is created after the traversal starts, so a tick from a traversal thread waits for it
         public void Tick()
         {
             if (!_callback.Task.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("The importer did not create its progress timer");
@@ -223,7 +222,7 @@ public class ImporterTests(FlatLayout layout)
         }
     }
 
-    private sealed class OrderRecordingPersistence(IPersistence inner, List<string> log, Action? onFlush = null) : IPersistence
+    private sealed class OrderRecordingPersistence(IPersistence inner, List<string> log, Action? onFlush = null, Action? onIngestBatch = null) : IPersistence
     {
         public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => inner.CreateReader(flags);
 
@@ -231,6 +230,7 @@ public class ImporterTests(FlatLayout layout)
         {
             // Ingest batches write from the initial state to itself; only the final batch moves the pointer.
             if (from != to) log.Add("advance-pointer");
+            else onIngestBatch?.Invoke();
             return inner.CreateWriteBatch(from, to, flags);
         }
 

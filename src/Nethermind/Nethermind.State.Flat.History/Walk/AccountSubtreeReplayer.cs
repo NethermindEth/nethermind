@@ -34,6 +34,7 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
         using SeriesPublisher publisher = new(SeriesScope.Accounts, prefix, seriesKey, series);
 
         List<StreamedAccount> streams = [];
+        ulong nextStreamBlock = ulong.MaxValue;
         try
         {
             foreach (ValueHash256 path in rows.StreamedPaths)
@@ -49,6 +50,7 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
                 }
 
                 stream.HasRow = cursor.MoveNext();
+                if (stream.HasRow && cursor.Block < nextStreamBlock) nextStreamBlock = cursor.Block;
             }
 
             foreach (AccountRowRef row in rows.Start)
@@ -81,12 +83,8 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
             while (true)
             {
                 token.ThrowIfCancellationRequested();
-                ulong block = ulong.MaxValue;
-                if (next < rows.Deltas.Count) block = rows.Deltas[next].Block;
-                foreach (StreamedAccount stream in streams)
-                {
-                    if (stream.HasRow && stream.Rows.Block < block) block = stream.Rows.Block;
-                }
+                ulong block = nextStreamBlock;
+                if (next < rows.Deltas.Count && rows.Deltas[next].Block < block) block = rows.Deltas[next].Block;
 
                 if (block == ulong.MaxValue) break;
 
@@ -109,16 +107,25 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
                     AccountRowRlp.Set(state, row.Path, rows.Arena.Slice(row.Offset, row.Length));
                 }
 
-                foreach (StreamedAccount stream in streams)
+                if (block == nextStreamBlock)
                 {
-                    if (!stream.HasRow || stream.Rows.Block != block) continue;
+                    nextStreamBlock = ulong.MaxValue;
+                    foreach (StreamedAccount stream in streams)
+                    {
+                        if (!stream.HasRow) continue;
 
-                    ReadOnlySpan<byte> value = stream.Rows.Value;
-                    AccountRowRlp.Set(state, stream.Path, value);
-                    ValueHash256 root = HistoryRowScanner.StorageRootOf(value);
-                    if (root != stream.LastRoot) moveCheck.OnMoved(stream.Path, block, stream.LastRoot, root);
-                    stream.LastRoot = root;
-                    stream.HasRow = stream.Rows.MoveNext();
+                        if (stream.Rows.Block == block)
+                        {
+                            ReadOnlySpan<byte> value = stream.Rows.Value;
+                            AccountRowRlp.Set(state, stream.Path, value);
+                            ValueHash256 root = HistoryRowScanner.StorageRootOf(value);
+                            if (root != stream.LastRoot) moveCheck.OnMoved(stream.Path, block, stream.LastRoot, root);
+                            stream.LastRoot = root;
+                            stream.HasRow = stream.Rows.MoveNext();
+                        }
+
+                        if (stream.HasRow && stream.Rows.Block < nextStreamBlock) nextStreamBlock = stream.Rows.Block;
+                    }
                 }
 
                 Recompute(state, changes, emitter, prefix.Length);

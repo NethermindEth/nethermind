@@ -184,6 +184,27 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCall_with_time_override_past_amsterdam_reads_a_missing_slot_as_zero()
+    {
+        const ulong amsterdamTime = 4_000_000_000;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<ISpecProvider>(
+                new CustomSpecProvider(((ForkActivation)0, BPO2.Instance), (new ForkActivation(0, amsterdamTime), Amsterdam.Instance))));
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressD.ToString(), gas = "0x30d40" };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest",
+            new
+            {
+                stateOverrides = new Dictionary<string, object> { [TestItem.AddressD.ToString()] = new { code = "0x4b60005260206000f3" } },
+                blockOverrides = new { time = $"0x{amsterdamTime:x}" }
+            });
+
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        string output = (string)json["result"]!["returnValue"]!;
+        Assert.That(output.StartsWith("0x") ? output[2..] : output, Is.EqualTo(new string('0', 64)), response);
+    }
+
+    [Test]
     public async Task Debug_traceCall_txIndex_keeps_block_overrides_out_of_prefix([Values] bool blockAccessLists)
     {
         OverridableReleaseSpec spec = new(blockAccessLists ? Amsterdam.Instance : Prague.Instance) { Eip1559TransitionBlock = 1 };
@@ -1302,6 +1323,50 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(result["failed"]?.Value<bool>(), Is.False);
             Assert.That(ParseReturnValue(response).ToUInt256(), Is.EqualTo(expectedBaseFee));
+        }
+    }
+
+    [TestCase(100, null, null, 7, 93)]
+    [TestCase(null, 100, 2, 7, 2)]
+    [TestCase(null, 100, 100, 7, 93)]
+    [TestCase(100, null, null, 0, 100)]
+    [TestCase(null, 100, 2, 0, 2)]
+    [TestCase(100, null, null, null, 100)]
+    [TestCase(null, 100, 2, null, 2)]
+    [TestCase(null, 100, 100, null, 100)]
+    public async Task Debug_traceCall_javascript_gasPrice_is_effective_gas_tip(
+        int? gasPrice, int? maxFeePerGas, int? maxPriorityFeePerGas, int? baseFeeOverride, int expectedGasPrice)
+    {
+        OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
+        using Context ctx = await Context.Create(new TestSpecProvider(releaseSpec));
+        // Without an override the live base fee applies, so the fee caps are raised by it to keep the expected tips.
+        UInt256 feeCapShift = baseFeeOverride is null ? ctx.Blockchain.BlockTree.Head!.Header.BaseFeePerGas : UInt256.Zero;
+        Address sender = Build.An.Address.TestObject;
+        Dictionary<string, object?> transaction = new() { ["from"] = $"{sender}", ["to"] = $"{TestItem.AddressD}", ["gas"] = "0x186a0" };
+        if (gasPrice is not null)
+            transaction["gasPrice"] = (feeCapShift + (UInt256)gasPrice.Value).ToHexString(true);
+        if (maxFeePerGas is not null)
+            transaction["maxFeePerGas"] = (feeCapShift + (UInt256)maxFeePerGas.Value).ToHexString(true);
+        if (maxPriorityFeePerGas is not null)
+            transaction["maxPriorityFeePerGas"] = ((UInt256)maxPriorityFeePerGas.Value).ToHexString(true);
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [$"{sender}"] = new { balance = "0x56BC75E2D63100000" },
+            [$"{TestItem.AddressD}"] = new { code = "0x00" }
+        };
+        const string tracer = "{step:function(){},fault:function(){},result:function(ctx){return ctx.gasPrice.toString(10);}}";
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, "latest",
+            new
+            {
+                tracer,
+                stateOverrides,
+                blockOverrides = baseFeeOverride is null ? null : new { baseFeePerGas = $"0x{baseFeeOverride:x}" }
+            });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((string?)json["result"], Is.EqualTo(expectedGasPrice.ToString()), response);
         }
     }
 
