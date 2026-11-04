@@ -199,11 +199,12 @@ public class SnapFlatStateServerTests
         {
             (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) =
                 _server.GetStorageRanges(_rootHash, [new PathWithAccount(addressHash, account)], null, null, 4000, CancellationToken.None);
-            using (slots)
             using (proofs)
             {
                 Assert.That(slots, Has.Count.EqualTo(1));
             }
+
+            slots.DisposeRecursive();
 
             reader.Received().TryLoadStorageRlp(addressHash, Arg.Any<TreePath>(), ReadFlags.HintReadAhead | ReadFlags.HintCacheMiss);
         }
