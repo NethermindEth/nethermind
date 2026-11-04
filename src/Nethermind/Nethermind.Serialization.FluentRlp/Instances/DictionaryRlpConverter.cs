@@ -36,6 +36,11 @@ public abstract class DictionaryRlpConverter<TKey, TValue> where TKey : notnull
     }
 
     /// <summary>Writes a sequence of <c>[key, value]</c> sequences.</summary>
+    /// <remarks>
+    /// The pairs are in the enumeration order of <paramref name="value"/>, so two equal dictionaries can give different
+    /// bytes. If the bytes must be canonical, for example to hash them, write the pairs in key order with
+    /// <see cref="RlpWriter.WriteSequence(RefRlpWriterAction)"/>.
+    /// </remarks>
     public static void Write(ref RlpWriter writer, Dictionary<TKey, TValue> value, RefRlpWriterAction<TKey> writeKey, RefRlpWriterAction<TValue> writeValue)
     {
         (Dictionary<TKey, TValue>, RefRlpWriterAction<TKey>, RefRlpWriterAction<TValue>) ctx = ValueTuple.Create(value, writeKey, writeValue);

@@ -241,6 +241,64 @@ public class RlpWriterTest
             writer.Write("dog");
         }, Throws.ArgumentException);
 
+    [Test]
+    public void LengthWriterMeasuresUpToIntMaxValue()
+    {
+        RlpWriter writer = RlpWriter.LengthWriter();
+        WriteIntMaxValueBytes(ref writer);
+
+        Assert.That(writer.Length, Is.EqualTo(int.MaxValue));
+    }
+
+    [Test]
+    public void LengthWriterRejectsMoreThanIntMaxValue([Values(0, 56)] int extraStringLength)
+        => Assert.That(() =>
+        {
+            RlpWriter writer = RlpWriter.LengthWriter();
+            WriteIntMaxValueBytes(ref writer);
+            writer.Write(new byte[extraStringLength]);
+        }, Throws.TypeOf<OverflowException>());
+
+    [Test]
+    public void LengthWriterRejectsSequencePrefixOverIntMaxValue()
+        => Assert.That(static () =>
+        {
+            RlpWriter writer = RlpWriter.LengthWriter();
+            writer.WriteSequence(static (ref RlpWriter w) => WriteIntMaxValueBytes(ref w));
+        }, Throws.TypeOf<OverflowException>());
+
+    [Test]
+    public void LengthWriterDoesNotCopyLongString()
+    {
+        byte[] value = new byte[2 << 20];
+        Measure(value);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        int length = Measure(value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.LessThan(value.Length));
+            Assert.That(length, Is.EqualTo(value.Length + 4));
+        }
+
+        static int Measure(byte[] value)
+        {
+            RlpWriter writer = RlpWriter.LengthWriter();
+            writer.Write(value);
+            return writer.Length;
+        }
+    }
+
+    private static void WriteIntMaxValueBytes(ref RlpWriter writer)
+    {
+        // Each string has a 4-byte prefix, as its length needs 3 bytes.
+        byte[] chunk = new byte[1 << 19];
+        int itemLength = chunk.Length + 4;
+        int fullItems = int.MaxValue / itemLength;
+        for (int i = 0; i < fullItems; i++) writer.Write(chunk);
+        writer.Write(chunk.AsSpan(0, int.MaxValue - fullItems * itemLength - 4));
+    }
+
     // Payload lengths around the short and long prefix forms, in every writer mode.
     [Test]
     public void WriteSequenceWithDeclaredLength([Values(0, 2, 60, 253, 254, 255, 256, 300)] int stringLength)
