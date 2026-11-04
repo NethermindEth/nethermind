@@ -61,12 +61,14 @@ public class EraExporterTests
         }
     }
 
-    [TestCase(0UL, 31UL, 32UL, 63UL, false)]
-    [TestCase(32UL, 63UL, 0UL, 31UL, false)]
-    [TestCase(0UL, 47UL, 16UL, 63UL, false)]
-    [TestCase(0UL, 31UL, 32UL, 63UL, true)]
+    [TestCase(0UL, 31UL, 32UL, 63UL, false, false)]
+    [TestCase(32UL, 63UL, 0UL, 31UL, false, false)]
+    [TestCase(0UL, 47UL, 16UL, 63UL, false, false)]
+    [TestCase(0UL, 31UL, 32UL, 63UL, true, false)]
+    [TestCase(32UL, 63UL, 16UL, 31UL, false, true)]
+    [TestCase(16UL, 47UL, 48UL, 63UL, false, true)]
     public async Task Export_IntoDirectoryWithEarlierExport_WritesManifestsOfWholeDirectory(
-        ulong firstFrom, ulong firstTo, ulong secondFrom, ulong secondTo, bool removeFirstEraFile)
+        ulong firstFrom, ulong firstTo, ulong secondFrom, ulong secondTo, bool removeFirstEraFile, bool hashOnly)
     {
         const ulong eraSize = 16;
         await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(64).Build();
@@ -74,8 +76,9 @@ public class EraExporterTests
         IEraExporter sut = container.Resolve<IEraExporter>();
         await sut.Export(directory, firstFrom, firstTo);
 
-        // Rewrite the earlier manifests as older exports wrote them, naming each epoch's placeholder file,
-        // and give the epochs the second export rewrites stale hashes that must be replaced, not kept.
+        // Rewrite the earlier manifests as older exports wrote them, naming each epoch's placeholder file, or as hash-only
+        // (geth-style) lines matched by position, and give the epochs the second export rewrites stale hashes that must be
+        // replaced, not kept.
         foreach (string manifest in new[] { EraExporter.AccumulatorFileName, EraExporter.ChecksumsFileName })
         {
             string path = Path.Combine(directory, manifest);
@@ -85,7 +88,7 @@ public class EraExporterTests
                 string[] columns = lines[i].Split(' ');
                 ulong epoch = ulong.Parse(columns[1].Split('-')[1]);
                 string hash = epoch >= secondFrom / eraSize && epoch <= secondTo / eraSize ? $"0x{new string('0', 64)}" : columns[0];
-                lines[i] = $"{hash} {EraPathUtils.Filename(EraTestModule.TestNetwork, epoch, Keccak.Zero)}";
+                lines[i] = hashOnly ? hash : $"{hash} {EraPathUtils.Filename(EraTestModule.TestNetwork, epoch, Keccak.Zero)}";
             }
             await File.WriteAllLinesAsync(path, lines);
         }

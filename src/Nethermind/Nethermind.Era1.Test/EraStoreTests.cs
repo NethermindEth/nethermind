@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1.Test;
 
@@ -30,6 +31,7 @@ public class EraStoreTests
         HashOnly,
         Reversed,
         FirstEraFileRemoved,
+        HashOnlyFirstEraFileRemoved,
     }
 
     [Test]
@@ -53,6 +55,11 @@ public class EraStoreTests
                 File.Delete(Path.Combine(directory, lines[0].Split(' ')[1]));
                 firstBlock = eraSize;
                 break;
+            case ChecksumManifest.HashOnlyFirstEraFileRemoved:
+                File.Delete(Path.Combine(directory, lines[0].Split(' ')[1]));
+                lines = [.. lines.Skip(1).Select(static line => line.Split(' ')[0])];
+                firstBlock = eraSize;
+                break;
         }
         await File.WriteAllLinesAsync(checksumsPath, lines);
 
@@ -65,5 +72,20 @@ public class EraStoreTests
                 Assert.That(async () => await eraStore.FindBlockAndReceipts(block), Throws.Nothing, $"block {block}");
             }
         }
+    }
+
+    [Test]
+    public async Task FindBlockAndReceipts_EpochWithoutChecksumEntry_ThrowsEraVerificationException()
+    {
+        await using IContainer ctx = await EraTestModule.CreateExportedEraEnv(64);
+        string directory = ctx.ResolveTempDirPath();
+        string checksumsPath = Path.Combine(directory, EraExporter.ChecksumsFileName);
+        string[] lines = await File.ReadAllLinesAsync(checksumsPath);
+        await File.WriteAllLinesAsync(checksumsPath, lines.Where(static (_, i) => i != 1));
+
+        using IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(directory, null);
+
+        Assert.That(async () => await eraStore.FindBlockAndReceipts(16),
+            Throws.TypeOf<EraVerificationException>().With.Message.Contains("epoch 1"));
     }
 }
