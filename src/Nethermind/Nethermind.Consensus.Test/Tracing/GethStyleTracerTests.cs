@@ -546,16 +546,47 @@ public class GethStyleTracerTests
         }
     }
 
+    [Test]
+    public void Streaming_deadline_completion_observes_cancellation_while_releasing_owner([Values] bool cancelDuringRelease)
+    {
+        using CancellationTokenSource external = new();
+        DeadlineClock clock = new() { OnTimerDispose = cancelDuringRelease ? external.Cancel : null };
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
+        inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(Substitute.For<ITxTracer>());
+        inner.BuildResult().Returns(Array.Empty<GethLikeTxTrace>());
+        GethTraceDeadlineScope? scope = null;
+        GethTraceOptions options = new() { EnforceExecutionDeadline = true, Timeout = TimeSpan.FromSeconds(1), DeadlineClock = clock };
+        OperationCanceledException failure;
+        using (GethLikeBlockDeadlineTracer tracer = (GethLikeBlockDeadlineTracer)GethLikeBlockDeadlineTracer.Wrap(effective =>
+        {
+            scope = effective.DeadlineScope;
+            return inner;
+        }, options, external.Token, streaming: true))
+        {
+            using ITxTracer transaction = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
+            Assert.That(scope, Is.Not.Null);
+            if (!cancelDuringRelease) external.Cancel();
+            failure = Assert.Throws<OperationCanceledException>(() => scope!.BeforeEmission!())!;
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure.CancellationToken, Is.EqualTo(external.Token));
+            Assert.That(clock.Timers, Has.Count.EqualTo(1));
+            Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(1));
+        }
+    }
+
     private sealed class DeadlineClock : TimeProvider
     {
         private long _timestamp;
         internal bool DeliverWhenArmed { get; init; }
+        internal Action? OnTimerDispose { get; init; }
         internal List<DeadlineTimer> Timers { get; } = [];
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
         public override long GetTimestamp() => _timestamp;
         public override ITimer CreateTimer(TimerCallback callback, object state, TimeSpan dueTime, TimeSpan period)
         {
-            DeadlineTimer timer = new(callback, state, DeliverWhenArmed) { Due = dueTime };
+            DeadlineTimer timer = new(callback, state, DeliverWhenArmed, OnTimerDispose) { Due = dueTime };
             Timers.Add(timer);
             return timer;
         }
@@ -566,7 +597,7 @@ public class GethStyleTracerTests
         }
     }
 
-    private sealed class DeadlineTimer(TimerCallback callback, object state, bool deliverWhenArmed) : ITimer
+    private sealed class DeadlineTimer(TimerCallback callback, object state, bool deliverWhenArmed, Action? onDispose) : ITimer
     {
         internal TimeSpan Due { get; set; }
         internal int DisposeCount { get; private set; }
@@ -581,7 +612,11 @@ public class GethStyleTracerTests
         }
         internal void Fire() { if (!Disposed) callback(state); }
         internal void FireQueued() => callback(state);
-        public void Dispose() => DisposeCount++;
+        public void Dispose()
+        {
+            DisposeCount++;
+            onDispose?.Invoke();
+        }
         public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
     }
 
