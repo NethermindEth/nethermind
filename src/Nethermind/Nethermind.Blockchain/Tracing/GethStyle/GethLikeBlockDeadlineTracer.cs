@@ -154,6 +154,7 @@ internal sealed class GethLikeBlockDeadlineTracer(
     {
         CheckDeadline();
         ReleaseDeadline();
+        CheckDeadline();
     }
 
     private void ReleaseDeadline()
