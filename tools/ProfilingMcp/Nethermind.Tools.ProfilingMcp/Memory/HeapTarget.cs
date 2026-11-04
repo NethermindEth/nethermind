@@ -32,7 +32,13 @@ internal static class HeapTarget
             : DataTarget.LoadDump(path, new DataTargetOptions { FileLocator = new TargetRootLocator(), SymbolPaths = [] });
     }
 
-    public static ClrRuntime CreateRuntime(DataTarget dataTarget)
+    /// <summary>Opens a running process for reading without suspending it, so what it reads may be changing.</summary>
+    public static DataTarget AttachToProcess(int pid) =>
+        Environment.GetEnvironmentVariable(ContainerSidecar.NameVariable) is null
+            ? DataTarget.AttachToProcess(pid, suspend: false)
+            : DataTarget.AttachToProcess(pid, suspend: false, new DataTargetOptions { FileLocator = new TargetRootLocator(), SymbolPaths = [] });
+
+    public static ClrRuntime CreateRuntime(DataTarget dataTarget, bool requireWalkableHeap = true)
     {
         if (dataTarget.ClrVersions.Length == 0)
             throw new InvalidOperationException("No .NET runtime found in the target.");
@@ -45,7 +51,7 @@ internal static class HeapTarget
         ClrRuntime runtime = dataTarget.FileLocator is TargetRootLocator && File.Exists(targetDac)
             ? clr.CreateRuntime(targetDac, ignoreMismatch: true)
             : clr.CreateRuntime();
-        if (!runtime.Heap.CanWalkHeap)
+        if (requireWalkableHeap && !runtime.Heap.CanWalkHeap)
             throw new InvalidOperationException("The heap cannot be walked right now (the process is probably in the middle of a GC). Try again.");
 
         return runtime;

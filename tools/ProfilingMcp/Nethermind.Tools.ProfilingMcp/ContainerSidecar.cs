@@ -86,6 +86,8 @@ internal static class ContainerSidecar
         if (await IsRunningAsync(engine, name))
             return name;
 
+        // perf needs it to sample another process, and Docker's seccomp profile allows perf_event_open only with it; kernels before 5.8 lack it.
+        string[] perfmon = HasPerfmon(await DockerAsync(engine, "version", "--format", "{{.Server.KernelVersion}}")) ? ["--cap-add", "PERFMON"] : [];
         try
         {
             await DockerAsync(engine,
@@ -95,6 +97,7 @@ internal static class ContainerSidecar
                 "--pid", $"container:{container}",
                 // Reaching the target's files through /proc/1/root needs it when the target runs as another user than root.
                 "--cap-add", "SYS_PTRACE",
+                .. perfmon,
                 "--volume", $"profmcp-home-{container}:/profmcp-home",
                 // The client finds diagnostic sockets in its temp folder; the sidecar's own runtime must not create one there.
                 "--env", $"TMPDIR={TargetRoot}{target.TempFolder}",
@@ -114,6 +117,12 @@ internal static class ContainerSidecar
         }
 
         return name;
+    }
+
+    internal static bool HasPerfmon(string kernelVersion)
+    {
+        string[] parts = kernelVersion.Split('.', 3);
+        return parts.Length >= 2 && int.TryParse(parts[0], out int major) && int.TryParse(parts[1], out int minor) && (major, minor).CompareTo((5, 8)) >= 0;
     }
 
     private static async Task<bool> IsRunningAsync(string[] engine, string container)
@@ -236,15 +245,19 @@ internal static class ContainerSidecar
         return targetImage;
     }
 
-    /// <summary>Identifies the Linux build by a hash of the server assembly, or returns null when the server was published without one.</summary>
+    /// <summary>Identifies the Linux build and the Dockerfile by a hash, or returns null when the server was published without a Linux build.</summary>
     private static string? BuildVersion()
     {
         string server = Path.Combine(AppContext.BaseDirectory, BuildFolder, Executable + ".dll");
         if (!File.Exists(server))
             return null;
 
-        using FileStream stream = File.OpenRead(server);
-        return Convert.ToHexStringLower(SHA256.HashData(stream))[..12];
+        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        hash.AppendData(File.ReadAllBytes(server));
+        string dockerfile = Path.Combine(AppContext.BaseDirectory, Dockerfile);
+        if (File.Exists(dockerfile))
+            hash.AppendData(File.ReadAllBytes(dockerfile));
+        return Convert.ToHexStringLower(hash.GetHashAndReset())[..12];
     }
 
     private static async Task<bool> SucceedsAsync(string[] engine, params string[] arguments)

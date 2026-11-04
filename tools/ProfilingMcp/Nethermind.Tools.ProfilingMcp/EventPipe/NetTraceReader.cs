@@ -167,7 +167,7 @@ public sealed partial class NetTraceReader
     [GeneratedRegex(@"\[[^\[\]]*\]")]
     private static partial Regex GenericArguments();
 
-    private static List<FunctionStat> ToFunctions(PathNode root)
+    internal static List<FunctionStat> ToFunctions(PathNode root)
     {
         Dictionary<string, (double Total, double Own, long Samples, List<CallStackStat> Stacks)> functions = new(StringComparer.Ordinal);
         List<string> path = [];
@@ -245,7 +245,7 @@ public sealed partial class NetTraceReader
         return frames.Count > 0 ? frames[0] : "?";
     }
 
-    private sealed class PathNode(string name, PathNode? parent)
+    internal sealed class PathNode(string name, PathNode? parent)
     {
         private readonly Dictionary<string, PathNode> _children = new(StringComparer.Ordinal);
 

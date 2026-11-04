@@ -9,6 +9,7 @@ using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Runtime;
 using ModelContextProtocol.Server;
 using Nethermind.Tools.ProfilingMcp.EventPipe;
+using Nethermind.Tools.ProfilingMcp.Native;
 
 namespace Nethermind.Tools.ProfilingMcp.Memory;
 
@@ -224,6 +225,50 @@ public sealed class MemoryTools(WorkspacePaths paths)
         }
 
         return $"Dump written: {path} ({Size(new FileInfo(path).Length)})";
+    }
+
+    [McpServerTool(Name = "native_memory", Title = "Where a process's memory is", ReadOnly = true, OpenWorld = false)]
+    [Description("Splits the resident memory (RSS) of a Linux process into what holds it: the GC heap by generation, the .NET runtime's own heaps and JIT code, " +
+                 "thread stacks, glibc malloc (arenas and large blocks), other anonymous mmaps such as other allocators' (RocksDB may bring jemalloc), and mapped files. " +
+                 "Answers whether memory growth is managed or native; use heap_stats for what is in the GC heap. " +
+                 "Reads /proc and, for a .NET process, the runtime with ClrMD, without suspending or pausing the process. " +
+                 "It cannot name the code that allocated native memory. Linux only, so on Windows pass a container.")]
+    public string NativeMemoryBreakdown(
+        [Description("Process ID; in a container, a PID from list_dotnet_processes or docker top.")] int pid,
+        [Description("Number of mapped files to list.")] int topFiles = 10)
+    {
+        if (!OperatingSystem.IsLinux())
+            throw new PlatformNotSupportedException("native_memory reads /proc, which exists on Linux only; profile a container or a Linux host.");
+
+        IReadOnlyList<Mapping> mappings = Native.NativeMemory.ParseSmaps(File.ReadLines($"/proc/{pid}/smaps"));
+        (IReadOnlyList<KnownRange> Ranges, long GcCommitted)? runtime = Native.NativeMemory.RuntimeRanges(pid);
+        List<KnownRange> known = [.. runtime?.Ranges ?? [], .. Native.NativeMemory.ThreadStackRanges(pid, mappings), .. Native.NativeMemory.MallocMmappedRanges(pid, mappings)];
+        IReadOnlyList<MemoryCategory> categories = Native.NativeMemory.Categorize(mappings, known);
+
+        long rss = mappings.Sum(static m => m.Rss);
+        long swap = mappings.Sum(static m => m.Swap);
+        StringBuilder sb = new($"RSS {Size(rss)}" + (swap > 0 ? $", swapped out {Size(swap)}" : "") + $", {Count(mappings.Count)} mappings.\n");
+        sb.Append(runtime is { } clr
+            ? $"GC heap committed: {Size(clr.GcCommitted)}. GC regions, runtime heaps and managed thread stacks are located through the runtime.\n"
+            : "Not read as .NET (not a .NET process, or ClrMD could not read it): the GC heap shows as anonymous memory.\n");
+
+        long managed = categories.Where(static c => c.Name.StartsWith(Native.NativeMemory.GcPrefix, StringComparison.Ordinal)).Sum(static c => c.Rss);
+        long nativeHeap = categories.Where(static c => c.Name is Native.NativeMemory.MallocArenas or Native.NativeMemory.MallocMain or Native.NativeMemory.MallocMmapped or Native.NativeMemory.OtherAnonymous).Sum(static c => c.Rss);
+        sb.Append($"Managed (GC heap) {Size(managed)} ({Percent(managed, rss)}); native heap and mmaps {Size(nativeHeap)} ({Percent(nativeHeap, rss)}).\n");
+
+        TextTable table = new("rss", "% rss", "swap", "mappings", "category");
+        foreach (MemoryCategory category in categories)
+            table.Add(Size(category.Rss), Percent(category.Rss, rss), category.Swap > 0 ? Size(category.Swap) : "", Count(category.Mappings), category.Name);
+        sb.Append(table);
+
+        TextTable files = new("rss", "file");
+        foreach (IGrouping<string, Mapping> file in mappings.Where(static m => m.Name.StartsWith('/') && !m.Name.StartsWith("/memfd:", StringComparison.Ordinal)).GroupBy(static m => m.Name)
+                     .OrderByDescending(static f => f.Sum(static m => m.Rss)).Take(topFiles))
+            files.Add(Size(file.Sum(static m => m.Rss)), file.Key);
+        sb.Append("\nLargest mapped files:\n").Append(files);
+
+        return sb.Append("\nAnonymous mappings are split by address; one that is only partly a known range is split in proportion to its bytes, so small categories are estimates. " +
+                         "malloc keeps freed memory in its arenas, so arena RSS is the native heap's high-water mark rather than what is in use.\n").ToString();
     }
 
     private const string LiveHeapNote = "For a process ID, the runtime runs one full blocking GC and reports the objects that survive it, so only live objects count; " +

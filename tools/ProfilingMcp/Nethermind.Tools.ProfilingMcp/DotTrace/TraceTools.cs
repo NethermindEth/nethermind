@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using ModelContextProtocol.Server;
 using Nethermind.Tools.ProfilingMcp.EventPipe;
 using Nethermind.Tools.ProfilingMcp.Memory;
+using Nethermind.Tools.ProfilingMcp.Native;
 
 namespace Nethermind.Tools.ProfilingMcp.DotTrace;
 
@@ -18,9 +19,9 @@ public sealed class TraceTools(DotTraceSessionManager sessions, Reporter reporte
         "Sampling (default; low overhead, accurate time, no call counts), Tracing (exact call counts, higher overhead), " +
         "LineByLine (per-line, highest overhead), or Timeline (thread/GC/lock events over time; cannot be analyzed by trace_hotspots).";
 
-    private const string SnapshotDescription = "EventPipe trace (*.nettrace) from cpu_sample, or dotTrace snapshot index file (*.dtp).";
+    private const string SnapshotDescription = "EventPipe trace (*.nettrace) from cpu_sample, native stacks (*.folded) from native_sample, or dotTrace snapshot index file (*.dtp).";
 
-    private const string AnalysisPlatformNote = "EventPipe traces are analyzed on any OS; dotTrace snapshots on Windows only.";
+    private const string AnalysisPlatformNote = "EventPipe traces and native stacks are analyzed on any OS; dotTrace snapshots on Windows only.";
 
     [McpServerTool(Name = "cpu_sample", Title = "Sample a process over EventPipe", Destructive = false, OpenWorld = false)]
     [Description("Samples the managed threads of a running process for a time window over EventPipe, with GC and exception events, and saves an EventPipe trace " +
@@ -60,6 +61,42 @@ public sealed class TraceTools(DotTraceSessionManager sessions, Reporter reporte
         }
 
         return sb.Append('\n').Append(await HotspotsAsync(trace, top: top, cancellationToken: cancellationToken)).ToString();
+    }
+
+    [McpServerTool(Name = "native_sample", Title = "Sample a process's native and managed code with perf", Destructive = false, OpenWorld = false)]
+    [Description("Samples the CPU use of every thread of a Linux process with perf, native code included: native libraries such as RocksDB, the .NET runtime and GC, " +
+                 "the kernel, and JIT-compiled .NET methods, which are named without restarting a .NET process. Also works for processes that are not .NET. " +
+                 "Saves the stacks (*.folded) for trace_hotspots, trace_callstacks, trace_report and trace_compare, and returns CPU time per thread and the hotspots. " +
+                 "Measures CPU time only: blocked threads are not sampled. Use cpu_sample for wall time, GC pauses and exceptions of a .NET process. " +
+                 "Linux only, so on Windows pass a container.")]
+    public async Task<string> NativeSampleAsync(
+        [Description("Process ID; in a container, a PID from list_dotnet_processes or docker top.")] int pid,
+        [Description("Seconds to sample.")] int seconds = 30,
+        [Description("Number of hotspot rows in the summary.")] int top = 25,
+        CancellationToken cancellationToken = default)
+    {
+        string stacks = Path.Combine(paths.Snapshots, WorkspacePaths.NewFileName($"pid{pid}-native", NativeSampler.Extension));
+        (string PerfMap, int Methods)? jit = await NativeSampler.CollectAsync(pid, TimeSpan.FromSeconds(seconds), stacks, cancellationToken);
+        IReadOnlyList<FunctionStat> functions = FoldedStacks.Read(File.ReadLines(stacks));
+
+        StringBuilder sb = new();
+        sb.Append($"Stacks saved: {paths.ForPerson(stacks)}\n");
+        sb.Append(jit switch
+        {
+            null => "JIT-compiled code is unnamed ([memfd:doublemapper] or [unknown]): the process is not .NET, or its diagnostics port is unavailable.\n",
+            ({ } map, 0) => $"JIT-compiled code is unnamed: the runtime wrote no perf map at {map}.\n",
+            (_, int methods) => $"JIT-compiled code is named from the runtime's perf map ({methods:N0} methods).\n",
+        });
+
+        FunctionStat[] threads = [.. functions.Where(static f => f.Name.StartsWith("[thread ", StringComparison.Ordinal)).OrderByDescending(static f => f.TotalTime)];
+        double cpu = threads.Sum(static f => f.TotalTime);
+        sb.Append($"CPU time: {Ms(cpu)} ms over {seconds} s ({cpu / 10 / seconds:N0} % of one core). By thread name:\n");
+        TextTable byThread = new("cpu ms", "cpu %", "threads");
+        foreach (FunctionStat thread in threads.Take(10))
+            byThread.Add(Ms(thread.TotalTime), Percent(thread.TotalTime, cpu), thread.Name["[thread ".Length..^1]);
+        sb.Append(byThread).Append('\n');
+
+        return sb.Append(await HotspotsAsync(stacks, top: top, exclude: @"^\[thread ", hideWaits: false, cancellationToken: cancellationToken)).ToString();
     }
 
     [McpServerTool(Name = "trace_start", Title = "Start an app under dotTrace", Destructive = false, OpenWorld = false)]
@@ -162,9 +199,7 @@ public sealed class TraceTools(DotTraceSessionManager sessions, Reporter reporte
                      "Sampling measures wall time, so on a mostly idle process these dominate.")] bool hideWaits = true,
         CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<FunctionStat> functions = NetTraceReader.IsNetTrace(snapshot)
-            ? netTrace.Read(snapshot).Functions
-            : await reporter.GetAllMethodsAsync(snapshot, cancellationToken);
+        IReadOnlyList<FunctionStat> functions = ReadSampled(snapshot) ?? await reporter.GetAllMethodsAsync(snapshot, cancellationToken);
         double totalOwn = 0;
         double waitOwn = 0;
         foreach (FunctionStat f in functions)
@@ -252,18 +287,18 @@ public sealed class TraceTools(DotTraceSessionManager sessions, Reporter reporte
     [Description("Shows per-method time changes from a baseline trace or snapshot to a current one of the same kind (current minus baseline), largest first. Use it to verify a fix. " +
                  "Make both cover the same workload, or the deltas will mostly reflect the difference in run length. " + AnalysisPlatformNote)]
     public async Task<string> CompareAsync(
-        [Description("Snapshot or trace before the change (*.dtp or *.nettrace).")] string baseline,
+        [Description("Snapshot or trace before the change (*.dtp, *.nettrace or *.folded).")] string baseline,
         [Description("Snapshot or trace after the change, in the same format as the baseline.")] string current,
         [Description("Number of rows.")] int top = 30,
         [Description("Only methods whose full name matches this regex.")] string? include = null,
         CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<FunctionStat> deltas = (NetTraceReader.IsNetTrace(baseline), NetTraceReader.IsNetTrace(current)) switch
-        {
-            (false, false) => await reporter.CompareAsync(baseline, current, cancellationToken),
-            (true, true) => Diff(netTrace.Read(baseline).Functions, netTrace.Read(current).Functions),
-            _ => throw new ArgumentException("Compare two dotTrace snapshots or two EventPipe traces; their times are not comparable with each other."),
-        };
+        if (NetTraceReader.IsNetTrace(baseline) != NetTraceReader.IsNetTrace(current) || NativeSampler.IsFolded(baseline) != NativeSampler.IsFolded(current))
+            throw new ArgumentException("Compare two traces of the same kind: dotTrace snapshots, EventPipe traces or native stacks measure time differently.");
+
+        IReadOnlyList<FunctionStat> deltas = ReadSampled(baseline) is { } before
+            ? Diff(before, ReadSampled(current)!)
+            : await reporter.CompareAsync(baseline, current, cancellationToken);
         TextTable table = new("own Δ ms", "total Δ ms", "method");
         foreach (FunctionStat f in Filter(deltas, include, exclude: null).Where(static f => f.OwnTime != 0 || f.TotalTime != 0).OrderByDescending(static f => Math.Abs(f.OwnTime)).Take(top))
             table.Add(SignedMs(f.OwnTime), SignedMs(f.TotalTime), f.Name);
@@ -273,12 +308,18 @@ public sealed class TraceTools(DotTraceSessionManager sessions, Reporter reporte
 
     private async Task<IReadOnlyList<FunctionStat>> GetCallStacksAsync(string snapshot, string methodPattern, CancellationToken cancellationToken)
     {
-        if (!NetTraceReader.IsNetTrace(snapshot))
+        if (ReadSampled(snapshot) is not { } functions)
             return await reporter.GetCallStacksAsync(snapshot, methodPattern, cancellationToken);
 
         Regex pattern = new(methodPattern, RegexOptions.CultureInvariant);
-        return [.. netTrace.Read(snapshot).Functions.Where(f => pattern.IsMatch(f.Name))];
+        return [.. functions.Where(f => pattern.IsMatch(f.Name))];
     }
+
+    /// <summary>Reads an EventPipe trace or native stacks; null for a dotTrace snapshot, which Reporter reads.</summary>
+    private IReadOnlyList<FunctionStat>? ReadSampled(string path) =>
+        NetTraceReader.IsNetTrace(path) ? netTrace.Read(path).Functions
+        : NativeSampler.IsFolded(path) ? FoldedStacks.Read(File.ReadLines(path))
+        : null;
 
     /// <summary>Per-method deltas from <paramref name="baseline"/> to <paramref name="current"/>, in the shape of a Reporter comparison.</summary>
     internal static IReadOnlyList<FunctionStat> Diff(IReadOnlyList<FunctionStat> baseline, IReadOnlyList<FunctionStat> current)

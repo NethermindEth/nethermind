@@ -27,12 +27,14 @@ internal static class ServerInstructions
         Timeline snapshots cannot be analyzed; use Sampling or Tracing.
         Both measure wall time, so trace_hotspots hides blocking waits by default; look at own time of application methods.
         EventPipe sees managed threads only; native code shows as own time of the managed method that called it.
+        To see inside native code (RocksDB, the runtime and GC, the kernel) or native threads, or to profile a process that is not .NET, use native_sample (Linux or a container). It measures CPU time, not waits, and its *.folded stacks work in the steps above.
         On Linux/macOS dotTrace can attach to a process once per run: the profiler is never detached because detaching crashes it.
 
         Memory growth / leaks:
         1. heap_stats on the PID (baseline), exercise the workload, heap_stats again.
         2. heap_diff the two ids; types that keep growing are leak candidates.
         3. heap_retention on a growing type shows what references it and the reference chains from GC roots, largest first.
+        Process memory (RSS) far above the GC heap: native_memory (Linux or a container) splits it into GC heap, runtime, thread stacks, malloc and other native mmaps.
         GC pressure: alloc_sample shows which types are allocated most, by which methods and call stacks; include narrows it to one component.
 
         heap_stats and heap_retention read a PID over EventPipe: the runtime runs one full blocking GC (about 0.5 s for an 800 MB heap) and reports the objects that survive it.
