@@ -151,8 +151,8 @@ namespace Nethermind.TxPool
         private Hash256? _lastBlockHash;
         // Headers of blocks the head moved back past, waiting to have their transactions re-added. Head loop only.
         private readonly List<BlockHeader> _rewoundHeaders = [];
-        // Transactions the current bucket update drops, a set as the update can mark one twice. Under _newHeadLock.
-        private readonly HashSet<Transaction> _bucketUpdateDrops = [];
+        // Transactions the current bucket update drops, in bucket order, so one sender's drops are adjacent. Under _newHeadLock.
+        private readonly List<Transaction> _bucketUpdateDrops = [];
 
         /// <summary>
         /// The release specification every transaction currently in the pool has been validated against, or
@@ -2168,12 +2168,12 @@ namespace Nethermind.TxPool
         /// <summary>Whether any nonce key <paramref name="tx"/> selects has advanced past its declared sequence in the head state.</summary>
         /// <remarks>A keyed sequence only ever advances, so a key already beyond the declared sequence has spent it for good on this fork.
         /// A single-use set (<see cref="Eip8250Constants.MaxNonceSeq"/>) is behind once any of its keys has been used.</remarks>
-        private bool IsKeyedNonceBehind(Transaction tx)
+        private static bool IsKeyedNonceBehind(Transaction tx, IReadOnlyStateProvider state)
         {
             bool singleUse = tx.Nonce == Eip8250Constants.MaxNonceSeq;
             foreach (UInt256 nonceKey in tx.NonceKeys!)
             {
-                ulong current = KeyedNonceManager.CurrentNonceSeq(_headInfo.ReadOnlyStateProvider, tx.SenderAddress!, in nonceKey);
+                ulong current = KeyedNonceManager.CurrentNonceSeq(state, tx.SenderAddress!, in nonceKey);
                 if (singleUse ? current != 0 : current > tx.Nonce)
                 {
                     return true;
@@ -2192,7 +2192,7 @@ namespace Nethermind.TxPool
             Transaction? lastElement,
             UpdateTransactionDelegate updateTx,
             ForkRevalidation? revalidation,
-            HashSet<Transaction>? drops)
+            List<Transaction>? drops)
         {
             UInt256 previousTxBottleneck = default;
             bool hasPreviousTxBottleneck = false;
@@ -2209,7 +2209,7 @@ namespace Nethermind.TxPool
                 {
                     if (!IsKeyedNonceCurrent(tx))
                     {
-                        MarkForEviction(tx, allowLaterPoolReentrance: !IsKeyedNonceBehind(tx));
+                        MarkForEviction(tx, allowLaterPoolReentrance: !IsKeyedNonceBehind(tx, _headInfo.ReadOnlyStateProvider));
                     }
                     else
                     {
@@ -2325,7 +2325,9 @@ namespace Nethermind.TxPool
             {
                 _broadcaster.StopBroadcast(tx.Hash!);
                 if (allowLaterPoolReentrance) _hashCache.DeleteFromLongTerm(tx.Hash!);
-                drops?.Add(tx);
+                // A tx dropped for its balance is marked again in the same iteration when it starts the blob
+                // cascade or the cascade is already on, so a repeat is always the last entry.
+                if (drops is not null && (drops.Count == 0 || !ReferenceEquals(drops[^1], tx))) drops.Add(tx);
                 updateTx(transactions, tx, null, lastElement);
                 // Evict all following txs to prevent nonce gaps between blob tx, but a keyed tx spends no account
                 // nonce, so removing it leaves no gap for the account-domain txs sorted behind it.
@@ -2351,17 +2353,41 @@ namespace Nethermind.TxPool
         /// to the current head includes.</summary>
         /// <remarks>The pool can lag the block tree head, so a dropped transaction may be in a block it has not processed
         /// yet. That is decided from the head state itself: the account cache can lag it too. A transaction whose
-        /// nonce the head state has not passed is in no block up to the head.</remarks>
+        /// nonce the head state has not passed is in no block up to the head. All drops are judged against one head
+        /// snapshot, so a head that moves during the loop cannot judge some of them against another chain.</remarks>
         private void SurfaceBucketUpdateDrops()
         {
+            if (_bucketUpdateDrops.Count == 0 || !_headInfo.TryGetHeadState(out _, out IReadOnlyStateProvider? state))
+            {
+                return;
+            }
+
+            // A sender's drops are adjacent and its transactions sit in one pool only (TxTypeTxFilter),
+            // so its account nonce is read once.
+            Address? nonceSender = null;
+            ulong? headNonce = null;
             foreach (Transaction tx in _bucketUpdateDrops)
             {
                 bool nonceSpent;
                 try
                 {
-                    nonceSpent = KeyedNonceManager.UsesKeyedNonce(tx)
-                        ? IsKeyedNonceBehind(tx)
-                        : tx.Nonce < _headInfo.ReadOnlyStateProvider.GetNonce(tx.SenderAddress!);
+                    if (KeyedNonceManager.UsesKeyedNonce(tx))
+                    {
+                        nonceSpent = IsKeyedNonceBehind(tx, state);
+                    }
+                    else
+                    {
+                        if (nonceSender != tx.SenderAddress)
+                        {
+                            nonceSender = tx.SenderAddress;
+                            headNonce = null;
+                            headNonce = state.GetNonce(nonceSender!);
+                        }
+
+                        // An unreadable nonce was already skipped for this sender's first drop.
+                        if (headNonce is not ulong nonce) continue;
+                        nonceSpent = tx.Nonce < nonce;
+                    }
                 }
                 catch (MissingTrieNodeException)
                 {
@@ -2858,7 +2884,7 @@ namespace Nethermind.TxPool
                 return 0;
             }
 
-            HashSet<Transaction>? drops = revalidation is null ? _bucketUpdateDrops : null;
+            List<Transaction>? drops = revalidation is null ? _bucketUpdateDrops : null;
             UInt256 balance = account.Balance;
             ulong currentNonce = account.Nonce;
             Transaction? tx = null;
