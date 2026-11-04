@@ -1222,7 +1222,8 @@ public partial class DebugRpcModuleTests
                 Assert.That((string?)traces[i]["error"], Is.Not.Null.And.Not.Empty, response);
                 if (failure != "null")
                     Assert.That((string?)traces[i]["error"], Does.Contain(failure == "primitive" ? "42" : "setup-before-timeout"), response);
-                Assert.That(traces[i]["result"], Is.Null, response);
+                if (method == "debug_traceBlock") Assert.That(traces[i]["result"], Is.Null, response);
+                else Assert.That(traces[i]["result"]?.Type, Is.EqualTo(JTokenType.Null), response);
             }
         }
         if (method == "debug_traceBlockByNumber") Assert.That(clock.Timers, Is.Empty, "a recovered setup failure must never arm an execution timer");
@@ -1742,7 +1743,8 @@ public partial class DebugRpcModuleTests
                 if (failAt < 0 || transactionIndex == failAt)
                 {
                     Assert.That((string?)entries[index]["error"], Is.Not.Null.And.Not.Empty, response);
-                    Assert.That(entries[index]["result"], Is.Null);
+                    if (method == "debug_traceBlock") Assert.That(entries[index]["result"], Is.Null, response);
+                    else Assert.That(entries[index]["result"]?.Type, Is.EqualTo(JTokenType.Null), response);
                     if (immediateSetupFailure)
                         Assert.That((string?)entries[index]["error"], Does.Contain(failure == "setup-timeout" ? "setup failure" : "required function result").And.Not.Contain("execution timeout"));
                     if (invalidRead is not null)
