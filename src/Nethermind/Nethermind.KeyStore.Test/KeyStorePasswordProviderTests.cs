@@ -144,9 +144,9 @@ public class KeyStorePasswordProviderTests
     public void Unlock_account_matches_by_value([Values] bool withZeroX)
     {
         IKeyStoreConfig keyStoreConfig = Substitute.For<IKeyStoreConfig>();
-        keyStoreConfig.UnlockAccounts.Returns(["not an address", TestItem.AddressA.ToString(withZeroX, withEip55Checksum: true)]);
+        keyStoreConfig.UnlockAccounts.Returns(["not an address", new string('z', 40), TestItem.AddressA.ToString(withZeroX, withEip55Checksum: true)]);
 
-        Assert.That(keyStoreConfig.FindUnlockAccountIndex(TestItem.AddressA), Is.EqualTo(1));
+        Assert.That(keyStoreConfig.FindUnlockAccountIndex(TestItem.AddressA), Is.EqualTo(2));
     }
 }
 

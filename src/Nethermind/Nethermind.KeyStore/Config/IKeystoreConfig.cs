@@ -76,16 +76,6 @@ public static class KeyStoreConfigExtensions
     public static int FindUnlockAccountIndex(this IKeyStoreConfig keyStoreConfig, Address address) =>
         Array.FindIndex(keyStoreConfig.UnlockAccounts ?? [], account => IsAddress(account, address));
 
-    private static bool IsAddress(string account, Address address)
-    {
-        // Address.TryParse throws on non-hex input, and one malformed entry must not hide the others.
-        try
-        {
-            return Address.TryParse(account, out Address parsed) && parsed == address;
-        }
-        catch (FormatException)
-        {
-            return false;
-        }
-    }
+    private static bool IsAddress(string account, Address address) =>
+        account is not null && Address.IsValidAddress(account, allowPrefix: true) && new Address(account) == address;
 }
