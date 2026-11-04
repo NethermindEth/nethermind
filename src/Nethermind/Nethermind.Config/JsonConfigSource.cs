@@ -179,11 +179,8 @@ public class JsonConfigSource : IConfigSource
 
     private string ParseNumber(JsonElement value)
     {
-        if (value.TryGetInt64(out long result))
-        {
-            return result.ToString();
-        }
-        else if (value.GetRawText() is var rawText && rawText.AsSpan().IndexOfAny('.', 'e', 'E') < 0)
+        string rawText = value.GetRawText();
+        if (rawText.AsSpan().IndexOfAny('.', 'e', 'E') < 0)
         {
             return rawText;
         }
@@ -193,7 +190,7 @@ public class JsonConfigSource : IConfigSource
         }
         else
         {
-            throw new System.Configuration.ConfigurationErrorsException($"Failed to parse the JSON number '{value}' as either Int64 or Double.");
+            throw new System.Configuration.ConfigurationErrorsException($"Failed to parse the JSON number '{value}' as Double.");
         }
     }
 }

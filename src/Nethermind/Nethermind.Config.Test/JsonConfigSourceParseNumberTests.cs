@@ -54,10 +54,12 @@ public class JsonConfigSourceParseNumberTests
         }
     }
 
+    [TestCase(typeof(int), "42", 42)]
+    [TestCase(typeof(long), "-9223372036854775808", long.MinValue)]
     [TestCase(typeof(ulong), "10000000000000000000", 10_000_000_000_000_000_000UL)]
     [TestCase(typeof(ulong), "18446744073709551615", ulong.MaxValue)]
     [TestCase(typeof(string), "58750000000000000000000", "58750000000000000000000")]
-    public void GetValue_IntegerBeyondInt64InJson_KeepsExactDigits(Type valueType, string number, object expected)
+    public void GetValue_IntegerInJson_KeepsExactDigits(Type valueType, string number, object expected)
     {
         using MemoryStream stream = new(Encoding.UTF8.GetBytes($$"""{ "SampleConfig": { "Value": {{number}} } }"""));
         JsonConfigSource source = new(stream);
