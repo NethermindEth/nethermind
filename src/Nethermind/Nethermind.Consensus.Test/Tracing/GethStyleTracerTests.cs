@@ -554,7 +554,7 @@ public class GethStyleTracerTests
         IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
         inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(Substitute.For<ITxTracer>());
         inner.BuildResult().Returns(Array.Empty<GethLikeTxTrace>());
-        GethTraceDeadlineScope? scope = null;
+        GethTraceDeadlineScope scope = null;
         GethTraceOptions options = new() { EnforceExecutionDeadline = true, Timeout = TimeSpan.FromSeconds(1), DeadlineClock = clock };
         OperationCanceledException failure;
         using (GethLikeBlockDeadlineTracer tracer = (GethLikeBlockDeadlineTracer)GethLikeBlockDeadlineTracer.Wrap(effective =>
@@ -580,7 +580,7 @@ public class GethStyleTracerTests
     {
         private long _timestamp;
         internal bool DeliverWhenArmed { get; init; }
-        internal Action? OnTimerDispose { get; init; }
+        internal Action OnTimerDispose { get; init; }
         internal List<DeadlineTimer> Timers { get; } = [];
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
         public override long GetTimestamp() => _timestamp;
@@ -597,7 +597,7 @@ public class GethStyleTracerTests
         }
     }
 
-    private sealed class DeadlineTimer(TimerCallback callback, object state, bool deliverWhenArmed, Action? onDispose) : ITimer
+    private sealed class DeadlineTimer(TimerCallback callback, object state, bool deliverWhenArmed, Action onDispose) : ITimer
     {
         internal TimeSpan Due { get; set; }
         internal int DisposeCount { get; private set; }
