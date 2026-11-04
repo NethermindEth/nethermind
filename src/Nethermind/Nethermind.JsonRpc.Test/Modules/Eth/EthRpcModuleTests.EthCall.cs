@@ -1972,6 +1972,24 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized)["result"]!.Value<string>(), Is.EqualTo(expectedResult));
     }
 
+    // A pre-Amsterdam head has no slot number, so a time override past the fork runs SLOTNUM on a slotless header.
+    [Test]
+    public async Task Rpc_with_time_override_past_amsterdam_reads_a_missing_slot_as_zero([Values("eth_call", "eth_estimateGas")] string method)
+    {
+        const ulong amsterdamTime = 4_000_000_000;
+        using Context ctx = await Context.Create(new CustomSpecProvider(((ForkActivation)0, BPO2.Instance), (new ForkActivation(0, amsterdamTime), Amsterdam.Instance)));
+        object? transaction = JsonSerializer.Deserialize<object>("""{"to":"0xc200000000000000000000000000000000000000","gas":"0x30D40"}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>("""{"0xc200000000000000000000000000000000000000":{"code":"0x4b60005260206000f3"}}""");
+        object blockOverride = new { time = $"0x{amsterdamTime:x}" };
+
+        string serialized = await ctx.Test.TestEthRpc(method, transaction, "latest", stateOverride, blockOverride);
+
+        JToken response = JToken.Parse(serialized);
+        Assert.That(response["error"], Is.Null, serialized);
+        if (method == "eth_call")
+            Assert.That(response["result"]!.Value<string>(), Is.EqualTo("0x" + new string('0', 64)));
+    }
+
     // Withdrawals need a block to be processed in; a single call builds none, so the override is refused, not ignored.
     [TestCase("eth_call")]
     [TestCase("eth_estimateGas")]
