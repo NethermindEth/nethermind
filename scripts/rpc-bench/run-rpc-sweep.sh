@@ -514,7 +514,7 @@ for entry in "${schedule[@]}"; do
   fi
   LABELS+=("$label")
 
-  if [[ "$ctype" == "nethermind" && "$JB_BENCHMARK_CONFIG" =~ ^config/benchmark/log-data-(filtering|huge|receipts|shapes|long|long-qualify|long-weighted)\.yaml$ && "$arm_flags" == *"--LogIndex.Enabled=true"* ]]; then
+  if [[ "$ctype" == "nethermind" && "$JB_BENCHMARK_CONFIG" =~ ^config/benchmark/log-data-(filtering|huge|receipts|shapes|long[a-z0-9-]*)\.yaml$ && "$arm_flags" == *"--LogIndex.Enabled=true"* ]]; then
     if ! bash "$here/prepare-log-index.sh" "$cname" "$RPC" "$SNAPSHOT_BLOCK" 25390001 25489936 "$OUT_DIR/index-preparation/$label"; then
       STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" "$here/stop-node.sh" || true
       echo "::error::${label}: verified log index preparation failed"
@@ -526,7 +526,7 @@ for entry in "${schedule[@]}"; do
     for corpus in "${CORPORA[@]}"; do run_corpus "$(corpus_label "$corpus")" "$label" "$corpus" "$ctype" "$cname"; done
     [[ -n "$BASELINE_LABEL" ]] || BASELINE_LABEL="$label"
   else
-    if [[ "$JB_BENCHMARK_CONFIG" =~ ^config/benchmark/log-data-(filtering|huge|receipts|shapes|long|long-qualify|long-weighted)\.yaml$ && "$WARMUP_SECONDS" -gt 0 ]]; then
+    if [[ "$JB_BENCHMARK_CONFIG" =~ ^config/benchmark/log-data-(filtering|huge|receipts|shapes|long[a-z0-9-]*)\.yaml$ && "$WARMUP_SECONDS" -gt 0 ]]; then
       warm_cell="$SCRATCH_ROOT/warmup-cell/logs/$label"
       measured_seed="$JB_SEED"
       JB_SEED=$((measured_seed + 1000))
@@ -547,7 +547,7 @@ for entry in "${schedule[@]}"; do
       for icfg in $ISO_CONFIGS; do
         scen="$(basename "$icfg" .yaml)"; cell="$OUT_DIR/iso/${label}/${rps}/${scen}"
         echo "-- ISO ${label} ${scen} @ rps=${rps} --"
-        run_cell "$icfg" "$rps" "$ISO_DURATION" "$cell" "$ctype" "$label" || { echo "::warning::iso ${label}/${scen}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
+        run_cell "$icfg" "$rps" "$ISO_DURATION" "$cell" "$ctype" "$label" "" "$cname" || { echo "::warning::iso ${label}/${scen}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
         [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${scen}|${label}|${rps}=$cell/jsonbench-summary.md")
       done
       mcell="$OUT_DIR/mix/${label}/${rps}"

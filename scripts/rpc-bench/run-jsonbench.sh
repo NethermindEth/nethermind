@@ -250,6 +250,9 @@ for key in ("rps", "vus", "seed"):
         cfg[key] = int(env("JB_" + key.upper()))
 if env("JB_DURATION", "").strip():
     cfg["duration"] = env("JB_DURATION")
+# A closed-loop config (shared iterations) sets a request count; json-bench refuses rps with it.
+if cfg.get("iterations"):
+    cfg.pop("rps", None)
 if env("JB_CORPUS_CLASSES"):
     with open(env("JB_CORPUS_CLASSES")) as f:
         classes = json.load(f)
