@@ -160,7 +160,7 @@ public class TransactionProcessorFeeTests
     }
 
     [Test]
-    public void Destroyed_gas_beneficiary_is_paid_before_destruction([Values] bool eip8037, [Values] bool eip7708, [Values] bool eip8246)
+    public void Destroyed_gas_beneficiary_is_paid_before_destruction([Values] bool revert, [Values] bool eip8037, [Values] bool eip7708, [Values] bool eip8246)
     {
         OverridableReleaseSpec spec = new(Amsterdam.Instance) { IsEip8037Enabled = eip8037, IsEip7708Enabled = eip7708, IsEip8246Enabled = eip8246 };
         Address creator = ContractAddress.From(TestItem.AddressA, 0);
@@ -170,17 +170,20 @@ public class TransactionProcessorFeeTests
             .PushData(beneficiary)
             .Op(Instruction.SELFDESTRUCT)
             .Done;
-        byte[] initCode = Prepare.EvmCode
+        Prepare initCode = Prepare.EvmCode
             .Create(selfDestructInitCode, UInt256.Zero)
-            .Op(Instruction.POP)
-            .Done;
+            .Op(Instruction.POP);
+        if (revert)
+        {
+            initCode.Revert(0, 0);
+        }
 
         Transaction tx = Build.A.Transaction
             .WithGasPrice(10)
             .WithMaxFeePerGas(10)
             .WithType(TxType.EIP1559)
             .WithGasLimit(5_000_000)
-            .WithCode(initCode)
+            .WithCode(initCode.Done)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.WithNumber(1)
             .WithBeneficiary(beneficiary).WithBaseFeePerGas(1).WithTransactions(tx).WithGasLimit(30_000_000)
@@ -196,15 +199,17 @@ public class TransactionProcessorFeeTests
         receiptsTracer.EndBlockTrace();
 
         // execution-specs pay the coinbase, then destroy: the fee is burned unless EIP-8246 keeps the balance.
-        bool feeKept = eip8246;
-        bool burnLogged = eip8037 && eip7708 && !eip8246;
+        // A reverted tx destroys nothing, so the fee is always kept.
+        bool feeKept = revert || eip8246;
+        bool burnLogged = !revert && eip8037 && eip7708 && !eip8246;
         TxReceipt receipt = receiptsTracer.TxReceipts[0];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.StatusCode, Is.EqualTo(revert ? StatusCode.Failure : StatusCode.Success));
             Assert.That(feesTracer.Fees, Is.GreaterThan(UInt256.Zero));
             Assert.That(_stateProvider.GetBalance(beneficiary), Is.EqualTo(feeKept ? feesTracer.Fees : UInt256.Zero));
             Assert.That(_stateProvider.AccountExists(beneficiary), Is.EqualTo(feeKept));
+            Assert.That(_stateProvider.GetNonce(beneficiary), Is.EqualTo(0UL));
             Assert.That(receipt.Logs!.Count(static log => log.Topics[0] == TransferLog.BurnSignature), Is.EqualTo(burnLogged ? 1 : 0));
         }
     }
