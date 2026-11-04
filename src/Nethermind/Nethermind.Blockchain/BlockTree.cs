@@ -787,12 +787,6 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            // Later headers are resolved by number, so they descend from the origin only when it is the block that its number resolves to
-            if (!reverse && GetBlockHashOnMainOrBestDifficultyHash(startHeader.Number) != startHeader.Hash)
-            {
-                return new ArrayPoolList<BlockHeader>(1) { startHeader };
-            }
-
             ArrayPoolList<BlockHeader> result = new(numberOfBlocks, numberOfBlocks);
             BlockHeader current = startHeader;
             int responseIndex = 0;
@@ -815,7 +809,17 @@ namespace Nethermind.Blockchain
                     nextNumber = startHeader.Number + offset;
                 }
 
+                BlockHeader previous = current;
                 current = FindHeader(nextNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
+                // Later headers are resolved by number, so check at every step that the next header still descends from the previous one,
+                // like geth: by parent hash when contiguous, otherwise by the previous header still being the block its number resolves to
+                if (!reverse && current is not null && (skip == 0
+                        ? current.ParentHash != previous.Hash
+                        : GetBlockHashOnMainOrBestDifficultyHash(previous.Number) != previous.Hash))
+                {
+                    break;
+                }
             } while (current is not null && responseIndex < numberOfBlocks);
 
             return result;

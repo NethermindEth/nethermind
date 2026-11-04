@@ -1081,6 +1081,27 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Find_headers_forward_stops_when_next_level_resolves_to_another_branch()
+    {
+        // Head is 1, while levels 2 and 3 only hold a branch that forks below 1, as when a reorg lands between two level lookups
+        BlockTree blockTree = BuildBlockTree();
+        Block block0 = Build.A.Block.WithNumber(0).TestObject;
+        Block block1 = Build.A.Block.WithParent(block0).TestObject;
+        AddToMain(blockTree, block0);
+        AddToMain(blockTree, block1);
+
+        Block block1b = Build.A.Block.WithParent(block0).WithExtraData([1]).TestObject;
+        Block block2b = Build.A.Block.WithParent(block1b).WithExtraData([1]).TestObject;
+        Block block3b = Build.A.Block.WithParent(block2b).WithExtraData([1]).TestObject;
+        blockTree.SuggestBlock(block1b);
+        blockTree.SuggestBlock(block2b);
+        blockTree.SuggestBlock(block3b);
+
+        using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block1.Hash, 4, 0, false);
+        Assert.That(headers.TakeWhile(static header => header is not null).Select(static header => header.Hash), Is.EqualTo(new[] { block1.Hash }));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_headers_reverse()
     {
         BlockTree blockTree = BuildBlockTree();
