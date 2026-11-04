@@ -55,7 +55,7 @@ internal sealed class KeyedNonceDisjointnessFilter(
             return true;
         }
 
-        if (pending.NonceKeys is { } pendingKeys && Intersects(state.Keys, pendingKeys))
+        if (pending.NonceKeys is { } pendingKeys && Intersects(state.Keys, pendingKeys, ref state.KeysWellFormed))
         {
             state.Overlaps = true;
             return false;
@@ -64,8 +64,18 @@ internal sealed class KeyedNonceDisjointnessFilter(
         return true;
     }
 
-    private static bool Intersects(ReadOnlySpan<UInt256> incoming, ReadOnlySpan<UInt256> pending)
+    private static bool Intersects(ReadOnlySpan<UInt256> incoming, ReadOnlySpan<UInt256> pending, ref bool? incomingWellFormed)
     {
+        if (incoming.IsEmpty || pending.IsEmpty) return false;
+        if (incoming[0] == pending[0]) return true;
+
+        if (incoming.Length > 2 && pending.Length > 2
+            && (incomingWellFormed ??= KeyedNonceManager.AreNonceKeysWellFormed(incoming))
+            && KeyedNonceManager.AreNonceKeysWellFormed(pending))
+        {
+            return CompetingTransactionEqualityComparer.OverlapsNonceDomain(incoming, pending);
+        }
+
         foreach (UInt256 key in incoming)
         {
             foreach (UInt256 other in pending)
@@ -84,6 +94,7 @@ internal sealed class KeyedNonceDisjointnessFilter(
     {
         public readonly Transaction Tx = tx;
         public readonly UInt256[] Keys = tx.NonceKeys ?? [];
+        public bool? KeysWellFormed;
         public bool Overlaps;
     }
 }

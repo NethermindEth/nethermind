@@ -65,7 +65,7 @@ namespace Nethermind.TxPool.Comparison
         internal static bool OverlapsNonceDomain(Transaction newTx, Transaction oldTx) =>
             OverlapsNonceDomain(KeyedDomain(newTx), KeyedDomain(oldTx));
 
-        private static bool OverlapsNonceDomain(ReadOnlySpan<UInt256> newKeys, ReadOnlySpan<UInt256> oldKeys)
+        internal static bool OverlapsNonceDomain(ReadOnlySpan<UInt256> newKeys, ReadOnlySpan<UInt256> oldKeys)
         {
             // The account domain is one domain, shared with nothing keyed.
             if (newKeys.IsEmpty || oldKeys.IsEmpty) return newKeys.IsEmpty && oldKeys.IsEmpty;
