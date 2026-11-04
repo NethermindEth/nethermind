@@ -85,6 +85,10 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     /// <summary>How many frames went to the Rust interpreter, and how many the C# one took.</summary>
     public static long RustFrames, CSharpFrames;
 
+    // The interpreter keeps the current callbacks and its code cache in process-wide statics and
+    // assumes one thread runs it, so machines in different scopes take turns.
+    private static readonly System.Threading.Lock NativeEntry = new();
+
 #if RUST_EVM_STATS
     /// <summary>Ticks spent inside the interpreter's call, and in the write-back after it.</summary>
     public static long InsideTicks, WriteBackTicks;
@@ -273,7 +277,9 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
 #if RUST_EVM_STATS
                 long started = System.Diagnostics.Stopwatch.GetTimestamp();
 #endif
-                int status = RustEvmNative.Execute(&request, &callbacks, &result);
+                int status;
+                lock (NativeEntry)
+                    status = RustEvmNative.Execute(&request, &callbacks, &result);
 #if RUST_EVM_STATS
                 InsideTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
 #endif

@@ -68,7 +68,8 @@ public class BalTxProcessorFactory(
     public (ITransactionProcessor Processor, ITransactionProcessorAdapter Adapter, IDisposable VirtualMachine) Create(IWorldState worldState, bool parallel)
     {
 #if RUST_EVM
-        IVirtualMachine virtualMachine = Nethermind.Evm.Rust.RustVirtualMachine.IsAvailable
+        // Parallel workers stay on the C# interpreter: the Rust one runs one frame at a time.
+        IVirtualMachine virtualMachine = !parallel && Nethermind.Evm.Rust.RustVirtualMachine.IsAvailable
             ? new Nethermind.Evm.Rust.RustVirtualMachine(blockHashProvider, specProvider, logManager, new EthereumPrecompileProvider())
             : new VirtualMachine(blockHashProvider, specProvider, logManager, frameCodeRunner);
         IDisposable ownedVirtualMachine = (IDisposable)virtualMachine;
