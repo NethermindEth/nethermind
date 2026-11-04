@@ -430,11 +430,15 @@ public partial class DebugRpcModuleTests
     public async Task Specified_block_javascript_owned_expiry_discards_partial_results(
         [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
         [Values] bool streamMode, [Values("before", "after")] string expiry,
-        [Values] bool ordinaryFailure) =>
+        [Values] bool ordinaryFailure)
+    {
         await AssertJavascriptOwnedExpiry(method, streamMode, "1s", expiry, ordinaryFailure);
+        if (ordinaryFailure)
+            await AssertJavascriptOwnedExpiry(method, streamMode, "1s", expiry, ordinaryFailure, ordinaryMessage: "ordinary failure");
+    }
 
     private static async Task AssertJavascriptOwnedExpiry(string method, bool streamMode, string timeout, string expiry,
-        bool ordinaryFailure, int? selectedAt = null, bool mux = false)
+        bool ordinaryFailure, int? selectedAt = null, bool mux = false, string ordinaryMessage = "execution timeout")
     {
         DeadlineExecution clock = new() { Expiry = expiry, DeliverOnlyAtTarget = selectedAt.HasValue };
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -453,7 +457,7 @@ public partial class DebugRpcModuleTests
         clock.Enabled = true;
         clock.Target = block.Transactions[selectedAt is >= 0 ? selectedAt.Value : expiry == "before" ? 1 : 0].Nonce;
         string script = selectedAt.HasValue ? "{fault:function(){},result:function(){return {};}}"
-            : "{fault:function(){},step:function(){" + (ordinaryFailure ? "throw Error('execution timeout');" : "")
+            : "{fault:function(){},step:function(){" + (ordinaryFailure ? $"throw Error('{ordinaryMessage}');" : "")
                 + "},result:function(){return {};}}";
         Dictionary<string, object> options = new()
         {
