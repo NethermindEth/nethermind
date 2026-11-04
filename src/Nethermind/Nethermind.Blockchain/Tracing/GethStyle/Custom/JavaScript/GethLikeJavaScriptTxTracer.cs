@@ -265,6 +265,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         _failedBeforeExecution = false;
         _pendingStep = opcode is Instruction.RETURNDATACOPY or Instruction.RETURN or Instruction.REVERT
             or Instruction.MLOAD or Instruction.MSTORE or Instruction.MSTORE8 or Instruction.CALLDATACOPY or Instruction.CODECOPY
+            or Instruction.KECCAK256 or (>= Instruction.LOG0 and <= Instruction.LOG4)
             or Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.SLOAD or Instruction.SSTORE or Instruction.STATICCALL or Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL;
     }
 
@@ -298,7 +299,10 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
 
     public override void ReportOperationRemainingGas(ulong gas)
     {
-        if (!_pendingStep)
+        // A deferred step whose opcode failed before reporting its full cost still precedes postStep and fault.
+        if (_pendingStep)
+            InvokeStep();
+        else
             _log.gasCost ??= _log.gas - gas;
         if (_functions.HasFlag(TracerFunctions.postStep))
         {
