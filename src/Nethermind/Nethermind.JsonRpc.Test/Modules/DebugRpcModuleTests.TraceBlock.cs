@@ -1362,12 +1362,12 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase("pending", "pending block is not available")]
-    [TestCase("safe", "safe block not found")]
-    [TestCase("finalized", "finalized block not found")]
+    [Test]
     public async Task Debug_traceBlockByNumber_unavailable_tag_returns_lookup_error(
-        string tag, string message, [Values] bool streamMode, [Values(null, "unknownTracer")] string? tracer)
+        [Values("pending", "safe", "finalized")] string tag,
+        [Values] bool streamMode, [Values(null, "unknownTracer")] string? tracer)
     {
+        string message = tag == "pending" ? "pending block is not available" : $"{tag} block not found";
         using Context context = await Context.Create();
         await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
         context.Blockchain.BlockTree.ForkChoiceUpdated(null, null);
