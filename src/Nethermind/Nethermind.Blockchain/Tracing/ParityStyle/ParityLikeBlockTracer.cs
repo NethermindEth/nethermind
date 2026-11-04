@@ -17,6 +17,7 @@ public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLi
     private Block? _block;
     private readonly ParityTraceTypes _types;
     private readonly ISpecProvider? _specProvider;
+    private TransactionPositionLookup _positions;
 
     /// <param name="specProvider">Prices an EIP-8141 frame transaction's gas budget for its root; see <see cref="ParityLikeTxTracer"/>.</param>
     public ParityLikeBlockTracer(Hash256 txHash, ParityTraceTypes types, ISpecProvider? specProvider = null)
@@ -47,7 +48,10 @@ public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLi
         tx is not null && _typesByTransaction?.TryGetValue(tx.Hash!, out ParityTraceTypes types) == true
             ? types
             : _types,
-        _block is null ? null : _specProvider?.GetSpec(_block.Header));
+        _block is null ? null : _specProvider?.GetSpec(_block.Header), GetTransactionPosition(tx));
+
+    private protected int? GetTransactionPosition(Transaction? tx) =>
+        tx is null ? null : _positions.Find(_block!.Transactions, tx);
 
     protected override ParityLikeTxTrace OnEnd(ParityLikeTxTracer txTracer) => txTracer.BuildResult();
 
@@ -73,7 +77,10 @@ public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLi
 
     public override void StartNewBlockTrace(Block block)
     {
+        _positions.Dispose();
         _block = block;
         base.StartNewBlockTrace(block);
     }
+
+    public override void EndBlockTrace() => _positions.Dispose();
 }

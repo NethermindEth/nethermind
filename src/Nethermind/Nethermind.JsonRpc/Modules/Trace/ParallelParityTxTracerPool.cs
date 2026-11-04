@@ -19,11 +19,13 @@ namespace Nethermind.JsonRpc.Modules.Trace;
 /// back once its trace has been written, so the block needs about as many transaction tracers as there are workers.</summary>
 /// <remarks>The transaction tracers have no <c>vmTrace</c> slot to fill, so they never write to
 /// <paramref name="writer"/>: they buffer the trace like <see cref="ParityLikeTxTracer"/> but pool what it holds.</remarks>
-internal sealed class ParallelParityTxTracerPool(Utf8JsonWriter writer, CancellationToken cancellationToken, ParityTraceTypes types, IReleaseSpec? spec) : IDisposable
+internal sealed class ParallelParityTxTracerPool(Utf8JsonWriter writer, CancellationToken cancellationToken, ParityTraceTypes types,
+    IReleaseSpec? spec, bool includeTransactionPosition) : IDisposable
 {
     private readonly Lock _lock = new();
     private readonly Stack<StreamingParityLikeTxTracer> _idle = new();
     private readonly Stack<TxTracer> _idleResults = new();
+    private TransactionPositionLookup _positions;
     private bool _disposed;
 
     /// <summary>Traces the transaction <paramref name="txHash"/>; its result returns the transaction tracer to the pool when disposed.</summary>
@@ -39,11 +41,34 @@ internal sealed class ParallelParityTxTracerPool(Utf8JsonWriter writer, Cancella
     private StreamingParityLikeTxTracer Rent(Block block, Transaction tx)
     {
         StreamingParityLikeTxTracer? tracer;
-        lock (_lock) _idle.TryPop(out tracer);
+        int position = -1;
+        bool indexed = false;
+        bool recordScan = false;
+        lock (_lock)
+        {
+            _idle.TryPop(out tracer);
+            if (includeTransactionPosition)
+            {
+                indexed = _positions.TryFindIndexed(block.Transactions, tx, out position);
+                recordScan = !indexed && _positions.CanRecordScan(block.Transactions);
+            }
+        }
+        if (includeTransactionPosition && !indexed)
+        {
+            position = Array.IndexOf(block.Transactions, tx);
+            if (recordScan)
+            {
+                lock (_lock)
+                {
+                    if (!_disposed) _positions.RecordScan(block.Transactions, position);
+                }
+            }
+        }
         if (tracer is null)
-            return new StreamingParityLikeTxTracer(block, tx, types, writer, pipeWriter: null, cancellationToken, fillVmTraceSlot: false, spec: spec);
+            return new StreamingParityLikeTxTracer(block, tx, types, writer, pipeWriter: null, cancellationToken,
+                fillVmTraceSlot: false, transactionPosition: includeTransactionPosition ? position : null, spec: spec);
 
-        tracer.ResetForNextTx(block, tx);
+        tracer.ResetForNextTx(block, tx, includeTransactionPosition ? position : null);
         return tracer;
     }
 
@@ -76,6 +101,7 @@ internal sealed class ParallelParityTxTracerPool(Utf8JsonWriter writer, Cancella
             _disposed = true;
             while (_idle.TryPop(out StreamingParityLikeTxTracer? tracer)) tracer.ReleaseResources();
             _idleResults.Clear();
+            _positions.Dispose();
         }
     }
 

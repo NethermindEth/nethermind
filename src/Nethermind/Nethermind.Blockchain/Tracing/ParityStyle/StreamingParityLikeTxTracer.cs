@@ -91,7 +91,16 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         bool fillVmTraceSlot,
         int flushIntervalEntries = DefaultFlushIntervalEntries,
         IReleaseSpec? spec = null)
-        : base(block, tx, parityTraceTypes, spec)
+        : this(block, tx, parityTraceTypes, writer, pipeWriter, cancellationToken, fillVmTraceSlot,
+            tx is null ? null : Array.IndexOf(block.Transactions!, tx), flushIntervalEntries, spec)
+    {
+    }
+
+    internal StreamingParityLikeTxTracer(
+        Block block, Transaction? tx, ParityTraceTypes parityTraceTypes, Utf8JsonWriter writer,
+        PipeWriter? pipeWriter, CancellationToken cancellationToken, bool fillVmTraceSlot,
+        int? transactionPosition, int flushIntervalEntries = DefaultFlushIntervalEntries, IReleaseSpec? spec = null)
+        : base(block, tx, parityTraceTypes, spec, transactionPosition)
     {
         ArgumentNullException.ThrowIfNull(writer);
         if (flushIntervalEntries <= 0) throw new ArgumentOutOfRangeException(nameof(flushIntervalEntries));
@@ -112,11 +121,17 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     public void ResetForNextTx(Block block, Transaction? tx)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        ResetForNextTx(block, tx, tx is null ? null : Array.IndexOf(block.Transactions!, tx));
+    }
+
+    internal void ResetForNextTx(Block block, Transaction? tx, int? transactionPosition)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
 
         if (_trace.Action is not null) ReturnActionTree(_trace.Action);
         if (_trace.StateChanges is not null) ReturnStateChanges(_trace.StateChanges);
 
-        ResetTracerState(block, tx);
+        ResetTracerState(block, tx, transactionPosition);
         _streamVmTrace = StreamsVmTraceOf(tx);
 
         _hasPendingOp = false;

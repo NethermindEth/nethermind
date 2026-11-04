@@ -29,6 +29,92 @@ namespace Nethermind.Evm.Test.Tracing;
 public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 {
     [Test]
+    public void TransactionPosition_WhenBlockIsTraced_UsesTheFirstArrayOccurrence([Values] bool repeatedReferences)
+    {
+        Transaction[] transactions = PositionTransactions(repeatedReferences);
+        Block block = Build.A.Block.WithTransactions(transactions).TestObject;
+        ParityLikeBlockTracer tracer = new(ParityTraceTypes.None);
+        IBlockTracer callbacks = tracer;
+        callbacks.StartNewBlockTrace(block);
+
+        foreach (Transaction transaction in transactions)
+        {
+            callbacks.StartNewTxTrace(transaction);
+            callbacks.EndTxTrace();
+        }
+        callbacks.StartNewTxTrace(null);
+        callbacks.EndTxTrace();
+        callbacks.EndBlockTrace();
+
+        ParityLikeTxTrace[] traces = tracer.BuildResult().ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < transactions.Length; i++)
+                Assert.That(traces[i].TransactionPosition, Is.EqualTo(Array.IndexOf(transactions, transactions[i])), "trace positions retain the first occurrence");
+            Assert.That(traces[^1].TransactionPosition, Is.Null, "reward placeholders have no transaction position");
+        }
+    }
+
+    [Test]
+    public void TransactionPosition_WhenBlockOrLookupOrderChanges_MatchesTheCurrentArray()
+    {
+        TransactionPositionLookup lookup = new();
+        try
+        {
+            Transaction[] first = PositionTransactions(repeatedReferences: true);
+            for (int round = 0; round < 2; round++)
+            {
+                for (int i = first.Length - 1; i >= 0; i--)
+                    Assert.That(lookup.Find(first, first[i]), Is.EqualTo(Array.IndexOf(first, first[i])));
+            }
+
+            Transaction[] second = PositionTransactions(repeatedReferences: false);
+            Array.Reverse(second);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(lookup.Find(second, second[^1]), Is.EqualTo(second.Length - 1), "a new array discards the previous block's index");
+                Assert.That(lookup.Find(second, first[0]), Is.EqualTo(-1), "an absent transaction must remain absent");
+                Assert.That(lookup.Find(second, null), Is.Null, "a reward lookup does not search the block");
+            }
+        }
+        finally
+        {
+            lookup.Dispose();
+        }
+    }
+
+    [Test]
+    public void TransactionPosition_WhenATransactionOverridesEquality_RetainsArraySearchSemantics()
+    {
+        Transaction[] transactions = PositionTransactions(repeatedReferences: false);
+        transactions[0] = new ValueEqualTransaction { Nonce = 42 };
+        Transaction equivalent = new ValueEqualTransaction { Nonce = 42 };
+        TransactionPositionLookup lookup = new();
+        try
+        {
+            for (int i = 0; i < transactions.Length; i++)
+                Assert.That(lookup.Find(transactions, transactions[i]), Is.EqualTo(Array.IndexOf(transactions, transactions[i])));
+            Assert.That(lookup.Find(transactions, equivalent), Is.EqualTo(0), "derived equality must not turn into reference equality");
+        }
+        finally
+        {
+            lookup.Dispose();
+        }
+    }
+
+    private static Transaction[] PositionTransactions(bool repeatedReferences)
+    {
+        Transaction[] transactions = new Transaction[256];
+        for (int i = 0; i < transactions.Length; i++) transactions[i] = new Transaction { Nonce = (ulong)i };
+        if (repeatedReferences)
+        {
+            transactions[200] = transactions[0];
+            transactions[201] = transactions[100];
+        }
+        return transactions;
+    }
+
+    [Test]
     public void Output_only_receipts_do_not_allocate_actions(
         [Values(ParityTraceTypes.None, ParityTraceTypes.StateDiff)] ParityTraceTypes types, [Values] bool failed)
     {
@@ -1928,5 +2014,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
         _ = _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return (tracer.BuildResult(), block, transaction);
+    }
+
+    private sealed class ValueEqualTransaction : Transaction
+    {
+        public override bool Equals(object? other) => other is ValueEqualTransaction transaction && Nonce == transaction.Nonce;
+        public override int GetHashCode() => Nonce.GetHashCode();
     }
 }

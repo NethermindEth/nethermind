@@ -133,6 +133,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IPar
 
         ParityTraceTypes resolvedTypes = ResolveTypes(tx);
         bool fillVmTraceSlot = _mode == ParityTraceStreamMode.Replay;
+        int? position = _mode == ParityTraceStreamMode.Store ? GetTransactionPosition(tx) : null;
 
         if (fillVmTraceSlot)
         {
@@ -145,12 +146,13 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IPar
             _reusableTxTracer?.ReleaseResources();
             _reusableTxTracer = new StreamingParityLikeTxTracer(
                 _block!, tx, resolvedTypes, _writer, _pipeWriter, _cancellationToken, fillVmTraceSlot,
+                transactionPosition: position,
                 spec: _specProvider?.GetSpec(_block!.Header));
             _reusableTxTracerTypes = resolvedTypes;
         }
         else
         {
-            _reusableTxTracer.ResetForNextTx(_block!, tx);
+            _reusableTxTracer.ResetForNextTx(_block!, tx, position);
         }
 
         return _reusableTxTracer;
@@ -240,7 +242,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IPar
     /// <summary>Tracers for the transactions of <paramref name="block"/> when it is traced in parallel; their traces are
     /// recycled once they are serialized.</summary>
     internal ParallelParityTxTracerPool CreateParallelTxTracers(Block block, ParityTraceTypes types) =>
-        new(_writer, _cancellationToken, types, _specProvider?.GetSpec(block.Header));
+        new(_writer, _cancellationToken, types, _specProvider?.GetSpec(block.Header), _mode == ParityTraceStreamMode.Store);
 
     public override void EndBlockTrace()
     {
@@ -253,6 +255,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IPar
     {
         _reusableTxTracer?.ReleaseResources();
         _reusableTxTracer = null;
+        base.EndBlockTrace();
     }
 
     private ParityTraceTypes ResolveTypes(Transaction? tx) =>

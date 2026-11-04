@@ -40,6 +40,11 @@ public partial class ParityLikeTxTracer : TxTracer
     /// <param name="spec">The block's spec, which prices an EIP-8141 frame transaction's gas budget for its root;
     /// without it the root reports only the frame limits.</param>
     public ParityLikeTxTracer(Block block, Transaction? tx, ParityTraceTypes parityTraceTypes, IReleaseSpec? spec = null)
+        : this(block, tx, parityTraceTypes, spec, tx is null ? null : Array.IndexOf(block.Transactions!, tx))
+    {
+    }
+
+    internal ParityLikeTxTracer(Block block, Transaction? tx, ParityTraceTypes parityTraceTypes, IReleaseSpec? spec, int? transactionPosition)
     {
         _parityTraceTypes = parityTraceTypes;
         _spec = spec;
@@ -48,7 +53,7 @@ public partial class ParityLikeTxTracer : TxTracer
         _trace = new ParityLikeTxTrace
         {
             TransactionHash = tx?.Hash,
-            TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx),
+            TransactionPosition = transactionPosition,
             BlockNumber = block.Number,
             BlockHash = block.Hash!
         };
@@ -181,10 +186,13 @@ public partial class ParityLikeTxTracer : TxTracer
         (_parityTraceTypes & ParityTraceTypes.Trace) != 0 ? CopyInput(input) : CappedArray<byte>.Empty;
 
     protected void ResetTracerState(Block block, Transaction? tx)
+        => ResetTracerState(block, tx, tx is null ? null : Array.IndexOf(block.Transactions!, tx));
+
+    internal void ResetTracerState(Block block, Transaction? tx, int? transactionPosition)
     {
         _tx = tx;
         _trace.TransactionHash = tx?.Hash;
-        _trace.TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx);
+        _trace.TransactionPosition = transactionPosition;
         _trace.BlockNumber = block.Number;
         _trace.BlockHash = block.Hash!;
         _trace.Output = null;
