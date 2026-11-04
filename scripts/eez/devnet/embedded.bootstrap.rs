@@ -119,7 +119,7 @@ pub async fn verify(server: &Candidate, reference: &str, settings: &Value) -> Re
         !directory.path().join("db").exists(),
         "consumer database must start empty"
     );
-    for file in ["genesis.json", "l1.json"] {
+    for file in ["genesis.json", "l1.json", "config.json"] {
         fs::copy(
             server.directory.path().join(file),
             directory.path().join(file),

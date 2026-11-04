@@ -53,6 +53,7 @@ impl Candidate {
         };
         let directory = tempfile::tempdir()?;
         fs::copy(genesis, directory.path().join("genesis.json"))?;
+        fs::write(directory.path().join("config.json"), "{}")?;
         let image = std::env::var("EEZ_CANDIDATE_IMAGE")?;
         let user = std::env::var("EEZ_CANDIDATE_USER")?;
         let run = std::env::var("EEZ_CANDIDATE_RUN")?;
@@ -85,6 +86,8 @@ impl Candidate {
             "--volume".into(),
             format!("{}:/data", directory.path().display()),
             image,
+            "--config".into(),
+            "/data/config.json".into(),
             "--Init.ChainSpecPath".into(),
             "/data/genesis.json".into(),
             "--Init.BaseDbPath".into(),
@@ -191,6 +194,7 @@ impl Candidate {
     fn spawn(&mut self) -> Result<()> {
         let rpc = TcpListener::bind("127.0.0.1:0")?;
         let p2p = TcpListener::bind("127.0.0.1:0")?;
+        let engine = TcpListener::bind("127.0.0.1:0")?;
         self.port = rpc.local_addr()?.port();
         self.generation += 1;
         self.name = format!(
@@ -205,10 +209,14 @@ impl Candidate {
         args.extend([
             "--JsonRpc.Port".into(),
             self.port.to_string(),
+            "--JsonRpc.EngineHost".into(),
+            "127.0.0.1".into(),
+            "--JsonRpc.EnginePort".into(),
+            engine.local_addr()?.port().to_string(),
             "--Network.P2PPort".into(),
             p2p.local_addr()?.port().to_string(),
         ]);
-        drop((rpc, p2p));
+        drop((rpc, p2p, engine));
         self.child = Some(
             Command::new("docker")
                 .args(args)

@@ -23,6 +23,15 @@ class EmbeddedCoverageTests(unittest.TestCase):
         for source in (rollup0, native):
             self.assertEqual(1, source.count("pub async fn start(case:"))
             self.assertIn("pub async fn restart(", source)
+            self.assertIn('"--config".into()', source)
+            self.assertIn('"/data/config.json".into()', source)
+            self.assertIn('fs::write(directory.path().join("config.json"), "{}")?', source)
+            self.assertIn('"--JsonRpc.EnginePort".into()', source)
+            self.assertIn('"--JsonRpc.EngineHost".into()', source)
+            self.assertIn('let engine = TcpListener::bind("127.0.0.1:0")?', source)
+            self.assertIn('engine.local_addr()?.port().to_string()', source)
+            self.assertIn('drop((rpc, p2p, engine))', source)
+        self.assertIn('"config.json"', Path(embedded.__file__).with_name("embedded.bootstrap.rs").read_text())
 
     def test_native_peer_probe_is_added_only_to_native_helpers(self):
         legacy = embedded.candidate_helper("rollup0")
