@@ -24,9 +24,6 @@ public sealed class RlpByteArrayList : IByteArrayList, IRlpWrapper
     public void Write<TWriter>(ref TWriter writer)
         where TWriter : struct, IRlpWriteBackend, allows ref struct => _inner.Write(ref writer);
 
-    public static RlpByteArrayList DecodeList(ref RlpReader ctx, IMemoryOwner<byte> memoryOwner, RlpLimit? limit = null) =>
-        DecodeList(ref ctx, memoryOwner, memoryOwner.Memory, limit);
-
     /// <summary>
     /// Decodes a list whose items stay in <paramref name="memory"/>, which <paramref name="ctx"/> reads.
     /// </summary>

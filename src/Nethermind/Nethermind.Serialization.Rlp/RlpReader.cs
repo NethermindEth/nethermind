@@ -700,7 +700,9 @@ public ref struct RlpReader
         int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
         GuardLimit(count, limit);
         T[] result = new T[count];
-        bool hasDefaultElement = defaultElement is not null && !typeof(T).IsValueType;
+        bool hasDefaultElement = !typeof(T).IsValueType && defaultElement is not null;
+        // Unoptimized code boxes a value-type T to compare it with null, so elements are tested only when T can hold null.
+        bool elementsCanBeNull = default(T) is null;
         for (int i = 0; i < result.Length; i++)
         {
             if (PeekByte() == Rlp.EmptyListByte)
@@ -716,7 +718,7 @@ public ref struct RlpReader
             else
             {
                 T? value = decodeItem(ref this);
-                if (value is null)
+                if (elementsCanBeNull && value is null)
                 {
                     RlpHelpers.ThrowNullArrayElement(i);
                 }
@@ -817,7 +819,9 @@ public ref struct RlpReader
         GuardLimit(count, limit);
         ArrayPoolList<T> result = new(count, count);
         int i = 0;
-        bool hasDefaultElement = defaultElement is not null && !typeof(T).IsValueType;
+        bool hasDefaultElement = !typeof(T).IsValueType && defaultElement is not null;
+        // Unoptimized code boxes a value-type T to compare it with null, so elements are tested only when T can hold null.
+        bool elementsCanBeNull = default(T) is null;
         try
         {
             for (; i < result.Count; i++)
@@ -835,7 +839,7 @@ public ref struct RlpReader
                 else
                 {
                     T? value = decodeItem(ref this);
-                    if (value is null)
+                    if (elementsCanBeNull && value is null)
                     {
                         RlpHelpers.ThrowNullArrayElement(i);
                     }
