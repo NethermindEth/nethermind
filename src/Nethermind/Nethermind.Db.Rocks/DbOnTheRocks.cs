@@ -1405,7 +1405,20 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             // only its own keys and the epilogue restore re-derives from the result - honoring that Tune instead of
             // the stale pre-compaction options.
             Dictionary<string, string> steadyState = SnapshotBlobGarbageCollectionOptions();
-            ApplyOptions(BlobGarbageCollectionOptions);
+            try
+            {
+                ApplyOptions(BlobGarbageCollectionOptions);
+            }
+            catch
+            {
+                // The apply can fail after RocksDB took the options (e.g. it could not persist its OPTIONS file), which
+                // would leave blob GC on in the live database and the GC values in the tracked map. This runs before
+                // the try below, so nothing else would undo it: put the steady state back before rethrowing.
+                foreach ((string key, string value) in steadyState) _effectiveBlobGcOptions[key] = value;
+                RestoreOptionsAfterBlobGarbageCollection();
+                throw;
+            }
+
             foreach ((string key, string value) in steadyState) _effectiveBlobGcOptions[key] = value;
 
             // From here until the epilogue, a concurrent Tune must not touch the blob-GC keys on the live database:

@@ -1457,6 +1457,45 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void CompactReclaimingBlobFiles_RestoresSteadyState_WhenApplyingTheBlobGarbageCollectionOptionsFails()
+        {
+            // RocksDB can take the options and still fail the call (it could not persist its OPTIONS file). That
+            // happens in the prologue, before the try that guards the compaction, so nothing but the prologue's own
+            // handling can switch blob GC back off and keep the tracked options at the steady state. A later run
+            // proves the tracked options too: a poisoned map would have it restore the GC values as steady state.
+            DbConfig config = new()
+            {
+                AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;disable_auto_compactions=true;"
+            };
+            using RocksDbInstance instance = OpenBlocksInstance(config, out IRocksDbConfig tableConfig);
+            using FailingBlobGcApplyDbOnTheRocks db = new(instance, tableConfig, LimboLogs.Instance);
+
+            byte[] value = new byte[4096];
+            for (ulong number = 1; number <= 100; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
+            db.Flush();
+            Assert.That(BlobBytes(DbPath), Is.GreaterThan(0), "blob mode must be engaged so the rewrite is not skipped");
+
+            Assert.That(db.CompactReclaimingBlobFiles, Throws.InstanceOf<RocksDbException>());
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(db.LatestLiveOption("enable_blob_garbage_collection"), Is.EqualTo("false"),
+                    "a failed prologue must not leave blob garbage collection on in the live database");
+                Assert.That(db.LatestLiveOption("blob_garbage_collection_force_threshold"), Is.EqualTo("1.0"));
+            }
+
+            bool compacted = db.CompactReclaimingBlobFiles();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted, Is.True);
+                Assert.That(db.LatestLiveOption("enable_blob_garbage_collection"), Is.EqualTo("false"),
+                    "the later run must restore the steady state, not the GC values a failed prologue left in the tracked options");
+                Assert.That(db.LatestLiveBlobFiles(), Is.EqualTo("true"));
+            }
+        }
+
+        [Test]
         public void CompactReclaimingBlobFiles_ReclaimsPartiallyReferencedBlobFiles_ThatAPlainCompactionCannot()
         {
             // The sliced-history shape a realistic retention prune leaves behind: scattered survivors across the
@@ -2636,14 +2675,38 @@ namespace Nethermind.Db.Test
 
         /// <summary>The most recent value of <c>enable_blob_files</c> the live database was actually told to use,
         /// or null if none was ever pushed.</summary>
-        public string? LatestLiveBlobFiles()
+        public string? LatestLiveBlobFiles() => LatestLiveOption("enable_blob_files");
+
+        /// <summary>The most recent value of <paramref name="key"/> the live database was actually told to use,
+        /// or null if none was ever pushed.</summary>
+        public string? LatestLiveOption(string key)
         {
             for (int i = LiveAppliedOptions.Count - 1; i >= 0; i--)
             {
-                if (LiveAppliedOptions[i].TryGetValue("enable_blob_files", out string? value)) return value;
+                if (LiveAppliedOptions[i].TryGetValue(key, out string? value)) return value;
             }
 
             return null;
+        }
+    }
+
+    // Fails the first live push of the blob-GC options after RocksDB has already taken them, as it does when it
+    // applies an option but cannot persist its OPTIONS file (e.g. a full disk).
+    class FailingBlobGcApplyDbOnTheRocks(
+        RocksDbInstance instance,
+        IRocksDbConfig config,
+        ILogManager logManager
+        ) : OptionsCapturingDbOnTheRocks(instance, config, logManager)
+    {
+        private bool _failed;
+
+        protected override void SetLiveOptions(IEnumerable<KeyValuePair<string, string>> options)
+        {
+            base.SetLiveOptions(options);
+            if (_failed || !options.Any(static option => option is { Key: "enable_blob_garbage_collection", Value: "true" })) return;
+
+            _failed = true;
+            throw new RocksDbException("simulated failure to persist the options");
         }
     }
 
