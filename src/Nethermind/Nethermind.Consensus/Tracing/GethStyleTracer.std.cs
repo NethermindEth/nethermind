@@ -310,7 +310,14 @@ public class GethStyleTracer(
 
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
         IntermediateRootsBlockTracer tracer = new(scope.Component.WorldState, specProvider.GetSpec(block.Header));
-        scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(cancellationToken), cancellationToken);
+        try
+        {
+            scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(cancellationToken), cancellationToken);
+        }
+        catch (InvalidTransactionException)
+        {
+            // Mirror geth: a rejected transaction ends the replay, returning the roots of the transactions before it.
+        }
         return tracer.BuildResult();
     }
 

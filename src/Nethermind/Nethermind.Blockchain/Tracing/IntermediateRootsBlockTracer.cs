@@ -27,6 +27,12 @@ public class IntermediateRootsBlockTracer(IWorldState worldState, IReleaseSpec s
 
     protected override Hash256 OnEnd(IntermediateRootsTxTracer txTracer) => txTracer.StateRoot;
 
+    /// <remarks>A transaction rejected before execution is never marked, so it has no root and adds no entry.</remarks>
+    protected override void AddTrace(Hash256 trace)
+    {
+        if (trace is not null) base.AddTrace(trace);
+    }
+
     public class IntermediateRootsTxTracer(IWorldState worldState, IReleaseSpec spec) : TxTracer
     {
         public override bool IsTracingReceipt => true;
