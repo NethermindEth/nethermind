@@ -11,3 +11,13 @@ public interface IMetricLabels
 {
     string[] Labels { get; }
 }
+
+/// <summary>
+/// Labels held for the lifetime of the process as one instance per immutable set of values, allowing an observer to
+/// resolve their labelled child once per instance rather than on every observation.
+/// </summary>
+/// <remarks>
+/// Implementations must not be mutated after the first observation, and callers should reuse the same instance for
+/// the life of the process. The observer uses object identity as the cache key and retains marked instances.
+/// </remarks>
+public interface IStableMetricLabels : IMetricLabels;

@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -35,37 +34,41 @@ namespace Nethermind.Core.Test.Caching
             LruKeyCache<Address> cache = new(Capacity, "test");
             for (int i = 0; i < Capacity; i++)
             {
-                cache.Set(_addresses[i]).Should().BeTrue();
+                Assert.That(cache.Set(_addresses[i]), Is.True);
             }
 
-            cache.Get(_addresses[Capacity - 1]).Should().BeTrue();
+            Assert.That(cache.Get(_addresses[Capacity - 1]), Is.True);
         }
 
         [Test]
         public void Can_reset()
         {
             LruKeyCache<Address> cache = new(Capacity, "test");
-            cache.Set(_addresses[0]).Should().BeTrue();
-            cache.Set(_addresses[0]).Should().BeFalse();
-            cache.Get(_addresses[0]).Should().BeTrue();
+            Assert.That(cache.Set(_addresses[0]), Is.True);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
+            Assert.That(cache.Set(_addresses[0]), Is.False);
+#pragma warning restore NUnit2045
+            Assert.That(cache.Get(_addresses[0]), Is.True);
         }
 
         [Test]
         public void Can_ask_before_first_set()
         {
             LruKeyCache<Address> cache = new(Capacity, "test");
-            cache.Get(_addresses[0]).Should().BeFalse();
+            Assert.That(cache.Get(_addresses[0]), Is.False);
         }
 
         [Test]
         public void Can_clear()
         {
             LruKeyCache<Address> cache = new(Capacity, "test");
-            cache.Set(_addresses[0]).Should().BeTrue();
+            Assert.That(cache.Set(_addresses[0]), Is.True);
             cache.Clear();
-            cache.Get(_addresses[0]).Should().BeFalse();
-            cache.Set(_addresses[0]).Should().BeTrue();
-            cache.Get(_addresses[0]).Should().BeTrue();
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
+            Assert.That(cache.Get(_addresses[0]), Is.False);
+#pragma warning restore NUnit2045
+            Assert.That(cache.Set(_addresses[0]), Is.True);
+            Assert.That(cache.Get(_addresses[0]), Is.True);
         }
 
         [Test]
@@ -74,17 +77,17 @@ namespace Nethermind.Core.Test.Caching
             LruKeyCache<Address> cache = new(Capacity, "test");
             for (int i = 0; i < Capacity * 2; i++)
             {
-                cache.Set(_addresses[i]).Should().BeTrue();
+                Assert.That(cache.Set(_addresses[i]), Is.True);
             }
 
             for (int i = 0; i < Capacity; i++)
             {
-                cache.Get(_addresses[i]).Should().BeFalse();
+                Assert.That(cache.Get(_addresses[i]), Is.False);
             }
             // Check in reverse order
             for (int i = Capacity * 2 - 1; i >= Capacity; i--)
             {
-                cache.Get(_addresses[i]).Should().BeTrue();
+                Assert.That(cache.Get(_addresses[i]), Is.True);
             }
         }
 
@@ -107,11 +110,11 @@ namespace Nethermind.Core.Test.Caching
         {
             Random random = new();
             LruKeyCache<AddressAsKey> cache = new(Capacity, "test");
-            for (var iter = 0; iter < Capacity; iter++)
+            for (int iter = 0; iter < Capacity; iter++)
             {
                 for (int ii = 0; ii < Capacity; ii++)
                 {
-                    cache.Set(_addresses[ii]).Should().BeTrue();
+                    Assert.That(cache.Set(_addresses[ii]), Is.True);
                 }
 
                 for (int i = 1; i < Capacity; i++)
@@ -119,41 +122,43 @@ namespace Nethermind.Core.Test.Caching
                     for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
                     {
                         // Fuzz the order of the addresses
-                        var index = random.Next(i - 1, i - 1 + Capacity);
-                        cache.Delete(_addresses[index]).Should().BeTrue();
-                        cache.Set(_addresses[index]).Should().BeTrue();
+                        int index = random.Next(i - 1, i - 1 + Capacity);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
+                        Assert.That(cache.Delete(_addresses[index]), Is.True);
+#pragma warning restore NUnit2045
+                        Assert.That(cache.Set(_addresses[index]), Is.True);
                     }
                     for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
                     {
                         // Fuzz the order of the addresses
-                        var index = random.Next(i - 1, i - 1 + Capacity);
-                        cache.Set(_addresses[index]).Should().BeFalse();
+                        int index = random.Next(i - 1, i - 1 + Capacity);
+                        Assert.That(cache.Set(_addresses[index]), Is.False);
                     }
                     for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
                     {
                         // Fuzz the order of the addresses
-                        var index = random.Next(i - 1, i - 1 + Capacity);
-                        cache.Get(_addresses[index]).Should().BeTrue();
+                        int index = random.Next(i - 1, i - 1 + Capacity);
+                        Assert.That(cache.Get(_addresses[index]), Is.True);
                     }
                     for (int ii = i; ii < i + Capacity; ii++)
                     {
                         if (ii < i + Capacity - 1)
-                            cache.Set(_addresses[ii]).Should().BeFalse();
+                            Assert.That(cache.Set(_addresses[ii]), Is.False);
                         else
-                            cache.Set(_addresses[ii]).Should().BeTrue();
+                            Assert.That(cache.Set(_addresses[ii]), Is.True);
                     }
                     for (int ii = i; ii < i + Capacity; ii++)
                     {
-                        cache.Get(_addresses[ii]).Should().BeTrue();
+                        Assert.That(cache.Get(_addresses[ii]), Is.True);
                     }
                     if (i > 0)
                     {
-                        cache.Get(_addresses[i - 1]).Should().BeFalse();
+                        Assert.That(cache.Get(_addresses[i - 1]), Is.False);
                     }
-                    cache.Get(_addresses[i + Capacity]).Should().BeFalse();
+                    Assert.That(cache.Get(_addresses[i + Capacity]), Is.False);
                 }
 
-                cache.Count.Should().Be(Capacity);
+                Assert.That(cache.Count, Is.EqualTo(Capacity));
                 if (iter % 2 == 0)
                 {
                     cache.Clear();
@@ -162,11 +167,11 @@ namespace Nethermind.Core.Test.Caching
                 {
                     for (int ii = Capacity - 1; ii < Capacity * 2 - 1; ii++)
                     {
-                        cache.Delete(_addresses[ii]).Should().BeTrue();
+                        Assert.That(cache.Delete(_addresses[ii]), Is.True);
                     }
                 }
 
-                cache.Count.Should().Be(0);
+                Assert.That(cache.Count, Is.EqualTo(0));
             }
         }
 
@@ -217,9 +222,9 @@ namespace Nethermind.Core.Test.Caching
         public void Can_delete()
         {
             LruKeyCache<Address> cache = new(Capacity, "test");
-            cache.Set(_addresses[0]).Should().BeTrue();
+            Assert.That(cache.Set(_addresses[0]), Is.True);
             cache.Delete(_addresses[0]);
-            cache.Get(_addresses[0]).Should().BeFalse();
+            Assert.That(cache.Get(_addresses[0]), Is.False);
         }
     }
 }

@@ -3,14 +3,9 @@
 
 namespace Nethermind.Tools.Kute.ResponseTracer;
 
-public sealed class FileResponseTracer : IResponseTracer
+public sealed class FileResponseTracer(string tracesFilePath) : IResponseTracer
 {
-    private readonly string _tracesFilePath;
-
-    public FileResponseTracer(string tracesFilePath)
-    {
-        _tracesFilePath = tracesFilePath;
-    }
+    private readonly string _tracesFilePath = tracesFilePath;
 
     public async Task TraceResponse(JsonRpc.Response response, CancellationToken token = default)
     {
@@ -18,7 +13,7 @@ public sealed class FileResponseTracer : IResponseTracer
             ? File.AppendText(_tracesFilePath)
             : File.CreateText(_tracesFilePath);
 
-        var content = response.Json.ToString() ?? "null";
+        string content = response.Json.ToString() ?? "null";
         await sw.WriteLineAsync(content.AsMemory(), token);
     }
 }

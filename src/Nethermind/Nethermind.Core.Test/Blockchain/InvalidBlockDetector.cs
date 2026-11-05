@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 
@@ -11,19 +12,16 @@ namespace Nethermind.Core.Test.Blockchain;
 
 public class InvalidBlockDetector
 {
-    public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? OnInvalidBlock;
+    public event EventHandler<IBlockProcessingQueue.InvalidBlockEventArgs>? OnInvalidBlock;
 
-    private void TriggerOnInvalidBlock(Block invalidBlock)
+    private void TriggerOnInvalidBlock(Block invalidBlock) => OnInvalidBlock?.Invoke(this, new IBlockProcessingQueue.InvalidBlockEventArgs()
     {
-        OnInvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs()
-        {
-            InvalidBlock = invalidBlock
-        });
-    }
+        InvalidBlock = invalidBlock
+    });
 
     internal class BlockProcessorInterceptor(IBlockProcessor baseBlockProcessor, InvalidBlockDetector invalidBlockDetector) : IBlockProcessor
     {
-        public event Action? TransactionsExecuted
+        public event Action<Block>? TransactionsExecuted
         {
             add => baseBlockProcessor.TransactionsExecuted += value;
             remove => baseBlockProcessor.TransactionsExecuted -= value;

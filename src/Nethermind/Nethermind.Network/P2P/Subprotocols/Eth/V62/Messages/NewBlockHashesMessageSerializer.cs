@@ -1,40 +1,47 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class NewBlockHashesMessageSerializer : IZeroInnerMessageSerializer<NewBlockHashesMessage>
+    public class NewBlockHashesMessageSerializer : IMessageSerializer<NewBlockHashesMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<NewBlockHashesMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(NewBlockHashesMessage.BlockHashes));
 
-        public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message)
+        public int Serialize(Span<byte> destination, NewBlockHashesMessage message)
         {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            NettyRlpStream nettyRlpStream = new(byteBuffer);
+            RlpWriter writer = new(destination);
 
-            nettyRlpStream.StartSequence(contentLength);
+            writer.StartSequence(GetContentLength(message));
             for (int i = 0; i < message.BlockHashes.Length; i++)
             {
                 int miniContentLength = Rlp.LengthOf(message.BlockHashes[i].Item1);
                 miniContentLength += Rlp.LengthOf(message.BlockHashes[i].Item2);
-                nettyRlpStream.StartSequence(miniContentLength);
-                nettyRlpStream.Encode(message.BlockHashes[i].Item1);
-                nettyRlpStream.Encode(message.BlockHashes[i].Item2);
+                writer.StartSequence(miniContentLength);
+                writer.Encode(message.BlockHashes[i].Item1);
+                writer.Encode(message.BlockHashes[i].Item2);
             }
+
+            return writer.Position;
         }
 
-        public NewBlockHashesMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
-
-        public int GetLength(NewBlockHashesMessage message, out int contentLength)
+        public NewBlockHashesMessage Deserialize(ReadOnlySpan<byte> data)
         {
-            contentLength = 0;
+            RlpReader ctx = new(data);
+            NewBlockHashesMessage message = Deserialize(ref ctx);
+            ctx.Check(data.Length);
+            return message;
+        }
+
+        public int GetLength(NewBlockHashesMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
+
+        private static int GetContentLength(NewBlockHashesMessage message)
+        {
+            int contentLength = 0;
             for (int i = 0; i < message.BlockHashes.Length; i++)
             {
                 int miniContentLength = Rlp.LengthOf(message.BlockHashes[i].Item1);
@@ -42,15 +49,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 contentLength += Rlp.LengthOfSequence(miniContentLength);
             }
 
-            return Rlp.LengthOfSequence(contentLength);
+            return contentLength;
         }
 
-        private static NewBlockHashesMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        private static NewBlockHashesMessage Deserialize(ref RlpReader ctx)
         {
-            (Hash256, long)[] blockHashes = ctx.DecodeArray(static (ref Rlp.ValueDecoderContext c) =>
+            (Hash256, ulong)[] blockHashes = ctx.DecodeNonNullArray(static (ref RlpReader c) =>
             {
-                c.ReadSequenceLength();
-                return (c.DecodeKeccak(), (long)c.DecodeUInt256());
+                int length = c.ReadSequenceLength();
+                int checkPosition = c.Position + length;
+
+                (Hash256, ulong) result = (c.DecodeKeccak(), c.DecodeULong());
+
+                c.Check(checkPosition);
+                return result;
             }, false, limit: RlpLimit);
 
             return new NewBlockHashesMessage(blockHashes);

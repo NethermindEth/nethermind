@@ -21,7 +21,7 @@ public class ExpressionExtensionsTests
     {
         Expression<Func<Dummy, int>> expr = x => x.ValueProperty;
         Action<Dummy, int> setter = expr.GetSetter();
-        Dummy d = new Dummy();
+        Dummy d = new();
 
         setter(d, 42);
 
@@ -33,7 +33,7 @@ public class ExpressionExtensionsTests
     {
         Expression<Func<Dummy, int>> expr = x => x.ValueField;
         Action<Dummy, int> setter = expr.GetSetter();
-        Dummy d = new Dummy();
+        Dummy d = new();
 
         setter(d, 7);
 

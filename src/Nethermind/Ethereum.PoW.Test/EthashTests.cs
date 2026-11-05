@@ -54,14 +54,16 @@ namespace Ethereum.PoW.Test
         public void Test(EthashTest test)
         {
             BlockHeader blockHeader = Rlp.Decode<BlockHeader>(new Rlp(test.Header));
-            Assert.That(blockHeader.Nonce, Is.EqualTo(test.Nonce), "header nonce vs test nonce");
-            Assert.That(Bytes.AreEqual(blockHeader.MixHash.Bytes, test.MixHash.Bytes), Is.True, "header mix hash vs test mix hash");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blockHeader.Nonce, Is.EqualTo(test.Nonce), "header nonce vs test nonce");
+                Assert.That(Bytes.AreEqual(blockHeader.MixHash.Bytes, test.MixHash.Bytes), Is.True, "header mix hash vs test mix hash");
+            }
 
             Hash256 headerHash = Keccak.Compute(Rlp.Encode(blockHeader, RlpBehaviors.ForSealing).Bytes);
             Assert.That(headerHash, Is.EqualTo(test.HeaderHash), "header hash");
 
             // seed is correct
-            Ethash ethash = new Ethash(LimboLogs.Instance);
             uint epoch = Ethash.GetEpoch(blockHeader.Number);
             Assert.That(Ethash.GetSeedHash(epoch), Is.EqualTo(test.Seed), "seed");
 
@@ -81,8 +83,11 @@ namespace Ethereum.PoW.Test
 
             // here we confirm that the whole mix hash calculation is fine
             (byte[] mixHash, ValueHash256 result, bool success) = Ethash.Hashimoto((ulong)test.FullSize, cache, headerHash, blockHeader.MixHash, test.Nonce);
-            Assert.That(Bytes.AreEqual(mixHash, test.MixHash.Bytes), Is.True, "mix hash");
-            Assert.That(Bytes.AreEqual(result.Bytes, test.Result.Bytes), Is.True, "result");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Bytes.AreEqual(mixHash, test.MixHash.Bytes), Is.True, "mix hash");
+                Assert.That(Bytes.AreEqual(result.Bytes, test.Result.Bytes), Is.True, "result");
+            }
 
             // not that the test's result value suggests that the result of the PoW operation is not below difficulty / block is invalid...
             // Assert.True(ethash.Validate(blockHeader), "validation");
@@ -114,42 +119,28 @@ namespace Ethereum.PoW.Test
             public string Result { get; set; }
         }
 
-        public class EthashTest
+        public class EthashTest(
+            string name,
+            ulong nonce,
+            Hash256 mixHash,
+            byte[] header,
+            Hash256 seed,
+            BigInteger cacheSize,
+            BigInteger fullSize,
+            Hash256 headerHash,
+            Hash256 cacheHash,
+            Hash256 result)
         {
-            public EthashTest(
-                string name,
-                ulong nonce,
-                Hash256 mixHash,
-                byte[] header,
-                Hash256 seed,
-                BigInteger cacheSize,
-                BigInteger fullSize,
-                Hash256 headerHash,
-                Hash256 cacheHash,
-                Hash256 result)
-            {
-                Name = name;
-                Nonce = nonce;
-                MixHash = mixHash;
-                Header = header;
-                Seed = seed;
-                CacheSize = cacheSize;
-                FullSize = fullSize;
-                CacheHash = cacheHash;
-                HeaderHash = headerHash;
-                Result = result;
-            }
-
-            public string Name { get; }
-            public ulong Nonce { get; }
-            public Hash256 MixHash { get; }
-            public byte[] Header { get; }
-            public Hash256 Seed { get; }
-            public BigInteger CacheSize { get; }
-            public BigInteger FullSize { get; }
-            public Hash256 HeaderHash { get; }
-            public Hash256 CacheHash { get; }
-            public Hash256 Result { get; }
+            public string Name { get; } = name;
+            public ulong Nonce { get; } = nonce;
+            public Hash256 MixHash { get; } = mixHash;
+            public byte[] Header { get; } = header;
+            public Hash256 Seed { get; } = seed;
+            public BigInteger CacheSize { get; } = cacheSize;
+            public BigInteger FullSize { get; } = fullSize;
+            public Hash256 HeaderHash { get; } = headerHash;
+            public Hash256 CacheHash { get; } = cacheHash;
+            public Hash256 Result { get; } = result;
 
             public override string ToString() => Name;
         }

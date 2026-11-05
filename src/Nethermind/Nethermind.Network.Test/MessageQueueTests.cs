@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -18,14 +17,14 @@ namespace Nethermind.Network.Test;
 
 public class MessageQueueTests
 {
-    private readonly List<GetBlockHeadersMessage> _recordedSends = new();
+    private readonly List<GetBlockHeadersMessage> _recordedSends = [];
     private MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> _queue;
 
     [SetUp]
     public void Setup()
     {
         _recordedSends.Clear();
-        _queue = new((message) => _recordedSends.Add(message));
+        _queue = new(RecordingProtocolHandler.Create(_recordedSends));
     }
 
     [Test]
@@ -35,8 +34,11 @@ public class MessageQueueTests
 
         _queue.Send(request);
 
-        _recordedSends.Count.Should().Be(1);
-        request.CompletionSource.Task.IsCompleted.Should().BeFalse();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_recordedSends.Count, Is.EqualTo(1));
+            Assert.That(request.CompletionSource.Task.IsCompleted, Is.False);
+        }
     }
 
     [Test]
@@ -48,8 +50,11 @@ public class MessageQueueTests
         _queue.Send(request1);
         _queue.Send(request2);
 
-        _recordedSends.Count.Should().Be(1);
-        request2.CompletionSource.Task.IsCompleted.Should().BeFalse();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_recordedSends.Count, Is.EqualTo(1));
+            Assert.That(request2.CompletionSource.Task.IsCompleted, Is.False);
+        }
     }
 
     [Test]
@@ -65,9 +70,12 @@ public class MessageQueueTests
 
         _queue.Handle(response, 100);
 
-        request1.CompletionSource.Task.IsCompleted.Should().BeTrue();
-        request1.CompletionSource.Task.Result.Should().BeSameAs(response);
-        _recordedSends.Count.Should().Be(2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request1.CompletionSource.Task.IsCompleted, Is.True);
+            Assert.That(request1.CompletionSource.Task.Result, Is.SameAs(response));
+            Assert.That(_recordedSends.Count, Is.EqualTo(2));
+        }
     }
 
     [Test]
@@ -75,9 +83,7 @@ public class MessageQueueTests
     {
         using IOwnedReadOnlyList<BlockHeader> response = new[] { Build.A.BlockHeader.TestObject }.ToPooledList();
 
-        _queue.Invoking(q => q.Handle(response, 100))
-            .Should()
-            .Throw<SubprotocolException>();
+        Assert.That(() => _queue.Handle(response, 100), Throws.TypeOf<SubprotocolException>());
     }
 
     [Test]
@@ -85,9 +91,7 @@ public class MessageQueueTests
     {
         IOwnedReadOnlyList<BlockHeader> response = Substitute.For<IOwnedReadOnlyList<BlockHeader>>();
 
-        _queue.Invoking(q => q.Handle(response, 100))
-            .Should()
-            .Throw<SubprotocolException>();
+        Assert.That(() => _queue.Handle(response, 100), Throws.TypeOf<SubprotocolException>());
 
         response.Received().Dispose();
     }
@@ -105,9 +109,7 @@ public class MessageQueueTests
         using IOwnedReadOnlyList<BlockHeader> response = new[] { Build.A.BlockHeader.TestObject }.ToPooledList();
 
         // Should not throw — this is the core regression test
-        _queue.Invoking(q => q.Handle(response, 100))
-            .Should()
-            .NotThrow();
+        Assert.That(() => _queue.Handle(response, 100), Throws.Nothing);
     }
 
     [Test]
@@ -144,8 +146,11 @@ public class MessageQueueTests
         _queue.Handle(response, 100);
 
         // The second request should have been dequeued and sent
-        _recordedSends.Count.Should().Be(2);
-        request2.CompletionSource.Task.IsCompleted.Should().BeFalse();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_recordedSends.Count, Is.EqualTo(2));
+            Assert.That(request2.CompletionSource.Task.IsCompleted, Is.False);
+        }
     }
 
     [Test]
@@ -158,7 +163,7 @@ public class MessageQueueTests
 
         _queue.Send(request);
 
-        _recordedSends.Count.Should().Be(0);
+        Assert.That(_recordedSends.Count, Is.EqualTo(0));
     }
 
     [Test]
@@ -170,7 +175,7 @@ public class MessageQueueTests
 
         _queue.CompleteAdding();
 
-        request.CompletionSource.Task.IsCanceled.Should().BeTrue();
+        Assert.That(request.CompletionSource.Task.IsCanceled, Is.True);
     }
 
     [Test]
@@ -186,9 +191,12 @@ public class MessageQueueTests
 
         _queue.CompleteAdding();
 
-        request1.CompletionSource.Task.IsCanceled.Should().BeTrue();
-        request2.CompletionSource.Task.IsCanceled.Should().BeTrue();
-        request3.CompletionSource.Task.IsCanceled.Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request1.CompletionSource.Task.IsCanceled, Is.True);
+            Assert.That(request2.CompletionSource.Task.IsCanceled, Is.True);
+            Assert.That(request3.CompletionSource.Task.IsCanceled, Is.True);
+        }
     }
 
     [Test]
@@ -200,25 +208,23 @@ public class MessageQueueTests
 
         _queue.Send(request);
 
-        request.CompletionSource.Task.IsCanceled.Should().BeTrue();
-        _recordedSends.Count.Should().Be(0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.CompletionSource.Task.IsCanceled, Is.True);
+            Assert.That(_recordedSends.Count, Is.EqualTo(0));
+        }
     }
 
     [Test]
     public void Handle_disposes_tuple_disposable_component_when_no_current_request()
     {
-        MessageQueue<GetBlockHeadersMessage, (IDisposable, long)> queue = new(_ => { });
+        MessageQueue<GetBlockHeadersMessage, (IDisposable, long)> queue = new(RecordingProtocolHandler.Create<GetBlockHeadersMessage>());
         IDisposable inner = Substitute.For<IDisposable>();
 
-        queue.Invoking(q => q.Handle((inner, 100L), 100))
-            .Should()
-            .Throw<SubprotocolException>();
+        Assert.That(() => queue.Handle((inner, 100L), 100), Throws.TypeOf<SubprotocolException>());
 
         inner.Received().Dispose();
     }
 
-    private static Request<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> CreateRequest()
-    {
-        return new(new GetBlockHeadersMessage());
-    }
+    private static Request<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> CreateRequest() => new(new GetBlockHeadersMessage());
 }

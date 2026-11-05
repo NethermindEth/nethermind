@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -79,15 +80,18 @@ public static class BaseTriePersistence
     private const int ShortenedStorageNodesKeyLength = StoragePrefixPortion + ShortenedPathLength + (StorageHashPrefixLength - StoragePrefixPortion);
     private const int FullStorageNodesKeyLength = 1 + StorageHashPrefixLength + FullPathLength + PathLengthLength;
 
+    /// <summary>The trie column a node key of <paramref name="keyLength"/> bytes belongs to; the column key layouts have distinct lengths.</summary>
+    internal static FlatDbColumns ColumnOfNodeKey(int keyLength) => keyLength switch
+    {
+        StateNodesTopPathLength => FlatDbColumns.StateTopNodes,
+        ShortenedPathLength => FlatDbColumns.StateNodes,
+        ShortenedStorageNodesKeyLength => FlatDbColumns.StorageNodes,
+        _ => FlatDbColumns.FallbackNodes,
+    };
+
     private static ReadOnlySpan<byte> EncodeStateTopNodeKey(Span<byte> buffer, in TreePath path)
     {
-        // Looks like this <3-byte-path>
-        // Last 4 bit of the path is the length
-
-        path.Path.Bytes[0..StateNodesTopPathLength].CopyTo(buffer);
-        // Pack length into lower 4 bits of last byte (upper 4 bits contain path data)
-        byte lengthAsByte = (byte)path.Length;
-        buffer[StateNodesTopPathLength - 1] = (byte)((buffer[StateNodesTopPathLength - 1] & 0xf0) | (lengthAsByte & 0x0f));
+        path.EncodeWith3Byte(buffer);
         return buffer[..StateNodesTopPathLength];
     }
 
@@ -151,115 +155,190 @@ public static class BaseTriePersistence
 
             // Technically, this is kinda not needed for nodes as it's always traversed so orphaned trie just get skipped.
             // Delete from StorageNodes
-            BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)]);
+            BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)], StoragePrefixPortion);
             BasePersistence.DeleteMatchingKeys(storageNodesSnap, storageNodes,
                 firstKey[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)],
-                StoragePrefixPortion + ShortenedPathLength, addressSuffix);
+                StoragePrefixPortion + ShortenedPathLength, addressSuffix, flags);
 
             // Delete from FallbackNodes (prefix 0x01)
             firstKey[0] = 1;
             lastKey[0] = 1;
-            BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[1..], lastKey[1..]);
+            BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[1..], lastKey[1..], StoragePrefixPortion);
             BasePersistence.DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes, firstKey, lastKey,
-                1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix);
+                1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix, flags);
         }
 
-        public void SetStateTrieNode(in TreePath path, TrieNode tn)
+        [SkipLocalsInit]
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            ReadOnlySpan<byte> fromAccount = fromPath.Bytes[..StorageHashPrefixLength];
+            ReadOnlySpan<byte> toAccount = toPath.Bytes[..StorageHashPrefixLength];
+
+            Span<byte> firstKey = stackalloc byte[1 + StoragePrefixPortion];
+            Span<byte> lastKey = stackalloc byte[FullStorageNodesKeyLength + 1];
+
+            // StorageNodes
+            lastKey.Fill(0xff);
+            toPath.Bytes[..StoragePrefixPortion].CopyTo(lastKey);
+            BasePersistence.DeleteKeysOfAccountRange(storageNodesSnap, storageNodes,
+                fromPath.Bytes[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)],
+                ShortenedStorageNodesKeyLength, prefixOffset: 0, StoragePrefixPortion,
+                suffixOffset: StoragePrefixPortion + ShortenedPathLength, fromAccount, toAccount, flags);
+
+            // FallbackNodes (prefix 0x01)
+            firstKey[0] = 1;
+            fromPath.Bytes[..StoragePrefixPortion].CopyTo(firstKey[1..]);
+            lastKey.Fill(0xff);
+            lastKey[0] = 1;
+            toPath.Bytes[..StoragePrefixPortion].CopyTo(lastKey[1..]);
+            BasePersistence.DeleteKeysOfAccountRange(fallbackNodesSnap, fallbackNodes, firstKey, lastKey,
+                FullStorageNodesKeyLength, prefixOffset: 1, StoragePrefixPortion,
+                suffixOffset: 1 + StoragePrefixPortion + FullPathLength + PathLengthLength, fromAccount, toAccount, flags);
+        }
+
+        [SkipLocalsInit]
+        public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp)
         {
             switch (path.Length)
             {
                 case <= StateNodesTopThreshold:
-                    stateTopNodes.PutSpan(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], path), tn.FullRlp.AsSpan(), flags);
+                    stateTopNodes.PutSpan(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], path), rlp, flags);
                     break;
                 case <= ShortenedPathThreshold:
-                    stateNodes.PutSpan(EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], path), tn.FullRlp.AsSpan(), flags);
+                    stateNodes.PutSpan(EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], path), rlp, flags);
                     break;
                 default:
-                    fallbackNodes.PutSpan(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), tn.FullRlp.AsSpan(), flags);
-                    break;
-            }
-        }
-
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tn)
-        {
-            switch (path.Length)
-            {
-                case <= ShortenedPathThreshold:
-                    storageNodes.PutSpan(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, path), tn.FullRlp.AsSpan(), flags);
-                    break;
-                default:
-                    fallbackNodes.PutSpan(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), tn.FullRlp.AsSpan(), flags);
+                    fallbackNodes.PutSpan(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), rlp, flags);
                     break;
             }
         }
 
         [SkipLocalsInit]
-        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath)
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp)
+        {
+            switch (path.Length)
+            {
+                case <= ShortenedPathThreshold:
+                    storageNodes.PutSpan(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, path), rlp, flags);
+                    break;
+                default:
+                    fallbackNodes.PutSpan(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), rlp, flags);
+                    break;
+            }
+        }
+
+        /// <inheritdoc cref="IPersistence.IWriteBatch.DeleteStateTrieNodeRange"/>
+        [SkipLocalsInit]
+        public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to)
         {
             // State trie nodes are stored across 3 columns based on path length:
             // - StateNodesTop: path length 0-5 (3 byte keys)
             // - StateNodes: path length 6-15 (8 byte keys)
             // - FallbackNodes: path length 16+ (34 byte keys with 0x00 prefix)
+            // Each column is scanned over the [from, to] value range and a node is removed only when its whole
+            // subtree [ToLowerBoundPath, ToUpperBoundPath] is contained in [from, to] (see IsFullyContained).
 
             Span<byte> firstKeyBuf = stackalloc byte[FullStateNodesKeyLength];
             Span<byte> lastKeyBuf = stackalloc byte[FullStateNodesKeyLength + 1];
 
-            // Delete from StateNodesTop (path length 0-5)
-            // Truncate toPath to max length for this column to ensure all keys in range are included
-            EncodeStateTopNodeKey(firstKeyBuf[..StateNodesTopPathLength], fromPath);
-            EncodeStateTopNodeKey(lastKeyBuf[..StateNodesTopPathLength], toPath.Truncate(StateNodesTopThreshold));
+            EncodeStateTopNodeKey(firstKeyBuf[..StateNodesTopPathLength], new TreePath(from, 0));
+            EncodeStateTopNodeKey(lastKeyBuf[..StateNodesTopPathLength], new TreePath(to, StateNodesTopThreshold));
             lastKeyBuf[StateNodesTopPathLength] = 0;
-            BasePersistence.DeleteMatchingKeys(stateTopNodesSnap, stateTopNodes,
+            DeleteContainedKeys(stateTopNodesSnap, stateTopNodes,
                 firstKeyBuf[..StateNodesTopPathLength], lastKeyBuf[..(StateNodesTopPathLength + 1)],
-                StateNodesTopPathLength);
+                StateNodesTopPathLength, pathOffset: 0, pathBytes: StateNodesTopPathLength, packedLength: true, from, to, flags);
 
-            // Delete from StateNodes (path length 6-15)
-            // Truncate toPath to max length for this column to ensure all keys in range are included
-            EncodeShortenedStateNodeKey(firstKeyBuf[..ShortenedPathLength], fromPath);
-            EncodeShortenedStateNodeKey(lastKeyBuf[..ShortenedPathLength], toPath.Truncate(ShortenedPathThreshold));
+            EncodeShortenedStateNodeKey(firstKeyBuf[..ShortenedPathLength], new TreePath(from, 0));
+            EncodeShortenedStateNodeKey(lastKeyBuf[..ShortenedPathLength], new TreePath(to, ShortenedPathThreshold));
             lastKeyBuf[ShortenedPathLength] = 0;
-            BasePersistence.DeleteMatchingKeys(stateNodesSnap, stateNodes,
+            DeleteContainedKeys(stateNodesSnap, stateNodes,
                 firstKeyBuf[..ShortenedPathLength], lastKeyBuf[..(ShortenedPathLength + 1)],
-                ShortenedPathLength);
+                ShortenedPathLength, pathOffset: 0, pathBytes: ShortenedPathLength, packedLength: true, from, to, flags);
 
-            // Delete from FallbackNodes (path length 16+, prefix 0x00)
-            EncodeFullStateNodeKey(firstKeyBuf, fromPath);
-            EncodeFullStateNodeKey(lastKeyBuf[..FullStateNodesKeyLength], toPath);
+            EncodeFullStateNodeKey(firstKeyBuf, new TreePath(from, 0));
+            EncodeFullStateNodeKey(lastKeyBuf[..FullStateNodesKeyLength], new TreePath(to, 2 * FullPathLength));
             lastKeyBuf[FullStateNodesKeyLength] = 0;
-            BasePersistence.DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes,
-                firstKeyBuf, lastKeyBuf[..(FullStateNodesKeyLength + 1)], FullStateNodesKeyLength);
+            DeleteContainedKeys(fallbackNodesSnap, fallbackNodes,
+                firstKeyBuf, lastKeyBuf[..(FullStateNodesKeyLength + 1)],
+                FullStateNodesKeyLength, pathOffset: 1, pathBytes: FullPathLength, packedLength: false, from, to, flags);
         }
 
+        /// <inheritdoc cref="IPersistence.IWriteBatch.DeleteStorageTrieNodeRange"/>
         [SkipLocalsInit]
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath)
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to)
         {
             // Storage trie nodes are stored across 2 columns based on path length:
             // - StorageNodes: path length 0-15 (28 byte keys)
             // - FallbackNodes: path length 16+ (54 byte keys with 0x01 prefix)
-
             Hash256 address = new(addressHash);
             ReadOnlySpan<byte> addressSuffix = addressHash.Bytes[StoragePrefixPortion..StorageHashPrefixLength];
 
             Span<byte> firstKeyBuf = stackalloc byte[FullStorageNodesKeyLength];
             Span<byte> lastKeyBuf = stackalloc byte[FullStorageNodesKeyLength + 1];
 
-            // Delete from StorageNodes (path length 0-15)
-            // Truncate toPath to max length for this column to ensure all keys in range are included
-            EncodeShortenedStorageNodeKey(firstKeyBuf[..ShortenedStorageNodesKeyLength], address, fromPath);
-            EncodeShortenedStorageNodeKey(lastKeyBuf[..ShortenedStorageNodesKeyLength], address, toPath.Truncate(ShortenedPathThreshold));
+            EncodeShortenedStorageNodeKey(firstKeyBuf[..ShortenedStorageNodesKeyLength], address, new TreePath(from, 0));
+            EncodeShortenedStorageNodeKey(lastKeyBuf[..ShortenedStorageNodesKeyLength], address, new TreePath(to, ShortenedPathThreshold));
             lastKeyBuf[ShortenedStorageNodesKeyLength] = 0;
-            BasePersistence.DeleteMatchingKeys(storageNodesSnap, storageNodes,
+            DeleteContainedKeys(storageNodesSnap, storageNodes,
                 firstKeyBuf[..ShortenedStorageNodesKeyLength], lastKeyBuf[..(ShortenedStorageNodesKeyLength + 1)],
-                StoragePrefixPortion + ShortenedPathLength, addressSuffix);
+                ShortenedStorageNodesKeyLength, pathOffset: StoragePrefixPortion, pathBytes: ShortenedPathLength, packedLength: true,
+                from, to, flags, suffixOffset: StoragePrefixPortion + ShortenedPathLength, addressSuffix);
 
-            // Delete from FallbackNodes (path length 16+, prefix 0x01)
-            EncodeFullStorageNodeKey(firstKeyBuf, address, fromPath);
-            EncodeFullStorageNodeKey(lastKeyBuf[..FullStorageNodesKeyLength], address, toPath);
+            EncodeFullStorageNodeKey(firstKeyBuf, address, new TreePath(from, 0));
+            EncodeFullStorageNodeKey(lastKeyBuf[..FullStorageNodesKeyLength], address, new TreePath(to, 2 * FullPathLength));
             lastKeyBuf[FullStorageNodesKeyLength] = 0;
-            BasePersistence.DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes,
+            DeleteContainedKeys(fallbackNodesSnap, fallbackNodes,
                 firstKeyBuf, lastKeyBuf[..(FullStorageNodesKeyLength + 1)],
-                1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix);
+                FullStorageNodesKeyLength, pathOffset: 1 + StoragePrefixPortion, pathBytes: FullPathLength, packedLength: false,
+                from, to, flags, suffixOffset: 1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix);
         }
+    }
+
+    /// <summary>
+    /// Scans <c>[firstKey, lastKey)</c> and removes every key whose node is entirely contained in <c>[from, to]</c>.
+    /// The node's path value and length are decoded from the key (<paramref name="pathOffset"/>/<paramref name="pathBytes"/>,
+    /// with the length packed in the low nibble of the last path byte when <paramref name="packedLength"/>, else the byte
+    /// after the path); for storage columns an optional <paramref name="addressSuffix"/> must match at
+    /// <paramref name="suffixOffset"/>.
+    /// </summary>
+    [SkipLocalsInit]
+    private static void DeleteContainedKeys(
+        ISortedKeyValueStore snap, IWriteBatch batch,
+        scoped ReadOnlySpan<byte> firstKey, scoped ReadOnlySpan<byte> lastKey,
+        int keyLength, int pathOffset, int pathBytes, bool packedLength,
+        in ValueHash256 from, in ValueHash256 to, WriteFlags flags,
+        int suffixOffset = -1, scoped ReadOnlySpan<byte> addressSuffix = default)
+    {
+        using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
+        Span<byte> value = stackalloc byte[FullPathLength];
+        while (view.MoveNext())
+        {
+            ReadOnlySpan<byte> key = view.CurrentKey;
+            if (key.Length != keyLength) continue;
+            if (suffixOffset >= 0 && !key[suffixOffset..].SequenceEqual(addressSuffix)) continue;
+
+            value.Clear();
+            key.Slice(pathOffset, pathBytes).CopyTo(value);
+            int length;
+            if (packedLength)
+            {
+                length = value[pathBytes - 1] & 0x0f;
+                value[pathBytes - 1] &= 0xf0; // the low nibble held the length, not path data
+            }
+            else
+            {
+                length = key[pathOffset + pathBytes];
+            }
+
+            if (IsFullyContained(value, length, from, to)) batch.Set(key, null, flags);
+        }
+    }
+
+    /// <summary>Whether the subtree of the node at (<paramref name="value"/>, <paramref name="length"/>) is within <c>[from, to]</c>.</summary>
+    private static bool IsFullyContained(scoped ReadOnlySpan<byte> value, int length, in ValueHash256 from, in ValueHash256 to)
+    {
+        TreePath path = new(new ValueHash256(value), length);
+        return from.CompareTo(path.ToLowerBoundPath()) <= 0 && path.ToUpperBoundPath().CompareTo(to) <= 0;
     }
 
     public readonly struct Reader(
@@ -269,6 +348,7 @@ public static class BaseTriePersistence
         IReadOnlyKeyValueStore fallbackNodes
     ) : BasePersistence.ITrieReader
     {
+        [SkipLocalsInit]
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
             path.Length switch
             {
@@ -277,9 +357,40 @@ public static class BaseTriePersistence
                 _ => fallbackNodes.Get(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), flags: flags)
             };
 
+        [SkipLocalsInit]
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
             path.Length <= ShortenedPathThreshold
                 ? storageNodes.Get(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, in path), flags: flags)
                 : fallbackNodes.Get(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), flags: flags);
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            path.Length switch
+            {
+                <= StateNodesTopThreshold => Pass(stateTopNodes, EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], in path), flags, action, arg),
+                <= ShortenedPathThreshold => Pass(stateNodes, EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], in path), flags, action, arg),
+                _ => Pass(fallbackNodes, EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), flags, action, arg)
+            };
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            path.Length <= ShortenedPathThreshold
+                ? Pass(storageNodes, EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, in path), flags, action, arg)
+                : Pass(fallbackNodes, EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), flags, action, arg);
+
+        private static bool Pass<TArg>(IReadOnlyKeyValueStore store, scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+            where TArg : allows ref struct
+        {
+            Span<byte> rlp = store.GetSpan(key, flags);
+            if (rlp.IsEmpty) return false;
+            try
+            {
+                action(rlp, arg);
+            }
+            finally
+            {
+                store.DangerousReleaseMemory(rlp);
+            }
+
+            return true;
+        }
     }
 }

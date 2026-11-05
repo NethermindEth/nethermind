@@ -6,6 +6,7 @@ using System.Buffers;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Sockets;
@@ -18,7 +19,7 @@ public class SocketClient<TStream>(
     : ISocketsClient
     where TStream : Stream, IMessageBorderPreservingStream
 {
-    public const int MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API = 128 * 1024 * 1024;
+    public const int MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API = 128 * MemorySizes.MiB;
 
     protected readonly TStream _stream = stream;
     protected readonly IJsonSerializer _jsonSerializer = jsonSerializer;
@@ -38,8 +39,8 @@ public class SocketClient<TStream>(
         if (message.Client == ClientName || string.IsNullOrWhiteSpace(ClientName) ||
             string.IsNullOrWhiteSpace(message.Client))
         {
-            await _jsonSerializer.SerializeAsync(_stream, new { type = message.Type, client = ClientName, data = message.Data }, CancellationToken.None, indented: false, leaveOpen: true);
-            await _stream.WriteEndOfMessageAsync();
+            await _jsonSerializer.SerializeAsync(_stream, new SocketsMessage(message.Type, ClientName, message.Data), CancellationToken.None, indented: false, leaveOpen: true);
+            await _stream.WriteEndOfMessageAsync(ReadOnlyMemory<byte>.Empty, CancellationToken.None);
         }
     }
 
@@ -95,13 +96,9 @@ public class SocketClient<TStream>(
         }
         finally
         {
-            await _stream.DisposeAsync();
             ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 
-    public virtual void Dispose()
-    {
-        _stream?.Dispose();
-    }
+    public virtual void Dispose() => _stream?.Dispose();
 }

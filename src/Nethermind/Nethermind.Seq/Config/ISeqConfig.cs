@@ -11,9 +11,9 @@ public interface ISeqConfig : IConfig
     [ConfigItem(Description = "The min log level to sent to Seq.", DefaultValue = "Off")]
     string MinLevel { get; }
 
-    [ConfigItem(Description = "The Seq instance URL.", DefaultValue = "http://localhost:5341")]
+    [ConfigItem(Description = "The Seq instance URL.", DefaultValue = "http://localhost:5341", IsSensitive = true)]
     string ServerUrl { get; }
 
-    [ConfigItem(Description = "The Seq API key.", DefaultValue = "")]
+    [ConfigItem(Description = "The Seq API key.", DefaultValue = "", IsSensitive = true)]
     string ApiKey { get; }
 }

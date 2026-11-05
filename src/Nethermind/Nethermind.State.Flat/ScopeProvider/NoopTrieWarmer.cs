@@ -8,9 +8,13 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public class NoopTrieWarmer : ITrieWarmer
 {
-    public void PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256? index, int sequenceId) { }
+    public bool IsActive => false;
 
-    public void PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId) { }
+    public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete) => false;
+
+    public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete) => false;
+
+    public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId) => false;
 
     public void OnEnterScope() { }
 

@@ -2,50 +2,44 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
-    public class AuthEip8MessageSerializer : IZeroMessageSerializer<AuthEip8Message>
+    public class AuthEip8MessageSerializer : IMessageSerializer<AuthEip8Message>
     {
-        private readonly IMessagePad _messagePad;
+        private const int SignatureLength = 65;
 
-        public AuthEip8MessageSerializer(IMessagePad messagePad)
+        public int GetLength(AuthEip8Message msg) => Rlp.LengthOfSequence(GetContentLength(msg));
+
+        public int Serialize(Span<byte> destination, AuthEip8Message msg)
         {
-            _messagePad = messagePad;
+            Span<byte> signature = stackalloc byte[SignatureLength];
+            msg.Signature.Bytes.CopyTo(signature);
+            signature[^1] = msg.Signature.RecoveryId;
+
+            RlpWriter writer = new(destination);
+            writer.StartSequence(GetContentLength(msg));
+            writer.Encode(signature);
+            writer.Encode(msg.PublicKey.Bytes);
+            writer.Encode(msg.Nonce);
+            writer.Encode(msg.Version);
+            return writer.Position;
         }
 
-        public void Serialize(IByteBuffer byteBuffer, AuthEip8Message msg)
-        {
-            int totalLength = GetLength(msg);
-            // TODO: Account for the padding
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength));
-            NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(totalLength);
-            stream.Encode(Bytes.Concat(msg.Signature.Bytes, msg.Signature.RecoveryId));
-            stream.Encode(msg.PublicKey.Bytes);
-            stream.Encode(msg.Nonce);
-            stream.Encode(msg.Version);
-            _messagePad?.Pad(byteBuffer);
-        }
+        private static int GetContentLength(AuthEip8Message msg) =>
+            Rlp.LengthOfByteString(SignatureLength, 0)
+            + Rlp.LengthOf(msg.PublicKey.Bytes)
+            + Rlp.LengthOf(msg.Nonce)
+            + Rlp.LengthOf(msg.Version);
 
-        public static int GetLength(AuthEip8Message msg)
+        /// <remarks>
+        /// Ignores the trailing EIP-8 padding and any list elements after the nonce, as EIP-8 requires.
+        /// </remarks>
+        public AuthEip8Message Deserialize(ReadOnlySpan<byte> msgBytes)
         {
-            int contentLength = Rlp.LengthOf(Bytes.Concat(msg.Signature.Bytes, msg.Signature.RecoveryId))
-                                + Rlp.LengthOf(msg.PublicKey.Bytes)
-                                + Rlp.LengthOf(msg.Nonce)
-                                + Rlp.LengthOf(msg.Version);
-            return contentLength;
-        }
-
-        public AuthEip8Message Deserialize(IByteBuffer msgBytes) =>
-            msgBytes.DeserializeRlp(Deserialize);
-
-        private static AuthEip8Message Deserialize(ref Rlp.ValueDecoderContext ctx)
-        {
+            RlpReader ctx = new(msgBytes);
             AuthEip8Message authMessage = new();
             ctx.ReadSequenceLength();
             ReadOnlySpan<byte> sigAllBytes = ctx.DecodeByteArraySpan(RlpLimit.L65);

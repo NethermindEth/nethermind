@@ -2,15 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db.LogIndex;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -25,6 +27,7 @@ using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
@@ -37,6 +40,7 @@ public class OptimismEthRpcModule(
     IJsonRpcConfig rpcConfig,
     IBlockchainBridge blockchainBridge,
     IBlockFinder blockFinder,
+    IBlockTree blockTree,
     IReceiptFinder receiptFinder,
     IStateReader stateReader,
     ITxPool txPool,
@@ -53,11 +57,15 @@ public class OptimismEthRpcModule(
     IJsonRpcClient? sequencerRpcClient,
     IEthereumEcdsa ecdsa,
     ITxSealer sealer,
-    ILogIndexConfig? logIndexConfig,
-    IOptimismSpecHelper opSpecHelper)
+    IOptimismSpecHelper opSpecHelper,
+    HeadBlockSignal headBlockSignal,
+    IEthCapabilitiesProvider capabilitiesProvider,
+    IBlockForRpcFactory blockForRpcFactory,
+    ForwardedNonceTracker nonceTracker)
     : EthRpcModule(rpcConfig,
         blockchainBridge,
         blockFinder,
+        blockTree,
         receiptFinder,
         stateReader,
         txPool,
@@ -70,61 +78,111 @@ public class OptimismEthRpcModule(
         feeHistoryOracle,
         protocolsManager,
         forkInfo,
-        logIndexConfig,
-        secondsPerSlot), IOptimismEthRpcModule
+        secondsPerSlot,
+        headBlockSignal,
+        capabilitiesProvider,
+        blockForRpcFactory), IOptimismEthRpcModule
 {
-    public override ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
+    internal ForwardedNonceTracker NonceTracker => nonceTracker;
+
+    public override ResultWrapper<IEnumerable<ReceiptForRpc>?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<ReceiptForRpc[]?>.Success(null);
+            return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(null);
         }
 
         Block? block = searchResult.Object!;
-        TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
+        Transaction[] transactions = block.Transactions;
+        TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[transactions.Length];
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
         L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);
+        UInt256? feePerBlobGas = null;
 
-        OptimismReceiptForRpc[]? result = [.. receipts
-                .Zip(block.Transactions, (receipt, tx) =>
-                    receipt is OptimismTxReceipt optimismTxReceipt
-                        ? new OptimismReceiptForRpc(
-                            tx.Hash!,
-                            optimismTxReceipt,
-                            block.Timestamp,
-                            tx.GetGasInfo(spec, block.Header),
-                            l1BlockGasInfo.GetTxGasInfo(tx),
-                            receipts.GetBlockLogFirstIndex(receipt.Index))
-                        : new OptimismReceiptForRpc(
-                            tx.Hash!,
-                            receipt,
-                            block.Timestamp,
-                            tx.GetGasInfo(spec, block.Header),
-                            receipts.GetBlockLogFirstIndex(receipt.Index)))];
-        return ResultWrapper<ReceiptForRpc[]?>.Success(result);
+        // EIP-8116: logIndex counts within the receipt.
+        ReceiptsForRpc<OptimismReceiptForRpc> result = new(receipts, transactions, spec.IsEip8116Enabled, (target, receipt, tx, logIndexStart) =>
+            target.Populate(
+                tx.Hash!,
+                receipt,
+                block.Timestamp,
+                tx.GetGasInfo(spec, block.Header, ref feePerBlobGas),
+                receipt is OptimismTxReceipt ? l1BlockGasInfo.GetTxGasInfo(tx) : null,
+                logIndexStart));
+
+        return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(result);
     }
 
-    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
+    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx) =>
+        ReportUnknownAccountFirst(rpcTx, await SignAndForwardTransaction(rpcTx));
+
+    private async Task<ResultWrapper<Hash256>> SignAndForwardTransaction(SignableTransactionForRpc rpcTx)
     {
-        Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
+        if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
+            return sendError;
+
+        if (rpcTx is not LegacyTransactionForRpc { From: { } from } legacy)
+            return (await SignAndSend(rpcTx)).Result;
+
+        // Sends from one account run one at a time: the next fills its nonce after this one is in the pool or with the sequencer.
+        using IDisposable senderLock = await nonceTracker.LockSenderAsync(from);
+
+        // A node that forwards to the sequencer has no pool (NullTxPool), so the tracker stands in for it.
+        ulong? nextNonce = sequencerRpcClient is null ? null : GetNextForwardedNonce(from, legacy.Nonce is not null);
+        ulong nonce = legacy.Nonce ??= nextNonce ?? _txPool.GetLatestPendingNonce(from);
+
+        (ResultWrapper<Hash256> result, bool signedByNode) = await SignAndSend(rpcTx);
+        // Only a transaction this node signed is counted: a request that brings its own signature keeps it, so its from need
+        // not be the account that signed it. Nor is a nonce other than the one the tracker gave: a replacement below it, or a
+        // nonce past a gap, which waits at the sequencer.
+        if (signedByNode && nonce == nextNonce && result.Result.ResultType == ResultType.Success)
+            nonceTracker.OnForwarded(from, nonce);
+
+        return result;
+    }
+
+    private ulong? GetNextForwardedNonce(Address from, bool hasNonce)
+    {
+        try
+        {
+            return nonceTracker.GetNextNonce(from);
+        }
+        // The next nonce is read only to count the forward. A request that has its nonce does not need it, so it is forwarded
+        // uncounted whatever stops the read: missing or corrupt state, a flat snapshot that cannot be gathered, a closing store.
+        catch (Exception e) when (hasNonce)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Forwarding a transaction of {from} uncounted, as its next nonce cannot be read: {e.Message}");
+            return null;
+        }
+    }
+
+    private async Task<(ResultWrapper<Hash256> Result, bool SignedByNode)> SignAndSend(SignableTransactionForRpc rpcTx)
+    {
+        Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
-            return ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput);
+            return (ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput), false);
         }
 
         tx.ChainId = _blockchainBridge.GetChainId();
-        tx.SenderAddress ??= ecdsa.RecoverAddress(tx);
-
         if (tx.SenderAddress is null)
         {
-            return ResultWrapper<Hash256>.Fail("Failed to recover sender");
+            if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress))
+            {
+                return (ResultWrapper<Hash256>.Fail(TxPoolErrorMessages.FailedToRecoverSender, ErrorCodes.TransactionRejected), false);
+            }
+
+            tx.SenderAddress = senderAddress;
         }
 
-        await sealer.Seal(tx, TxHandlingOptions.None);
+        // The sealer keeps a signature the request brought; it signs with the wallet only a transaction without one.
+        bool unsigned = tx.Signature is null;
+        if (!sealer.TrySeal(tx, TxHandlingOptions.None))
+            return (ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked), false);
 
-        return await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
+        bool signedByNode = unsigned && tx.Signature is not null;
+        return (await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes), signedByNode);
     }
 
     public override async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
@@ -134,8 +192,27 @@ public class OptimismEthRpcModule(
             return await base.eth_sendRawTransaction(transaction);
         }
 
-        Hash256? result = await sequencerRpcClient.Post<Hash256>(nameof(eth_sendRawTransaction), transaction);
-        return result is null ? ResultWrapper<Hash256>.Fail("Failed to forward transaction") : ResultWrapper<Hash256>.Success(result);
+        string? response = await sequencerRpcClient.Post(nameof(eth_sendRawTransaction), transaction);
+        JsonRpcResponse<Hash256>? forwarded = null;
+        if (!string.IsNullOrWhiteSpace(response))
+        {
+            try
+            {
+                forwarded = TypeInfoJsonSerializer.Deserialize<JsonRpcResponse<Hash256>>(response, EthereumJsonSerializer.JsonOptions);
+            }
+            catch (JsonException e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Sequencer returned a non-JSON-RPC response to eth_sendRawTransaction: {e.Message}");
+            }
+        }
+
+        // Relay the sequencer's rejection (nonce too low, underpriced, ...) so wallets can act on it.
+        if (forwarded?.Error is { } error)
+        {
+            return ResultWrapper<Hash256>.Fail(error.Message ?? "Sequencer rejected the transaction", error.Code);
+        }
+
+        return forwarded?.Result is { } result ? ResultWrapper<Hash256>.Success(result) : ResultWrapper<Hash256>.Fail("Failed to forward transaction");
     }
 
     public override ResultWrapper<ReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
@@ -153,7 +230,7 @@ public class OptimismEthRpcModule(
         }
 
         Block block = foundBlock.Object;
-        L1BlockGasInfo l1GasInfo = new L1BlockGasInfo(block, opSpecHelper);
+        L1BlockGasInfo l1GasInfo = new(block, opSpecHelper);
         OptimismReceiptForRpc result =
             receipt is OptimismTxReceipt optimismTxReceipt
                 ? new OptimismReceiptForRpc(
@@ -204,17 +281,15 @@ public class OptimismEthRpcModule(
         }
 
         Block block = searchResult.Object;
-        if (positionIndex < 0 || positionIndex > block!.Transactions.Length - 1)
+        if (positionIndex >= block!.Transactions.Length)
         {
             return ResultWrapper<TransactionForRpc?>.Success(null);
         }
 
         Transaction transaction = block.Transactions[(int)positionIndex];
+        TxReceipt? receipt = TryGetMatchingReceipt(_receiptFinder.Get(block), transaction, (int)positionIndex);
+        transaction.SenderAddress ??= receipt?.Sender;
         RecoverTxSenderIfNeeded(transaction);
-
-        var receipt = _receiptFinder
-            .Get(block)
-            .FirstOrDefault(r => r.TxHash == transaction.Hash);
 
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
             transaction,
@@ -249,7 +324,7 @@ public class OptimismEthRpcModule(
             return ResultWrapper<BlockForRpc?>.Success(null);
         }
 
-        BlockForRpc result = new BlockForRpc(block, includeFullTransactionData: false, _specProvider, skipTxs: returnFullTransactionObjects);
+        BlockForRpc result = _blockForRpcFactory.Create(block, includeFullTransactionData: false, _specProvider, skipTxs: returnFullTransactionObjects);
 
         if (returnFullTransactionObjects)
         {
@@ -266,6 +341,7 @@ public class OptimismEthRpcModule(
                 for (int i = 0; i < txs.Length; i++)
                 {
                     Transaction tx = transactions[i];
+                    TxReceipt? receipt = TryGetMatchingReceipt(receipts, tx, i);
                     TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(
                         tx,
                         new(
@@ -275,12 +351,11 @@ public class OptimismEthRpcModule(
                             txIndex: i,
                             blockTimestamp: block.Timestamp,
                             baseFee: block.BaseFeePerGas,
-                            receipt: receipts.FirstOrDefault(r => r.TxHash?.Equals(tx.Hash) ?? false)));
+                            receipt: receipt));
 
                     if (rpcTx is DepositTransactionForRpc depositTx)
                     {
-                        OptimismTxReceipt? receipt = receipts.FirstOrDefault(r => r.TxHash?.Equals(tx.Hash) ?? false) as OptimismTxReceipt;
-                        depositTx.DepositReceiptVersion = receipt?.DepositReceiptVersion;
+                        depositTx.DepositReceiptVersion = (receipt as OptimismTxReceipt)?.DepositReceiptVersion;
                     }
 
                     txs[i] = rpcTx;
@@ -291,5 +366,30 @@ public class OptimismEthRpcModule(
         }
 
         return ResultWrapper<BlockForRpc?>.Success(result);
+    }
+
+    private static TxReceipt? TryGetMatchingReceipt(TxReceipt[] receipts, Transaction tx, int txIndex)
+    {
+        TxReceipt? indexedReceipt = txIndex < receipts.Length ? receipts[txIndex] : null;
+        if (indexedReceipt?.TxHash == tx.Hash)
+        {
+            return indexedReceipt;
+        }
+
+        if (tx.Hash is not Hash256 txHash)
+        {
+            return null;
+        }
+
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            TxReceipt receipt = receipts[i];
+            if (receipt.TxHash == txHash)
+            {
+                return receipt;
+            }
+        }
+
+        return null;
     }
 }

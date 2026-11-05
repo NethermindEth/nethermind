@@ -31,5 +31,8 @@
   },
   "Merge": {
     "Enabled": false
+  },
+  "FlatDb": {
+    "PersistenceWriteBufferFloor": 67108864
   }
 }

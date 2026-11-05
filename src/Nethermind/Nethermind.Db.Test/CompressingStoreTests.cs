@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test;
-using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
-namespace Nethermind.Store.Test;
+namespace Nethermind.Db.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class CompressingStoreTests
@@ -21,8 +19,11 @@ public class CompressingStoreTests
 
         ctx.Compressed[Key] = null;
 
-        Assert.That(ctx.Compressed[Key], Is.Null);
-        Assert.That(ctx.Wrapped[Key], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Compressed[Key], Is.Null);
+            Assert.That(ctx.Wrapped[Key], Is.Null);
+        }
     }
 
     [Test]
@@ -56,11 +57,14 @@ public class CompressingStoreTests
     {
         Context ctx = new();
 
-        Rlp encoded = new AccountDecoder().Encode(new(1));
+        Rlp encoded = Rlp.Encode(new Account(1));
         ctx.Compressed[Key] = encoded.Bytes;
 
-        Assert.That(encoded.Bytes, Is.EqualTo(ctx.Compressed[Key]).AsCollection);
-        ctx.Wrapped[Key]!.Length.Should().Be(5);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded.Bytes, Is.EqualTo(ctx.Compressed[Key]).AsCollection);
+            Assert.That(ctx.Wrapped[Key]!.Length, Is.EqualTo(5));
+        }
     }
 
     [Test]
@@ -68,7 +72,7 @@ public class CompressingStoreTests
     {
         Context ctx = new();
 
-        Rlp encoded = new AccountDecoder().Encode(new(1));
+        Rlp encoded = Rlp.Encode(new Account(1));
         ctx.Compressed.PutSpan(Key, encoded.Bytes);
 
         Assert.That(encoded.Bytes, Is.EqualTo(ctx.Compressed[Key]).AsCollection);
@@ -81,7 +85,7 @@ public class CompressingStoreTests
         {
             ctx.Compressed.DangerousReleaseMemory(span);
         }
-        ctx.Wrapped[Key]!.Length.Should().Be(5);
+        Assert.That(ctx.Wrapped[Key]!.Length, Is.EqualTo(5));
     }
 
     [Test]
@@ -105,9 +109,12 @@ public class CompressingStoreTests
             writeBatch[Key] = EOABytes;
         }
 
-        Assert.That(EOABytes, Is.EqualTo(ctx.Compressed[Key]).AsCollection);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EOABytes, Is.EqualTo(ctx.Compressed[Key]).AsCollection);
 
-        ctx.Wrapped[Key]!.Length.Should().Be(5);
+            Assert.That(ctx.Wrapped[Key]!.Length, Is.EqualTo(5));
+        }
     }
 
     [Test]
@@ -123,7 +130,7 @@ public class CompressingStoreTests
 
         tunable.Tune(ITunableDb.TuneType.HeavyWrite);
 
-        ctx.Wrapped.WasTunedWith(ITunableDb.TuneType.HeavyWrite).Should().BeTrue();
+        Assert.That(ctx.Wrapped.WasTunedWith(ITunableDb.TuneType.HeavyWrite), Is.True);
     }
 
     private class Context
@@ -139,7 +146,7 @@ public class CompressingStoreTests
         }
     }
 
-    private static readonly byte[] EOABytes = new AccountDecoder().Encode((Account)new(1)).Bytes;
+    private static readonly byte[] EOABytes = Rlp.Encode(new Account(1)).Bytes;
 
     private static readonly byte[] Key = { 1 };
 }

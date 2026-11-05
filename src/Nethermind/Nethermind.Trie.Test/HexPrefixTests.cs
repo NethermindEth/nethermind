@@ -27,8 +27,11 @@ public class HexPrefixTests
         byte[] output = HexPrefix.ToBytes(new[] { nibble1, nibble2, nibble3 }, flag);
 
         Assert.That(output.Length, Is.EqualTo(2));
-        Assert.That(output[0], Is.EqualTo(byte1));
-        Assert.That(output[1], Is.EqualTo(byte2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(output[0], Is.EqualTo(byte1));
+            Assert.That(output[1], Is.EqualTo(byte2));
+        }
     }
 
     [TestCase(false, (byte)3, (byte)7, (byte)0, (byte)55)]
@@ -38,8 +41,11 @@ public class HexPrefixTests
         byte[] output = HexPrefix.ToBytes(new[] { nibble1, nibble2 }, flag);
 
         Assert.That(output.Length, Is.EqualTo(2));
-        Assert.That(output[0], Is.EqualTo(byte1));
-        Assert.That(output[1], Is.EqualTo(byte2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(output[0], Is.EqualTo(byte1));
+            Assert.That(output[1], Is.EqualTo(byte2));
+        }
     }
 
     [TestCase(false, (byte)3, (byte)7, (byte)0, (byte)55)]
@@ -48,10 +54,16 @@ public class HexPrefixTests
         byte byte2)
     {
         (byte[] key, bool isLeaf) = HexPrefix.FromBytes(new[] { byte1, byte2 });
-        Assert.That(isLeaf, Is.EqualTo(expectedFlag));
-        Assert.That(key.Length, Is.EqualTo(2));
-        Assert.That(key[0], Is.EqualTo(nibble1));
-        Assert.That(key[1], Is.EqualTo(nibble2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isLeaf, Is.EqualTo(expectedFlag));
+            Assert.That(key.Length, Is.EqualTo(2));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(key[0], Is.EqualTo(nibble1));
+            Assert.That(key[1], Is.EqualTo(nibble2));
+        }
     }
 
     [TestCase(false, (byte)3, (byte)19)]
@@ -60,8 +72,11 @@ public class HexPrefixTests
     {
         (byte[] key, bool isLeaf) = HexPrefix.FromBytes(new[] { byte1 });
 
-        Assert.That(isLeaf, Is.EqualTo(expectedFlag));
-        Assert.That(key.Length, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isLeaf, Is.EqualTo(expectedFlag));
+            Assert.That(key.Length, Is.EqualTo(1));
+        }
         Assert.That(key[0], Is.EqualTo(nibble1));
     }
 
@@ -71,11 +86,17 @@ public class HexPrefixTests
         byte byte1, byte byte2)
     {
         (byte[] key, bool isLeaf) = HexPrefix.FromBytes(new[] { byte1, byte2 });
-        Assert.That(isLeaf, Is.EqualTo(expectedFlag));
-        Assert.That(key.Length, Is.EqualTo(3));
-        Assert.That(key[0], Is.EqualTo(nibble1));
-        Assert.That(key[1], Is.EqualTo(nibble2));
-        Assert.That(key[2], Is.EqualTo(nibble3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isLeaf, Is.EqualTo(expectedFlag));
+            Assert.That(key.Length, Is.EqualTo(3));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(key[0], Is.EqualTo(nibble1));
+            Assert.That(key[1], Is.EqualTo(nibble2));
+            Assert.That(key[2], Is.EqualTo(nibble3));
+        }
     }
 
     // According to: https://ethereum.github.io/yellowpaper/paper.pdf#appendix.C
@@ -86,6 +107,126 @@ public class HexPrefixTests
     {
         byte[] result = Nibbles.ToCompactHexEncoding(nibbles);
         Assert.That(bytes, Is.EqualTo(result).AsCollection);
+    }
+
+    private static readonly int[] EncodeNibbleCounts = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 16, 17, 18, 19, 30, 31, 32, 33, 34, 35, 62, 63, 64, 65, 66, 67, 97, 128, 129, 130, 131, 200];
+
+    /// <remarks>Packing picks its path by length, so the lengths sit on and next to each path boundary.</remarks>
+    [Test]
+    public void Encode_matches_the_scalar_reference_over_every_length(
+        [ValueSource(nameof(EncodeNibbleCounts))] int nibbleCount,
+        [Values(false, true)] bool isLeaf)
+    {
+        byte[] nibbles = NibblePath(nibbleCount);
+        byte[] expected = new byte[nibbleCount / 2 + 1];
+        expected[0] = (byte)(isLeaf ? 0x20 : 0x00);
+        int pathIndex = 0;
+        if ((nibbleCount & 1) != 0)
+        {
+            expected[0] += (byte)(0x10 + nibbles[0]);
+            pathIndex = 1;
+        }
+
+        for (int i = 1; pathIndex < nibbleCount; i++, pathIndex += 2)
+        {
+            expected[i] = (byte)(16 * nibbles[pathIndex] + nibbles[pathIndex + 1]);
+        }
+
+        Assert.That(HexPrefix.ToBytes(nibbles, isLeaf), Is.EqualTo(expected).AsCollection);
+    }
+
+    private static readonly int[] NibblesToBytesCounts = [0, 1, 2, 4, 6, 8, 9, 10, 14, 16, 18, 30, 32, 33, 34, 62, 64, 66, 96, 128, 130, 131, 200];
+
+    [Test]
+    public void Nibbles_to_bytes_matches_the_scalar_reference(
+        [ValueSource(nameof(NibblesToBytesCounts))] int nibbleCount)
+    {
+        byte[] nibbles = NibblePath(nibbleCount);
+        byte[] expected = new byte[nibbleCount / 2];
+        for (int i = 0; i < expected.Length; i++)
+        {
+            expected[i] = (byte)((nibbles[2 * i] << 4) | nibbles[(2 * i) + 1]);
+        }
+
+        Assert.That(Nibbles.ToBytes(nibbles), Is.EqualTo(expected).AsCollection);
+    }
+
+    private static readonly int[] DecodeByteCounts = [3, 4, 5, 6, 7, 8, 9, 10, 16, 17, 18, 32, 33, 34, 49, 65];
+
+    /// <remarks>Expanding picks its path by length, so the lengths sit on and next to each path boundary.</remarks>
+    [Test]
+    public void Decode_matches_the_scalar_reference_over_every_length(
+        [ValueSource(nameof(DecodeByteCounts))] int byteCount,
+        [Values] bool isOdd,
+        [Values] bool isLeaf)
+    {
+        byte[] encoded = ByteSequence(byteCount, first: 0x9C);
+        byte firstNibble = (byte)(encoded[0] & 0x0F);
+        encoded[0] = (byte)((isLeaf ? 0x20 : 0x00) | (isOdd ? 0x10 | firstNibble : 0x00));
+
+        byte[] expected = new byte[(byteCount - 1) * 2 + (isOdd ? 1 : 0)];
+        int index = 0;
+        if (isOdd)
+        {
+            expected[index++] = firstNibble;
+        }
+
+        for (int i = 1; i < byteCount; i++)
+        {
+            expected[index++] = (byte)(encoded[i] >> 4);
+            expected[index++] = (byte)(encoded[i] & 0x0F);
+        }
+
+        (byte[] key, bool decodedIsLeaf) = HexPrefix.FromBytes(encoded);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decodedIsLeaf, Is.EqualTo(isLeaf));
+            Assert.That(key, Is.EqualTo(expected).AsCollection);
+        }
+    }
+
+    [Test]
+    public void Compact_hex_encoding_matches_the_scalar_reference(
+        [Values(0, 1, 2, 3, 4, 5, 8, 9, 16, 17, 33)] int nibbleCount)
+    {
+        byte[] nibbles = NibblePath(nibbleCount);
+        int oddity = nibbleCount % 2;
+        byte[] expected = new byte[nibbleCount / 2 + 1];
+        for (int i = 0; i < expected.Length - 1; i++)
+        {
+            expected[i + 1] = (byte)((nibbles[(2 * i) + oddity] << 4) | nibbles[(2 * i) + 1 + oddity]);
+        }
+
+        if (oddity == 1)
+        {
+            expected[0] = (byte)(0x10 | nibbles[0]);
+        }
+
+        Assert.That(Nibbles.ToCompactHexEncoding(nibbles), Is.EqualTo(expected).AsCollection);
+    }
+
+    /// <summary>Nibbles where no 16-nibble window repeats within 256 nibbles, so a misplaced block cannot pass.</summary>
+    private static byte[] NibblePath(int nibbleCount)
+    {
+        byte[] nibbles = new byte[nibbleCount];
+        for (int i = 0; i < nibbleCount; i++)
+        {
+            nibbles[i] = (byte)(((i * 7) + ((i >> 4) * 5) + 3) & 15);
+        }
+
+        return nibbles;
+    }
+
+    /// <summary>Every byte differs from its neighbours in both nibbles, so a misplaced byte cannot pass.</summary>
+    private static byte[] ByteSequence(int count, byte first)
+    {
+        byte[] bytes = new byte[count];
+        for (int i = 0; i < count; i++)
+        {
+            bytes[i] = (byte)(first + (i * 0x2B));
+        }
+
+        return bytes;
     }
 
     // Just pack nibbles to bytes
@@ -108,8 +249,11 @@ public class HexPrefixTests
             byte[] path2 = HexPrefix.GetArray(new byte[] { i });
 
             // Should return the same cached instance
-            Assert.That(ReferenceEquals(path1, path2), Is.True, $"Single nibble {i} should return cached array");
-            Assert.That(path1.Length, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ReferenceEquals(path1, path2), Is.True, $"Single nibble {i} should return cached array");
+                Assert.That(path1.Length, Is.EqualTo(1));
+            }
             Assert.That(path1[0], Is.EqualTo(i));
         }
     }
@@ -126,10 +270,16 @@ public class HexPrefixTests
                 byte[] path2 = HexPrefix.GetArray(new byte[] { i, j });
 
                 // Should return the same cached instance
-                Assert.That(ReferenceEquals(path1, path2), Is.True, $"Double nibble [{i},{j}] should return cached array");
-                Assert.That(path1.Length, Is.EqualTo(2));
-                Assert.That(path1[0], Is.EqualTo(i));
-                Assert.That(path1[1], Is.EqualTo(j));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(ReferenceEquals(path1, path2), Is.True, $"Double nibble [{i},{j}] should return cached array");
+                    Assert.That(path1.Length, Is.EqualTo(2));
+                }
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(path1[0], Is.EqualTo(i));
+                    Assert.That(path1[1], Is.EqualTo(j));
+                }
             }
         }
     }
@@ -148,11 +298,17 @@ public class HexPrefixTests
                     byte[] path2 = HexPrefix.GetArray(new byte[] { i, j, k });
 
                     // Should return the same cached instance
-                    Assert.That(ReferenceEquals(path1, path2), Is.True, $"Triple nibble [{i},{j},{k}] should return cached array");
-                    Assert.That(path1.Length, Is.EqualTo(3));
-                    Assert.That(path1[0], Is.EqualTo(i));
-                    Assert.That(path1[1], Is.EqualTo(j));
-                    Assert.That(path1[2], Is.EqualTo(k));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(ReferenceEquals(path1, path2), Is.True, $"Triple nibble [{i},{j},{k}] should return cached array");
+                        Assert.That(path1.Length, Is.EqualTo(3));
+                    }
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(path1[0], Is.EqualTo(i));
+                        Assert.That(path1[1], Is.EqualTo(j));
+                        Assert.That(path1[2], Is.EqualTo(k));
+                    }
                 }
             }
         }
@@ -164,23 +320,32 @@ public class HexPrefixTests
         // Test single nibble with value >= 16
         byte[] path1 = HexPrefix.GetArray(new byte[] { 16 });
         byte[] path2 = HexPrefix.GetArray(new byte[] { 16 });
-        Assert.That(ReferenceEquals(path1, path2), Is.False, "Should allocate new array for nibble value >= 16");
-        Assert.That(path1[0], Is.EqualTo(16));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReferenceEquals(path1, path2), Is.False, "Should allocate new array for nibble value >= 16");
+            Assert.That(path1[0], Is.EqualTo(16));
+        }
 
         // Test double nibble with value >= 16
         byte[] path3 = HexPrefix.GetArray(new byte[] { 5, 16 });
         byte[] path4 = HexPrefix.GetArray(new byte[] { 5, 16 });
-        Assert.That(ReferenceEquals(path3, path4), Is.False, "Should allocate new array for nibble value >= 16");
-        Assert.That(path3[0], Is.EqualTo(5));
-        Assert.That(path3[1], Is.EqualTo(16));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReferenceEquals(path3, path4), Is.False, "Should allocate new array for nibble value >= 16");
+            Assert.That(path3[0], Is.EqualTo(5));
+            Assert.That(path3[1], Is.EqualTo(16));
+        }
 
         // Test triple nibble with value >= 16
         byte[] path5 = HexPrefix.GetArray(new byte[] { 3, 7, 20 });
         byte[] path6 = HexPrefix.GetArray(new byte[] { 3, 7, 20 });
-        Assert.That(ReferenceEquals(path5, path6), Is.False, "Should allocate new array for nibble value >= 16");
-        Assert.That(path5[0], Is.EqualTo(3));
-        Assert.That(path5[1], Is.EqualTo(7));
-        Assert.That(path5[2], Is.EqualTo(20));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReferenceEquals(path5, path6), Is.False, "Should allocate new array for nibble value >= 16");
+            Assert.That(path5[0], Is.EqualTo(3));
+            Assert.That(path5[1], Is.EqualTo(7));
+            Assert.That(path5[2], Is.EqualTo(20));
+        }
     }
 
     [Test]
@@ -190,8 +355,11 @@ public class HexPrefixTests
         byte[] path1 = HexPrefix.GetArray(new byte[] { 1, 2, 3, 4 });
         byte[] path2 = HexPrefix.GetArray(new byte[] { 1, 2, 3, 4 });
 
-        Assert.That(ReferenceEquals(path1, path2), Is.False, "Should allocate new array for paths longer than 3");
-        Assert.That(path1.Length, Is.EqualTo(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReferenceEquals(path1, path2), Is.False, "Should allocate new array for paths longer than 3");
+            Assert.That(path1.Length, Is.EqualTo(4));
+        }
         Assert.That(path1, Is.EqualTo(new byte[] { 1, 2, 3, 4 }).AsCollection);
     }
 
@@ -211,8 +379,11 @@ public class HexPrefixTests
             byte[] result1 = HexPrefix.PrependNibble(i, []);
             byte[] result2 = HexPrefix.PrependNibble(i, []);
 
-            Assert.That(ReferenceEquals(result1, result2), Is.True, $"PrependNibble({i}, []) should return cached array");
-            Assert.That(result1.Length, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ReferenceEquals(result1, result2), Is.True, $"PrependNibble({i}, []) should return cached array");
+                Assert.That(result1.Length, Is.EqualTo(1));
+            }
             Assert.That(result1[0], Is.EqualTo(i));
         }
     }
@@ -228,10 +399,16 @@ public class HexPrefixTests
                 byte[] result1 = HexPrefix.PrependNibble(i, new byte[] { j });
                 byte[] result2 = HexPrefix.PrependNibble(i, new byte[] { j });
 
-                Assert.That(ReferenceEquals(result1, result2), Is.True, $"PrependNibble({i}, [{j}]) should return cached array");
-                Assert.That(result1.Length, Is.EqualTo(2));
-                Assert.That(result1[0], Is.EqualTo(i));
-                Assert.That(result1[1], Is.EqualTo(j));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(ReferenceEquals(result1, result2), Is.True, $"PrependNibble({i}, [{j}]) should return cached array");
+                    Assert.That(result1.Length, Is.EqualTo(2));
+                }
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result1[0], Is.EqualTo(i));
+                    Assert.That(result1[1], Is.EqualTo(j));
+                }
             }
         }
     }
@@ -249,11 +426,17 @@ public class HexPrefixTests
                     byte[] result1 = HexPrefix.PrependNibble(i, new byte[] { j, k });
                     byte[] result2 = HexPrefix.PrependNibble(i, new byte[] { j, k });
 
-                    Assert.That(ReferenceEquals(result1, result2), Is.True, $"PrependNibble({i}, [{j},{k}]) should return cached array");
-                    Assert.That(result1.Length, Is.EqualTo(3));
-                    Assert.That(result1[0], Is.EqualTo(i));
-                    Assert.That(result1[1], Is.EqualTo(j));
-                    Assert.That(result1[2], Is.EqualTo(k));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(ReferenceEquals(result1, result2), Is.True, $"PrependNibble({i}, [{j},{k}]) should return cached array");
+                        Assert.That(result1.Length, Is.EqualTo(3));
+                    }
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(result1[0], Is.EqualTo(i));
+                        Assert.That(result1[1], Is.EqualTo(j));
+                        Assert.That(result1[2], Is.EqualTo(k));
+                    }
                 }
             }
         }
@@ -265,8 +448,11 @@ public class HexPrefixTests
         // Test with nibble value >= 16
         byte[] result1 = HexPrefix.PrependNibble(16, []);
         byte[] result2 = HexPrefix.PrependNibble(16, []);
-        Assert.That(ReferenceEquals(result1, result2), Is.False, "Should allocate new array for nibble value >= 16");
-        Assert.That(result1.Length, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReferenceEquals(result1, result2), Is.False, "Should allocate new array for nibble value >= 16");
+            Assert.That(result1.Length, Is.EqualTo(1));
+        }
         Assert.That(result1[0], Is.EqualTo(16));
     }
 
@@ -277,8 +463,11 @@ public class HexPrefixTests
         byte[] result1 = HexPrefix.PrependNibble(1, new byte[] { 2, 3, 4 });
         byte[] result2 = HexPrefix.PrependNibble(1, new byte[] { 2, 3, 4 });
 
-        Assert.That(ReferenceEquals(result1, result2), Is.False, "Should allocate new array for length > 3");
-        Assert.That(result1.Length, Is.EqualTo(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReferenceEquals(result1, result2), Is.False, "Should allocate new array for length > 3");
+            Assert.That(result1.Length, Is.EqualTo(4));
+        }
         Assert.That(result1, Is.EqualTo(new byte[] { 1, 2, 3, 4 }).AsCollection);
     }
 
@@ -297,15 +486,21 @@ public class HexPrefixTests
         {
             byte[] result1 = HexPrefix.ConcatNibbles(new byte[] { i }, []);
             byte[] result2 = HexPrefix.ConcatNibbles(new byte[] { i }, []);
-            Assert.That(ReferenceEquals(result1, result2), Is.True, $"ConcatNibbles([{i}], []) should return cached array");
-            Assert.That(result1.Length, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ReferenceEquals(result1, result2), Is.True, $"ConcatNibbles([{i}], []) should return cached array");
+                Assert.That(result1.Length, Is.EqualTo(1));
+            }
             Assert.That(result1[0], Is.EqualTo(i));
 
             // Test [] + [1] = [1]
             byte[] result3 = HexPrefix.ConcatNibbles([], new byte[] { i });
             byte[] result4 = HexPrefix.ConcatNibbles([], new byte[] { i });
-            Assert.That(ReferenceEquals(result3, result4), Is.True, $"ConcatNibbles([], [{i}]) should return cached array");
-            Assert.That(result3.Length, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ReferenceEquals(result3, result4), Is.True, $"ConcatNibbles([], [{i}]) should return cached array");
+                Assert.That(result3.Length, Is.EqualTo(1));
+            }
             Assert.That(result3[0], Is.EqualTo(i));
         }
     }
@@ -321,26 +516,44 @@ public class HexPrefixTests
                 // Test [i,j] + [] = [i,j]
                 byte[] result1 = HexPrefix.ConcatNibbles(new byte[] { i, j }, []);
                 byte[] result2 = HexPrefix.ConcatNibbles(new byte[] { i, j }, []);
-                Assert.That(ReferenceEquals(result1, result2), Is.True, $"ConcatNibbles([{i},{j}], []) should return cached array");
-                Assert.That(result1.Length, Is.EqualTo(2));
-                Assert.That(result1[0], Is.EqualTo(i));
-                Assert.That(result1[1], Is.EqualTo(j));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(ReferenceEquals(result1, result2), Is.True, $"ConcatNibbles([{i},{j}], []) should return cached array");
+                    Assert.That(result1.Length, Is.EqualTo(2));
+                }
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result1[0], Is.EqualTo(i));
+                    Assert.That(result1[1], Is.EqualTo(j));
+                }
 
                 // Test [i] + [j] = [i,j]
                 byte[] result3 = HexPrefix.ConcatNibbles(new byte[] { i }, new byte[] { j });
                 byte[] result4 = HexPrefix.ConcatNibbles(new byte[] { i }, new byte[] { j });
-                Assert.That(ReferenceEquals(result3, result4), Is.True, $"ConcatNibbles([{i}], [{j}]) should return cached array");
-                Assert.That(result3.Length, Is.EqualTo(2));
-                Assert.That(result3[0], Is.EqualTo(i));
-                Assert.That(result3[1], Is.EqualTo(j));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(ReferenceEquals(result3, result4), Is.True, $"ConcatNibbles([{i}], [{j}]) should return cached array");
+                    Assert.That(result3.Length, Is.EqualTo(2));
+                }
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result3[0], Is.EqualTo(i));
+                    Assert.That(result3[1], Is.EqualTo(j));
+                }
 
                 // Test [] + [i,j] = [i,j]
                 byte[] result5 = HexPrefix.ConcatNibbles([], new byte[] { i, j });
                 byte[] result6 = HexPrefix.ConcatNibbles([], new byte[] { i, j });
-                Assert.That(ReferenceEquals(result5, result6), Is.True, $"ConcatNibbles([], [{i},{j}]) should return cached array");
-                Assert.That(result5.Length, Is.EqualTo(2));
-                Assert.That(result5[0], Is.EqualTo(i));
-                Assert.That(result5[1], Is.EqualTo(j));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(ReferenceEquals(result5, result6), Is.True, $"ConcatNibbles([], [{i},{j}]) should return cached array");
+                    Assert.That(result5.Length, Is.EqualTo(2));
+                }
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result5[0], Is.EqualTo(i));
+                    Assert.That(result5[1], Is.EqualTo(j));
+                }
             }
         }
     }
@@ -358,38 +571,62 @@ public class HexPrefixTests
                     // Test [i,j,k] + [] = [i,j,k]
                     byte[] result1 = HexPrefix.ConcatNibbles(new byte[] { i, j, k }, []);
                     byte[] result2 = HexPrefix.ConcatNibbles(new byte[] { i, j, k }, []);
-                    Assert.That(ReferenceEquals(result1, result2), Is.True, $"ConcatNibbles([{i},{j},{k}], []) should return cached array");
-                    Assert.That(result1.Length, Is.EqualTo(3));
-                    Assert.That(result1[0], Is.EqualTo(i));
-                    Assert.That(result1[1], Is.EqualTo(j));
-                    Assert.That(result1[2], Is.EqualTo(k));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(ReferenceEquals(result1, result2), Is.True, $"ConcatNibbles([{i},{j},{k}], []) should return cached array");
+                        Assert.That(result1.Length, Is.EqualTo(3));
+                    }
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(result1[0], Is.EqualTo(i));
+                        Assert.That(result1[1], Is.EqualTo(j));
+                        Assert.That(result1[2], Is.EqualTo(k));
+                    }
 
                     // Test [i] + [j,k] = [i,j,k]
                     byte[] result3 = HexPrefix.ConcatNibbles(new byte[] { i }, new byte[] { j, k });
                     byte[] result4 = HexPrefix.ConcatNibbles(new byte[] { i }, new byte[] { j, k });
-                    Assert.That(ReferenceEquals(result3, result4), Is.True, $"ConcatNibbles([{i}], [{j},{k}]) should return cached array");
-                    Assert.That(result3.Length, Is.EqualTo(3));
-                    Assert.That(result3[0], Is.EqualTo(i));
-                    Assert.That(result3[1], Is.EqualTo(j));
-                    Assert.That(result3[2], Is.EqualTo(k));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(ReferenceEquals(result3, result4), Is.True, $"ConcatNibbles([{i}], [{j},{k}]) should return cached array");
+                        Assert.That(result3.Length, Is.EqualTo(3));
+                    }
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(result3[0], Is.EqualTo(i));
+                        Assert.That(result3[1], Is.EqualTo(j));
+                        Assert.That(result3[2], Is.EqualTo(k));
+                    }
 
                     // Test [i,j] + [k] = [i,j,k]
                     byte[] result5 = HexPrefix.ConcatNibbles(new byte[] { i, j }, new byte[] { k });
                     byte[] result6 = HexPrefix.ConcatNibbles(new byte[] { i, j }, new byte[] { k });
-                    Assert.That(ReferenceEquals(result5, result6), Is.True, $"ConcatNibbles([{i},{j}], [{k}]) should return cached array");
-                    Assert.That(result5.Length, Is.EqualTo(3));
-                    Assert.That(result5[0], Is.EqualTo(i));
-                    Assert.That(result5[1], Is.EqualTo(j));
-                    Assert.That(result5[2], Is.EqualTo(k));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(ReferenceEquals(result5, result6), Is.True, $"ConcatNibbles([{i},{j}], [{k}]) should return cached array");
+                        Assert.That(result5.Length, Is.EqualTo(3));
+                    }
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(result5[0], Is.EqualTo(i));
+                        Assert.That(result5[1], Is.EqualTo(j));
+                        Assert.That(result5[2], Is.EqualTo(k));
+                    }
 
                     // Test [] + [i,j,k] = [i,j,k]
                     byte[] result7 = HexPrefix.ConcatNibbles([], new byte[] { i, j, k });
                     byte[] result8 = HexPrefix.ConcatNibbles([], new byte[] { i, j, k });
-                    Assert.That(ReferenceEquals(result7, result8), Is.True, $"ConcatNibbles([], [{i},{j},{k}]) should return cached array");
-                    Assert.That(result7.Length, Is.EqualTo(3));
-                    Assert.That(result7[0], Is.EqualTo(i));
-                    Assert.That(result7[1], Is.EqualTo(j));
-                    Assert.That(result7[2], Is.EqualTo(k));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(ReferenceEquals(result7, result8), Is.True, $"ConcatNibbles([], [{i},{j},{k}]) should return cached array");
+                        Assert.That(result7.Length, Is.EqualTo(3));
+                    }
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(result7[0], Is.EqualTo(i));
+                        Assert.That(result7[1], Is.EqualTo(j));
+                        Assert.That(result7[2], Is.EqualTo(k));
+                    }
                 }
             }
         }
@@ -402,16 +639,22 @@ public class HexPrefixTests
         byte[] result1 = HexPrefix.ConcatNibbles(new byte[] { 1, 2 }, new byte[] { 3, 4 });
         byte[] result2 = HexPrefix.ConcatNibbles(new byte[] { 1, 2 }, new byte[] { 3, 4 });
 
-        Assert.That(ReferenceEquals(result1, result2), Is.False, "Should allocate new array for length > 3");
-        Assert.That(result1.Length, Is.EqualTo(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReferenceEquals(result1, result2), Is.False, "Should allocate new array for length > 3");
+            Assert.That(result1.Length, Is.EqualTo(4));
+        }
         Assert.That(result1, Is.EqualTo(new byte[] { 1, 2, 3, 4 }).AsCollection);
 
         // Test longer arrays
         byte[] result3 = HexPrefix.ConcatNibbles(new byte[] { 1, 2, 3 }, new byte[] { 4, 5 });
         byte[] result4 = HexPrefix.ConcatNibbles(new byte[] { 1, 2, 3 }, new byte[] { 4, 5 });
 
-        Assert.That(ReferenceEquals(result3, result4), Is.False, "Should allocate new array for length > 3");
-        Assert.That(result3.Length, Is.EqualTo(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReferenceEquals(result3, result4), Is.False, "Should allocate new array for length > 3");
+            Assert.That(result3.Length, Is.EqualTo(5));
+        }
         Assert.That(result3, Is.EqualTo(new byte[] { 1, 2, 3, 4, 5 }).AsCollection);
     }
 
@@ -429,46 +672,76 @@ public class HexPrefixTests
         // Test single nibble with value >= 16
         byte[] result1 = HexPrefix.ConcatNibbles(new byte[] { 16 }, []);
         byte[] result2 = HexPrefix.ConcatNibbles(new byte[] { 16 }, []);
-        Assert.That(ReferenceEquals(result1, result2), Is.False, "Should allocate new array for nibble value >= 16");
-        Assert.That(result1.Length, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReferenceEquals(result1, result2), Is.False, "Should allocate new array for nibble value >= 16");
+            Assert.That(result1.Length, Is.EqualTo(1));
+        }
         Assert.That(result1[0], Is.EqualTo(16));
 
         byte[] result3 = HexPrefix.ConcatNibbles([], new byte[] { 16 });
         byte[] result4 = HexPrefix.ConcatNibbles([], new byte[] { 16 });
-        Assert.That(ReferenceEquals(result3, result4), Is.False, "Should allocate new array for nibble value >= 16");
-        Assert.That(result3.Length, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReferenceEquals(result3, result4), Is.False, "Should allocate new array for nibble value >= 16");
+            Assert.That(result3.Length, Is.EqualTo(1));
+        }
         Assert.That(result3[0], Is.EqualTo(16));
 
         // Test double nibble with value >= 16
         byte[] result5 = HexPrefix.ConcatNibbles(new byte[] { 5 }, new byte[] { 16 });
         byte[] result6 = HexPrefix.ConcatNibbles(new byte[] { 5 }, new byte[] { 16 });
-        Assert.That(ReferenceEquals(result5, result6), Is.False, "Should allocate new array for nibble value >= 16");
-        Assert.That(result5.Length, Is.EqualTo(2));
-        Assert.That(result5[0], Is.EqualTo(5));
-        Assert.That(result5[1], Is.EqualTo(16));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReferenceEquals(result5, result6), Is.False, "Should allocate new array for nibble value >= 16");
+            Assert.That(result5.Length, Is.EqualTo(2));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result5[0], Is.EqualTo(5));
+            Assert.That(result5[1], Is.EqualTo(16));
+        }
 
         byte[] result7 = HexPrefix.ConcatNibbles(new byte[] { 16, 5 }, []);
         byte[] result8 = HexPrefix.ConcatNibbles(new byte[] { 16, 5 }, []);
-        Assert.That(ReferenceEquals(result7, result8), Is.False, "Should allocate new array for nibble value >= 16");
-        Assert.That(result7.Length, Is.EqualTo(2));
-        Assert.That(result7[0], Is.EqualTo(16));
-        Assert.That(result7[1], Is.EqualTo(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReferenceEquals(result7, result8), Is.False, "Should allocate new array for nibble value >= 16");
+            Assert.That(result7.Length, Is.EqualTo(2));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result7[0], Is.EqualTo(16));
+            Assert.That(result7[1], Is.EqualTo(5));
+        }
 
         // Test triple nibble with value >= 16
         byte[] result9 = HexPrefix.ConcatNibbles(new byte[] { 3, 7 }, new byte[] { 20 });
         byte[] result10 = HexPrefix.ConcatNibbles(new byte[] { 3, 7 }, new byte[] { 20 });
-        Assert.That(ReferenceEquals(result9, result10), Is.False, "Should allocate new array for nibble value >= 16");
-        Assert.That(result9.Length, Is.EqualTo(3));
-        Assert.That(result9[0], Is.EqualTo(3));
-        Assert.That(result9[1], Is.EqualTo(7));
-        Assert.That(result9[2], Is.EqualTo(20));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReferenceEquals(result9, result10), Is.False, "Should allocate new array for nibble value >= 16");
+            Assert.That(result9.Length, Is.EqualTo(3));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result9[0], Is.EqualTo(3));
+            Assert.That(result9[1], Is.EqualTo(7));
+            Assert.That(result9[2], Is.EqualTo(20));
+        }
 
         byte[] result11 = HexPrefix.ConcatNibbles(new byte[] { 3 }, new byte[] { 16, 7 });
         byte[] result12 = HexPrefix.ConcatNibbles(new byte[] { 3 }, new byte[] { 16, 7 });
-        Assert.That(ReferenceEquals(result11, result12), Is.False, "Should allocate new array for nibble value >= 16");
-        Assert.That(result11.Length, Is.EqualTo(3));
-        Assert.That(result11[0], Is.EqualTo(3));
-        Assert.That(result11[1], Is.EqualTo(16));
-        Assert.That(result11[2], Is.EqualTo(7));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReferenceEquals(result11, result12), Is.False, "Should allocate new array for nibble value >= 16");
+            Assert.That(result11.Length, Is.EqualTo(3));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result11[0], Is.EqualTo(3));
+            Assert.That(result11[1], Is.EqualTo(16));
+            Assert.That(result11[2], Is.EqualTo(7));
+        }
     }
 }

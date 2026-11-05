@@ -1,0 +1,17 @@
+[
+  {
+    "run": "EveryBlock",
+    "test": {
+      "description": "All events"
+    },
+    "request": {
+      "jsonrpc":"2.0",
+      "method":"eth_getLogs",
+      "params":[{
+        "fromBlock":"{{Hex(Recent.Number)}}",
+        "toBlock":"{{Hex(Recent.Number)}}"
+      }],
+      "id": "{{Request.Number}}"
+    }
+  }
+]

@@ -33,6 +33,12 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
     private static readonly Task<bool> True = Task.FromResult(true);
     private static readonly Task<bool> False = Task.FromResult(false);
 
+    // Warmup and live RPC use distinct secrets on shared thread-pool threads.
+    [ThreadStatic]
+    private static HMACSHA256? _hmac;
+    [ThreadStatic]
+    private static byte[]? _hmacSecret;
+
     // Known HS256 JWT header Base64Url encodings used by consensus clients
     // {"alg":"HS256","typ":"JWT"}
     private const string HeaderAlgTyp = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
@@ -47,11 +53,8 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
     private readonly ILogger _logger;
     private readonly ITimestamper _timestamper;
 
-    // Single entry cache: last successfully validated token (allocation-free)
-    // Write order: iat first, then token with Volatile.Write (release fence)
-    // Read order: token with Volatile.Read (acquire fence), then iat
-    private string? _cachedToken;
-    private long _cachedTokenIat;
+    // Publish the token and its lifetime together so concurrent requests cannot mix claims.
+    private CachedToken? _cachedToken;
 
     private JwtAuthentication(byte[] secret, ITimestamper timestamper, ILogger logger)
     {
@@ -94,26 +97,29 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             try
             {
                 Directory.CreateDirectory(fileInfo.DirectoryName!);
-                using StreamWriter writer = new(filePath);
+                using StreamWriter writer = new(new FileStream(filePath, OwnerOnlyFile.CreateWriteOptions()));
                 writer.Write(secret.ToHexString());
             }
             catch (SystemException ex)
             {
                 if (logger.IsError)
                 {
-                    logger.Error($"Cannot write authentication secret to '{fileInfo.FullName}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter.", ex);
+                    if (SensitiveLogMasking.Enabled)
+                        logger.Error($"Cannot write authentication secret to '{fileInfo.FullName:hide}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter. Exception: {ex.GetType().Name}");
+                    else
+                        logger.Error($"Cannot write authentication secret to '{fileInfo.FullName:hide}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter.", ex);
                 }
                 throw;
             }
 
-            if (logger.IsWarn) logger.Warn($"The authentication secret hasn't been found in '{fileInfo.FullName}'so it has been automatically created.");
+            if (logger.IsWarn) logger.Warn($"The authentication secret file '{fileInfo.FullName:hide}' was not found or was empty, so it has been automatically created.");
 
             return new(secret, timestamper, logger);
         }
         else
         {
             // Secret exists read from file
-            if (logger.IsInfo) logger.Info($"Reading authentication secret from '{fileInfo.FullName}'");
+            if (logger.IsInfo) logger.Info($"Reading authentication secret from '{fileInfo.FullName:hide}'");
             string hexSecret;
             try
             {
@@ -124,7 +130,10 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             {
                 if (logger.IsError)
                 {
-                    logger.Error($"Cannot read authentication secret from '{fileInfo.FullName}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter.", ex);
+                    if (SensitiveLogMasking.Enabled)
+                        logger.Error($"Cannot read authentication secret from '{fileInfo.FullName:hide}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter. Exception: {ex.GetType().Name}");
+                    else
+                        logger.Error($"Cannot read authentication secret from '{fileInfo.FullName:hide}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter.", ex);
                 }
                 throw;
             }
@@ -134,7 +143,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             {
                 if (logger.IsError)
                 {
-                    logger.Error($"The specified authentication secret is not a 64-digit hex number. Delete the '{fileInfo.FullName}' to generate a new secret or set the 'JsonRpc.JwtSecretFile' parameter.");
+                    logger.Error($"The specified authentication secret is not a 64-digit hex number. Delete the '{fileInfo.FullName:hide}' to generate a new secret or set the 'JsonRpc.JwtSecretFile' parameter.");
                 }
                 throw new FormatException("The specified authentication secret must be a 64-digit hex number.");
             }
@@ -142,6 +151,17 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             return FromSecret(hexSecret, timestamper, logger);
         }
     }
+
+    /// <summary>Creates a short-lived token for the isolated startup pipeline request.</summary>
+    internal string CreateWarmupToken() => new JsonWebTokenHandler { SetDefaultTimesOnTokenCreation = false }
+        .CreateToken(new SecurityTokenDescriptor
+        {
+            IssuedAt = _timestamper.UtcNow,
+            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(_secretBytes)
+            {
+                CryptoProviderFactory = new CryptoProviderFactory { CacheSignatureProviders = false }
+            }, SecurityAlgorithms.HmacSha256)
+        });
 
     public Task<bool> Authenticate(string? token)
     {
@@ -233,7 +253,14 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             return false;
 
         Span<byte> computedHash = stackalloc byte[SHA256HashBytes];
-        HMACSHA256.HashData(_secretBytes, signedBytes, computedHash);
+        if (!ReferenceEquals(_hmacSecret, _secretBytes))
+        {
+            _hmac?.Dispose();
+            _hmac = new HMACSHA256(_secretBytes);
+            _hmacSecret = _secretBytes;
+        }
+        if (!_hmac!.TryComputeHash(signedBytes, computedHash, out _))
+            return false;
 
         Span<byte> sigBytes = stackalloc byte[SHA256HashBytes];
         if (Base64Url.DecodeFromChars(signature, sigBytes, out _, out int sigBytesWritten) != OperationStatus.Done
@@ -260,13 +287,13 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         // Overflow-safe absolute-difference check: casting to ulong maps negative values to
         // large positives, so (ulong)(a - b + c) > (ulong)(2*c) is equivalent to |a - b| > c
         // without needing Math.Abs (which can overflow on long.MinValue).
-        if ((ulong)(iat - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
+        if ((ulong)(iat - nowUnixSeconds + JwtTokenTtl) > JwtTokenTtl * 2UL)
         {
             if (_logger.IsWarn) WarnTokenExpiredIat(iat, nowUnixSeconds);
             return true;
         }
 
-        CacheLastToken(token, iat);
+        CacheLastToken(token, iat, exp > 0 ? exp : long.MaxValue);
         accepted = true;
         return true;
 
@@ -382,7 +409,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WarnAuthError(Exception? ex) => _logger.Warn($"Message authentication error: {ex?.Message}");
+        void WarnAuthError(Exception? ex) => _logger.Warn($"Message authentication error: {ex?.GetType().Name}");
     }
 
     private bool ValidateLibraryResult(TokenValidationResult result, string token, JsonWebToken jwtToken, long nowUnixSeconds)
@@ -396,35 +423,35 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         long issuedAtUnix = jwtToken.IssuedAt.ToUnixTimeSeconds();
 
         // Unsigned range check: |iat - now| <= TTL without Math.Abs overflow guard
-        if ((ulong)(issuedAtUnix - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
+        if ((ulong)(issuedAtUnix - nowUnixSeconds + JwtTokenTtl) > JwtTokenTtl * 2UL)
         {
             if (_logger.IsWarn) WarnTokenExpired(issuedAtUnix, nowUnixSeconds);
             return false;
         }
 
-        CacheLastToken(token, issuedAtUnix);
-        if (_logger.IsTrace) TraceAuth(jwtToken, nowUnixSeconds, token);
+        long expiresUnix = jwtToken.ValidTo == DateTime.MinValue
+            ? long.MaxValue
+            : jwtToken.ValidTo.ToUnixTimeSeconds();
+        CacheLastToken(token, issuedAtUnix, expiresUnix);
+        if (_logger.IsTrace) TraceAuth(jwtToken, nowUnixSeconds);
         return true;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WarnInvalidResult(Exception? ex)
+        void WarnInvalidResult(Exception? ex) => _logger.Warn(ex switch
         {
-            _logger.Warn(ex switch
-            {
-                SecurityTokenDecryptionFailedException => "Message authentication error: The token cannot be decrypted.",
-                SecurityTokenReplayDetectedException => "Message authentication error: The token has been used multiple times.",
-                SecurityTokenInvalidSignatureException => "Message authentication error: Invalid token signature.",
-                _ => $"Message authentication error: {ex?.Message}"
-            });
-        }
+            SecurityTokenDecryptionFailedException => "Message authentication error: The token cannot be decrypted.",
+            SecurityTokenReplayDetectedException => "Message authentication error: The token has been used multiple times.",
+            SecurityTokenInvalidSignatureException => "Message authentication error: Invalid token signature.",
+            _ => $"Message authentication error: {ex?.GetType().Name}"
+        });
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void WarnTokenExpired(long iat, long now)
             => _logger.Warn($"Token expired. iat: {iat}, now: {now}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceAuth(JsonWebToken jwt, long now, string tok)
-            => _logger.Trace($"Message authenticated. Token: {tok.AsMemory(JwtMessagePrefix.Length)}, iat: {jwt.IssuedAt}, time: {now}");
+        void TraceAuth(JsonWebToken jwt, long now)
+            => _logger.Trace($"Message authenticated. iat: {jwt.IssuedAt}, time: {now}");
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -441,7 +468,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WarnAuthError(Exception? ex) => _logger.Warn($"Message authentication error: {ex?.Message}");
+        void WarnAuthError(Exception? ex) => _logger.Warn($"Message authentication error: {ex?.GetType().Name}");
     }
 
     private bool LifetimeValidator(
@@ -455,33 +482,42 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void CacheLastToken(string token, long issuedAtUnixSeconds)
+    private void CacheLastToken(string token, long issuedAtUnixSeconds, long expiresUnixSeconds)
     {
-        // Write iat first (plain store), then token with release fence.
-        // Reader uses acquire fence on token, then reads iat — guarantees
-        // the iat visible is at least as fresh as the token that was read.
-        _cachedTokenIat = issuedAtUnixSeconds;
-        Volatile.Write(ref _cachedToken, token);
+        long notBeforeUnixSeconds = issuedAtUnixSeconds - JwtTokenTtl;
+        // iat is inclusive at +TTL, while exp is exclusive at its boundary.
+        long notAfterUnixSeconds = Math.Min(expiresUnixSeconds, issuedAtUnixSeconds + JwtTokenTtl + 1);
+        long validitySeconds = notAfterUnixSeconds - notBeforeUnixSeconds;
+        if (validitySeconds <= 0)
+            return;
+
+        Volatile.Write(ref _cachedToken, new CachedToken(token, notBeforeUnixSeconds, (ulong)validitySeconds));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool TryLastValidationFromCache(string token, long nowUnixSeconds)
     {
-        // Acquire fence on token read; guarantees _cachedTokenIat is at least as fresh
-        string? cached = Volatile.Read(ref _cachedToken);
+        CachedToken? cached = Volatile.Read(ref _cachedToken);
         if (cached is null)
             return false;
 
-        if (!string.Equals(cached, token, StringComparison.Ordinal))
+        if (!string.Equals(cached.Token, token, StringComparison.Ordinal))
             return false;
 
-        // Unsigned range check: |iat - now| <= TTL
-        if ((ulong)(_cachedTokenIat - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
+        if ((ulong)(nowUnixSeconds - cached.NotBeforeUnixSeconds) >= cached.ValiditySeconds)
         {
-            Volatile.Write(ref _cachedToken, null);
+            Interlocked.CompareExchange(ref _cachedToken, null, cached);
             return false;
         }
 
         return true;
+    }
+
+    private sealed class CachedToken(string token, long notBeforeUnixSeconds, ulong validitySeconds)
+    {
+        public string Token { get; } = token;
+        public long NotBeforeUnixSeconds { get; } = notBeforeUnixSeconds;
+        public ulong ValiditySeconds { get; } = validitySeconds;
     }
 
     [GeneratedRegex("^(0x)?[0-9a-fA-F]{64}$")]

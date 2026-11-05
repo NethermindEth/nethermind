@@ -3,7 +3,6 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Config;
 
@@ -17,8 +16,8 @@ public interface IProcessExitSource
 public class ProcessExitSource : IProcessExitSource
 {
     private static readonly CancellationToken _cancelledToken = new(canceled: true);
-    private CancellationTokenSource _cancellationTokenSource;
-    private readonly TaskCompletionSource _exitResult = new();
+    private CancellationTokenSource? _cancellationTokenSource;
+    private readonly TaskCompletionSource _exitResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public ProcessExitSource(CancellationToken cancellationToken)
     {
@@ -28,8 +27,17 @@ public class ProcessExitSource : IProcessExitSource
 
     public void Exit(int exitCode)
     {
-        if (CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource))
+        CancellationTokenSource? source = Interlocked.Exchange(ref _cancellationTokenSource, null);
+        if (source is null) return;
+
+        try
         {
+            source.Cancel();
+        }
+        finally
+        {
+            // A throwing callback must not leave shutdown waiting on ExitTask forever.
+            source.Dispose();
             ExitCode = exitCode;
             _exitResult.SetResult();
         }

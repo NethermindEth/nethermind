@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,8 +28,8 @@ public class FullStateFinderTests
         IStateReader stateReader = Substitute.For<IStateReader>();
         stateReader.HasStateForBlock(Arg.Is<BlockHeader>((header) => header.StateRoot == _goodRoot)).Returns(true);
 
-        FullStateFinder finder = new FullStateFinder(blockTree, stateReader);
-        finder.FindBestFullState().Should().Be(950);
+        FullStateFinder finder = new(blockTree, stateReader);
+        Assert.That(finder.FindBestFullState(), Is.EqualTo(950));
     }
 
     [Test]
@@ -44,8 +43,8 @@ public class FullStateFinderTests
         IStateReader stateReader = Substitute.For<IStateReader>();
         stateReader.HasStateForBlock(Arg.Is<BlockHeader>((header) => header.StateRoot == _goodRoot)).Returns(true);
 
-        FullStateFinder finder = new FullStateFinder(blockTree, stateReader);
-        finder.FindBestFullState().Should().Be(50);
+        FullStateFinder finder = new(blockTree, stateReader);
+        Assert.That(finder.FindBestFullState(), Is.EqualTo(50));
 
         BlockHeader parent = blockTree.FindHeader(50, BlockTreeLookupOptions.None)!;
 
@@ -61,7 +60,7 @@ public class FullStateFinderTests
             parent = block.Header;
         }
 
-        finder.FindBestFullState().Should().Be(50);
+        Assert.That(finder.FindBestFullState(), Is.EqualTo(50));
     }
 
 }

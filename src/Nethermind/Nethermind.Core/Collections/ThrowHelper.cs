@@ -24,38 +24,20 @@ public class ThrowHelper
     }
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowArgumentNullException(string argName)
-    {
-        throw new ArgumentNullException(argName);
-    }
+    private static void ThrowArgumentNullException(string argName) => throw new ArgumentNullException(argName);
 
     [DoesNotReturn, StackTraceHidden]
-    internal static void ThrowNotSupportedException()
-    {
-        throw new NotSupportedException();
-    }
+    internal static void ThrowNotSupportedException() => throw new NotSupportedException();
 
     [DoesNotReturn, StackTraceHidden]
-    public static void ThrowInvalidOperationException_NoWritingAllowed()
-    {
-        throw new InvalidOperationException("No Writing Allowed");
-    }
+    public static void ThrowInvalidOperationException_NoWritingAllowed() => throw new InvalidOperationException("No Writing Allowed");
 
     [DoesNotReturn, StackTraceHidden]
-    public static void ThrowArgumentOutOfRangeException_SizeHint()
-    {
-        throw new ArgumentOutOfRangeException("sizeHint");
-    }
+    public static void ThrowArgumentOutOfRangeException_SizeHint() => throw new ArgumentOutOfRangeException("sizeHint");
 
     [DoesNotReturn, StackTraceHidden]
-    public static void ThrowArgumentNullException_WritingStream()
-    {
-        throw new ArgumentNullException("writingStream");
-    }
+    public static void ThrowArgumentNullException_WritingStream() => throw new ArgumentNullException("writingStream");
 
     [DoesNotReturn, StackTraceHidden]
-    public static void ThrowArgumentOutOfRangeException_Bytes()
-    {
-        throw new ArgumentOutOfRangeException("bytes");
-    }
+    public static void ThrowArgumentOutOfRangeException_Bytes() => throw new ArgumentOutOfRangeException("bytes");
 }

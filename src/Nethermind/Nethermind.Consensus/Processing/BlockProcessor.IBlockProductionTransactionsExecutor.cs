@@ -12,28 +12,38 @@ namespace Nethermind.Consensus.Processing
         public interface IBlockProductionTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
             public event EventHandler<AddingTxEventArgs> AddingTransaction;
+
+            /// <summary>
+            /// Reports that a block built by this executor ended <paramref name="excessItems"/> over the EIP-7928 block
+            /// access list item limit and was rejected, so later builds on the same parent can leave more room for the
+            /// end-of-block steps.
+            /// </summary>
+            void ReportItemLimitExceeded(long excessItems) { }
         }
 
-        public class AddingTxEventArgs : TxEventArgs
+        public class AddingTxEventArgs(int index, Transaction transaction, Block block, IReadOnlyCollection<Transaction> transactionsInBlock) : TxEventArgs(index, transaction)
         {
-            public Block Block { get; }
-            public IReadOnlyCollection<Transaction> TransactionsInBlock { get; }
+            /// <summary>Stands in for a reason that a derived class formats only when <see cref="Reason"/> is read; compared by reference.</summary>
+            private static readonly string DeferredReason = new('?', 1);
+
+            private string _reason = string.Empty;
+
+            public Block Block { get; } = block;
+            public IReadOnlyCollection<Transaction> TransactionsInBlock { get; } = transactionsInBlock;
             public TxAction Action { get; private set; } = TxAction.Add;
-            public string Reason { get; private set; } = string.Empty;
+            public string Reason => ReferenceEquals(_reason, DeferredReason) ? _reason = FormatDeferredReason() : _reason;
 
             public AddingTxEventArgs Set(TxAction action, string reason)
             {
                 Action = action;
-                Reason = reason;
+                _reason = reason;
                 return this;
             }
 
-            public AddingTxEventArgs(int index, Transaction transaction, Block block, IReadOnlyCollection<Transaction> transactionsInBlock)
-                : base(index, transaction)
-            {
-                Block = block;
-                TransactionsInBlock = transactionsInBlock;
-            }
+            /// <summary>Sets <paramref name="action"/> with a reason <see cref="FormatDeferredReason"/> builds on the first read of <see cref="Reason"/>.</summary>
+            private protected void SetDeferred(TxAction action) => Set(action, DeferredReason);
+
+            private protected virtual string FormatDeferredReason() => throw new InvalidOperationException("No deferred reason to format.");
         }
     }
 }

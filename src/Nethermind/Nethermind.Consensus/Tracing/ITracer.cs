@@ -13,7 +13,7 @@ namespace Nethermind.Consensus.Tracing
     public interface ITracer
     {
         /// <summary>
-        /// Allows to trace an arbitrarily constructed block. Do NOT subtract gas from sender account
+        /// Allows to trace an arbitrarily constructed block. A transaction with both fee caps zero pays no gas fee; any other is validated and charged for gas.
         /// </summary>
         /// <param name="block">Block to trace.</param>
         /// <param name="tracer">Trace to act on block processing events.</param>
@@ -25,6 +25,17 @@ namespace Nethermind.Consensus.Tracing
         /// <param name="block">Block to trace.</param>
         /// <param name="tracer">Trace to act on block processing events.</param>
         void Execute(Block block, IBlockTracer tracer);
+
+        /// <summary>
+        /// Traces a block of signed transactions with their original nonces, state validation and gas charges.
+        /// </summary>
+        /// <remarks>
+        /// Unlike <see cref="Execute"/>, the nonce isn't replaced with the sender's.
+        /// The caller must validate that each transaction is well formed.
+        /// </remarks>
+        /// <param name="block">Block to trace.</param>
+        /// <param name="tracer">Trace to act on block processing events.</param>
+        void ExecuteSigned(Block block, IBlockTracer tracer);
 
         void Accept<TCtx>(ITreeVisitor<TCtx> visitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx>;
     }

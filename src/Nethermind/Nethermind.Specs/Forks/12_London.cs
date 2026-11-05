@@ -5,7 +5,7 @@ namespace Nethermind.Specs.Forks;
 
 public class London() : NamedReleaseSpec<London>(Berlin.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "London";
         spec.DifficultyBombDelay = 9700000L;

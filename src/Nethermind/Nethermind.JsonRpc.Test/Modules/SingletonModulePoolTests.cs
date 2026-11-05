@@ -13,15 +13,22 @@ using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Facade.Eth;
+using Nethermind.History;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Config;
-using Nethermind.Db.LogIndex;
 using Nethermind.Network;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Repositories;
 using Nethermind.State;
+using Nethermind.Synchronization;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -57,7 +64,16 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IProtocolsManager>(),
                 new BlocksConfig(),
                 Substitute.For<IForkInfo>(),
-                Substitute.For<ILogIndexConfig>());
+                new EthCapabilitiesProvider(
+                    blockTree.AsReadOnly(),
+                    Substitute.For<IStateBoundary>(),
+                    new SyncConfig(),
+                    Substitute.For<ISyncPointers>(),
+                    Substitute.For<IHistoryConfig>(),
+                    Substitute.For<IHistoryPruner>()),
+                new BlockForRpcFactory(),
+                new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()), Substitute.For<IHeaderStore>(), blockTree, Substitute.For<ISpecProvider>()),
+                Substitute.For<IReceiptStorage>());
             return Task.CompletedTask;
         }
 

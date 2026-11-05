@@ -3,22 +3,55 @@
 
 using System;
 using System.Collections.Frozen;
+using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Nethermind.Serialization.Rlp;
 
 public partial class Rlp
 {
+    public static readonly Rlp OfEmptyByteArray = new(EmptyByteArrayByte);
+
+    public static readonly Rlp OfZero = OfEmptyByteArray;
+
+    public static readonly Rlp OfEmptyList = new(EmptyListByte);
+
+    internal static readonly Rlp OfEmptyTreeHash = Encode(Keccak.EmptyTreeHash.Bytes); // use bytes to avoid stack overflow
+
+    internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
+
+    internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
+
+    private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = [];
+    private static readonly Lock _decoderLock = new();
+
+    private static ILogger _logger = Static.LogManager.GetClassLogger<Rlp>();
+
+    // A field initializer rather than a static constructor keeps the type beforefieldinit, so static methods
+    // that read no static field (e.g. LengthOf) need no type initialization check on every call. Declared after
+    // every other initialized static field: registration constructs decoders, which may read them.
+    private static readonly bool _defaultDecodersRegistered = RegisterDefaultDecoders();
+
+    /// <summary>Writes <paramref name="hash"/> to the 32 bytes at <paramref name="destination"/>.</summary>
+    /// <remarks>See <c>Rlp.zkevm.cs</c> for the guest form.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteHash(ref byte destination, Hash256 hash) =>
+        Unsafe.As<byte, ValueHash256>(ref destination) = hash.ValueHash256;
+
     private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decodersSnapshot;
 
     public static FrozenDictionary<RlpDecoderKey, IRlpDecoder> Decoders
     {
         get
         {
-            FrozenDictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersSnapshot;
+            FrozenDictionary<RlpDecoderKey, IRlpDecoder>? snapshot = Volatile.Read(ref _decodersSnapshot);
             return snapshot ?? CreateDecodersSnapshot();
         }
     }
@@ -26,7 +59,21 @@ public partial class Rlp
     private static FrozenDictionary<RlpDecoderKey, IRlpDecoder> CreateDecodersSnapshot()
     {
         using Lock.Scope _ = _decoderLock.EnterScope();
-        return _decodersSnapshot ??= _decoderBuilder.ToFrozenDictionary();
+        FrozenDictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersSnapshot;
+        if (snapshot is null)
+        {
+            snapshot = _decoderBuilder.ToFrozenDictionary();
+            Volatile.Write(ref _decodersSnapshot, snapshot);
+        }
+
+        return snapshot;
+    }
+
+    private static bool RegisterDefaultDecoders()
+    {
+        RegisterDecoders(typeof(Rlp).Assembly);
+        RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+        return true;
     }
 
     public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders)
@@ -77,9 +124,11 @@ public partial class Rlp
                         {
                             try
                             {
-                                _decoderBuilder[key] = instance ??= (IRlpDecoder)(type.GetConstructor(Type.EmptyTypes) is not null ?
-                                    Activator.CreateInstance(type) :
-                                    Activator.CreateInstance(type, BindingFlags.CreateInstance | BindingFlags.OptionalParamBinding, null, [Type.Missing], null));
+                                object? decoder = type.GetConstructor(Type.EmptyTypes) is not null
+                                    ? Activator.CreateInstance(type)
+                                    : Activator.CreateInstance(type, BindingFlags.CreateInstance | BindingFlags.OptionalParamBinding, null, [Type.Missing], null);
+                                _decoderBuilder[key] = instance ??= (IRlpDecoder)(decoder
+                                    ?? throw new InvalidOperationException($"Could not create decoder {type}."));
                             }
                             catch (Exception)
                             {
@@ -95,7 +144,7 @@ public partial class Rlp
             }
         }
 
-        _decodersSnapshot = null;
+        Volatile.Write(ref _decodersSnapshot, null);
     }
 }
 

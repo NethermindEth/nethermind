@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -21,9 +24,12 @@ public class TransactionExtensionsTests
         transaction.Type = test.Type;
         UInt256 actualResult = transaction.CalculateTransactionPotentialCost(test.IsEip1559Enabled, test.BaseFee);
         UInt256 effectiveGasPrice = transaction.CalculateEffectiveGasPrice(test.IsEip1559Enabled, test.BaseFee);
-        Assert.That(actualResult, Is.EqualTo(test.ExpectedPotentialCostResult));
-        Assert.That(effectiveGasPrice, Is.EqualTo(test.ExpectedEffectiveGasPriceResult));
-        Assert.That(test.ExpectedPotentialCostResult, Is.EqualTo(test.ExpectedEffectiveGasPriceResult * (UInt256)test.GasLimit + test.Value));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actualResult, Is.EqualTo(test.ExpectedPotentialCostResult));
+            Assert.That(effectiveGasPrice, Is.EqualTo(test.ExpectedEffectiveGasPriceResult));
+            Assert.That(test.ExpectedPotentialCostResult, Is.EqualTo(test.ExpectedEffectiveGasPriceResult * (UInt256)test.GasLimit + test.Value));
+        }
     }
 
     [Test]
@@ -34,8 +40,11 @@ public class TransactionExtensionsTests
         transaction.GasPrice = 30;
         transaction.Type = TxType.EIP1559;
         bool tryResult = transaction.TryCalculatePremiumPerGas(100, out UInt256 premiumPerGas);
-        Assert.That(premiumPerGas, Is.EqualTo(UInt256.Zero));
-        Assert.That(tryResult, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(premiumPerGas, Is.EqualTo(UInt256.Zero));
+            Assert.That(tryResult, Is.True);
+        }
     }
 
     [Test]
@@ -69,8 +78,24 @@ public class TransactionExtensionsTests
         transaction.GasPrice = 30;
         transaction.Type = TxType.EIP1559;
         bool tryResult = transaction.TryCalculatePremiumPerGas(100, out UInt256 premiumPerGas);
-        Assert.That(premiumPerGas, Is.EqualTo(UInt256.Zero));
-        Assert.That(tryResult, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(premiumPerGas, Is.EqualTo(UInt256.Zero));
+            Assert.That(tryResult, Is.False);
+        }
+    }
+
+    [TestCase(true, 0, 1, ExpectedResult = true)]
+    [TestCase(false, 0, 1, ExpectedResult = false)]
+    [TestCase(true, 0, 0, ExpectedResult = false)]
+    [TestCase(true, 1, 1, ExpectedResult = false)]
+    [TestCase(true, 2, 1, ExpectedResult = false)]
+    public bool GetTipAboveFeeCapError_rejects_only_a_priced_tip_above_the_fee_cap_after_london(bool london, int feeCap, int tip)
+    {
+        Transaction transaction = Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas((UInt256)feeCap)
+            .WithMaxPriorityFeePerGas((UInt256)tip).WithSenderAddress(TestItem.AddressA).TestObject;
+        IReleaseSpec spec = london ? London.Instance : Berlin.Instance;
+        return transaction.GetTipAboveFeeCapError(spec) is not null;
     }
 
     public class TransactionPotentialCostsAndEffectiveGasPrice
@@ -80,8 +105,8 @@ public class TransactionExtensionsTests
         public UInt256 FeeCap { get; set; }
         public UInt256 GasPrice { get; set; }
         public TxType Type { get; set; }
-        public long GasLimit { get; set; }
-        public UInt256 Value { get; set; }
+        public ulong GasLimit { get; set; }
+        public ulong Value { get; set; }
         public bool IsEip1559Enabled { get; set; }
         public UInt256 ExpectedPotentialCostResult { get; set; }
 

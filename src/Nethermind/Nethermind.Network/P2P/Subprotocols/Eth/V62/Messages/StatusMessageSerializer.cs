@@ -1,17 +1,21 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
+using System.Buffers.Binary;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class StatusMessageSerializer : IZeroInnerMessageSerializer<StatusMessage>
+    public class StatusMessageSerializer : IMessageSerializer<StatusMessage>
     {
         private const int ForkHashLength = 5;
 
-        public void Serialize(IByteBuffer byteBuffer, StatusMessage message)
+        public int Serialize(Span<byte> destination, StatusMessage message)
         {
+            Hash256 bestHash = GetRequiredHash(message.BestHash, nameof(message.BestHash));
+            Hash256 genesisHash = GetRequiredHash(message.GenesisHash, nameof(message.GenesisHash));
             int forkIdContentLength = 0;
 
             if (message.ForkId.HasValue)
@@ -20,27 +24,32 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 forkIdContentLength = ForkHashLength + Rlp.LengthOf(forkId.Next);
             }
 
-            NettyRlpStream rlpStream = new(byteBuffer);
-            int totalLength = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(message.ProtocolVersion);
-            rlpStream.Encode(message.NetworkId);
-            rlpStream.Encode(message.TotalDifficulty);
-            rlpStream.Encode(message.BestHash);
-            rlpStream.Encode(message.GenesisHash);
+            RlpWriter writer = new(destination);
+            writer.StartSequence(GetContentLength(message));
+            writer.Encode(message.ProtocolVersion);
+            writer.Encode(message.NetworkId);
+            writer.Encode(message.TotalDifficulty);
+            writer.Encode(bestHash);
+            writer.Encode(genesisHash);
             if (message.ForkId is not null)
             {
                 ForkId forkId = message.ForkId.Value;
-                rlpStream.StartSequence(forkIdContentLength);
-                rlpStream.Encode(forkId.HashBytes);
-                rlpStream.Encode(forkId.Next);
+                writer.StartSequence(forkIdContentLength);
+                Span<byte> forkHash = stackalloc byte[sizeof(uint)];
+                BinaryPrimitives.WriteUInt32BigEndian(forkHash, forkId.ForkHash);
+                writer.Encode(forkHash);
+                writer.Encode(forkId.Next);
             }
+
+            return writer.Position;
         }
 
-        public int GetLength(StatusMessage message, out int contentLength)
-        {
+        public int GetLength(StatusMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
 
+        private static int GetContentLength(StatusMessage message)
+        {
+            Hash256 bestHash = GetRequiredHash(message.BestHash, nameof(message.BestHash));
+            Hash256 genesisHash = GetRequiredHash(message.GenesisHash, nameof(message.GenesisHash));
             int forkIdSequenceLength = 0;
             if (message.ForkId.HasValue)
             {
@@ -49,26 +58,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 forkIdSequenceLength = Rlp.LengthOfSequence(forkIdContentLength);
             }
 
-            contentLength =
+            return
                 Rlp.LengthOf(message.ProtocolVersion) +
                 Rlp.LengthOf(message.NetworkId) +
                 Rlp.LengthOf(message.TotalDifficulty) +
-                Rlp.LengthOf(message.BestHash) +
-                Rlp.LengthOf(message.GenesisHash) +
+                Rlp.LengthOf(bestHash) +
+                Rlp.LengthOf(genesisHash) +
                 forkIdSequenceLength;
-
-            return Rlp.LengthOfSequence(contentLength);
         }
 
-        public StatusMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
+        public StatusMessage Deserialize(ReadOnlySpan<byte> data)
+        {
+            RlpReader ctx = new(data);
+            StatusMessage statusMessage = Deserialize(ref ctx);
+            ctx.Check(data.Length);
+            return statusMessage;
+        }
 
-        private static StatusMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        private static StatusMessage Deserialize(ref RlpReader ctx)
         {
             StatusMessage statusMessage = new();
             ctx.ReadSequenceLength();
             statusMessage.ProtocolVersion = ctx.DecodeByte();
-            statusMessage.NetworkId = ctx.DecodeUInt256();
+            statusMessage.NetworkId = ctx.DecodeULong();
             statusMessage.TotalDifficulty = ctx.DecodeUInt256();
             statusMessage.BestHash = ctx.DecodeKeccak();
             statusMessage.GenesisHash = ctx.DecodeKeccak();
@@ -83,5 +95,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
             return statusMessage;
         }
+
+        private static Hash256 GetRequiredHash(Hash256? hash, string propertyName) =>
+            hash ?? throw new RlpException($"{propertyName} is required in {nameof(StatusMessage)}.");
     }
 }

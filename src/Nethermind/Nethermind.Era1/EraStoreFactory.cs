@@ -15,9 +15,7 @@ public class EraStoreFactory(
     IEraConfig eraConfig
 ) : IEraStoreFactory
 {
-    public IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators)
-    {
-        return new EraStore(
+    public IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators) => new EraStore(
             specProvider,
             blockValidator,
             fileSystem,
@@ -26,7 +24,6 @@ public class EraStoreFactory(
             trustedAccumulators,
             src,
             eraConfig.Concurrency);
-    }
 }
 
 public interface IEraStoreFactory

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Repositories;
@@ -9,6 +10,17 @@ namespace Nethermind.Blockchain
 {
     public partial class BlockTree : IBlockTreeHealer
     {
+        // Cap per-flush memory of the upward scan at a few MB (~50-200 B per entry).
+        private const int ClearStaleMarkersFlushThreshold = 65_536;
+
+        /// <summary>
+        /// Whether a forced head update (FCU reorg) clears canonical markers left above the new head.
+        /// Overlay trees that discard their writes (eth_simulateV1) turn this off: the levels above the base
+        /// head belong to the base tree, and walking them up to <see cref="BestKnownNumber"/> costs a write
+        /// per level when the head is far behind, e.g. during snap sync.
+        /// </summary>
+        public bool ClearStaleMarkersOnForcedHeadUpdate { get; init; } = true;
+
         public void HealCanonicalChain(Hash256 startHash, long maxBlockDepth)
         {
             BlockHeader? start = FindHeader(startHash, BlockTreeLookupOptions.None);
@@ -22,18 +34,39 @@ namespace Nethermind.Blockchain
             if (Logger.IsInfo) Logger.Info($"Canonical chain heal complete: {repairedAbove + repairedBelow} level(s) repaired ({repairedAbove} stale above head cleared, {repairedBelow} incorrect markers fixed).");
         }
 
-        private long ClearStaleMarkersAbove(long fromExclusive, BatchWrite batch)
+        private long ClearStaleMarkersAbove(ulong fromExclusive, BatchWrite batch, (ulong Start, ulong End)? deletedRange = null, ulong? scanThrough = null)
         {
+            // Cap at the highest level we could have written — a corrupted DB must not drive an unbounded scan.
+            ulong upperBound = Math.Max(BestKnownNumber, BestKnownBeaconNumber);
             long cleared = 0L;
-            for (long levelNumber = fromExclusive + 1; ; levelNumber++)
+            int writesSinceFlush = 0;
+            for (ulong levelNumber = fromExclusive + 1; levelNumber <= upperBound; levelNumber++)
             {
+                // Jump over deleted levels: they need no marker writes and may already contain gaps.
+                if (deletedRange is { } range && levelNumber >= range.Start && levelNumber <= range.End)
+                {
+                    if (range.End >= upperBound) break;
+                    levelNumber = range.End;
+                    continue;
+                }
                 ChainLevelInfo? level = LoadLevel(levelNumber);
-                if (level is null) break;
+                if (level is null)
+                {
+                    // Recovery must reach the old head even when earlier levels are missing.
+                    if (levelNumber < scanThrough) continue;
+                    break;
+                }
                 if (level.HasBlockOnMainChain)
                 {
                     level.HasBlockOnMainChain = false;
                     _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
                     cleared++;
+
+                    if (++writesSinceFlush >= ClearStaleMarkersFlushThreshold)
+                    {
+                        batch.Flush();
+                        writesSinceFlush = 0;
+                    }
                 }
             }
             return cleared;

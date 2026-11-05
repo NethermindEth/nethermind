@@ -6,5 +6,6 @@ namespace Ethereum.Test.Base;
 public enum TestType
 {
     Blockchain,
-    State
+    State,
+    Transaction
 }

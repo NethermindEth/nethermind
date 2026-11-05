@@ -23,7 +23,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
             .Returns(call =>
             {
                 IDictionary vars = _env.GetEnvironmentVariables();
-                var key = call.Arg<string>();
+                string key = call.Arg<string>();
 
                 return vars.Contains(key) ? vars[key] : null;
             });
@@ -49,7 +49,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         configProvider.AddSource(argsSource);
 
         configProvider.Initialize();
-        (_, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
+        (_, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
         Assert.That(Errors, Is.Empty);
     }
@@ -70,14 +70,14 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         configProvider.Initialize();
 
-        (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
+        (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
-        Assert.That(Errors, Has.Count.EqualTo(1));
-        Assert.Multiple(() =>
+        Assert.That(Errors.Count, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(Errors[0].Name, Is.EqualTo("XYZ"));
             Assert.That(ErrorMsg, Is.EqualTo($"ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:|Name:XYZ"));
-        });
+        }
     }
 
     [Test]
@@ -96,16 +96,16 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         configProvider.Initialize();
 
-        (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
+        (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
-        Assert.That(Errors, Has.Count.EqualTo(3));
-        Assert.Multiple(() =>
+        Assert.That(Errors.Count, Is.EqualTo(3));
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(Errors[0].Name, Is.EqualTo("Concurrenc"));
             Assert.That(Errors[1].Category, Is.EqualTo("BloomsConfig"));
             Assert.That(Errors[2].Name, Is.EqualTo("MAXCANDIDATEPERCOUNT"));
             Assert.That(ErrorMsg, Is.EqualTo($"ConfigType:JsonConfigFile|Category:DiscoveRyConfig|Name:Concurrenc{Environment.NewLine}ConfigType:JsonConfigFile|Category:BloomsConfig|Name:IndexLevelBucketSizes{Environment.NewLine}ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:NETWORKCONFIG|Name:MAXCANDIDATEPERCOUNT"));
-        });
+        }
     }
 
     [Test]
@@ -121,14 +121,14 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         configProvider.Initialize();
 
-        (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
+        (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
-        Assert.That(Errors, Has.Count.EqualTo(1));
-        Assert.Multiple(() =>
+        Assert.That(Errors.Count, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(Errors[0].Name, Is.EqualTo("NETWORKCONFIGMAXCANDIDATEPEERCOUNT"));
             Assert.That(ErrorMsg, Is.EqualTo($"ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:|Name:NETWORKCONFIGMAXCANDIDATEPEERCOUNT"));
-        });
+        }
     }
 
     [Test]
@@ -145,13 +145,13 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         ConfigProvider? configProvider = new();
         configProvider.AddSource(envSource);
 
-        (bool isSet, object value) = envSource.GetValue(typeof(string), "BlocksConfig", "ExtraData");
+        (bool isSet, object? value) = envSource.GetValue(typeof(string), "BlocksConfig", "ExtraData");
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(isSet, Is.True);
             Assert.That(value, Is.Empty);
-        });
+        }
     }
 
     [Test]
@@ -159,8 +159,8 @@ public class ConfigProvider_FindIncorrectSettings_Tests
     {
         Dictionary<string, string> envVars = new()
         {
-            { "NETHERMIND_BLOOMCONFIG_INDEX", " " },
-            { "NETHERMIND_BLOOMCONFIG_MIGRATION", "" }
+            { "NETHERMIND_SYNCCONFIG_FASTSYNC", " " },
+            { "NETHERMIND_SYNCCONFIG_SNAPSYNC", "" }
         };
 
         _env.GetEnvironmentVariables().Returns(envVars);
@@ -171,20 +171,20 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         Assert.DoesNotThrow(configProvider.Initialize);
 
-        (bool isSet, object value) = envSource.GetValue(typeof(bool), "BloomConfig", "Index");
+        (bool isSet, object? value) = envSource.GetValue(typeof(bool), "SyncConfig", "FastSync");
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(isSet, Is.False);
             Assert.That(value, Is.False);
-        });
+        }
 
-        (isSet, value) = envSource.GetValue(typeof(bool), "BloomConfig", "Migration");
+        (isSet, value) = envSource.GetValue(typeof(bool), "SyncConfig", "SnapSync");
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(isSet, Is.False);
             Assert.That(value, Is.False);
-        });
+        }
     }
 }

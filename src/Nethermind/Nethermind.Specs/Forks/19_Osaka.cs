@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
+
 namespace Nethermind.Specs.Forks;
 
 public class Osaka() : NamedReleaseSpec<Osaka>(Prague.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Osaka";
         spec.IsEip7594Enabled = true;
@@ -16,5 +18,9 @@ public class Osaka() : NamedReleaseSpec<Osaka>(Prague.Instance)
         spec.IsEip7934Enabled = true;
         spec.IsEip7939Enabled = true;
         spec.IsEip7951Enabled = true;
+        // newPayload version inherits V4 from Prague
+        spec.EngineApiGetPayloadVersion = EngineApiVersions.GetPayload.V5;
+        // forkchoice version inherits V3 from Cancun
+        // bodies versions inherit V1 from Shanghai
     }
 }

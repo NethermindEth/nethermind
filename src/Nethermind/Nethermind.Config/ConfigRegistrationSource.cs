@@ -19,15 +19,14 @@ public class ConfigRegistrationSource : IRegistrationSource
 {
     public IEnumerable<IComponentRegistration> RegistrationsFor(Service service, Func<Service, IEnumerable<ServiceRegistration>> registrationAccessor)
     {
-        IServiceWithType swt = service as IServiceWithType;
-        if (swt == null || !typeof(IConfig).IsAssignableFrom(swt.ServiceType))
+        if (service is not IServiceWithType swt || !typeof(IConfig).IsAssignableFrom(swt.ServiceType))
         {
             // It's not a request for the base handler type, so skip it.
             return Enumerable.Empty<IComponentRegistration>();
         }
 
         // Dynamically resolve IConfig
-        ComponentRegistration registration = new ComponentRegistration(
+        ComponentRegistration registration = new(
             Guid.NewGuid(),
             new DelegateActivator(swt.ServiceType, (c, p) =>
             {
@@ -38,7 +37,7 @@ public class ConfigRegistrationSource : IRegistrationSource
             InstanceSharing.Shared,
             InstanceOwnership.OwnedByLifetimeScope,
             new[] { service },
-            new Dictionary<string, object>());
+            new Dictionary<string, object?>());
 
         return new IComponentRegistration[] { registration };
     }

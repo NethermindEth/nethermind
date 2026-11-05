@@ -6,12 +6,16 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network;
 
@@ -21,6 +25,64 @@ public abstract class NodesManager(string path, ILogger logger)
 
     protected readonly ILogger _logger = logger;
     protected ConcurrentDictionary<PublicKey, NetworkNode> _nodes = [];
+
+    // Refcount of managed nodes per IP so membership can be queried in O(1) on hot paths.
+    // A count rather than a set because several nodes can share one IP (different ports/keys).
+    // The comparer folds IPv4-mapped IPv6 onto plain IPv4 so both forms share a slot.
+    private readonly ConcurrentDictionary<IPAddress, int> _ipCounts = new(NormalizingIpAddressComparer.Instance);
+
+    // Guards the (_nodes, _ipCounts) pair so a node is never present in one but missing from the other.
+    private readonly Lock _indexLock = new();
+
+    /// <summary>Returns <see langword="true"/> when any managed node is reachable at <paramref name="ip"/>.</summary>
+    public bool ContainsIp(IPAddress ip) => _ipCounts.ContainsKey(ip);
+
+    // Nodes explicitly persisted (loaded from the file or added with updateFile=true). The file mirrors this set,
+    // so transient (updateFile=false) changes to _nodes never leak into it and a failed load cannot be amplified.
+    private ConcurrentDictionary<PublicKey, NetworkNode> _persistedNodes = [];
+
+    /// <summary>Adds a node and updates the IP index. Returns <see langword="false"/> if already present.</summary>
+    protected bool TryAddNode(NetworkNode node)
+    {
+        lock (_indexLock)
+        {
+            if (!_nodes.TryAdd(node.NodeId, node)) return false;
+            _ipCounts.AddOrUpdate(node.HostIp, 1, static (_, count) => count + 1);
+            return true;
+        }
+    }
+
+    /// <summary>Replaces the whole node set (bulk load) and rebuilds the IP index.</summary>
+    protected void SetNodes(ConcurrentDictionary<PublicKey, NetworkNode> nodes)
+    {
+        lock (_indexLock)
+        {
+            _nodes = nodes;
+            _ipCounts.Clear();
+            foreach (KeyValuePair<PublicKey, NetworkNode> kvp in nodes)
+            {
+                _ipCounts.AddOrUpdate(kvp.Value.HostIp, 1, static (_, count) => count + 1);
+            }
+
+            _persistedNodes = new ConcurrentDictionary<PublicKey, NetworkNode>(nodes);
+        }
+    }
+
+    private void UnindexIp(NetworkNode node)
+    {
+        IPAddress key = node.HostIp;
+        while (_ipCounts.TryGetValue(key, out int count))
+        {
+            if (count > 1)
+            {
+                if (_ipCounts.TryUpdate(key, count - 1, count)) return;
+            }
+            else if (_ipCounts.TryRemove(new KeyValuePair<IPAddress, int>(key, count)))
+            {
+                return;
+            }
+        }
+    }
 
     private void EnsureFile(string resource)
     {
@@ -34,7 +96,7 @@ public abstract class NodesManager(string path, ILogger logger)
 
             if (File.Exists(oldPath))
             {
-                var moved = true;
+                bool moved = true;
 
                 try
                 {
@@ -45,13 +107,13 @@ public abstract class NodesManager(string path, ILogger logger)
                     moved = false;
 
                     if (_logger.IsWarn)
-                        _logger.Warn($"Failed to move {oldPath} to {Path.GetFullPath(path)}: {ex.Message}\n  {resource} is ignored and will not be used");
+                        _logger.Warn($"Failed to move {oldPath:hide} to {Path.GetFullPath(path):hide}: {ex.Message:hide}\n  {resource} is ignored and will not be used");
                 }
 
                 if (moved)
                 {
                     if (_logger.IsWarn)
-                        _logger.Warn($"{oldPath} has been moved to {Path.GetFullPath(path)}");
+                        _logger.Warn($"{oldPath:hide} has been moved to {Path.GetFullPath(path):hide}");
 
                     return;
                 }
@@ -61,7 +123,7 @@ public abstract class NodesManager(string path, ILogger logger)
         // Create the directory if needed
         Directory.CreateDirectory(Path.GetDirectoryName(path));
 
-        if (_logger.IsDebug) _logger.Debug($"Nodes file was not found, creating one at {Path.GetFullPath(path)}");
+        if (_logger.IsDebug) _logger.Debug($"Nodes file was not found, creating one at {Path.GetFullPath(path):hide}");
 
         using Stream actualNodes = File.Create(path);
         using Stream embeddedNodes = typeof(NodesManager).Assembly.GetManifestResourceStream(resource);
@@ -82,9 +144,9 @@ public abstract class NodesManager(string path, ILogger logger)
     {
         if (_logger.IsDebug && nodes.Count != 0)
         {
-            var separator = $"{Environment.NewLine}  ";
+            string separator = $"{Environment.NewLine}  ";
 
-            _logger.Debug($"{title}:{separator}{string.Join(separator, nodes.Values.Select(n => n.ToString()))}");
+            _logger.Debug($"{title}:{separator}{string.Join(separator, nodes.Values.Select(n => n.ToString())):hide}");
         }
     }
 
@@ -98,7 +160,7 @@ public abstract class NodesManager(string path, ILogger logger)
 
         try
         {
-            rawNodes = JsonSerializer.Deserialize<HashSet<string>>(data);
+            rawNodes = JsonSerializer.Deserialize(data, NodesJsonContext.Default.HashSetString);
         }
         catch (JsonException)
         {
@@ -117,7 +179,7 @@ public abstract class NodesManager(string path, ILogger logger)
             }
             catch (ArgumentException ex)
             {
-                if (_logger.IsError) _logger.Error($"Failed to parse node: {n}", ex);
+                if (_logger.IsError) _logger.Error($"Failed to parse node: {n:hide}", SensitiveLogMasking.Enabled ? null : ex);
 
                 continue;
             }
@@ -126,20 +188,63 @@ public abstract class NodesManager(string path, ILogger logger)
         }
 
         if (_logger.IsInfo)
-            _logger.Info($"Loaded {nodes.Count} nodes from {Path.GetFullPath(path)}");
+            _logger.Info($"Loaded {nodes.Count} nodes from {Path.GetFullPath(path):hide}");
 
         return nodes;
     }
 
-    protected virtual Task SaveFileAsync()
+    /// <summary>
+    /// Raised when a node is explicitly removed from this source.
+    /// </summary>
+    public event EventHandler<NodeEventArgs>? NodeRemoved;
+
+    /// <summary>
+    /// Removes a node from the in-memory store and fires <see cref="NodeRemoved"/> as an
+    /// <see cref="ExplicitNodeRemovalEventArgs"/> so downstream listeners (e.g. <c>PeerPool</c>)
+    /// know to disconnect the peer unconditionally.
+    /// </summary>
+    protected bool TryRemoveNode(PublicKey nodeId)
+    {
+        NetworkNode? removed;
+        lock (_indexLock)
+        {
+            if (!_nodes.TryRemove(nodeId, out removed))
+                return false;
+
+            UnindexIp(removed);
+        }
+
+        // Fire outside the lock so downstream handlers (e.g. PeerPool) don't run under it.
+        NodeRemoved?.Invoke(this, new ExplicitNodeRemovalEventArgs(new Node(removed)));
+        return true;
+    }
+
+    /// <summary>Marks <paramref name="node"/> persistent when <paramref name="updateFile"/> is set, rewriting the nodes file if it was not persisted yet, and returns <paramref name="changed"/>.</summary>
+    protected async Task<bool> PersistAsync(bool changed, NetworkNode node, bool updateFile, CancellationToken cancellationToken)
+    {
+        if (updateFile && _persistedNodes.TryAdd(node.NodeId, node)) await SaveFileAsync(cancellationToken);
+        return changed;
+    }
+
+    /// <summary>Unmarks <paramref name="node"/> as persistent when <paramref name="updateFile"/> is set, rewriting the nodes file if it was persisted, and returns <paramref name="changed"/>.</summary>
+    protected async Task<bool> UnpersistAsync(bool changed, NetworkNode node, bool updateFile, CancellationToken cancellationToken)
+    {
+        if (updateFile && _persistedNodes.TryRemove(node.NodeId, out _)) await SaveFileAsync(cancellationToken);
+        return changed;
+    }
+
+    protected virtual Task SaveFileAsync(CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        string contents = JsonSerializer.Serialize(
-            _nodes.Select(static n => n.Value.ToString()),
+        string contents = TypeInfoJsonSerializer.Serialize(
+            _persistedNodes.Select(static n => n.Value.ToString()),
             EthereumJsonSerializer.JsonOptionsIndented
             );
 
-        return File.WriteAllTextAsync(path, contents);
+        return File.WriteAllTextAsync(path, contents, cancellationToken);
     }
 }
+
+[JsonSerializable(typeof(HashSet<string>))]
+internal partial class NodesJsonContext : JsonSerializerContext;

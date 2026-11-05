@@ -5,13 +5,13 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Dns.Test;
@@ -29,7 +29,9 @@ public class EnrDiscoveryTests
         TestErrorLogManager testErrorLogManager = new();
         INetworkConfig config = new NetworkConfig();
         config.DiscoveryDns = url;
-        EnrDiscovery enrDiscovery = new(new EnrRecordParser(singer), config, testErrorLogManager);
+        IForkInfo forkInfo = Substitute.For<IForkInfo>();
+        forkInfo.IsForkIdCompatible(Arg.Any<ForkId>()).Returns(true);
+        EnrDiscovery enrDiscovery = new(new EnrRecordParser(singer), config, forkInfo, testErrorLogManager);
         long startTime = Stopwatch.GetTimestamp();
         List<Node> addedRecords = enrDiscovery.DiscoverNodes(default).ToBlockingEnumerable().ToList();
 
@@ -38,7 +40,7 @@ public class EnrDiscoveryTests
         {
             await TestContext.Out.WriteLineAsync(error.Text);
         }
-        addedRecords.Count.Should().Be(3000);
+        Assert.That(addedRecords.Count, Is.EqualTo(3000));
     }
 
     [Test]
@@ -54,7 +56,7 @@ public class EnrDiscoveryTests
             NodeRecord nodeRecord = parser.ParseRecord(record);
             if (!nodeRecord.Snap)
             {
-                nodeRecord.EnrString.Should().BeEquivalentTo(record);
+                Assert.That(nodeRecord.ToString(), Is.EqualTo(record));
                 verified++;
             }
         }

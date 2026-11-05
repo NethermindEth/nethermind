@@ -22,6 +22,9 @@ public static class EvmExceptionExtensions
             EvmExceptionType.Other => "error",
             EvmExceptionType.Revert => "execution reverted",
             EvmExceptionType.InvalidCode => "invalid code: must not begin with 0xef",
+            EvmExceptionType.CallDepthExceeded => "max call depth exceeded",
+            EvmExceptionType.ReturnStackOverflow => "return stack limit reached",
+            EvmExceptionType.ReturnStackUnderflow => "return stack underflow",
             _ => "error"
         };
 }

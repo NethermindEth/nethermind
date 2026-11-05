@@ -1,6 +1,7 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -9,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -18,6 +20,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Taiko.Config;
 using Nethermind.Taiko.Rpc;
+using Nethermind.Taiko.TaikoSpec;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -54,8 +57,11 @@ public class CertainBatchLookupTests
 
         // Call before any mapping exists — expect null
         ResultWrapper<UInt256?> result = _rpcModule.taikoAuth_lastCertainBlockIDByBatchID(batchId);
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Null);
+        }
 
         // Write the mapping: batchID=1 -> blockID=10
         UInt256 blockId = 10;
@@ -63,8 +69,11 @@ public class CertainBatchLookupTests
 
         // Call again — expect the written blockID
         result = _rpcModule.taikoAuth_lastCertainBlockIDByBatchID(batchId);
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.EqualTo(blockId));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.EqualTo(blockId));
+        }
     }
 
     /// <summary>
@@ -79,8 +88,11 @@ public class CertainBatchLookupTests
 
         // Call before any mapping exists — expect null
         ResultWrapper<L1Origin?> result = _rpcModule.taikoAuth_lastCertainL1OriginByBatchID(batchId);
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Null);
+        }
 
         // Write the mapping and L1Origin, mirroring taiko-geth test values:
         // blockID=2, L2BlockHash=0x1, L1BlockHeight=3, L1BlockHash=0x2
@@ -94,12 +106,18 @@ public class CertainBatchLookupTests
 
         // Call again — verify all fields
         result = _rpcModule.taikoAuth_lastCertainL1OriginByBatchID(batchId);
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
-        Assert.That(result.Data!.BlockId, Is.EqualTo(expected.BlockId));
-        Assert.That(result.Data.L2BlockHash, Is.EqualTo(expected.L2BlockHash));
-        Assert.That(result.Data.L1BlockHeight, Is.EqualTo(expected.L1BlockHeight));
-        Assert.That(result.Data.L1BlockHash, Is.EqualTo(expected.L1BlockHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.BlockId, Is.EqualTo(expected.BlockId));
+            Assert.That(result.Data.L2BlockHash, Is.EqualTo(expected.L2BlockHash));
+            Assert.That(result.Data.L1BlockHeight, Is.EqualTo(expected.L1BlockHeight));
+            Assert.That(result.Data.L1BlockHash, Is.EqualTo(expected.L1BlockHash));
+        }
     }
 
     /// <summary>
@@ -113,8 +131,11 @@ public class CertainBatchLookupTests
 
         // Call before any mapping exists — expect null
         ResultWrapper<L1Origin?> result = _rpcModule.taikoAuth_lastCertainL1OriginByBatchID(batchId);
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Null);
+        }
 
         // Write mapping and a minimal L1Origin (only BlockID and L2BlockHash)
         UInt256 blockId = 5;
@@ -126,10 +147,16 @@ public class CertainBatchLookupTests
 
         // Call again — verify
         result = _rpcModule.taikoAuth_lastCertainL1OriginByBatchID(batchId);
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
-        Assert.That(result.Data!.BlockId, Is.EqualTo(expected.BlockId));
-        Assert.That(result.Data.L2BlockHash, Is.EqualTo(expected.L2BlockHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.BlockId, Is.EqualTo(expected.BlockId));
+            Assert.That(result.Data.L2BlockHash, Is.EqualTo(expected.L2BlockHash));
+        }
     }
 
     /// <summary>
@@ -146,11 +173,263 @@ public class CertainBatchLookupTests
         // Don't write the L1Origin for blockId=2
 
         ResultWrapper<L1Origin?> result = _rpcModule.taikoAuth_lastCertainL1OriginByBatchID(batchId);
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Null);
+        }
     }
 
-    private static TaikoEngineRpcModule CreateRpcModule(IL1OriginStore l1OriginStore) => new(
+    /// <summary>
+    /// Mirrors taiko-geth PR #558 TestBatchLookupMethodsReturnNilBelowNetworkThreshold and
+    /// alethia-reth PR #177 filters_batch_lookup_results_below_network_threshold. On Mainnet,
+    /// a batch whose resolved block id is strictly below the last-Pacaya block must report
+    /// JSON null on all four taikoAuth_last…ByBatchID methods, even when the underlying
+    /// batch-to-block and L1Origin records are present in the store.
+    /// </summary>
+    [Test]
+    public void TestBatchLookup_MainnetBelowThresholdReturnsNull()
+    {
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, BatchLookupThresholds.TaikoMainnetChainId);
+        UInt256 batchId = 1;
+        UInt256 blockId = BatchLookupThresholds.TaikoMainnetBatchLookupThreshold - 1;
+        L1Origin origin = new(blockId, Hash256.Zero, 3, Hash256.Zero, null);
+        _store.WriteBatchToLastBlockID(batchId, blockId);
+        _store.WriteL1Origin(blockId, origin);
+
+        ResultWrapper<L1Origin?> lastL1Origin = rpc.taikoAuth_lastL1OriginByBatchID(batchId).Result;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lastL1Origin.Result, Is.EqualTo(Result.Success));
+            Assert.That(lastL1Origin.Data, Is.Null);
+        }
+
+        ResultWrapper<UInt256?> lastBlockId = rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lastBlockId.Result, Is.EqualTo(Result.Success));
+            Assert.That(lastBlockId.Data, Is.Null);
+        }
+
+        ResultWrapper<UInt256?> lastCertainBlockId = rpc.taikoAuth_lastCertainBlockIDByBatchID(batchId);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lastCertainBlockId.Result, Is.EqualTo(Result.Success));
+            Assert.That(lastCertainBlockId.Data, Is.Null);
+        }
+
+        ResultWrapper<L1Origin?> lastCertainL1Origin = rpc.taikoAuth_lastCertainL1OriginByBatchID(batchId);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lastCertainL1Origin.Result, Is.EqualTo(Result.Success));
+            Assert.That(lastCertainL1Origin.Data, Is.Null);
+        }
+    }
+
+    /// <summary>
+    /// The threshold is the *first* allowed block id (per taiko-geth's <c>blockID.Cmp(threshold) &lt; 0</c>
+    /// and alethia-reth's <c>block_number &lt; threshold</c>). A batch resolving to exactly the
+    /// threshold value must pass through unchanged on every method.
+    /// </summary>
+    [Test]
+    public void TestBatchLookup_MainnetAtThresholdReturnsValue()
+    {
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, BatchLookupThresholds.TaikoMainnetChainId);
+        UInt256 batchId = 1;
+        UInt256 blockId = BatchLookupThresholds.TaikoMainnetBatchLookupThreshold;
+        L1Origin origin = new(blockId, Hash256.Zero, 3, Hash256.Zero, null);
+        _store.WriteBatchToLastBlockID(batchId, blockId);
+        _store.WriteL1Origin(blockId, origin);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.taikoAuth_lastL1OriginByBatchID(batchId).Result.Data, Is.Not.Null);
+            Assert.That(rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result.Data, Is.EqualTo(blockId));
+            Assert.That(rpc.taikoAuth_lastCertainBlockIDByBatchID(batchId).Data, Is.EqualTo(blockId));
+            Assert.That(rpc.taikoAuth_lastCertainL1OriginByBatchID(batchId).Data, Is.Not.Null);
+        }
+    }
+
+    /// <summary>
+    /// Hoodi has its own last-Pacaya threshold (3_951_005). Same gate, different value.
+    /// </summary>
+    [Test]
+    public void TestBatchLookup_HoodiBelowThresholdReturnsNull()
+    {
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, BatchLookupThresholds.TaikoHoodiChainId);
+        UInt256 batchId = 1;
+        UInt256 blockId = BatchLookupThresholds.TaikoHoodiBatchLookupThreshold - 1;
+        L1Origin origin = new(blockId, Hash256.Zero, 3, Hash256.Zero, null);
+        _store.WriteBatchToLastBlockID(batchId, blockId);
+        _store.WriteL1Origin(blockId, origin);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.taikoAuth_lastL1OriginByBatchID(batchId).Result.Data, Is.Null);
+            Assert.That(rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result.Data, Is.Null);
+            Assert.That(rpc.taikoAuth_lastCertainBlockIDByBatchID(batchId).Data, Is.Null);
+            Assert.That(rpc.taikoAuth_lastCertainL1OriginByBatchID(batchId).Data, Is.Null);
+        }
+    }
+
+    /// <summary>
+    /// Devnet and Masaya have no threshold (geth: <c>threshold == 0</c>; reth: <c>None</c>).
+    /// Any block id, including ones well below the Mainnet/Hoodi thresholds, must pass through.
+    /// </summary>
+    [TestCase(167_001UL, TestName = "Devnet")]
+    [TestCase(167_011UL, TestName = "Masaya")]
+    public void TestBatchLookup_UnfilteredNetworks(ulong chainId)
+    {
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, chainId);
+        UInt256 batchId = 1;
+        UInt256 blockId = 1;
+        L1Origin origin = new(blockId, Hash256.Zero, 3, Hash256.Zero, null);
+        _store.WriteBatchToLastBlockID(batchId, blockId);
+        _store.WriteL1Origin(blockId, origin);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.taikoAuth_lastL1OriginByBatchID(batchId).Result.Data, Is.Not.Null);
+            Assert.That(rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result.Data, Is.EqualTo(blockId));
+            Assert.That(rpc.taikoAuth_lastCertainBlockIDByBatchID(batchId).Data, Is.EqualTo(blockId));
+            Assert.That(rpc.taikoAuth_lastCertainL1OriginByBatchID(batchId).Data, Is.Not.Null);
+        }
+    }
+
+    /// <summary>
+    /// Exercises the chain-scan fallback in <c>taikoAuth_lastL1OriginByBatchID</c> /
+    /// <c>taikoAuth_lastBlockIDByBatchID</c>: with no batch→block mapping in the DB, the
+    /// scan walks <c>blockFinder.Head</c> backwards, decodes the Shasta proposalId from
+    /// the header's ExtraData, and returns the block number on match. The threshold gate
+    /// must then fire on the scan-returned block id, not just on the DB-cached one. This
+    /// is a regression guard against future refactors that could reorder the gate vs.
+    /// the scan branch in <c>TaikoEngineRpcModule</c>.
+    /// </summary>
+    [Test]
+    public void TestBatchLookup_MainnetScanPathBelowThresholdReturnsNull()
+    {
+        UInt256 batchId = 1;
+        ulong blockNumber = BatchLookupThresholds.TaikoMainnetBatchLookupThreshold - 1;
+        IBlockFinder blockFinder = CreateBlockFinderWithShastaHead(blockNumber, TaikoBlockValidator.AnchorV4Selector);
+
+        // Write the L1Origin so a missing gate would yield a non-null Data on lastL1OriginByBatchID,
+        // proving the gate (not a missing record) is what produces the null result.
+        UInt256 blockId = (UInt256)blockNumber;
+        _store.WriteL1Origin(blockId, new L1Origin(blockId, Hash256.Zero, 3, Hash256.Zero, null));
+        // Deliberately do NOT WriteBatchToLastBlockID — forces the scan fallback.
+
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, BatchLookupThresholds.TaikoMainnetChainId, blockFinder);
+
+        // Only the scan-fallback methods are asserted: taikoAuth_lastCertain*ByBatchID have
+        // no scan fallback, so with an empty batch→block mapping they already return null
+        // before the threshold gate is reached and would not prove the gate fired.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.taikoAuth_lastL1OriginByBatchID(batchId).Result.Data, Is.Null);
+            Assert.That(rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result.Data, Is.Null);
+        }
+    }
+
+    [Test]
+    public void TestBatchLookup_ScanPathAcceptsSignalSlotsAnchorOnlyWhenEnabled([Values] bool signalSlotsEnabled)
+    {
+        UInt256 batchId = 1;
+        ulong blockNumber = 10;
+        IBlockFinder blockFinder = CreateBlockFinderWithShastaHead(blockNumber, TaikoBlockValidator.AnchorV4WithSignalSlotsSelector);
+
+        ITaikoReleaseSpec spec = Substitute.For<ITaikoReleaseSpec>();
+        spec.IsAnchorV4WithSignalSlotsEnabled.Returns(signalSlotsEnabled);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        TaikoEngineRpcModule rpc = CreateRpcModuleInternal(_store, specProvider, blockFinder);
+
+        Assert.That(rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result.Data, Is.EqualTo(signalSlotsEnabled ? (UInt256?)blockNumber : null));
+    }
+
+    /// <param name="proposalIds">Proposal id of each block, from the head (block number <c>proposalIds.Length</c>) down to block 1.</param>
+    /// <param name="preconfBlocks">How many blocks from the head have a preconfirmation L1 origin.</param>
+    [TestCase(new ulong[] { 5, 5, 5 }, 0, 6UL, null, 0, TestName = "Batch newer than head")]
+    [TestCase(new ulong[] { 6, 4, 4 }, 0, 5UL, null, 1, TestName = "Batch missing between proposals")]
+    [TestCase(new ulong[] { 6, 5, 5 }, 0, 5UL, 2UL, 1, TestName = "Steps past newer batch")]
+    [TestCase(new ulong[] { 5, 5, 4 }, 1, 5UL, 2UL, 1, TestName = "Skips preconf head of same batch")]
+    [TestCase(new ulong[] { 5, 5, 5 }, 2, 6UL, null, 0, TestName = "Batch newer than preconf head")]
+    public void TestBatchLookup_ScanPathFollowsProposalIds(ulong[] proposalIds, int preconfBlocks, ulong batchId, ulong? expectedBlockId, int expectedBlocksLoaded)
+    {
+        ulong headNumber = (ulong)proposalIds.Length;
+        Block[] blocks = new Block[proposalIds.Length];
+        for (int i = 0; i < proposalIds.Length; i++)
+        {
+            ulong blockNumber = headNumber - (ulong)i;
+            blocks[i] = CreateShastaBlock(blockNumber, proposalIds[i], TaikoBlockValidator.AnchorV4Selector);
+            if (i < preconfBlocks)
+            {
+                _store.WriteL1Origin(blockNumber, new L1Origin(blockNumber, Hash256.Zero, 0, Hash256.Zero, null));
+            }
+        }
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(blocks[0]);
+        int blocksLoaded = 0;
+        blockFinder.FindBlock(Arg.Any<ulong>()).Returns(callInfo =>
+        {
+            blocksLoaded++;
+            ulong blockNumber = callInfo.ArgAt<ulong>(0);
+            return blockNumber is 0 ? null : blocks[headNumber - blockNumber];
+        });
+
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, blockFinder: blockFinder);
+
+        ResultWrapper<UInt256?> result = rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data, Is.EqualTo((UInt256?)expectedBlockId));
+            Assert.That(blocksLoaded, Is.EqualTo(expectedBlocksLoaded));
+        }
+    }
+
+    private static Block CreateShastaBlock(ulong blockNumber, UInt256 proposalId, byte[] anchorSelector)
+    {
+        // Shasta extraData layout: [basefeeSharingPctg=0][proposalId, 6 bytes big-endian].
+        byte[] extraData = new byte[TaikoHeaderHelper.ShastaExtraDataLen];
+        proposalId.ToBigEndian().AsSpan(32 - TaikoHeaderHelper.ShastaExtraDataProposalIDLength).CopyTo(extraData.AsSpan(TaikoHeaderHelper.ShastaExtraDataProposalIDIndex));
+
+        return Build.A.Block
+            .WithHeader(Build.A.BlockHeader.WithNumber(blockNumber).WithExtraData(extraData).TestObject)
+            .WithTransactions(Build.A.Transaction.WithData(anchorSelector).TestObject)
+            .TestObject;
+    }
+
+    private static IBlockFinder CreateBlockFinderWithShastaHead(ulong blockNumber, byte[] anchorSelector)
+    {
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(CreateShastaBlock(blockNumber, 1, anchorSelector));
+        return blockFinder;
+    }
+
+    /// <summary>
+    /// Pins the exact threshold literals sourced from taiko-geth PR #558 and alethia-reth PR #177.
+    /// These are consensus-critical values; a typo would silently allow or block entire block ranges.
+    /// </summary>
+    [Test]
+    public void BatchLookupThresholds_are_pinned()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BatchLookupThresholds.TaikoMainnetBatchLookupThreshold, Is.EqualTo(4_990_434UL));
+            Assert.That(BatchLookupThresholds.TaikoHoodiBatchLookupThreshold, Is.EqualTo(3_951_005UL));
+        }
+    }
+
+    private static TaikoEngineRpcModule CreateRpcModule(IL1OriginStore l1OriginStore, ulong chainId = 0, IBlockFinder? blockFinder = null)
+    {
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.ChainId.Returns(chainId);
+        return CreateRpcModuleInternal(l1OriginStore, specProvider, blockFinder);
+    }
+
+    private static TaikoEngineRpcModule CreateRpcModuleInternal(IL1OriginStore l1OriginStore, ISpecProvider specProvider, IBlockFinder? blockFinder) => new(
         Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
         Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
         Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
@@ -159,22 +438,32 @@ public class CertainBatchLookupTests
         Substitute.For<IAsyncHandler<byte[], GetPayloadV6Result?>>(),
         Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(),
         Substitute.For<IForkchoiceUpdatedHandler>(),
-        Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
+        Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>>(),
         Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
         Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
-        Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
-        Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
-        Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
-        Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>>(),
+        Substitute.For<IHandler<HashSet<string>, IReadOnlyList<string>>>(),
+        Substitute.For<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>(),
+        Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(),
+        Substitute.For<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>>(),
+        Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
         Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
+        Substitute.For<IHandler<Hash256?, InclusionListBytes>>(),
+        Substitute.For<Nethermind.Consensus.Transactions.IInclusionListTxSource>(),
+        Substitute.For<IInclusionListComplianceEvaluator>(),
+        Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>>(),
+        Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>>(),
+        Substitute.For<IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result>>(),
         Substitute.For<IEngineRequestsTracker>(),
-        Substitute.For<ISpecProvider>(),
+        Substitute.For<IBlobCustodyTracker>(),
+        specProvider,
         null!,
+        Substitute.For<Nethermind.Consensus.Processing.IBlockProcessingQueue>(),
         Substitute.For<ILogManager>(),
         Substitute.For<ITxPool>(),
-        Substitute.For<IBlockFinder>(),
+        blockFinder ?? Substitute.For<IBlockFinder>(),
+        Substitute.For<IBlockTree>(),
         Substitute.For<IShareableTxProcessorSource>(),
-        Substitute.For<IRlpStreamEncoder<Transaction>>(),
+        TxDecoder.Instance,
         l1OriginStore,
         new SurgeConfig()
     );

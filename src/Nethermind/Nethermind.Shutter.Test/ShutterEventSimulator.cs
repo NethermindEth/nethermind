@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Abi;
 using Nethermind.Int256;
 using System.Linq;
 using Google.Protobuf;
@@ -13,7 +14,6 @@ using System.Collections.Generic;
 using Nethermind.Shutter.Dto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Abi;
 
 using G1 = Nethermind.Crypto.Bls.P1;
 using G2 = Nethermind.Crypto.Bls.P2;
@@ -29,9 +29,7 @@ public class ShutterEventSimulator
     private readonly Random _rnd;
     private readonly ulong _chainId;
     private readonly ulong _threshold;
-    private readonly IAbiEncoder _abiEncoder;
     private readonly Address _sequencerContractAddress;
-    private readonly AbiEncodingInfo _transactionSubmittedAbi;
     private ulong _slot;
     protected ulong _eon;
     private ulong _txPointer; // for tracking which keys are released
@@ -44,7 +42,6 @@ public class ShutterEventSimulator
         ulong chainId,
         ulong threshold,
         ulong slot,
-        IAbiEncoder abiEncoder,
         Address sequencerContractAddress
     )
     {
@@ -54,9 +51,7 @@ public class ShutterEventSimulator
         _slot = slot;
         _txPointer = 0;
         _threshold = threshold;
-        _abiEncoder = abiEncoder;
         _sequencerContractAddress = sequencerContractAddress;
-        _transactionSubmittedAbi = new SequencerContract(sequencerContractAddress).TransactionSubmittedAbi;
         _defaultMaxKeyCount = (int)Math.Floor((decimal)ShutterTestsCommon.Cfg.EncryptedGasLimit / DefaultGasLimit);
 
         _eventSource = EmitEvents();
@@ -78,14 +73,12 @@ public class ShutterEventSimulator
         public ulong Eon;
     }
 
-    public List<Event> GetEvents(int c)
-    {
-        return _eventSource.Take(c).ToList();
-    }
+    public List<Event> GetEvents(int c) =>
+        _eventSource.Take(c).ToList();
 
     public (List<Event> events, DecryptionKeys keys) AdvanceSlot(int eventCount, int? keyCount)
     {
-        var events = _eventSource.Take(eventCount).ToList();
+        List<Event> events = _eventSource.Take(eventCount).ToList();
         foreach (Event e in events)
         {
             _keys[e.Eon].Enqueue((e.IdentityPreimage, e.Key));
@@ -105,10 +98,8 @@ public class ShutterEventSimulator
         return (events, decryptionKeys);
     }
 
-    protected virtual IEnumerable<Event> EmitEvents()
-    {
-        return EmitEvents(EmitDefaultEons(), EmitDefaultTransactions());
-    }
+    protected virtual IEnumerable<Event> EmitEvents() =>
+        EmitEvents(EmitDefaultEons(), EmitDefaultTransactions());
 
     protected IEnumerable<Event> EmitEvents(IEnumerable<ulong> eons, IEnumerable<Transaction> transactions)
     {
@@ -205,18 +196,18 @@ public class ShutterEventSimulator
         ulong txIndex,
         UInt256 gasLimit)
     {
-        byte[] logData = _abiEncoder.Encode(_transactionSubmittedAbi, [
+        byte[] logData = AbiCodec.Encode(SequencerContract.TransactionSubmittedData, (
             eon,
             txIndex,
             identityPreimage[..32].ToArray(),
-            new Address(identityPreimage[32..].ToArray()),
+            new Address(identityPreimage[32..]),
             encryptedTransaction.ToArray(),
             gasLimit
-        ]);
+        ));
 
         return Build.A.LogEntry
             .WithAddress(_sequencerContractAddress)
-            .WithTopics(_transactionSubmittedAbi.Signature.Hash)
+            .WithTopics(SequencerContract.TransactionSubmittedHash)
             .WithData(logData)
             .TestObject;
     }
@@ -226,7 +217,7 @@ public class ShutterEventSimulator
         rawKeys.Sort(static (a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
         rawKeys.Insert(0, ([], []));
 
-        var keys = rawKeys.Select(static k => new Key()
+        List<Key> keys = rawKeys.Select(static k => new Key()
         {
             Identity = ByteString.CopyFrom(k.IdentityPreimage),
             Key_ = ByteString.CopyFrom(k.Key),

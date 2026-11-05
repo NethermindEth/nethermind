@@ -1,8 +1,9 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -13,19 +14,29 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Test.Runner;
 
-public class StateTestTxTracer : ITxTracer, IDisposable
+/// <summary>
+/// Produces EIP-3155 traces for Ethereum state tests.
+/// </summary>
+/// <param name="standardIntrinsicGas">
+/// Standard transaction intrinsic gas, used only when execution ends before a top-level frame is traced.
+/// </param>
+/// <param name="destroyRefund">Refund awarded for the first successful legacy self-destruct of an account.</param>
+public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) : ITraceImplicitStop, IDisposable
 {
     private StateTestTxTraceEntry _traceEntry;
     private readonly StateTestTxTrace _trace = new();
+    private readonly RefundTracker _refundTracker = new(destroyRefund);
+    private TopLevelGasTracker _gasTracker = new(standardIntrinsicGas);
     private bool _gasAlreadySetForCurrentOp;
 
     public bool IsTracingReceipt => true;
-    public bool IsTracingActions => false;
+    public bool IsTracingActions => true;
     public bool IsTracingOpLevelStorage => true;
     public bool IsTracingMemory => true;
     public bool IsTracingDetailedMemory { get; set; } = true;
     public bool IsTracingInstructions => true;
-    public bool IsTracingRefunds { get; } = false;
+    public bool IsTracingRefunds { get; } = true;
+    public bool IsTracingReturnData { get; } = false;
     public bool IsTracingCode => false;
     public bool IsTracingStack { get; set; } = true;
     public bool IsTracingState => false;
@@ -40,26 +51,27 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
     {
         _trace.Result.Output = output;
-        _trace.Result.GasUsed = gasSpent;
+        SetReceiptGasFallback(in gasSpent);
     }
 
     public void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string error, Hash256 stateRoot = null)
     {
         _trace.Result.Error = _traceEntry?.Error ?? error;
         _trace.Result.Output = output ?? Bytes.Empty;
-        _trace.Result.GasUsed = gasSpent;
+        SetReceiptGasFallback(in gasSpent);
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         _gasAlreadySetForCurrentOp = false;
         _traceEntry = new StateTestTxTraceEntry
         {
             Pc = pc,
             Operation = (byte)opcode,
-            OperationName = Enum.GetName(opcode),
+            OperationName = OpcodeJsonNames.GetName(opcode),
             Gas = gas,
             Depth = env.GetGethTraceDepth(),
+            Refund = _refundTracker.Refund,
         };
         _trace.Entries.Add(_traceEntry);
     }
@@ -71,23 +83,22 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         _traceEntry.Error = GetErrorDescription(error);
     }
 
-    private static string? GetErrorDescription(EvmExceptionType evmExceptionType)
+    private static string? GetErrorDescription(EvmExceptionType evmExceptionType) => evmExceptionType switch
     {
-        return evmExceptionType switch
-        {
-            EvmExceptionType.None => null,
-            EvmExceptionType.BadInstruction => "BadInstruction",
-            EvmExceptionType.StackOverflow => "StackOverflow",
-            EvmExceptionType.StackUnderflow => "StackUnderflow",
-            EvmExceptionType.OutOfGas => "OutOfGas",
-            EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
-            EvmExceptionType.AccessViolation => "AccessViolation",
-            EvmExceptionType.StaticCallViolation => "StaticCallViolation",
-            _ => "Error"
-        };
-    }
+        EvmExceptionType.None => null,
+        EvmExceptionType.BadInstruction => "BadInstruction",
+        EvmExceptionType.StackOverflow => "StackOverflow",
+        EvmExceptionType.StackUnderflow => "StackUnderflow",
+        EvmExceptionType.OutOfGas => "OutOfGas",
+        EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
+        EvmExceptionType.AccessViolation => "AccessViolation",
+        EvmExceptionType.ReturnStackOverflow => "ReturnStackOverflow",
+        EvmExceptionType.ReturnStackUnderflow => "ReturnStackUnderflow",
+        EvmExceptionType.StaticCallViolation => "StaticCallViolation",
+        _ => "Error"
+    };
 
-    public void ReportOperationRemainingGas(long gas)
+    public void ReportOperationRemainingGas(ulong gas)
     {
         if (_traceEntry is null) return;
 
@@ -95,6 +106,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         {
             _gasAlreadySetForCurrentOp = true;
             _traceEntry.GasCost = _traceEntry.Gas - gas;
+            _traceEntry.Refund = _refundTracker.Refund;
         }
     }
 
@@ -118,8 +130,8 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     {
         if (IsTracingDetailedMemory)
         {
-            var length = 2;
-            var wordList = memoryTrace.ToHexWordList();
+            int length = 2;
+            string[] wordList = memoryTrace.ToHexWordList();
             for (int i = 0; i < wordList.Length; i++)
             {
                 length += wordList[i].Length;
@@ -152,11 +164,15 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         }
     }
 
+    public void SetOperationReturnData(ReadOnlySpan<byte> returnData)
+    {
+    }
+
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
     {
     }
 
-    public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
     }
 
@@ -172,77 +188,65 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     {
     }
 
-    public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+    public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) =>
+        _refundTracker.CreditSelfDestruct(address);
+
+    public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
+
+    public void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after) => throw new NotSupportedException();
+
+    public void ReportNonceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
+
+    public void ReportAccountRead(Address address) => throw new NotImplementedException();
+
+    public void ReportStorageChange(in StorageCell storageAddress, byte[] before, byte[] after) => throw new NotSupportedException();
+
+    public void ReportStorageRead(in StorageCell storageCell) => throw new NotImplementedException();
+
+    public void ReportAction(ulong gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
-        throw new NotSupportedException();
+        _gasTracker.StartAction(gas);
+        _refundTracker.TakeSnapshot();
     }
 
-    public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
+    public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => CompleteSuccessfulAction(gas);
+
+    // An exceptional halt consumes all gas assigned to the frame.
+    public void ReportActionError(EvmExceptionType exceptionType) => CompleteRevertedAction(0);
+
+    public void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => CompleteRevertedAction(gas);
+
+    public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => CompleteSuccessfulAction(gas);
+
+    private void CompleteSuccessfulAction(ulong gas)
     {
-        throw new NotSupportedException();
+        _refundTracker.CommitSnapshot();
+        CompleteAction(gas);
     }
 
-    public void ReportCodeChange(Address address, byte[] before, byte[] after)
+    private void CompleteRevertedAction(ulong gas)
     {
-        throw new NotSupportedException();
+        _refundTracker.RestoreSnapshot();
+        CompleteAction(gas);
     }
 
-    public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
+    private void CompleteAction(ulong gas)
     {
-        throw new NotSupportedException();
+        if (_gasTracker.EndAction(gas) is ulong gasUsed)
+            _trace.Result.GasUsed = gasUsed;
     }
 
-    public void ReportAccountRead(Address address)
+    private void SetReceiptGasFallback(in GasConsumed gasSpent)
     {
-        throw new NotImplementedException();
+        if (_gasTracker.GetReceiptFallback(in gasSpent) is ulong gasUsed)
+            _trace.Result.GasUsed = gasUsed;
     }
 
-    public void ReportStorageChange(in StorageCell storageAddress, byte[] before, byte[] after)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportBlockHash(Hash256 blockHash) => throw new NotImplementedException();
 
-    public void ReportStorageRead(in StorageCell storageCell)
-    {
-        throw new NotImplementedException();
-    }
+    public void ReportByteCode(ReadOnlyMemory<byte> byteCode) => throw new NotSupportedException();
 
-    public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
-    {
-        throw new NotSupportedException();
-    }
-
-    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
-    {
-        throw new NotSupportedException();
-    }
-
-    public void ReportActionError(EvmExceptionType exceptionType)
-    {
-        throw new NotSupportedException();
-    }
-
-    public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
-    {
-        throw new NotSupportedException();
-    }
-
-    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
-    {
-        throw new NotSupportedException();
-    }
-
-    public void ReportBlockHash(Hash256 blockHash)
-    {
-        throw new NotImplementedException();
-    }
-
-    public void ReportByteCode(ReadOnlyMemory<byte> byteCode)
-    {
-        throw new NotSupportedException();
-    }
-
-    public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
+    public void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
     {
     }
 
@@ -250,34 +254,20 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     {
     }
 
-    public void ReportRefund(long refund)
-    {
-        _traceEntry.Refund = (int)refund;
-    }
+    public void ReportRefund(long refund) => _refundTracker.Add(refund);
 
-    public void ReportExtraGasPressure(long extraGasPressure)
-    {
-        throw new NotImplementedException();
-    }
+    // Reached because IsTracingRefunds is enabled; EIP-3155 has no gas-pressure record.
+    public void ReportExtraGasPressure(ulong extraGasPressure) { }
 
-    public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
-    {
-        throw new NotImplementedException();
-    }
+    public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells) => throw new NotImplementedException();
 
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
     {
     }
 
-    public StateTestTxTrace BuildResult()
-    {
-        return _trace;
-    }
+    public StateTestTxTrace BuildResult() => _trace;
 
-    public void ReportFees(UInt256 fees, UInt256 burntFees)
-    {
-        throw new NotImplementedException();
-    }
+    public void ReportFees(UInt256 fees, UInt256 burntFees) => throw new NotImplementedException();
 
     public void Dispose() { }
 }

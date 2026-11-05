@@ -1,50 +1,49 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
-using Nethermind.Core.Crypto;
+using System;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
 public class BlockRangeUpdateMessageSerializer :
-    IZeroInnerMessageSerializer<BlockRangeUpdateMessage>
+    IMessageSerializer<BlockRangeUpdateMessage>
 {
-    public void Serialize(IByteBuffer byteBuffer, BlockRangeUpdateMessage message)
+    public int Serialize(Span<byte> destination, BlockRangeUpdateMessage message)
     {
-        NettyRlpStream rlpStream = new(byteBuffer);
+        RlpWriter writer = new(destination);
+        writer.StartSequence(GetContentLength(message));
 
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
-        rlpStream.StartSequence(contentLength);
-
-        rlpStream.Encode(message.EarliestBlock);
-        rlpStream.Encode(message.LatestBlock);
-        rlpStream.Encode(message.LatestBlockHash);
+        writer.Encode(message.EarliestBlock);
+        writer.Encode(message.LatestBlock);
+        writer.Encode(message.LatestBlockHash);
+        return writer.Position;
     }
 
-    public BlockRangeUpdateMessage Deserialize(IByteBuffer byteBuffer) =>
-        byteBuffer.DeserializeRlp(Deserialize);
+    public BlockRangeUpdateMessage Deserialize(ReadOnlySpan<byte> data)
+    {
+        RlpReader ctx = new(data);
+        BlockRangeUpdateMessage message = Deserialize(ref ctx);
+        ctx.CheckEnd();
+        return message;
+    }
 
-    private static BlockRangeUpdateMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+    private static BlockRangeUpdateMessage Deserialize(ref RlpReader ctx)
     {
         ctx.ReadSequenceLength();
 
         return new BlockRangeUpdateMessage
         {
-            EarliestBlock = ctx.DecodeLong(),
-            LatestBlock = ctx.DecodeLong(),
-            LatestBlockHash = ctx.DecodeKeccak() ?? Hash256.Zero
+            EarliestBlock = ctx.DecodeULong(),
+            LatestBlock = ctx.DecodeULong(),
+            LatestBlockHash = ctx.DecodeKeccak()
         };
     }
 
-    public int GetLength(BlockRangeUpdateMessage message, out int contentLength)
-    {
-        contentLength =
-            Rlp.LengthOf(message.EarliestBlock) +
-            Rlp.LengthOf(message.LatestBlock) +
-            Rlp.LengthOf(message.LatestBlockHash);
+    public int GetLength(BlockRangeUpdateMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
 
-        return Rlp.LengthOfSequence(contentLength);
-    }
+    private static int GetContentLength(BlockRangeUpdateMessage message) =>
+        Rlp.LengthOf(message.EarliestBlock) +
+        Rlp.LengthOf(message.LatestBlock) +
+        Rlp.LengthOf(message.LatestBlockHash);
 }

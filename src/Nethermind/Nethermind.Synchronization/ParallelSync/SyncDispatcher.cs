@@ -10,6 +10,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync
@@ -27,7 +28,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly string _feedName;
         private ISyncPeerPool SyncPeerPool { get; }
 
-        private readonly CountdownEvent _activeTasks = new CountdownEvent(1);
+        private readonly CountdownEvent _activeTasks = new(1);
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private readonly SemaphoreSlim _concurrentProcessingSemaphore;
         private readonly TimeSpan _emptyRequestDelay;
@@ -68,15 +69,38 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             UpdateState(Feed.CurrentState);
 
+            using CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationTokenSource.Token);
             try
             {
                 _activeTasks.AddCount(1);
-                using CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationTokenSource.Token);
                 await DispatchLoop(linkedSource.Token);
             }
             finally
             {
-                SignalActiveTask();
+                try
+                {
+                    // Cancel first: in-flight dispatches then skip response handling, so they cannot
+                    // race the feed teardown that Finish triggers (ActivatedSyncFeed disposes on Finished).
+                    await linkedSource.CancelAsync();
+                }
+                finally
+                {
+                    try
+                    {
+                        // Shutdown waits on Feed.FeedTask, which only completes once the feed is finished,
+                        // and this loop is the feed's only consumer. The loop's own cancellation handler
+                        // misses every exit that is not a cancelled await - cancellation observed by the
+                        // `while` condition, an exhausted _activeTasks count, or a non-cancellation fault -
+                        // so finish the feed here.
+                        Feed.Finish();
+                    }
+                    finally
+                    {
+                        // The signal must not depend on the cancellation callbacks or feed subscribers:
+                        // a throw above would otherwise leave DisposeAsync waiting out its full timeout.
+                        SignalActiveTask();
+                    }
+                }
             }
         }
 
@@ -125,28 +149,37 @@ namespace Nethermind.Synchronization.ParallelSync
 
                         SyncPeerAllocation allocation = await Allocate(request, cancellationToken);
                         PeerInfo? allocatedPeer = allocation.Current;
-                        if (Logger.IsTrace) Logger.Trace($"Allocated peer: {allocatedPeer}");
+                        if (Logger.IsTrace) Logger.Trace($"Allocated peer: {allocatedPeer:hide}");
                         if (allocatedPeer is not null)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
+                            if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current:hide}");
 
                             // Use Task.Run to make sure it queues it instead of running part of it synchronously.
                             try
                             {
                                 if (!_activeTasks.TryAddCount())
+                                {
+                                    allocation.Dispose();
                                     break;
+                                }
                             }
                             catch (ObjectDisposedException)
                             {
+                                allocation.Dispose();
                                 break;
                             }
 
+                            // The lambda must be async so the finally runs after DoDispatch's Task fully completes;
+                            // a non-async `() => DoDispatch(...)` would call SignalActiveTask the moment DoDispatch
+                            // yields (e.g. on the IsMultiFeed semaphore await), dropping the _activeTasks count
+                            // while the dispatch was still in flight. That race is what the flaky
+                            // When_ConcurrentHandleResponseIsRunning_Then_BlockDispose test was catching.
                             Task task = Task.Run(
-                                () =>
+                                async () =>
                                 {
                                     try
                                     {
-                                        return DoDispatch(cancellationToken, allocatedPeer, request, allocation);
+                                        await DoDispatch(cancellationToken, allocatedPeer, request, allocation);
                                     }
                                     finally
                                     {
@@ -156,13 +189,14 @@ namespace Nethermind.Synchronization.ParallelSync
 
                             if (!Feed.IsMultiFeed)
                             {
-                                if (Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().NameWithGenerics()} with allocated {allocatedPeer}");
+                                if (Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().NameWithGenerics()} with allocated {allocatedPeer:hide}");
                                 await task;
-                                if (Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().NameWithGenerics()} with allocated {allocatedPeer} has been processed");
+                                if (Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().NameWithGenerics()} with allocated {allocatedPeer:hide} has been processed");
                             }
                         }
                         else
                         {
+                            allocation.Dispose();
                             Logger.Debug($"DISPATCHER - {GetType().NameWithGenerics()}: peer NOT allocated");
                             DoHandleResponse(request);
                         }
@@ -186,36 +220,54 @@ namespace Nethermind.Synchronization.ParallelSync
             SyncPeerAllocation allocation)
         {
             long dispatchTimeStart = Stopwatch.GetTimestamp();
-            try
+            using (allocation)
             {
-                await Downloader.Dispatch(allocatedPeer, request, cancellationToken);
-            }
-            catch (ConcurrencyLimitReachedException)
-            {
-                if (Logger.IsDebug) Logger.Debug($"{request} - concurrency limit reached. Peer: {allocatedPeer}");
-            }
-            catch (TimeoutException)
-            {
-                if (Logger.IsDebug) Logger.Debug($"{request} - timed out. Peer: {allocatedPeer}");
-            }
-            catch (OperationCanceledException)
-            {
-                if (Logger.IsTrace) Logger.Debug($"{request} - Operation was canceled");
-            }
-            catch (Exception e)
-            {
-                if (Logger.IsWarn) Logger.Warn($"Failure when executing request {e}");
-            }
-            Metrics.SyncDispatcherDispatchTimeMicros.Observe(Stopwatch.GetElapsedTime(dispatchTimeStart).TotalMicroseconds, new StringLabel(_feedName));
+                try
+                {
+                    await Downloader.Dispatch(allocatedPeer, request, cancellationToken);
+                }
+                catch (ConcurrencyLimitReachedException)
+                {
+                    if (Logger.IsDebug) Logger.Debug($"{request} - concurrency limit reached. Peer: {allocatedPeer:hide}");
+                }
+                catch (TimeoutException)
+                {
+                    if (Logger.IsDebug) Logger.Debug($"{request} - timed out. Peer: {allocatedPeer:hide}");
+                }
+                catch (OperationCanceledException)
+                {
+                    if (Logger.IsTrace) Logger.Debug($"{request} - Operation was canceled");
+                }
+                catch (SubprotocolException e)
+                {
+                    // A peer fault, not a node fault: the feed handles the missing response below and re-requests the data.
+                    if (Logger.IsDebug) Logger.Debug($"{request} - invalid response: {e.Message:hide}. Peer: {allocatedPeer:hide}");
+                }
+                catch (Exception e)
+                {
+                    if (Logger.IsWarn) Logger.Warn($"Failure when executing request ({e.GetType().Name}) {e:hide}");
+                }
+                Metrics.SyncDispatcherDispatchTimeMicros.Observe(Stopwatch.GetElapsedTime(dispatchTimeStart).TotalMicroseconds, new StringLabel(_feedName));
 
-            if (Feed.IsMultiFeed)
-            {
-                // Limit multithreaded feed concurrency. Note, this also blocks freeing the allocation, which is deliberate.
-                // otherwise, we will keep spawning requests without processing it fast enough, which consume memory.
-                await _concurrentProcessingSemaphore.WaitAsync(cancellationToken);
+                try
+                {
+                    if (Feed.IsMultiFeed)
+                    {
+                        // Holding the allocation across this wait provides backpressure while responses queue for processing.
+                        await _concurrentProcessingSemaphore.WaitAsync(cancellationToken);
+                    }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Teardown raced this dispatch; stop rather than fault the un-awaited task.
+                    if (Logger.IsDebug) Logger.Debug($"{_feedName} dispatch abandoned during shutdown.");
+                    return;
+                }
             }
-
-            Free(allocation);
 
             dispatchTimeStart = Stopwatch.GetTimestamp();
             try
@@ -256,8 +308,6 @@ namespace Nethermind.Synchronization.ParallelSync
                 if (Logger.IsError) Logger.Error("Error when handling response", e);
             }
         }
-
-        private void Free(SyncPeerAllocation allocation) => SyncPeerPool.Free(allocation);
 
         protected async Task<SyncPeerAllocation> Allocate(T request, CancellationToken cancellationToken) =>
             await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, _allocateTimeoutMs, cancellationToken);
@@ -312,7 +362,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         newDormantStateTask = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
                     }
 
-                    var previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);
+                    TaskCompletionSource<object> previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);
                     previous?.TrySetResult(null);
                 }
             }

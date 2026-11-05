@@ -20,7 +20,7 @@ namespace Nethermind.Trie.Pruning
         /// (i.e., not partially pruned). Implementations that perform pruning should reject blocks
         /// whose state may have been partially pruned.
         /// </summary>
-        bool HasRoot(Hash256 stateRoot, long blockNumber) => HasRoot(stateRoot);
+        bool HasRoot(Hash256 stateRoot, ulong blockNumber) => HasRoot(stateRoot);
 
         IDisposable BeginScope(BlockHeader? baseBlock);
 
@@ -32,7 +32,7 @@ namespace Nethermind.Trie.Pruning
         /// </summary>
         /// <param name="blockNumber"></param>
         /// <returns></returns>
-        IBlockCommitter BeginBlockCommit(long blockNumber);
+        IBlockCommitter BeginBlockCommit(ulong blockNumber);
     }
 
     public interface IScopableTrieStore
@@ -63,11 +63,11 @@ namespace Nethermind.Trie.Pruning
     /// <summary>
     /// A block committer identifies the scope at which a commit for a block should happen.
     /// The commit started via <see cref="IScopedTrieStore.BeginCommit"/> which is called by <see cref="PatriciaTree.Commit"/>
-    /// Depending on <see cref="TryRequestConcurrencyQuota"/>, multiple patricia trie commit may run at the same time.
+    /// When <see cref="SupportsParallelCommit"/> is true, multiple trie commits may run at the same time.
     /// </summary>
     public interface IBlockCommitter : IDisposable
     {
-        bool TryRequestConcurrencyQuota() => false;
-        void ReturnConcurrencyQuota() { }
+        /// <summary>Whether storage tries can be committed concurrently.</summary>
+        bool SupportsParallelCommit => false;
     }
 }

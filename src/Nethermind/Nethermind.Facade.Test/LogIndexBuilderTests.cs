@@ -2,23 +2,30 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
+using Nethermind.History;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 
 namespace Nethermind.Facade.Test;
 
@@ -28,6 +35,7 @@ public class LogIndexBuilderTests
 {
     private class TestLogIndexStorage : ILogIndexStorage
     {
+        private readonly Lock _gate = new();
         private int? _minBlockNumber;
         private int? _maxBlockNumber;
 
@@ -38,13 +46,13 @@ public class LogIndexBuilderTests
 
         public int? MinBlockNumber
         {
-            get => _minBlockNumber;
+            get { lock (_gate) return _minBlockNumber; }
             init => _minBlockNumber = value;
         }
 
         public int? MaxBlockNumber
         {
-            get => _maxBlockNumber;
+            get { lock (_gate) return _maxBlockNumber; }
             init => _maxBlockNumber = value;
         }
 
@@ -56,31 +64,42 @@ public class LogIndexBuilderTests
 
         public string GetDbSize() => 0L.SizeToString();
 
-        public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
-            new(batch);
+        public virtual LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
+            new(batch, isBackwardSync);
 
         public virtual Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
         {
-            var min = Math.Min(aggregate.FirstBlockNum, aggregate.LastBlockNum);
-            var max = Math.Max(aggregate.FirstBlockNum, aggregate.LastBlockNum);
+            int min = Math.Min(aggregate.FirstBlockNum, aggregate.LastBlockNum);
+            int max = Math.Max(aggregate.FirstBlockNum, aggregate.LastBlockNum);
 
-            if (_minBlockNumber is null || min < _minBlockNumber)
+            bool fireMin = false;
+            bool fireMax = false;
+            lock (_gate)
             {
-                if (_minBlockNumber is not null && max != _minBlockNumber - 1)
-                    throw new InvalidOperationException("Invalid receipts order.");
+                if (_minBlockNumber is null || min < _minBlockNumber)
+                {
+                    if (_minBlockNumber is not null && max != _minBlockNumber - 1)
+                        throw new InvalidOperationException("Invalid receipts order.");
 
-                _minBlockNumber = min;
-                NewMinBlockNumber?.Invoke(this, min);
+                    _minBlockNumber = min;
+                    fireMin = true;
+                }
+
+                if (_maxBlockNumber is null || max > _maxBlockNumber)
+                {
+                    if (_maxBlockNumber is not null && min != _maxBlockNumber + 1)
+                        throw new InvalidOperationException("Invalid receipts order.");
+
+                    _maxBlockNumber = max;
+                    fireMax = true;
+                }
             }
 
-            if (_maxBlockNumber is null || max > _maxBlockNumber)
-            {
-                if (_maxBlockNumber is not null && min != _maxBlockNumber + 1)
-                    throw new InvalidOperationException("Invalid receipts order.");
-
-                _maxBlockNumber = max;
-                NewMaxBlockNumber?.Invoke(this, max);
-            }
+            // Fire events outside the lock to avoid running subscriber code
+            // under the gate (subscribers in tests can re-enter via Wait
+            // helpers that subscribe/unsubscribe).
+            if (fireMin) NewMinBlockNumber?.Invoke(this, min);
+            if (fireMax) NewMaxBlockNumber?.Invoke(this, max);
 
             return Task.CompletedTask;
         }
@@ -92,16 +111,40 @@ public class LogIndexBuilderTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
+    private class RecordingLogIndexStorage : TestLogIndexStorage
+    {
+        private readonly ConcurrentDictionary<int, int> _receiptCounts = new();
+
+        public int ReceiptCountAt(int blockNumber) => _receiptCounts.TryGetValue(blockNumber, out int count) ? count : -1;
+
+        public override LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
+        {
+            foreach (BlockReceipts blockReceipts in batch)
+                _receiptCounts[blockReceipts.BlockNumber] = blockReceipts.Receipts.Length;
+            return base.Aggregate(batch, isBackwardSync, stats);
+        }
+    }
+
+    private sealed class GatedLogIndexStorage : RecordingLogIndexStorage
+    {
+        public TaskCompletionSource Gate { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int GateAtOrBelow { get; init; } = int.MinValue;
+
+        public override async Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
+        {
+            if (Math.Min(aggregate.FirstBlockNum, aggregate.LastBlockNum) <= GateAtOrBelow)
+                await Gate.Task;
+            await base.AddReceiptsAsync(aggregate, stats);
+        }
+    }
+
     private class FailingLogIndexStorage(int failAfter, Exception exception) : TestLogIndexStorage
     {
         private int _callCount;
 
-        public override Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
-        {
-            return Interlocked.Increment(ref _callCount) <= failAfter
+        public override Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null) => Interlocked.Increment(ref _callCount) <= failAfter
                 ? base.AddReceiptsAsync(aggregate, stats)
                 : throw exception;
-        }
     }
 
     private const int MaxReorgDepth = 8;
@@ -138,7 +181,7 @@ public class LogIndexBuilderTests
     [TearDown]
     public async Task TearDownAsync()
     {
-        foreach (var disposable in _testDisposables)
+        foreach (object disposable in _testDisposables)
         {
             if (disposable is IAsyncDisposable asyncDisposable)
                 await asyncDisposable.DisposeAsync();
@@ -147,20 +190,60 @@ public class LogIndexBuilderTests
         }
     }
 
-    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage)
+    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage, IBlockTree? blockTree = null, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null, ISyncPointers? syncPointers = null, int stallTicksBeforeGivingUp = 1440) => new LogIndexBuilder(
+            logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _logManager, flatDbConfig, prunedLogsRetention, syncPointers
+        )
+    { StallTicksBeforeGivingUp = stallTicksBeforeGivingUp }.AddTo(_testDisposables);
+
+    [TestCase(0UL, 12UL, 1440)]
+    [TestCase(8UL, 12UL, 1843)]
+    [TestCase(40UL, 12UL, 9216)]
+    [TestCase(40UL, 2UL, 1536)]
+    public void Stall_deadline_scales_with_the_pruning_interval_and_slot_time(ulong pruningInterval, ulong secondsPerSlot, int expectedTicks)
     {
-        return new LogIndexBuilder(
-            logIndexStorage, _config, _blockTree, _syncConfig, _receiptStorage, _logManager
-        ).AddTo(_testDisposables);
+        LogIndexBuilder builder = new(
+            Substitute.For<ILogIndexStorage>(), _config, _blockTree, _syncConfig, _receiptStorage, _logManager,
+            historyConfig: new HistoryConfig { PruningInterval = pruningInterval },
+            blocksConfig: new BlocksConfig { SecondsPerSlot = secondsPerSlot });
+        builder.AddTo(_testDisposables);
+
+        Assert.That(builder.StallTicksBeforeGivingUp, Is.EqualTo(expectedTicks));
+    }
+
+    [Test]
+    public void Rejects_parallelism_below_one_only_when_enabled(
+        [Values(1, 0, -1)] int parallelism,
+        [Values(nameof(ILogIndexConfig.MaxReceiptsParallelism), nameof(ILogIndexConfig.MaxAggregationParallelism))] string setting,
+        [Values] bool enabled)
+    {
+        _config.Enabled = enabled;
+        if (setting == nameof(ILogIndexConfig.MaxReceiptsParallelism))
+            _config.MaxReceiptsParallelism = parallelism;
+        else
+            _config.MaxAggregationParallelism = parallelism;
+
+        IResolveConstraint expected = enabled && parallelism < 1
+            ? Throws.TypeOf<InvalidConfigurationException>().With.Message.Contain($"LogIndex.{setting}")
+            : Throws.Nothing;
+
+        Assert.That(() => GetService(Substitute.For<ILogIndexStorage>()), expected);
+    }
+
+    private static ISyncPointers DownloadedToTheBarrier()
+    {
+        ISyncPointers pointers = Substitute.For<ISyncPointers>();
+        pointers.LowestInsertedBodyNumber.Returns(1UL);
+        return pointers;
     }
 
     [Test]
     [CancelAfter(60_000)]
     public async Task Should_SyncToBarrier(
-        [Values(1, 10)] int minBarrier,
+        [Values(1UL, 10UL)] ulong minBarrier,
         [Values(1, 16, MaxBlock)] int batchSize,
         [Values(
             new[] { -1, -1 }, // -1 is treated as null
+            new[] { 0, 2 }, // stored max more than a batch below the barrier
             new[] { 0, MaxSyncBlock / 2 },
             new[] { MaxSyncBlock / 2, MaxSyncBlock / 2 },
             new[] { MaxSyncBlock / 2, MaxSyncBlock },
@@ -174,8 +257,8 @@ public class LogIndexBuilderTests
         _syncConfig.AncientReceiptsBarrier = minBarrier;
         Assert.That(_syncConfig.AncientReceiptsBarrierCalc, Is.EqualTo(minBarrier));
 
-        var expectedMin = minBarrier <= 1 ? 0 : synced[0] < 0 ? minBarrier : Math.Min(synced[0], minBarrier);
-        var storage = new TestLogIndexStorage
+        int expectedMin = minBarrier <= 1 ? 0 : synced[0] < 0 ? (int)minBarrier : Math.Min(synced[0], (int)minBarrier);
+        TestLogIndexStorage storage = new()
         {
             MinBlockNumber = synced[0] < 0 ? null : synced[0],
             MaxBlockNumber = synced[1] < 0 ? null : synced[1]
@@ -196,32 +279,173 @@ public class LogIndexBuilderTests
         }
     }
 
-    [Test]
-    public async Task Should_ForwardError(
-        [Values(0, 1, 4)] int failAfter
-    )
+    [TestCase(10, 2, 1, "0/90", TestName = "Should_WarnOnce_WhenTheStoredIndexEndsBelowTheBarrierAndReceiptsThereAreUnavailable")]
+    [TestCase(10, 50, 0, "1/43", TestName = "Should_NotWarn_WhenReceiptsAboveTheBarrierAreNotReadableYet")]
+    [TestCase(10, MaxSyncBlock, 0, "1/1", TestName = "Should_NotWarn_WhenIdleAtHead")]
+    [TestCase(MaxSyncBlock + 3, MaxSyncBlock, 0, "1/1", TestName = "Should_NotWarn_WhenIdleAtAHeadBelowTheBarrier")]
+    [CancelAfter(60_000)]
+    public async Task Should_WarnOnce_OnlyWhenTheForwardIndexIsStuckBelowTheBarrier(int barrier, int storedMax, int expectedWarnings, string expectedForwardProgress, CancellationToken cancellation)
     {
-        var exception = new Exception(nameof(Should_ForwardError));
-        LogIndexBuilder builder = GetService(new FailingLogIndexStorage(failAfter, exception));
+        _syncConfig.AncientReceiptsBarrier = (ulong)barrier;
+        TestLogger logger = new();
+        _logManager = new OneLoggerLogManager(new ILogger(logger));
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree prunedTree = Substitute.For<IBlockTree>();
+        prunedTree.SyncPivot.Returns(realTree.SyncPivot);
+        prunedTree.Head.Returns(realTree.Head);
+        int emptyPolls = 0;
+        TaskCompletionSource polledTwice = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Read once per empty forward batch, right after the warning decision.
+        prunedTree.GetLowestBlock().Returns(_ =>
+        {
+            if (Interlocked.Increment(ref emptyPolls) == 2)
+                polledTwice.TrySetResult();
+
+            return (ulong)barrier;
+        });
+        prunedTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                ulong number = ci.ArgAt<ulong>(0);
+                return number == (ulong)storedMax + 1 ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
+            });
+
+        TestLogIndexStorage storage = new() { MinBlockNumber = 0, MaxBlockNumber = storedMax };
+        LogIndexBuilder builder = GetService(storage, prunedTree);
+
+        await builder.StartAsync();
+        await polledTwice.Task.WaitAsync(cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.LogList.FindAll(static line => line.Contains("below the ancient receipts barrier")), Has.Count.EqualTo(expectedWarnings),
+                "only a forward index stuck below the barrier must tell the operator, and only once instead of polling silently forever");
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MaxBlockNumber, Is.EqualTo(storedMax));
+            Assert.That(logger.LogList.Exists(line => line.Replace(" ", "").Contains($"(Forward){expectedForwardProgress}(")), Is.True,
+                "forward progress must count from the first block the forward walk indexes, not from the pivot");
+        }
+
+        await builder.StopAsync();
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_NotIndexNonCanonicalBlocks_WhenTheHeadIsAheadOfTheMainChain(CancellationToken cancellation)
+    {
+        IBlockTree realTree = Build.A.BlockTree().OfChainLength(MaxBlock / 2 + 1).BlockTree;
+        Block sideHead = realTree.Head!;
+        while (sideHead.Number < MaxBlock)
+        {
+            sideHead = Build.A.Block.WithParent(sideHead).TestObject;
+            realTree.SuggestBlock(sideHead);
+        }
+
+        ConcurrentBag<ulong> nonCanonicalReads = [];
+        TaskCompletionSource polledEmptyBatch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        // A reorg to a shorter chain can land between reading the head and loading the blocks below it.
+        tree.Head.Returns(sideHead);
+        tree.GetLowestBlock().Returns(_ =>
+        {
+            polledEmptyBatch.TrySetResult();
+            return 0UL;
+        });
+        tree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                Block? block = realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1));
+                if (block is not null && !realTree.IsMainChain(block.Header))
+                    nonCanonicalReads.Add(block.Number);
+                return block;
+            });
+
+        TestLogIndexStorage storage = new() { MinBlockNumber = 0, MaxBlockNumber = BatchSize };
+        LogIndexBuilder builder = GetService(storage, tree);
+
+        await builder.StartAsync().WaitAsync(cancellation);
+        await polledEmptyBatch.Task.WaitAsync(cancellation);
+
+        Assert.That(nonCanonicalReads, Is.Empty);
+        await builder.StopAsync();
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_SetThePivotFromInsertedReceiptsAndSyncBackward_WhileFastSyncHoldsTheHeadAtGenesis(CancellationToken cancellation)
+    {
+        const int inserted = MaxBlock / 2;
+        int downloadedTo = 0;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        tree.SyncPivot.Returns(realTree.SyncPivot);
+        tree.Head.Returns(realTree.FindBlock(0UL, BlockTreeLookupOptions.None));
+        // A beacon header that is not on the main chain yet, so the canonical lookup of it fails.
+        tree.FinalizedHash.Returns(TestItem.KeccakA);
+        tree.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.None, Arg.Any<ulong?>()).Returns(realTree.FindHeader(90UL, BlockTreeLookupOptions.None));
+        tree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci => ci.ArgAt<ulong>(0) <= (ulong)Volatile.Read(ref downloadedTo)
+                ? realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1))
+                : null);
+
+        TestLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(storage, tree);
+
+        Task start = builder.StartAsync();
+        Volatile.Write(ref downloadedTo, inserted);
+        _receiptStorage.ReceiptsInserted += Raise.EventWith(new ReceiptsEventArgs(realTree.FindHeader(inserted)!, []));
+        await start.WaitAsync(cancellation);
+        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MinBlockNumber, Is.Zero);
+            Assert.That(storage.MaxBlockNumber, Is.EqualTo(inserted - 1));
+            _receiptStorage.Received(1).ReceiptsInserted -= Arg.Any<EventHandler<ReceiptsEventArgs>>();
+        }
+
+        await builder.StopAsync();
+    }
+
+    [TestCase(-1, TestName = "Should_ForwardError_FromQueueingLoop")]
+    [TestCase(0, TestName = "Should_ForwardError_FromStorage_Immediately")]
+    [TestCase(1, TestName = "Should_ForwardError_FromStorage_AfterOneBatch")]
+    [TestCase(4, TestName = "Should_ForwardError_FromStorage_AfterFourBatches")]
+    [CancelAfter(60_000)]
+    public async Task Should_ForwardErrorAndStopWithoutDeadlock(int failAfter)
+    {
+        Exception exception = new(nameof(Should_ForwardErrorAndStopWithoutDeadlock));
+
+        LogIndexBuilder builder = failAfter < 0
+            ? GetService(new TestLogIndexStorage(), CreateFailingBlockTree(exception))
+            : GetService(new FailingLogIndexStorage(failAfter, exception));
 
         await builder.StartAsync();
 
         using (Assert.EnterMultipleScope())
         {
-            Exception thrown = Assert.ThrowsAsync<Exception>(() => builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromSeconds(999)));
+            Exception thrown = await Assert.ThrowsAsync<Exception>(() => builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromSeconds(10)));
             Assert.That(thrown, Is.EqualTo(exception));
             Assert.That(builder.LastError, Is.EqualTo(exception));
         }
+
+        await builder.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));
     }
 
     [Test]
     [Sequential]
     public async Task Should_CompleteImmediately_IfAlreadySynced(
-        [Values(1, 10, 10, 10)] int minBarrier,
+        [Values(1UL, 10UL, 10UL, 10UL)] ulong minBarrier,
         [Values(0, 00, 05, 10)] int minBlock
     )
     {
-        Assert.That(minBlock, Is.LessThanOrEqualTo(minBarrier));
+        Assert.That((ulong)minBlock, Is.LessThanOrEqualTo(minBarrier));
 
         _syncConfig.AncientReceiptsBarrier = minBarrier;
         LogIndexBuilder builder = GetService(new FailingLogIndexStorage(0, new("Should not set new receipts."))
@@ -238,6 +462,470 @@ public class LogIndexBuilderTests
             Assert.That(builder.LastError, Is.Null);
             Assert.That(builder.LastUpdate, Is.Null);
         }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_StopBackwardSync_AtTheOldestStoredBlock_InsteadOfWaitingForPrunedReceipts(CancellationToken cancellation)
+    {
+        const int oldestStored = 50;
+        _syncConfig.AncientReceiptsBarrier = 1;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree prunedTree = Substitute.For<IBlockTree>();
+        prunedTree.SyncPivot.Returns(realTree.SyncPivot);
+        prunedTree.Head.Returns(realTree.Head);
+        prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
+        prunedTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci => ci.ArgAt<ulong>(0) < oldestStored
+                ? null
+                : realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1)));
+
+        TestLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(storage, prunedTree);
+
+        Task completion = WaitMinBlockAsync(storage, oldestStored, cancellation);
+        await builder.StartAsync();
+        await completion;
+        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MinBlockNumber, Is.EqualTo(oldestStored),
+                "receipts below the oldest stored block are pruned, not late - the backward sync must complete there rather than poll forever");
+        }
+    }
+
+    // Without fast sync the config pivot reads 0 wherever it came from, so one row covers that mode.
+    [TestCase(true, true)]
+    [TestCase(true, false)]
+    [TestCase(false, false)]
+    [CancelAfter(60_000)]
+    public async Task Should_StopBackwardSync_AtTheReceiptsBarrier_OfTheTreePivot(bool fastSync, bool pivotFromConsensusLayer, CancellationToken cancellation)
+    {
+        const ulong barrier = 50;
+        _syncConfig.FastSync = fastSync;
+        _syncConfig.SnapSync = fastSync;
+        // A pivot supplied by the consensus layer reaches only the block tree, never the config.
+        _syncConfig.PivotNumber = pivotFromConsensusLayer ? 0UL : _blockTree.SyncPivot.BlockNumber;
+        _syncConfig.AncientBodiesBarrier = barrier;
+        _syncConfig.AncientReceiptsBarrier = barrier;
+        ulong expectedMin = fastSync ? barrier : 0UL;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        tree.SyncPivot.Returns(realTree.SyncPivot);
+        tree.Head.Returns(realTree.Head);
+        tree.GetLowestBlock().Returns(_syncConfig.AncientBodiesBarrierCalc);
+        tree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci => ci.ArgAt<ulong>(0) < expectedMin
+                ? null
+                : realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1)));
+
+        TestLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(storage, tree);
+
+        await builder.StartAsync();
+        await builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MinBlockNumber, Is.EqualTo((int)expectedMin));
+            Assert.That(builder.MinTargetBlockNumber, Is.EqualTo(expectedMin));
+        }
+    }
+
+    [TestCase(100UL, 60UL, 50UL, 60UL)] // bodies barrier above the receipts barrier
+    [TestCase(100UL, 50UL, 60UL, 60UL)] // receipts barrier above the bodies barrier
+    [TestCase(40UL, 50UL, 50UL, 40UL)] // tree pivot below the barriers
+    [TestCase(0UL, 50UL, 50UL, 0UL)] // no pivot yet
+    public void MinTarget_is_keyed_on_the_tree_pivot(ulong treePivot, ulong bodies, ulong receipts, ulong expected)
+    {
+        _syncConfig.PivotNumber = 0;
+        _syncConfig.AncientBodiesBarrier = bodies;
+        _syncConfig.AncientReceiptsBarrier = receipts;
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        tree.SyncPivot.Returns((treePivot, Keccak.Zero));
+
+        Assert.That(GetService(new TestLogIndexStorage(), tree).MinTargetBlockNumber, Is.EqualTo(expected));
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_ContinueBackwardSyncThroughRetainedIslands_BelowTheOldestStoredBlock_WhenSlicesAreConfigured(CancellationToken cancellation)
+    {
+        const int oldestStored = 50;
+        const int islandLow = 20;
+        const int islandHigh = 21;
+        _syncConfig.AncientReceiptsBarrier = 1;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree prunedTree = Substitute.For<IBlockTree>();
+        prunedTree.SyncPivot.Returns(realTree.SyncPivot);
+        prunedTree.Head.Returns(realTree.Head);
+        prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
+        prunedTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                ulong number = ci.ArgAt<ulong>(0);
+                if (number is islandLow or islandHigh)
+                    return Build.A.Block.WithNumber(number).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+
+                bool pruned = number < oldestStored;
+                return pruned ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
+            });
+        _receiptStorage
+            .Get(Arg.Is<Block>(b => b.Number == islandLow || b.Number == islandHigh))
+            .Returns([new TxReceipt()]);
+
+        RecordingLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(
+            storage,
+            prunedTree,
+            new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+            Substitute.For<IPrunedLogsRetention>(),
+            DownloadedToTheBarrier());
+
+        Task completion = WaitMinBlockAsync(storage, 0, cancellation);
+        await builder.StartAsync();
+        await completion;
+        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MinBlockNumber, Is.EqualTo(0),
+                "a sliced node keeps receipt islands below the pruned boundary, so the backward sync must descend past the boundary and index them instead of completing there");
+            Assert.That(storage.ReceiptCountAt(islandLow), Is.EqualTo(1),
+                "the island's real receipts must reach the index - fabricating an empty entry for a retained height serves a lie at match cost");
+            Assert.That(storage.ReceiptCountAt(islandHigh), Is.EqualTo(1));
+            Assert.That(storage.ReceiptCountAt(islandLow - 1), Is.Zero);
+            Assert.That(storage.ReceiptCountAt(islandHigh + 1), Is.Zero);
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_WaitInsteadOfCompletingOrFabricating_WhenABelowBoundaryHeightHasABodyButNoReceipts(CancellationToken cancellation)
+    {
+        const int oldestStored = 50;
+        const int stalledHeight = 30;
+        _syncConfig.AncientReceiptsBarrier = 1;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree prunedTree = Substitute.For<IBlockTree>();
+        prunedTree.SyncPivot.Returns(realTree.SyncPivot);
+        prunedTree.Head.Returns(realTree.Head);
+        prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
+        prunedTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                ulong number = ci.ArgAt<ulong>(0);
+                if (number is stalledHeight)
+                    return Build.A.Block.WithNumber(number).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+
+                bool pruned = number < oldestStored;
+                return pruned ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
+            });
+
+        bool reclaimed = false;
+        _receiptStorage
+            .Get(Arg.Is<Block>(b => b.Number == stalledHeight))
+            .Returns(_ => Volatile.Read(ref reclaimed) ? [new TxReceipt()] : []);
+
+        RecordingLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(
+            storage,
+            prunedTree,
+            new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+            Substitute.For<IPrunedLogsRetention>(),
+            DownloadedToTheBarrier());
+
+        Task stalled = WaitMinBlockAsync(storage, stalledHeight + 1, cancellation);
+        await builder.StartAsync();
+        await stalled;
+
+        Assert.That(builder.BackwardSyncCompletion.IsCompleted, Is.False,
+            "a below-boundary height with a body but no readable receipts is either mid-reclaim or a retained height that lost its data - the descent must wait, not complete and not fabricate an empty entry");
+
+        Volatile.Write(ref reclaimed, true);
+
+        Task completion = WaitMinBlockAsync(storage, 0, cancellation);
+        await completion;
+        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MinBlockNumber, Is.EqualTo(0));
+            Assert.That(storage.ReceiptCountAt(stalledHeight), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_StopTheSlicedDescentAtTheLowestDownloadedBody_InsteadOfFabricatingToTheBarrier(CancellationToken cancellation)
+    {
+        const int oldestStored = 50;
+        const int lowestDownloadedBody = 30;
+        _syncConfig.AncientReceiptsBarrier = 1;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree prunedTree = Substitute.For<IBlockTree>();
+        prunedTree.SyncPivot.Returns(realTree.SyncPivot);
+        prunedTree.Head.Returns(realTree.Head);
+        prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
+        prunedTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                ulong number = ci.ArgAt<ulong>(0);
+                return number < oldestStored ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
+            });
+        ISyncPointers pointers = Substitute.For<ISyncPointers>();
+        pointers.LowestInsertedBodyNumber.Returns((ulong)lowestDownloadedBody);
+
+        RecordingLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(
+            storage,
+            prunedTree,
+            new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+            Substitute.For<IPrunedLogsRetention>(),
+            pointers);
+
+        Task completion = WaitMinBlockAsync(storage, lowestDownloadedBody, cancellation);
+        await builder.StartAsync();
+        await completion;
+        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MinBlockNumber, Is.EqualTo(lowestDownloadedBody),
+                "nothing below the lowest downloaded body can be a retained island, so the descent must stop there instead of fabricating to the barrier");
+            Assert.That(storage.ReceiptCountAt(lowestDownloadedBody - 1), Is.EqualTo(-1));
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_NotCompleteAtTheMovingDownloadFrontier_WhileThePrunerHoldsTheBoundary(CancellationToken cancellation)
+    {
+        const int firstFrontier = 40;
+        const int secondFrontier = 30;
+        _syncConfig.AncientReceiptsBarrier = 1;
+
+        int frontier = firstFrontier;
+        int publishedBoundary = 1;
+        IBlockTree realTree = _blockTree;
+        IBlockTree downloadingTree = Substitute.For<IBlockTree>();
+        downloadingTree.SyncPivot.Returns(realTree.SyncPivot);
+        downloadingTree.Head.Returns(realTree.Head);
+        downloadingTree.GetLowestBlock().Returns(_ => (ulong)Volatile.Read(ref publishedBoundary));
+        downloadingTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                ulong number = ci.ArgAt<ulong>(0);
+                return number >= (ulong)Volatile.Read(ref frontier)
+                    ? realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1))
+                    : null;
+            });
+        ISyncPointers pointers = Substitute.For<ISyncPointers>();
+        pointers.LowestInsertedBodyNumber.Returns(_ => (ulong)Volatile.Read(ref frontier));
+
+        RecordingLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(
+            storage,
+            downloadingTree,
+            new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+            Substitute.For<IPrunedLogsRetention>(),
+            pointers);
+
+        Task firstStop = WaitMinBlockAsync(storage, firstFrontier, cancellation);
+        await builder.StartAsync();
+        await firstStop;
+
+        Assert.That(builder.BackwardSyncCompletion.IsCompleted, Is.False,
+            "the body pointer is a moving frontier while the pruner still holds the boundary at its barrier - the descent must wait there, not declare itself complete");
+
+        Volatile.Write(ref frontier, secondFrontier);
+
+        await WaitMinBlockAsync(storage, secondFrontier, cancellation);
+
+        Assert.That(builder.BackwardSyncCompletion.IsCompleted, Is.False);
+
+        Volatile.Write(ref publishedBoundary, secondFrontier);
+
+        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MinBlockNumber, Is.EqualTo(secondFrontier),
+                "once the pruner publishes the boundary at the parked frontier, the risen floor must complete the descent instead of leaving it polling forever");
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_CompleteTheBackwardSync_WhenTheFloorDropsAfterTheExit(CancellationToken cancellation)
+    {
+        const int latchedBoundary = 60;
+        const int firstFrontier = 30;
+        const int droppedFrontier = 10;
+        _syncConfig.AncientReceiptsBarrier = 1;
+
+        int frontier = firstFrontier;
+        IBlockTree realTree = _blockTree;
+        IBlockTree latchedTree = Substitute.For<IBlockTree>();
+        latchedTree.SyncPivot.Returns(realTree.SyncPivot);
+        latchedTree.Head.Returns(realTree.Head);
+        latchedTree.GetLowestBlock().Returns((ulong)latchedBoundary);
+        latchedTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                ulong number = ci.ArgAt<ulong>(0);
+                return number >= (ulong)Volatile.Read(ref frontier)
+                    ? realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1))
+                    : null;
+            });
+        ISyncPointers pointers = Substitute.For<ISyncPointers>();
+        pointers.LowestInsertedBodyNumber.Returns(_ => (ulong)Volatile.Read(ref frontier));
+
+        GatedLogIndexStorage storage = new() { GateAtOrBelow = firstFrontier };
+        LogIndexBuilder builder = GetService(
+            storage,
+            latchedTree,
+            new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+            Substitute.For<IPrunedLogsRetention>(),
+            pointers);
+
+        await builder.StartAsync();
+        while (builder.BackwardExitFloor != firstFrontier)
+            await Task.Delay(10, cancellation);
+
+        Volatile.Write(ref frontier, droppedFrontier);
+        storage.Gate.SetResult();
+
+        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
+
+        Assert.That(storage.MinBlockNumber, Is.EqualTo(firstFrontier),
+            "the completion fires against the floor the exit recorded, not the floor that dropped after it");
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_NotFabricateOverNeverDownloadedHeights_WhenTheBodyPointerWasNeverWritten(CancellationToken cancellation)
+    {
+        const int oldestStored = 50;
+        _syncConfig.AncientReceiptsBarrier = 1;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree prunedTree = Substitute.For<IBlockTree>();
+        prunedTree.SyncPivot.Returns(realTree.SyncPivot);
+        prunedTree.Head.Returns(realTree.Head);
+        prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
+        prunedTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                ulong number = ci.ArgAt<ulong>(0);
+                return number < oldestStored ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
+            });
+
+        RecordingLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(
+            storage,
+            prunedTree,
+            new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+            Substitute.For<IPrunedLogsRetention>(),
+            Substitute.For<ISyncPointers>());
+
+        Task completion = WaitMinBlockAsync(storage, oldestStored, cancellation);
+        await builder.StartAsync();
+        await completion;
+        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MinBlockNumber, Is.EqualTo(oldestStored),
+                "an unwritten body pointer on a fast-synced node means nothing below the pivot was ever downloaded - heights below the boundary are undownloaded, not reclaimed, and must not be fabricated");
+            Assert.That(storage.ReceiptCountAt(oldestStored - 1), Is.EqualTo(-1));
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_GiveUpTheDescentAlone_WhenABelowBoundaryHeightNeverYieldsItsReceipts(CancellationToken cancellation)
+    {
+        const int oldestStored = 50;
+        const int stalledHeight = 30;
+        _syncConfig.AncientReceiptsBarrier = 1;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree prunedTree = Substitute.For<IBlockTree>();
+        prunedTree.SyncPivot.Returns(realTree.SyncPivot);
+        prunedTree.Head.Returns(realTree.Head);
+        prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
+        prunedTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                ulong number = ci.ArgAt<ulong>(0);
+                if (number is stalledHeight)
+                    return Build.A.Block.WithNumber(number).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+
+                bool pruned = number < oldestStored;
+                return pruned ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
+            });
+
+        RecordingLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(
+            storage,
+            prunedTree,
+            new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+            Substitute.For<IPrunedLogsRetention>(),
+            DownloadedToTheBarrier(),
+            stallTicksBeforeGivingUp: 2);
+
+        await builder.StartAsync();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => builder.BackwardSyncCompletion.WaitAsync(cancellation),
+            "a height that never yields its receipts must end the descent in a hard error, not an invisible infinite poll");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.InstanceOf<InvalidOperationException>());
+            Assert.That(builder.IsRunning, Is.True,
+                "the give-up is scoped to the backward direction - the live forward index must keep running");
+        }
+    }
+
+    // FindBlock must succeed for the single pivot-setup lookup in StartAsync, then throw on
+    // the later lookups issued by DoQueueBlocks — that is the self-await deadlock path.
+    private IBlockTree CreateFailingBlockTree(Exception exception)
+    {
+        IBlockTree realTree = _blockTree;
+        int findCalls = 0;
+
+        IBlockTree throwingTree = Substitute.For<IBlockTree>();
+        throwingTree.SyncPivot.Returns(realTree.SyncPivot);
+        throwingTree.Head.Returns(realTree.Head);
+        throwingTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci => Interlocked.Increment(ref findCalls) == 1
+                ? realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1))
+                : throw exception);
+
+        return throwingTree;
     }
 
     private static Task WaitMaxBlockAsync(TestLogIndexStorage storage, int blockNumber, CancellationToken cancellation)

@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -30,27 +31,32 @@ namespace Nethermind.Consensus.Processing
 
             public event EventHandler<AddingTxEventArgs>? AddingTransaction;
 
-            protected void OnAddingTransaction(AddingTxEventArgs e)
+            protected void OnAddingTransaction(AddingTxEventArgs e) => AddingTransaction?.Invoke(this, e);
+
+            public virtual AddingTxEventArgs CanAddTransaction(
+                Block block,
+                Transaction currentTx,
+                IReadOnlySet<Transaction> transactionsInBlock,
+                IReadOnlyStateProvider stateProvider,
+                ulong cumulativeBlockExecutionGas,
+                ulong cumulativeBlockStateGas)
             {
-                AddingTransaction?.Invoke(this, e);
-            }
+                ulong gasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockExecutionGas);
 
-            public virtual AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IReadOnlyStateProvider stateProvider)
-            {
-                AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
+                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-                long gasRemaining = block.Header.GasLimit - block.GasUsed;
-
-                // No more gas available in block for any transactions,
-                // the only case we have to really stop
-                if (GasCostOf.Transaction > gasRemaining)
+                // No more gas available in block for any transactions, the only case we have to really stop. EIP-2780
+                // lowers the base cost and an EIP-8141 frame transaction reserves from its own lower intrinsic cost.
+                if (GasCostOf.Transaction > gasRemaining
+                    && (!spec.IsEip2780Enabled || GasCostOf.TransactionEip2780 > gasRemaining)
+                    && (!spec.IsEip8141Enabled || (ulong)Eip8141Constants.IntrinsicGasCost > gasRemaining))
                 {
-                    return args.Set(TxAction.Stop, "Block full");
+                    return NewArgs(block, currentTx, transactionsInBlock).Set(TxAction.Stop, "Block full");
                 }
 
                 if (block is BlockToProduce blockToProduce && blockToProduce.TxByteLength + currentTx.GetLength(false) > _maxTxLengthBytes)
                 {
-                    return args.Set(
+                    return NewArgs(block, currentTx, transactionsInBlock).Set(
                         // If smallest tx is too large, stop picking
                         currentTx.GasLimit == GasCostOf.Transaction ? TxAction.Stop : TxAction.Skip,
                         "Too large for CL");
@@ -58,44 +64,103 @@ namespace Nethermind.Consensus.Processing
 
                 if (currentTx.SenderAddress is null)
                 {
-                    return args.Set(TxAction.Skip, "Null sender");
-                }
-
-                if (currentTx.GasLimit > gasRemaining)
-                {
-                    return args.Set(TxAction.Skip, $"Not enough gas in block, gas limit {currentTx.GasLimit} > {gasRemaining}");
+                    return NewArgs(block, currentTx, transactionsInBlock).Set(TxAction.Skip, "Null sender");
                 }
 
                 if (transactionsInBlock.Contains(currentTx))
                 {
-                    return args.Set(TxAction.Skip, "Transaction already in block");
+                    return NewArgs(block, currentTx, transactionsInBlock).Set(TxAction.Skip, "Transaction already in block");
                 }
 
-                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+                ulong stateGasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockStateGas);
+                if (!Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(currentTx, spec, out ulong executionReservation, out ulong stateReservation))
+                {
+                    return NewArgs(block, currentTx, transactionsInBlock).Set(TxAction.Skip, "Cannot calculate frame transaction gas reservations");
+                }
+
+                if (executionReservation > gasRemaining)
+                {
+                    return new DeferredSkipArgs(block, currentTx, transactionsInBlock, DeferredSkipReason.ExecutionGas, executionReservation, gasRemaining);
+                }
+
+                if (stateReservation > stateGasRemaining)
+                {
+                    return new DeferredSkipArgs(block, currentTx, transactionsInBlock, DeferredSkipReason.StateGas, stateReservation, stateGasRemaining);
+                }
+
                 if (currentTx.IsAboveInitCode(spec))
                 {
-                    return args.Set(TxAction.Skip, TransactionResult.TransactionSizeOverMaxInitCodeSize.ErrorDescription);
+                    return NewArgs(block, currentTx, transactionsInBlock).Set(TxAction.Skip, TransactionResult.TransactionSizeOverMaxInitCodeSize.ErrorDescription);
                 }
 
-                if (!ignoreEip3607 && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
+                // EIP-8141 exempts frame transactions from EIP-3607 ("Do not apply the restriction put
+                // in place by EIP-3607 to frame transactions"), so the pool admits one from a contract
+                // sender; without the same exemption here it could never be built into a block.
+                if (!ignoreEip3607 && !currentTx.SupportsFrames && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
                 {
-                    return args.Set(TxAction.Skip, $"Sender is contract");
+                    return NewArgs(block, currentTx, transactionsInBlock).Set(TxAction.Skip, $"Sender is contract");
                 }
 
-                UInt256 expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
-                if (expectedNonce != currentTx.Nonce)
+                // EIP-8250 moves a keyed transaction's replay protection to NONCE_MANAGER; both arms read the state
+                // built up so far, so either also skips a candidate whose domain an earlier one in this block consumed.
+                if (KeyedNonceManager.UsesKeyedNonce(currentTx))
                 {
-                    return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
+                    if (!KeyedNonceManager.IsNonceSetValid(stateProvider, currentTx.SenderAddress, currentTx.NonceKeys!, currentTx.Nonce))
+                    {
+                        return NewArgs(block, currentTx, transactionsInBlock).Set(TxAction.Skip, KeyedNonceSkipReason(stateProvider, currentTx));
+                    }
+                }
+                else
+                {
+                    ulong expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
+                    if (expectedNonce != currentTx.Nonce)
+                    {
+                        return new DeferredSkipArgs(block, currentTx, transactionsInBlock, DeferredSkipReason.Nonce, expectedNonce);
+                    }
                 }
 
-                UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
-                if (!HasEnoughFunds(currentTx, balance, args, block, spec))
+                AddingTxEventArgs args = NewArgs(block, currentTx, transactionsInBlock);
+
+                // A frame transaction's fees are paid by the frame that approves payment, which need not
+                // be the sender, so a sender-balance gate here would skip transactions that do pay.
+                if (!currentTx.SupportsFrames)
                 {
-                    return args;
+                    UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
+                    if (!HasEnoughFunds(currentTx, balance, args, block, spec))
+                    {
+                        return args;
+                    }
                 }
 
                 OnAddingTransaction(args);
                 return args;
+            }
+
+            private static AddingTxEventArgs NewArgs(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock) =>
+                new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
+
+            /// <summary>Explains a keyed-nonce skip by naming the first key whose sequence disagrees with the candidate's.</summary>
+            /// <remarks>Cold path only, reached once the candidate is already being skipped. Any single key of the set can be
+            /// the one an earlier transaction in this block consumed, so a set-wide value would name a key that is current.</remarks>
+            private static string KeyedNonceSkipReason(IReadOnlyStateProvider stateProvider, Transaction currentTx)
+            {
+                UInt256[] nonceKeys = currentTx.NonceKeys!;
+                if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
+                {
+                    return "Invalid nonce sequence - malformed key set";
+                }
+
+                ulong expected = currentTx.Nonce == Eip8250Constants.MaxNonceSeq ? 0 : currentTx.Nonce;
+                foreach (ref readonly UInt256 nonceKey in nonceKeys.AsSpan())
+                {
+                    ulong current = KeyedNonceManager.CurrentNonceSeq(stateProvider, currentTx.SenderAddress!, in nonceKey);
+                    if (current != expected)
+                    {
+                        return $"Invalid nonce sequence - key {nonceKey} expected {current}";
+                    }
+                }
+
+                return "Invalid nonce sequence";
             }
 
             private static bool HasEnoughFunds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)
@@ -119,7 +184,7 @@ namespace Nethermind.Consensus.Processing
                         return false;
                     }
 
-                    if (transaction.SupportsBlobs && (
+                    if (transaction.CarriesBlobs && (
                         !BlobGasCalculator.TryCalculateBlobBaseFee(block.Header, transaction, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee) ||
                         senderBalance < (maxFee += blobBaseFee)))
                     {
@@ -128,6 +193,40 @@ namespace Nethermind.Consensus.Processing
                     }
                 }
                 return true;
+            }
+
+            /// <summary>The skip reasons built from numbers. The executor reads a reason only at debug level, so these
+            /// are formatted when <see cref="AddingTxEventArgs.Reason"/> is first read, not when the candidate is skipped.</summary>
+            private enum DeferredSkipReason
+            {
+                ExecutionGas,
+                StateGas,
+                Nonce
+            }
+
+            /// <summary>Args of one skipped candidate, holding the numbers its reason is formatted from.</summary>
+            private sealed class DeferredSkipArgs : AddingTxEventArgs
+            {
+                private readonly DeferredSkipReason _kind;
+                private readonly ulong _first;
+                private readonly ulong _second;
+
+                public DeferredSkipArgs(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, DeferredSkipReason kind, ulong first, ulong second = 0)
+                    : base(transactionsInBlock.Count, currentTx, block, transactionsInBlock)
+                {
+                    _kind = kind;
+                    _first = first;
+                    _second = second;
+                    SetDeferred(TxAction.Skip);
+                }
+
+                private protected override string FormatDeferredReason() => _kind switch
+                {
+                    DeferredSkipReason.ExecutionGas => $"Not enough execution gas in block, gas limit {_first} > {_second}",
+                    DeferredSkipReason.StateGas => $"Not enough state gas in block, gas limit {_first} > {_second}",
+                    DeferredSkipReason.Nonce => $"Invalid nonce - expected {_first}",
+                    _ => throw new ArgumentOutOfRangeException(nameof(_kind), _kind, null)
+                };
             }
         }
 

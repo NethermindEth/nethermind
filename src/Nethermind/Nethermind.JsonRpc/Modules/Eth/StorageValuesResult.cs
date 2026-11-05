@@ -14,18 +14,12 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.JsonRpc.Modules.Eth;
 
 [JsonConverter(typeof(StorageValuesResultConverter))]
-public sealed class StorageValuesResult : IDisposable
+public sealed class StorageValuesResult(byte[] buffer, Dictionary<Address, Memory<byte>[]> slots) : IDisposable
 {
-    private readonly byte[] _buffer;
+    private readonly byte[] _buffer = buffer;
     private bool _disposed;
 
-    public StorageValuesResult(byte[] buffer, Dictionary<Address, Memory<byte>[]> slots)
-    {
-        _buffer = buffer;
-        Slots = slots;
-    }
-
-    public Dictionary<Address, Memory<byte>[]> Slots { get; }
+    public Dictionary<Address, Memory<byte>[]> Slots { get; } = slots;
 
     public void Dispose()
     {
@@ -51,7 +45,7 @@ internal sealed class StorageValuesResultConverter : JsonConverter<StorageValues
         keyBytes[1] = (byte)'x';
         foreach (KeyValuePair<Address, Memory<byte>[]> entry in value.Slots)
         {
-            entry.Key.Bytes.AsSpan().OutputBytesToByteHex(keyBytes[2..], false);
+            entry.Key.Bytes.OutputBytesToByteHex(keyBytes[2..], false);
             writer.WritePropertyName(keyBytes);
             writer.WriteStartArray();
             foreach (Memory<byte> slot in entry.Value)

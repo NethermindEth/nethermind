@@ -6,33 +6,25 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class MinGasPriceContractTxFilter : ITxFilter
+    public class MinGasPriceContractTxFilter(IMinGasPriceTxFilter minGasPriceFilter, IDictionaryContractDataStore<TxPriorityContract.Destination> minGasPrices) : ITxFilter
     {
-        private readonly IMinGasPriceTxFilter _minGasPriceFilter;
-        private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _minGasPrices;
+        private readonly IMinGasPriceTxFilter _minGasPriceFilter = minGasPriceFilter;
+        private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _minGasPrices = minGasPrices ?? throw new ArgumentNullException(nameof(minGasPrices));
 
-        public MinGasPriceContractTxFilter(IMinGasPriceTxFilter minGasPriceFilter, IDictionaryContractDataStore<TxPriorityContract.Destination> minGasPrices)
+        public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context)
         {
-            _minGasPriceFilter = minGasPriceFilter;
-            _minGasPrices = minGasPrices ?? throw new ArgumentNullException(nameof(minGasPrices));
-        }
-
-
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
-        {
-            AcceptTxResult isAllowed = _minGasPriceFilter.IsAllowed(tx, parentHeader, currentSpec);
+            AcceptTxResult isAllowed = _minGasPriceFilter.IsAllowed(tx, in context);
             if (!isAllowed)
             {
                 return isAllowed;
             }
-            else if (_minGasPrices.TryGetValue(parentHeader, tx, out TxPriorityContract.Destination @override))
+            else if (_minGasPrices.TryGetValue(context.Parent, tx, out TxPriorityContract.Destination @override))
             {
-                return _minGasPriceFilter.IsAllowed(tx, parentHeader, @override.Value, currentSpec);
+                return _minGasPriceFilter.IsAllowed(tx, in context, @override.Value);
             }
 
             return AcceptTxResult.Accepted;

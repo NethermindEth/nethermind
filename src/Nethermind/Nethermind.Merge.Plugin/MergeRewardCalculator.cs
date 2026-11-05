@@ -8,16 +8,10 @@ using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin
 {
-    public class MergeRewardCalculator : IRewardCalculator
+    public class MergeRewardCalculator(IRewardCalculator? beforeTheMerge, IPoSSwitcher poSSwitcher) : IRewardCalculator
     {
-        private readonly IRewardCalculator _beforeTheMerge;
-        private readonly IPoSSwitcher _poSSwitcher;
-
-        public MergeRewardCalculator(IRewardCalculator? beforeTheMerge, IPoSSwitcher poSSwitcher)
-        {
-            _beforeTheMerge = beforeTheMerge ?? throw new ArgumentNullException(nameof(beforeTheMerge));
-            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-        }
+        private readonly IRewardCalculator _beforeTheMerge = beforeTheMerge ?? throw new ArgumentNullException(nameof(beforeTheMerge));
+        private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
 
         public BlockReward[] CalculateRewards(Block block)
         {
@@ -28,5 +22,7 @@ namespace Nethermind.Merge.Plugin
 
             return _beforeTheMerge.CalculateRewards(block);
         }
+
+        public bool MayReward(BlockHeader header) => !_poSSwitcher.IsPostMerge(header) && _beforeTheMerge.MayReward(header);
     }
 }

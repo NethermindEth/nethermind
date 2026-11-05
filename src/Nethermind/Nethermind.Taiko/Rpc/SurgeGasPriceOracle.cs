@@ -4,6 +4,7 @@
 using System;
 using System.Globalization;
 using System.Linq;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -25,12 +26,12 @@ public class SurgeGasPriceOracle : GasPriceOracle
     private const ulong BlobGasPerBlob = Eip4844Constants.GasPerBlob;
 
     // ABI signatures and encoded function selectors for TaikoInbox contract.
-    private static readonly AbiSignature GetCoreStateSignature = new("getCoreState");
-    private static readonly AbiSignature GetConfigSignature = new("getConfig");
+    private static readonly AbiSignature<ValueTuple> GetCoreStateSignature = new AbiSignature("getCoreState").With();
+    private static readonly AbiSignature<ValueTuple> GetConfigSignature = new AbiSignature("getConfig").With();
     private static readonly string GetCoreStateHexData = "0x" + Convert.ToHexString(
-        AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, GetCoreStateSignature));
+        AbiCodec.Encode(GetCoreStateSignature, default));
     private static readonly string GetConfigHexData = "0x" + Convert.ToHexString(
-        AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, GetConfigSignature));
+        AbiCodec.Encode(GetConfigSignature, default));
 
     private readonly IJsonRpcClient _l1RpcClient;
     private readonly ISurgeConfig _surgeConfig;
@@ -54,7 +55,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         if (_logger.IsInfo)
         {
-            _logger.Info($"[{ClassName}] Initialized with L1 endpoint: {surgeConfig.L1EthApiEndpoint}, " +
+            _logger.Info($"[{ClassName}] Initialized with L1 endpoint: {SensitiveLogMasking.SafeUrl(surgeConfig.L1EthApiEndpoint)}, " +
                          $"TaikoInbox: {surgeConfig.TaikoInboxAddress}, L2BlockGasTarget: {surgeConfig.L2BlockGasTarget}, " +
                          $"MinGasPrice: {minGasPrice}");
         }
@@ -162,10 +163,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
     /// <summary>
     /// Determines if the gas price should be forced to refresh due to timeout.
     /// </summary>
-    private bool ForceRefreshGasPrice()
-    {
-        return DateTime.UtcNow - _lastGasPriceCalculation >= TimeSpan.FromSeconds(_surgeConfig.GasPriceRefreshTimeoutSeconds);
-    }
+    private bool ForceRefreshGasPrice() => DateTime.UtcNow - _lastGasPriceCalculation >= TimeSpan.FromSeconds(_surgeConfig.GasPriceRefreshTimeoutSeconds);
 
     private async ValueTask<L1FeeHistoryResults?> GetL1FeeHistory()
     {
@@ -196,21 +194,22 @@ public class SurgeGasPriceOracle : GasPriceOracle
         }
 
         ulong totalGasUsed = 0;
-        int count = 0;
-        long currentBlockNumber = headBlock.Number;
+        ulong count = 0;
+        ulong currentBlockNumber = headBlock.Number;
 
-        while (count < _surgeConfig.L2GasUsageWindowSize && currentBlockNumber >= 0)
+        while (count < _surgeConfig.L2GasUsageWindowSize)
         {
             Block? block = _blockFinder.FindBlock(currentBlockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (block != null)
             {
-                totalGasUsed += (ulong)block.GasUsed;
+                totalGasUsed += block.GasUsed;
                 count++;
             }
+            if (currentBlockNumber == 0) break;
             currentBlockNumber--;
         }
 
-        ulong average = totalGasUsed > 0 ? totalGasUsed / (ulong)count : _surgeConfig.L2BlockGasTarget;
+        ulong average = totalGasUsed > 0 ? totalGasUsed / count : _surgeConfig.L2BlockGasTarget;
 
         if (_logger.IsTrace)
         {
@@ -290,11 +289,14 @@ public class SurgeGasPriceOracle : GasPriceOracle
     {
         try
         {
-            return await _l1RpcClient.Post<string>("eth_call", new
+            JsonObject call = [];
+            if (_surgeConfig.TaikoInboxAddress is { } to)
             {
-                to = _surgeConfig.TaikoInboxAddress,
-                data
-            }, "latest");
+                call["to"] = to;
+            }
+
+            call["data"] = data;
+            return await _l1RpcClient.Post<string>("eth_call", call, "latest");
         }
         catch (Exception ex)
         {

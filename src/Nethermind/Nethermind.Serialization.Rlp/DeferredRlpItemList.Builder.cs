@@ -23,7 +23,7 @@ public sealed partial class DeferredRlpItemList
             _entries.Add(new Entry { Length = 0, ValueOffset = 0, EntriesLength = 0 });
         }
 
-        public Writer BeginRootContainer() => new Writer(this, 0, -1);
+        public Writer BeginRootContainer() => new(this, 0, -1);
 
         public IRlpItemList ToRlpItemList()
         {

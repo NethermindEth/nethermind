@@ -3,21 +3,15 @@
 
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class LocalTxFilter : ITxFilter
+    public class LocalTxFilter(ISigner signer) : ITxFilter
     {
-        private readonly ISigner _signer;
+        private readonly ISigner _signer = signer;
 
-        public LocalTxFilter(ISigner signer)
-        {
-            _signer = signer;
-        }
-
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
+        public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context)
         {
             if (tx.SenderAddress == _signer.Address)
             {

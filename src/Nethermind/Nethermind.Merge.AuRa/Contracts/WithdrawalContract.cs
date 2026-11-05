@@ -16,15 +16,14 @@ namespace Nethermind.Merge.AuRa.Contracts;
 /// <see href="https://github.com/gnosischain/specs/blob/master/execution/withdrawals.md#specification">specification</see>
 /// of the Gnosis Chain withdrawals.
 /// </summary>
-public class WithdrawalContract : CallableContract, IWithdrawalContract
+public class WithdrawalContract(
+    ITransactionProcessor transactionProcessor,
+    Address contractAddress) : CallableContract(transactionProcessor, contractAddress), IWithdrawalContract
 {
-    private const long GasLimit = 30_000_000L;
+    private const ulong GasLimit = SystemTransactionGasLimit;
 
-    public WithdrawalContract(
-        ITransactionProcessor transactionProcessor,
-        IAbiEncoder abiEncoder,
-        Address contractAddress)
-        : base(transactionProcessor, abiEncoder, contractAddress) { }
+    internal static readonly ContractFunction<(UInt256, ulong[], Address[]), ValueTuple> ExecuteSystemWithdrawalsFunction =
+        new AbiSignature("executeSystemWithdrawals").With(AbiType.UInt256, AbiType.Array(AbiType.UInt64), AbiType.Array(AbiType.Address)).Returns();
 
     public void ExecuteWithdrawals(BlockHeader blockHeader, UInt256 failedMaxCount, IList<ulong> amounts, IList<Address> addresses)
     {
@@ -32,6 +31,6 @@ public class WithdrawalContract : CallableContract, IWithdrawalContract
         ArgumentNullException.ThrowIfNull(amounts);
         ArgumentNullException.ThrowIfNull(addresses);
 
-        Call(blockHeader, "executeSystemWithdrawals", Address.SystemUser, GasLimit, failedMaxCount, amounts, addresses);
+        Call(blockHeader, ExecuteSystemWithdrawalsFunction, Address.SystemUser, GasLimit, (failedMaxCount, [.. amounts], [.. addresses]));
     }
 }

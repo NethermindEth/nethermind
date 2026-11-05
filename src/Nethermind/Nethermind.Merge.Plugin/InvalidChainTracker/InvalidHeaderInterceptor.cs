@@ -16,9 +16,14 @@ public class InvalidHeaderInterceptor(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<InvalidHeaderInterceptor>();
 
-    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error)
+    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error) =>
+        TrackValidationResult(header, headerValidator.Validate(header, parent, isUncle, out error));
+
+    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error, bool validateHash) =>
+        TrackValidationResult(header, headerValidator.Validate(header, parent, isUncle, out error, validateHash));
+
+    private bool TrackValidationResult(BlockHeader header, bool result)
     {
-        bool result = headerValidator.Validate(header, parent, isUncle, out error);
         if (!result)
         {
             if (_logger.IsDebug) _logger.Debug($"Intercepted a bad header {header}");

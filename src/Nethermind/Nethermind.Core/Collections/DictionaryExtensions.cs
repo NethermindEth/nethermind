@@ -54,12 +54,21 @@ public static class DictionaryExtensions
             dictionary.Clear();
             return true;
         }
+
+        public void ClearAndTrim(int trimAboveCapacity = CollectionExtensions.DefaultTrimAboveCapacity, int trimToCapacity = CollectionExtensions.DefaultTrimToCapacity)
+        {
+            dictionary.Clear();
+            if (dictionary.Capacity > trimAboveCapacity)
+            {
+                dictionary.TrimExcess(trimToCapacity);
+            }
+        }
     }
 
     /// <param name="dictionary">The dictionary whose values will be returned and cleared.</param>
     /// <typeparam name="TKey">The type of the keys in the dictionary.</typeparam>
     /// <typeparam name="TValue">The type of the values in the dictionary, which must implement <see cref="IReturnable"/>.</typeparam>
-    extension<TKey, TValue>(IDictionary<TKey, TValue> dictionary) where TValue : class, IReturnable
+    extension<TKey, TValue>(Dictionary<TKey, TValue> dictionary) where TKey : notnull where TValue : class, IReturnable
     {
         /// <summary>
         /// Returns all values in the dictionary to their pool by calling <see cref="IReturnable.Return"/> on each value,

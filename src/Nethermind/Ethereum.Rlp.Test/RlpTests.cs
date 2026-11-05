@@ -3,9 +3,9 @@
 
 using System;
 using System.Diagnostics;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -16,71 +16,72 @@ namespace Ethereum.Rlp.Test
     [TestFixture]
     public class RlpTests
     {
-        private sealed class TestRlpStream : RlpStream
-        {
-            public TestRlpStream(int length) : base(length) { }
-            public TestRlpStream(byte[] data) : base(data) { }
-            public void CallWriteZero(int length) => WriteZero(length);
-        }
-
         [Test]
         public void TestEmpty()
         {
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(Array.Empty<byte>()), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptyByteArray));
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptyList));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(Array.Empty<byte>()), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptyByteArray));
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptyList));
+            }
         }
 
         [Test]
         public void TestCast()
         {
             byte[] expected = [1];
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((byte)1).Bytes, Is.EqualTo(expected), "byte");
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((short)1).Bytes, Is.EqualTo(expected), "short");
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((ushort)1).Bytes, Is.EqualTo(expected), "ushort");
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1).Bytes, Is.EqualTo(expected), "int");
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1U).Bytes, Is.EqualTo(expected), "uint bytes");
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1L).Bytes, Is.EqualTo(expected), "long bytes");
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1UL).Bytes, Is.EqualTo(expected), "ulong bytes");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((byte)1).Bytes, Is.EqualTo(expected), "byte");
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((short)1).Bytes, Is.EqualTo(expected), "short");
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((ushort)1).Bytes, Is.EqualTo(expected), "ushort");
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1).Bytes, Is.EqualTo(expected), "int");
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1U).Bytes, Is.EqualTo(expected), "uint bytes");
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1L).Bytes, Is.EqualTo(expected), "long bytes");
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1UL).Bytes, Is.EqualTo(expected), "ulong bytes");
+            }
 
             byte[] expectedNonce = [136, 0, 0, 0, 0, 0, 0, 0, 1];
             Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((UInt256)1UL, HeaderDecoder.NonceLength).Bytes, Is.EqualTo(expectedNonce), "nonce bytes");
         }
 
         [Test]
-        public void WriteZero_ClearsAndAdvances_OnPreFilledBuffer()
+        public void EncodeBloom_Empty_ClearsAndAdvances_OnPreFilledBuffer()
         {
-            byte[] buffer = Enumerable.Repeat((byte)0xAB, 32).ToArray();
-            TestRlpStream stream = new(buffer) { Position = 5 };
-            stream.CallWriteZero(7);
+            int total = Nethermind.Serialization.Rlp.Rlp.LengthOf(Bloom.Empty);
+            byte[] buffer = new byte[total + 8];
+            Array.Fill(buffer, (byte)0xAB);
+            RlpWriter writer = new(buffer.AsSpan(5));
+            writer.Encode(Bloom.Empty);
 
-            Assert.That(stream.Position, Is.EqualTo(12));
-            Assert.That(buffer.AsSpan(5, 7).ToArray(), Is.EqualTo(new byte[7]));
-            Assert.That(buffer.AsSpan(0, 5).ToArray(), Is.EqualTo(Enumerable.Repeat((byte)0xAB, 5).ToArray()));
-            Assert.That(buffer.AsSpan(12).ToArray(), Is.EqualTo(Enumerable.Repeat((byte)0xAB, 20).ToArray()));
-        }
-
-        [Test]
-        public void WriteZero_AdvancesByRequestedLength_OnNewBuffer()
-        {
-            TestRlpStream stream = new(16) { Position = 3 };
-            stream.CallWriteZero(4);
-            Assert.That(stream.Position, Is.EqualTo(7));
-            Assert.That(stream.Data.AsSpan(3, 4).ToArray(), Is.EqualTo(new byte[4]));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(writer.Position, Is.EqualTo(total));
+                Assert.That(buffer[5], Is.EqualTo(185));
+                Assert.That(buffer[6], Is.EqualTo(1));
+                Assert.That(buffer[7], Is.EqualTo(0));
+                Assert.That(buffer.AsSpan(8, 256), Is.SequenceEqualTo(new byte[256]));
+                Assert.That(buffer.AsSpan(0, 5), Is.SequenceEqualTo(new byte[] { 0xAB, 0xAB, 0xAB, 0xAB, 0xAB }));
+                Assert.That(buffer.AsSpan(5 + total), Is.SequenceEqualTo(new byte[] { 0xAB, 0xAB, 0xAB }));
+            }
         }
 
         [Test]
         public void EncodeBloom_Empty_Writes256Zeros()
         {
             int total = Nethermind.Serialization.Rlp.Rlp.LengthOf(Bloom.Empty);
-            TestRlpStream stream = new(total);
-            stream.Encode(Bloom.Empty);
-            byte[] bytes = stream.Data.AsSpan().ToArray();
+            byte[] bytes = new byte[total];
+            RlpWriter writer = new(bytes);
+            writer.Encode(Bloom.Empty);
 
             Assert.That(bytes.Length, Is.EqualTo(total));
-            Assert.That(bytes[0], Is.EqualTo(185));
-            Assert.That(bytes[1], Is.EqualTo(1));
-            Assert.That(bytes[2], Is.EqualTo(0));
-            Assert.That(bytes.AsSpan(3, 256).ToArray(), Is.EqualTo(new byte[256]));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bytes[0], Is.EqualTo(185));
+                Assert.That(bytes[1], Is.EqualTo(1));
+                Assert.That(bytes[2], Is.EqualTo(0));
+                Assert.That(bytes.AsSpan(3, 256), Is.SequenceEqualTo(new byte[256]));
+            }
         }
 
         [Test]

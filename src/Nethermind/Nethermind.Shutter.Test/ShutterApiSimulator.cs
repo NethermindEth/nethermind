@@ -5,9 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
-using System.Net;
+using Nethermind.Network;
 using System.Threading.Tasks;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -25,7 +24,6 @@ namespace Nethermind.Shutter.Test;
 
 public class ShutterApiSimulator(
     ShutterEventSimulator eventSimulator,
-    IAbiEncoder abiEncoder,
     IBlockTree blockTree,
     IEthereumEcdsa ecdsa,
     ILogFinder logFinder,
@@ -39,9 +37,9 @@ public class ShutterApiSimulator(
     IShareableTxProcessorSource shareableTxProcessorSource,
     ShutterValidatorsInfo validatorsInfo,
     Random rnd
-        ) : ShutterApi(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage,
+        ) : ShutterApi(blockTree, ecdsa, logFinder, receiptStorage,
         logManager, specProvider, timestamper, shareableTxProcessorSource, fileSystem,
-        keyStoreConfig, cfg, validatorsInfo, ShutterTestsCommon.SlotLength, IPAddress.None)
+        keyStoreConfig, cfg, validatorsInfo, ShutterTestsCommon.SlotLength, Substitute.For<IIPResolver>())
 {
     public int EonUpdateCalled = 0;
     public int KeysValidated = 0;
@@ -70,12 +68,11 @@ public class ShutterApiSimulator(
 
     public void InsertShutterReceipts(Block block, in LogEntry[] logs)
     {
-        var receipts = new TxReceipt[logs.Length];
-        block.Header.Bloom = new(logs);
+        TxReceipt[] receipts = new TxReceipt[logs.Length];
         // one log per receipt
         for (int i = 0; i < logs.Length; i++)
         {
-            var h = new byte[32];
+            byte[] h = new byte[32];
             _rnd.NextBytes(h);
             receipts[i] = Build.A.Receipt
                 .WithLogs([logs[i]])
@@ -114,10 +111,8 @@ public class ShutterApiSimulator(
 
 
     // fake out P2P module
-    protected override void InitP2P(IPAddress _)
-    {
+    protected override void InitP2P(IIPResolver _) =>
         P2P = Substitute.For<IShutterP2P>();
-    }
 
     protected override IShutterEon InitEon()
     {
@@ -128,8 +123,6 @@ public class ShutterApiSimulator(
     }
 
     // set genesis unix timestamp to 1
-    protected override SlotTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
-    {
-        return new(1000, timestamper, _slotLength, _blockUpToDateCutoff);
-    }
+    protected override SlotTime InitTime(ISpecProvider specProvider, ITimestamper timestamper) =>
+        new(1000, timestamper, _slotLength, _blockUpToDateCutoff);
 }

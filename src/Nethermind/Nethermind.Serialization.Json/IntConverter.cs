@@ -33,8 +33,5 @@ public class IntConverter : JsonConverter<int>
     public override void Write(
         Utf8JsonWriter writer,
         int value,
-        JsonSerializerOptions options)
-    {
-        writer.WriteNumberValue(value);
-    }
+        JsonSerializerOptions options) => writer.WriteNumberValue(value);
 }

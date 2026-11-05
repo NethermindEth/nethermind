@@ -16,14 +16,16 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
 
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
-    {
-        byte[]? ret = nodeStorage.Get(address, path, hash, flags);
-        if (ret is null) throw new MissingTrieNodeException("Node missing", address, path, hash);
-        return ret;
-    }
+    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        nodeStorage.Get(address, path, hash.ValueHash256, flags) ?? ThrowMissingNode(path, hash);
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => nodeStorage.Get(address, path, hash, flags);
+    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        nodeStorage.Get(address, path, hash.ValueHash256, flags);
+
+    // Out of line, so the message's interpolation handler does not widen the frame of every load.
+    [DoesNotReturn, StackTraceHidden]
+    private byte[] ThrowMissingNode(in TreePath path, Hash256 hash) =>
+        throw new MissingTrieNodeException($"Node missing hash={hash} addr={address} path={path}", address, path, hash);
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => new RawScopedTrieStore(nodeStorage, address);
 
@@ -35,10 +37,7 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
     {
         INodeStorage.IWriteBatch _writeBatch = nodeStorage.StartWriteBatch();
 
-        public void Dispose()
-        {
-            _writeBatch.Dispose();
-        }
+        public void Dispose() => _writeBatch.Dispose();
 
         public TrieNode CommitNode(ref TreePath path, TrieNode node)
         {

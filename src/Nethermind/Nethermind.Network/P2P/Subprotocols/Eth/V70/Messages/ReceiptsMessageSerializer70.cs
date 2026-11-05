@@ -1,40 +1,27 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using Nethermind.Core.Specs;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 
 public class ReceiptsMessageSerializer70(ISpecProvider specProvider)
-    : IZeroInnerMessageSerializer<ReceiptsMessage70>
+    : Eth66SerializerBase<ReceiptsMessage70>
 {
     private readonly ReceiptsMessageInnerSerializer69 _receiptsSerializer = new(specProvider);
 
-    public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage70 message)
+    protected override void SerializeInternal(ref RlpWriter writer, ReceiptsMessage70 message)
     {
-        ReceiptsInnerMessage69 inner = new(message.EthMessage.TxReceipts);
-
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
-
-        NettyRlpStream stream = new(byteBuffer);
-        stream.StartSequence(contentLength);
-        stream.Encode(message.RequestId);
-        stream.Encode(message.LastBlockIncomplete ? 1 : 0);
-        _receiptsSerializer.Serialize(byteBuffer, inner);
+        writer.Encode(message.LastBlockIncomplete ? 1 : 0);
+        ReceiptsInnerMessage69 inner = new(message.TxReceipts);
+        _receiptsSerializer.Serialize(ref writer, inner);
     }
 
-    public ReceiptsMessage70 Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
-
-    private ReceiptsMessage70 Deserialize(ref Rlp.ValueDecoderContext ctx)
+    protected override ReceiptsMessage70 DeserializeInternal(ref RlpReader ctx, long requestId)
     {
-        ctx.ReadSequenceLength();
-
-        long requestId = ctx.DecodeLong();
         ulong lastBlockIncomplete = ctx.DecodeULong();
 
         if (lastBlockIncomplete is not 0 and not 1)
@@ -42,20 +29,15 @@ public class ReceiptsMessageSerializer70(ISpecProvider specProvider)
             throw new RlpException($"{lastBlockIncomplete} is not correct value for {nameof(lastBlockIncomplete)}");
         }
 
-        ReceiptsMessage inner = _receiptsSerializer.Deserialize(ref ctx);
-        return new ReceiptsMessage70(requestId, inner, lastBlockIncomplete is 1);
+        V63.Messages.ReceiptsMessage inner = _receiptsSerializer.Deserialize(ref ctx);
+        return new ReceiptsMessage70(requestId, inner.TxReceipts, lastBlockIncomplete is 1);
     }
 
-    public int GetLength(ReceiptsMessage70 message, out int contentLength)
+    protected override int GetLengthInternal(ReceiptsMessage70 message)
     {
-        ReceiptsInnerMessage69 inner = new(message.EthMessage.TxReceipts);
-        int receiptsLength = _receiptsSerializer.GetLength(inner, out _);
+        ReceiptsInnerMessage69 inner = new(message.TxReceipts);
+        int receiptsLength = _receiptsSerializer.GetLength(inner);
 
-        contentLength =
-            Rlp.LengthOf(message.RequestId) +
-            Rlp.LengthOf(message.LastBlockIncomplete ? 1 : 0) +
-            receiptsLength;
-
-        return Rlp.LengthOfSequence(contentLength);
+        return Rlp.LengthOf(message.LastBlockIncomplete ? 1 : 0) + receiptsLength;
     }
 }

@@ -10,26 +10,18 @@ using Nethermind.Evm.Tracing;
 namespace Nethermind.Consensus.Producers
 {
     // TODO: seems to have quite a lot ofr an args class
-    public class BlockProductionEventArgs : EventArgs
+    public class BlockProductionEventArgs(
+        BlockHeader? parentHeader = null,
+        CancellationToken? cancellationToken = null,
+        IBlockTracer? blockTracer = null,
+        PayloadAttributes? payloadAttributes = null) : EventArgs
     {
-        public BlockHeader? ParentHeader { get; }
-        public IBlockTracer? BlockTracer { get; }
+        public BlockHeader? ParentHeader { get; } = parentHeader;
+        public IBlockTracer? BlockTracer { get; } = blockTracer;
 
-        public PayloadAttributes? PayloadAttributes { get; }
-        public CancellationToken CancellationToken { get; }
+        public PayloadAttributes? PayloadAttributes { get; } = payloadAttributes;
+        public CancellationToken CancellationToken { get; } = cancellationToken ?? CancellationToken.None;
         public Task<Block?> BlockProductionTask { get; set; } = Task.FromResult<Block?>(null);
-
-        public BlockProductionEventArgs(
-            BlockHeader? parentHeader = null,
-            CancellationToken? cancellationToken = null,
-            IBlockTracer? blockTracer = null,
-            PayloadAttributes? payloadAttributes = null)
-        {
-            ParentHeader = parentHeader;
-            BlockTracer = blockTracer;
-            PayloadAttributes = payloadAttributes;
-            CancellationToken = cancellationToken ?? CancellationToken.None;
-        }
 
         public BlockProductionEventArgs Clone() => (BlockProductionEventArgs)MemberwiseClone();
     }

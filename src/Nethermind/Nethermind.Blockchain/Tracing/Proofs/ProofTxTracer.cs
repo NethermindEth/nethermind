@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -13,11 +14,11 @@ namespace Nethermind.Blockchain.Tracing.Proofs;
 
 public class ProofTxTracer(bool treatZeroAccountDifferently) : TxTracer
 {
-    public HashSet<Address> Accounts { get; } = new();
+    public HashSet<Address> Accounts { get; } = [];
 
-    public HashSet<StorageCell> Storages { get; } = new();
+    public HashSet<StorageCell> Storages { get; } = [];
 
-    public HashSet<Hash256> BlockHashes { get; } = new();
+    public HashSet<Hash256> BlockHashes { get; } = [];
 
     public byte[]? Output { get; private set; }
 
@@ -26,10 +27,7 @@ public class ProofTxTracer(bool treatZeroAccountDifferently) : TxTracer
     public override bool IsTracingState => true;
     public override bool IsTracingStorage => true;
 
-    public override void ReportBlockHash(Hash256 blockHash)
-    {
-        BlockHashes.Add(blockHash);
-    }
+    public override void ReportBlockHash(Hash256 blockHash) => BlockHashes.Add(blockHash);
 
     public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -41,10 +39,10 @@ public class ProofTxTracer(bool treatZeroAccountDifferently) : TxTracer
         Accounts.Add(address);
     }
 
-    public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
+    public override void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after)
     {
-        if (treatZeroAccountDifferently && Address.Zero == address && before is null &&
-            after == Array.Empty<byte>())
+        if (treatZeroAccountDifferently && Address.Zero == address && before.IsNull() &&
+            !after.IsNull() && after.IsEmpty)
         {
             return;
         }
@@ -62,34 +60,21 @@ public class ProofTxTracer(bool treatZeroAccountDifferently) : TxTracer
         Accounts.Add(address);
     }
 
-    public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
-    {
+    public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) =>
         // implicit knowledge here that if we read storage then for sure we have at least asked for the account's balance
         // and so we do not need to add account to Accounts
         Storages.Add(storageCell);
-    }
 
-    public override void ReportStorageRead(in StorageCell storageCell)
-    {
+    public override void ReportStorageRead(in StorageCell storageCell) =>
         // implicit knowledge here that if we read storage then for sure we have at least asked for the account's balance
         // and so we do not need to add account to Accounts
         Storages.Add(storageCell);
-    }
 
-    public override void ReportAccountRead(Address address)
-    {
-        Accounts.Add(address);
-    }
+    public override void ReportAccountRead(Address address) => Accounts.Add(address);
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs,
-        Hash256? stateRoot = null)
-    {
-        Output = output;
-    }
+        Hash256? stateRoot = null) => Output = output;
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error,
-        Hash256? stateRoot = null)
-    {
-        Output = output;
-    }
+        Hash256? stateRoot = null) => Output = output;
 }

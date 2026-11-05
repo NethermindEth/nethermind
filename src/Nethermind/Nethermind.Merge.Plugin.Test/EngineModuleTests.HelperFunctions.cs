@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -22,37 +25,52 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
+using Nethermind.JsonRpc;
+using Nethermind.Serialization.Json;
 using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Test
 {
     [Parallelizable(ParallelScope.All)]
-    public partial class EngineModuleTests : BaseEngineModuleTests
+    [TestFixture(true)]
+    [TestFixture(false)]
+    public partial class EngineModuleTests(bool parallel) : BaseEngineModuleTests
     {
+        protected bool Parallel { get; } = parallel;
+
+        protected override MergeTestBlockchain CreateBaseBlockchain(
+            IMergeConfig? mergeConfig = null)
+        {
+            MergeTestBlockchain bc = base.CreateBaseBlockchain(mergeConfig);
+            bc.ParallelExecutionOverride = Parallel;
+            return bc;
+        }
+
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
         private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Hash256 headBlockHash, Hash256 finalizedBlockHash,
             Hash256 safeBlockHash)
         {
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(blockFinder.HeadHash, Is.EqualTo(headBlockHash));
                 Assert.That(blockFinder.FinalizedHash, Is.EqualTo(finalizedBlockHash));
                 Assert.That(blockFinder.SafeHash, Is.EqualTo(safeBlockHash));
-            });
+            }
         }
 
         private void AssertExecutionStatusNotChanged(IBlockFinder blockFinder, Hash256 headBlockHash,
             Hash256 finalizedBlockHash, Hash256 safeBlockHash)
         {
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(blockFinder.HeadHash, Is.Not.EqualTo(headBlockHash));
                 Assert.That(blockFinder.FinalizedHash, Is.Not.EqualTo(finalizedBlockHash));
                 Assert.That(blockFinder.SafeHash, Is.Not.EqualTo(safeBlockHash));
-            });
+            }
         }
 
         private async Task GetPayload_should_fail_on_unknown_payload(int version)
@@ -67,7 +85,51 @@ namespace Nethermind.Merge.Plugin.Test
                 3 => (await rpc.engine_getPayloadV3(payloadId)).ErrorCode,
                 _ => throw new ArgumentOutOfRangeException(nameof(version))
             };
-            errorCode.Should().Be(MergeErrorCodes.UnknownPayload);
+            Assert.That(errorCode, Is.EqualTo(MergeErrorCodes.UnknownPayload));
+        }
+
+        private static async Task<string> AssertStreamedJsonMatchesSerializer<TResponse>(TResponse response)
+            where TResponse : IStreamableResult
+        {
+            Pipe pipe = new();
+            await response.WriteToAsync(pipe.Writer, CancellationToken.None);
+            await pipe.Writer.CompleteAsync();
+
+            ReadResult readResult = await pipe.Reader.ReadAsync();
+            string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
+            pipe.Reader.AdvanceTo(readResult.Buffer.End);
+
+            Assert.That(streamedJson, Is.EqualTo(JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions)));
+            return streamedJson;
+        }
+
+        private static Withdrawal[] CreateDirectResponseWithdrawals() =>
+        [
+            new()
+            {
+                Index = 1,
+                ValidatorIndex = 2,
+                Address = TestItem.AddressA,
+                AmountInGwei = 3
+            }
+        ];
+
+        private static PayloadAttributes CreateAmsterdamPayloadAttributes(BlockHeader parent) => new()
+        {
+            Timestamp = parent.Timestamp + 12,
+            PrevRandao = TestItem.KeccakH,
+            SuggestedFeeRecipient = TestItem.AddressC,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = Keccak.Zero,
+            SlotNumber = 1,
+            TargetGasLimit = parent.GasLimit,
+        };
+
+        private static byte[] RandomBytes(int length)
+        {
+            byte[] bytes = new byte[length];
+            Random.Shared.NextBytes(bytes);
+            return bytes;
         }
 
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayload executePayloadRequest,
@@ -81,11 +143,9 @@ namespace Nethermind.Merge.Plugin.Test
 
         private Transaction[] BuildTransactions(MergeTestBlockchain chain, Hash256 parentHash, PrivateKey from,
             Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader,
-            int blobCountPerTx = 0, IReleaseSpec? spec = null)
-        {
-            return BuildTransactions(chain.BlockTree, chain.SpecProvider, chain.StateReader, Timestamper, parentHash, from, to,
+            int blobCountPerTx = 0, IReleaseSpec? spec = null) =>
+            BuildTransactions(chain.BlockTree, chain.SpecProvider, chain.StateReader, Timestamper, parentHash, from, to,
                 count, value, out accountFrom, out parentHeader, blobCountPerTx, spec);
-        }
 
         private static Transaction[] BuildTransactions(
             IBlockTree blockTree,
@@ -126,11 +186,13 @@ namespace Nethermind.Merge.Plugin.Test
             return Enumerable.Range(0, (int)count).Select(i => BuildTransaction((uint)i, account)).ToArray();
         }
 
-        private static ExecutionPayload CreateBlockRequest(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
+        private static async Task<ExecutionPayload> CreateBlockRequest(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
             ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null)
         {
-            using var overridableEnv = chain.WorldStateManager.CreateOverridableWorldScope();
-            using var childContainer = chain.Container.BeginLifetimeScope(builder => builder.AddSingleton(overridableEnv.WorldState));
+            // A parent answered VALID a moment ago may not have its state committed yet.
+            await chain.WaitForCommitted(parent.BlockHash);
+            using IOverridableWorldScope overridableEnv = chain.WorldStateManager.CreateOverridableWorldScope();
+            using ILifetimeScope childContainer = chain.Container.BeginLifetimeScope(builder => builder.AddSingleton(overridableEnv.WorldState));
 
             return CreateBlockRequestInScope(childContainer, parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions, parentBeaconBlockRoot);
         }
@@ -142,9 +204,9 @@ namespace Nethermind.Merge.Plugin.Test
             ISpecProvider specProvider = childContainer.Resolve<ISpecProvider>();
 
             ExecutionPayload blockRequest = CreateBlockRequestInternal<ExecutionPayload>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
-            Block? block = blockRequest.TryGetBlock().Block;
+            Block? block = blockRequest.TryGetBlock().Data;
 
-            using (var _ = worldState.BeginScope(parent.TryGetBlock().Block?.Header))
+            using (IDisposable _ = worldState.BeginScope(parent.TryGetBlock().Data?.Header))
             {
                 IWithdrawalProcessor withdrawalProcessor = childContainer.Resolve<IWithdrawalProcessor>();
 
@@ -161,7 +223,7 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequest;
         }
 
-        private static ExecutionPayloadV3 CreateBlockRequestV3(
+        private static async Task<ExecutionPayloadV3> CreateBlockRequestV3(
             MergeTestBlockchain chain,
             ExecutionPayload parent,
             Address miner,
@@ -171,13 +233,14 @@ namespace Nethermind.Merge.Plugin.Test
             Transaction[]? transactions = null,
             Hash256? parentBeaconBlockRoot = null)
         {
+            await chain.WaitForCommitted(parent.BlockHash);
             ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
-            Block? block = blockRequestV3.TryGetBlock().Block;
+            Block? block = blockRequestV3.TryGetBlock().Data;
 
             IWorldState globalWorldState = chain.MainWorldState;
-            using (globalWorldState.BeginScope(parent.TryGetBlock().Block!.Header))
+            using (globalWorldState.BeginScope(parent.TryGetBlock().Data!.Header))
             {
-                var blockHashStore = new BlockhashStore(globalWorldState);
+                BlockhashStore blockHashStore = new(globalWorldState);
                 blockHashStore.ApplyBlockhashStateChanges(block!.Header, chain.SpecProvider.GetSpec(block.Header));
                 chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 
@@ -218,13 +281,14 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequest;
         }
 
-        private static ExecutionPayload[] CreateBlockRequestBranch(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, int count)
+        private static async Task<ExecutionPayload[]> CreateBlockRequestBranch(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, int count)
         {
+            await chain.WaitForCommitted(parent.BlockHash);
             ExecutionPayload currentBlock = parent;
             ExecutionPayload[] blockRequests = new ExecutionPayload[count];
 
-            using var overridableEnv = chain.WorldStateManager.CreateOverridableWorldScope();
-            using var childContainer = chain.Container.BeginLifetimeScope(builder => builder.AddSingleton(overridableEnv.WorldState));
+            using IOverridableWorldScope overridableEnv = chain.WorldStateManager.CreateOverridableWorldScope();
+            using ILifetimeScope childContainer = chain.Container.BeginLifetimeScope(builder => builder.AddSingleton(overridableEnv.WorldState));
 
             for (int i = 0; i < count; i++)
             {
@@ -262,7 +326,7 @@ namespace Nethermind.Merge.Plugin.Test
 
         private static bool TryCalculateHash(ExecutionPayload request, out Hash256 hash)
         {
-            Block? block = request.TryGetBlock().Block;
+            Block? block = request.TryGetBlock().Data;
             if (block is not null)
             {
                 hash = block.CalculateHash();

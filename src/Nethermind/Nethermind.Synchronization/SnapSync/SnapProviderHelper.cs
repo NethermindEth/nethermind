@@ -18,7 +18,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueHash256> codeHashes, Hash256 actualRootHash) AddAccountRange(
             ISnapTrieFactory factory,
-            long blockNumber,
+            ulong blockNumber,
             in ValueHash256 expectedRootHash,
             in ValueHash256 startingHash,
             in ValueHash256 limitHash,
@@ -33,8 +33,8 @@ namespace Nethermind.Synchronization.SnapSync
             if (result != AddRangeResult.OK)
                 return (result, true, null, null, tree.RootHash);
 
-            List<PathWithAccount> accountsWithStorage = new();
-            List<ValueHash256> codeHashes = new();
+            List<PathWithAccount> accountsWithStorage = [];
+            List<ValueHash256> codeHashes = [];
             for (int index = 0; index < accounts.Count; index++)
             {
                 PathWithAccount account = accounts[index];
@@ -70,6 +70,25 @@ namespace Nethermind.Synchronization.SnapSync
             return (AddRangeResult.OK, moreChildrenToRight, tree.RootHash, isRootPersisted);
         }
 
+        /// <summary>
+        /// Verifies that <paramref name="accounts"/> and <paramref name="proofs"/> reconstruct
+        /// <paramref name="expectedRootHash"/> for the range starting at <paramref name="startingHash"/>, without
+        /// committing anything. Intended for single-account refresh against an isolated, empty-backed factory:
+        /// the boundary nodes and the returned accounts are assembled in memory only to recompute the root, so an
+        /// incomplete proof fails verification rather than being completed from (or racing) the live state DB.
+        /// </summary>
+        public static AddRangeResult VerifyAccountRange(
+            ISnapTrieFactory factory,
+            in ValueHash256 expectedRootHash,
+            in ValueHash256 startingHash,
+            in ValueHash256 limitHash,
+            IReadOnlyList<PathWithAccount> accounts,
+            IByteArrayList? proofs)
+        {
+            using ISnapTree<PathWithAccount> tree = factory.CreateStateTree();
+            return BuildAndVerifyRoot(tree, accounts, startingHash, limitHash, expectedRootHash, proofs).result;
+        }
+
         private static (AddRangeResult result, bool moreChildrenToRight, bool isRootPersisted) CommitRange<TEntry>(
             ISnapTree<TEntry> tree,
             IReadOnlyList<TEntry> entries,
@@ -78,23 +97,8 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 expectedRootHash,
             IByteArrayList? proofs) where TEntry : ISnapEntry
         {
-            if (entries.Count == 0)
-                return (AddRangeResult.EmptyRange, true, false);
-
-            // Validate sorting order
-            for (int i = 1; i < entries.Count; i++)
-            {
-                if (entries[i - 1].Path.CompareTo(entries[i].Path) >= 0)
-                    return (AddRangeResult.InvalidOrder, true, false);
-            }
-
-            if (entries[0].Path < startingHash)
-                return (AddRangeResult.InvalidOrder, true, false);
-
-            ValueHash256 lastPath = entries[entries.Count - 1].Path;
-
-            (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) =
-                FillBoundaryTree(tree, startingHash, lastPath, limitHash, expectedRootHash, proofs);
+            (AddRangeResult result, List<(TrieNode, TreePath)>? sortedBoundaryList, bool moreChildrenToRight) =
+                BuildAndVerifyRoot(tree, entries, startingHash, limitHash, expectedRootHash, proofs);
 
             if (result != AddRangeResult.OK)
                 return (result, true, false);
@@ -102,6 +106,7 @@ namespace Nethermind.Synchronization.SnapSync
             // The upper bound is used to prevent proof nodes that covers next range from being persisted, except if
             // this is the last range. This prevent double node writes per path which break flat. It also prevent leaf o
             // that is after the range from being persisted, which prevent double write again.
+            ValueHash256 lastPath = entries.Count == 0 ? limitHash : entries[entries.Count - 1].Path;
             ValueHash256 upperBound = lastPath;
             if (upperBound > limitHash)
             {
@@ -112,17 +117,76 @@ namespace Nethermind.Synchronization.SnapSync
                 if (!moreChildrenToRight) upperBound = ValueKeccak.MaxValue;
             }
 
-            tree.BulkSetAndUpdateRootHash(entries);
-
-            if (tree.RootHash.ValueHash256 != expectedRootHash)
-                return (AddRangeResult.DifferentRootHash, true, false);
-
             StitchBoundaries(sortedBoundaryList, tree, startingHash);
 
             tree.Commit(upperBound);
 
             bool isRootPersisted = sortedBoundaryList is not { Count: > 0 } || sortedBoundaryList[0].Item1.IsPersisted;
             return (AddRangeResult.OK, moreChildrenToRight, isRootPersisted);
+        }
+
+        /// <summary>
+        /// Fills the boundary proof nodes and bulk-sets the range entries into <paramref name="tree"/> in memory,
+        /// then checks that the recomputed root equals <paramref name="expectedRootHash"/>. Nothing is committed.
+        /// </summary>
+        private static (AddRangeResult result, List<(TrieNode, TreePath)>? sortedBoundaryList, bool moreChildrenToRight) BuildAndVerifyRoot<TEntry>(
+            ISnapTree<TEntry> tree,
+            IReadOnlyList<TEntry> entries,
+            in ValueHash256 startingHash,
+            in ValueHash256 limitHash,
+            in ValueHash256 expectedRootHash,
+            IByteArrayList? proofs) where TEntry : ISnapEntry
+        {
+            // Without entries a proof is a proof of absence: on its own it has to rebuild the root with all of
+            // [startingHash, limitHash] cleared, which leaves nothing more to fetch in the range.
+            bool isProofOfAbsence = entries.Count == 0;
+            if (isProofOfAbsence && proofs is not { Count: > 0 })
+                return (AddRangeResult.EmptyRange, null, false);
+
+            // Validate sorting order
+            for (int i = 1; i < entries.Count; i++)
+            {
+                if (entries[i - 1].Path.CompareTo(entries[i].Path) >= 0)
+                    return (AddRangeResult.InvalidOrder, null, false);
+            }
+
+            if (!isProofOfAbsence && entries[0].Path < startingHash)
+                return (AddRangeResult.InvalidOrder, null, false);
+
+            ValueHash256 lastPath = isProofOfAbsence ? limitHash : entries[entries.Count - 1].Path;
+
+            AddRangeResult result;
+            List<(TrieNode, TreePath)> sortedBoundaryList;
+            bool moreChildrenToRight;
+            try
+            {
+                (result, sortedBoundaryList, moreChildrenToRight) =
+                    FillBoundaryTree(tree, startingHash, lastPath, limitHash, expectedRootHash, proofs);
+            }
+            catch (Exception)
+            {
+                return (AddRangeResult.InvalidProof, null, false);
+            }
+
+            if (result != AddRangeResult.OK)
+                return (result, null, false);
+
+            try
+            {
+                tree.BulkSetAndUpdateRootHash(entries);
+            }
+            catch (TrieException e) when (e is MissingTrieNodeException or TrieNodeException)
+            {
+                // The tree holds only the proof nodes, so the bulk set loads a node only when an entry reaches a child
+                // the proof keeps as a hash, such as a leaf beside the range: the entries do not fit the proof. Patricia
+                // stores report the node they cannot load as a MissingTrieNodeException, flat ones as a TrieNodeException.
+                return (AddRangeResult.InvalidProof, null, false);
+            }
+
+            if (tree.RootHash.ValueHash256 != expectedRootHash)
+                return (AddRangeResult.DifferentRootHash, null, false);
+
+            return (AddRangeResult.OK, sortedBoundaryList, moreChildrenToRight && !isProofOfAbsence);
         }
 
         [SkipLocalsInit]
@@ -143,7 +207,7 @@ namespace Nethermind.Synchronization.SnapSync
             ArgumentNullException.ThrowIfNull(tree);
 
             ValueHash256 effectiveStartingHash = startingHash ?? ValueKeccak.Zero;
-            List<(TrieNode, TreePath)> sortedBoundaryList = new();
+            List<(TrieNode, TreePath)> sortedBoundaryList = [];
 
             Dictionary<ValueHash256, TrieNode> dict = CreateProofDict(proofs);
 
@@ -187,18 +251,34 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (node.IsExtension)
                 {
+                    if (node.Key is not { Length: > 0 })
+                    {
+                        return (AddRangeResult.InvalidProofNode, null, true);
+                    }
+
                     if (node.GetChildHashAsValueKeccak(ExtensionRlpChildIndex, out ValueHash256 childKeccak))
                     {
                         TreePath childPath = path.Append(node.Key);
 
                         moreChildrenToRight |= childPath.Path > limitHash;
 
-                        if (childPath.CompareTo(leftBoundaryPath.Truncate(childPath.Length)) >= 0 && dict.TryGetValue(childKeccak, out TrieNode child))
+                        if (childPath.CompareTo(leftBoundaryPath.Truncate(childPath.Length)) >= 0)
                         {
-                            node.SetChild(0, child);
+                            if (dict.TryGetValue(childKeccak, out TrieNode child))
+                            {
+                                node.SetChild(0, child);
 
-                            proofNodesToProcess.Push((child, childPath));
-                            sortedBoundaryList.Add((child, childPath));
+                                proofNodesToProcess.Push((child, childPath));
+                                sortedBoundaryList.Add((child, childPath));
+                            }
+                            else if (childPath.CompareTo(rightBoundaryPath.Truncate(childPath.Length)) <= 0)
+                            {
+                                // The child's keys overlap [start, end]: the path of the start or of the end runs through
+                                // this extension, or it is a root extension inside the range. Kept as a hash, the child
+                                // would stand for every key of the range under it: the entries could leave them out and
+                                // the root would still match.
+                                return (AddRangeResult.InvalidProof, null, true);
+                            }
                         }
                     }
                 }
@@ -293,7 +373,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private static Dictionary<ValueHash256, TrieNode> CreateProofDict(IByteArrayList proofs)
         {
-            Dictionary<ValueHash256, TrieNode> dict = new();
+            Dictionary<ValueHash256, TrieNode> dict = [];
 
             for (int i = 0; i < proofs.Count; i++)
             {

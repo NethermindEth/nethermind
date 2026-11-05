@@ -3,38 +3,33 @@
 
 using Nethermind.Config;
 using Nethermind.Logging;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1;
 
-public class AdminEraService : IAdminEraService
+public class AdminEraService(
+    IEraImporter eraImporter,
+    IEraExporter eraExporter,
+    IProcessExitSource processExit,
+    ILogManager logManager) : IAdminEraService
 {
-    private readonly ILogger _logger;
-    private readonly IEraImporter _eraImporter;
-    private readonly IEraExporter _eraExporter;
-    private readonly IProcessExitSource _processExit;
+    private readonly ILogger _logger = logManager.GetClassLogger<AdminEraService>();
+    private readonly IEraImporter _eraImporter = eraImporter;
+    private readonly IEraExporter _eraExporter = eraExporter;
+    private readonly IProcessExitSource _processExit = processExit;
     private int _canEnterImport = 1;
     private int _canEnterExport = 1;
 
-    public AdminEraService(
-        IEraImporter eraImporter,
-        IEraExporter eraExporter,
-        IProcessExitSource processExit,
-        ILogManager logManager)
-    {
-        _eraImporter = eraImporter;
-        _eraExporter = eraExporter;
-        _processExit = processExit;
-        _logger = logManager.GetClassLogger<AdminEraService>();
-    }
-
-    public string ExportHistory(string destination, long from, long to)
+    public string ExportHistory(string destination, ulong from, ulong to)
     {
         if (Interlocked.Exchange(ref _canEnterExport, 0) != 1)
             throw new InvalidOperationException("An export job is already running.");
 
         try
         {
-            _ = StartExportTask(destination, from, to);
+            Task export = _eraExporter.Export(destination, from, to, cancellation: _processExit.Token);
+            if (export.IsFaulted) export.GetAwaiter().GetResult();
+            _ = StartExportTask(export, destination);
         }
         catch (Exception)
         {
@@ -45,7 +40,7 @@ public class AdminEraService : IAdminEraService
         return "Started export task";
     }
 
-    public string ImportHistory(string source, long from, long to, string? accumulatorFile)
+    public string ImportHistory(string source, ulong from, ulong to, string? accumulatorFile)
     {
         if (Interlocked.Exchange(ref _canEnterImport, 0) != 1)
             throw new InvalidOperationException("An import job is already running.");
@@ -64,15 +59,8 @@ public class AdminEraService : IAdminEraService
 
     }
 
-    private async Task StartExportTask(string destination, long from, long to)
+    private async Task StartExportTask(Task task, string destination)
     {
-        // Creating the task is outside the try block so that argument exceptions can be caught
-        Task task = _eraExporter.Export(
-            destination,
-            from,
-            to,
-            cancellation: _processExit.Token);
-
         try
         {
             await task;
@@ -97,7 +85,7 @@ public class AdminEraService : IAdminEraService
         }
     }
 
-    private async Task StartImportTask(string source, string? accumulatorFile, long from, long to)
+    private async Task StartImportTask(string source, string? accumulatorFile, ulong from, ulong to)
     {
         Task task = _eraImporter.Import(
             source,

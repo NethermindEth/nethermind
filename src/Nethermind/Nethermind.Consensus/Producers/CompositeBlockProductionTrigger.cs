@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.Producers
         {
             for (int index = 0; index < _triggers.Count; index++)
             {
-                var trigger = _triggers[index];
+                IBlockProductionTrigger trigger = _triggers[index];
                 trigger.TriggerBlockProduction -= OnInnerTriggerBlockProduction;
                 trigger.TryDispose();
             }

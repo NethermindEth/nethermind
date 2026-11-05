@@ -3,11 +3,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -15,12 +15,24 @@ using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
+
+internal static class ScopeProviderTestExtensions
+{
+    // Test convenience overload: begins a scope with a throwaway metrics accumulator for tests that
+    // call the scope provider directly and do not assert on the folded counters.
+    public static IWorldStateScopeProvider.IScope BeginScope(this IWorldStateScopeProvider provider, BlockHeader? baseBlock)
+        => provider.BeginScope(baseBlock, new LocalMetrics());
+}
 
 public class FlatOverridableWorldScopeTests
 {
@@ -32,10 +44,13 @@ public class FlatOverridableWorldScopeTests
         private IContainer? _container;
         private IContainer Container => _container ??= _containerBuilder.Build();
 
-        public ResourcePool ResourcePool => field ??= Container.Resolve<ResourcePool>();
         public IFlatDbManager FlatDbManager => field ??= Container.Resolve<IFlatDbManager>();
         public FlatOverridableWorldScope OverridableScope => field ??= Container.Resolve<FlatOverridableWorldScope>();
         public List<(Snapshot Snapshot, TransientResource Resource)> FlatDbManagerAddSnapshotCalls { get; } = [];
+        public ForwardingNodeRecordBuffer GlobalNodeRecordBuffer { get; } = new(FlatTestHelpers.NewTestBuffer());
+
+        /// <summary>An in-memory snapshot of the main world state, included in the read-only bundle gathered for its state.</summary>
+        public Snapshot? GlobalSnapshot { get; set; }
 
         public TestContext(FlatDbConfig? config = null)
         {
@@ -44,6 +59,7 @@ public class FlatOverridableWorldScopeTests
 
             _containerBuilder = new ContainerBuilder()
                 .AddModule(new FlatWorldStateModule(config))
+                .AddSingleton<INodeRecordBuffer>(GlobalNodeRecordBuffer)
                 .AddSingleton<IPersistence.IPersistenceReader>(_ => persistenceReader)
                 .AddSingleton<IFlatDbManager>(ctx =>
                 {
@@ -57,10 +73,12 @@ public class FlatOverridableWorldScopeTests
                         });
 
                     flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
-                        .Returns(_ =>
+                        .Returns(call =>
                         {
                             SnapshotPooledList snapshotList = new(0);
-                            return new ReadOnlySnapshotBundle(snapshotList, Substitute.For<IPersistence.IPersistenceReader>(), false);
+                            if (GlobalSnapshot is { } globalSnapshot && globalSnapshot.To == call.Arg<StateId>() && globalSnapshot.TryAcquire())
+                                snapshotList.Add(globalSnapshot);
+                            return new ReadOnlySnapshotBundle(snapshotList, Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty(), bufferPin: null);
                         });
 
                     flatDbManager.HasStateForBlock(Arg.Any<StateId>())
@@ -72,7 +90,7 @@ public class FlatOverridableWorldScopeTests
                 .AddSingleton<IProcessExitSource>(_ => new CancellationTokenSourceProcessExitSource(_cancellationTokenSource))
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .AddSingleton<IFlatDbConfig>(config)
-                .AddSingleton<ITrieNodeCache>(_ => Substitute.For<ITrieNodeCache>())
+                .AddSingleton<IStateHeaderProvider>(UnavailableStateHeaderProvider.Instance)
                 .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()));
 
             // Register keyed IDb for code database
@@ -86,10 +104,13 @@ public class FlatOverridableWorldScopeTests
             foreach ((Snapshot snapshot, TransientResource resource) in FlatDbManagerAddSnapshotCalls)
             {
                 snapshot.Dispose();
-                ResourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, resource);
+                // Mirror FlatOverridableWorldScope.AddSnapshot: returning to the pool directly would recycle
+                // the resource while a warmer lease is still outstanding and double-return it on that release.
+                resource.ReleaseLease();
             }
 
             _container?.Dispose();
+            GlobalNodeRecordBuffer.Dispose();
             _cancellationTokenSource.Dispose();
         }
 
@@ -121,11 +142,9 @@ public class FlatOverridableWorldScopeTests
             {
                 writeBatch.Set(testAddress, testAccount);
 
-                using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 2))
-                {
-                    storageBatch.Set(storageIndex1, storageValue1);
-                    storageBatch.Set(storageIndex2, storageValue2);
-                }
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 2);
+                storageBatch.Set(storageIndex1, new UInt256(storageValue1, isBigEndian: true));
+                storageBatch.Set(storageIndex2, new UInt256(storageValue2, isBigEndian: true));
             }
             scope.Commit(1);
             baseBlock = Build.A.BlockHeader.WithNumber(1).WithStateRoot(scope.RootHash).TestObject;
@@ -140,18 +159,25 @@ public class FlatOverridableWorldScopeTests
         }
 
         // Verify account readable through GlobalStateReader
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(baseBlock, testAddress, out AccountStruct acc), Is.True);
-        Assert.That(acc.Balance, Is.EqualTo(testAccount.Balance));
+        bool hasAccount = overridableScope.GlobalStateReader.TryGetAccount(baseBlock, testAddress, out AccountStruct acc);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hasAccount, Is.True);
+            Assert.That(acc.Balance, Is.EqualTo(testAccount.Balance));
+        }
 
         // Verify storage readable through GlobalStateReader
-        ReadOnlySpan<byte> readValue1 = overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, storageIndex1);
-        ReadOnlySpan<byte> readValue2 = overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, storageIndex2);
-        Assert.That(readValue1.ToArray(), Is.EqualTo(storageValue1), "Storage slot 1 should be readable");
-        Assert.That(readValue2.ToArray(), Is.EqualTo(storageValue2), "Storage slot 2 should be readable");
+        overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, storageIndex1, out UInt256 readValue1);
+        overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, storageIndex2, out UInt256 readValue2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(readValue1, Is.EqualTo(new UInt256(storageValue1, isBigEndian: true)), "Storage slot 1 should be readable");
+            Assert.That(readValue2, Is.EqualTo(new UInt256(storageValue2, isBigEndian: true)), "Storage slot 2 should be readable");
+        }
 
         // Verify non-existent slot returns zeros
-        ReadOnlySpan<byte> nonExistent = overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, 999);
-        Assert.That(nonExistent.ToArray().All(b => b == 0), Is.True, "Non-existent storage slot should return zeros");
+        overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, 999, out UInt256 nonExistent);
+        Assert.That(nonExistent, Is.EqualTo(UInt256.Zero), "Non-existent storage slot should return zeros");
     }
 
     [Test]
@@ -176,6 +202,43 @@ public class FlatOverridableWorldScopeTests
         // The main FlatDbManager should NOT receive any AddSnapshot calls
         // because commits go to FlatOverridableWorldScope's local _snapshots dictionary
         Assert.That(ctx.FlatDbManagerAddSnapshotCalls, Is.Empty);
+    }
+
+    [Test]
+    public void CommitThroughOverridableScope_KeepsTrieNodesOutOfGlobalBuffer_AndReleasesItsPinOnReset()
+    {
+        using TestContext ctx = new();
+        FlatOverridableWorldScope overridableScope = ctx.OverridableScope;
+        Account accountA = TestItem.GenerateRandomAccount();
+        Account accountB = TestItem.GenerateRandomAccount();
+
+        Hash256 Commit(BlockHeader? baseBlock, params (Address Address, Account Account)[] accounts)
+        {
+            using IWorldStateScopeProvider.IScope scope = overridableScope.WorldState.BeginScope(baseBlock);
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(accounts.Length))
+            {
+                foreach ((Address address, Account account) in accounts) writeBatch.Set(address, account);
+            }
+            scope.Commit((baseBlock?.Number ?? 0) + 1);
+            return scope.RootHash;
+        }
+
+        Hash256 rootA = Commit(null, (TestItem.AddressA, accountA));
+        // Builds on the trie nodes of the previous commit, which only the overlay holds.
+        Hash256 rootAB = Commit(Build.A.BlockHeader.WithNumber(1).WithStateRoot(rootA).TestObject, (TestItem.AddressB, accountB));
+        int pinsBeforeReset = ctx.GlobalNodeRecordBuffer.OutstandingPins;
+        overridableScope.ResetOverrides();
+        int pinsAfterReset = ctx.GlobalNodeRecordBuffer.OutstandingPins;
+        Hash256 rootABInOneCommit = Commit(null, (TestItem.AddressA, accountA), (TestItem.AddressB, accountB));
+        overridableScope.ResetOverrides();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.GlobalNodeRecordBuffer.CompletedWrites, Is.Zero);
+            Assert.That(rootAB, Is.EqualTo(rootABInOneCommit));
+            Assert.That(pinsBeforeReset, Is.Positive);
+            Assert.That(pinsAfterReset, Is.Zero);
+        }
     }
 
     [Test]
@@ -227,29 +290,122 @@ public class FlatOverridableWorldScopeTests
             block3 = Build.A.BlockHeader.WithNumber(3).WithStateRoot(scope.RootHash).TestObject;
         }
 
-        // Verify final state (block 3) sees all three accounts
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block3, addressA, out AccountStruct accA3), Is.True, "Block 3 should see account A");
-        Assert.That(accA3.Balance, Is.EqualTo(accountA.Balance));
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block3, addressB, out AccountStruct accB3), Is.True, "Block 3 should see account B");
-        Assert.That(accB3.Balance, Is.EqualTo(accountB.Balance));
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block3, addressC, out AccountStruct accC3), Is.True, "Block 3 should see account C");
-        Assert.That(accC3.Balance, Is.EqualTo(accountC.Balance));
+        using (Assert.EnterMultipleScope())
+        {
+            // Verify final state (block 3) sees all three accounts
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block3, addressA, out AccountStruct accA3), Is.True, "Block 3 should see account A");
+            Assert.That(accA3.Balance, Is.EqualTo(accountA.Balance));
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block3, addressB, out AccountStruct accB3), Is.True, "Block 3 should see account B");
+            Assert.That(accB3.Balance, Is.EqualTo(accountB.Balance));
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block3, addressC, out AccountStruct accC3), Is.True, "Block 3 should see account C");
+            Assert.That(accC3.Balance, Is.EqualTo(accountC.Balance));
 
-        // Verify intermediate state (block 2) sees A+B but not C
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block2, addressA, out AccountStruct accA2), Is.True, "Block 2 should see account A");
-        Assert.That(accA2.Balance, Is.EqualTo(accountA.Balance));
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block2, addressB, out AccountStruct accB2), Is.True, "Block 2 should see account B");
-        Assert.That(accB2.Balance, Is.EqualTo(accountB.Balance));
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block2, addressC, out _), Is.False, "Block 2 should NOT see account C");
+            // Verify intermediate state (block 2) sees A+B but not C
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block2, addressA, out AccountStruct accA2), Is.True, "Block 2 should see account A");
+            Assert.That(accA2.Balance, Is.EqualTo(accountA.Balance));
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block2, addressB, out AccountStruct accB2), Is.True, "Block 2 should see account B");
+            Assert.That(accB2.Balance, Is.EqualTo(accountB.Balance));
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block2, addressC, out _), Is.False, "Block 2 should NOT see account C");
 
-        // Verify initial state (block 1) sees only A
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, addressA, out AccountStruct accA1), Is.True, "Block 1 should see account A");
-        Assert.That(accA1.Balance, Is.EqualTo(accountA.Balance));
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, addressB, out _), Is.False, "Block 1 should NOT see account B");
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, addressC, out _), Is.False, "Block 1 should NOT see account C");
+            // Verify initial state (block 1) sees only A
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, addressA, out AccountStruct accA1), Is.True, "Block 1 should see account A");
+            Assert.That(accA1.Balance, Is.EqualTo(accountA.Balance));
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, addressB, out _), Is.False, "Block 1 should NOT see account B");
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, addressC, out _), Is.False, "Block 1 should NOT see account C");
 
-        // Verify no calls to main FlatDbManager
-        Assert.That(ctx.FlatDbManagerAddSnapshotCalls, Is.Empty);
+            // Verify no calls to main FlatDbManager
+            Assert.That(ctx.FlatDbManagerAddSnapshotCalls, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void RunTreeVisitor_FollowsOverlayAndMainBufferRecords([Values(1, 4)] int parallelism)
+    {
+        using TestContext ctx = new();
+        FlatOverridableWorldScope overridableScope = ctx.OverridableScope;
+
+        BlockHeader CommitAccountsWithSlot(BlockHeader? baseBlock, params Address[] addresses)
+        {
+            using IWorldStateScopeProvider.IScope scope = overridableScope.WorldState.BeginScope(baseBlock);
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(addresses.Length))
+            {
+                foreach (Address address in addresses)
+                {
+                    writeBatch.Set(address, Build.An.Account.WithBalance(1).TestObject);
+                    using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
+                    storageBatch.Set(1, 1);
+                }
+            }
+            ulong number = (baseBlock?.Number ?? 0) + 1;
+            scope.Commit(number);
+            return Build.A.BlockHeader.WithNumber(number).WithStateRoot(scope.RootHash).TestObject;
+        }
+
+        TrieStats Visit(BlockHeader block)
+        {
+            TrieStatsCollector collector = new(new TestMemDb(), LimboLogs.Instance);
+            overridableScope.GlobalStateReader.RunTreeVisitor(collector, block, new VisitingOptions { MaxDegreeOfParallelism = parallelism });
+            return collector.Stats;
+        }
+
+        // Block 2 adds D beside A and C, so its root points at their leaves from block 1, and only block 1's snapshot holds their storage roots.
+        BlockHeader overlayBlock = CommitAccountsWithSlot(CommitAccountsWithSlot(null, TestItem.AddressA, TestItem.AddressC), TestItem.AddressD);
+
+        // A main state indexed after the overlay pinned the main buffer: the overlay's root lookup would skip it, while the state's
+        // own snapshot resolves it in the main buffer.
+        Hash256 addressHash = Keccak.Compute(TestItem.AddressB.Bytes);
+        TestMemDb trieDb = new();
+        StorageTree storageTree = new(new RawScopedTrieStore(trieDb, addressHash), LimboLogs.Instance);
+        storageTree.Set(1, [0x01]);
+        storageTree.Commit();
+        StateTree stateTree = new(new RawScopedTrieStore(trieDb), LimboLogs.Instance);
+        stateTree.Set(TestItem.AddressB, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
+        stateTree.Commit();
+        BlockHeader mainBlock = Build.A.BlockHeader.WithNumber(3).WithStateRoot(stateTree.RootHash).TestObject;
+        INodeRecordBuffer mainBuffer = ctx.GlobalNodeRecordBuffer;
+        using Snapshot mainSnapshot = new ResourcePool(new FlatDbConfig()).CreateSnapshot(StateId.PreGenesis, new StateId(mainBlock), ResourcePool.Usage.MainBlockProcessing, mainBuffer);
+        mainBuffer.SetRoot(addressHash, storageTree.RootHash, mainBuffer.AppendRecordFromRlp(addressHash, TreePath.Empty, storageTree.RootHash, storageTree.GetNodeByPath([])!, []));
+        mainBuffer.SetRoot(null, stateTree.RootHash, mainBuffer.AppendRecordFromRlp(null, TreePath.Empty, stateTree.RootHash, stateTree.GetNodeByPath([])!, []));
+        ctx.GlobalSnapshot = mainSnapshot;
+
+        // The bundle under the overlay is empty, so a node read from persistence instead of a record is missing.
+        TrieStats overlayStats = Visit(overlayBlock);
+        TrieStats mainStats = Visit(mainBlock);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overlayStats.StateBranchCount, Is.EqualTo(1));
+            Assert.That(overlayStats.AccountCount, Is.EqualTo(3));
+            Assert.That(overlayStats.StorageLeafCount, Is.EqualTo(3));
+            Assert.That(overlayStats.MissingNodes, Is.Zero);
+            Assert.That(mainStats.AccountCount, Is.EqualTo(1));
+            Assert.That(mainStats.StorageLeafCount, Is.EqualTo(1));
+            Assert.That(mainStats.MissingNodes, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void ResetOverrides_PreservesAlreadyOpenedScopeLease()
+    {
+        using TestContext ctx = new();
+        FlatOverridableWorldScope overridableScope = ctx.OverridableScope;
+        Account account = TestItem.GenerateRandomAccount();
+        BlockHeader? block = null;
+
+        using (IWorldStateScopeProvider.IScope commitScope = overridableScope.WorldState.BeginScope(null))
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = commitScope.StartWriteBatch(1);
+            writeBatch.Set(TestItem.AddressA, account);
+            commitScope.Commit(1);
+            block = Build.A.BlockHeader.WithNumber(1).WithStateRoot(commitScope.RootHash).TestObject;
+        }
+
+        IWorldStateScopeProvider.IScope heldScope = overridableScope.WorldState.BeginScope(block);
+        overridableScope.ResetOverrides();
+
+        Assert.That(heldScope.Get(TestItem.AddressA)!.Balance, Is.EqualTo(account.Balance));
+        heldScope.Dispose();
+        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block, TestItem.AddressA, out _), Is.False);
     }
 
     [Test]
@@ -282,5 +438,58 @@ public class FlatOverridableWorldScopeTests
         // After reset, the local snapshots are cleared, so state falls through to main FlatDbManager
         // which is mocked to return empty/not found
         Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, testAddress, out _), Is.False, "Should NOT see account after reset");
+    }
+
+    [Test]
+    public void OverridableScope_ResolvesTargetsFromInMemoryHeadersItCommitted()
+    {
+        using TestContext ctx = new();
+        FlatOverridableWorldScope overridableScope = ctx.OverridableScope;
+        IWorldStateScopeProvider worldState = overridableScope.WorldState;
+
+        // Mirrors OverridableEnv.BuildAndOverride: overrides are committed into the in-memory base header itself.
+        BlockHeader overriddenBase = Build.A.BlockHeader.WithNumber(1).WithStateRoot(Keccak.EmptyTreeHash).TestObject;
+        overriddenBase.StateRoot = CommitAccount(worldState.BeginScope(overriddenBase), overriddenBase.Number, TestItem.AddressA);
+        BlockHeader child = Build.A.BlockHeader.WithParent(overriddenBase).TestObject;
+
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
+        Assert.That(worldState.HasStateForTargetBlock(child), Is.True);
+#pragma warning restore NUnit2045
+        Assert.That(worldState.TryBeginScopeAtTarget(child, new LocalMetrics(), out IWorldStateScopeProvider.IScope? childScope), Is.True);
+        Assert.That(childScope!.Get(TestItem.AddressA), Is.Not.Null);
+        child.StateRoot = CommitAccount(childScope, child.Number, TestItem.AddressB);
+        BlockHeader grandchild = Build.A.BlockHeader.WithParent(child).TestObject;
+
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
+        Assert.That(worldState.HasStateForTargetBlock(grandchild), Is.True);
+#pragma warning restore NUnit2045
+        Assert.That(worldState.TryBeginScopeAtTarget(grandchild, new LocalMetrics(), out IWorldStateScopeProvider.IScope? grandchildScope), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(grandchildScope!.Get(TestItem.AddressA), Is.Not.Null);
+            Assert.That(grandchildScope.Get(TestItem.AddressB), Is.Not.Null);
+        }
+        grandchildScope.Dispose();
+
+        // Every opened header stays known, not only the latest: a sibling of child still resolves overriddenBase.
+        Assert.That(worldState.HasStateForTargetBlock(Build.A.BlockHeader.WithParent(overriddenBase).WithTimestamp(7).TestObject), Is.True);
+
+        overridableScope.ResetOverrides();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(worldState.HasStateForTargetBlock(grandchild), Is.False);
+            Assert.That(worldState.HasStateForTargetBlock(child), Is.False);
+        }
+    }
+
+    private static Hash256 CommitAccount(IWorldStateScopeProvider.IScope scope, ulong blockNumber, Address address)
+    {
+        using IDisposable _ = scope;
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(address, TestItem.GenerateRandomAccount());
+        }
+        scope.Commit(blockNumber);
+        return scope.RootHash;
     }
 }

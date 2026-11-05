@@ -3,10 +3,10 @@
 
 using System;
 using Autofac;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Db.Blooms;
 using Nethermind.Shutter.Config;
 using static Nethermind.Merge.AuRa.Test.AuRaMergeEngineModuleTests;
 
@@ -31,10 +31,7 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
 
             // ShutterApiSimulator add receipts to block with empty transaction. Crash with full receipt storage.
             .AddSingleton<IReceiptStorage, InMemoryReceiptStorage>()
-
-            // It seems that it does not work with bloom.
-            // This or use a separate bloom storage for LogFinder and BlockTree.
-            .AddSingleton<IBloomStorage>(NullBloomStorage.Instance)
+            .AddDecorator<IHeaderStore, ReceiptBloomHeaderStore>()
             ;
 
         if (eventSimulator is not null)

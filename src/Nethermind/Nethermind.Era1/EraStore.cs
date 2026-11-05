@@ -21,7 +21,7 @@ public class EraStore : IEraStore
     private readonly ISet<ValueHash256>? _trustedAccumulators;
 
     private readonly Dictionary<long, string> _epochs;
-    private readonly ValueHash256[] _checksums;
+    private readonly Dictionary<long, ValueHash256> _checksums;
 
     // Probably should be persisted in the directory so that on restart we would not verify the epoch again.
     // But that is more relevant when we read directly from the directory
@@ -38,13 +38,13 @@ public class EraStore : IEraStore
     private readonly ConcurrentDictionary<int, (long, EraReader)> _openedReader = new();
 
     private bool _disposed = false;
-    private readonly int _maxEraFile;
+    private readonly ulong _maxEraFile;
 
     private int LastEpoch { get; set; }
     private int FirstEpoch { get; set; } = int.MaxValue;
 
-    private long? _firstBlock = null;
-    public long FirstBlock
+    private ulong? _firstBlock = null;
+    public ulong FirstBlock
     {
         get
         {
@@ -57,10 +57,10 @@ public class EraStore : IEraStore
         }
     }
 
-    private long? _lastBlock = null;
+    private ulong? _lastBlock = null;
     private readonly int _verifyConcurrency;
 
-    public long LastBlock
+    public ulong LastBlock
     {
         get
         {
@@ -78,7 +78,7 @@ public class EraStore : IEraStore
         IBlockValidator blockValidator,
         IFileSystem fileSystem,
         string networkName,
-        int maxEraSize,
+        ulong maxEraSize,
         ISet<ValueHash256>? trustedAccumulators,
         string directory,
         int verifyConcurrency = 0
@@ -93,17 +93,14 @@ public class EraStore : IEraStore
         if (_verifyConcurrency == 0) _verifyConcurrency = Environment.ProcessorCount;
 
         // Geth behaviour seems to be to always read the checksum and fail when its missing.
-        _checksums = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName))
-            .Select(static (chk) => EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry(chk))
-            .ToArray();
+        string[] checksumLines = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName));
 
         bool hasEraFile = false;
-        _epochs = new();
-        foreach (var file in EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem))
+        _epochs = [];
+        foreach (string file in EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem))
         {
             string[] parts = Path.GetFileName(file).Split(_eraSeparator);
-            int epoch;
-            if (parts.Length != 3 || !int.TryParse(parts[1], out epoch) || epoch < 0)
+            if (parts.Length != 3 || !int.TryParse(parts[1], out int epoch) || epoch < 0)
                 throw new ArgumentException($"Malformed Era1 file '{file}'.", file);
             _epochs[epoch] = file;
             hasEraFile = true;
@@ -117,12 +114,15 @@ public class EraStore : IEraStore
         {
             throw new EraException($"No relevant era files in directory {directory}");
         }
+
+        _checksums = EraPathUtils.ParseManifest(checksumLines, FirstEpoch);
     }
 
-    private long GetEpochNumber(long blockNumber)
+    private long GetEpochNumber(ulong blockNumber)
     {
-        // This seems to be the geth way of encoding blocks.
-        long epochOffset = (blockNumber - FirstBlock) / _maxEraFile;
+        if (blockNumber < FirstBlock)
+            throw new EraException($"Block number {blockNumber} is below era store's first block {FirstBlock}.");
+        long epochOffset = (long)((blockNumber - FirstBlock) / _maxEraFile);
         return FirstEpoch + epochOffset;
     }
 
@@ -141,7 +141,8 @@ public class EraStore : IEraStore
             Task checksumTask = Task.Run(() =>
             {
                 ValueHash256 checksum = reader.CalculateChecksum();
-                ValueHash256 expectedChecksum = _checksums[epoch - FirstEpoch];
+                if (!_checksums.TryGetValue(epoch, out ValueHash256 expectedChecksum))
+                    throw new EraVerificationException($"No checksum entry found for epoch {epoch}.");
                 if (checksum != expectedChecksum)
                 {
                     throw new EraVerificationException(
@@ -164,17 +165,15 @@ public class EraStore : IEraStore
         }
     }
 
-    public long NextEraStart(long blockNumber)
+    public ulong NextEraStart(ulong blockNumber)
     {
         long epoch = GetEpochNumber(blockNumber);
         using EraRenter _ = RentReader(epoch, out EraReader reader);
         return reader.LastBlock + 1;
     }
 
-    public async Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, bool ensureValidated = true, CancellationToken cancellation = default)
+    public async Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
     {
-        ThrowIfNegative(number);
-
         long partOfEpoch = GetEpochNumber(number);
         if (!_epochs.ContainsKey(partOfEpoch))
             return (null, null);
@@ -229,26 +228,15 @@ public class EraStore : IEraStore
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ThrowIfNegative(long number)
-    {
-        if (number < 0)
-            throw new ArgumentOutOfRangeException(nameof(number), number, "Cannot be negative.");
-    }
-
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void GuardMissingEpoch(long epoch)
     {
         if (!HasEpoch(epoch))
-            throw new ArgumentOutOfRangeException($"Epoch not available.", epoch, nameof(epoch));
+            throw new ArgumentOutOfRangeException(nameof(epoch), epoch, "Epoch not available.");
     }
 
     private readonly struct EraRenter(EraStore store, EraReader reader, long epoch) : IDisposable
     {
-        public void Dispose()
-        {
-            store.ReturnReader(epoch, reader);
-        }
+        public void Dispose() => store.ReturnReader(epoch, reader);
     }
 
     public void Dispose()

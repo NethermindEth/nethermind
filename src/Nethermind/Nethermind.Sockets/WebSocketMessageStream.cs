@@ -13,16 +13,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.Sockets;
 
-public sealed class WebSocketMessageStream : Stream, IMessageBorderPreservingStream
+public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logManager) : Stream, IMessageBorderPreservingStream
 {
-    private readonly WebSocket _socket;
-    private readonly ILogger _logger;
-
-    public WebSocketMessageStream(WebSocket socket, ILogManager logManager)
-    {
-        _socket = socket;
-        _logger = logManager.GetClassLogger<WebSocketMessageStream>();
-    }
+    private readonly WebSocket _socket = socket;
+    private readonly ILogger _logger = logManager.GetClassLogger<WebSocketMessageStream>();
 
     public override bool CanRead => true;
     public override bool CanSeek => false;
@@ -85,9 +79,13 @@ public sealed class WebSocketMessageStream : Stream, IMessageBorderPreservingStr
 
     public override void Write(byte[] buffer, int offset, int count) => WriteAsync(buffer, offset, count).GetAwaiter().GetResult();
 
-    public async ValueTask<int> WriteEndOfMessageAsync()
+    public async ValueTask<int> WriteEndOfMessageAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken)
     {
-        await _socket.SendAsync(ReadOnlyMemory<byte>.Empty, WebSocketMessageType.Text, true, CancellationToken.None);
+        ThrowIfDisposed();
+
+        if (_socket.State != WebSocketState.Open) { ThrowSocketNotOpen(); }
+
+        await _socket.SendAsync(data, WebSocketMessageType.Text, true, cancellationToken);
         return 0;
     }
 
@@ -118,7 +116,7 @@ public sealed class WebSocketMessageStream : Stream, IMessageBorderPreservingStr
             {
                 if (socketException.SocketErrorCode == SocketError.ConnectionReset)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Client disconnected: {innerException.Message}.");
+                    if (_logger.IsTrace) _logger.Trace($"Client disconnected: {innerException.Message:hide}.");
                 }
                 else
                 {
@@ -129,7 +127,7 @@ public sealed class WebSocketMessageStream : Stream, IMessageBorderPreservingStr
             {
                 if (webSocketException.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Client disconnected: {innerException.Message}.");
+                    if (_logger.IsTrace) _logger.Trace($"Client disconnected: {innerException.Message:hide}.");
                 }
                 else
                 {

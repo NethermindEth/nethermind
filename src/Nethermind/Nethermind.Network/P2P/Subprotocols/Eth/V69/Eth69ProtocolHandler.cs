@@ -4,10 +4,12 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -39,11 +41,16 @@ public class Eth69ProtocolHandler(
     IForkInfo forkInfo,
     ILogManager logManager,
     ITxPoolConfig txPoolConfig,
-    ISpecProvider specProvider,
+    IChainHeadSpecProvider specProvider,
     ITxGossipPolicy? transactionsGossipPolicy = null)
     : Eth68ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
         gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), ISyncPeer, IStaticProtocolInfo
 {
+    private static readonly Func<ReceiptsMessage69, int, (IOwnedReadOnlyList<TxReceipt[]>, long)> SelectReceipts =
+        static (message, size) => (message.EthMessage.TxReceipts, size);
+    private static readonly Action<IByteBuffer, GetReceiptsMessage> ValidateReceipts =
+        static (content, request) => ThrowIfReceiptsExceedRequest(content, 1, request.EthMessage);
+
     public override string Name => "eth69";
 
     public new static byte Version => EthVersions.Eth69;
@@ -58,9 +65,7 @@ public class Eth69ProtocolHandler(
         set { }
     }
 
-    public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
-
-    public override void HandleMessage(ZeroPacket message)
+    protected override bool HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
@@ -69,23 +74,20 @@ public class Eth69ProtocolHandler(
                 StatusMessage69 statusMsg = Deserialize<StatusMessage69>(message.Content);
                 ReportIn(statusMsg, size);
                 Handle(statusMsg);
-                break;
+                return true;
             case Eth69MessageCode.Receipts:
-                ReceiptsMessage69 receiptsMessage = Deserialize<ReceiptsMessage69>(message.Content);
-                ReportIn(receiptsMessage, size);
-                base.Handle(receiptsMessage, size);
-                break;
+                HandleCorrelatedResponse(_receiptsRequests66, message.Content, size, SelectReceipts, ValidateReceipts);
+                return true;
             case Eth69MessageCode.GetReceipts:
                 HandleInBackground<GetReceiptsMessage, ReceiptsMessage69>(message, Handle);
-                break;
+                return true;
             case Eth69MessageCode.BlockRangeUpdate:
                 BlockRangeUpdateMessage blockRangeUpdateMsg = Deserialize<BlockRangeUpdateMessage>(message.Content);
                 ReportIn(blockRangeUpdateMsg, size);
                 Handle(blockRangeUpdateMsg);
-                break;
+                return true;
             default:
-                base.HandleMessage(message);
-                break;
+                return base.HandleMessageCore(message);
         }
     }
 
@@ -103,7 +105,7 @@ public class Eth69ProtocolHandler(
 
         SyncPeerProtocolInitializedEventArgs eventArgs = new(this)
         {
-            NetworkId = (ulong)status.NetworkId,
+            NetworkId = status.NetworkId,
             BestHash = status.LatestBlockHash,
             GenesisHash = status.GenesisHash,
             Protocol = status.Protocol,
@@ -111,10 +113,10 @@ public class Eth69ProtocolHandler(
             ForkId = status.ForkId
         };
 
-        Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
+        Session.IsNetworkIdMatched = SyncServer.NetworkId == status.NetworkId;
         HeadNumber = status.LatestBlock;
         HeadHash = status.LatestBlockHash;
-        ProtocolInitialized?.Invoke(this, eventArgs);
+        NotifyProtocolInitialized(eventArgs);
     }
 
     private void Handle(BlockRangeUpdateMessage blockRangeUpdate)
@@ -126,18 +128,19 @@ public class Eth69ProtocolHandler(
                 $"BlockRangeUpdate with earliest ({blockRangeUpdate.EarliestBlock}) > latest ({blockRangeUpdate.LatestBlock})."
             );
         }
-
-        if (blockRangeUpdate.LatestBlockHash.IsZero)
+        else if (blockRangeUpdate.LatestBlockHash.IsZero)
         {
             Disconnect(
                 DisconnectReason.InvalidBlockRangeUpdate,
                 "BlockRangeUpdate with latest block hash as zero."
             );
         }
-
-        _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
-        HeadNumber = blockRangeUpdate.LatestBlock;
-        HeadHash = blockRangeUpdate.LatestBlockHash;
+        else
+        {
+            _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
+            HeadNumber = blockRangeUpdate.LatestBlock;
+            HeadHash = blockRangeUpdate.LatestBlockHash;
+        }
     }
 
     private new async Task<ReceiptsMessage69> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
@@ -171,7 +174,7 @@ public class Eth69ProtocolHandler(
             throw new ArgumentException($"Latest block ({latest.Number}) hash is not provided.");
 
         if (Logger.IsTrace)
-            Logger.Trace($"OUT {Counter:D5} BlockRangeUpdate to {Node:c}");
+            Logger.Trace($"OUT {Counter:D5} BlockRangeUpdate to {Node?.ToString("c"):hide}");
 
         BlockRangeUpdateMessage msg = new()
         {

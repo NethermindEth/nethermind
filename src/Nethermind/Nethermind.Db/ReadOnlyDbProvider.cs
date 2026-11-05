@@ -7,19 +7,12 @@ using System.Collections.Generic;
 
 namespace Nethermind.Db
 {
-    public class ReadOnlyDbProvider : IReadOnlyDbProvider
+    public class ReadOnlyDbProvider(IDbProvider wrappedProvider, bool createInMemoryWriteStore) : IReadOnlyDbProvider
     {
-        private readonly IDbProvider _wrappedProvider;
-        private readonly bool _createInMemoryWriteStore;
+        private readonly IDbProvider _wrappedProvider = wrappedProvider ?? throw new ArgumentNullException(nameof(wrappedProvider));
+        private readonly bool _createInMemoryWriteStore = createInMemoryWriteStore;
         private readonly ConcurrentDictionary<string, IReadOnlyDb> _registeredDbs = new(StringComparer.InvariantCultureIgnoreCase);
-        private readonly ConcurrentDictionary<string, object> _registeredColumnDbs = new(StringComparer.InvariantCultureIgnoreCase);
-
-        public ReadOnlyDbProvider(IDbProvider? wrappedProvider, bool createInMemoryWriteStore)
-        {
-            _wrappedProvider = wrappedProvider ?? throw new ArgumentNullException(nameof(wrappedProvider));
-            _createInMemoryWriteStore = createInMemoryWriteStore;
-            ArgumentNullException.ThrowIfNull(wrappedProvider);
-        }
+        private readonly ConcurrentDictionary<string, IDisposable> _registeredColumnDbs = new(StringComparer.InvariantCultureIgnoreCase);
 
         public void Dispose()
         {
@@ -27,34 +20,28 @@ namespace Nethermind.Db
             {
                 registeredDb.Value?.Dispose();
             }
-            foreach (KeyValuePair<string, object> registeredColumnDb in _registeredColumnDbs)
+            foreach (KeyValuePair<string, IDisposable> registeredColumnDb in _registeredColumnDbs)
             {
-                (registeredColumnDb.Value as IDisposable)!.Dispose();
+                registeredColumnDb.Value.Dispose();
             }
         }
 
         public void ClearTempChanges()
         {
-            foreach (IReadOnlyDb readonlyDb in _registeredDbs.Values)
+            foreach (KeyValuePair<string, IReadOnlyDb> kvp in _registeredDbs)
             {
-                readonlyDb.ClearTempChanges();
+                kvp.Value.ClearTempChanges();
             }
         }
 
-        public T GetDb<T>(string dbName) where T : class, IDb
-        {
-            return (T)_registeredDbs
+        public T GetDb<T>(string dbName) where T : class, IDb => (T)_registeredDbs
                 .GetOrAdd(dbName, (_) => _wrappedProvider
                     .GetDb<T>(dbName)
                     .CreateReadOnly(_createInMemoryWriteStore));
-        }
 
-        public IColumnsDb<T> GetColumnDb<T>(string dbName)
-        {
-            return (IColumnsDb<T>)_registeredColumnDbs
+        public IColumnsDb<T> GetColumnDb<T>(string dbName) where T : notnull => (IColumnsDb<T>)_registeredColumnDbs
                 .GetOrAdd(dbName, (_) => _wrappedProvider
                     .GetColumnDb<T>(dbName)
                     .CreateReadOnly(_createInMemoryWriteStore));
-        }
     }
 }

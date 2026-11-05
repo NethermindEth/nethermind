@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -13,105 +12,81 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class VersionedTransactionPermissionContract : VersionedContract<ITransactionPermissionContract>
-    {
-        public VersionedTransactionPermissionContract(IAbiEncoder abiEncoder,
-            Address contractAddress,
-            long activation,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            LruCache<ValueHash256, UInt256> cache,
-            ILogManager logManager,
-            ISpecProvider specProvider)
-            : base(
-                CreateAllVersions(abiEncoder,
+    public class VersionedTransactionPermissionContract(
+        Address contractAddress,
+        ulong activation,
+        IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
+        LruCache<ValueHash256, UInt256> cache,
+        ILogManager logManager,
+        ISpecProvider specProvider) : VersionedContract<ITransactionPermissionContract>(
+            CreateAllVersions(
                     contractAddress,
                     readOnlyTxProcessorSource,
                     specProvider),
-                cache,
-                activation,
-                logManager)
-        {
-        }
-
-        private static TransactionPermissionContractV1 CreateV1(IAbiEncoder abiEncoder,
+            cache,
+            activation,
+            logManager)
+    {
+        private static TransactionPermissionContractV1 CreateV1(
             Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-        {
-            return new(
-                abiEncoder,
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource) => new(
                 contractAddress,
                 readOnlyTxProcessorSource);
-        }
 
-        private static TransactionPermissionContractV2 CreateV2(IAbiEncoder abiEncoder,
+        private static TransactionPermissionContractV2 CreateV2(
             Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-        {
-            return new(
-                abiEncoder,
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource) => new(
                 contractAddress,
                 readOnlyTxProcessorSource);
-        }
 
-        private static TransactionPermissionContractV3 CreateV3(IAbiEncoder abiEncoder,
+        private static TransactionPermissionContractV3 CreateV3(
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISpecProvider specProvider)
-        {
-            return new(
-                abiEncoder,
+            ISpecProvider specProvider) => new(
                 contractAddress,
                 readOnlyTxProcessorSource,
                 specProvider);
-        }
 
-        private static TransactionPermissionContractV4 CreateV4(IAbiEncoder abiEncoder,
+        private static TransactionPermissionContractV4 CreateV4(
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISpecProvider specProvider)
-        {
-            return new(
-                abiEncoder,
+            ISpecProvider specProvider) => new(
                 contractAddress,
                 readOnlyTxProcessorSource,
                 specProvider);
-        }
 
 
-        private static Dictionary<UInt256, ITransactionPermissionContract> CreateAllVersions(IAbiEncoder abiEncoder,
+        private static Dictionary<UInt256, ITransactionPermissionContract> CreateAllVersions(
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISpecProvider specProvider)
-        {
-            return new()
+            ISpecProvider specProvider) => new()
             {
                 {
                     UInt256.One,
-                    CreateV1(abiEncoder,
+                    CreateV1(
                         contractAddress,
                         readOnlyTxProcessorSource)
                 },
                 {
                     2,
-                    CreateV2(abiEncoder,
+                    CreateV2(
                         contractAddress,
                         readOnlyTxProcessorSource)
                 },
                 {
                     3,
-                    CreateV3(abiEncoder,
+                    CreateV3(
                         contractAddress,
                         readOnlyTxProcessorSource,
                         specProvider)
                 },
                 {
                     4,
-                    CreateV4(abiEncoder,
+                    CreateV4(
                         contractAddress,
                         readOnlyTxProcessorSource,
                         specProvider)
                 },
             };
-        }
     }
 }

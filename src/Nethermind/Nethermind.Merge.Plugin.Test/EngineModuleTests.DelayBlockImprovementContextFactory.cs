@@ -16,14 +16,6 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    private class DelayBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout, TimeSpan delay)
-        : IBlockImprovementContextFactory
-    {
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime,
-        UInt256 currentBlockFees, SharedCancellationTokenSource cts) =>
-            new DelayBlockImprovementContext(currentBestBlock, blockProducer, timeout, parentHeader, payloadAttributes, delay, startDateTime, cts);
-    }
-
     /// <summary>
     /// Only the first improvement context builds a block (with zero delay).
     /// Subsequent contexts block indefinitely until cancelled, making tests
@@ -34,7 +26,7 @@ public partial class EngineModuleTests
         private int _callCount;
 
         public IBlockImprovementContext StartBlockImprovementContext(
-            Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes,
+            Block? currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes,
             DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             TimeSpan delay = Interlocked.Increment(ref _callCount) == 1
@@ -48,11 +40,13 @@ public partial class EngineModuleTests
 
     private class DelayBlockImprovementContext : IBlockImprovementContext
     {
+        private readonly TaskCompletionSource _disposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private volatile BlockProductionSnapshot _best;
         private readonly SharedCancellationTokenSource _improvementCancellation;
         private CancellationTokenSource? _timeOutCancellation;
         private CancellationTokenSource? _linkedCancellation;
 
-        public DelayBlockImprovementContext(Block currentBestBlock,
+        public DelayBlockImprovementContext(Block? currentBestBlock,
             IBlockProducer blockProducer,
             TimeSpan timeout,
             BlockHeader parentHeader,
@@ -61,7 +55,7 @@ public partial class EngineModuleTests
             DateTimeOffset startDateTime,
             SharedCancellationTokenSource cts)
         {
-            CurrentBestBlock = currentBestBlock;
+            _best = new(currentBestBlock, UInt256.Zero);
             StartDateTime = startDateTime;
             _improvementCancellation = cts;
             _timeOutCancellation = new CancellationTokenSource(timeout);
@@ -80,16 +74,16 @@ public partial class EngineModuleTests
             Block? block = await blockProducer.BuildBlock(parentHeader, NullBlockTracer.Instance, payloadAttributes, IBlockProducer.Flags.None, cancellationToken);
             if (block is not null)
             {
-                CurrentBestBlock = block;
+                _best = new(block, UInt256.Zero);
             }
 
-            return CurrentBestBlock;
+            return _best.CurrentBestBlock;
         }
 
         public Task<Block?> ImprovementTask { get; }
-        public Block? CurrentBestBlock { get; private set; }
-        public UInt256 BlockFees { get; }
+        public BlockProductionSnapshot Best => _best;
         public bool Disposed { get; private set; }
+        public Task DisposalCompleted => _disposed.Task;
         public DateTimeOffset StartDateTime { get; }
 
         public void CancelOngoingImprovements() => _improvementCancellation.CancelAndDispose();
@@ -99,6 +93,7 @@ public partial class EngineModuleTests
             Disposed = true;
             CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
             CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
+            _disposed.TrySetResult();
         }
     }
 }

@@ -27,7 +27,7 @@ public class TestSpecHelper
         MemoryStream data = new(Encoding.UTF8.GetBytes(serializer.Serialize(spec)));
 
         ChainSpec chainSpec = loader.Load(data);
-        var x = new ChainSpecBasedSpecProvider(chainSpec);
+        ChainSpecBasedSpecProvider x = new(chainSpec);
 
         return (x, chainSpec);
     }

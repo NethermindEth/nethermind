@@ -14,7 +14,7 @@ namespace Nethermind.State
 {
     public static class StateReaderExtensions
     {
-        public static UInt256 GetNonce(this IStateReader stateReader, BlockHeader? baseBlock, Address address)
+        public static ulong GetNonce(this IStateReader stateReader, BlockHeader? baseBlock, Address address)
         {
             stateReader.TryGetAccount(baseBlock, address, out AccountStruct account);
             return account.Nonce;
@@ -32,10 +32,7 @@ namespace Nethermind.State
             return account.StorageRoot;
         }
 
-        public static byte[] GetCode(this IStateReader stateReader, BlockHeader? baseBlock, Address address)
-        {
-            return stateReader.GetCode(GetCodeHash(stateReader, baseBlock, address)) ?? [];
-        }
+        public static byte[] GetCode(this IStateReader stateReader, BlockHeader? baseBlock, Address address) => stateReader.GetCode(GetCodeHash(stateReader, baseBlock, address)) ?? [];
 
         public static ValueHash256 GetCodeHash(this IStateReader stateReader, BlockHeader? baseBlock, Address address)
         {
@@ -53,6 +50,17 @@ namespace Nethermind.State
             });
             collector.Finish();
             return collector.Stats;
+        }
+
+        /// <summary>
+        /// Collects up to <paramref name="limit"/> storage slots of <paramref name="address"/> at <paramref name="baseBlock"/>,
+        /// in hashed-key order from the hashed key <paramref name="startKey"/>.
+        /// </summary>
+        public static StorageRangeVisitor CollectStorageRange(this IStateReader stateReader, BlockHeader? baseBlock, Address address, in ValueHash256 startKey, int limit)
+        {
+            StorageRangeVisitor visitor = new(address, startKey, limit);
+            stateReader.RunTreeVisitor(visitor, baseBlock);
+            return visitor;
         }
 
         public static string DumpState(this IStateReader stateReader, BlockHeader? baseBlock)

@@ -33,11 +33,11 @@ public sealed class PreCachedTrieStore : ITrieStore
 
     public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => _inner.BeginCommit(address, root, writeFlags);
 
-    public IBlockCommitter BeginBlockCommit(long blockNumber) => _inner.BeginBlockCommit(blockNumber);
+    public IBlockCommitter BeginBlockCommit(ulong blockNumber) => _inner.BeginBlockCommit(blockNumber);
 
     public bool HasRoot(Hash256 stateRoot) => _inner.HasRoot(stateRoot);
 
-    public bool HasRoot(Hash256 stateRoot, long blockNumber) => _inner.HasRoot(stateRoot, blockNumber);
+    public bool HasRoot(Hash256 stateRoot, ulong blockNumber) => _inner.HasRoot(stateRoot, blockNumber);
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => _inner.BeginScope(baseBlock);
 
@@ -87,9 +87,8 @@ public readonly struct NodeKey : IEquatable<NodeKey>, IHash64bit<NodeKey>
 
     public override int GetHashCode()
     {
-        uint hashCode0 = (uint)Hash.GetHashCode();
         ulong hashCode1 = ((ulong)(uint)Path.GetHashCode() << 32) | (uint)(Address?.GetHashCode() ?? 1);
-        return (int)BitOperations.Crc32C(hashCode0, hashCode1);
+        return SpanExtensions.CombineHash((uint)Hash.GetHashCode(), hashCode1);
     }
 
     public long GetHashCode64()

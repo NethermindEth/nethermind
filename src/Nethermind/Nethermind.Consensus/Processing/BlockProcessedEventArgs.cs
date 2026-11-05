@@ -6,15 +6,9 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.Processing
 {
-    public class BlockProcessedEventArgs : EventArgs
+    public class BlockProcessedEventArgs(Block block, TxReceipt[] txReceipts) : EventArgs
     {
-        public Block Block { get; }
-        public TxReceipt[] TxReceipts { get; }
-
-        public BlockProcessedEventArgs(Block block, TxReceipt[] txReceipts)
-        {
-            Block = block;
-            TxReceipts = txReceipts;
-        }
+        public Block Block { get; } = block;
+        public TxReceipt[] TxReceipts { get; } = txReceipts;
     }
 }

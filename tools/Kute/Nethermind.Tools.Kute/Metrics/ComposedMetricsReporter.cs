@@ -3,14 +3,9 @@
 
 namespace Nethermind.Tools.Kute.Metrics;
 
-public sealed class ComposedMetricsReporter : IMetricsReporter
+public sealed class ComposedMetricsReporter(params IMetricsReporter[] reporters) : IMetricsReporter
 {
-    private readonly IMetricsReporter[] _reporters;
-
-    public ComposedMetricsReporter(params IMetricsReporter[] reporters)
-    {
-        _reporters = reporters;
-    }
+    private readonly IMetricsReporter[] _reporters = reporters;
 
     public async Task Message(CancellationToken token = default)
     {

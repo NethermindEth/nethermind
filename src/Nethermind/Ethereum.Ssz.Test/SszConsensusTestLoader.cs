@@ -13,7 +13,8 @@ namespace Ethereum.Ssz.Test;
 public static class SszConsensusTestLoader
 {
     private const string ArchiveUrlTemplate = "https://github.com/ethereum/consensus-specs/releases/download/{0}/{1}";
-    private const string DefaultVersion = "v1.6.1";
+    // v1.6.1 predates the EIP-7916 change that made the base subtree the left child.
+    private const string DefaultVersion = "v1.7.0-alpha.13";
     private const string DefaultArchive = "general.tar.gz";
 
     private static string? s_testsRoot;
@@ -26,10 +27,8 @@ public static class SszConsensusTestLoader
     /// Returns the path to the ssz_generic test directory for a given type handler.
     /// e.g. GetHandlerPath("uints") returns .../tests/general/phase0/ssz_generic/uints
     /// </summary>
-    public static string GetHandlerPath(string handler)
-    {
-        return Path.Combine(GetTestsRoot(), "tests", "general", "phase0", "ssz_generic", handler);
-    }
+    public static string GetHandlerPath(string handler) =>
+        Path.Combine(GetTestsRoot(), "tests", "general", "phase0", "ssz_generic", handler);
 
     /// <summary>
     /// Reads and decompresses a .ssz_snappy file.
@@ -46,7 +45,7 @@ public static class SszConsensusTestLoader
     public static UInt256 ParseRoot(string metaFilePath)
     {
         using StreamReader reader = new(metaFilePath);
-        YamlStream yaml = new();
+        YamlStream yaml = [];
         yaml.Load(reader);
         YamlMappingNode mapping = (YamlMappingNode)yaml.Documents[0].RootNode;
         string hexRoot = ((YamlScalarNode)mapping[new YamlScalarNode("root")]).Value!;

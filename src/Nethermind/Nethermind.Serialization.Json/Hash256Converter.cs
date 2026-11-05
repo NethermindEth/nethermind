@@ -3,74 +3,92 @@
 
 #nullable enable
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
 
-public class Hash256Converter : JsonConverter<Hash256>
+public class Hash256Converter(bool strictHexFormat = false) : JsonConverter<Hash256?>
 {
-    private readonly bool _strictHexFormat;
+    private readonly bool _strictHexFormat = strictHexFormat;
 
-    public Hash256Converter(bool strictHexFormat = false)
-    {
-        _strictHexFormat = strictHexFormat;
-    }
-
+    [SkipLocalsInit]
     public override Hash256? Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
         JsonSerializerOptions options)
     {
+        Span<byte> bytes = stackalloc byte[Hash256.Size];
+        byte[]? bytesArray;
+        try
+        {
+            if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat))
+            {
+                return new Hash256(bytes);
+            }
 
-        byte[]? bytes = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
-        return bytes is null ? null : new Hash256(bytes);
+            bytesArray = ByteArrayConverter.ConvertData(ref reader, _strictHexFormat);
+        }
+        catch (FormatException e)
+        {
+            throw new SafePublicMessageFormatException($"json: cannot unmarshal {e.Message} into Go value of type common.Hash", e);
+        }
+
+        return bytesArray switch
+        {
+            null => null,
+            { Length: Hash256.Size } => new Hash256(bytesArray),
+            _ => ThrowInvalidLength(bytesArray.Length)
+        };
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static Hash256 ThrowInvalidLength(int length) =>
+        throw new SafePublicMessageFormatException($"hex string has length {length * 2}, want {Hash256.Size * 2} for common.Hash");
 
     [SkipLocalsInit]
     public override void Write(
         Utf8JsonWriter writer,
-        Hash256 keccak,
+        Hash256? keccak,
         JsonSerializerOptions options)
     {
-        WriteHashHex(writer, in keccak.ValueHash256);
+        if (keccak is null)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+
+        HexWriter.WriteFixed32HexRawValue(writer, keccak.ValueHash256.Bytes);
     }
 
-    /// <summary>
-    /// SIMD-accelerated hex encoding for 32-byte hashes.
-    /// Writes raw JSON (including quotes) via WriteRawValue to bypass the encoder entirely.
-    /// </summary>
     [SkipLocalsInit]
-    internal static void WriteHashHex(Utf8JsonWriter writer, in ValueHash256 hash)
-    {
-        // Raw JSON: '"' + "0x" + 64 hex chars + '"' = 68 bytes
-        Unsafe.SkipInit(out HexWriter.HexBuffer72 rawBuf);
-        ref byte b = ref Unsafe.As<HexWriter.HexBuffer72, byte>(ref rawBuf);
-
-        Unsafe.Add(ref b, 0) = (byte)'"';
-        Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, 1), (ushort)0x7830); // "0x" LE
-
-        HexWriter.Encode32Bytes(ref Unsafe.Add(ref b, 3), hash.Bytes);
-
-        Unsafe.Add(ref b, 67) = (byte)'"';
-
-        writer.WriteRawValue(
-            MemoryMarshal.CreateReadOnlySpan(ref b, 68),
-            skipInputValidation: true);
-    }
-
-    // Methods needed to ser/de dictionary keys
     public override Hash256 ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        byte[]? bytes = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
-        return bytes is null ? null! : new Hash256(bytes);
+        Span<byte> bytes = stackalloc byte[Hash256.Size];
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat))
+        {
+            return new Hash256(bytes);
+        }
+
+        byte[]? bytesArray = ByteArrayConverter.ConvertData(ref reader, _strictHexFormat);
+        return bytesArray is null ? throw new JsonException("Invalid hash property name.") : new Hash256(bytesArray);
     }
 
+    [SkipLocalsInit]
     public override void WriteAsPropertyName(Utf8JsonWriter writer, Hash256 value, JsonSerializerOptions options)
     {
-        writer.WritePropertyName(value.ToString());
+        Unsafe.SkipInit(out HexWriter.HexBuffer72 hashBuffer);
+        Span<byte> hashBytes = MemoryMarshal.AsBytes((Span<ulong>)hashBuffer);
+        hashBytes[0] = (byte)'0';
+        hashBytes[1] = (byte)'x';
+        HexEncoder.Encode32Bytes(ref hashBytes[2], ref MemoryMarshal.GetReference(value.Bytes));
+        writer.WritePropertyName(hashBytes[..(Hash256.Size * 2 + 2)]);
     }
 }

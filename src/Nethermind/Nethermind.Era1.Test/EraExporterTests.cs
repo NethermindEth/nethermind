@@ -7,20 +7,23 @@ using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using System.IO.Abstractions;
 using Autofac;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.IO;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1.Test;
 
 public class EraExporterTests
 {
-    [TestCase(1, 0, 1 - 1, 1, 1)]
-    [TestCase(3, 0, 3 - 1, 1, 3)]
-    [TestCase(16, 0, 16 - 1, 16, 1)]
-    [TestCase(16, 0, 0, 16, 1)]
-    [TestCase(32, 0, 32 - 1, 16, 2)]
-    [TestCase(32, 8, 0, 16, 2)]
-    [TestCase(48, 8, 40 - 1, 16, 2)]
-    [TestCase(64 * 2 + 1, 0, 64 * 2 + 1 - 1, 64, 3)]
-    public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated_WithFileName(int chainLength, int start, int end, int size, int expectedNumberOfFiles)
+    [TestCase(1, 0UL, 1UL - 1, 1UL, 1)]
+    [TestCase(3, 0UL, 3UL - 1, 1UL, 3)]
+    [TestCase(16, 0UL, 16UL - 1, 16UL, 1)]
+    [TestCase(16, 0UL, 0UL, 16UL, 1)]
+    [TestCase(32, 0UL, 32UL - 1, 16UL, 2)]
+    [TestCase(32, 8UL, 0UL, 16UL, 2)]
+    [TestCase(48, 8UL, 40UL - 1, 16UL, 2)]
+    [TestCase(64 * 2 + 1, 0UL, 64UL * 2 + 1 - 1, 64UL, 3)]
+    public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated_WithFileName(int chainLength, ulong start, ulong end, ulong size, int expectedNumberOfFiles)
     {
         await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength)
             .AddSingleton<IEraConfig>(new EraConfig() { MaxEra1Size = size })
@@ -51,16 +54,78 @@ public class EraExporterTests
 
                     ReadOnlySpan<char> secondWord = lineSpan[(spaceIndex + 1)..];
                     Assert.That(secondWord.EndsWith(".era1".AsSpan()));
+                    string fileName = secondWord.ToString();
+                    Assert.That(File.Exists(Path.Combine(tmpDirectory, fileName)), $"{fileName} does not exist");
                 }
             }
         }
     }
 
-    [TestCase(1, 1)]
-    [TestCase(2, 2)]
-    [TestCase(2, 3)]
-    [TestCase(99, 999)]
-    public void Export_ExportBeyondAvailableBlocks_ThrowEraException(int chainLength, int to)
+    [TestCase(0UL, 31UL, 32UL, 63UL, false, false)]
+    [TestCase(32UL, 63UL, 0UL, 31UL, false, false)]
+    [TestCase(0UL, 47UL, 16UL, 63UL, false, false)]
+    [TestCase(0UL, 31UL, 32UL, 63UL, true, false)]
+    [TestCase(32UL, 63UL, 16UL, 31UL, false, true)]
+    [TestCase(16UL, 47UL, 48UL, 63UL, false, true)]
+    public async Task Export_IntoDirectoryWithEarlierExport_WritesManifestsOfWholeDirectory(
+        ulong firstFrom, ulong firstTo, ulong secondFrom, ulong secondTo, bool removeFirstEraFile, bool hashOnly)
+    {
+        const ulong eraSize = 16;
+        await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(64).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, firstFrom, firstTo);
+
+        // Rewrite the earlier manifests as older exports wrote them, naming each epoch's placeholder file, or as hash-only
+        // (geth-style) lines matched by position, and give the epochs the second export rewrites stale hashes that must be
+        // replaced, not kept.
+        foreach (string manifest in new[] { EraExporter.AccumulatorFileName, EraExporter.ChecksumsFileName })
+        {
+            string path = Path.Combine(directory, manifest);
+            string[] lines = await File.ReadAllLinesAsync(path);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string[] columns = lines[i].Split(' ');
+                ulong epoch = ulong.Parse(columns[1].Split('-')[1]);
+                string hash = epoch >= secondFrom / eraSize && epoch <= secondTo / eraSize ? $"0x{new string('0', 64)}" : columns[0];
+                lines[i] = hashOnly ? hash : $"{hash} {EraPathUtils.Filename(EraTestModule.TestNetwork, epoch, Keccak.Zero)}";
+            }
+            await File.WriteAllLinesAsync(path, lines);
+        }
+
+        ulong from = Math.Min(firstFrom, secondFrom);
+        if (removeFirstEraFile)
+        {
+            File.Delete(Directory.GetFiles(directory, "*.era1").Order().First());
+            from += eraSize;
+        }
+
+        await sut.Export(directory, secondFrom, secondTo);
+
+        using TempPath reference = TempPath.GetTempDirectory();
+        await sut.Export(reference.Path, from, Math.Max(firstTo, secondTo));
+        using IEraStore eraStore = container.Resolve<IEraStoreFactory>().Create(directory, null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (string manifest in new[] { EraExporter.AccumulatorFileName, EraExporter.ChecksumsFileName })
+            {
+                Assert.That(await File.ReadAllLinesAsync(Path.Combine(directory, manifest)),
+                    Is.EqualTo(await File.ReadAllLinesAsync(Path.Combine(reference.Path, manifest))), manifest);
+            }
+
+            for (ulong block = from; block < 64; block += eraSize)
+            {
+                Assert.That(async () => await eraStore.FindBlockAndReceipts(block), Throws.Nothing, $"block {block}");
+            }
+        }
+    }
+
+    [TestCase(1, 1UL)]
+    [TestCase(2, 2UL)]
+    [TestCase(2, 3UL)]
+    [TestCase(99, 999UL)]
+    public void Export_ExportBeyondAvailableBlocks_ThrowEraException(int chainLength, ulong to)
     {
         using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength)
             .Build();
@@ -68,7 +133,7 @@ public class EraExporterTests
         IEraExporter sut = container.Resolve<IEraExporter>();
         string tmpDirectory = container.ResolveTempDirPath();
 
-        Assert.That(() => sut.Export(tmpDirectory, 0, to), Throws.TypeOf<ArgumentException>());
+        Assert.That(() => { _ = sut.Export(tmpDirectory, 0UL, to); }, Throws.TypeOf<ArgumentException>());
     }
 
     [Test]
@@ -83,6 +148,6 @@ public class EraExporterTests
 
         IEraExporter sut = container.Resolve<IEraExporter>();
 
-        Assert.That(() => sut.Export(tmpDirectory, 0, 1), Throws.TypeOf<EraException>());
+        Assert.That(() => sut.Export(tmpDirectory, 0UL, 1UL), Throws.TypeOf<EraException>());
     }
 }

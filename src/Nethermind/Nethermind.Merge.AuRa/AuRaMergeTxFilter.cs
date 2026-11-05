@@ -4,27 +4,19 @@
 using Nethermind.Core;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus;
-using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.AuRa
 {
-    public class AuRaMergeTxFilter : ITxFilter
+    public class AuRaMergeTxFilter(IPoSSwitcher poSSwitcher, ITxFilter preMergeTxFilter, ITxFilter? postMergeTxFilter = null) : ITxFilter
     {
-        private readonly IPoSSwitcher _poSSwitcher;
-        private readonly ITxFilter _preMergeTxFilter;
-        private readonly ITxFilter _postMergeTxFilter;
+        private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
+        private readonly ITxFilter _preMergeTxFilter = preMergeTxFilter;
+        private readonly ITxFilter _postMergeTxFilter = postMergeTxFilter ?? NullTxFilter.Instance;
 
-        public AuRaMergeTxFilter(IPoSSwitcher poSSwitcher, ITxFilter preMergeTxFilter, ITxFilter? postMergeTxFilter = null)
-        {
-            _poSSwitcher = poSSwitcher;
-            _preMergeTxFilter = preMergeTxFilter;
-            _postMergeTxFilter = postMergeTxFilter ?? NullTxFilter.Instance;
-        }
-
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec) =>
-            _poSSwitcher.IsPostMerge(parentHeader)
-                ? _postMergeTxFilter.IsAllowed(tx, parentHeader, currentSpec)
-                : _preMergeTxFilter.IsAllowed(tx, parentHeader, currentSpec);
+        public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context) =>
+            _poSSwitcher.IsPostMerge(context.Parent)
+                ? _postMergeTxFilter.IsAllowed(tx, in context)
+                : _preMergeTxFilter.IsAllowed(tx, in context);
     }
 }

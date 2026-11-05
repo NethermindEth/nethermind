@@ -14,7 +14,7 @@ namespace Nethermind.Network.Benchmarks
         [Benchmark]
         public byte[] Current()
         {
-            var result = OptimizedKdf.Derive(_z);
+            byte[] result = OptimizedKdf.Derive(_z);
             return result;
         }
     }

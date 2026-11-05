@@ -25,7 +25,7 @@ namespace Nethermind.Core.Extensions
         /// <returns></returns>
         public static Task AsTask(this CancellationToken token)
         {
-            TaskCompletionSource taskCompletionSource = new();
+            TaskCompletionSource taskCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
             token.Register(() => taskCompletionSource.TrySetCanceled(), false);
             return taskCompletionSource.Task;
         }
@@ -71,5 +71,11 @@ namespace Nethermind.Core.Extensions
 
             return new AutoCancelTokenSource(cts);
         }
+
+        public static CancellationTokenRegistration RegisterToCompletionSource(this CancellationToken cancellationToken, TaskCompletionSource taskCompletionSource) =>
+            cancellationToken.Register(() => taskCompletionSource.TrySetCanceled(), false);
+
+        public static CancellationTokenRegistration RegisterToCompletionSource<T>(this CancellationToken cancellationToken, TaskCompletionSource<T> taskCompletionSource) =>
+            cancellationToken.Register(() => taskCompletionSource.TrySetCanceled(), false);
     }
 }

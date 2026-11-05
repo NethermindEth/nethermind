@@ -10,6 +10,7 @@ namespace Nethermind.Core
         EIP1559 = 2,
         Blob = 3,
         SetCode = 4,
+        FrameTx = 6,
 
         DepositTx = 0x7E,
     }

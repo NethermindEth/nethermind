@@ -1,0 +1,29 @@
+<Project>
+
+  <!-- Everything the guest projects share; each guest adds only its zkVM's runtime package. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nethermind.Zkvm.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Main, the ZkvmThrow export and the failure protocol are identical in
+         all three guests; only WriteOutput differs, and each guest supplies it
+         as the other half of the partial class. Compiled in rather than
+         referenced: ZkvmThrow is an UnmanagedCallersOnly export the runtime
+         looks up in the guest assembly itself. -->
+    <Compile Include="$(MSBuildThisFileDirectory)Program.cs" Link="Guest\Program.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\Nethermind.Stateless.Executor\Nethermind.Stateless.Executor.csproj" />
+  </ItemGroup>
+
+</Project>

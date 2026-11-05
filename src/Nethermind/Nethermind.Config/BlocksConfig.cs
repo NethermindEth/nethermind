@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Config
 {
-    public class BlocksConfig : IBlocksConfig
+    public partial class BlocksConfig : IBlocksConfig
     {
         public const int MaxBlockSizeKilobytes = 10240;
         public const int MaxCLWrapperKilobytes = 2048;
@@ -49,7 +49,10 @@ namespace Nethermind.Config
         }
 
         public bool Enabled { get; set; }
-        public long? TargetBlockGasLimit { get; set; } = null;
+        public ulong? TargetBlockGasLimit { get; set; } = null;
+
+        /// <inheritdoc/>
+        public ProducedBlockDumpOptions DumpProducedBlocks { get; set; }
 
         public UInt256 MinGasPrice { get; set; } = 1.Wei;
 
@@ -57,16 +60,38 @@ namespace Nethermind.Config
 
         public ulong SecondsPerSlot { get; set; } = 12;
 
-        public bool PreWarmStateOnBlockProcessing { get; set; } = true;
+        public PreWarmMode PreWarming { get; set; } = PreWarmMode.BlockAndMempool;
 
-        public bool CachePrecompilesOnBlockProcessing { get; set; } = true;
+        // A caller buys at most ~3.4 bytes of cache per gas spent, so a 60M-gas block could ask at max for ~200 MB.
+        // Real blocks store a few hundred KB, so 32 MB is a deliberate cut-off few times below max.
+        // Needs revisiting if the block gas limit or number of precompiles changes significantly.
+        public int PrecompileCacheMaxKilobytes { get; set; } = 32768;
 
         public int PreWarmStateConcurrency { get; set; } = 0;
 
+        public int MempoolPreWarmConcurrency { get; set; } = 0;
+
+        // Off: with parallel execution, reading code ahead has not beaten reading it on demand.
+        public bool PrefetchBlockAccessListCode { get; set; }
+
+        public bool PreWarmHandoff { get; set; } = true;
+
+        public bool PreWarmInFlightReadAhead { get; set; } = true;
+
+        public int PreWarmInFlightReadAheadColdReads { get; set; } = 32;
+
+        public ProcessingCores ProcessingCores { get; set; } = ProcessingCores.Performance;
+
+        public bool PreWarmCoreSplit { get; set; } = true;
+
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
-        public double SingleBlockImprovementOfSlot { get; set; } = 0.25;
 
         public int GenesisTimeoutMs { get; set; } = 40_000;
+
+        public int BlockProcessingTimeoutMs { get; set; } = 180_000;
+
+        public bool ParallelExecution { get; set; } = true;
+        public bool ParallelExecutionBatchRead { get; set; } = true;
 
         public string ExtraData
         {
@@ -77,7 +102,7 @@ namespace Nethermind.Config
             set
             {
                 byte[] bytes = Encoding.UTF8.GetBytes(value);
-                if (bytes is not null && bytes.Length > 32)
+                if (bytes.Length > 32)
                 {
                     throw new InvalidConfigurationException($"Extra Data length was more than 32 bytes. You provided: {_extraDataString}",
                         ExitCodes.TooLongExtraData);
@@ -100,5 +125,11 @@ namespace Nethermind.Config
         public long BlockProductionMaxTxKilobytes { get; set; } = DefaultMaxTxKilobytes;
 
         public int? BlockProductionBlobLimit { get; set; }
+
+        public long SlowBlockThresholdMs { get; set; } = -1;
+
+        public long SlowBlockPerTxThresholdMs { get; set; } = -1;
+
+        public ulong MaxGasLimit { get; set; } = 1_000_000_000;
     }
 }

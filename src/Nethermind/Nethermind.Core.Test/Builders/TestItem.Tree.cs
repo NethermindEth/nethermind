@@ -18,7 +18,7 @@ namespace Nethermind.Core.Test.Builders
     {
         public static class Tree
         {
-            public static Hash256 AccountAddress0 = new Hash256("0000000000000000000000000000000000000000000000000000000001101234");
+            public static Hash256 AccountAddress0 = new("0000000000000000000000000000000000000000000000000000000001101234");
 
             private static readonly Account _account0 = Build.An.Account.WithBalance(0).TestObject;
             private static readonly Account _account1 = Build.An.Account.WithBalance(1).TestObject;
@@ -29,29 +29,29 @@ namespace Nethermind.Core.Test.Builders
 
             public static PathWithAccount[] AccountsWithPaths = new PathWithAccount[]
                 {
-                new PathWithAccount(AccountAddress0, _account0),
-                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001112345"), _account1),
-                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001113456"), _account2),
-                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001114567"), _account3),
-                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001123456"), _account4),
-                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001123457"), _account5),
+                new(AccountAddress0, _account0),
+                new(new Hash256("0000000000000000000000000000000000000000000000000000000001112345"), _account1),
+                new(new Hash256("0000000000000000000000000000000000000000000000000000000001113456"), _account2),
+                new(new Hash256("0000000000000000000000000000000000000000000000000000000001114567"), _account3),
+                new(new Hash256("0000000000000000000000000000000000000000000000000000000001123456"), _account4),
+                new(new Hash256("0000000000000000000000000000000000000000000000000000000001123457"), _account5),
                 };
 
             public static PathWithStorageSlot[] SlotsWithPaths = new PathWithStorageSlot[]
             {
-                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001101234"), Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000")).Bytes),
-                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001112345"), Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000")).Bytes),
-                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001113456"), Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000")).Bytes),
-                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001114567"), Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000")).Bytes),
-                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001123456"), Rlp.Encode(Bytes.FromHexString("0xab90000000000000000000000000000000000000000000000000000000000000")).Bytes),
-                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001123457"), Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new(new Hash256("0000000000000000000000000000000000000000000000000000000001101234"), Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new(new Hash256("0000000000000000000000000000000000000000000000000000000001112345"), Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new(new Hash256("0000000000000000000000000000000000000000000000000000000001113456"), Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new(new Hash256("0000000000000000000000000000000000000000000000000000000001114567"), Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new(new Hash256("0000000000000000000000000000000000000000000000000000000001123456"), Rlp.Encode(Bytes.FromHexString("0xab90000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new(new Hash256("0000000000000000000000000000000000000000000000000000000001123457"), Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000")).Bytes),
             };
 
             public static StateTree GetStateTree(ITrieStore? store = null)
             {
                 store ??= new TestRawTrieStore(new MemDb());
 
-                var stateTree = new StateTree(store.GetTrieStore(null), LimboLogs.Instance);
+                StateTree stateTree = new(store.GetTrieStore(null), LimboLogs.Instance);
 
                 FillStateTreeWithTestAccounts(stateTree);
 
@@ -83,7 +83,7 @@ namespace Nethermind.Core.Test.Builders
             {
                 store ??= TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
 
-                var storageTree = new StorageTree(store.GetTrieStore(AccountAddress0), LimboLogs.Instance);
+                StorageTree storageTree = new(store.GetTrieStore(AccountAddress0), LimboLogs.Instance);
 
                 storageTree.Set(SlotsWithPaths[0].Path, SlotsWithPaths[0].SlotRlpValue, false);
                 storageTree.Set(SlotsWithPaths[1].Path, SlotsWithPaths[1].SlotRlpValue, false);
@@ -94,9 +94,9 @@ namespace Nethermind.Core.Test.Builders
 
                 storageTree.Commit();
 
-                var account = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
+                Account account = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
 
-                var stateTree = new StateTree(store.GetTrieStore(null), LimboLogs.Instance);
+                StateTree stateTree = new(store.GetTrieStore(null), LimboLogs.Instance);
                 stateTree.Set(AccountAddress0, account);
                 stateTree.Commit();
 
@@ -107,7 +107,7 @@ namespace Nethermind.Core.Test.Builders
             {
                 store ??= TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
 
-                var storageTree = new StorageTree(store.GetTrieStore(AccountAddress0), LimboLogs.Instance);
+                StorageTree storageTree = new(store.GetTrieStore(AccountAddress0), LimboLogs.Instance);
 
                 for (int i = 0; i < slotNumber; i++)
                 {
@@ -119,9 +119,9 @@ namespace Nethermind.Core.Test.Builders
 
                 storageTree.Commit();
 
-                var account = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
+                Account account = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
 
-                var stateTree = new StateTree(store, LimboLogs.Instance);
+                StateTree stateTree = new(store, LimboLogs.Instance);
                 stateTree.Set(AccountAddress0, account);
                 stateTree.Commit();
 

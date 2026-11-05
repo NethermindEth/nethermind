@@ -1,47 +1,54 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class GetBlockBodiesMessageSerializer : IZeroInnerMessageSerializer<GetBlockBodiesMessage>
+    public class GetBlockBodiesMessageSerializer : IMessageSerializer<GetBlockBodiesMessage>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<GetBlockBodiesMessage>(NethermindSyncLimits.MaxBodyFetch, nameof(GetBlockBodiesMessage.BlockHashes));
+        private const int MaxBodyHashesPerRequest = 1024;
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<GetBlockBodiesMessage>(MaxBodyHashesPerRequest, nameof(GetBlockBodiesMessage.BlockHashes));
 
-        public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message)
+        public int Serialize(Span<byte> destination, GetBlockBodiesMessage message)
         {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            NettyRlpStream nettyRlpStream = new(byteBuffer);
+            RlpWriter writer = new(destination);
 
-            nettyRlpStream.StartSequence(contentLength);
+            writer.StartSequence(GetContentLength(message));
             for (int i = 0; i < message.BlockHashes.Count; i++)
             {
-                nettyRlpStream.Encode(message.BlockHashes[i]);
+                writer.Encode(message.BlockHashes[i]);
             }
+
+            return writer.Position;
         }
 
-        public GetBlockBodiesMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
-
-        public int GetLength(GetBlockBodiesMessage message, out int contentLength)
+        public GetBlockBodiesMessage Deserialize(ReadOnlySpan<byte> data)
         {
-            contentLength = 0;
+            RlpReader ctx = new(data);
+            GetBlockBodiesMessage message = Deserialize(ref ctx);
+            ctx.CheckEnd();
+            return message;
+        }
+
+        public int GetLength(GetBlockBodiesMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
+
+        private static int GetContentLength(GetBlockBodiesMessage message)
+        {
+            int contentLength = 0;
             for (int i = 0; i < message.BlockHashes.Count; i++)
             {
                 contentLength += Rlp.LengthOf(message.BlockHashes[i]);
             }
 
-            return Rlp.LengthOfSequence(contentLength);
+            return contentLength;
         }
 
-        public static GetBlockBodiesMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        private static GetBlockBodiesMessage Deserialize(ref RlpReader ctx)
         {
-            Hash256[] hashes = ctx.DecodeArray(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), false, limit: RlpLimit);
+            Hash256[] hashes = ctx.DecodeNonNullArray(static (ref RlpReader c) => c.DecodeKeccak(), false, limit: RlpLimit);
             return new GetBlockBodiesMessage(hashes);
         }
     }

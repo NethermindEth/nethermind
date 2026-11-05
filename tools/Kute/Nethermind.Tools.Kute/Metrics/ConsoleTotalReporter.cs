@@ -3,21 +3,15 @@
 
 namespace Nethermind.Tools.Kute.Metrics;
 
-public sealed class ConsoleTotalReporter : IMetricsReporter
+public sealed class ConsoleTotalReporter(IMetricsReportProvider provider, IMetricsReportFormatter formatter) : IMetricsReporter
 {
-    private readonly IMetricsReportProvider _provider;
-    private readonly IMetricsReportFormatter _formatter;
-
-    public ConsoleTotalReporter(IMetricsReportProvider provider, IMetricsReportFormatter formatter)
-    {
-        _provider = provider;
-        _formatter = formatter;
-    }
+    private readonly IMetricsReportProvider _provider = provider;
+    private readonly IMetricsReportFormatter _formatter = formatter;
 
     public async Task Total(TimeSpan elapsed, CancellationToken token = default)
     {
-        var report = _provider.Report();
-        await using var stream = Console.OpenStandardOutput();
+        MetricsReport report = _provider.Report();
+        await using Stream stream = Console.OpenStandardOutput();
         await _formatter.WriteAsync(stream, report, token);
     }
 }

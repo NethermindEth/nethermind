@@ -11,22 +11,16 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Filters out transactions which gas payments overflow uint256 or simply exceed sender balance
     /// </summary>
-    internal sealed class BalanceTooLowFilter : IIncomingTxFilter
+    internal sealed class BalanceTooLowFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger) : IIncomingTxFilter
     {
-        private readonly TxDistinctSortedPool _txs;
-        private readonly TxDistinctSortedPool _blobTxs;
-        private readonly ILogger _logger;
-
-        public BalanceTooLowFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger)
-        {
-            _txs = txs;
-            _blobTxs = blobTxs;
-            _logger = logger;
-        }
+        private readonly TxDistinctSortedPool _txs = txs;
+        private readonly TxDistinctSortedPool _blobTxs = blobTxs;
+        private readonly ILogger _logger = logger;
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            if (tx.IsFree())
+            // Frame transactions are deferred to FrameTxPayerExposureFilter, which runs after payer resolution.
+            if (tx.IsFree() || tx.SupportsFrames)
             {
                 return AcceptTxResult.Accepted;
             }
@@ -34,31 +28,8 @@ namespace Nethermind.TxPool.Filters
             AccountStruct account = state.SenderAccount;
             UInt256 balance = account.Balance;
 
-            UInt256 cumulativeCost = UInt256.Zero;
-            bool overflow = false;
-            Transaction[] sameTypeTxs = tx.SupportsBlobs
-                ? _blobTxs.GetBucketSnapshot(tx.SenderAddress!) // it will create a snapshot of light txs (without actual blobs)
-                : _txs.GetBucketSnapshot(tx.SenderAddress!);
-            // tx.SenderAddress! as unknownSenderFilter will run before this one
-
-            for (int i = 0; i < sameTypeTxs.Length; i++)
-            {
-                Transaction otherTx = sameTypeTxs[i];
-                if (otherTx.Nonce < account.Nonce)
-                {
-                    continue;
-                }
-
-                if (otherTx.Nonce < tx.Nonce)
-                {
-                    overflow |= otherTx.IsOverflowWhenAddingTxCostToCumulative(cumulativeCost, out cumulativeCost);
-                }
-                else
-                {
-                    break;
-                }
-            }
-
+            TxDistinctSortedPool pool = tx.CarriesBlobs ? _blobTxs : _txs;
+            bool overflow = tx.IsOverflowWhenSummingSenderBucket(pool, account.Nonce, unreservedOnly: false, state.HeadSpec.IsEip8250Enabled, out UInt256 cumulativeCost);
             overflow |= tx.IsOverflowWhenAddingTxCostToCumulative(cumulativeCost, out cumulativeCost);
 
             if (overflow)

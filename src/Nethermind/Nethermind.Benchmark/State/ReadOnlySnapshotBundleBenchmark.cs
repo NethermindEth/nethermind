@@ -6,17 +6,20 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
+using static Nethermind.Benchmarks.State.FlatWorldStateBenchmarkHarness;
 
 namespace Nethermind.Benchmarks.State;
 
@@ -27,17 +30,18 @@ namespace Nethermind.Benchmarks.State;
 public class ReadOnlySnapshotBundleBenchmark
 {
     private ReadOnlySnapshotBundle _bundle = null!;
+    private INodeRecordBuffer _nodeRecordBuffer = null!;
 
     // Hit arrays — sampled from actually written data
     private Address[] _hitAccounts = null!;
     private (Address Address, UInt256 Slot)[] _hitSlots = null!;
-    private TreePath[] _hitShortPaths = null!;
-    private TreePath[] _hitLongPaths = null!;
-    private (Hash256 AddressHash, TreePath Path)[] _hitStorageNodes = null!;
+    private (TreePath Path, Hash256 Hash)[] _hitShortPaths = null!;
+    private (TreePath Path, Hash256 Hash)[] _hitLongPaths = null!;
+    private (Hash256 AddressHash, TreePath Path, Hash256 Hash)[] _hitStorageNodes = null!;
 
     // Same-account arrays — all slots/nodes from one address (hot-contract pattern)
     private (Address Address, UInt256 Slot)[] _sameAccountSlots = null!;
-    private (Hash256 AddressHash, TreePath Path)[] _sameAccountStorageNodes = null!;
+    private (Hash256 AddressHash, TreePath Path, Hash256 Hash)[] _sameAccountStorageNodes = null!;
 
     // Miss arrays — keys guaranteed absent from the snapshot
     private Address[] _missAccounts = null!;
@@ -51,43 +55,56 @@ public class ReadOnlySnapshotBundleBenchmark
     private const int SnapshotCount = 8;
     private const int ArraySize = 32;
 
+    // false: bundle over mutable (ConcurrentDictionary) snapshots. true: over sorted (SortedSnapshotContent)
+    // snapshots — the compacted form most bundle snapshots have in production, and where the dictionary load
+    // factor affects lookups.
+    [Params(false, true)]
+    public bool SortedContent;
+
     [GlobalSetup]
     public void Setup()
     {
-        FlatDbConfig config = new FlatDbConfig();
-        ResourcePool resourcePool = new ResourcePool(config);
-        List<FlatSnapshot> allSnapshots = new List<FlatSnapshot>(SnapshotCount);
-        StateId currentStateId = new StateId(0, Keccak.EmptyTreeHash);
+        FlatDbConfig config = new() { CompactionOffset = 0 };
+        ResourcePool resourcePool = new(config);
+        _nodeRecordBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
+        // The repository only satisfies the compactor ctor; CompactSnapshotBundle never touches it, and the
+        // repository itself does not use the arena managers, so the persisted tier can stay unwired.
+        SnapshotCompactor compactor = new(
+            config, new CompactionSchedule(new MemDb(), config, NullLogManager.Instance),
+            resourcePool, new SnapshotRepository(null!, null!, NullSnapshotCatalog.Instance, config, null!, NullLogManager.Instance),
+            NullLogManager.Instance);
+        using SnapshotPooledList allSnapshots = new(SnapshotCount);
+        StateId currentStateId = new(0, Keccak.EmptyTreeHash);
 
         int totalAccountCount = 0;
         int totalStorageAccountCount = 0;
         int maxSlotsPerStorageAccount = 0;
 
         // Track storage account ranges per snapshot for hit distribution
-        List<(int AddressStart, int StorageCount, int SlotsPerAccount)> storageRanges = new();
+        List<(int AddressStart, int StorageCount, int SlotsPerAccount)> storageRanges = [];
 
-        for (int block = 0; block < SnapshotCount; block++)
+        for (ulong block = 0; block < SnapshotCount; block++)
         {
             int multiplier = block < 6 ? 16 : 1;
             int accountCount = 1000 * multiplier;
             int storageAccountCount = 20 * multiplier;
             int slotsPerStorageAccount = 100 * multiplier;
 
-            // Build ReadOnlySnapshotBundle from previously captured snapshots
-            SnapshotPooledList prevSnapshots = new SnapshotPooledList(allSnapshots.Count);
+            SnapshotPooledList prevSnapshots = new(allSnapshots.Count);
             foreach (FlatSnapshot s in allSnapshots)
             {
                 s.TryAcquire();
                 prevSnapshots.Add(s);
             }
 
-            ReadOnlySnapshotBundle readOnly = new ReadOnlySnapshotBundle(
-                prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
-            NullTrieNodeCache cache = new NullTrieNodeCache();
-            SnapshotBundle bundle = new SnapshotBundle(
-                readOnly, cache, resourcePool, ResourcePool.Usage.MainBlockProcessing);
-            CapturingCommitTarget commitTarget = new CapturingCommitTarget();
-            FlatWorldStateScope scope = new FlatWorldStateScope(
+            // Build ReadOnlySnapshotBundle from previously captured snapshots
+            ReadOnlySnapshotBundle readOnly = new(
+                prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
+                PersistedSnapshotStack.Empty(), _nodeRecordBuffer.PinAll());
+            SnapshotBundle bundle = new(
+                readOnly, _nodeRecordBuffer, resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            CapturingCommitTarget commitTarget = new();
+            using FlatWorldStateScope scope = new(
                 currentStateId: currentStateId,
                 snapshotBundle: bundle,
                 codeDb: new NullCodeDb(),
@@ -130,8 +147,7 @@ public class ReadOnlySnapshotBundleBenchmark
                     IWorldStateScopeProvider.IStorageWriteBatch storageBatch = storageBatches[i];
                     for (int s = 0; s < slots; s++)
                     {
-                        storageBatch.Set((UInt256)(ulong)(s + 1),
-                            new byte[] { (byte)((s + 1) & 0xFF) });
+                        storageBatch.Set((UInt256)(ulong)(s + 1), new UInt256(new byte[] { (byte)((s + 1) & 0xFF) }, isBigEndian: true));
                     }
 
                     storageBatch.Dispose();
@@ -140,7 +156,7 @@ public class ReadOnlySnapshotBundleBenchmark
 
             scope.Commit(blockNumber: block + 1);
 
-            FlatSnapshot snapshot = commitTarget.LastSnapshot
+            using FlatSnapshot snapshot = commitTarget.LastSnapshot
                 ?? throw new InvalidOperationException(
                     $"Block {block + 1}: Commit produced no snapshot");
             snapshot.TryAcquire();
@@ -154,16 +170,26 @@ public class ReadOnlySnapshotBundleBenchmark
                 maxSlotsPerStorageAccount = slotsPerStorageAccount;
         }
 
-        // Build final ReadOnlySnapshotBundle with all 8 snapshots
-        SnapshotPooledList finalSnapshots = new SnapshotPooledList(allSnapshots.Count);
+        SnapshotPooledList finalSnapshots = new(allSnapshots.Count);
         foreach (FlatSnapshot s in allSnapshots)
         {
-            s.TryAcquire();
-            finalSnapshots.Add(s);
+            if (SortedContent)
+            {
+                s.TryAcquire();
+                using SnapshotPooledList sources = new(1) { s };
+                finalSnapshots.Add(compactor.CompactSnapshotBundle(sources));
+            }
+            else
+            {
+                s.TryAcquire();
+                finalSnapshots.Add(s);
+            }
         }
 
+        // Build final ReadOnlySnapshotBundle with all 8 snapshots
         _bundle = new ReadOnlySnapshotBundle(
-            finalSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
+            finalSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
+            PersistedSnapshotStack.Empty(), bufferPin: null);
 
         // --- Hit arrays ---
         _hitAccounts = new Address[ArraySize];
@@ -178,27 +204,28 @@ public class ReadOnlySnapshotBundleBenchmark
         _hitSlots = new (Address, UInt256)[ArraySize];
         for (int i = 0; i < ArraySize; i++)
         {
-            var range = storageRanges[i % storageRanges.Count];
+            (int AddressStart, int StorageCount, int SlotsPerAccount) range = storageRanges[i % storageRanges.Count];
             int storageAccountIndex = range.AddressStart + (i / storageRanges.Count % range.StorageCount);
             UInt256 slot = (UInt256)(ulong)((i * 97 % range.SlotsPerAccount) + 1);
             _hitSlots[i] = (DeriveAddress(storageAccountIndex), slot);
         }
 
         // Collect state/storage trie nodes from all snapshots
-        List<TreePath> shortPaths = new List<TreePath>(ArraySize);
-        List<TreePath> longPaths = new List<TreePath>(ArraySize);
-        List<(Hash256, TreePath)> storageNodesList = new List<(Hash256, TreePath)>(ArraySize);
+        List<(TreePath Path, Hash256 Hash)> shortPaths = new(ArraySize);
+        List<(TreePath Path, Hash256 Hash)> longPaths = new(ArraySize);
+        List<(Hash256 AddressHash, TreePath Path, Hash256 Hash)> storageNodesList = new(ArraySize);
 
         foreach (FlatSnapshot snapshot in allSnapshots)
         {
             if (shortPaths.Count < ArraySize || longPaths.Count < ArraySize)
             {
-                foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes)
+                foreach ((TreePath path, _, NodeRecord record) in snapshot.StateNodes)
                 {
-                    if (shortPaths.Count < ArraySize && kv.Key.Key.Length <= 15)
-                        shortPaths.Add(kv.Key.Key);
-                    if (longPaths.Count < ArraySize && kv.Key.Key.Length > 15)
-                        longPaths.Add(kv.Key.Key);
+                    Hash256 nodeHash = Keccak.Compute(record.Rlp);
+                    if (shortPaths.Count < ArraySize && path.Length <= 15)
+                        shortPaths.Add((path, nodeHash));
+                    if (longPaths.Count < ArraySize && path.Length > 15)
+                        longPaths.Add((path, nodeHash));
                     if (shortPaths.Count >= ArraySize && longPaths.Count >= ArraySize)
                         break;
                 }
@@ -206,9 +233,10 @@ public class ReadOnlySnapshotBundleBenchmark
 
             if (storageNodesList.Count < ArraySize)
             {
-                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
+                foreach ((Hash256 address, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)
                 {
-                    storageNodesList.Add((kv.Key.Key.Item1, kv.Key.Key.Item2));
+                    Hash256 nodeHash = Keccak.Compute(record.Rlp);
+                    storageNodesList.Add((address, path, nodeHash));
                     if (storageNodesList.Count >= ArraySize)
                         break;
                 }
@@ -226,14 +254,15 @@ public class ReadOnlySnapshotBundleBenchmark
             _sameAccountSlots[i] = (sameAddr, (UInt256)(ulong)(i + 1));
 
         Hash256 sameAddrHash = Keccak.Compute(sameAddr.Bytes);
-        List<(Hash256, TreePath)> sameAccountNodesList = new List<(Hash256, TreePath)>(ArraySize);
+        List<(Hash256 AddressHash, TreePath Path, Hash256 Hash)> sameAccountNodesList = new(ArraySize);
         foreach (FlatSnapshot snapshot in allSnapshots)
         {
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
+            foreach ((Hash256 address, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)
             {
-                if (kv.Key.Key.Item1 == sameAddrHash)
+                if (address == sameAddrHash)
                 {
-                    sameAccountNodesList.Add((kv.Key.Key.Item1, kv.Key.Key.Item2));
+                    Hash256 nodeHash = Keccak.Compute(record.Rlp);
+                    sameAccountNodesList.Add((address, path, nodeHash));
                     if (sameAccountNodesList.Count >= ArraySize)
                         break;
                 }
@@ -299,51 +328,61 @@ public class ReadOnlySnapshotBundleBenchmark
                 "Miss account should not be found in snapshot bundle");
     }
 
+    [GlobalCleanup]
+    public void Cleanup()
+    {
+        _bundle.Dispose();
+        _nodeRecordBuffer.Dispose();
+    }
+
     [Benchmark]
     public Account GetAccount()
         => _bundle.GetAccount(_hitAccounts[_index++ % _hitAccounts.Length]);
 
     [Benchmark]
-    public byte[] GetSlot()
+    public UInt256? GetSlot()
     {
         (Address addr, UInt256 slot) = _hitSlots[_index++ % _hitSlots.Length];
-        return _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1);
+        _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1, out UInt256? value);
+        return value;
     }
 
     [Benchmark]
     public bool TryFindStateNodes_Short()
     {
-        TreePath path = _hitShortPaths[_index++ % _hitShortPaths.Length];
-        return _bundle.TryFindStateNodes(in path, Keccak.Zero, out _);
+        (TreePath path, Hash256 hash) = _hitShortPaths[_index++ % _hitShortPaths.Length];
+        return _bundle.TryFindStateNodes(in path, hash, out _);
     }
 
     [Benchmark]
     public bool TryFindStateNodes_Long()
     {
-        TreePath path = _hitLongPaths[_index++ % _hitLongPaths.Length];
-        return _bundle.TryFindStateNodes(in path, Keccak.Zero, out _);
+        (TreePath path, Hash256 hash) = _hitLongPaths[_index++ % _hitLongPaths.Length];
+        return _bundle.TryFindStateNodes(in path, hash, out _);
     }
 
     [Benchmark]
     public bool TryFindStorageNodes()
     {
-        (Hash256 addrHash, TreePath path) = _hitStorageNodes[_index++ % _hitStorageNodes.Length];
-        return _bundle.TryFindStorageNodes(addrHash, in path, Keccak.Zero, out _);
+        (Hash256 addrHash, TreePath path, Hash256 hash) =
+            _hitStorageNodes[_index++ % _hitStorageNodes.Length];
+        return _bundle.TryFindStorageNodes(addrHash, in path, hash, out _);
     }
 
     [Benchmark]
-    public byte[] GetSlot_SameAccount()
+    public UInt256? GetSlot_SameAccount()
     {
         (Address addr, UInt256 slot) = _sameAccountSlots[_index++ % _sameAccountSlots.Length];
-        return _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1);
+        _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1, out UInt256? value);
+        return value;
     }
 
     [Benchmark]
     public bool TryFindStorageNodes_SameAccount()
     {
-        (Hash256 addrHash, TreePath path) =
+        (Hash256 addrHash, TreePath path, Hash256 hash) =
             _sameAccountStorageNodes[_index++ % _sameAccountStorageNodes.Length];
-        return _bundle.TryFindStorageNodes(addrHash, in path, Keccak.Zero, out _);
+        return _bundle.TryFindStorageNodes(addrHash, in path, hash, out _);
     }
 
     [Benchmark]
@@ -351,10 +390,11 @@ public class ReadOnlySnapshotBundleBenchmark
         => _bundle.GetAccount(_missAccounts[_index++ % _missAccounts.Length]);
 
     [Benchmark]
-    public byte[] GetSlot_Miss()
+    public UInt256? GetSlot_Miss()
     {
         (Address addr, UInt256 slot) = _missSlots[_index++ % _missSlots.Length];
-        return _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1);
+        _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1, out UInt256? value);
+        return value;
     }
 
     [Benchmark]
@@ -379,48 +419,4 @@ public class ReadOnlySnapshotBundleBenchmark
         return _bundle.TryFindStorageNodes(addrHash, in path, Keccak.Zero, out _);
     }
 
-    private static Address DeriveAddress(int index) =>
-        new Address(Keccak.Compute(Address.FromNumber((UInt256)(ulong)index).Bytes));
-
-    private sealed class NullTrieNodeCache : ITrieNodeCache
-    {
-        public bool TryGet(Hash256 address, in TreePath path, Hash256 hash, out TrieNode node)
-        {
-            node = null;
-            return false;
-        }
-
-        public void Add(TransientResource transientResource) { }
-
-        public void Clear() { }
-    }
-
-    private sealed class CapturingCommitTarget : IFlatCommitTarget
-    {
-        public FlatSnapshot LastSnapshot { get; private set; }
-        public TransientResource LastResource { get; private set; }
-
-        public void AddSnapshot(FlatSnapshot snapshot, TransientResource transientResource)
-        {
-            LastSnapshot = snapshot;
-            LastResource = transientResource;
-        }
-    }
-
-    private sealed class NullCodeDb : IWorldStateScopeProvider.ICodeDb
-    {
-        public byte[] GetCode(in ValueHash256 codeHash) => null;
-
-        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite()
-            => NullCodeSetter.Instance;
-
-        private sealed class NullCodeSetter : IWorldStateScopeProvider.ICodeSetter
-        {
-            public static readonly NullCodeSetter Instance = new NullCodeSetter();
-
-            public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code) { }
-
-            public void Dispose() { }
-        }
-    }
 }

@@ -61,10 +61,7 @@ public sealed class FrameMacProcessor : IFrameMacProcessor
         }
     }
 
-    public void UpdateEgressMac(byte[] input)
-    {
-        _egressMac.Update(input);
-    }
+    public void UpdateEgressMac(byte[] input) => _egressMac.Update(input);
 
     public void UpdateIngressMac(byte[] input, bool isHeader)
     {
@@ -210,6 +207,7 @@ public sealed class FrameMacProcessor : IFrameMacProcessor
         macCopy.UpdateFinalTo(output);
     }
 
+    // can still be used after Dispose - copies are returned to the pool, but lazily restored if needed
     public void Dispose()
     {
         _egressMacCopy.Reset();

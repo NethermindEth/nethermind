@@ -1,16 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs;
 
-public class SepoliaSpecProvider : ISpecProvider
+public class SepoliaSpecProvider : ForkScheduleSpecProvider
 {
+    public const ulong MergeForkIdBlockNumber = 1735371;
     public const ulong BeaconChainGenesisTimestampConst = 0x62b07d60;
     public const ulong ShanghaiTimestamp = 0x63fd7d60;
     public const ulong CancunTimestamp = 0x65B97D60;
@@ -18,53 +17,38 @@ public class SepoliaSpecProvider : ISpecProvider
     public const ulong OsakaTimestamp = 0x68edfd60;
     public const ulong BPO1Timestamp = 0x68f6fd60;
     public const ulong BPO2Timestamp = 0x68fffd60;
+    public const ulong AmsterdamTimestamp = 0x6ac4fd60;
 
-    private static IReleaseSpec? _prague;
-
-    private static IReleaseSpec Prague => LazyInitializer.EnsureInitialized(ref _prague,
-        static () => new Prague { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress });
-
-    private SepoliaSpecProvider() { }
-
-    public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
-        forkActivation switch
-        {
-            { Timestamp: null } or { Timestamp: < ShanghaiTimestamp } => London.Instance,
-            { Timestamp: < CancunTimestamp } => Shanghai.Instance,
-            { Timestamp: < PragueTimestamp } => Cancun.Instance,
-            { Timestamp: < OsakaTimestamp } => Prague,
-            { Timestamp: < BPO1Timestamp } => Osaka.Instance,
-            { Timestamp: < BPO2Timestamp } => BPO1.Instance,
-            _ => BPO2.Instance
-        };
-
-    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+    /// <remarks>Glamsterdam is live, so the consensus layer serves only <see cref="HistoryRetentionConstants.HistoryPruneEpochs"/>.</remarks>
+    private static ReleaseSpec WithSepoliaParameters(ReleaseSpec spec)
     {
-        if (blockNumber is not null)
-            MergeBlockNumber = (ForkActivation)blockNumber;
-        if (terminalTotalDifficulty is not null)
-            TerminalTotalDifficulty = terminalTotalDifficulty;
+        spec.MinHistoryRetentionEpochs = HistoryRetentionConstants.HistoryPruneEpochs;
+        return spec;
     }
 
-    public ulong NetworkId => BlockchainIds.Sepolia;
-    public ulong ChainId => NetworkId;
-    public string SealEngine => SealEngineType.Clique;
-    public long? DaoBlockNumber => null;
-    public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
-    public ForkActivation? MergeBlockNumber { get; private set; } = null;
-    public ulong TimestampFork => ISpecProvider.TimestampForkNever;
-    public UInt256? TerminalTotalDifficulty { get; private set; } = 17000000000000000;
-    public IReleaseSpec GenesisSpec => London.Instance;
-    public ForkActivation[] TransitionActivations { get; } =
-    [
-        (ForkActivation)1735371,
-        (1735371, ShanghaiTimestamp),
-        (1735371, CancunTimestamp),
-        (1735371, PragueTimestamp),
-        (1735371, OsakaTimestamp),
-        (1735371, BPO1Timestamp),
-        (1735371, BPO2Timestamp),
-    ];
+    private SepoliaSpecProvider() : this(new ForkSchedule
+    {
+        [GenesisBlockNumber] = WithSepoliaParameters(new London()),
+        [ShanghaiTimestamp] = WithSepoliaParameters(new Shanghai()),
+        [CancunTimestamp] = WithSepoliaParameters(new Cancun()),
+        [PragueTimestamp] = WithSepoliaParameters(new Prague { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress }),
+        [OsakaTimestamp] = WithSepoliaParameters(new Osaka { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress }),
+        [BPO1Timestamp] = WithSepoliaParameters(new BPO1 { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress }),
+        [BPO2Timestamp] = WithSepoliaParameters(new BPO2 { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress }),
+        [AmsterdamTimestamp] = WithSepoliaParameters(new Amsterdam { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress }),
+    })
+    { }
 
-    public static SepoliaSpecProvider Instance { get; } = new();
+    private SepoliaSpecProvider(ForkSchedule schedule) : base(schedule,
+        terminalTotalDifficulty: 17000000000000000) =>
+        TransitionActivations = schedule.ToTransitionActivations(
+            postMergeBlock: MergeForkIdBlockNumber,
+            incrementBlockPerTimestampFork: false,
+            prepend: [(ForkActivation)MergeForkIdBlockNumber]);
+
+    public override ulong TimestampFork => ISpecProvider.TimestampForkNever;
+    public override ulong NetworkId => BlockchainIds.Sepolia;
+    public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
+
+    public static SepoliaSpecProvider Instance => field ??= new();
 }

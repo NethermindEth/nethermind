@@ -1,17 +1,9 @@
 namespace Nethermind.Crypto
 {
-    public class SameKeyGenerator : IPrivateKeyGenerator
+    public class SameKeyGenerator(PrivateKey privateKey) : IPrivateKeyGenerator
     {
-        private readonly PrivateKey _privateKey;
+        private readonly PrivateKey _privateKey = privateKey;
 
-        public SameKeyGenerator(PrivateKey privateKey)
-        {
-            _privateKey = privateKey;
-        }
-
-        public PrivateKey Generate()
-        {
-            return _privateKey;
-        }
+        public PrivateKey Generate() => _privateKey;
     }
 }

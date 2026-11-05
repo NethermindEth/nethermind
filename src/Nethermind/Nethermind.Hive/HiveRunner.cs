@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -114,10 +112,10 @@ namespace Nethermind.Hive
 
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {blocksDir}");
 
-            string[] files = Directory.GetFiles(blocksDir).OrderBy(static x => x).ToArray();
+            string[] files = Directory.GetFiles(blocksDir);
+            Array.Sort(files, StringComparer.Ordinal);
             if (_logger.IsInfo) _logger.Info($"Loaded {files.Length} files with blocks to process.");
 
-            BlockHeader? parent = null;
             foreach (string file in files)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -128,15 +126,15 @@ namespace Nethermind.Hive
                 try
                 {
                     Block block = DecodeBlock(file);
-
-                    if (parent is null && block.Number is 1)
+                    BlockHeader? parent = FindParent(block);
+                    if (parent is null)
                     {
-                        parent = blockTree.Genesis;
+                        if (_logger.IsInfo) _logger.Info($"HIVE parent block is unavailable for {block}, skipping");
+                        continue;
                     }
 
                     if (_logger.IsInfo) _logger.Info($"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
-                    await ProcessBlock(block, parent!);
-                    parent = block.Header;
+                    await ProcessBlock(block, parent);
                 }
                 catch (RlpException e)
                 {
@@ -154,42 +152,47 @@ namespace Nethermind.Hive
             }
 
             byte[] chainFileContent = fileSystem.File.ReadAllBytes(chainFile);
-            Rlp.ValueDecoderContext rlpContext = new(chainFileContent);
-            List<Block> blocks = new List<Block>();
+            int position = 0;
 
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {chainFile}");
-            while (rlpContext.PeekNumberOfItemsRemaining() > 0)
+            while (position < chainFileContent.Length)
             {
-                rlpContext.PeekNextItem();
-                Block block = Rlp.Decode<Block>(ref rlpContext, RlpBehaviors.AllowExtraBytes);
-                if (_logger.IsInfo)
-                    _logger.Info($"HIVE Reading a chain.rlp block {block.ToString(Block.Format.Short)}");
-                blocks.Add(block);
-            }
-
-            BlockHeader? parent = null;
-            for (int i = 0; i < blocks.Count; i++)
-            {
-                Block block = blocks[i];
+                Block block = DecodeNextChainBlock(chainFileContent, position, out position);
                 if (_logger.IsInfo)
                     _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
 
-                if (parent is null && block.Number is 1)
+                BlockHeader? parent = FindParent(block);
+                if (parent is null)
                 {
-                    parent = blockTree.Genesis;
+                    if (_logger.IsInfo) _logger.Info($"HIVE parent block is unavailable for {block}, skipping");
+                    continue;
                 }
 
-                await ProcessBlock(block, parent!);
-                parent = block.Header;
+                await ProcessBlock(block, parent);
             }
+        }
+
+        private BlockHeader? FindParent(Block block) => block.ParentHash is { } parentHash
+            ? blockTree.FindHeader(parentHash, BlockTreeLookupOptions.None, block.Number - 1)
+            : null;
+
+        private static Block DecodeNextChainBlock(byte[] chainFileContent, int position, out int nextPosition)
+        {
+            RlpReader reader = new(chainFileContent) { Position = position };
+            reader.PeekNextItem();
+            Block block = Rlp.Decode<Block>(ref reader, RlpBehaviors.AllowExtraBytes)
+                ?? throw new RlpException("Block decoding returned null.");
+            nextPosition = reader.Position;
+            return block;
         }
 
         private Block DecodeBlock(string file)
         {
             byte[] fileContent = File.ReadAllBytes(file);
-            if (_logger.IsInfo) _logger.Info(fileContent.ToHexString());
+            if (_logger.IsDebug) _logger.Debug(fileContent.ToHexString());
             Rlp blockRlp = new(fileContent);
-            return Rlp.Decode<Block>(blockRlp);
+            return Rlp.Decode<Block>(blockRlp)
+                ?? throw new RlpException("Block decoding returned null.");
         }
 
         private static async Task WaitForBlockProcessing(SemaphoreSlim semaphore)
@@ -227,12 +230,11 @@ namespace Nethermind.Hive
                 if (BlockSuggested)
                 {
                     await WaitForBlockProcessing(_resetEvent);
+                    return;
                 }
+
                 // Otherwise, block will be only added and not processed, so there is nothing to wait for.
-                else
-                {
-                    _logger.Info($"HIVE skipped suggesting block: {block.Hash}");
-                }
+                _logger.Info($"HIVE skipped suggesting block: {block.Hash}");
             }
             catch (Exception e)
             {

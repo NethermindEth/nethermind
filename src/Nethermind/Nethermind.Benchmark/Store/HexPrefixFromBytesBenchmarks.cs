@@ -16,29 +16,19 @@ namespace Nethermind.Benchmarks.Store
         {
             Keccak.EmptyTreeHash.BytesToArray(),
             Keccak.Zero.BytesToArray(),
-            TestItem.AddressA.Bytes,
+            TestItem.AddressA.Bytes.ToArray(),
         };
 
         [Params(0, 1, 2)]
         public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
-        public void Setup()
-        {
-            _a = _scenarios[ScenarioIndex];
-        }
+        public void Setup() => _a = _scenarios[ScenarioIndex];
 
         [Benchmark]
-        public byte Improved()
-        {
-
-            return HexPrefix.FromBytes(_a).key[0];
-        }
+        public byte Improved() => HexPrefix.FromBytes(_a).key[0];
 
         [Benchmark(Baseline = true)]
-        public byte Current()
-        {
-            return HexPrefix.FromBytes(_a).key[0];
-        }
+        public byte Current() => HexPrefix.FromBytes(_a).key[0];
     }
 }

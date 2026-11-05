@@ -8,7 +8,7 @@ namespace Nethermind.Db
         void ClearTempChanges();
     }
 
-    public interface IReadOnlyColumnDb<T> : IColumnsDb<T>
+    public interface IReadOnlyColumnDb<T> : IColumnsDb<T> where T : notnull
     {
         void ClearTempChanges();
     }

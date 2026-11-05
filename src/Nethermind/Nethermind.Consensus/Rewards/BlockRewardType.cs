@@ -15,16 +15,13 @@ namespace Nethermind.Consensus.Rewards
 
     public static class BlockRewardTypeExtension
     {
-        public static string ToLowerString(this BlockRewardType blockRewardType)
+        public static string ToLowerString(this BlockRewardType blockRewardType) => blockRewardType switch
         {
-            return blockRewardType switch
-            {
-                BlockRewardType.Block => "block",
-                BlockRewardType.Uncle => "uncle",
-                BlockRewardType.External => "external",
-                BlockRewardType.EmptyStep => "emptystep",
-                _ => throw new ArgumentOutOfRangeException(nameof(blockRewardType), blockRewardType, null),
-            };
-        }
+            BlockRewardType.Block => "block",
+            BlockRewardType.Uncle => "uncle",
+            BlockRewardType.External => "external",
+            BlockRewardType.EmptyStep => "emptystep",
+            _ => throw new ArgumentOutOfRangeException(nameof(blockRewardType), blockRewardType, null),
+        };
     }
 }

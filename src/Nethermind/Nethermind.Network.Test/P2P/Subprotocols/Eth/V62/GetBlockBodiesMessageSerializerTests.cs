@@ -4,6 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
@@ -16,7 +17,7 @@ public class GetBlockBodiesMessageSerializerTests
     {
         GetBlockBodiesMessageSerializer serializer = new();
         using GetBlockBodiesMessage message = new(Keccak.OfAnEmptySequenceRlp, Keccak.Zero, Keccak.EmptyTreeHash);
-        byte[] bytes = serializer.Serialize(message);
+        byte[] bytes = serializer.SerializeToArray(message);
         byte[] expectedBytes = Bytes.FromHexString("f863a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347a00000000000000000000000000000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421");
 
         Assert.That(Bytes.AreEqual(bytes, expectedBytes), Is.True, "bytes");
@@ -28,13 +29,54 @@ public class GetBlockBodiesMessageSerializerTests
             Assert.That(deserialized.BlockHashes[i], Is.EqualTo(message.BlockHashes[i]), $"hash {i}");
         }
 
-        SerializerTester.TestZero(serializer, message);
+        SerializerTester.Test(serializer, message);
+    }
+
+    [Test]
+    public void Can_deserialize_body_request_up_to_message_limit([Values(500, 1024)] int hashCount)
+    {
+        GetBlockBodiesMessageSerializer serializer = new();
+        using GetBlockBodiesMessage message = new(CreateHashes(hashCount));
+        byte[] bytes = serializer.SerializeToArray(message);
+
+        using GetBlockBodiesMessage deserialized = serializer.Deserialize(bytes);
+
+        Assert.That(deserialized.BlockHashes, Has.Count.EqualTo(hashCount));
+    }
+
+    [Test]
+    public void Rejects_body_request_above_message_limit()
+    {
+        GetBlockBodiesMessageSerializer serializer = new();
+        using GetBlockBodiesMessage message = new(CreateHashes(1025));
+        byte[] bytes = serializer.SerializeToArray(message);
+
+        Assert.Throws<RlpLimitException>(() => serializer.Deserialize(bytes));
+    }
+
+    [Test]
+    public void Deserialize_throws_on_null_hash()
+    {
+        GetBlockBodiesMessageSerializer serializer = new();
+
+        Assert.That(() => serializer.Deserialize([0xc1, 0x80]), Throws.InstanceOf<RlpException>());
     }
 
     [Test]
     public void To_string()
     {
         using GetBlockBodiesMessage newBlockMessage = new();
-        _ = newBlockMessage.ToString();
+        Assert.That(newBlockMessage.ToString(), Does.StartWith(nameof(GetBlockBodiesMessage)));
+    }
+
+    private static Hash256[] CreateHashes(int count)
+    {
+        Hash256[] hashes = new Hash256[count];
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            hashes[i] = Keccak.Zero;
+        }
+
+        return hashes;
     }
 }

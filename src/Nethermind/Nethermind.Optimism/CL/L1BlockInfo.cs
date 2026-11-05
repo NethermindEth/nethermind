@@ -25,12 +25,8 @@ public class L1BlockInfo
     public required Hash256 BlockHash { get; init; }
     public required Address BatcherAddress { get; init; }
 
-    public override string ToString()
-    {
-        return
-            $"BaseFeeScalar: {BaseFeeScalar}, BlobBaseFeeScalar: {BlobBaseFeeScalar}, SequenceNumber: {SequenceNumber}, Timestamp: {Timestamp}, " +
+    public override string ToString() => $"BaseFeeScalar: {BaseFeeScalar}, BlobBaseFeeScalar: {BlobBaseFeeScalar}, SequenceNumber: {SequenceNumber}, Timestamp: {Timestamp}, " +
             $"Number: {Number}, BaseFee: {BaseFee}, BlobBaseFee: {BlobBaseFee}, BlockHash: {BlockHash}, BatcherAddress: {BatcherAddress}";
-    }
 
     public static readonly L1BlockInfo Empty = new()
     {

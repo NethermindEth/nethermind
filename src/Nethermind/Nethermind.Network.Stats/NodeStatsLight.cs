@@ -8,7 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
-using Nethermind.Core;
+using Nethermind.Core.RequestSizer;
 using Nethermind.Stats.Model;
 using Nethermind.Stats.SyncLimits;
 
@@ -17,16 +17,16 @@ namespace Nethermind.Stats;
 /// <summary>
 /// Initial version of Reputation calculation mostly based on EthereumJ impl
 /// </summary>
-public class NodeStatsLight : INodeStats
+public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f, TimeProvider? timeProvider = null) : INodeStats
 {
-    private readonly StatsParameters _statsParameters;
+    private readonly StatsParameters _statsParameters = StatsParameters.Instance;
 
     // How much weight to put on latest speed.
     // 1.0 means that the reported speed will always replaced with latest speed.
     // 0.5 means that the reported speed will be (oldSpeed + newSpeed)/2;
     // 0.25 here means that the latest weight affect the stored weight a bit for every report, resulting in a smoother
     // modification to account for jitter.
-    private readonly float _latestSpeedWeight;
+    private readonly float _latestSpeedWeight = latestSpeedWeight;
 
     // NaN signals "no value yet" (replaces nullable decimal)
     private float _averageNodesTransferSpeed = float.NaN;
@@ -34,9 +34,10 @@ public class NodeStatsLight : INodeStats
     private float _averageBodiesTransferSpeed = float.NaN;
     private float _averageReceiptsTransferSpeed = float.NaN;
     private float _averageSnapRangesTransferSpeed = float.NaN;
+    private float _averageAccessListsTransferSpeed = float.NaN;
     private float _averageLatency = float.NaN;
 
-    private readonly int[] _statCountersArray;
+    private readonly int[] _statCountersArray = new int[_statsLength];
 
     private DisconnectReason? _lastLocalDisconnect;
     private DisconnectReason? _lastRemoteDisconnect;
@@ -64,7 +65,8 @@ public class NodeStatsLight : INodeStats
         // or receipts. This is not great as large message size are harder for DotNetty to pool byte buffer, causing
         // higher memory usage. Reducing this even further does seems to help with memory, but may reduce throughput.
         maxResponseSize: 3_000_000,
-        initialRequestSize: 4
+        initialRequestSize: 4,
+        timeProvider: timeProvider
     );
 
     private readonly LatencyAndMessageSizeBasedRequestSizer _receiptsRequestSizer = new(
@@ -81,23 +83,17 @@ public class NodeStatsLight : INodeStats
         // or receipts. This is not great as large message size are harder for DotNetty to pool byte buffer, causing
         // higher memory usage. Reducing this even further does seems to help with memory, but may reduce throughput.
         maxResponseSize: 3_000_000,
-        initialRequestSize: 8
+        initialRequestSize: 8,
+        timeProvider: timeProvider
     );
 
     private readonly LatencyBasedRequestSizer _snapRequestSizer = new(
         minRequestLimit: 50000,
         maxRequestLimit: 3_000_000,
         lowerWatermark: TimeSpan.FromMilliseconds(2000),
-        upperWatermark: TimeSpan.FromMilliseconds(3500)
+        upperWatermark: TimeSpan.FromMilliseconds(3500),
+        timeProvider: timeProvider
     );
-
-    public NodeStatsLight(Node node, float latestSpeedWeight = 0.25f)
-    {
-        _statCountersArray = new int[_statsLength];
-        _statsParameters = StatsParameters.Instance;
-        _latestSpeedWeight = latestSpeedWeight;
-        Node = node;
-    }
 
     public long CurrentNodeReputation(DateTime nowUTC) => CalculateCurrentReputation(nowUTC);
 
@@ -105,20 +101,17 @@ public class NodeStatsLight : INodeStats
 
     public long NewPersistedNodeReputation(DateTime nowUTC) => (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
 
-    public P2PNodeDetails P2PNodeDetails { get; private set; }
+    public P2PNodeDetails? P2PNodeDetails { get; private set; }
 
-    public SyncPeerNodeDetails EthNodeDetails { get; private set; }
+    public SyncPeerNodeDetails? EthNodeDetails { get; private set; }
 
-    public SyncPeerNodeDetails LesNodeDetails { get; private set; }
+    public SyncPeerNodeDetails? LesNodeDetails { get; private set; }
 
     public CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
 
-    public Node Node { get; }
+    public Node Node { get; } = node;
 
-    private void Increment(NodeStatsEventType nodeStatsEventType)
-    {
-        Interlocked.Increment(ref _statCountersArray[(int)nodeStatsEventType]);
-    }
+    private void Increment(NodeStatsEventType nodeStatsEventType) => Interlocked.Increment(ref _statCountersArray[(int)nodeStatsEventType]);
 
     public void AddNodeStatsEvent(NodeStatsEventType nodeStatsEventType)
     {
@@ -135,10 +128,7 @@ public class NodeStatsLight : INodeStats
         Increment(nodeStatsEventType);
     }
 
-    public void AddNodeStatsHandshakeEvent(ConnectionDirection connectionDirection)
-    {
-        Increment(NodeStatsEventType.HandshakeCompleted);
-    }
+    public void AddNodeStatsHandshakeEvent(ConnectionDirection connectionDirection) => Increment(NodeStatsEventType.HandshakeCompleted);
 
     public void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason)
     {
@@ -198,20 +188,11 @@ public class NodeStatsLight : INodeStats
         Increment(NodeStatsEventType.LesInitialized);
     }
 
-    public void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType)
-    {
-        Increment(nodeStatsEventType);
-    }
+    public void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType) => Increment(nodeStatsEventType);
 
-    public bool DidEventHappen(NodeStatsEventType nodeStatsEventType)
-    {
-        return GetStat(nodeStatsEventType) > 0;
-    }
+    public bool DidEventHappen(NodeStatsEventType nodeStatsEventType) => GetStat(nodeStatsEventType) > 0;
 
-    public void AddTransferSpeedCaptureEvent(TransferSpeedType transferSpeedType, long bytesPerMillisecond)
-    {
-        UpdateValue(ref GetSpeedRef(transferSpeedType), bytesPerMillisecond);
-    }
+    public void AddTransferSpeedCaptureEvent(TransferSpeedType transferSpeedType, long bytesPerMillisecond) => UpdateValue(ref GetSpeedRef(transferSpeedType), bytesPerMillisecond);
 
     private void UpdateValue(ref float currentValue, float newValue)
     {
@@ -242,6 +223,7 @@ public class NodeStatsLight : INodeStats
             case TransferSpeedType.Bodies: return ref _averageBodiesTransferSpeed;
             case TransferSpeedType.Receipts: return ref _averageReceiptsTransferSpeed;
             case TransferSpeedType.SnapRanges: return ref _averageSnapRangesTransferSpeed;
+            case TransferSpeedType.BlockAccessLists: return ref _averageAccessListsTransferSpeed;
             default: throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, "Unsupported transfer speed type.");
         }
     }
@@ -343,16 +325,10 @@ public class NodeStatsLight : INodeStats
         return disconnectDelay;
     }
 
-    private long CalculateCurrentReputation(DateTime nowUTC)
-    {
-        return CurrentPersistedNodeReputation / 2 + CalculateSessionReputation();
-    }
+    private long CalculateCurrentReputation(DateTime nowUTC) => CurrentPersistedNodeReputation / 2 + CalculateSessionReputation();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private int GetStat(NodeStatsEventType nodeStatsEventType)
-    {
-        return Volatile.Read(ref _statCountersArray[(int)nodeStatsEventType]);
-    }
+    private int GetStat(NodeStatsEventType nodeStatsEventType) => Volatile.Read(ref _statCountersArray[(int)nodeStatsEventType]);
 
     private long CalculateSessionReputation()
     {
@@ -415,6 +391,7 @@ public class NodeStatsLight : INodeStats
         if (requestType == RequestType.Bodies) return _bodiesRequestSizer.RequestSize;
         if (requestType == RequestType.Receipts) return _receiptsRequestSizer.RequestSize;
         if (requestType == RequestType.SnapRanges) return _snapRequestSizer.RequestSize;
+        if (requestType == RequestType.BlockAccessLists) return GethSyncLimits.MaxBodyFetch;
         if (requestType == RequestType.Headers)
         {
             return Node.ClientType switch

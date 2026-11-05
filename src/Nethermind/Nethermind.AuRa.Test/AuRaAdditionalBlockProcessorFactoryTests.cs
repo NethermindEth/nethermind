@@ -3,8 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -31,7 +29,7 @@ namespace Nethermind.AuRa.Test
         [TestCase(AuRaParameters.ValidatorType.Multi, typeof(MultiValidator))]
         public void returns_correct_validator_type(AuRaParameters.ValidatorType validatorType, Type expectedType)
         {
-            AuRaValidatorFactory factory = new(Substitute.For<IAbiEncoder>(),
+            AuRaValidatorFactory factory = new(
                 Substitute.For<IWorldState>(),
                 Substitute.For<ITransactionProcessor>(),
                 Substitute.For<IBlockTree>(),
@@ -53,7 +51,7 @@ namespace Nethermind.AuRa.Test
             {
                 ValidatorType = validatorType,
                 Addresses = new[] { Address.Zero },
-                Validators = new Dictionary<long, AuRaParameters.Validator>()
+                Validators = new Dictionary<ulong, AuRaParameters.Validator>()
                 {
                     {
                         0, new AuRaParameters.Validator()
@@ -66,7 +64,7 @@ namespace Nethermind.AuRa.Test
 
             IAuRaValidator result = factory.CreateValidatorProcessor(validator);
 
-            result.Should().BeOfType(expectedType);
+            Assert.That(result, Is.TypeOf(expectedType));
         }
     }
 }

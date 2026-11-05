@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -41,8 +40,11 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxBlockHeaderSignature> result = await _rpcModule.taiko_tdxSignBlockHeader(new BlockParameter(1));
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.Result.Error.Should().Contain("not enabled");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("not enabled"));
+        }
     }
 
     [Test]
@@ -53,8 +55,11 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxBlockHeaderSignature> result = await _rpcModule.taiko_tdxSignBlockHeader(new BlockParameter(1));
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.Result.Error.Should().Contain("not bootstrapped");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("not bootstrapped"));
+        }
     }
 
     [Test]
@@ -62,12 +67,15 @@ public class TdxRpcModuleTests
     {
         _config.TdxEnabled.Returns(true);
         _tdxService.IsBootstrapped.Returns(true);
-        _blockFinder.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns((BlockHeader?)null);
+        _blockFinder.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>()).Returns((BlockHeader?)null);
 
         ResultWrapper<TdxBlockHeaderSignature> result = await _rpcModule.taiko_tdxSignBlockHeader(new BlockParameter(1));
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.Result.Error.Should().Contain("not found");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("not found"));
+        }
     }
 
     [Test]
@@ -77,9 +85,9 @@ public class TdxRpcModuleTests
         _tdxService.IsBootstrapped.Returns(true);
 
         BlockHeader header = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject;
-        _blockFinder.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
+        _blockFinder.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
 
-        var signature = new TdxBlockHeaderSignature
+        TdxBlockHeaderSignature signature = new()
         {
             Signature = new byte[Signature.Size],
             BlockHash = header.Hash!,
@@ -90,9 +98,12 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxBlockHeaderSignature> result = await _rpcModule.taiko_tdxSignBlockHeader(new BlockParameter(1));
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
-        result.Data.Should().NotBeNull();
-        result.Data!.Header.Hash.Should().Be(header.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
+        Assert.That(result.Data!.Header.Hash, Is.EqualTo(header.Hash!));
     }
 
     [Test]
@@ -102,13 +113,16 @@ public class TdxRpcModuleTests
         _tdxService.IsBootstrapped.Returns(true);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
-        _blockFinder.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
+        _blockFinder.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
         _tdxService.SignBlockHeader(header).Returns(_ => throw new TdxException("Signing failed"));
 
         ResultWrapper<TdxBlockHeaderSignature> result = await _rpcModule.taiko_tdxSignBlockHeader(new BlockParameter(1));
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.Result.Error.Should().Contain("Signing failed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("Signing failed"));
+        }
     }
 
     [Test]
@@ -118,8 +132,11 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_getTdxGuestInfo();
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.Result.Error.Should().Contain("not enabled");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("not enabled"));
+        }
     }
 
     [Test]
@@ -130,15 +147,18 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_getTdxGuestInfo();
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.Result.Error.Should().Contain("not bootstrapped");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("not bootstrapped"));
+        }
     }
 
     [Test]
     public async Task GetTdxGuestInfo_returns_info_when_available()
     {
         _config.TdxEnabled.Returns(true);
-        var info = new TdxGuestInfo
+        TdxGuestInfo info = new()
         {
             IssuerType = "test",
             PublicKey = "0x1234",
@@ -149,9 +169,12 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_getTdxGuestInfo();
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
-        result.Data.Should().NotBeNull();
-        result.Data!.IssuerType.Should().Be("test");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
+        Assert.That(result.Data!.IssuerType, Is.EqualTo("test"));
     }
 
     [Test]
@@ -161,15 +184,18 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_tdxBootstrap();
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.Result.Error.Should().Contain("not enabled");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("not enabled"));
+        }
     }
 
     [Test]
     public async Task TdxBootstrap_returns_info_when_successful()
     {
         _config.TdxEnabled.Returns(true);
-        var info = new TdxGuestInfo
+        TdxGuestInfo info = new()
         {
             IssuerType = "azure",
             PublicKey = "0xabcd",
@@ -180,9 +206,12 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_tdxBootstrap();
 
-        result.Result.ResultType.Should().Be(ResultType.Success);
-        result.Data.Should().NotBeNull();
-        result.Data!.IssuerType.Should().Be("azure");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
+        Assert.That(result.Data!.IssuerType, Is.EqualTo("azure"));
     }
 
     [Test]
@@ -193,8 +222,11 @@ public class TdxRpcModuleTests
 
         ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_tdxBootstrap();
 
-        result.Result.ResultType.Should().Be(ResultType.Failure);
-        result.Result.Error.Should().Contain("Connection failed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("Connection failed"));
+        }
     }
 
 }

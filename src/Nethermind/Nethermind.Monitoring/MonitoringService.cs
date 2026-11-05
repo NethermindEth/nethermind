@@ -4,10 +4,13 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Api.Monitoring;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
-using Nethermind.Monitoring.Config;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using Prometheus;
 
@@ -19,14 +22,20 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
     private readonly ILogger _logger;
     private readonly Options _options;
 
+    private readonly bool _prometheusEnabled;
     private readonly string _exposeHost;
     private readonly int? _exposePort;
     private readonly string _nodeName;
     private readonly string _pushGatewayUrl;
+    private readonly string _pushGatewayUsername;
+    private readonly string _pushGatewayPassword;
     private readonly int _intervalSeconds;
     private readonly CancellationTokenSource _timerCancellationSource;
 
     private Task _monitoringTimerTask = Task.CompletedTask;
+    private MetricPusher _metricPusher;
+    private NethermindKestrelMetricServer _metricServer;
+    private HttpClient _pusherHttpClient;
     private int _isDisposed = 0;
 
     public MonitoringService(
@@ -44,12 +53,15 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         string pushGatewayUrl = metricsConfig.PushGatewayUrl;
         int intervalSeconds = metricsConfig.IntervalSeconds;
 
+        _prometheusEnabled = metricsConfig.Enabled;
         _exposeHost = exposeHost;
         _exposePort = exposePort;
         _nodeName = string.IsNullOrWhiteSpace(nodeName)
             ? throw new ArgumentNullException(nameof(nodeName))
             : nodeName;
         _pushGatewayUrl = pushGatewayUrl;
+        _pushGatewayUsername = metricsConfig.PushGatewayUsername;
+        _pushGatewayPassword = metricsConfig.PushGatewayPassword;
         _intervalSeconds = intervalSeconds <= 0
             ? throw new ArgumentException($"Invalid monitoring push interval: {intervalSeconds}s")
             : intervalSeconds;
@@ -60,9 +72,9 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         _options = GetOptions(metricsConfig);
     }
 
-    public Task StartAsync()
+    public async Task StartAsync()
     {
-        if (_pushGatewayUrl is not null)
+        if (_prometheusEnabled && _pushGatewayUrl is not null)
         {
             MetricPusherOptions pusherOptions = new()
             {
@@ -75,20 +87,41 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
                 {
                     if (ex.InnerException is SocketException)
                     {
-                        if (_logger.IsError) _logger.Error($"Cannot reach Pushgateway at {_pushGatewayUrl}", ex);
+                        if (_logger.IsError) _logger.Error($"Cannot reach Pushgateway at {SensitiveLogMasking.SafeUrl(_pushGatewayUrl)}", SensitiveLogMasking.Enabled ? null : ex);
                         return;
                     }
-                    if (_logger.IsTrace) _logger.Error(ex.Message, ex); // keeping it as Error to log the exception details with it.
+                    _logger.TraceError(ex.Message, ex); // keeping it at Error severity to log exception details
                 }
             };
-            MetricPusher metricPusher = new(pusherOptions);
 
-            metricPusher.Start();
+            bool hasUsername = !string.IsNullOrEmpty(_pushGatewayUsername);
+            bool hasPassword = !string.IsNullOrEmpty(_pushGatewayPassword);
+            if (hasUsername && hasPassword)
+            {
+                if (!_pushGatewayUrl.StartsWith(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (_logger.IsWarn) _logger.Warn("Pushgateway basic authentication credentials are sent over an unencrypted connection: consider using an HTTPS endpoint.");
+                }
+
+                _pusherHttpClient = new HttpClient();
+                _pusherHttpClient.DefaultRequestHeaders.Authorization = CreateBasicAuthHeader(_pushGatewayUsername, _pushGatewayPassword);
+                pusherOptions.HttpClientProvider = () => _pusherHttpClient;
+            }
+            else if (hasUsername || hasPassword)
+            {
+                if (_logger.IsWarn) _logger.Warn("Pushgateway basic authentication is disabled: both the username and password must be set.");
+            }
+
+            _metricPusher = new MetricPusher(pusherOptions);
+
+            _metricPusher.Start();
         }
 
-        if (_exposePort is not null)
+        if (_prometheusEnabled && _exposePort is not null)
         {
-            new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value).Start();
+            _metricServer = new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value);
+            _metricServer.Start();
+            await _metricServer.Listening;
         }
 
         _monitoringTimerTask = Task.Run(async () =>
@@ -104,13 +137,12 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         });
 
         if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
-        return Task.CompletedTask;
     }
 
-    public void AddMetricsUpdateAction(Action callback)
-    {
-        _metricsController.AddMetricsUpdateAction(callback);
-    }
+    internal static AuthenticationHeaderValue CreateBasicAuthHeader(string username, string password) =>
+        new("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}")));
+
+    public void AddMetricsUpdateAction(Action callback) => _metricsController.AddMetricsUpdateAction(callback);
 
     public string Description => "Monitoring service";
 
@@ -137,5 +169,19 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         await _timerCancellationSource.CancelAsync();
         await _monitoringTimerTask;
         _timerCancellationSource.Dispose();
+        if (_metricServer is not null)
+        {
+            try
+            {
+                await _metricServer.StopAsync();
+            }
+            // StopAsync rethrows a startup failure such as the port being taken
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Metrics server on port {_exposePort} failed: {ex.Message}");
+            }
+        }
+        if (_metricPusher is not null) await _metricPusher.StopAsync();
+        _pusherHttpClient?.Dispose();
     }
 }

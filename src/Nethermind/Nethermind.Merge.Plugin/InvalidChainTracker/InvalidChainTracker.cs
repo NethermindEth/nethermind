@@ -19,40 +19,31 @@ namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 /// Tracks if a given hash is on a known invalid chain, as one if it's ancestor have been reported to be invalid.
 ///
 /// </summary>
-public class InvalidChainTracker : IInvalidChainTracker
+public class InvalidChainTracker(
+    IPoSSwitcher poSSwitcher,
+    IBlockFinder blockFinder,
+    IBlockCacheService blockCacheService,
+    ILogManager logManager) : IInvalidChainTracker
 {
-    private readonly IPoSSwitcher _poSSwitcher;
-    private readonly IBlockFinder _blockFinder;
-    private readonly IBlockCacheService _blockCacheService;
-    private readonly ILogger _logger;
-    private readonly LruCache<ValueHash256, Node> _tree;
+    private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
+    private readonly IBlockFinder _blockFinder = blockFinder;
+    private readonly IBlockCacheService _blockCacheService = blockCacheService;
+    private readonly ILogger _logger = logManager.GetClassLogger<InvalidChainTracker>();
+    private readonly LruCache<ValueHash256, Node> _tree = new(1024, nameof(InvalidChainTracker));
 
     // CompositeDisposable only available on System.Reactive. So this will do for now.
-    private readonly List<Action> _disposables = new();
+    private readonly List<Action> _disposables = [];
 
-    public InvalidChainTracker(
-        IPoSSwitcher poSSwitcher,
-        IBlockFinder blockFinder,
-        IBlockCacheService blockCacheService,
-        ILogManager logManager)
+    public void SetupBlockchainProcessorInterceptor(IBlockProcessingQueue processingQueue)
     {
-        _poSSwitcher = poSSwitcher;
-        _blockFinder = blockFinder;
-        _tree = new(1024, nameof(InvalidChainTracker));
-        _logger = logManager.GetClassLogger<InvalidChainTracker>();
-        _blockCacheService = blockCacheService;
-    }
-
-    public void SetupBlockchainProcessorInterceptor(IBlockchainProcessor blockchainProcessor)
-    {
-        blockchainProcessor.InvalidBlock += OnBlockchainProcessorInvalidBlock;
+        processingQueue.InvalidBlock += OnBlockchainProcessorInvalidBlock;
         _disposables.Add(() =>
         {
-            blockchainProcessor.InvalidBlock -= OnBlockchainProcessorInvalidBlock;
+            processingQueue.InvalidBlock -= OnBlockchainProcessorInvalidBlock;
         });
     }
 
-    private void OnBlockchainProcessorInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs args) => OnInvalidBlock(args.InvalidBlock.Hash!, args.InvalidBlock.ParentHash);
+    private void OnBlockchainProcessorInvalidBlock(object? sender, IBlockProcessingQueue.InvalidBlockEventArgs args) => OnInvalidBlock(args.InvalidBlock.Hash!, args.InvalidBlock.ParentHash);
 
     public void SetChildParent(Hash256 child, Hash256 parent)
     {
@@ -70,22 +61,13 @@ public class InvalidChainTracker : IInvalidChainTracker
         }
     }
 
-    private Node GetNode(Hash256 hash)
-    {
-        if (!_tree.TryGet(hash, out Node node))
-        {
-            node = new Node();
-            _tree.Set(hash, node);
-        }
-
-        return node;
-    }
+    private Node GetNode(Hash256 hash) => _tree.SetOrGet(hash, 0, static (_, _) => new Node());
 
     private void PropagateLastValidHash(Node node)
     {
         Queue<Node> bfsQue = new();
         bfsQue.Enqueue(node);
-        HashSet<Node> visited = new() { node };
+        HashSet<Node> visited = [node];
 
         while (bfsQue.Count > 0)
         {
@@ -137,17 +119,24 @@ public class InvalidChainTracker : IInvalidChainTracker
         }
 
         Hash256 effectiveParent = parent;
-        BlockHeader? parentHeader = TryGetBlockHeaderIncludingInvalid(parent);
-        if (parentHeader is not null)
+        if (IsOnKnownInvalidChain(parent, out Hash256? lastValidHash))
         {
-            if (!_poSSwitcher.IsPostMerge(parentHeader))
-            {
-                effectiveParent = Keccak.Zero;
-            }
+            effectiveParent = lastValidHash!;
         }
         else
         {
-            if (_logger.IsTrace) _logger.Trace($"Unable to resolve parent to determine if it is post merge. Assuming post merge. Block {parent}");
+            BlockHeader? parentHeader = TryGetBlockHeaderIncludingInvalid(parent);
+            if (parentHeader is not null)
+            {
+                if (!_poSSwitcher.IsPostMerge(parentHeader))
+                {
+                    effectiveParent = Keccak.Zero;
+                }
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"Unable to resolve parent to determine if it is post merge. Assuming post merge. Block {parent}");
+            }
         }
 
         Node failedBlockNode = GetNode(failedBlock);
@@ -161,21 +150,21 @@ public class InvalidChainTracker : IInvalidChainTracker
     public bool IsOnKnownInvalidChain(Hash256 blockHash, out Hash256? lastValidHash)
     {
         lastValidHash = null;
-        Node node = GetNode(blockHash);
+        if (!_tree.TryGet(blockHash, out Node node))
+        {
+            return false;
+        }
+
         lock (node)
         {
-            if (node.LastValidHash is not null)
-            {
-                lastValidHash = node.LastValidHash;
-            }
-
+            lastValidHash = node.LastValidHash;
             return node.LastValidHash is not null;
         }
     }
 
     class Node
     {
-        public HashSet<Hash256> Children { get; } = new();
+        public HashSet<Hash256> Children { get; } = [];
         public Hash256? LastValidHash { get; set; }
     }
 

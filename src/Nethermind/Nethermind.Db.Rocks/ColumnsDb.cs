@@ -6,120 +6,131 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using FastEnumUtility;
+using Nethermind.Core.Extensions;
 using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
-using Nethermind.Logging;
-using RocksDbSharp;
+using Nethermind.RocksDbBindings;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
+/// <summary>A database with one column family per value of <typeparamref name="T"/>.</summary>
+/// <param name="instance">The open database.</param>
+/// <param name="tableConfig">The configuration the database was opened with, which snapshot reads follow.</param>
+/// <param name="columnDbs">A store for every column family of <paramref name="instance"/>, disposed with this one.</param>
+public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, IDictionary<T, ColumnDb> columnDbs)
+    : IColumnsDb<T>, ITunableDb where T : struct, Enum
 {
-    private readonly IDictionary<T, ColumnDb> _columnDbs = new Dictionary<T, ColumnDb>();
+    private readonly IDictionary<T, ColumnDb> _columnDbs = columnDbs;
+    // Write batches and the write-ahead log belong to the whole database, so any column can serve them.
+    // A batch spanning columns writes with this column's write options, e.g. its WriteAheadLogSync.
+    private readonly ColumnDb _anyColumn = columnDbs.Values.First();
 
     // Cached for ColumnDbSnapshot to avoid per-snapshot recomputation.
     // Initialized once on first CreateSnapshot call; both fields are idempotent (same result from any thread).
     private volatile T[]? _cachedColumnKeys;
     private volatile int _cachedMaxOrdinal = -1;
 
-    public ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, IReadOnlyList<T> keys, IntPtr? sharedCache = null)
-        : this(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, ResolveKeys(keys), sharedCache)
+    internal bool VerifyChecksum { get; } = tableConfig.VerifyChecksum ?? true;
+    internal ulong ReadAheadSize { get; } = tableConfig.ReadAheadSize ?? 256UL.KiB;
+
+    internal int PrefetchesInFlight => _columnDbs.Values.Sum(static column => column.PrefetchesInFlight);
+
+    public bool WasRepairedOnOpen => instance.WasRepairedOnOpen;
+
+    public void AcknowledgeRepair() => instance.AcknowledgeRepair();
+
+    public IDbMeta.DbMetric GatherMetric()
     {
+        long size = 0, cacheSize = 0, indexSize = 0, memtableSize = 0, totalReads = 0, totalWrites = 0;
+        foreach (ColumnDb column in _columnDbs.Values)
+        {
+            IDbMeta.DbMetric metric = column.GatherMetric();
+            size += metric.Size;
+            cacheSize += metric.CacheSize;
+            indexSize += metric.IndexSize;
+            memtableSize += metric.MemtableSize;
+            totalReads += metric.TotalReads;
+            totalWrites += metric.TotalWrites;
+        }
+
+        return new IDbMeta.DbMetric
+        {
+            Size = size,
+            CacheSize = cacheSize,
+            IndexSize = indexSize,
+            MemtableSize = memtableSize,
+            TotalReads = totalReads,
+            TotalWrites = totalWrites,
+        };
     }
 
-    private ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, (IReadOnlyList<T> Keys, IList<string> ColumnNames) keyInfo, IntPtr? sharedCache)
-        : base(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, keyInfo.ColumnNames, sharedCache: sharedCache)
+    public long EstimatedCount => _columnDbs.Values.Sum(static column => column.EstimatedCount);
+
+    public void Compact()
     {
-        foreach (T key in keyInfo.Keys)
+        foreach (ColumnDb column in _columnDbs.Values)
         {
-            _columnDbs[key] = new ColumnDb(_db, this, key.ToString()!);
+            column.Compact();
         }
     }
 
-    protected override long FetchTotalPropertyValue(string propertyName)
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A full flush materializes every column family's memtable into SST, which is required for
+    /// <see cref="WriteFlags.DisableWAL"/> writes: they have no WAL entry, so unless their memtable is
+    /// flushed they are lost on restart.
+    /// </remarks>
+    public void Flush(bool onlyWal = false)
     {
-        long total = 0;
-        foreach (KeyValuePair<T, ColumnDb> kv in _columnDbs)
+        if (onlyWal)
         {
-            long value = long.TryParse(_db.GetProperty(propertyName, kv.Value._columnFamily), out long parsedValue)
-                ? parsedValue
-                : 0;
-
-            total += value;
+            _anyColumn.Flush(onlyWal: true);
+            return;
         }
 
-        return total;
-    }
-
-    public override void Compact()
-    {
-        foreach (T key in ColumnKeys)
+        foreach (ColumnDb column in _columnDbs.Values)
         {
-            _columnDbs[key].Compact();
+            column.Flush(onlyWal);
         }
     }
 
-    private static IReadOnlyList<T> GetEnumKeys(IReadOnlyList<T> keys)
+    public void SyncWal() => _anyColumn.SyncWal();
+
+    public void Tune(ITunableDb.TuneType type)
     {
-        if (typeof(T).IsEnum && keys.Count == 0)
+        foreach (ColumnDb column in _columnDbs.Values)
         {
-            keys = FastEnum.GetValues<T>().ToArray();
+            column.Tune(type);
         }
-
-        return keys;
     }
 
-    private static (IReadOnlyList<T> Keys, IList<string> ColumnNames) ResolveKeys(IReadOnlyList<T> keys)
+    public void Clear()
     {
-        IReadOnlyList<T> resolvedKeys = GetEnumKeys(keys);
-        IList<string> columnNames = resolvedKeys.Select(static key => key.ToString()).ToList();
-
-        return (resolvedKeys, columnNames);
+        Dispose();
+        instance.Delete();
     }
 
-    protected override void BuildOptions<TOptions>(IRocksDbConfig dbConfig, Options<TOptions> options, IntPtr? sharedCache, IMergeOperator? mergeOperator)
+    public void Dispose()
     {
-        base.BuildOptions(dbConfig, options, sharedCache, mergeOperator);
-        options.SetCreateMissingColumnFamilies();
+        foreach (ColumnDb column in _columnDbs.Values)
+        {
+            column.Dispose();
+        }
     }
 
     public IDb GetColumnDb(T key) => _columnDbs[key];
 
     public IEnumerable<T> ColumnKeys => _columnDbs.Keys;
 
-    public IReadOnlyColumnDb<T> CreateReadOnly(bool createInMemWriteStore)
-    {
-        return new ReadOnlyColumnsDb<T>(this, createInMemWriteStore);
-    }
+    public IReadOnlyColumnDb<T> CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyColumnsDb<T>(this, createInMemWriteStore);
 
-    public new IColumnsWriteBatch<T> StartWriteBatch()
-    {
-        return new RocksColumnsWriteBatch(this);
-    }
+    public IColumnsWriteBatch<T> StartWriteBatch() => new RocksColumnsWriteBatch(this);
 
-    protected override void ApplyOptions(IDictionary<string, string> options)
+    private class RocksColumnsWriteBatch(ColumnsDb<T> columnsDb) : IColumnsWriteBatch<T>
     {
-        string[] keys = options.Select<KeyValuePair<string, string>, string>(static e => e.Key).ToArray();
-        string[] values = options.Select<KeyValuePair<string, string>, string>(static e => e.Value).ToArray();
-        foreach (KeyValuePair<T, ColumnDb> cols in _columnDbs)
-        {
-            _rocksDbNative.rocksdb_set_options_cf(_db.Handle, cols.Value._columnFamily.Handle, keys.Length, keys, values);
-        }
-        base.ApplyOptions(options);
-    }
-
-    private class RocksColumnsWriteBatch : IColumnsWriteBatch<T>
-    {
-        internal readonly RocksDbWriteBatch WriteBatch;
-        private readonly ColumnsDb<T> _columnsDb;
-
-        public RocksColumnsWriteBatch(ColumnsDb<T> columnsDb)
-        {
-            WriteBatch = new RocksDbWriteBatch(columnsDb);
-            _columnsDb = columnsDb;
-        }
+        internal readonly DbOnTheRocks.RocksDbWriteBatch WriteBatch = new(columnsDb._anyColumn);
+        private readonly ColumnsDb<T> _columnsDb = columnsDb;
 
         public IWriteBatch GetColumnBatch(T key) => new RocksColumnWriteBatch(_columnsDb._columnDbs[key], this);
 
@@ -127,83 +138,63 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         public void Dispose() => WriteBatch.Dispose();
     }
 
-    private class RocksColumnWriteBatch : IWriteBatch
+    private class RocksColumnWriteBatch(ColumnDb column, ColumnsDb<T>.RocksColumnsWriteBatch writeBatch) : IWriteBatch
     {
-        private readonly ColumnDb _column;
-        private readonly RocksColumnsWriteBatch _writeBatch;
+        private readonly ColumnDb _column = column;
+        private readonly RocksColumnsWriteBatch _writeBatch = writeBatch;
 
-        public RocksColumnWriteBatch(ColumnDb column, RocksColumnsWriteBatch writeBatch)
-        {
-            _column = column;
-            _writeBatch = writeBatch;
-        }
+        public void Dispose() => _writeBatch.Dispose();
 
-        public void Dispose()
-        {
-            _writeBatch.Dispose();
-        }
+        public void Clear() => _writeBatch.WriteBatch.Clear();
 
-        public void Clear()
-        {
-            _writeBatch.WriteBatch.Clear();
-        }
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => _writeBatch.WriteBatch.Set(key, value, _column._columnFamily, flags);
 
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-        {
-            _writeBatch.WriteBatch.Set(key, value, _column._columnFamily, flags);
-        }
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => _writeBatch.WriteBatch.Set(key, value, _column._columnFamily, flags);
 
-        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-        {
-            _writeBatch.WriteBatch.Merge(key, value, _column._columnFamily, flags);
-        }
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => _writeBatch.WriteBatch.Merge(key, value, _column._columnFamily, flags);
     }
 
-    IColumnDbSnapshot<T> IColumnsDb<T>.CreateSnapshot()
-    {
-        Snapshot snapshot = _db.CreateSnapshot();
-        return new ColumnDbSnapshot(this, snapshot);
-    }
+    IColumnDbSnapshot<T> IColumnsDb<T>.CreateSnapshot() => CreateSnapshotCore(sequentialReadAhead: false);
+
+    IColumnDbSnapshot<T> IColumnsDb<T>.CreateSnapshot(bool sequentialReadAhead) => CreateSnapshotCore(sequentialReadAhead);
+
+    private ColumnDbSnapshot CreateSnapshotCore(bool sequentialReadAhead) => new(this, instance.Db.CreateSnapshot(), sequentialReadAhead);
 
     private class ColumnDbSnapshot : IColumnDbSnapshot<T>
     {
+        private readonly ColumnsDb<T> _columnsDb;
         private readonly Snapshot _snapshot;
         private readonly ReadOptions _sharedReadOptions;
         private readonly ReadOptions _sharedCacheMissReadOptions;
-        private readonly RocksDbSharp.Native _rocksDbNative;
+        private ReadOptions? _readAheadReadOptions;
         private int _disposed;
 
         // Use a flat array indexed by enum ordinal instead of Dictionary<T, IReadOnlyKeyValueStore>.
         // This eliminates the dictionary + backing array allocation per snapshot.
         private readonly RocksDbReader[] _readers;
 
-        public ColumnDbSnapshot(ColumnsDb<T> columnsDb, Snapshot snapshot)
+        public ColumnDbSnapshot(ColumnsDb<T> columnsDb, Snapshot snapshot, bool sequentialReadAhead)
         {
+            _columnsDb = columnsDb;
             _snapshot = snapshot;
-            _rocksDbNative = columnsDb._rocksDbNative;
 
-            // Create two shared ReadOptions for all column readers instead of 2 per reader.
-            // ReadOptions in RocksDbSharp has a finalizer but no IDisposable — creating many
-            // short-lived instances causes Gen1/Gen2 GC pressure from finalizer queue buildup.
+            // Create two shared ReadOptions for all column readers instead of 2 per reader —
+            // creating many short-lived instances costs a native handle each and, when one is left
+            // to its finalizer, Gen1/Gen2 GC pressure from finalizer queue buildup.
             _sharedReadOptions = CreateReadOptions(columnsDb, snapshot);
             _sharedCacheMissReadOptions = CreateReadOptions(columnsDb, snapshot);
             _sharedCacheMissReadOptions.SetFillCache(false);
 
             // Single shared delegate for GetViewBetween — avoids per-reader closure allocation.
-            // Note: each GetViewBetween call still creates a new ReadOptions with a finalizer;
-            // that is pre-existing behavior not addressed by this PR.
+            // Each call still creates its own ReadOptions, disposed by the returned view.
             Func<ReadOptions> readOptionsFactory = () => CreateReadOptions(columnsDb, snapshot);
+            // Shared by all column iterator managers; the ReadOptions it returns is created lazily
+            // on the first HintReadAhead read, so snapshots that never iterate allocate nothing extra.
+            // ReadAheadSize = 0 opts out of readahead iterators, matching DbOnTheRocks.
+            Func<ReadOptions>? readAheadOptionsFactory = sequentialReadAhead && columnsDb.ReadAheadSize > 0 ? GetOrCreateReadAheadReadOptions : null;
             T[] keys = CreateKeyCache(columnsDb);
             GetCachedMaxOrdinal(columnsDb, keys);
             _readers = CreateReaders();
-
-            static ReadOptions CreateReadOptions(ColumnsDb<T> columnsDb, Snapshot snapshot)
-            {
-                ReadOptions options = new ReadOptions();
-                options.SetVerifyChecksums(columnsDb.VerifyChecksum);
-                options.SetSnapshot(snapshot);
-                return options;
-            }
 
             // Cache column keys and max ordinal on the parent ColumnsDb to avoid per-snapshot
             // recomputation. The race is benign (both threads compute identical results) and
@@ -246,16 +237,60 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
                 for (int i = 0; i < keys.Length; i++)
                 {
                     T k = keys[i];
-                    readers[EnumToInt(k)] = new RocksDbReader(
-                        columnsDb,
+                    int ordinal = EnumToInt(k);
+                    ColumnDb column = columnsDb._columnDbs[k];
+                    IColumnFamilyHandle columnFamily = column._columnFamily!;
+                    // Internally lazy — until a HintReadAhead read arrives this is just an object allocation.
+                    DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager = readAheadOptionsFactory is null
+                        ? null
+                        : new(() => new DbOnTheRocks.IteratorManager(column._db, columnFamily, readAheadOptionsFactory()) { SequentialKeys = true });
+                    readers[ordinal] = new RocksDbReader(
+                        column,
                         _sharedReadOptions,
                         _sharedCacheMissReadOptions,
                         readOptionsFactory,
-                        columnFamily: columnsDb._columnDbs[k]._columnFamily);
+                        iteratorManager,
+                        columnFamily);
                 }
 
                 return readers;
             }
+        }
+
+        private static ReadOptions CreateReadOptions(ColumnsDb<T> columnsDb, Snapshot snapshot)
+        {
+            ReadOptions options = new();
+            options.SetVerifyChecksums(columnsDb.VerifyChecksum);
+            options.SetSnapshot(snapshot);
+            return options;
+        }
+
+        /// <summary>
+        /// Lazily creates the snapshot-bound <see cref="ReadOptions"/> shared by all column iterator managers.
+        /// </summary>
+        /// <remarks>
+        /// These iterators must not be tailing: tailing iterators
+        /// ignore the snapshot and would observe writes made after it.
+        /// They serve one-off sequential scans, so the blocks they read are kept out of the block cache,
+        /// where they would only evict the working set of other readers.
+        /// </remarks>
+        private ReadOptions GetOrCreateReadAheadReadOptions()
+        {
+            ReadOptions? options = Volatile.Read(ref _readAheadReadOptions);
+            if (options is not null) return options;
+
+            ReadOptions created = CreateReadOptions(_columnsDb, _snapshot);
+            created.SetReadaheadSize(_columnsDb.ReadAheadSize);
+            created.SetFillCache(false);
+
+            options = Interlocked.CompareExchange(ref _readAheadReadOptions, created, null);
+            if (options is not null)
+            {
+                created.Dispose();
+                return options;
+            }
+
+            return created;
         }
 
         public IReadOnlyKeyValueStore GetColumn(T key)
@@ -275,18 +310,18 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
+            // Iterators pin the snapshot's resources — tear the managers down before releasing anything they read through.
+            foreach (RocksDbReader? reader in _readers)
+            {
+                reader?.IteratorManager?.Dispose();
+            }
+
             // Explicitly destroy native ReadOptions handles to prevent finalizer queue buildup.
-            // GC.SuppressFinalize prevents the finalizer from running on already-destroyed handles.
-            DestroyReadOptions(_sharedReadOptions);
-            DestroyReadOptions(_sharedCacheMissReadOptions);
+            _sharedReadOptions.Dispose();
+            _sharedCacheMissReadOptions.Dispose();
+            Interlocked.Exchange(ref _readAheadReadOptions, null)?.Dispose();
 
             _snapshot.Dispose();
-        }
-
-        private void DestroyReadOptions(ReadOptions options)
-        {
-            _rocksDbNative.rocksdb_readoptions_destroy(options.Handle);
-            GC.SuppressFinalize(options);
         }
 
         // Non-boxing enum-to-int conversion. JIT eliminates dead branches at

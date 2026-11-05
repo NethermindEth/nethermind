@@ -26,11 +26,10 @@ public sealed class NodeStorageCache
         return _cache.GetOrAdd(in nodeKey, tryLoadRlp);
     }
 
-    public bool ClearCaches()
+    /// <summary>Disables and clears the cache.</summary>
+    public void ClearCaches()
     {
-        bool wasEnabled = _enabled;
         _enabled = false;
         _cache.Clear();
-        return wasEnabled;
     }
 }

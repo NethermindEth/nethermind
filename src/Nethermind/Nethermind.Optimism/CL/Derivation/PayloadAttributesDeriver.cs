@@ -95,13 +95,14 @@ public class PayloadAttributesDeriver(
     {
         OptimismPayloadAttributes payload = new()
         {
-            GasLimit = (long)systemConfig.GasLimit,
+            GasLimit = systemConfig.GasLimit,
             NoTxPool = true,
             ParentBeaconBlockRoot = l1Origin.ParentBeaconBlockRoot,
             Timestamp = timestamp,
             Withdrawals = [],
             PrevRandao = l1Origin.MixHash,
             EIP1559Params = systemConfig.EIP1559Params,
+            MinBaseFee = systemConfig.MinBaseFee,
             SuggestedFeeRecipient = SequencerFeeVault,
             Transactions = txs
         };

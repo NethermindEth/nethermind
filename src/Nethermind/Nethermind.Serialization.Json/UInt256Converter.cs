@@ -7,7 +7,6 @@ using System.Buffers.Text;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -19,11 +18,21 @@ namespace Nethermind.Serialization.Json;
 
 public class UInt256Converter : JsonConverter<UInt256>
 {
-    public override UInt256 Read(
-        ref Utf8JsonReader reader,
-        Type typeToConvert,
-        JsonSerializerOptions options) =>
-        ReadInternal(ref reader, JsonTokenType.String);
+    private readonly bool _strictQuantity;
+
+    public UInt256Converter() { }
+    public UInt256Converter(bool strictQuantity) => _strictQuantity = strictQuantity;
+
+    public override UInt256 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (_strictQuantity)
+        {
+            if (reader.TokenType != JsonTokenType.String) ThrowJsonException();
+            ReadOnlySpan<byte> s = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+            QuantityValidator.AssertNoLeadingZero(s);
+        }
+        return ReadInternal(ref reader, JsonTokenType.String);
+    }
 
     // length of UIn256.MaxValue decimal string "115792089237316195423570985008687907853269984665640564039457584007913129639935"
     const int maxLength = 78;
@@ -83,6 +92,8 @@ public class UInt256Converter : JsonConverter<UInt256>
         if (hex.StartsWith("0x"u8))
         {
             hex = hex[2..];
+            if (hex.IsEmpty) ThrowJsonException();     // bare "0x" is not a valid QUANTITY
+            if (hex.Length > 64) ThrowJsonException(); // more than 256 bits
         }
         else if (hex[0] != (byte)'0')
         {
@@ -104,17 +115,15 @@ public class UInt256Converter : JsonConverter<UInt256>
         UInt256 value,
         JsonSerializerOptions options)
     {
-        NumberConversion conversion = ForcedNumberConversion.GetFinalConversion();
+        NumberConversion conversion = ForcedNumberConversion.Value;
         switch (conversion)
         {
             case NumberConversion.Hex:
                 HexWriter.WriteUInt256HexRawValue(writer, value);
                 break;
             case NumberConversion.Decimal:
-                writer.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
-                break;
             case NumberConversion.Raw:
-                writer.WriteStringValue(((BigInteger)value).ToString(CultureInfo.InvariantCulture));
+                WriteDecimalValue(writer, value, conversion);
                 break;
             case NumberConversion.ZeroPaddedHex:
                 HexWriter.WriteUInt256HexRawValue(writer, value, zeroPadded: true);
@@ -129,17 +138,15 @@ public class UInt256Converter : JsonConverter<UInt256>
 
     public override void WriteAsPropertyName(Utf8JsonWriter writer, UInt256 value, JsonSerializerOptions options)
     {
-        NumberConversion conversion = ForcedNumberConversion.GetFinalConversion();
+        NumberConversion conversion = ForcedNumberConversion.Value;
         switch (conversion)
         {
             case NumberConversion.Hex:
                 HexWriter.WriteUInt256HexPropertyName(writer, value);
                 break;
             case NumberConversion.Decimal:
-                writer.WritePropertyName(value.ToString(CultureInfo.InvariantCulture));
-                break;
             case NumberConversion.Raw:
-                writer.WritePropertyName(((BigInteger)value).ToString(CultureInfo.InvariantCulture));
+                WriteDecimalPropertyName(writer, value);
                 break;
             case NumberConversion.ZeroPaddedHex:
                 HexWriter.WriteUInt256HexPropertyName(writer, value, zeroPadded: true);
@@ -149,9 +156,25 @@ public class UInt256Converter : JsonConverter<UInt256>
         }
     }
 
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowJsonException()
+    private static void WriteDecimalValue(Utf8JsonWriter writer, UInt256 value, NumberConversion conversion)
     {
-        throw new JsonException();
+        Span<byte> buffer = stackalloc byte[maxLength];
+        bool formatted = value.TryFormat(buffer, out int written, provider: CultureInfo.InvariantCulture);
+        Debug.Assert(formatted);
+        if (conversion == NumberConversion.Decimal)
+            writer.WriteRawValue(buffer[..written]);
+        else
+            writer.WriteStringValue(buffer[..written]);
     }
+
+    private static void WriteDecimalPropertyName(Utf8JsonWriter writer, UInt256 value)
+    {
+        Span<byte> buffer = stackalloc byte[maxLength];
+        bool formatted = value.TryFormat(buffer, out int written, provider: CultureInfo.InvariantCulture);
+        Debug.Assert(formatted);
+        writer.WritePropertyName(buffer[..written]);
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowJsonException() => throw new JsonException();
 }

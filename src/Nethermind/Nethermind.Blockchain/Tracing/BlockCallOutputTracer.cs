@@ -10,7 +10,7 @@ namespace Nethermind.Blockchain.Tracing;
 
 public class BlockCallOutputTracer : BlockTracer
 {
-    private readonly Dictionary<Hash256, CallOutputTracer> _results = new();
+    private readonly Dictionary<Hash256, CallOutputTracer> _results = [];
 
     public override ITxTracer StartNewTxTrace(Transaction? tx) =>
         _results[tx?.Hash ?? Keccak.Zero] = new CallOutputTracer();

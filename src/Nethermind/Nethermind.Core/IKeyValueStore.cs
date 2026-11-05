@@ -78,7 +78,7 @@ namespace Nethermind.Core
         MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             byte[]? data = Get(key, flags);
-            return data is null or { Length: 0 } ? null : new ArrayMemoryManager(data);
+            return data is null or { Length: 0 } ? null : ArrayMemoryManager.From(data);
         }
     }
 
@@ -117,12 +117,66 @@ namespace Nethermind.Core
         void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None);
     }
 
+    /// <summary>Drops a whole key range in one operation, at a cost independent of how many keys it holds.</summary>
+    public interface IRangeRemovableKeyValueStore : IWriteOnlyKeyValueStore
+    {
+        /// <summary>Removes every key in <c>[firstKeyInclusive, lastKeyExclusive)</c>. Exact and durable, but says
+        /// nothing about when their storage comes back - see <see cref="ReclaimRange"/>.</summary>
+        void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+
+        /// <summary>Gives back the storage still held by a range already passed to <see cref="RemoveRange"/>. Best
+        /// effort: frees whole units lying entirely inside it, leaving the rest to compaction. Calling it over a
+        /// range that still holds live keys is a caller error.</summary>
+        void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+    }
+
     public interface ISortedKeyValueStore : IReadOnlyKeyValueStore
     {
         byte[]? FirstKey { get; }
         byte[]? LastKey { get; }
 
-        ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+        ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None);
+
+        /// <summary>
+        /// Finds the first <c>key</c> with <c>lowerBoundIncl &lt;= key &lt; upperBoundExcl</c>,
+        /// or returns <c>false</c> when there is none.
+        /// </summary>
+        /// <remarks>
+        /// <paramref name="keyLength"/> and <paramref name="valueLength"/> always report the stored lengths.
+        /// A buffer too short for its part is left untouched instead of throwing.
+        /// </remarks>
+        bool TryGetCeiling(
+            scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,
+            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength
+        )
+        {
+            using ISortedView view = GetViewBetween(lowerBoundIncl, upperBoundExcl);
+            if (!view.MoveNext())
+            {
+                keyLength = 0;
+                valueLength = 0;
+                return false;
+            }
+
+            ReadOnlySpan<byte> key = view.CurrentKey;
+            ReadOnlySpan<byte> value = view.CurrentValue;
+            keyLength = key.Length;
+            valueLength = value.Length;
+            key.TryCopyTo(keyBuffer);
+            value.TryCopyTo(valueBuffer);
+            return true;
+        }
+    }
+
+    /// <summary>Provides ceiling reads whose key and value come from one point-in-time view.</summary>
+    public interface ISnapshotSortedKeyValueStore : ISortedKeyValueStore
+    {
+        /// <summary>Finds the first key in the range using a fresh view, or the store's pinned snapshot.</summary>
+        /// <remarks>Reports the stored lengths. A buffer too short for its part remains unchanged.
+        /// Neither buffer changes on a miss. The lower bound is inclusive; the upper bound is exclusive.</remarks>
+        bool TryGetCeilingInSnapshot(
+            scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive,
+            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength);
     }
 
     /// <summary>
@@ -178,6 +232,24 @@ namespace Nethermind.Core
         public ReadOnlySpan<byte> CurrentValue { get; }
     }
 
+    /// <summary>A sorted view that can reposition within its bounds.</summary>
+    public interface ISeekableSortedView : ISortedView
+    {
+        /// <summary>Positions the view at the first key at or after <paramref name="key"/>, at any point of the
+        /// iteration; a target below the view's lower bound lands on the lower bound. Returns false when no such key
+        /// remains below the view's upper bound.</summary>
+        public bool SeekTo(ReadOnlySpan<byte> key);
+    }
+
+    /// <summary>A sorted view whose bounds can change without replacing its snapshot.</summary>
+    public interface IRebindableSortedView : ISeekableSortedView
+    {
+        /// <summary>Attempts to set new bounds. On success, the next <see cref="ISortedView.MoveNext"/>
+        /// seeks to the new lower bound using the original snapshot. Returns false when the caller must create
+        /// a new view.</summary>
+        bool TryResetBounds(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+    }
+
     [Flags]
     public enum ReadFlags
     {
@@ -200,6 +272,9 @@ namespace Nethermind.Core
 
         // Used for full pruning db to skip duplicate read
         SkipDuplicateRead = 16,
+
+        /// <summary>Requests a view that supports repeated bound changes when the store provides one.</summary>
+        HintRepeatedReads = 32,
     }
 
     [Flags]

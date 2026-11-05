@@ -27,15 +27,9 @@ public class MergeBlockProducerRunner : IBlockProducerRunner
         postMergeProducerRunner.BlockProduced += OnBlockProduced;
     }
 
-    private void OnBlockProduced(object? sender, BlockEventArgs e)
-    {
-        BlockProduced?.Invoke(this, e);
-    }
+    private void OnBlockProduced(object? sender, BlockEventArgs e) => BlockProduced?.Invoke(this, e);
 
-    private void OnSwitchHappened(object? sender, EventArgs e)
-    {
-        _preMergeProducerRunner?.StopAsync();
-    }
+    private void OnSwitchHappened(object? sender, EventArgs e) => _preMergeProducerRunner?.StopAsync();
 
     public void Start()
     {
@@ -49,16 +43,13 @@ public class MergeBlockProducerRunner : IBlockProducerRunner
     public async Task StopAsync()
     {
         await _postMergeProducerRunner.StopAsync();
-        if (_poSSwitcher.HasEverReachedTerminalBlock() && HasPreMergeProducerRunner)
+        if (HasPreMergeProducerRunner)
             await _preMergeProducerRunner!.StopAsync();
     }
 
-    public bool IsProducingBlocks(ulong? maxProducingInterval)
-    {
-        return _poSSwitcher.HasEverReachedTerminalBlock() || !HasPreMergeProducerRunner
+    public bool IsProducingBlocks(ulong? maxProducingInterval) => _poSSwitcher.HasEverReachedTerminalBlock() || !HasPreMergeProducerRunner
             ? _postMergeProducerRunner.IsProducingBlocks(maxProducingInterval)
             : _preMergeProducerRunner!.IsProducingBlocks(maxProducingInterval);
-    }
 
     public event EventHandler<BlockEventArgs>? BlockProduced;
 }

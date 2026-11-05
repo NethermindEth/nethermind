@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using NUnit.Framework;
@@ -14,8 +16,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void RoundTrip_number()
         {
-            var ethMessage =
-                new Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage
+            Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage ethMessage =
+                new()
                 {
                     StartBlockHash = null,
                     StartBlockNumber = 9999,
@@ -24,18 +26,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                     Reverse = 0
                 };
 
-            var message = new GetBlockHeadersMessage(1111, ethMessage);
+            GetBlockHeadersMessage message = new(1111, ethMessage);
 
             GetBlockHeadersMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, message, "ca820457c682270f050580");
+            SerializerTester.Test(serializer, message, "ca820457c682270f050580");
         }
 
         //test from https://github.com/ethereum/EIPs/blob/master/EIPS/eip-2481.md
         [Test]
         public void RoundTrip_hash()
         {
-            using var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage
+            using Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage ethMessage = new()
             {
                 StartBlockHash = new Hash256("0x00000000000000000000000000000000000000000000000000000000deadc0de"),
                 StartBlockNumber = 0,
@@ -44,11 +46,27 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 Reverse = 0
             };
 
-            var message = new GetBlockHeadersMessage(1111, ethMessage);
+            GetBlockHeadersMessage message = new(1111, ethMessage);
 
             GetBlockHeadersMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, message, "e8820457e4a000000000000000000000000000000000000000000000000000000000deadc0de050580");
+            SerializerTester.Test(serializer, message, "e8820457e4a000000000000000000000000000000000000000000000000000000000deadc0de050580");
+
+            byte[] bytes = serializer.SerializeToArray(message);
+            using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(bytes).AsDisposable();
+            using GetBlockHeadersMessage decoded = serializer.Deserialize(buffer);
+            Array.Clear(bytes);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.RequestId, Is.EqualTo(message.RequestId));
+                Assert.That(decoded.EthMessage.StartBlockHash, Is.EqualTo(ethMessage.StartBlockHash),
+                    "The decoded selector must own its hash after the input buffer changes.");
+                Assert.That(decoded.EthMessage.MaxHeaders, Is.EqualTo(ethMessage.MaxHeaders));
+                Assert.That(decoded.EthMessage.Skip, Is.EqualTo(ethMessage.Skip));
+                Assert.That(decoded.EthMessage.Reverse, Is.EqualTo(ethMessage.Reverse));
+                Assert.That(buffer.ReadableBytes, Is.Zero);
+            }
         }
     }
 }

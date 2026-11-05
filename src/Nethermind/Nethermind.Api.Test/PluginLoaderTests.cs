@@ -3,12 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
@@ -19,13 +19,45 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Api.Test;
 
 public class PluginLoaderTests
 {
+    [Test]
+    [NonParallelizable]
+    public void Assembly_load_failure_retains_exception_only_without_masking([Values] bool maskSensitiveData)
+    {
+        bool previous = SensitiveLogMasking.Enabled;
+        try
+        {
+            SensitiveLogMasking.Enabled = true;
+            string assemblyPath = Path.Combine(Path.GetTempPath(), $"missing-plugin-{Guid.NewGuid():N}.dll");
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            fileSystem.Directory.Exists(Arg.Any<string>()).Returns(true);
+            fileSystem.Directory.GetFiles(Arg.Any<string>(), "*.dll").Returns([assemblyPath]);
+            fileSystem.Path.GetFileNameWithoutExtension(assemblyPath).Returns("missing-plugin");
+            TestErrorLogManager logs = new();
+
+            PluginLoader loader = new(string.Empty, fileSystem, logs.GetClassLogger<PluginLoaderTests>());
+            loader.Load();
+
+            Assert.That(logs.Errors, Is.Empty);
+            SensitiveLogMasking.Enabled = maskSensitiveData;
+            loader.LogDiagnostics();
+
+            TestErrorLogManager.Error error = logs.Errors.Single();
+            Assert.That(error.Exception is not null, Is.EqualTo(!maskSensitiveData));
+            loader.LogDiagnostics();
+            Assert.That(logs.Errors, Has.Count.EqualTo(1));
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+        }
+    }
+
     [Test]
     public void full_lexicographical_order()
     {
@@ -39,15 +71,15 @@ public class PluginLoaderTests
             typeof(TestPlugin));
         loader.Load();
         loader.OrderPlugins(new PluginConfig { PluginOrder = [] });
-        var expected = new List<Type>
-        {
+        List<Type> expected =
+        [
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
             typeof(EthashPlugin),
             typeof(HivePlugin),
             typeof(NethDevPlugin),
             typeof(TestPlugin)
-        };
+        ];
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
@@ -67,15 +99,15 @@ public class PluginLoaderTests
             new PluginConfig { PluginOrder = ["Hive", "Test", "NethDev", "Ethash", "Clique", "Aura"] };
         loader.OrderPlugins(pluginConfig);
 
-        var expected = new List<Type>
-        {
+        List<Type> expected =
+        [
             typeof(HivePlugin),
             typeof(TestPlugin),
             typeof(NethDevPlugin),
             typeof(EthashPlugin),
             typeof(CliquePlugin),
             typeof(AuRaPlugin),
-        };
+        ];
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
@@ -83,7 +115,7 @@ public class PluginLoaderTests
     public void throws_when_multiple_consensus_plugin()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        PluginLoader loader = new PluginLoader(
+        PluginLoader loader = new(
             string.Empty,
             fileSystem,
             new TestLogManager().GetClassLogger<PluginLoaderTests>(),
@@ -98,10 +130,10 @@ public class PluginLoaderTests
         loader.OrderPlugins(new PluginConfig { PluginOrder = [] });
 
         IConfigProvider configProvider = new ConfigProvider();
-        ChainSpec chainSpec = new ChainSpec();
+        ChainSpec chainSpec = new();
         chainSpec.SealEngineType = SealEngineType.AuRa;
 
-        loader.LoadPlugins(configProvider, chainSpec).Should().Throws<InvalidOperationException>();
+        Assert.That(async () => await loader.LoadPlugins(configProvider, chainSpec), Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -115,15 +147,15 @@ public class PluginLoaderTests
             new PluginConfig() { PluginOrder = ["Hive", "NethDev", "Ethash"] };
         loader.OrderPlugins(pluginConfig);
 
-        var expected = new List<Type>
-        {
+        List<Type> expected =
+        [
             typeof(HivePlugin),
             typeof(NethDevPlugin),
             typeof(EthashPlugin),
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
             typeof(TestPlugin)
-        };
+        ];
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
@@ -138,21 +170,21 @@ public class PluginLoaderTests
             new PluginConfig();
         loader.OrderPlugins(pluginConfig);
 
-        var expected = new List<Type>
-        {
+        List<Type> expected =
+        [
             typeof(HealthChecksPlugin),
             typeof(EthashPlugin),
             typeof(MergePlugin),
             typeof(HivePlugin),
             typeof(NethDevPlugin)
-        };
+        ];
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
     [Test]
     public async Task Can_PassInConfig_And_OnlyLoadEnabledPlugins()
     {
-        PluginLoader loader = new PluginLoader(string.Empty, Substitute.For<IFileSystem>(), new TestLogManager().GetClassLogger<PluginLoaderTests>(),
+        PluginLoader loader = new(string.Empty, Substitute.For<IFileSystem>(), new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(TestPlugin1), typeof(TestPlugin2));
         loader.Load();
 
@@ -160,11 +192,13 @@ public class PluginLoaderTests
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
         initConfig.DiscoveryEnabled = true;
         initConfig.PeerManagerEnabled = false;
-        ChainSpec chainSpec = new ChainSpec();
+        ChainSpec chainSpec = new();
         chainSpec.ChainId = 999;
 
         IList<INethermindPlugin> loadedPlugins = await loader.LoadPlugins(configProvider, chainSpec);
-        loadedPlugins.Should().BeEquivalentTo([new TestPlugin1(chainSpec, initConfig)]);
+        Assert.That(loadedPlugins, Has.Count.EqualTo(1));
+        Assert.That(loadedPlugins[0], Is.TypeOf<TestPlugin1>());
+        Assert.That(loadedPlugins[0].Enabled, Is.True);
     }
 
     private class TestPlugin1(ChainSpec chainSpec, IInitConfig initConfig) : INethermindPlugin
@@ -192,15 +226,5 @@ public class PluginLoaderTests
         public string Description => "TestPlugin2";
         public string Author => "TestPlugin2";
         public bool Enabled => true;
-
-        public IBlockProducer InitBlockProducer()
-        {
-            throw new NotImplementedException();
-        }
-
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-        {
-            throw new NotImplementedException();
-        }
     }
 }

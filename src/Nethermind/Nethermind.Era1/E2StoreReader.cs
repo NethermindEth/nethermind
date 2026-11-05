@@ -7,10 +7,12 @@ using System.Security.Cryptography;
 using CommunityToolkit.HighPerformance;
 using Microsoft.IO;
 using Microsoft.Win32.SafeHandles;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Snappier;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1;
 
@@ -20,14 +22,14 @@ public class E2StoreReader : IDisposable
     private const int IndexSectionCount = 8;
     private const int IndexSectionStartBlock = 8;
     private const int IndexOffsetSize = 8;
-    private const int ValueSizeLimit = 1024 * 1024 * 50;
+    private const int ValueSizeLimit = 50 * MemorySizes.MiB;
 
     private readonly SafeFileHandle _file;
 
-    // Read these two value ahead of time instead of fetching the value everything it is needed to reduce
+    // Read these two values ahead of time instead of fetching the value every time it is needed to reduce
     // the page fault when looking up.
-    private long? _startBlock;
-    private long _blockCount;
+    private ulong? _startBlock;
+    private ulong _blockCount;
     private readonly long _fileLength;
 
     public E2StoreReader(string filePath)
@@ -42,7 +44,7 @@ public class E2StoreReader : IDisposable
 
         int length = (int)entry.Length;
         using ArrayPoolListRef<byte> buffer = new(length, length);
-        RandomAccess.Read(_file, buffer.AsSpan(), position + HeaderSize);
+        ReadExactly(position + HeaderSize, buffer.AsSpan());
         value = decoder(buffer.AsMemory());
         return (long)(entry.Length + HeaderSize);
     }
@@ -56,13 +58,18 @@ public class E2StoreReader : IDisposable
 
     public Entry ReadEntry(long position, ushort? expectedType, CancellationToken token = default)
     {
-        ushort type = ReadUInt16(position);
-        uint length = ReadUInt32(position + 2);
-        ushort reserved = ReadUInt16(position + 6);
+        if (position < 0 || position > _fileLength - HeaderSize)
+            throw new EraFormatException($"Entry header at position {position} extends past the end of the file ({_fileLength} bytes).");
 
-        Entry entry = new Entry(type, length);
+        Span<byte> header = stackalloc byte[HeaderSize];
+        ReadExactly(position, header);
+        ushort type = BinaryPrimitives.ReadUInt16LittleEndian(header);
+        uint length = BinaryPrimitives.ReadUInt32LittleEndian(header[2..]);
+        ushort reserved = BinaryPrimitives.ReadUInt16LittleEndian(header[6..]);
+
+        Entry entry = new(type, length);
         if (expectedType.HasValue && entry.Type != expectedType) throw new EraException($"Expected an entry of type {expectedType}, but got {entry.Type}.");
-        if (entry.Length + (ulong)position > (ulong)_fileLength)
+        if (entry.Length > (ulong)(_fileLength - position - HeaderSize))
             throw new EraFormatException($"Entry has an invalid length of {entry.Length} at position {position}, which is longer than stream length of {_fileLength}.");
         if (entry.Length > ValueSizeLimit)
             throw new EraException($"Entry exceeds the maximum size limit of {ValueSizeLimit}. Entry is {entry.Length}.");
@@ -74,7 +81,7 @@ public class E2StoreReader : IDisposable
     private async Task<T> ReadEntryValueAsSnappy<T>(long offset, ulong length, Func<Memory<byte>, T> decoder, CancellationToken cancellation = default)
     {
         using ArrayPoolList<byte> inputBuffer = new((int)length, (int)length);
-        RandomAccess.Read(_file, inputBuffer.AsSpan(), offset);
+        ReadExactly(offset, inputBuffer.AsSpan());
         Stream inputStream = inputBuffer.AsMemory().AsStream();
 
         await using SnappyStream decompressor = new(inputStream, CompressionMode.Decompress, true);
@@ -89,12 +96,9 @@ public class E2StoreReader : IDisposable
         return decoder(segment);
     }
 
-    public void Dispose()
-    {
-        _file.Dispose();
-    }
+    public void Dispose() => _file.Dispose();
 
-    public long BlockOffset(long blockNumber)
+    public long BlockOffset(ulong blockNumber)
     {
         EnsureIndexAvailable();
 
@@ -103,7 +107,8 @@ public class E2StoreReader : IDisposable
 
         // <offset> * 8 + <count>
         int indexLength = (int)_blockCount * IndexOffsetSize + IndexSectionCount;
-        long offsetLocation = indexLength - (long)(blockNumber - _startBlock!) * IndexOffsetSize;
+
+        long offsetLocation = indexLength - (long)(blockNumber - _startBlock!.Value) * IndexOffsetSize;
 
         // <header> + <start block> + <the rest of the index>
         int indexSizeIncludingHeader = HeaderSize + IndexSectionStartBlock + indexLength;
@@ -119,8 +124,13 @@ public class E2StoreReader : IDisposable
 
         if (_fileLength < 32) throw new EraFormatException("Invalid era file. Too small to contain index.");
 
-        // Read the block count
-        _blockCount = (long)ReadUInt64(_fileLength - IndexSectionCount);
+        _blockCount = ReadUInt64(_fileLength - IndexSectionCount);
+
+        ulong maxBlockCount = (ulong)(_fileLength - IndexSectionStartBlock - IndexSectionCount - HeaderSize) / IndexOffsetSize;
+        if (_blockCount == 0 || _blockCount > maxBlockCount || _blockCount > int.MaxValue)
+        {
+            throw new EraFormatException($"Invalid block count {_blockCount} in index (file length {_fileLength} is too small).");
+        }
 
         // <starting block> + <offsets> * 8 + <count>
         int indexLength = IndexSectionStartBlock + (int)_blockCount * IndexOffsetSize + IndexSectionCount;
@@ -128,10 +138,10 @@ public class E2StoreReader : IDisposable
         // Verify that its a block index
         _ = ReadEntry(_fileLength - indexLength - HeaderSize, EntryTypes.BlockIndex);
 
-        _startBlock = (long?)ReadUInt64(_fileLength - indexLength);
+        _startBlock = ReadUInt64(_fileLength - indexLength);
     }
 
-    public long First
+    public ulong First
     {
         get
         {
@@ -140,7 +150,14 @@ public class E2StoreReader : IDisposable
         }
     }
 
-    public long LastBlock => First + _blockCount - 1;
+    public ulong LastBlock
+    {
+        get
+        {
+            EnsureIndexAvailable();
+            return First + _blockCount - 1;
+        }
+    }
 
     public long AccumulatorOffset
     {
@@ -158,7 +175,7 @@ public class E2StoreReader : IDisposable
         }
     }
 
-    public long BlockCount
+    public ulong BlockCount
     {
         get
         {
@@ -167,16 +184,18 @@ public class E2StoreReader : IDisposable
         }
     }
 
-    public ValueHash256 CalculateChecksum()
+    public ValueHash256 CalculateChecksum() => ComputeChecksum(_file, _fileLength);
+
+    public static ValueHash256 ComputeChecksum(SafeFileHandle file, long fileLength)
     {
         using IncrementalHash sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         const int bufferSize = 81920;
         byte[] buffer = new byte[bufferSize];
         long offset = 0;
-        while (offset < _fileLength)
+        while (offset < fileLength)
         {
-            int toRead = (int)Math.Min(bufferSize, _fileLength - offset);
-            int read = RandomAccess.Read(_file, buffer.AsSpan(0, toRead), offset);
+            int toRead = (int)Math.Min(bufferSize, fileLength - offset);
+            int read = RandomAccess.Read(file, buffer.AsSpan(0, toRead), offset);
             if (read == 0) break;
             sha.AppendData(buffer, 0, read);
             offset += read;
@@ -184,31 +203,33 @@ public class E2StoreReader : IDisposable
         return new ValueHash256(sha.GetHashAndReset());
     }
 
-    private ushort ReadUInt16(long position)
-    {
-        Span<byte> buff = stackalloc byte[2];
-        RandomAccess.Read(_file, buff, position);
-        return BinaryPrimitives.ReadUInt16LittleEndian(buff);
-    }
-
-    private uint ReadUInt32(long position)
-    {
-        Span<byte> buff = stackalloc byte[4];
-        RandomAccess.Read(_file, buff, position);
-        return BinaryPrimitives.ReadUInt32LittleEndian(buff);
-    }
-
     private long ReadInt64(long position)
     {
         Span<byte> buff = stackalloc byte[8];
-        RandomAccess.Read(_file, buff, position);
+        ReadExactly(position, buff);
         return BinaryPrimitives.ReadInt64LittleEndian(buff);
     }
 
     private ulong ReadUInt64(long position)
     {
         Span<byte> buff = stackalloc byte[8];
-        RandomAccess.Read(_file, buff, position);
+        ReadExactly(position, buff);
         return BinaryPrimitives.ReadUInt64LittleEndian(buff);
+    }
+
+    // RandomAccess.Read may return fewer bytes than requested, so a truncated file has to be rejected
+    // here rather than decoded from a partially filled (and possibly pooled, non-zeroed) buffer.
+    private void ReadExactly(long offset, Span<byte> destination)
+    {
+        int totalRead = 0;
+        while (totalRead < destination.Length)
+        {
+            int read = RandomAccess.Read(_file, destination[totalRead..], offset + totalRead);
+            if (read <= 0) break;
+            totalRead += read;
+        }
+
+        if (totalRead != destination.Length)
+            throw new EraFormatException($"Unexpected end of file: expected {destination.Length} bytes at offset {offset}, but got {totalRead}.");
     }
 }

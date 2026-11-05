@@ -32,5 +32,8 @@
   },
   "Optimism": {
     "SequencerUrl": "https://sepolia-sequencer.optimism.io"
+  },
+  "FlatDb": {
+    "PersistenceWriteBufferFloor": 67108864
   }
 }

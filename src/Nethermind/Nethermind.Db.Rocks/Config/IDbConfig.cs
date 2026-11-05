@@ -1,15 +1,22 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Config;
 
 namespace Nethermind.Db.Rocks.Config;
 
 [ConfigCategory(HiddenFromDocs = true)]
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)]
 public interface IDbConfig : IConfig
 {
+    [ConfigItem(Description = "The size of the block cache shared by the databases that have no block cache of their own, in bytes. The flat state account and storage columns use `FlatDb.BlockCacheSizeBudget` instead.", DefaultValue = "536870912")]
     ulong SharedBlockCacheSize { get; set; }
-    public bool SkipMemoryHintSetting { get; set; }
+
+    [Obsolete("Has no effect.")]
+    [ConfigItem(Description = "Deprecated. Has no effect.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool SkipMemoryHintSetting { get; set; }
 
     /// <summary>
     /// Enables DB Statistics - https://github.com/facebook/rocksdb/wiki/Statistics
@@ -33,7 +40,10 @@ public interface IDbConfig : IConfig
     bool? VerifyChecksum { get; set; }
     bool EnableFileWarmer { get; set; }
     double CompressibilityHint { get; set; }
-    bool FlushOnExit { get; set; }
+    [ConfigItem(
+        Description = "How RocksDB is flushed on shutdown. 'None' skips flushing; 'WalOnly' flushes only the write-ahead log (fast, recovered via WAL replay on restart); 'Full' also materializes memtables into SST files (slower).",
+        DefaultValue = "WalOnly")]
+    FlushOnExitMode FlushOnExit { get; set; }
 
     string BadBlocksDbRocksDbOptions { get; set; }
     string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
@@ -80,15 +90,12 @@ public interface IDbConfig : IConfig
     string MetadataDbRocksDbOptions { get; set; }
     string? MetadataDbAdditionalRocksDbOptions { get; set; }
 
-    string BloomDbRocksDbOptions { get; set; }
-    string? BloomDbAdditionalRocksDbOptions { get; set; }
-
     ulong? CodeDbRowCacheSize { get; set; }
     string CodeDbRocksDbOptions { get; set; }
     string? CodeDbAdditionalRocksDbOptions { get; set; }
 
 
-    [ConfigItem(Description = "Write buffer size for state db. This should be at least 20% of pruning cache or during persist, persist is not able to be done asynchronously.")]
+    [ConfigItem(Description = "Write buffer size for state db. This should be at least 20% of pruning cache or during persist, persist is not able to be done asynchronously.", DefaultValue = "64000000")]
     ulong StateDbWriteBufferSize { get; set; }
     ulong StateDbWriteBufferNumber { get; set; }
     bool? StateDbVerifyChecksum { get; set; }
@@ -146,6 +153,31 @@ public interface IDbConfig : IConfig
     string? FlatFallbackNodesDbRocksDbOptions { get; set; }
     string? FlatFallbackNodesDbAdditionalRocksDbOptions { get; set; }
 
-    string? PreimageDbRocksDbOptions { get; set; }
-    public string? PreimageDbAdditionalRocksDbOptions { get; set; }
+    /// <summary>
+    /// RocksDB options for every column of the flatHistory database (as-of-block state history). Defaults to LZ4
+    /// compression, 256 MB write buffers sized for the from-genesis capture replay, and
+    /// <c>optimize_filters_for_hits</c> — as-of reads are iterator floor-seeks that never consult the point bloom,
+    /// whose last-level memory cost would be prohibitive on a full archive.
+    /// </summary>
+    string FlatHistoryDbRocksDbOptions { get; set; }
+
+    /// <summary>Options appended after <see cref="FlatHistoryDbRocksDbOptions"/> (later keys win). Unset by default.</summary>
+    string? FlatHistoryDbAdditionalRocksDbOptions { get; set; }
+
+    /// <summary>
+    /// Options appended after <see cref="FlatHistoryDbRocksDbOptions"/> for the AvailableBlocks column (per-block
+    /// availability markers and the watermark). Defaults to 8 MB write buffers: the column is tiny, so the
+    /// replay-sized buffers of the two bulky value columns would be wasted on it.
+    /// </summary>
+    string? FlatHistoryAvailableBlocksDbRocksDbOptions { get; set; }
+
+    /// <summary>
+    /// Options appended after <see cref="FlatHistoryDbRocksDbOptions"/> for the StorageClears column (per-block
+    /// storage-clear markers for self-destructed accounts). Defaults to 8 MB write buffers, like
+    /// <see cref="FlatHistoryAvailableBlocksDbRocksDbOptions"/>.
+    /// </summary>
+    string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; }
+
+    string? PersistedSnapshotCatalogDbRocksDbOptions { get; set; }
+    string? PersistedSnapshotCatalogDbAdditionalRocksDbOptions { get; set; }
 }

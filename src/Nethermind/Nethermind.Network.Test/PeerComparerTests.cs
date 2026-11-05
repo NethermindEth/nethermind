@@ -42,12 +42,15 @@ namespace Nethermind.Network.Test
 
             _statsManager.UpdateCurrentReputation(a, b, c);
 
-            Assert.That(_comparer.Compare(peerA, peerB), Is.EqualTo(-1));
-            Assert.That(_comparer.Compare(peerA, peerC), Is.EqualTo(1));
-            Assert.That(_comparer.Compare(peerB, peerC), Is.EqualTo(1));
-            Assert.That(_comparer.Compare(peerA, peerA), Is.EqualTo(0));
-            Assert.That(_comparer.Compare(peerB, peerB), Is.EqualTo(0));
-            Assert.That(_comparer.Compare(peerC, peerC), Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_comparer.Compare(peerA, peerB), Is.EqualTo(-1));
+                Assert.That(_comparer.Compare(peerA, peerC), Is.EqualTo(1));
+                Assert.That(_comparer.Compare(peerB, peerC), Is.EqualTo(1));
+                Assert.That(_comparer.Compare(peerA, peerA), Is.EqualTo(0));
+                Assert.That(_comparer.Compare(peerB, peerB), Is.EqualTo(0));
+                Assert.That(_comparer.Compare(peerC, peerC), Is.EqualTo(0));
+            }
         }
 
         [Test]
@@ -71,16 +74,19 @@ namespace Nethermind.Network.Test
             _statsManager.GetCurrentReputation(c).Returns(200);
             _statsManager.GetCurrentReputation(d).Returns(10);
 
-            List<Peer> peers = new() { peerA, peerB, peerC, peerD, peerE };
+            List<Peer> peers = [peerA, peerB, peerC, peerD, peerE];
 
             _statsManager.UpdateCurrentReputation(peers);
             peers.Sort(_comparer);
 
-            Assert.That(peers[0], Is.EqualTo(peerC));
-            Assert.That(peers[1], Is.EqualTo(peerA));
-            Assert.That(peers[2], Is.EqualTo(peerB));
-            Assert.That(peers[3], Is.EqualTo(peerD));
-            Assert.That(peers[4], Is.EqualTo(peerE));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peers[0], Is.EqualTo(peerC));
+                Assert.That(peers[1], Is.EqualTo(peerA));
+                Assert.That(peers[2], Is.EqualTo(peerB));
+                Assert.That(peers[3], Is.EqualTo(peerD));
+                Assert.That(peers[4], Is.EqualTo(peerE));
+            }
         }
     }
 }

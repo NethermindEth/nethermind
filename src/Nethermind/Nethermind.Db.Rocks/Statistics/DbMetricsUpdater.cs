@@ -3,24 +3,29 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
-using RocksDbSharp;
+using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks.Statistics;
 
-public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, RocksDb db, ColumnFamilyHandle? cf, IDbConfig dbConfig, ILogger logger)
+public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, RocksDb db, IColumnFamilyHandle? cf, IDbConfig dbConfig, bool isUsingSharedBlockCache, ILogger logger)
     : IDisposable
     where T : Options<T>
 {
     private Timer? _timer;
+    // Timer callbacks can overlap when an update outlasts the period.
+    private readonly Lock _statisticKeysLock = new();
+    private readonly Dictionary<string, StatisticKeys>.AlternateLookup<ReadOnlySpan<char>> _statisticKeys = new Dictionary<string, StatisticKeys>().GetAlternateLookup<ReadOnlySpan<char>>();
 
     public void StartUpdating()
     {
-        var offsetInSec = dbConfig.StatsDumpPeriodSec * 1.1;
+        double offsetInSec = dbConfig.StatsDumpPeriodSec * 1.1;
 
         _timer = new Timer(UpdateMetrics, null, TimeSpan.FromSeconds(offsetInSec), TimeSpan.FromSeconds(offsetInSec));
     }
@@ -30,61 +35,95 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         try
         {
             // It seems that currently there is no other option with .NET api to extract the compaction statistics than through the dumped string
-            var compactionStatsString = "";
-            compactionStatsString = cf is not null ? db.GetProperty("rocksdb.stats", cf) : db.GetProperty("rocksdb.stats");
+            string? compactionStatsString = cf is not null ? db.GetProperty("rocksdb.stats", cf) : db.GetProperty("rocksdb.stats");
             ProcessCompactionStats(compactionStatsString);
+            LogMemoryProfile();
 
             if (dbConfig.EnableDbStatistics)
             {
-                var dbStatsString = dbOptions.GetStatisticsString();
-                ProcessStatisticsString(dbStatsString);
-                // Currently we don't extract any DB statistics but we can do it here
+                string? dbStatsString = dbOptions.GetStatisticsString();
+                if (dbStatsString is not null)
+                {
+                    ProcessStatisticsString(dbStatsString);
+                }
+                else if (logger.IsWarn)
+                {
+                    logger.Warn($"No RocksDB statistics available for {dbName} database.");
+                }
             }
         }
         catch (Exception exc)
         {
-            logger.Error($"Error when updating metrics for {dbName} database.", exc);
+            if (logger.IsError) logger.Error($"Error when updating metrics for {dbName} database.", exc);
             // Maybe we would like to stop the _timer here to avoid logging the same error all over again?
         }
     }
 
+    /// <remarks>
+    /// Each line is either a ticker (<c>name COUNT : n</c>) or a histogram (<c>name P50 : x ... COUNT : n SUM : n</c>).
+    /// Runs on every timer tick, so the metric keys are cached per statistic name, keeping a steady-state pass
+    /// allocation-free.
+    /// </remarks>
     public void ProcessStatisticsString(string dbStatsString)
     {
-        foreach ((string Name, IDictionary<string, double> SubMetric) in ExtractStatsFromStatisticString(dbStatsString))
+        lock (_statisticKeysLock)
         {
-            // The metric can be of several type, usually just a counter, but sometime its a histogram,
-            // in which case we take both the sum and count.
-            if (SubMetric.TryGetValue("SUM", out var valueSum))
+            foreach (ValueMatch statMatch in ExtractStatsRegex2().EnumerateMatches(dbStatsString))
             {
-                Metrics.DbStats[($"{dbName}Db", $"{Name}.sum")] = valueSum;
-                Metrics.DbStats[($"{dbName}Db", $"{Name}.count")] = SubMetric["COUNT"];
-            }
-            else
-            {
-                Metrics.DbStats[($"{dbName}Db", Name)] = SubMetric["COUNT"];
+                ReadOnlySpan<char> stat = dbStatsString.AsSpan(statMatch.Index, statMatch.Length);
+                int nameEnd = stat.IndexOf(' ');
+                if (nameEnd < 0) continue;
+
+                ReadOnlySpan<char> subStats = stat[nameEnd..];
+                double? count = null;
+                double? sum = null;
+                foreach (ValueMatch subStatMatch in ExtractSubStatsRegex().EnumerateMatches(subStats))
+                {
+                    ReadOnlySpan<char> subStat = subStats.Slice(subStatMatch.Index, subStatMatch.Length);
+                    int separator = subStat.IndexOf(SubStatSeparator);
+                    ReadOnlySpan<char> subName = subStat[..separator];
+                    if (subName is "COUNT")
+                    {
+                        count = double.Parse(subStat[(separator + SubStatSeparator.Length)..], CultureInfo.InvariantCulture);
+                    }
+                    else if (subName is "SUM")
+                    {
+                        sum = double.Parse(subStat[(separator + SubStatSeparator.Length)..], CultureInfo.InvariantCulture);
+                    }
+                }
+
+                if (count is null) continue;
+
+                StatisticKeys keys = GetStatisticKeys(stat[..nameEnd]);
+                if (sum is not null)
+                {
+                    Metrics.DbStats[keys.Sum] = sum.Value;
+                    Metrics.DbStats[keys.Count] = count.Value;
+                }
+                else
+                {
+                    Metrics.DbStats[keys.Ticker] = count.Value;
+                }
             }
         }
     }
 
-    private static IEnumerable<(string Name, IDictionary<string, double> Value)> ExtractStatsFromStatisticString(string statsStr)
+    private StatisticKeys GetStatisticKeys(ReadOnlySpan<char> statisticName)
     {
-        MatchCollection matches = ExtractStatsRegex2().Matches(statsStr);
-
-        foreach (Match match in matches)
+        if (!_statisticKeys.TryGetValue(statisticName, out StatisticKeys keys))
         {
-            string statName = match.Groups["name"].Value;
-
-            IDictionary<string, double> metricDictionary = new Dictionary<string, double>();
-            foreach (Match metricMatch in ExtractSubStatsRegex().Matches(match.Groups["value"].Value))
-            {
-                metricDictionary[metricMatch.Groups["subName"].Value] = double.Parse(metricMatch.Groups["subValue"].Value);
-            }
-
-            yield return (statName, metricDictionary);
+            string name = statisticName.ToString();
+            string metricsDbName = $"{dbName}Db";
+            keys = new((metricsDbName, name), (metricsDbName, $"{name}.sum"), (metricsDbName, $"{name}.count"));
+            _statisticKeys.Dictionary[name] = keys;
         }
+
+        return keys;
     }
 
-    public void ProcessCompactionStats(string compactionStatsString)
+    private readonly record struct StatisticKeys((string, string) Ticker, (string, string) Sum, (string, string) Count);
+
+    public void ProcessCompactionStats(string? compactionStatsString)
     {
         if (!string.IsNullOrEmpty(compactionStatsString))
         {
@@ -93,7 +132,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         }
         else
         {
-            logger.Warn($"No RocksDB compaction stats available for {dbName} database.");
+            if (logger.IsWarn) logger.Warn($"No RocksDB compaction stats available for {dbName} database.");
         }
     }
 
@@ -146,7 +185,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
 
             if (match?.Success == true)
             {
-                for (var index = 1; index < match.Groups.Count; index++)
+                for (int index = 1; index < match.Groups.Count; index++)
                 {
                     Group group = match.Groups[index];
                     Metrics.DbStats[($"{dbName}Db", group.Name)] = long.Parse(group.Value);
@@ -154,7 +193,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
             }
             else
             {
-                logger.Warn($"Cannot find 'Interval compaction' stats for {dbName} database in the compaction stats dump:{Environment.NewLine}{compactionStatsDump}");
+                if (logger.IsWarn) logger.Warn($"Cannot find 'Interval compaction' stats for {dbName} database in the compaction stats dump:{Environment.NewLine}{compactionStatsDump}");
             }
         }
     }
@@ -163,14 +202,63 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         RegexOptions.Multiline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractIntervalRegex();
 
-    [GeneratedRegex("^(?<name>\\S+)(?<value>.*)$", RegexOptions.Multiline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
+    private const string SubStatSeparator = " : ";
+
+    [GeneratedRegex("^\\S+.*$", RegexOptions.Multiline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractStatsRegex2();
 
-    [GeneratedRegex("(?<subName>\\S+) \\: (?<subValue>\\S+)", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
+    [GeneratedRegex("\\S+ \\: \\S+", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractSubStatsRegex();
+
+    private void LogMemoryProfile()
+    {
+        if (!logger.IsDebug) return;
+
+        long Prop(string name)
+        {
+            string? v = cf is not null ? db.GetProperty(name, cf) : db.GetProperty(name);
+            return long.TryParse(v, out long parsed) ? parsed : -1;
+        }
+
+        const double MB = 1024 * 1024, GB = MB * 1024;
+        long tableReaders = Prop("rocksdb.estimate-table-readers-mem");
+        long memtables = Prop("rocksdb.cur-size-all-mem-tables");
+        long blockCache = Prop("rocksdb.block-cache-usage");
+        long blockCachePinned = Prop("rocksdb.block-cache-pinned-usage");
+        long liveSst = Prop("rocksdb.live-sst-files-size");
+        long numKeys = Prop("rocksdb.estimate-num-keys");
+        long liveFiles = 0;
+        // num_levels is configurable above the default 7; querying only levels 0..6 would undercount L7+.
+        int numLevels = dbOptions.GetNumLevels();
+        for (int level = 0; level < numLevels; level++)
+        {
+            liveFiles += Math.Max(0, Prop($"rocksdb.num-files-at-level{level}"));
+        }
+
+        // Prop() returns -1 when a property is unavailable; render those as "n/a" rather than "-0MB".
+        string Mb(long v) => v < 0 ? "n/a" : $"{v / MB:F0}MB";
+        string Gb(long v) => v < 0 ? "n/a" : $"{v / GB:F1}GB";
+
+        // A shared block cache reports the same process-wide total on every column, so label it rather than
+        // emit a per-column value that would multiply the footprint when the [RocksDbMem] lines are summed.
+        string blockCacheField = isUsingSharedBlockCache
+            ? $"block_cache={Mb(blockCache)}(shared)"
+            : $"block_cache={Mb(blockCache)}(pinned {Mb(blockCachePinned)})";
+
+        logger.Debug($"[RocksDbMem] {dbName}: table_readers={Mb(tableReaders)} memtables={Mb(memtables)} " +
+                    $"{blockCacheField} " +
+                    $"live_sst={Gb(liveSst)} sst_files={liveFiles} keys={(numKeys < 0 ? "n/a" : numKeys.ToString())}");
+    }
 
     public void Dispose()
     {
-        _timer?.Dispose();
+        Timer? timer = Interlocked.Exchange(ref _timer, null);
+        if (timer is null) return;
+
+        Task callbacksCompleted = timer.DisposeAsync().AsTask();
+        if (!callbacksCompleted.Wait(TimeSpan.FromSeconds(1)))
+        {
+            if (logger.IsWarn) logger.Warn($"DbMetricsUpdater for {dbName} did not complete within the timeout during disposal.");
+        }
     }
 }

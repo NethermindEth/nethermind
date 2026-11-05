@@ -1,0 +1,200 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Net;
+using System.Text;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
+using Nethermind.EraE.Proofs;
+using Nethermind.Logging;
+using NUnit.Framework;
+
+namespace Nethermind.EraE.Test.Proofs;
+
+[NonParallelizable]
+public class BeaconApiRootsProviderTests
+{
+    // Production code calls FetchBlockRootAsync first (headers endpoint), then FetchStateRootAsync.
+    // Responses are enqueued in that order.
+
+    private const string HeadersJson =
+        """{"data":{"root":"0xaabbccdd00000000000000000000000000000000000000000000000000000000"}}""";
+
+    private const string StateRootJson =
+        """{"data":{"root":"0x1122334400000000000000000000000000000000000000000000000000000000"}}""";
+
+    [Test]
+    public async Task GetBeaconRoots_WithValidSlot_ReturnsBothRoots()
+    {
+        using BeaconApiRootsProvider sut = Build(
+            (HttpStatusCode.OK, HeadersJson),
+            (HttpStatusCode.OK, StateRootJson));
+
+        (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
+
+        Assert.That(result, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result!.Value.BeaconBlockRoot.ToByteArray()[0], Is.EqualTo(0xaa));
+            Assert.That(result.Value.StateRoot.ToByteArray()[0], Is.EqualTo(0x11));
+        }
+    }
+
+    [Test]
+    public async Task GetBeaconRoots_WithSameSlotCalledTwice_MakesOnlyTwoHttpRequests()
+    {
+        // Only 2 responses enqueued — a third request would throw
+        SequentialHttpMessageHandler handler = new();
+        handler.Enqueue(HttpStatusCode.OK, HeadersJson);
+        handler.Enqueue(HttpStatusCode.OK, StateRootJson);
+        using BeaconApiRootsProvider sut = new(new Uri("http://localhost:5052"), new HttpClient(handler));
+
+        await sut.GetBeaconRoots(1);
+        await sut.GetBeaconRoots(1);
+
+        Assert.That(handler.CallCount, Is.EqualTo(2), "cache hit on second call must skip both HTTP requests");
+    }
+
+    [Test]
+    public async Task GetBeaconRoots_WhenCacheCapacityExceeded_EvictsOldestSlot()
+    {
+        SequentialHttpMessageHandler handler = new();
+        using BeaconApiRootsProvider sut = new(new Uri("http://localhost:5052"), new HttpClient(handler));
+
+        for (int slot = 0; slot <= HistoricalRootConstants.SlotsPerHistoricalRoot; slot++)
+        {
+            EnqueueRootsResponses(handler);
+            await sut.GetBeaconRoots(slot);
+        }
+
+        EnqueueRootsResponses(handler);
+        await sut.GetBeaconRoots(0);
+
+        Assert.That(handler.CallCount, Is.EqualTo((HistoricalRootConstants.SlotsPerHistoricalRoot + 2) * 2));
+    }
+
+    [Test]
+    public async Task GetBeaconRoots_WhenHeadersResponseMissingDataField_ReturnsNull()
+    {
+        // State root endpoint must NOT be called — handler throws on any extra request
+        using BeaconApiRootsProvider sut = Build((HttpStatusCode.OK, """{"other":"x"}"""));
+
+        (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
+
+        Assert.That(result, Is.Null);
+    }
+
+    [TestCase("0x12")]
+    [TestCase("0xaabbccdd0000000000000000000000000000000000000000000000000000000000")]
+    public async Task GetBeaconRoots_WhenHeadersRootHasWrongLength_ReturnsNull(string root)
+    {
+        using BeaconApiRootsProvider sut = Build((HttpStatusCode.OK, $$$"""{"data":{"root":"{{{root}}}"}}"""));
+
+        (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
+
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public async Task GetBeaconRoots_WhenHeadersResponseIsNonSuccess_ReturnsNull()
+    {
+        using BeaconApiRootsProvider sut = Build((HttpStatusCode.NotFound, "{}"));
+
+        (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
+
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public async Task GetBeaconRoots_WhenStateRootResponseIsNonSuccess_ReturnsNull()
+    {
+        using BeaconApiRootsProvider sut = Build(
+            (HttpStatusCode.OK, HeadersJson),
+            (HttpStatusCode.NotFound, "{}"));
+
+        (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
+
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public async Task Http_failure_diagnostics_omit_credentials(
+        [Values(HttpStatusCode.Unauthorized, HttpStatusCode.InternalServerError)] HttpStatusCode status,
+        [Values] bool maskSensitiveData)
+    {
+        bool previous = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = maskSensitiveData;
+        try
+        {
+            SequentialHttpMessageHandler handler = new();
+            handler.Enqueue(status, "{}");
+            using HttpClient httpClient = new(handler);
+            TestLogger logger = new();
+            using BeaconApiHttpClient client = new(httpClient, TimeSpan.FromSeconds(5), new ILogger(logger));
+            Uri uri = new("https://user:private-key@beacon.example/eth/v1/beacon/headers/123?token=private");
+
+            string diagnostic;
+            if (status == HttpStatusCode.InternalServerError)
+            {
+                HttpRequestException exception = (await Assert.ThrowsAsync<HttpRequestException>(
+                    async () => await client.GetAsync(uri, CancellationToken.None)))!;
+                diagnostic = exception.Message;
+            }
+            else
+            {
+                await client.GetAsync(uri, CancellationToken.None);
+                diagnostic = logger.LogList.Single();
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(diagnostic, Does.Contain(maskSensitiveData ? "[redacted]" : "https://beacon.example"));
+                Assert.That(diagnostic, Does.Not.Contain("user").And.Not.Contain("private").And.Not.Contain("/eth/"));
+            }
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+        }
+    }
+
+    private static BeaconApiRootsProvider Build(params (HttpStatusCode StatusCode, string Body)[] responses)
+    {
+        SequentialHttpMessageHandler handler = new();
+        foreach ((HttpStatusCode statusCode, string body) in responses)
+            handler.Enqueue(statusCode, body);
+        return new BeaconApiRootsProvider(new Uri("http://localhost:5052"), new HttpClient(handler));
+    }
+
+    private static void EnqueueRootsResponses(SequentialHttpMessageHandler handler)
+    {
+        handler.Enqueue(HttpStatusCode.OK, HeadersJson);
+        handler.Enqueue(HttpStatusCode.OK, StateRootJson);
+    }
+
+    private sealed class SequentialHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly Queue<(HttpStatusCode StatusCode, string Body)> _responses = new();
+
+        public int CallCount { get; private set; }
+
+        public void Enqueue(HttpStatusCode statusCode, string body) =>
+            _responses.Enqueue((statusCode, body));
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            CallCount++;
+            if (_responses.Count == 0)
+                throw new InvalidOperationException(
+                    $"Unexpected HTTP request to {request.RequestUri} — no more responses queued.");
+
+            (HttpStatusCode statusCode, string body) = _responses.Dequeue();
+            HttpResponseMessage response = new(statusCode)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json")
+            };
+            return Task.FromResult(response);
+        }
+    }
+}

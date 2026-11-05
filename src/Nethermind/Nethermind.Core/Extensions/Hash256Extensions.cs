@@ -3,11 +3,15 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.Extensions;
 
 public static class Hash256Extensions
 {
+    /// <summary>Interprets the hash bytes as an unsigned big-endian integer.</summary>
+    public static UInt256 ToUInt256(this Hash256 hash) => hash.ValueHash256.ToUInt256();
+
     public static ValueHash256 IncrementPath(this in ValueHash256 hash)
     {
         ValueHash256 result = hash;

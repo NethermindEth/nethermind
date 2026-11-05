@@ -1,0 +1,254 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
+
+namespace Nethermind.State.Flat.History.Changesets;
+
+/// <summary>What the transactions before a given one wrote, folded in execution order. A read that misses belongs to
+/// the state as of the previous block, which the existing history answers.</summary>
+internal sealed class MidBlockOverlay
+{
+    // An overlay whose storage or account capacity grew past this is let go of rather than kept. Capacity grown from
+    // empty steps from 8,419 to 17,519, so the largest overlay kept holds 8,419 entries of either kind.
+    private const int MaxCapacity = 1 << 14;
+    private const int MaxSpares = 32;
+
+    /// <summary>The entries all spares together may hold: seven of the largest overlays kept, or many smaller ones. A
+    /// storage entry is about 100 B and an account entry with its pooled <see cref="AccountOverlay"/> about 150 B, so
+    /// the spares hold about 10 MB at most. A return that would exceed it lets the overlay go.</summary>
+    internal const int MaxSpareEntries = 1 << 16;
+
+    private static readonly Stack<MidBlockOverlay> Spares = new(MaxSpares);
+    private static readonly Lock SparesLock = new();
+    private static int _spareEntries;
+
+    private readonly Dictionary<AddressAsKey, AccountOverlay> _accounts = [];
+    private readonly Dictionary<StorageCell, StorageWrite> _storage = [];
+    private readonly HashSet<AddressAsKey> _storageAccounts = [];
+    private readonly Dictionary<ulong, Address> _addresses = [];
+    private readonly Stack<AccountOverlay> _spareAccounts = [];
+
+    public ulong Block { get; private set; }
+
+    /// <summary>The block whose rows were folded, by hash. A height is not an identity: capture can replace the rows
+    /// of a height with a sibling's, and a prefix folded from the one is not a prefix of the other.</summary>
+    public ValueHash256 Hash { get; private set; }
+
+    /// <summary>The first transaction this overlay does not yet include.</summary>
+    public ushort Folded { get; private set; }
+
+    internal int Pins { get; set; }
+
+    internal bool Extending { get; set; }
+    internal long Version { get; set; }
+
+    internal Dictionary<AddressAsKey, AccountOverlay>.Enumerator Accounts => _accounts.GetEnumerator();
+
+    internal Dictionary<StorageCell, StorageWrite>.Enumerator Writes => _storage.GetEnumerator();
+
+    internal int WriteCount => _storage.Count;
+
+    internal HashSet<AddressAsKey>.Enumerator StorageAccounts => _storageAccounts.GetEnumerator();
+
+    /// <summary>An overlay emptied for <paramref name="block"/>, one a previous fold left warm when there is one.</summary>
+    public static MidBlockOverlay Rent(ulong block)
+    {
+        MidBlockOverlay overlay = TakeSpare() ?? new MidBlockOverlay();
+        overlay.Reset(block);
+        return overlay;
+    }
+
+    internal static int SpareEntries
+    {
+        get
+        {
+            using Lock.Scope scope = SparesLock.EnterScope();
+            return _spareEntries;
+        }
+    }
+
+    private static MidBlockOverlay? TakeSpare()
+    {
+        using Lock.Scope scope = SparesLock.EnterScope();
+        if (!Spares.TryPop(out MidBlockOverlay? overlay)) return null;
+        _spareEntries -= overlay.Capacity;
+        return overlay;
+    }
+
+    /// <summary>The caller gives up the overlay: nothing may read or fold it afterwards.</summary>
+    public static void Return(MidBlockOverlay overlay)
+    {
+        if (overlay.Oversized) return;
+        overlay.Reset(0);
+
+        int capacity = overlay.Capacity;
+        using Lock.Scope scope = SparesLock.EnterScope();
+        if (Spares.Count >= MaxSpares || _spareEntries + capacity > MaxSpareEntries) return;
+        Spares.Push(overlay);
+        _spareEntries += capacity;
+    }
+
+    /// <summary>Grew too large to keep for another fold, whether as a spare or as a cached entry.</summary>
+    internal bool Oversized => _storage.EnsureCapacity(0) > MaxCapacity || _accounts.EnsureCapacity(0) > MaxCapacity;
+
+    /// <summary>Does not change while the overlay is a spare, so the same amount is added on return and taken on rent.</summary>
+    private int Capacity =>
+        _storage.EnsureCapacity(0) + _accounts.EnsureCapacity(0) + _storageAccounts.EnsureCapacity(0) + _addresses.EnsureCapacity(0);
+
+    public void Reset(ulong block) => Reset(block, default);
+
+    /// <summary>Keeps the capacity the previous fold grew, so folding a block of a similar size again grows nothing.</summary>
+    public void Reset(ulong block, in ValueHash256 hash)
+    {
+        foreach (AccountOverlay account in _accounts.Values) _spareAccounts.Push(account);
+        _accounts.Clear();
+        _storage.Clear();
+        _storageAccounts.Clear();
+        _addresses.Clear();
+        Block = block;
+        Hash = hash;
+        Folded = 0;
+    }
+
+    public void Fold(ushort transactionIndex, ReadOnlySpan<byte> changeset)
+    {
+        ChangesetCodec.Enumerator entries = ChangesetCodec.Read(changeset);
+        while (entries.MoveNext())
+        {
+            if (entries.Kind == ChangesetCodec.AccountKind) FoldAccount(ref entries, transactionIndex);
+            else FoldStorage(ref entries, transactionIndex);
+        }
+
+        Folded = (ushort)(transactionIndex + 1);
+    }
+
+    public bool TryGetAccount(Address address, [NotNullWhen(true)] out AccountOverlay? overlay) => _accounts.TryGetValue(address, out overlay);
+
+    /// <summary>Whether the prefix wrote or wiped any slot of the account.</summary>
+    public bool HasStorage(Address address) =>
+        _storageAccounts.Contains(address) || (_accounts.TryGetValue(address, out AccountOverlay? account) && account.StorageClearedAt != NeverCleared);
+
+    /// <summary>Whether the prefix wrote any slot of the account, wipe or no wipe. A write recorded before a wipe in
+    /// the same block does not survive it, so this errs towards saying there is storage, which is the safe direction
+    /// for a reader deciding whether a wipe has anything to clear.</summary>
+    public bool HasStorageWrites(Address address) => _storageAccounts.Contains(address);
+
+    /// <summary>A wiped account answers zero even where the overlay holds no write for the slot: the wipe applies to
+    /// every slot the account held, not only to those the block touched.</summary>
+    public bool TryGetStorage(in StorageCell cell, out UInt256 value)
+    {
+        int clearedAt = _accounts.TryGetValue(cell.Address, out AccountOverlay? account) ? account.StorageClearedAt : NeverCleared;
+        if (_storage.TryGetValue(cell, out StorageWrite write) && write.Transaction >= clearedAt)
+        {
+            value = write.Value;
+            return true;
+        }
+
+        value = UInt256.Zero;
+        return clearedAt != NeverCleared;
+    }
+
+    internal const int NeverCleared = -1;
+
+    private void FoldStorage(ref ChangesetCodec.Enumerator entries, ushort transactionIndex)
+    {
+        StorageCell cell = new(AddressOf(entries.Address), new UInt256(entries.Index, isBigEndian: true));
+        _storage[cell] = new StorageWrite(transactionIndex, new UInt256(entries.Value, isBigEndian: true));
+        _storageAccounts.Add(cell.Address);
+    }
+
+    private void FoldAccount(ref ChangesetCodec.Enumerator entries, ushort transactionIndex)
+    {
+        Address address = AddressOf(entries.Address);
+        if (!_accounts.TryGetValue(address, out AccountOverlay? overlay))
+        {
+            if (_spareAccounts.TryPop(out overlay)) overlay.Clear();
+            else overlay = new AccountOverlay();
+            _accounts[address] = overlay;
+        }
+
+        if (entries.Deleted)
+        {
+            overlay.Balance = null;
+            overlay.Nonce = null;
+            overlay.CodeHash = null;
+            overlay.Emptied = true;
+            overlay.Exists = false;
+        }
+
+        if (entries.StorageCleared) overlay.StorageClearedAt = transactionIndex;
+
+        if (!entries.Balance.IsEmpty)
+        {
+            overlay.Balance = new UInt256(entries.Balance, isBigEndian: true);
+            overlay.Exists = true;
+        }
+
+        if (!entries.Nonce.IsEmpty)
+        {
+            overlay.Nonce = new UInt256(entries.Nonce, isBigEndian: true);
+            overlay.Exists = true;
+        }
+
+        if (entries.CodeHash.IsEmpty) return;
+
+        overlay.CodeHash = new ValueHash256(entries.CodeHash);
+        overlay.Exists = true;
+    }
+
+    /// <summary>One instance per distinct address of the fold, however many entries name it. The key only spreads
+    /// the addresses; a different address under the same key is compared, refused and allocated on its own.</summary>
+    private Address AddressOf(ReadOnlySpan<byte> bytes)
+    {
+        ulong key = BinaryPrimitives.ReadUInt64LittleEndian(bytes) ^ BinaryPrimitives.ReadUInt64LittleEndian(bytes[(Address.Size - sizeof(ulong))..]);
+        ref Address? known = ref CollectionsMarshal.GetValueRefOrAddDefault(_addresses, key, out bool exists);
+        if (exists && known!.Equals(bytes)) return known;
+
+        Address address = new(bytes);
+        if (!exists) known = address;
+        return address;
+    }
+
+    internal readonly struct StorageWrite(ushort transaction, in UInt256 value)
+    {
+        public int Transaction { get; } = transaction;
+
+        public UInt256 Value { get; } = value;
+    }
+
+    /// <summary>The fields a transaction changed. A field left null takes the value the account had at the previous
+    /// block, unless <see cref="Emptied"/> says the account was deleted, when it takes the empty account's value.</summary>
+    internal sealed class AccountOverlay
+    {
+        public AccountOverlay() => Clear();
+
+        public UInt256? Balance { get; set; }
+
+        public UInt256? Nonce { get; set; }
+
+        public ValueHash256? CodeHash { get; set; }
+
+        public bool Emptied { get; set; }
+
+        public bool Exists { get; set; }
+
+        public int StorageClearedAt { get; set; }
+
+        /// <summary>The only place the defaults are set: a new entry and a reused one both start from here.</summary>
+        public void Clear()
+        {
+            Balance = null;
+            Nonce = null;
+            CodeHash = null;
+            Emptied = false;
+            Exists = true;
+            StorageClearedAt = NeverCleared;
+        }
+    }
+}

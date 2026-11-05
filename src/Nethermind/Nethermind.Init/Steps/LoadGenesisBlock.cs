@@ -11,7 +11,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(InitializeBlockchain), typeof(InitializePlugins))]
+    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(InitializeBlockchain))]
     public class LoadGenesisBlock(IMainProcessingContext mainProcessingContext, IBlockTree blockTree, IInitConfig initConfig, ILogManager logManager) : IStep
     {
         private readonly ILogger _logger = logManager.GetClassLogger<LoadGenesisBlock>();
@@ -27,7 +27,7 @@ namespace Nethermind.Init.Steps
             if (!initConfig.ProcessingEnabled)
             {
                 if (_logger.IsWarn) _logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
-                await (mainProcessingContext!.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+                await (mainProcessingContext!.BlockProcessingQueue?.StopAsync() ?? Task.CompletedTask);
             }
         }
     }

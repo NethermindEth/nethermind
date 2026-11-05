@@ -18,10 +18,7 @@ namespace Nethermind.Consensus.Ethash
             }
         }
 
-        public uint[] CalcDataSetItem(uint i)
-        {
-            return Data[i];
-        }
+        public uint[] CalcDataSetItem(uint i) => Data[i];
 
         public void Dispose()
         {

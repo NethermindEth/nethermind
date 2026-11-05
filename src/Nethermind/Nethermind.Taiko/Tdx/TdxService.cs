@@ -56,7 +56,7 @@ public class TdxService : ITdxService
         _logger.Info("Bootstrapping TDX service");
 
         // Generate private key
-        using var keyGenerator = new PrivateKeyGenerator();
+        using PrivateKeyGenerator keyGenerator = new();
         _privateKey = keyGenerator.Generate();
         Address address = _privateKey.Address;
 
@@ -87,10 +87,7 @@ public class TdxService : ITdxService
         return _guestInfo;
     }
 
-    public TdxGuestInfo? GetGuestInfo()
-    {
-        return _guestInfo;
-    }
+    public TdxGuestInfo? GetGuestInfo() => _guestInfo;
 
     public TdxBlockHeaderSignature SignBlockHeader(BlockHeader blockHeader)
     {
@@ -141,7 +138,7 @@ public class TdxService : ITdxService
         try
         {
             string json = File.ReadAllText(path);
-            _guestInfo = JsonSerializer.Deserialize<TdxGuestInfo>(json);
+            _guestInfo = JsonSerializer.Deserialize(json, TdxJsonContext.Default.TdxGuestInfo);
 
             byte[] keyBytes = File.ReadAllBytes(keyPath);
             _privateKey = new PrivateKey(keyBytes);
@@ -173,13 +170,13 @@ public class TdxService : ITdxService
 
         // Save bootstrap data
         string path = GetBootstrapPath();
-        File.WriteAllText(path, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(path, JsonSerializer.Serialize(data, TdxJsonContext.Default.TdxGuestInfo));
 
         // Save key with 0600 file permissions
         string keyPath = GetKeyPath();
         if (OperatingSystem.IsLinux())
         {
-            using var fs = new FileStream(keyPath, new FileStreamOptions
+            using FileStream fs = new(keyPath, new FileStreamOptions
             {
                 Mode = FileMode.Create,
                 Access = FileAccess.Write,
@@ -193,7 +190,7 @@ public class TdxService : ITdxService
             throw new PlatformNotSupportedException("TDX attestation is only supported on Linux");
         }
 
-        _logger.Debug($"Saved TDX key to {keyPath}");
+        _logger.Debug($"Saved TDX key to {keyPath:hide}");
     }
 
     private string GetConfigDir()

@@ -12,10 +12,7 @@ namespace Nethermind.Crypto
     {
         private readonly RandomNumberGenerator _secureRandom = RandomNumberGenerator.Create();
 
-        public void GenerateRandomBytes(Span<byte> bytes)
-        {
-            _secureRandom.GetBytes(bytes);
-        }
+        public void GenerateRandomBytes(Span<byte> bytes) => _secureRandom.GetBytes(bytes);
 
         public byte[] GenerateRandomBytes(int length)
         {
@@ -24,16 +21,11 @@ namespace Nethermind.Crypto
             return bytes;
         }
 
-        public int NextInt(int max)
-        {
+        public int NextInt(int max) =>
             // Use cryptographically secure RNG; preserve Random.Next behavior for non-positive max
             // (Random.Next(0) returns 0; negatives throw). This keeps compatibility.
-            return max <= 0 ? 0 : RandomNumberGenerator.GetInt32(max);
-        }
+            max <= 0 ? 0 : RandomNumberGenerator.GetInt32(max);
 
-        public void Dispose()
-        {
-            _secureRandom.Dispose();
-        }
+        public void Dispose() => _secureRandom.Dispose();
     }
 }

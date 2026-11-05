@@ -55,50 +55,37 @@ namespace Nethermind.Init.Steps
 
         private async Task RunBlockTreeInitTasks(CancellationToken cancellationToken)
         {
-            if (!syncConfig.FastSync)
+            KeptStateResumer.Resume(blockTree, worldStateManager.GlobalStateReader, logManager);
+            using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager.GlobalStateReader, logManager);
+            await blockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
             {
-                using DbBlocksLoader loader = new(blockTree, _logger);
-                await blockTree.Accept(loader, cancellationToken).ContinueWith(t =>
+                if (t.IsFaulted)
                 {
-                    if (t.IsFaulted)
-                    {
-                        if (_logger.IsError) _logger.Error("Loading blocks from the DB failed.", t.Exception);
-                    }
-                    else if (t.IsCanceled)
-                    {
-                        if (_logger.IsWarn) _logger.Warn("Loading blocks from the DB canceled.");
-                    }
-                });
-            }
-            else
-            {
-                using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager!.GlobalStateReader, _logger!);
-                await blockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
+                    if (_logger.IsError) _logger.Error("Fixing gaps in DB failed.", t.Exception);
+                }
+                else if (t.IsCanceled)
                 {
-                    if (t.IsFaulted)
-                    {
-                        if (_logger.IsError) _logger.Error("Fixing gaps in DB failed.", t.Exception);
-                    }
-                    else if (t.IsCanceled)
-                    {
-                        if (_logger.IsWarn) _logger.Warn("Fixing gaps in DB canceled.");
-                    }
-                });
-            }
+                    if (_logger.IsWarn) _logger.Warn("Fixing gaps in DB canceled.");
+                }
+            });
 
             blockProcessingQueue.ProcessingQueueEmpty += OnProcessingQueueEmpty;
-            if (!blockProcessingQueue.IsEmpty) // Just in case the queue got empty before we subscribed
+            try
             {
-                await _blocksProcessedTaskSource.Task.WaitAsync(cancellationToken);
+                if (!blockProcessingQueue.IsEmpty) // Just in case the queue got empty before we subscribed
+                {
+                    await _blocksProcessedTaskSource.Task.WaitAsync(cancellationToken);
+                }
             }
-            blockProcessingQueue.ProcessingQueueEmpty -= OnProcessingQueueEmpty;
+            finally
+            {
+                blockProcessingQueue.ProcessingQueueEmpty -= OnProcessingQueueEmpty;
+            }
         }
 
-        private readonly TaskCompletionSource _blocksProcessedTaskSource = new();
+        private readonly TaskCompletionSource _blocksProcessedTaskSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        private void OnProcessingQueueEmpty(object? sender, EventArgs e)
-        {
-            _blocksProcessedTaskSource.SetResult();
-        }
+        // Raised after every dequeued block and batch, possibly again before the continuation above unsubscribes.
+        private void OnProcessingQueueEmpty(object? sender, EventArgs e) => _blocksProcessedTaskSource.TrySetResult();
     }
 }

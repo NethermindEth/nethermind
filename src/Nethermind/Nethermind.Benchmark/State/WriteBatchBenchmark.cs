@@ -12,10 +12,12 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
-using Nethermind.Trie;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
+using static Nethermind.Benchmarks.State.FlatWorldStateBenchmarkHarness;
 
 namespace Nethermind.Benchmarks.State;
 
@@ -29,6 +31,7 @@ public class WriteBatchBenchmark
 
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;
+    private INodeRecordBuffer _nodeRecordBuffer = null!;
     private List<FlatSnapshot> _baseSnapshots = null!;
     private StateId _currentStateId;
     private Address[] _addresses = null!;
@@ -41,36 +44,36 @@ public class WriteBatchBenchmark
     [Params(100, 1000, 3000)]
     public int StorageSlotsPerAccount { get; set; }
 
-    [GlobalSetup]
-    public void GlobalSetup()
+    private void SetupBaseState()
     {
         _config = new FlatDbConfig();
         _resourcePool = new ResourcePool(_config);
+        _nodeRecordBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
         _baseSnapshots = new List<FlatSnapshot>(SnapshotCount);
         _currentStateId = new StateId(0, Keccak.EmptyTreeHash);
 
         int totalAccountCount = 0;
 
-        for (int block = 0; block < SnapshotCount; block++)
+        for (ulong block = 0; block < SnapshotCount; block++)
         {
             int accountCount = 500;
             int storageAccountCount = 10;
             int slotsPerStorageAccount = 50;
 
-            SnapshotPooledList prevSnapshots = new SnapshotPooledList(_baseSnapshots.Count);
+            SnapshotPooledList prevSnapshots = new(_baseSnapshots.Count);
             foreach (FlatSnapshot s in _baseSnapshots)
             {
                 s.TryAcquire();
                 prevSnapshots.Add(s);
             }
 
-            ReadOnlySnapshotBundle readOnly = new ReadOnlySnapshotBundle(
-                prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
-            NullTrieNodeCache cache = new NullTrieNodeCache();
-            SnapshotBundle bundle = new SnapshotBundle(
-                readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-            CapturingCommitTarget commitTarget = new CapturingCommitTarget();
-            FlatWorldStateScope scope = new FlatWorldStateScope(
+            ReadOnlySnapshotBundle readOnly = new(
+                prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
+                PersistedSnapshotStack.Empty(), _nodeRecordBuffer.PinAll());
+            SnapshotBundle bundle = new(
+                readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            CapturingCommitTarget commitTarget = new();
+            using FlatWorldStateScope scope = new(
                 currentStateId: _currentStateId,
                 snapshotBundle: bundle,
                 codeDb: new NullCodeDb(),
@@ -108,8 +111,7 @@ public class WriteBatchBenchmark
                     IWorldStateScopeProvider.IStorageWriteBatch storageBatch = storageBatches[i];
                     for (int s = 0; s < slots; s++)
                     {
-                        storageBatch.Set((UInt256)(ulong)(s + 1),
-                            new byte[] { (byte)((s + 1) & 0xFF) });
+                        storageBatch.Set((UInt256)(ulong)(s + 1), (UInt256)(byte)((s + 1) & 0xFF));
                     }
 
                     storageBatch.Dispose();
@@ -118,7 +120,7 @@ public class WriteBatchBenchmark
 
             scope.Commit(blockNumber: block + 1);
 
-            FlatSnapshot snapshot = commitTarget.LastSnapshot
+            using FlatSnapshot snapshot = commitTarget.LastSnapshot
                 ?? throw new InvalidOperationException(
                     $"Block {block + 1}: Commit produced no snapshot");
             snapshot.TryAcquire();
@@ -136,22 +138,24 @@ public class WriteBatchBenchmark
         });
     }
 
+    // The base snapshots pin every later generation of the buffer, so each iteration gets its own buffer to free what it writes.
     [IterationSetup]
     public void IterationSetup()
     {
-        SnapshotPooledList prevSnapshots = new SnapshotPooledList(_baseSnapshots.Count);
+        SetupBaseState();
+        SnapshotPooledList prevSnapshots = new(_baseSnapshots.Count);
         foreach (FlatSnapshot s in _baseSnapshots)
         {
             s.TryAcquire();
             prevSnapshots.Add(s);
         }
 
-        ReadOnlySnapshotBundle readOnly = new ReadOnlySnapshotBundle(
-            prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
-        NullTrieNodeCache cache = new NullTrieNodeCache();
-        SnapshotBundle bundle = new SnapshotBundle(
-            readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-        CapturingCommitTarget commitTarget = new CapturingCommitTarget();
+        ReadOnlySnapshotBundle readOnly = new(
+            prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
+            PersistedSnapshotStack.Empty(), _nodeRecordBuffer.PinAll());
+        SnapshotBundle bundle = new(
+            readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        CapturingCommitTarget commitTarget = new();
         _scope = new FlatWorldStateScope(
             currentStateId: _currentStateId,
             snapshotBundle: bundle,
@@ -167,6 +171,8 @@ public class WriteBatchBenchmark
     {
         _scope?.Dispose();
         _scope = null!;
+        foreach (FlatSnapshot snapshot in _baseSnapshots) snapshot.Dispose();
+        _nodeRecordBuffer.Dispose();
     }
 
     [Benchmark]
@@ -194,8 +200,7 @@ public class WriteBatchBenchmark
                 batch.CreateStorageWriteBatch(_addresses[i], estimatedEntries: StorageSlotsPerAccount);
             for (int s = 0; s < StorageSlotsPerAccount; s++)
             {
-                storageBatch.Set((UInt256)(ulong)(s + 1),
-                    new byte[] { (byte)((s + 1) & 0xFF) });
+                storageBatch.Set((UInt256)(ulong)(s + 1), (UInt256)(byte)((s + 1) & 0xFF));
             }
         }
     }
@@ -223,56 +228,11 @@ public class WriteBatchBenchmark
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = storageBatches[i];
             for (int s = 0; s < slots; s++)
             {
-                storageBatch.Set((UInt256)(ulong)(s + 1),
-                    new byte[] { (byte)((s + 1) & 0xFF) });
+                storageBatch.Set((UInt256)(ulong)(s + 1), (UInt256)(byte)((s + 1) & 0xFF));
             }
 
             storageBatch.Dispose();
         });
     }
 
-    private static Address DeriveAddress(int index) =>
-        new Address(Keccak.Compute(Address.FromNumber((UInt256)(ulong)index).Bytes));
-
-    private sealed class NullTrieNodeCache : ITrieNodeCache
-    {
-        public bool TryGet(Hash256 address, in TreePath path, Hash256 hash, out TrieNode node)
-        {
-            node = null;
-            return false;
-        }
-
-        public void Add(TransientResource transientResource) { }
-
-        public void Clear() { }
-    }
-
-    private sealed class CapturingCommitTarget : IFlatCommitTarget
-    {
-        public FlatSnapshot LastSnapshot { get; private set; }
-        public TransientResource LastResource { get; private set; }
-
-        public void AddSnapshot(FlatSnapshot snapshot, TransientResource transientResource)
-        {
-            LastSnapshot = snapshot;
-            LastResource = transientResource;
-        }
-    }
-
-    private sealed class NullCodeDb : IWorldStateScopeProvider.ICodeDb
-    {
-        public byte[] GetCode(in ValueHash256 codeHash) => null;
-
-        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite()
-            => NullCodeSetter.Instance;
-
-        private sealed class NullCodeSetter : IWorldStateScopeProvider.ICodeSetter
-        {
-            public static readonly NullCodeSetter Instance = new NullCodeSetter();
-
-            public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code) { }
-
-            public void Dispose() { }
-        }
-    }
 }

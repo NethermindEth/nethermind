@@ -14,15 +14,15 @@ public static class ProductInfo
 {
     static ProductInfo()
     {
-        var assembly = Assembly.GetEntryAssembly()!;
-        var metadataAttrs = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()!;
-        var productAttr = assembly.GetCustomAttribute<AssemblyProductAttribute>()!;
-        var versionAttr = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!;
-        var sourceDateEpoch = metadataAttrs
+        Assembly assembly = Assembly.GetEntryAssembly()!;
+        IEnumerable<AssemblyMetadataAttribute> metadataAttrs = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()!;
+        AssemblyProductAttribute productAttr = assembly.GetCustomAttribute<AssemblyProductAttribute>()!;
+        AssemblyInformationalVersionAttribute versionAttr = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!;
+        string? sourceDateEpoch = metadataAttrs
             ?.FirstOrDefault(static a => a.Key.Equals("SourceDateEpoch", StringComparison.Ordinal))
             ?.Value;
 
-        SourceDate = long.TryParse(sourceDateEpoch, out var t)
+        SourceDate = long.TryParse(sourceDateEpoch, out long t)
             ? DateTimeOffset.FromUnixTimeSeconds(t)
             : DateTimeOffset.MinValue;
         Name = productAttr?.Product ?? "Nethermind";
@@ -31,7 +31,7 @@ public static class ProductInfo
         Runtime = RuntimeInformation.FrameworkDescription;
         Version = versionAttr.InformationalVersion;
 
-        var index = Version.IndexOf('+', StringComparison.Ordinal);
+        int index = Version.IndexOf('+', StringComparison.Ordinal);
 
         if (index != -1)
         {
@@ -43,6 +43,7 @@ public static class ProductInfo
         {
             { "name", Name },
             { "version", $"v{Version}" },
+            { "versionPostfix", "" },
             { "os", $"{OS.ToLowerInvariant()}-{OSArchitecture}" },
             { "runtime", $"dotnet{Runtime[5..]}" }
         };
@@ -61,7 +62,7 @@ public static class ProductInfo
         }
 
         StringBuilder formattedClientId = new(formatString);
-        foreach (var placeholder in ClientIdParts)
+        foreach (KeyValuePair<string, string> placeholder in ClientIdParts)
         {
             formattedClientId.Replace($"{{{placeholder.Key}}}", placeholder.Value);
         }
@@ -85,6 +86,19 @@ public static class ProductInfo
 
     public static string Version { get; }
 
+    /// <summary>
+    /// Suffix appended to the version segment of the public client ID (e.g. <c>-hp</c>, <c>-f</c>) to
+    /// advertise the state DB layout.
+    /// </summary>
+    /// <remarks>
+    /// Assigned during network initialization from the resolved DB layout, before the public client ID is rendered.
+    /// </remarks>
+    public static string VersionPostfix
+    {
+        get => ClientIdParts["versionPostfix"];
+        set => ClientIdParts["versionPostfix"] = value;
+    }
+
     public static string Network { get; set; } = string.Empty;
 
     public static string Instance { get; set; } = string.Empty;
@@ -97,7 +111,7 @@ public static class ProductInfo
 
     public static string PublicClientId { get; private set; }
 
-    public const string DefaultPublicClientIdFormat = "{name}/{version}/{os}/{runtime}";
+    public const string DefaultPublicClientIdFormat = "{name}/{version}{versionPostfix}/{os}/{runtime}";
 
     public static void InitializePublicClientId(string formatString) =>
         PublicClientId = FormatClientId(formatString);

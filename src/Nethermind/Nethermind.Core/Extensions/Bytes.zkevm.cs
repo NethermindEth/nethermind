@@ -1,0 +1,227 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Nethermind.Int256;
+using Nethermind.Zkvm.Abstractions;
+
+namespace Nethermind.Core.Extensions;
+
+public static unsafe partial class Bytes
+{
+    private static readonly byte[] _zeroByte = [0];
+    private static readonly byte[] _oneByte = [1];
+    private static readonly byte[] _twoByte = [2];
+
+    public static ReadOnlyMemory<byte> ZeroByte => _zeroByte;
+    public static ReadOnlyMemory<byte> OneByte => _oneByte;
+    public static ReadOnlyMemory<byte> TwoByte => _twoByte;
+
+    internal static uint[] Lookup32 => field ??= CreateLookup32();
+
+    /// <summary>
+    /// Reverses the byte order of a 64-bit word.
+    /// </summary>
+    /// <remarks>
+    /// Without Zbb, RISC-V has no byte-swap instruction, so the BCL's <c>ReverseEndianness</c> expands
+    /// to a byte-at-a-time shuffle; <see cref="ZkEvmBitOperations.Bswap64"/> does it with three masked
+    /// shift/or pairs on whole words, or with <c>rev8</c> in a guest whose zkVM has Zbb. See
+    /// <c>Bytes.std.cs</c> for the host form.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong Bswap64(ulong value) => ZkEvmBitOperations.Bswap64(value);
+
+    /// <summary>
+    /// Hoists whatever a run of <see cref="Bswap64"/> calls needs, so a caller pays for it once.
+    /// </summary>
+    /// <remarks>
+    /// ILC re-forms the mask array's address for roughly every inlined use rather than once per
+    /// method, so a run of swaps - the four limbs of a 256-bit word, times operands and result - pays
+    /// for it repeatedly. Holding the masks in a local across the run costs one load each instead.
+    /// See <c>Bytes.std.cs</c> for the host form.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static Bswap64Hoist HoistBswap64()
+    {
+        ZkEvmBitOperations.LoadSwapMasks(out ulong m8, out ulong m16);
+        return new Bswap64Hoist(m8, m16);
+    }
+
+    /// <summary>Reads the 32 big-endian bytes of <paramref name="word"/> as a <see cref="UInt256"/>.</summary>
+    /// <remarks>A limb at a time: the constructor gathers the word a byte at a time here.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="word"/> is not 32 bytes long.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static UInt256 ReadUInt256BigEndian(ReadOnlySpan<byte> word)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(word.Length, 32);
+        ref byte source = ref MemoryMarshal.GetReference(word);
+        return new UInt256(
+            ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 24)),
+            ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 16)),
+            ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 8)),
+            ZkEvmBitOperations.ReadUInt64BigEndian(ref source));
+    }
+
+    /// <summary>A run of byte swaps sharing the masks <see cref="HoistBswap64"/> loaded.</summary>
+    internal readonly struct Bswap64Hoist(ulong m8, ulong m16)
+    {
+        private readonly ulong _m8 = m8;
+        private readonly ulong _m16 = m16;
+
+        /// <summary>Reverses the byte order of a 64-bit word.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal ulong Bswap64(ulong value) => ZkEvmBitOperations.Swap(value, _m8, _m16);
+    }
+
+    /// <summary>Copies <paramref name="source"/> to the start of <paramref name="destination"/>.</summary>
+    /// <remarks>
+    /// On ZisK, corelib copies more than 64 bytes through a GC-transition wrapper around the zkVM's <c>memmove</c>
+    /// that spills every callee-saved register, ~60 steps a call whatever the length. On SP1 and OpenVM, corelib's
+    /// <c>SpanHelpers.Memmove</c> adds ~13 instructions to each copy of more than 16 bytes before it reaches the same
+    /// routine. On Airbender, its libc copies a misaligned span by whole words where corelib's copy moves bytes. Where
+    /// <see cref="ZiskFlag"/>, <see cref="Sp1Flag"/>, <see cref="OpenVmFlag"/> or <see cref="AirbenderFlag"/> is on, this
+    /// calls <c>memmove</c> directly, so overlapping spans stay safe; elsewhere it keeps corelib's copy. See
+    /// <c>Bytes.std.cs</c> for the host form.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="destination"/> is shorter than <paramref name="source"/>.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void Copy(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        if (!ZiskFlag.IsActive && !Sp1Flag.IsActive && !OpenVmFlag.IsActive && !AirbenderFlag.IsActive)
+        {
+            source.CopyTo(destination);
+            return;
+        }
+
+        if ((uint)source.Length > (uint)destination.Length) ThrowDestinationTooShort();
+        Memmove(
+            Unsafe.AsPointer(ref MemoryMarshal.GetReference(destination)),
+            Unsafe.AsPointer(ref MemoryMarshal.GetReference(source)),
+            (nuint)source.Length);
+    }
+
+    /// <summary>Copies <paramref name="length"/> bytes from <paramref name="source"/> to <paramref name="destination"/>,
+    /// which may overlap.</summary>
+    /// <remarks>
+    /// Where <see cref="ZiskFlag"/> is on, this is the zkVM's <c>memmove</c>, which its runtime turns into a
+    /// DMA precompile, and where <see cref="Sp1Flag"/> or <see cref="OpenVmFlag"/> is on it is the guest's assembly
+    /// <c>memmove</c>; elsewhere it is corelib's copy. Unpinned pointers are safe because nothing between taking
+    /// them and the call returning can reach a GC safepoint: the import suppresses the GC transition and the
+    /// callee is native code with no calls back into managed code.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void Memmove(void* destination, void* source, nuint length)
+    {
+        if (ZiskFlag.IsActive || Sp1Flag.IsActive || OpenVmFlag.IsActive || AirbenderFlag.IsActive) Accelerators.Memmove(destination, source, length);
+        else Buffer.MemoryCopy(source, destination, length, length);
+    }
+
+    /// <summary>Writes the four words at <paramref name="source"/>, which is word-aligned, to the 32 bytes at <paramref name="destination"/>, which is not.</summary>
+    /// <remarks>
+    /// Where <see cref="StrictAlignmentFlag"/> is on, a misaligned 32-byte copy is 32 byte loads and stores. This
+    /// writes the five aligned words that hold the destination instead, and keeps the bytes of the first and the last
+    /// that lie outside it. The words are aligned and the guest is single-threaded, so writing those bytes back is not a
+    /// race. The destination must be misaligned: with a skew of 0 the shifts by 64 wrap and the write is wrong.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void WriteMisalignedWords(byte* destination, ulong* source)
+    {
+        int skew = (int)((nuint)destination & (sizeof(ulong) - 1));
+        Debug.Assert(skew != 0);
+        // Rounding both addresses lets the JIT drop the alignment test of every access.
+        ulong* words = (ulong*)((nuint)destination & ~(nuint)(sizeof(ulong) - 1));
+        source = (ulong*)((nuint)source & ~(nuint)(sizeof(ulong) - 1));
+        int low = skew * 8;
+        int high = 64 - low;
+        ulong outside = ulong.MaxValue >> high;
+        ulong w0 = source[0], w1 = source[1], w2 = source[2], w3 = source[3];
+        words[0] = (words[0] & outside) | (w0 << low);
+        words[1] = (w0 >> high) | (w1 << low);
+        words[2] = (w1 >> high) | (w2 << low);
+        words[3] = (w2 >> high) | (w3 << low);
+        words[4] = (words[4] & ~outside) | (w3 >> high);
+    }
+
+    /// <summary>Sets <paramref name="length"/> bytes at <paramref name="destination"/> to <paramref name="value"/>.</summary>
+    /// <remarks>Where <see cref="ZiskFlag"/> is on, this is the zkVM's <c>memset</c>, which its runtime turns
+    /// into a DMA precompile for a zero fill; elsewhere it is corelib's fill.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void Memset(void* destination, byte value, nuint length)
+    {
+        if (ZiskFlag.IsActive || AirbenderFlag.IsActive) Accelerators.Memset(destination, value, length);
+        else Unsafe.InitBlockUnaligned(destination, value, checked((uint)length));
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowDestinationTooShort() => throw new ArgumentException("Destination is too short.", "destination");
+
+    /// <summary>Compares the 32 bytes at <paramref name="a"/> with the 32 bytes at <paramref name="b"/>.</summary>
+    /// <remarks>
+    /// Four whole-word comparisons: the guest has no SIMD, and ILC expands a
+    /// <see cref="System.Runtime.Intrinsics.Vector256{T}"/> comparison to a byte-at-a-time element loop
+    /// over every lane. Loads are unaligned, so a caller may pass any byte offset.
+    /// See <c>Bytes.std.cs</c> for the host form.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool AreEqual32(ref byte a, ref byte b)
+        => Unsafe.ReadUnaligned<ulong>(ref a) == Unsafe.ReadUnaligned<ulong>(ref b)
+            && Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref a, 8)) == Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))
+            && Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref a, 16)) == Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 16))
+            && Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref a, 24)) == Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 24));
+
+    /// <summary>Tests whether all 32 bytes at <paramref name="a"/> are zero.</summary>
+    /// <remarks><inheritdoc cref="AreEqual32" path="/remarks"/></remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsZero32(ref byte a)
+        => (Unsafe.ReadUnaligned<ulong>(ref a)
+            | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref a, 8))
+            | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref a, 16))
+            | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref a, 24))) == 0;
+
+    /// <inheritdoc cref="LeadingZeroBytes"/>
+    /// <remarks>There is no <c>clz</c> the toolchain will emit for this target, so
+    /// <see cref="BitOperations.LeadingZeroCount(ulong)"/> reaches corelib's software fallback - a
+    /// de Bruijn multiply, a table load and shifts, ~28 steps, and it ran 85,165 times over one block.
+    /// Byte granularity needs only the comparison tree this switch lowers to.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int LeadingZeroBytes(ulong value) => value switch
+    {
+        0 => sizeof(ulong),
+        <= 0x0000_0000_0000_00FFUL => 7,
+        <= 0x0000_0000_0000_FFFFUL => 6,
+        <= 0x0000_0000_00FF_FFFFUL => 5,
+        <= 0x0000_0000_FFFF_FFFFUL => 4,
+        <= 0x0000_00FF_FFFF_FFFFUL => 3,
+        <= 0x0000_FFFF_FFFF_FFFFUL => 2,
+        <= 0x00FF_FFFF_FFFF_FFFFUL => 1,
+        _ => 0,
+    };
+
+    /// <inheritdoc cref="LeadingZeroBits"/>
+    /// <remarks>Built on <see cref="LeadingZeroBytes"/> rather than
+    /// <see cref="BitOperations.LeadingZeroCount(ulong)"/> for the reason recorded there, then three
+    /// more comparisons resolve the bits inside the leading non-zero byte.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int LeadingZeroBits(ulong value)
+    {
+        int zeroBytes = LeadingZeroBytes(value);
+        if (zeroBytes == sizeof(ulong)) return sizeof(ulong) * 8;
+
+        return (zeroBytes << 3) + (byte)(value >> ((sizeof(ulong) - 1 - zeroBytes) << 3)) switch
+        {
+            <= 0x01 => 7,
+            <= 0x03 => 6,
+            <= 0x07 => 5,
+            <= 0x0f => 4,
+            <= 0x1f => 3,
+            <= 0x3f => 2,
+            <= 0x7f => 1,
+            _ => 0,
+        };
+    }
+}

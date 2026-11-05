@@ -25,6 +25,11 @@ public class Hash256ConverterTests
         Assert.That(result, Is.EqualTo(null));
     }
 
+    [TestCase("\"0x5102190bcfd53cc6a15761c9d2da43a628d0ca713bfad5a1e311b531c294b77\"", TestName = "63 hex digits (odd, short)")]
+    [TestCase("\"0x45102190bcfd53cc6a15761c9d2da43a628d0ca713bfad5a1e311b531c294b770\"", TestName = "65 hex digits (odd, long)")]
+    public void Rejects_odd_length_hex(string json) =>
+        Assert.That(() => JsonSerializer.Deserialize<Hash256>(json, options), Throws.InstanceOf<FormatException>());
+
     [TestCaseSource(nameof(WriteTestCases))]
     public void Writes_correct_hex(Hash256 hash, string expected)
     {
@@ -32,16 +37,31 @@ public class Hash256ConverterTests
         Assert.That(result, Is.EqualTo(expected));
     }
 
+    [TestCaseSource(nameof(WriteTestCases))]
+    public void WriteAsPropertyName_WhenHashIsDictionaryKey_PreservesHexAndRoundtrips(Hash256 hash, string expected)
+    {
+        Dictionary<Hash256, int> dictionary = new() { [hash] = 1 };
+
+        string json = JsonSerializer.Serialize(dictionary, options);
+        Dictionary<Hash256, int>? result = JsonSerializer.Deserialize<Dictionary<Hash256, int>>(json, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json, Is.EqualTo($"{{{expected}:1}}"), "Hash keys must retain their prefixed lowercase fixed-width form.");
+            Assert.That(result, Is.EqualTo(dictionary), "Hash keys and values must survive dictionary serialization.");
+        }
+    }
+
     static IEnumerable<TestCaseData> WriteTestCases =
     [
         new TestCaseData(new Hash256(new byte[32]), "\"0x0000000000000000000000000000000000000000000000000000000000000000\"")
-            .SetName("All zeros"),
+            .SetName("{m}: All zeros"),
         new TestCaseData(new Hash256(CreateFilledBytes(32, 0xFF)), "\"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"")
-            .SetName("All 0xFF"),
+            .SetName("{m}: All 0xFF"),
         new TestCaseData(new Hash256(CreateSequentialBytes(32)), "\"0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\"")
-            .SetName("Sequential bytes"),
+            .SetName("{m}: Sequential bytes"),
         new TestCaseData(Keccak.OfAnEmptyString, $"\"0x{Keccak.OfAnEmptyString.ToString(false)}\"")
-            .SetName("Keccak of empty string"),
+            .SetName("{m}: Keccak of empty string"),
     ];
 
     [TestCaseSource(nameof(RoundtripTestCases))]
@@ -49,6 +69,18 @@ public class Hash256ConverterTests
     {
         string json = JsonSerializer.Serialize(hash, options);
         Hash256? deserialized = JsonSerializer.Deserialize<Hash256>(json, options);
+        Assert.That(deserialized, Is.EqualTo(hash));
+    }
+
+    [Test]
+    public void Value_hash_writes_roundtrip()
+    {
+        JsonSerializerOptions valueOptions = new() { Converters = { new ValueHash256Converter() } };
+        ValueHash256 hash = new(CreateSequentialBytes(32));
+
+        string json = JsonSerializer.Serialize(hash, valueOptions);
+        ValueHash256 deserialized = JsonSerializer.Deserialize<ValueHash256>(json, valueOptions);
+
         Assert.That(deserialized, Is.EqualTo(hash));
     }
 

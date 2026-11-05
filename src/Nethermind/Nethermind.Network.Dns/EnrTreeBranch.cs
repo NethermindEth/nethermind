@@ -10,10 +10,7 @@ public class EnrTreeBranch : EnrTreeNode
 {
     public string[] Hashes { get; set; } = [];
 
-    public override string ToString()
-    {
-        return $"enrtree-branch:{string.Join(',', Hashes)}";
-    }
+    public override string ToString() => $"enrtree-branch:{string.Join(',', Hashes)}";
 
     public override string[] Links => [];
 

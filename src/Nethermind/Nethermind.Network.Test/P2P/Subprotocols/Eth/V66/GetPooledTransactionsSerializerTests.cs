@@ -15,15 +15,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Roundtrip()
         {
-            Hash256 a = new("0x00000000000000000000000000000000000000000000000000000000deadc0de");
-            Hash256 b = new("0x00000000000000000000000000000000000000000000000000000000feedbeef");
-            Hash256[] keys = { a, b };
+            ValueHash256 a = new("0x00000000000000000000000000000000000000000000000000000000deadc0de");
+            ValueHash256 b = new("0x00000000000000000000000000000000000000000000000000000000feedbeef");
+            ValueHash256[] keys = { a, b };
 
             using GetPooledTransactionsMessage message = new(keys.ToPooledList()) { RequestId = 1111 };
 
             GetPooledTransactionsMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, message, "f847820457f842a000000000000000000000000000000000000000000000000000000000deadc0dea000000000000000000000000000000000000000000000000000000000feedbeef");
+            SerializerTester.Test(serializer, message, "f847820457f842a000000000000000000000000000000000000000000000000000000000deadc0dea000000000000000000000000000000000000000000000000000000000feedbeef");
         }
     }
 }

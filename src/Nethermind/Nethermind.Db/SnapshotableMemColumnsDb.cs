@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 
 namespace Nethermind.Db
@@ -13,8 +14,12 @@ namespace Nethermind.Db
     /// </summary>
     public class SnapshotableMemColumnsDb<TKey> : IColumnsDb<TKey> where TKey : struct, Enum
     {
-        private readonly Dictionary<TKey, SnapshotableMemDb> _columnDbs = new();
+        private readonly Dictionary<TKey, SnapshotableMemDb> _columnDbs = [];
         private readonly bool _neverPrune;
+
+        // RocksDB commits a write batch and takes a snapshot atomically across column families; without this
+        // lock a snapshot could see part of a batch (e.g. flat's current-state marker ahead of its data).
+        private readonly Lock _commitLock = new();
 
         private SnapshotableMemColumnsDb(TKey[] keys, bool neverPrune)
         {
@@ -53,19 +58,14 @@ namespace Nethermind.Db
 
         public IEnumerable<TKey> ColumnKeys => _columnDbs.Keys;
 
-        public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore)
-        {
-            return new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
-        }
+        public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
 
-        public IColumnsWriteBatch<TKey> StartWriteBatch()
-        {
-            return new InMemoryColumnWriteBatch<TKey>(this);
-        }
+        public IColumnsWriteBatch<TKey> StartWriteBatch() => new AtomicColumnsWriteBatch(this);
 
         public IColumnDbSnapshot<TKey> CreateSnapshot()
         {
-            Dictionary<TKey, IKeyValueStoreSnapshot> snapshots = new();
+            Dictionary<TKey, IKeyValueStoreSnapshot> snapshots = [];
+            using Lock.Scope _ = _commitLock.EnterScope();
             foreach (KeyValuePair<TKey, SnapshotableMemDb> kvp in _columnDbs)
             {
                 snapshots[kvp.Key] = kvp.Value.CreateSnapshot();
@@ -89,6 +89,21 @@ namespace Nethermind.Db
             }
         }
 
+        private sealed class AtomicColumnsWriteBatch(SnapshotableMemColumnsDb<TKey> columnsDb) : IColumnsWriteBatch<TKey>
+        {
+            private readonly InMemoryColumnWriteBatch<TKey> _batch = new(columnsDb);
+
+            public IWriteBatch GetColumnBatch(TKey key) => _batch.GetColumnBatch(key);
+
+            public void Clear() => _batch.Clear();
+
+            public void Dispose()
+            {
+                using Lock.Scope _ = columnsDb._commitLock.EnterScope();
+                _batch.Dispose();
+            }
+        }
+
         /// <summary>
         /// Snapshot of column database at a specific point in time.
         /// </summary>
@@ -96,10 +111,7 @@ namespace Nethermind.Db
         {
             private readonly Dictionary<TKey, IKeyValueStoreSnapshot> _snapshots = snapshots;
 
-            public IReadOnlyKeyValueStore GetColumn(TKey key)
-            {
-                return _snapshots[key];
-            }
+            public IReadOnlyKeyValueStore GetColumn(TKey key) => _snapshots[key];
 
             public void Dispose()
             {

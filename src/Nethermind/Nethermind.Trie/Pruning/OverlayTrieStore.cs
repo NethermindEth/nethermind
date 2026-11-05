@@ -17,23 +17,15 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
 {
     private readonly INodeStorage _nodeStorage = new NodeStorage(keyValueStore);
 
-    public void Dispose()
-    {
-        baseStore.Dispose();
-    }
+    public void Dispose() => baseStore.Dispose();
 
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
-    {
+    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) =>
         // We always return Unknown even if baseStore return unknown, like archive node.
-        return baseStore.FindCachedOrUnknown(address, in path, hash);
-    }
+        baseStore.FindCachedOrUnknown(address, in path, hash);
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
-    {
-        byte[]? rlp = TryLoadRlp(address, in path, hash, flags);
-        if (rlp is null) throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
-        return rlp;
-    }
+    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        TryLoadRlp(address, in path, hash, flags)
+        ?? throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _nodeStorage.Get(address, in path, hash, flags) ?? baseStore.TryLoadRlp(address, in path, hash, flags);
 
@@ -45,7 +37,7 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
 
     public INodeStorage.KeyScheme Scheme => baseStore.Scheme;
 
-    public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
+    public IBlockCommitter BeginBlockCommit(ulong blockNumber) => NullCommitter.Instance;
 
     // Write directly to _nodeStorage, which goes to db provider.
     public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => new RawScopedTrieStore.Committer(_nodeStorage, address, writeFlags);

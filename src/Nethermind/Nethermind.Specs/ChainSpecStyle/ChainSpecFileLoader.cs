@@ -31,11 +31,11 @@ public class ChainSpecFileLoader
     public ChainSpec LoadEmbeddedOrFromFile(string fileName)
     {
         fileName = NormalizeFileName(fileName);
-        var extension = Path.GetExtension(fileName);
+        string extension = Path.GetExtension(fileName);
 
         string resourceName = FileNameToResource(fileName);
         Assembly assembly = typeof(IConfig).Assembly;
-        using Stream stream = assembly.GetManifestResourceStream(resourceName);
+        using Stream? stream = assembly.GetManifestResourceStream(resourceName);
         if (stream is not null)
         {
             if (_logger.IsInfo) _logger.Info("Loading ChainSpec from embedded resources");
@@ -43,14 +43,14 @@ public class ChainSpecFileLoader
         }
         else
         {
-            if (_logger.IsInfo) _logger.Info($"Did not find ChainSpec in embedded resources: {fileName}");
+            if (_logger.IsInfo) _logger.Info($"Did not find ChainSpec in embedded resources: {fileName:hide}");
             return LoadFromFile(fileName);
         }
     }
 
     private static string FileNameToResource(string fileName)
     {
-        var sb = new StringBuilder();
+        StringBuilder sb = new();
         sb.Append("Nethermind.Config.");
         if (!fileName.Contains('/'))
         {
@@ -64,7 +64,7 @@ public class ChainSpecFileLoader
 
     private static string NormalizeFileName(string fileName)
     {
-        var extension = Path.GetExtension(fileName);
+        string extension = Path.GetExtension(fileName);
         return extension == "" ? $"{fileName}.json" : fileName;
     }
 
@@ -72,7 +72,7 @@ public class ChainSpecFileLoader
     {
         filePath = CheckEmbeddedChainSpec(filePath);
         string extension = Path.GetExtension(filePath);
-        if (_logger.IsInfo) _logger.Info($"Loading ChainSpec from file: {filePath}");
+        if (_logger.IsInfo) _logger.Info($"Loading ChainSpec from file: {filePath:hide}");
         using FileStream fileStream = new(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
         return _chainSpecLoaders[extension].Load(fileStream);
     }
@@ -86,8 +86,9 @@ public class ChainSpecFileLoader
             try
             {
                 missingChainspecFileMessage.AppendLine().AppendLine("Did you mean any of these:");
-                string[] jsonFiles = Directory.GetFiles(Path.GetDirectoryName(filePath), "*.json");
-                string[] zstdFiles = Directory.GetFiles(Path.GetDirectoryName(filePath), "*.zst");
+                string directoryName = Path.GetDirectoryName(filePath) ?? ".";
+                string[] jsonFiles = Directory.GetFiles(directoryName, "*.json");
+                string[] zstdFiles = Directory.GetFiles(directoryName, "*.zst");
 
                 foreach (string configFile in jsonFiles)
                 {

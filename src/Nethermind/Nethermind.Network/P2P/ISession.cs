@@ -18,6 +18,12 @@ namespace Nethermind.Network.P2P
         SessionState State { get; }
         SessionState BestStateReached { get; }
         bool IsClosing { get; }
+
+        /// <summary>
+        /// Gets whether the transport channel has closed before delayed disconnect bookkeeping completes.
+        /// </summary>
+        bool IsChannelClosed => false;
+
         PublicKey RemoteNodeId { get; }
         PublicKey ObsoleteRemoteNodeId { get; }
         string RemoteHost { get; set; }

@@ -3,9 +3,10 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
-using FluentAssertions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -36,12 +37,14 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void Will_unregister_on_disconnect()
+        public void Can_remove_session()
         {
             ISession session = CreateSession();
             SessionMonitor sessionMonitor = new(new NetworkConfig(), LimboLogs.Instance);
             sessionMonitor.AddSession(session);
-            session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
+            sessionMonitor.RemoveSession(session);
+
+            Assert.That(sessionMonitor.Sessions, Is.Empty);
         }
 
         [Test]
@@ -63,14 +66,94 @@ namespace Nethermind.Network.Test
             await _pingSender.Received().SendPing();
             await _noPong.Received().SendPing();
 
-            Assert.That(session1.State, Is.EqualTo(SessionState.Initialized));
-            Assert.That(session2.State, Is.EqualTo(SessionState.Disconnected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(session1.State, Is.EqualTo(SessionState.Initialized));
+                Assert.That(session2.State, Is.EqualTo(SessionState.Disconnected));
+            }
         }
 
-        private ISession CreateSession()
+        [Test]
+        public async Task Disconnects_a_session_that_misses_every_pong_and_reports_a_timeout()
+        {
+            ISession responsive = CreateSession();
+            ISession unresponsive = CreateUnresponsiveSession();
+            DisconnectReason? reason = null;
+            DateTime disconnectedAt = default;
+            unresponsive.Disconnected += (_, args) =>
+            {
+                disconnectedAt = DateTime.UtcNow;
+                reason = args.DisconnectReason;
+            };
+
+            NetworkConfig networkConfig = new();
+            networkConfig.P2PPingInterval = 200;
+            TestLogger logger = new() { IsDebug = false };
+            SessionMonitor sessionMonitor = new(networkConfig, new OneLoggerLogManager(new(logger)));
+            sessionMonitor.AddSession(responsive);
+            sessionMonitor.AddSession(unresponsive);
+            DateTime lastPong = DateTime.UtcNow;
+            responsive.LastPongUtc = lastPong;
+            unresponsive.LastPongUtc = lastPong;
+            sessionMonitor.Start();
+            try
+            {
+                Assert.That(() => unresponsive.IsClosing, Is.True.After(10_000, 20));
+                Assert.That(() => reason, Is.EqualTo(DisconnectReason.ReceiveMessageTimeout).After(5_000, 20),
+                    "the reason selects the reconnect delay and lets the privileged-node gate reap dead static sessions");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(disconnectedAt - lastPong, Is.GreaterThanOrEqualTo(6 * TimeSpan.FromMilliseconds(networkConfig.P2PPingInterval)),
+                        "the window is measured from the last pong, so the first missed pongs have to be tolerated");
+                    Assert.That(responsive.IsClosing, Is.False);
+                }
+            }
+            finally
+            {
+                sessionMonitor.Stop();
+            }
+
+            Assert.That(logger.LogList, Has.Some.Contains("No pong received in response"));
+        }
+
+        [Test]
+        public async Task Keeps_a_session_that_recovers_between_missed_pongs()
+        {
+            int calls = 0;
+            IPingSender flaky = Substitute.For<IPingSender>();
+            flaky.SendPing().Returns(_ => Task.FromResult(Interlocked.Increment(ref calls) % 3 == 0));
+            ISession session = CreateSession(flaky);
+
+            NetworkConfig networkConfig = new();
+            networkConfig.P2PPingInterval = 500;
+            SessionMonitor sessionMonitor = new(networkConfig, LimboLogs.Instance);
+            sessionMonitor.AddSession(session);
+            sessionMonitor.Start();
+            try
+            {
+                await Task.Delay(4_000);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(Volatile.Read(ref calls), Is.GreaterThanOrEqualTo(3),
+                        "the recovery path is only exercised once the third ping has returned a pong");
+                    Assert.That(session.IsClosing, Is.False,
+                        "two missed pongs followed by a pong is a slow peer, not a dead one");
+                }
+            }
+            finally
+            {
+                sessionMonitor.Stop();
+            }
+        }
+
+        private ISession CreateSession() => CreateSession(_pingSender);
+
+        private ISession CreateSession(IPingSender pingSender)
         {
             ISession session = new Session(30312, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-            session.PingSender = _pingSender;
+            session.RemoteHost = "1.2.3.4";
+            session.RemotePort = 12345;
+            session.PingSender = pingSender;
             session.Handshake(TestItem.PublicKeyB);
             session.Init(5, Substitute.For<IChannelHandlerContext>(), Substitute.For<IPacketSender>());
             return session;
@@ -93,11 +176,11 @@ namespace Nethermind.Network.Test
             // Sessions should have different LastPingUtc values due to jitter
             DateTime[] pingTimes = sessions.Select(s => s.LastPingUtc).ToArray();
             int distinctCount = pingTimes.Distinct().Count();
-            distinctCount.Should().BeGreaterThan(1, "Sessions added at the same time should have staggered ping times");
+            Assert.That(distinctCount, Is.GreaterThan(1), "Sessions added at the same time should have staggered ping times");
 
             // The spread should cover a meaningful portion of the interval
             TimeSpan spread = pingTimes.Max() - pingTimes.Min();
-            spread.Should().BeGreaterThan(TimeSpan.FromMilliseconds(100), "Ping time spread should be non-trivial");
+            Assert.That(spread, Is.GreaterThan(TimeSpan.FromMilliseconds(100)), "Ping time spread should be non-trivial");
         }
 
         private ISession CreateUnresponsiveSession()

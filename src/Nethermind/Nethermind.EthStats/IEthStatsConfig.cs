@@ -10,13 +10,13 @@ public interface IEthStatsConfig : IConfig
     [ConfigItem(Description = "Whether to use Ethstats publishing.", DefaultValue = "false")]
     bool Enabled { get; }
 
-    [ConfigItem(Description = "The Ethstats server URL.", DefaultValue = "ws://localhost:3000/api")]
+    [ConfigItem(Description = "The Ethstats server URL.", DefaultValue = "ws://localhost:3000/api", IsSensitive = true)]
     string? Server { get; }
 
     [ConfigItem(Description = "The node name displayed on Ethstats.", DefaultValue = "Nethermind")]
     string? Name { get; }
 
-    [ConfigItem(Description = "The Ethstats secret.", DefaultValue = "secret")]
+    [ConfigItem(Description = "The Ethstats secret.", DefaultValue = "secret", IsSensitive = true)]
     string? Secret { get; }
 
     [ConfigItem(Description = "The node owner contact details displayed on Ethstats.", DefaultValue = "hello@nethermind.io")]

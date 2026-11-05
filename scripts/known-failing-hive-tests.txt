@@ -1,5 +1,3 @@
-# rpc-compat
-
 # graphql
 
 01_eth_blockNumber (nethermind)

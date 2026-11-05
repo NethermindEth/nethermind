@@ -19,14 +19,17 @@ public class MallocTrimmerTests
     public async Task TestTrim(SyncMode mode, bool doReceive)
     {
         MallocHelper helper = Substitute.For<MallocHelper>();
+        TaskCompletionSource trimmed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        helper.When(h => h.MallocTrim(Arg.Any<uint>())).Do(_ => trimmed.TrySetResult());
 
         ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
-        var trimmer = new MallocTrimmer(syncModeSelector, TimeSpan.FromMilliseconds(1), NullLogManager.Instance, helper);
+        MallocTrimmer trimmer = new(syncModeSelector, TimeSpan.FromMilliseconds(1), NullLogManager.Instance, helper);
 
         syncModeSelector.Changed += Raise.EventWith(null,
             new SyncModeChangedEventArgs(SyncMode.FastSync, mode));
 
-        await Task.Delay(TimeSpan.FromMilliseconds(100));
+        // The timer ticks on the thread pool and may be late on a loaded runner, so wait for the first trim.
+        await Task.WhenAny(trimmed.Task, Task.Delay(TimeSpan.FromMilliseconds(doReceive ? 10_000 : 100)));
 
         syncModeSelector.Changed += Raise.EventWith(null,
             new SyncModeChangedEventArgs(SyncMode.None, SyncMode.None));

@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Channels;
+using System.Collections.Concurrent;
+using System.Globalization;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -16,24 +16,33 @@ namespace Nethermind.State.Flat;
 /// <summary>
 /// Imports state from trie-based persistence to flat persistence.
 ///
-/// This importer uses SetAccountRaw/SetStorageRaw with hash-based keys. For PreimageFlat mode,
-/// wrap the persistence with PreimageRecordingPersistence and provide a previously recorded
-/// preimage database - it will automatically translate raw operations to preimage-keyed operations.
+/// This importer uses SetAccountRaw/SetStorageRawEncoded with hash-based keys, so it cannot target a
+/// preimage layout, which keys on the raw address and slot. <see cref="Nethermind.Db.FlatLayout.PreimageFlat"/>
+/// and <see cref="Nethermind.Db.FlatLayout.PreimageFlatV1"/> are rejected before the import starts.
 /// </summary>
 public class Importer(
     INodeStorage nodeStorage,
     IPersistence persistence,
-    ILogManager logManager
+    ILogManager logManager,
+    TimeProvider? timeProvider = null
 )
 {
     private readonly ILogger _logger = logManager.GetClassLogger<Importer>();
+    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private readonly AccountDecoder _accountDecoder = AccountDecoder.Instance;
     private long _totalNodes = 0;
     private const int BatchSize = 128_000;
     private const int FlushInterval = 50_000_000;
-    private const int CheckCancelInterval = 100_000;
+    private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(60);
 
-    private record struct Entry(Hash256? address, TreePath path, TrieNode node);
+    /// <summary>
+    /// A write batch used by one traversal thread at a time, with the number of trie nodes written to it.
+    /// </summary>
+    private sealed class IngestBatch(IPersistence.IWriteBatch writeBatch)
+    {
+        public IPersistence.IWriteBatch WriteBatch { get; } = writeBatch;
+        public int ItemCount { get; set; }
+    }
 
     public async Task Copy(StateId to, CancellationToken cancellationToken = default)
     {
@@ -49,15 +58,14 @@ public class Importer(
             RootHash = to.StateRoot.ToHash256()
         };
 
-        Channel<Entry> channel = Channel.CreateBounded<Entry>(2_000_000);
-        if (_logger.IsWarn) _logger.Warn("Starting import");
+        ConcurrentBag<IngestBatch> ingestBatches = [];
+        if (_logger.IsWarn) _logger.Warn($"Starting flat DB import. It can take hours; progress is logged every {ProgressInterval.TotalSeconds:0} s.");
 
-        int maxConcurrency = 8;
         VisitorProgressTracker progressTracker = new("Flat Import", logManager);
 
         Task visitTask = Task.Run(() =>
         {
-            Visitor visitor = new(channel.Writer, progressTracker, cancellationToken);
+            Visitor visitor = new((address, path, node) => IngestNode(from, ingestBatches, address, path, node), progressTracker, cancellationToken);
             try
             {
                 tree.Accept(visitor, to.StateRoot.ToHash256(), new VisitingOptions()
@@ -68,101 +76,118 @@ public class Importer(
             finally
             {
                 visitor.Finish();
-                channel.Writer.Complete();
+                while (ingestBatches.TryTake(out IngestBatch? ingestBatch)) ingestBatch.WriteBatch.Dispose();
             }
+
+            // A cancelled traversal skips the remaining nodes and returns normally.
+            cancellationToken.ThrowIfCancellationRequested();
         }, cancellationToken);
-        int concurrentIngestCount = Math.Min(Environment.ProcessorCount, maxConcurrency);
-        using ArrayPoolList<Task> tasks = new(concurrentIngestCount + 1);
-        tasks.Add(visitTask);
-        tasks.AddRange(Enumerable.Range(0, concurrentIngestCount).Select(_ => Task.Run(async () =>
+
+        // Timer-driven, so a line is written also while ingest is stalled and no node is visited.
+        // After the traversal the estimate can stay below 100 % on small tries, so report it as done.
+        ITimer progressTimer = _timeProvider.CreateTimer(
+            _ => LogProgress(visitTask.IsCompletedSuccessfully && !cancellationToken.IsCancellationRequested ? 1 : progressTracker.GetProgress()),
+            null, ProgressInterval, ProgressInterval);
+        try
         {
-            await IngestLogic(from, channel.Reader, cancellationToken);
-        }, cancellationToken)));
+            await visitTask;
 
-        await Task.WhenAll(tasks.AsSpan());
+            // The ingest batches use DisableWAL and are only crash-durable once flushed. Flush before advancing the
+            // WAL-durable pointer, so a crash can't leave CurrentState at `to` over unflushed (holed) data, which
+            // FlatDb.DropPruningTrieState would then treat as a finished import and delete the trie it came from.
+            persistence.Flush();
 
-        // Finally, we increment the state id
-        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(from, to);
-        writeBatch.Dispose();
-        persistence.Flush();
+            // An empty write batch from→to advances the persisted state ID to `to` without writing any data entries.
+            IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(from, to);
+            writeBatch.Dispose();
+            persistence.Flush();
+        }
+        finally
+        {
+            // Waits for a running tick, so no progress line follows
+            await progressTimer.DisposeAsync();
+        }
 
         if (_logger.IsInfo) _logger.Info($"Flat db copy completed. Wrote {_totalNodes} nodes.");
     }
 
-    private async Task IngestLogic(StateId from, ChannelReader<Entry> channelReader, CancellationToken cancellationToken = default)
+    private void LogProgress(double progress)
     {
-        if (_logger.IsInfo) _logger.Info($"Ingest thread started");
+        if (!_logger.IsInfo) return;
 
-        int currentItemSize = 0;
-        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // It writes from initial state to initial state.
-        await foreach ((Hash256? address, TreePath path, TrieNode node) in channelReader.ReadAllAsync(cancellationToken))
+        _logger.Info($"Flat Import {progress.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter((float)progress, 1)} written: {Interlocked.Read(ref _totalNodes):N0}");
+    }
+
+    private void IngestNode(in StateId from, ConcurrentBag<IngestBatch> ingestBatches, Hash256? address, in TreePath path, TrieNode node)
+    {
+        if (node.IsLeaf)
         {
-            // Write it
-            Metrics.ImporterEntriesCount++;
+            Ingest(from, ingestBatches, address, path, node.FullRlp.AsSpan(), path.Append(node.Key).Path, node.Value.AsSpan());
+        }
+        else
+        {
+            Ingest(from, ingestBatches, address, path, node.FullRlp.AsSpan(), leafPath: null, leafValue: default);
+        }
+    }
 
+    private void Ingest(in StateId from, ConcurrentBag<IngestBatch> ingestBatches, Hash256? address, in TreePath path,
+        ReadOnlySpan<byte> rlp, ValueHash256? leafPath, ReadOnlySpan<byte> leafValue)
+    {
+        if (!ingestBatches.TryTake(out IngestBatch? ingestBatch))
+        {
+            ingestBatch = new IngestBatch(persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL)); // It writes from initial state to initial state.
+        }
+
+        IPersistence.IWriteBatch writeBatch = ingestBatch.WriteBatch;
+
+        // Write it
+        Metrics.ImporterEntriesCount++;
+
+        if (address is null)
+        {
+            writeBatch.SetStateTrieNode(path, rlp);
+        }
+        else
+        {
+            writeBatch.SetStorageTrieNode(address, path, rlp);
+        }
+
+        if (leafPath is { } fullPath)
+        {
             if (address is null)
             {
-                writeBatch.SetStateTrieNode(path, node);
+                RlpReader accountReader = new(leafValue);
+                Account acc = _accountDecoder.Decode(ref accountReader)!;
+                writeBatch.SetAccountRaw(fullPath, acc);
             }
             else
             {
-                writeBatch.SetStorageTrieNode(address, path, node);
-            }
-
-            if (node.IsLeaf)
-            {
-                ValueHash256 fullPath = path.Append(node.Key).Path;
-                if (address is null)
+                // A storage leaf value is RLP(stripped) and never empty (zero slots are absent), so it is
+                // stored verbatim when wrapping, skipping a decode + re-encode round-trip.
+                if (!leafValue.IsEmpty)
                 {
-                    Account acc = _accountDecoder.Decode(node.Value.AsSpan())!;
-                    writeBatch.SetAccountRaw(fullPath.ToHash256(), acc);
+                    writeBatch.SetStorageRawEncoded(address, fullPath, leafValue);
                 }
-                else
-                {
-                    ReadOnlySpan<byte> value = node.Value.AsSpan();
-                    byte[] toWrite;
-
-                    if (value.IsEmpty)
-                    {
-                        toWrite = StorageTree.ZeroBytes;
-                    }
-                    else
-                    {
-                        Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
-                        toWrite = rlp.DecodeByteArray();
-                    }
-
-                    writeBatch.SetStorageRaw(address, fullPath.ToHash256(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
-                }
-            }
-
-            long theTotalNode = Interlocked.Increment(ref _totalNodes);
-            if (theTotalNode % CheckCancelInterval == 0)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-            }
-
-            if (theTotalNode % FlushInterval == 0)
-            {
-                writeBatch.Dispose();
-                persistence.Flush();
-                writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // It writes form initial state to initial state.
-                currentItemSize = 0;
-            }
-
-            currentItemSize++;
-            if (currentItemSize > BatchSize)
-            {
-                writeBatch.Dispose();
-                writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL);
-                currentItemSize = 0;
             }
         }
 
-        writeBatch.Dispose();
+        long theTotalNode = Interlocked.Increment(ref _totalNodes);
+        if (theTotalNode % FlushInterval == 0)
+        {
+            writeBatch.Dispose();
+            persistence.Flush();
+        }
+        else if (++ingestBatch.ItemCount > BatchSize)
+        {
+            writeBatch.Dispose();
+        }
+        else
+        {
+            ingestBatches.Add(ingestBatch);
+        }
     }
 
-    private class Visitor(ChannelWriter<Entry> channelWriter, VisitorProgressTracker progressTracker, CancellationToken cancellationToken = default) : ITreeVisitor<TreePathContextWithStorage>
+    private class Visitor(Action<Hash256?, TreePath, TrieNode> ingest, VisitorProgressTracker progressTracker, CancellationToken cancellationToken = default) : ITreeVisitor<TreePathContextWithStorage>
     {
         public bool IsFullDbScan => true;
         public bool ExpectAccounts => true;
@@ -177,13 +202,7 @@ public class Importer(
 
         private void Write(in TreePathContextWithStorage nodeContext, TrieNode node, bool isLeaf)
         {
-            SpinWait sw = new();
-            while (!channelWriter.TryWrite(new Entry(nodeContext.Storage, nodeContext.Path, node)))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                sw.SpinOnce();
-            }
-
+            ingest(nodeContext.Storage, nodeContext.Path, node);
             progressTracker.OnNodeVisited(nodeContext.Path, isStorage: nodeContext.Storage is not null, isLeaf);
         }
 

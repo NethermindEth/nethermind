@@ -3,14 +3,9 @@
 
 namespace Nethermind.Consensus.Clique
 {
-    public class Tally
+    public class Tally(bool authorize)
     {
-        public bool Authorize { get; }
+        public bool Authorize { get; } = authorize;
         public int Votes { get; set; }
-
-        public Tally(bool authorize)
-        {
-            Authorize = authorize;
-        }
     }
 }

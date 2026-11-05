@@ -1,0 +1,252 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using Ethereum.Test.Base;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
+using NUnit.Framework;
+
+namespace Ethereum.Transaction.Test;
+
+/// <summary>
+/// Guards the client wordings behind each frame-transaction fixture label.
+/// </summary>
+/// <remarks>
+/// The <c>DecodeFailureMessage</c> tests drive the real decoder, so they fail if its wording moves
+/// away from the table. The rest assert the table against literals and cannot: a processor reword
+/// leaves both the case and the fragment green while the mapping goes dead. Reaching the processor
+/// wordings the same way needs constants behind them, which this fixture cannot add on its own.
+/// </remarks>
+public class FrameExceptionFragmentsTests
+{
+    /// <summary>The largest RLP sequence prefix still carrying its content length inline (0xc0 + 55).</summary>
+    private const int ShortSequencePrefixMax = 0xf7;
+
+    private static bool Covers(IEnumerable<string> fragments, string message)
+    {
+        foreach (string fragment in fragments)
+        {
+            if (message.Contains(fragment, StringComparison.Ordinal)) return true;
+        }
+
+        return false;
+    }
+
+    private static string DecodeFailureMessage(Rlp frames, Rlp maxFee) =>
+        DecodeFailureMessage(FrameTxPayload.Encode(frames, maxFee));
+
+    private static string DecodeFailureMessage(byte[] payload)
+    {
+        // Catch, not Throws: the length guard raises the RlpLimitException subclass.
+        RlpException thrown = Assert.Catch<RlpException>(() =>
+        {
+            RlpReader reader = new(payload);
+            Rlp.GetDecoder<Nethermind.Core.Transaction>()!
+                .DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+        })!;
+
+        return thrown.Message;
+    }
+
+    [Test]
+    public void Decode_CoversAFrameListThatIsNotASequence()
+    {
+        string message = DecodeFailureMessage(
+            frames: Rlp.Encode(new byte[19]),               // a string where a list belongs
+            maxFee: Rlp.Encode(0L));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain("Expected a sequence prefix"));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
+    }
+
+    [Test]
+    public void Decode_CoversAPayloadLengthThatOverrunsTheBuffer()
+    {
+        // A frame transaction has no envelope signature, so an overlong declared length leaves the end-of-payload
+        // checkpoint past the last field; every overrun then fails at the same peek, so one case says it all.
+        byte[] payload = FrameTxPayload.Encode(
+            frames: Rlp.Encode(Array.Empty<Rlp>()),
+            maxFee: Rlp.Encode(0L));
+        Assert.That(payload[1] + 1, Is.LessThanOrEqualTo(ShortSequencePrefixMax),
+            "the overrun must keep the short-form prefix, or it declares a length of length instead");
+        payload[1]++;
+
+        string message = DecodeFailureMessage(payload);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain("RLP data is truncated"));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
+    }
+
+    [Test]
+    public void FeeOverflow_CoversAFeeFieldWiderThanItsType()
+    {
+        string message = DecodeFailureMessage(
+            frames: Rlp.Encode(Array.Empty<Rlp>()),
+            maxFee: Rlp.Encode(new byte[33])); // one byte over the 32-byte field
+
+        Assert.That(Covers(FrameExceptionFragments.FeeOverflow, message), Is.True, message);
+    }
+
+    // Both wordings of one guard; see FrameExceptionFragments.FeeOverflow for which is which.
+    [TestCase("An RLP limit exceeded")]
+    [TestCase("Collection count of 33 is over limit 32 or 40 bytes left")]
+    public void FeeOverflow_CoversBothWordingsOfTheLengthGuard(string message) =>
+        Assert.That(Covers(FrameExceptionFragments.FeeOverflow, message), Is.True);
+
+    // The validation-prefix wordings reach only the mempool admission simulator, so no fixture
+    // produces them; they are pinned so a reword of that path does not slip past the set.
+    [TestCase("VERIFY frame reverted")]
+    [TestCase("validation prefix frame reverted")]
+    [TestCase("SENDER frame before execution approval")]
+    [TestCase("frame transaction never set a payer")]
+    [TestCase("frame transaction validation prefix never set a payer")]
+    public void Execution_CoversTheHaltWordingsOfBothEntryPoints(string message) =>
+        Assert.That(Covers(FrameExceptionFragments.Execution, message), Is.True);
+
+    [Test]
+    public void Decode_CoversTooManyNonceKeys()
+    {
+        Rlp[] nonceKeys = new Rlp[Eip8250Constants.MaxNonceKeys + 1];
+        for (int i = 0; i < nonceKeys.Length; i++)
+        {
+            nonceKeys[i] = Rlp.Encode(i + 1L);
+        }
+
+        string message = DecodeFailureMessage(FrameTxPayload.Encode(
+            frames: Rlp.Encode(Array.Empty<Rlp>()),
+            maxFee: Rlp.Encode(0L),
+            nonceKeys));
+
+        Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+    }
+
+    // EIP-8250's seq_beyond_width: nonce_seq = 2^64, nine bytes, behind a nonce key. The fixtures label it
+    // TYPE_6_INVALID_FRAME_FORMAT only, so Decode has to cover the NonceTooWide wording, not just NONCE_OVERFLOW.
+    [Test]
+    public void Decode_CoversANonceSeqWiderThan64Bits()
+    {
+        string message = DecodeFailureMessage(FrameTxPayload.Encode(
+            frames: Rlp.Encode(Array.Empty<Rlp>()),
+            maxFee: Rlp.Encode(0L),
+            nonceKeys: [Rlp.Encode(1L)],
+            nonce: new Rlp([0x89, 0x01, 0, 0, 0, 0, 0, 0, 0, 0])));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain("NonceTooWide"));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
+    }
+
+    [Test]
+    public void Decode_CoversAFeeListMissingAnElement()
+    {
+        string message = DecodeFailureMessage(FrameTxPayload.Encode(
+            frames: Rlp.Encode(Array.Empty<Rlp>()),
+            maxFee: Rlp.Encode(0L),
+            fees: Rlp.Encode(new[] { Rlp.Encode(0L) })));    // the list [max_fee]
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain("fees must hold two items"));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
+    }
+
+    [Test]
+    public void DecodeCarriesEveryFeeOverflowWording()
+    {
+        // Decode inlines these rather than spreading FeeOverflow, which would make it read null if
+        // ever declared below it. This is the check that keeps the two in step instead.
+        foreach (string fragment in FrameExceptionFragments.FeeOverflow)
+        {
+            Assert.That(FrameExceptionFragments.Decode, Does.Contain(fragment));
+        }
+    }
+
+    /// <summary>One frame, <c>[mode, flags, target, limits, value, data]</c>, with the encoded items the caller supplies.</summary>
+    private static Rlp OneFrame(Rlp mode = null, Rlp limits = null, Rlp data = null) =>
+        Rlp.Encode(new Rlp[]
+        {
+            Rlp.Encode(
+                mode ?? Rlp.Encode(1L),
+                Rlp.Encode(0L),                                     // flags
+                Rlp.Encode(TestItem.AddressB.Bytes),                // target
+                limits ?? Rlp.Encode(Rlp.Encode(21_000L), Rlp.Encode(0L)),
+                Rlp.Encode(0L),                                     // value
+                data ?? Rlp.Encode(Array.Empty<byte>())),
+        });
+
+    private static IEnumerable<TestCaseData> MalformedFrameCases()
+    {
+        // 0x81 0x01 is the byte 0x01 under a one-byte string header; RLP encodes a byte below 0x80 as itself.
+        yield return new TestCaseData(OneFrame(mode: new Rlp([0x81, 0x01])), "Non-canonical integer")
+            .SetName("Decode covers a frame mode under a needless string header");
+        yield return new TestCaseData(OneFrame(data: new Rlp([0x81, 0x01])), "Non-canonical integer")
+            .SetName("Decode covers one byte of frame data under a needless string header");
+        // The mode 1 with a leading zero is the two-byte string 0x82 0x00 0x01, a prefix a one-byte field rejects.
+        yield return new TestCaseData(OneFrame(mode: new Rlp([0x82, 0x00, 0x01])), "Unexpected byte value")
+            .SetName("Decode covers a frame mode with a leading zero");
+        // A long-form string header (0xb8, then the length) is for strings of 56 bytes or more.
+        yield return new TestCaseData(OneFrame(data: new Rlp([0xb8, 0x02, 0x01, 0x02])), "Expected length greater than or equal to 56")
+            .SetName("Decode covers short frame data under a long-form header");
+        yield return new TestCaseData(OneFrame(limits: Rlp.Encode(new Rlp[] { Rlp.Encode(21_000L) })), "Data checkpoint failed")
+            .SetName("Decode covers frame limits missing an element");
+    }
+
+    [TestCaseSource(nameof(MalformedFrameCases))]
+    public void Decode_CoversAMalformedFrame(Rlp frames, string wording)
+    {
+        string message = DecodeFailureMessage(FrameTxPayload.Encode(frames, Rlp.Encode(0L)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain(wording));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> DisjointnessCases()
+    {
+        (string Name, string[] Set)[] sets =
+        [
+            ("Format", FrameExceptionFragments.Format),
+            ("Signature", FrameExceptionFragments.Signature),
+            ("Execution", FrameExceptionFragments.Execution),
+        ];
+
+        foreach ((string ownerName, string[] owner) in sets)
+        {
+            foreach ((string otherName, string[] other) in sets)
+            {
+                if (!ReferenceEquals(owner, other))
+                {
+                    yield return new TestCaseData(owner, other).SetName($"{ownerName} messages are not matched by {otherName}");
+                }
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(DisjointnessCases))]
+    public void Sets_StayPairwiseDisjoint(string[] owner, string[] other)
+    {
+        // A fixture naming one label has to fail when the client rejects for one of the other two,
+        // so no set may hold a fragment broad enough to catch another's messages.
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (string message in owner)
+            {
+                Assert.That(Covers(other, message), Is.False, message);
+            }
+        }
+    }
+}

@@ -3,6 +3,9 @@
   <PropertyGroup>
     <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+    <!-- Loads the experimental read-only query modules (NMEVM0001) into the query environments. -->
+    <NoWarn>$(NoWarn);NMEVM0001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -13,7 +16,9 @@
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
+    <ProjectReference Include="..\Nethermind.History\Nethermind.History.csproj" />
     <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
+    <ProjectReference Include="..\Nethermind.Serialization.JsonGenerator\Nethermind.Serialization.JsonGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using Nethermind.Core.Metric;
 
 namespace Nethermind.Core.Attributes;
@@ -22,14 +23,9 @@ public sealed class GaugeMetricAttribute : Attribute { }
 /// Mark that the attribute is a dictionary whose key is used as a label of name LabelName.
 /// </summary>
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
-public sealed class KeyIsLabelAttribute : Attribute
+public sealed class KeyIsLabelAttribute(params string[] labelNames) : Attribute
 {
-    public string[] LabelNames { get; }
-
-    public KeyIsLabelAttribute(params string[] labelNames)
-    {
-        LabelNames = labelNames;
-    }
+    public string[] LabelNames { get; } = labelNames;
 }
 
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
@@ -40,6 +36,13 @@ public sealed class SummaryMetricAttribute : Attribute
     // Summary objective in quantile-epsilon pair
     public double[] ObjectiveQuantile { get; set; } = [];
     public double[] ObjectiveEpsilon { get; set; } = [];
+}
+
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class HistogramMetricAttribute : Attribute
+{
+    public string[] LabelNames { get; init; } = [];
+    public double[] Buckets { get; init; } = [];
 }
 
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
@@ -67,7 +70,33 @@ public sealed class DetailedMetricOnFlagAttribute : Attribute
 {
 }
 
-public record StringLabel(string label) : IMetricLabels
+public sealed class StringLabel(string label) : IMetricLabels, IEquatable<StringLabel>
 {
-    public string[] Labels => [label];
+    private readonly string _label = label;
+
+    public string[] Labels { get; } = [label];
+
+    public bool Equals(StringLabel? other) => other is not null && _label == other._label;
+
+    public override bool Equals(object? obj) => Equals(obj as StringLabel);
+
+    public override int GetHashCode() => _label.GetHashCode();
+}
+
+/// <summary>
+/// A single-value label held for the lifetime of the process, so the observer resolves its labelled child once.
+/// </summary>
+/// <remarks>
+/// <see cref="Get"/> returns one instance per value, so the observer cache stays bounded by the number of distinct
+/// values. Hold the result in a static field on hot paths to skip the lookup.
+/// </remarks>
+public sealed class StableStringLabel : IStableMetricLabels
+{
+    private static readonly ConcurrentDictionary<string, StableStringLabel> _cache = new(StringComparer.Ordinal);
+
+    private StableStringLabel(string label) => Labels = [label];
+
+    public string[] Labels { get; }
+
+    public static StableStringLabel Get(string label) => _cache.GetOrAdd(label, static l => new StableStringLabel(l));
 }

@@ -6,15 +6,9 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.Processing
 {
-    public class TxEventArgs : EventArgs
+    public class TxEventArgs(int index, Transaction transaction) : EventArgs
     {
-        public int Index { get; }
-        public Transaction Transaction { get; }
-
-        public TxEventArgs(int index, Transaction transaction)
-        {
-            Index = index;
-            Transaction = transaction;
-        }
+        public int Index { get; } = index;
+        public Transaction Transaction { get; } = transaction;
     }
 }

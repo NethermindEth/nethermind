@@ -1,0 +1,677 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Config;
+using Nethermind.Init.Modules;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
+using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using Nethermind.Trie;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.State.Flat.Test;
+
+[TestFixture]
+public class LongFinalityIntegrationTests
+{
+    private string _testDir = null!;
+    private ResourcePool _pool = null!;
+    private IProcessExitSource _processExitSource = null!;
+    private CancellationTokenSource _cts = null!;
+    private IFlatDbConfig _config = null!;
+    private ArenaManager _memArena = null!;
+    private BlobArenaManager _helperBlobs = null!;
+    private INodeRecordBuffer _buffer = null!;
+
+    [SetUp]
+    public void SetUp()
+    {
+        _testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_testDir);
+        _pool = new ResourcePool(new FlatDbConfig());
+        _buffer = FlatTestHelpers.NewTestBuffer();
+        _cts = new CancellationTokenSource();
+        _processExitSource = Substitute.For<IProcessExitSource>();
+        _processExitSource.Token.Returns(_cts.Token);
+        _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true };
+        _memArena = TestFixtureHelpers.CreateArenaManager(Path.Combine(_testDir, "mem-arena"));
+        _helperBlobs = new BlobArenaManager(Path.Combine(_testDir, "helper-blobs"), 4L * 1024 * 1024);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+        _helperBlobs.Dispose();
+        _memArena.Dispose();
+        _buffer.Dispose();
+        if (Directory.Exists(_testDir))
+            Directory.Delete(_testDir, recursive: true);
+    }
+
+    private Snapshot CreateSnapshot(StateId from, StateId to, Action<SnapshotContent> configure)
+    {
+        Snapshot snapshot = _pool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing, _buffer);
+        configure(snapshot.Content);
+        return snapshot;
+    }
+
+    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data) =>
+        TestFixtureHelpers.CreatePersistedSnapshot(_memArena, _helperBlobs, from, to, data);
+
+    [Test]
+    public void FullStack_PersistAndQuery_AccountsStorageAndTrieNodes()
+    {
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
+
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+
+        TreePath statePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("state_path"), 4);
+        Hash256 storageAddr = Keccak.Compute("storage_address");
+        TreePath storagePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("storage_path"), 6);
+        byte[] stateRlp = FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80);
+        byte[] storageRlp = FlatTestHelpers.LeafRlp(0xC1, 0x80);
+
+        using Snapshot snap = CreateSnapshot(s0, s1, c =>
+        {
+            c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(500).TestObject;
+            byte[] slotVal = new byte[32]; slotVal[31] = 0xFF;
+            c.Storages[(TestItem.AddressA, (UInt256)42)] = new UInt256(slotVal, isBigEndian: true);
+            c.SelfDestructedStorageAddresses[TestItem.AddressB] = false;
+            c.SetStateNodeRlp(_buffer, statePath, stateRlp);
+            c.SetStorageNodeRlp(_buffer, storageAddr, storagePath, storageRlp);
+        });
+
+        tier.ConvertToPersistedBase(snap).Dispose();
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
+        Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
+#pragma warning restore NUnit2045
+
+        Assert.That(persisted!.TryLoadStateNodeRlp(statePath, out byte[]? stateResult), Is.True);
+        Assert.That(stateResult, Is.EqualTo(stateRlp));
+        Assert.That(persisted.TryLoadStorageNodeRlp(storageAddr.ValueHash256, storagePath, out byte[]? storageResult), Is.True);
+        Assert.That(storageResult, Is.EqualTo(storageRlp));
+        persisted.Dispose();
+    }
+
+    // 4 KiB — each snapshot's metadata reservation page-rounds to fill the whole arena
+    // file, so the file fully-dies on the sole reservation's MarkDead and the punch path
+    // is short-circuited. 1 MiB — both snapshots' reservations pack into one arena file,
+    // so snap1's dispose finds snap2 still live, MarkDead returns true, and the bare
+    // ArenaReservation.CleanUp would (without the PersistOnShutdown-aware fix) punch the
+    // dead range in a live preserve-flagged file, zeroing snap1's metadata for session 2.
+    [TestCase(4096L, TestName = "Repository_Restart_PreservesAllData_PerSnapshotArenaFiles")]
+    [TestCase(1L * 1024 * 1024, TestName = "Repository_Restart_PreservesAllData_SharedArenaAcrossSnapshots")]
+    public void Repository_Restart_PreservesAllData(long maxArenaSize)
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+        StateId s2 = new(2, Keccak.Compute("2"));
+
+        // Per-snapshot trie nodes are capped at 568 bytes (MaxTrieNodeRlpBytes), so use
+        // many smaller RLPs per snapshot to push the cumulative blob frontier well past
+        // 1 OS page (4 KiB). Without enough total blob bytes, a stray
+        // BlobArenaManager.TryResetOrphanedFrontier punch over [0, frontier) is a no-op
+        // on tmpfs (sub-page punches are dropped), letting the test silently pass with
+        // the bug present. 10 × ~500 bytes per snap = ~5 KiB per snap = ~10 KiB shared
+        // blob frontier → punch reliably zeros page 0.
+        const int nodesPerSnap = 10;
+        byte[] body1 = new byte[500]; Array.Fill(body1, (byte)0xAA);
+        byte[] body2 = new byte[500]; Array.Fill(body2, (byte)0xBB);
+        byte[] rlp1 = FlatTestHelpers.LeafRlp(body1);   // ~507 bytes — under MaxTrieNodeRlpBytes
+        byte[] rlp2 = FlatTestHelpers.LeafRlp(body2);
+        TreePath[] paths1 = new TreePath[nodesPerSnap];
+        TreePath[] paths2 = new TreePath[nodesPerSnap];
+        for (int i = 0; i < nodesPerSnap; i++)
+        {
+            paths1[i] = FlatTestHelpers.CanonicalPath(Keccak.Compute($"path1_{i}"), 4);
+            paths2[i] = FlatTestHelpers.CanonicalPath(Keccak.Compute($"path2_{i}"), 4);
+        }
+        MemDb catalogDb = new();
+
+        using (FlatTestContainer tier1 = new(arenaFileSizeBytes: maxArenaSize, baseDbPath: _testDir, catalogDb: catalogDb))
+        {
+            SnapshotRepository repo = tier1.Repository;
+
+            using Snapshot source1 = CreateSnapshot(s0, s1, c =>
+            {
+                foreach (TreePath p in paths1) c.SetStateNodeRlp(_buffer, p, rlp1);
+                c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
+            });
+            tier1.ConvertToPersistedBase(source1).Dispose();
+
+            using Snapshot source2 = CreateSnapshot(s1, s2, c =>
+            {
+                foreach (TreePath p in paths2) c.SetStateNodeRlp(_buffer, p, rlp2);
+                c.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
+            });
+            tier1.ConvertToPersistedBase(source2).Dispose();
+        }
+
+        // Repository.Dispose flags every loaded snapshot's arena reservation AND every
+        // referenced blob file with PersistOnShutdown before tearing down the managers,
+        // so both file kinds must survive on disk for the catalog to re-bind in session 2.
+        // Split assertions so a missing flag on one side fingerprints which side regressed.
+        string arenaDir = Path.Combine(_testDir, "persistedSnapshot", "arena");
+        string blobDir = Path.Combine(_testDir, "persistedSnapshot", "blob");
+        // PersistedBase metadata lives in the small-arena pool (sub-CompactSize tier).
+        Assert.That(Directory.GetFiles(arenaDir, "small_arena_*.bin"), Is.Not.Empty,
+            "arena files were deleted on Dispose — PersistOnShutdown flag did not propagate to ArenaFile");
+        string[] blobFiles = Directory.GetFiles(blobDir, "blob_*.bin");
+        Assert.That(blobFiles, Is.Not.Empty,
+            "blob files were deleted on Dispose — PersistOnShutdown flag did not propagate to BlobArenaFile");
+        // No pre-extension: blob length tracks the actual data extent. If we ever drift
+        // back into pre-extending or punch-zero-on-shutdown, a preserve-flagged file ends
+        // up with length 0 (truncated) or length MaxSize (pre-extended sparse) — neither
+        // matches the snapshot's written extent. Either symptom would be caught here.
+        foreach (string blobFile in blobFiles)
+        {
+            long len = new FileInfo(blobFile).Length;
+            Assert.That(len, Is.GreaterThan(0),
+                $"{blobFile} truncated on Dispose — preserve flag did not protect a referenced blob");
+            Assert.That(len, Is.LessThanOrEqualTo(1024 * 1024),
+                $"{blobFile} length {len} > 1 MiB cap — pre-extension regressed");
+        }
+
+        using (FlatTestContainer tier2 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
+        {
+            SnapshotRepository repo = tier2.Repository;
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
+            Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(2));
+#pragma warning restore NUnit2045
+
+            // s0→s1 carries paths1[] + AddressA; s1→s2 carries paths2[] + AddressB. Every
+            // state node round-trips intact — a stray BlobArenaManager.TryResetOrphanedFrontier
+            // punch during the session-1 dispose would zero at least the first 4 KiB of the
+            // blob, so the early-index nodes' RLPs would either not decode or read as zeros.
+            // The cross-snapshot misses verify the snapshot boundary survives reload (i.e.
+            // AddressB does NOT bleed into snap1's view, and vice versa).
+            Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? snap1), Is.True);
+            foreach (TreePath p in paths1)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(snap1!.TryLoadStateNodeRlp(p, out byte[]? r), Is.True, $"snap1 missing {p}");
+                    Assert.That(r, Is.EqualTo(rlp1), $"snap1 state node at {p} read back corrupted");
+                }
+            }
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
+            Assert.That(snap1!.TryGetAccount(TestItem.AddressA, out Account? a1), Is.True);
+#pragma warning restore NUnit2045
+            Assert.That(snap1.TryGetAccount(TestItem.AddressB, out Account? snap1MissB), Is.False);
+            snap1.Dispose();
+
+            Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedBase, out PersistedSnapshot? snap2), Is.True);
+            foreach (TreePath p in paths2)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(snap2!.TryLoadStateNodeRlp(p, out byte[]? r), Is.True, $"snap2 missing {p}");
+                    Assert.That(r, Is.EqualTo(rlp2), $"snap2 state node at {p} read back corrupted");
+                }
+            }
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
+            Assert.That(snap2!.TryGetAccount(TestItem.AddressB, out Account? a2), Is.True);
+#pragma warning restore NUnit2045
+            Assert.That(snap2.TryGetAccount(TestItem.AddressA, out Account? snap2MissA), Is.False);
+            snap2.Dispose();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(a1!.Balance, Is.EqualTo((UInt256)100));
+                Assert.That(a2!.Balance, Is.EqualTo((UInt256)200));
+                Assert.That(snap1MissB, Is.Null);
+                Assert.That(snap2MissA, Is.Null);
+            }
+        }
+    }
+
+
+    [Test]
+    public void MergeSnapshotData_AllEntryTypes()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+        StateId s2 = new(2, Keccak.Compute("2"));
+
+        TreePath statePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("state"), 4);
+        Hash256 storageAddr = Keccak.Compute("addr");
+        TreePath storagePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("stor_path"), 6);
+
+        using Snapshot snap1 = CreateSnapshot(s0, s1, c =>
+        {
+            c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
+            c.SetStateNodeRlp(_buffer, statePath, FlatTestHelpers.LeafRlp(0xC0));
+            c.SetStorageNodeRlp(_buffer, storageAddr, storagePath, FlatTestHelpers.LeafRlp(0xC1, 0x80));
+        });
+
+        using Snapshot snap2 = CreateSnapshot(s1, s2, c =>
+        {
+            c.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
+            c.SetStateNodeRlp(_buffer, statePath, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80)); // Override
+        });
+
+        byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1, _helperBlobs);
+        byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2, _helperBlobs);
+        PersistedSnapshot baseSnap1 = CreatePersistedSnapshot(s0, s1, data1);
+        PersistedSnapshot baseSnap2 = CreatePersistedSnapshot(s1, s2, data2);
+        using PersistedSnapshotList toMerge = new(2) { baseSnap1, baseSnap2 };
+        byte[] merged = PersistedSnapshotBuilderTestExtensions.NWayMergeSnapshots(toMerge);
+
+        using PersistedSnapshot mergedSnap = CreatePersistedSnapshot(s0, s2, merged);
+
+        // State node should have newer value
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mergedSnap.TryLoadStateNodeRlp(statePath, out byte[]? stateRlpResult), Is.True);
+            Assert.That(stateRlpResult, Is.EqualTo(FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80)));
+
+            // Storage node from older should be preserved
+            Assert.That(mergedSnap.TryLoadStorageNodeRlp(storageAddr.ValueHash256, storagePath, out byte[]? storageRlpResult), Is.True);
+            Assert.That(storageRlpResult, Is.EqualTo(FlatTestHelpers.LeafRlp(0xC1, 0x80)));
+
+            Assert.That(mergedSnap.TryGetAccount(TestItem.AddressA, out _), Is.True);
+            Assert.That(mergedSnap.TryGetAccount(TestItem.AddressB, out _), Is.True);
+        }
+    }
+
+    [Test]
+    public void ManySnapshots_PersistAndQuery([Values(10, 100)] int snapshotCount)
+    {
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 64 * 1024);
+        SnapshotRepository repo = tier.Repository;
+
+        StateId prev = new(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= snapshotCount; i++)
+        {
+            StateId current = new((ulong)i, Keccak.Compute(i.ToString()));
+            using Snapshot source = CreateSnapshot(prev, current, c =>
+                c.Accounts[new Address(Keccak.Compute(i.ToString()))] =
+                    Build.An.Account.WithBalance((UInt256)i).TestObject);
+            tier.ConvertToPersistedBase(source).Dispose();
+            prev = current;
+        }
+
+        Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(snapshotCount));
+    }
+
+
+    [Test]
+    public async Task FlatDbManager_EndToEnd_WithPersistedSnapshots()
+    {
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
+
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+        TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("e2e_path"), 4);
+        byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC1, 0x80);
+
+        using Snapshot source = CreateSnapshot(s0, s1, c =>
+            c.SetStateNodeRlp(_buffer, path, nodeRlp));
+        tier.ConvertToPersistedBase(source).Dispose();
+
+        // Set up persistence reader at s0 — persisted snapshot fills gap s0→s1
+        IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(s0);
+        persistenceManager.LeaseReader().Returns(reader);
+        persistenceManager.GetCurrentPersistedStateId().Returns(s0);
+
+        await using FlatDbManager manager = new(
+            Substitute.For<IResourcePool>(),
+            _processExitSource,
+            _buffer,
+            Substitute.For<ISnapshotCompactor>(),
+            repo,
+            persistenceManager,
+            Substitute.For<IPersistedSnapshotLoader>(),
+            _config,
+            new BlocksConfig(),
+            LimboLogs.Instance,
+            enableDetailedMetrics: false);
+
+        ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(s1);
+
+        byte[]? result = bundle.TryLoadStateRlp(path, Keccak.Compute("hash"), ReadFlags.None);
+        Assert.That(result, Is.EqualTo(nodeRlp));
+
+        bundle.Dispose();
+    }
+
+    [Test]
+    public void Prune_AfterRestart_Works()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+        StateId s2 = new(2, Keccak.Compute("2"));
+        StateId s5 = new(5, Keccak.Compute("5"));
+        MemDb catalogDb = new();
+
+        using (FlatTestContainer tier1 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
+        {
+            SnapshotRepository repo = tier1.Repository;
+            using Snapshot source1 = CreateSnapshot(s0, s1, c =>
+                c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject);
+            tier1.ConvertToPersistedBase(source1).Dispose();
+            using Snapshot source2 = CreateSnapshot(s1, s2, c =>
+                c.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(2).TestObject);
+            tier1.ConvertToPersistedBase(source2).Dispose();
+            using Snapshot source3 = CreateSnapshot(s2, s5, c =>
+                c.Accounts[TestItem.AddressC] = Build.An.Account.WithBalance(5).TestObject);
+            tier1.ConvertToPersistedBase(source3).Dispose();
+        }
+
+        using (FlatTestContainer tier2 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
+        {
+            SnapshotRepository repo = tier2.Repository;
+            Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(3));
+
+            repo.RemovePersistedStatesUntil(3); // s1 and s2 removed
+            Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1));
+        }
+
+        using (FlatTestContainer tier3 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
+        {
+            SnapshotRepository repo = tier3.Repository;
+            Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1));
+        }
+    }
+
+    // Regression for #12764: a large compaction is clamped to the persisted block, so recompacting it after a
+    // restart (the re-executed tail, with RocksDB further along) yields a different depth at the same To. The
+    // replaced snapshot's catalog row must not survive it: the next restart reloaded its reclaimed (zeroed)
+    // region, and the empty bloom rebuilt from it was shared across its range, hiding every snapshot inside.
+    [Test]
+    public void Large_recompaction_after_restart_keeps_persisted_tier_readable([Values] bool upgradeFromLegacyCatalog)
+    {
+        const ulong largeBoundary = 256;
+        MemDb catalogDb = new();
+        CatalogEntry[] LargeCompactedRowsAtBoundary() => [.. new SnapshotCatalog(catalogDb).Load()
+            .Where(e => e.To == BlockState(largeBoundary) && e.Tier == SnapshotTier.PersistedLargeCompacted)];
+
+        using (FlatTestContainer session = new(new FlatDbConfig { CompactSize = 32, CompactionOffset = 0 }, baseDbPath: _testDir, catalogDb: catalogDb))
+            ConvertAndCompact(session, 65, largeBoundary, persistedBlock: 64);
+        CatalogEntry replaced = LargeCompactedRowsAtBoundary().Single();
+
+        using (FlatTestContainer session = new(new FlatDbConfig { CompactSize = 32, CompactionOffset = 0 }, baseDbPath: _testDir, catalogDb: catalogDb))
+        {
+            session.Repository.RemovePersistedStatesUntil(97);
+            ConvertAndCompact(session, 97, largeBoundary, persistedBlock: 96);
+            session.Repository.RemovePersistedStatesUntil(129);
+        }
+
+        Assert.That(LargeCompactedRowsAtBoundary().Select(e => e.From), Is.EqualTo(new[] { BlockState(96) }));
+
+        if (upgradeFromLegacyCatalog)
+        {
+            // The depth-keyed catalog once the replacement is pruned: the replaced snapshot's row is the only one
+            // left at its To, while the other snapshots keep its arena file alive.
+            CatalogEntry[] rows = [.. new SnapshotCatalog(catalogDb).Load().Except(LargeCompactedRowsAtBoundary())];
+            catalogDb.Clear();
+            foreach (CatalogEntry row in rows.Append(replaced))
+                FlatTestHelpers.PutLegacyCatalogRow(catalogDb, row);
+        }
+
+        // Which row the load keeps is order-dependent, so the reads below catch a stray row only some of the time.
+        using FlatTestContainer restarted = new(new FlatDbConfig { CompactSize = 32, CompactionOffset = 0 }, baseDbPath: _testDir, catalogDb: catalogDb);
+        for (ulong block = 129; block <= largeBoundary; block++)
+        {
+            AssembledSnapshotResult assembled = restarted.Repository.AssembleSnapshots(BlockState(block), BlockState(128), estimatedSize: 16);
+            assembled.InMemory.Dispose();
+            using PersistedSnapshotStack stack = new(assembled.Persisted, recordDetailedMetrics: false);
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
+            Assert.That(stack.TryGetAccount(TestItem.AddressA, out Account? account), Is.True, $"block {block}");
+#pragma warning restore NUnit2045
+            Assert.That(account!.Nonce, Is.EqualTo(block), $"block {block}");
+        }
+    }
+
+    private static StateId BlockState(ulong block) => new(block, Keccak.Compute(block.ToString()));
+
+    // Converts each block like PersistenceManager and compacts it like PersistedSnapshotCompactor's batch worker.
+    private void ConvertAndCompact(FlatTestContainer session, ulong firstBlock, ulong lastBlock, ulong persistedBlock)
+    {
+        ICompactionSchedule schedule = session.Resolve<ICompactionSchedule>();
+        for (ulong block = firstBlock; block <= lastBlock; block++)
+        {
+            using (Snapshot snapshot = CreateSnapshot(BlockState(block - 1), BlockState(block), c =>
+            {
+                c.Accounts[TestItem.AddressA] = Build.An.Account.WithNonce(block).TestObject;
+                // Filler so a reclaimed compaction spans whole pages, which is what a hole punch actually zeroes.
+                for (int i = 0; i < 40; i++)
+                    c.Accounts[new Address(Keccak.Compute($"{block}_{i}"))] = Build.An.Account.WithBalance(block).TestObject;
+            }))
+                session.ConvertToPersistedBase(snapshot).Dispose();
+
+            if (schedule.IsCompactSizeBoundary(block) || schedule.IsLargeCompactionBoundary(block))
+                session.Compactor.DoCompactCompactSized(BlockState(block));
+            if (!schedule.IsCompactSizeBoundary(block))
+                session.Compactor.DoCompactSnapshot(BlockState(block), persistedBlock);
+        }
+    }
+
+    [Test]
+    public void EmptySnapshot_PersistsAndLoads()
+    {
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
+
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+
+        using Snapshot empty = CreateSnapshot(s0, s1, _ => { });
+        tier.ConvertToPersistedBase(empty).Dispose();
+
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
+        Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
+#pragma warning restore NUnit2045
+        Assert.That(persisted!.TryGetAccount(TestItem.AddressA, out _), Is.False);
+        Assert.That(persisted.TryLoadStateNodeRlp(FlatTestHelpers.CanonicalPath(Keccak.Compute("any"), 4), out _), Is.False);
+        persisted.Dispose();
+    }
+
+    // A settable finalized-state provider so a test can park finality at an arbitrary block/root.
+    private sealed class SettableFinalizedProvider : IStateHeaderProvider
+    {
+        private readonly System.Collections.Generic.Dictionary<ulong, Hash256> _roots = [];
+        public ulong FinalizedBlockNumber { get; set; }
+        public void SetRoot(ulong block, Hash256 root) => _roots[block] = root;
+        public BlockHeader? GetFinalizedHeader(ulong blockNumber) =>
+            _roots.TryGetValue(blockNumber, out Hash256? root)
+                ? new BlockHeader(Keccak.EmptyTreeHash, Keccak.EmptyTreeHash, Address.Zero, UInt256.Zero, blockNumber, 30_000_000, 0, []) { StateRoot = root }
+                : null;
+
+        public BlockHeader? FindParentHeader(BlockHeader target) => null;
+    }
+
+    // A real PersistenceManager over the container's real repository, so DetermineSnapshotAction runs its
+    // actual persist/convert decision logic against on-disk-backed state.
+    private static PersistenceManager BuildManager(FlatTestContainer tier, StateId persistedState)
+    {
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(persistedState);
+        IPersistence persistence = Substitute.For<IPersistence>();
+        persistence.CreateReader().Returns(reader);
+
+        return new PersistenceManager(
+            tier.Config,
+            ScheduleHelper.CreateWithOffset(tier.Config, 0),
+            tier.Resolve<IStateHeaderProvider>(),
+            persistence,
+            tier.Repository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            Substitute.For<IPersistedSnapshotCompactor>(),
+            tier.Loader,
+            Substitute.For<IProcessExitSource>());
+    }
+
+    private static StateId AddInMemoryBase(FlatTestContainer tier, StateId from, ulong toBlock)
+    {
+        StateId to = new(toBlock, Keccak.Compute($"s{toBlock}"));
+        Snapshot snap = tier.ResourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        snap.Content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)toBlock).TestObject;
+        tier.Repository.TryAdd(snap, SnapshotTier.InMemoryBase);
+        tier.Repository.AddStateId(to);
+        return to;
+    }
+
+    [Test]
+    public void MaxInMemoryBaseSnapshotCount_GatesConversionToPersistedTier()
+    {
+        // Long finality on; finality parked at genesis and depth far below the backstop, so neither
+        // Phase-1 path fires — only the MaxInMemoryBaseSnapshotCount gate decides Phase-2 conversion.
+        FlatDbConfig config = new()
+        {
+            CompactSize = 16,
+            MinReorgDepth = 64,
+            MaxInMemoryBaseSnapshotCount = 4,
+            LongFinalityMaxReorgDepth = 90000,
+            EnableLongFinality = true
+        };
+        SettableFinalizedProvider finalized = new(); // genesis → Phase-1 finalized trigger never fires
+        using FlatTestContainer tier = new(config: config, finalizedStateProvider: finalized);
+        StateId block0 = new(0, Keccak.EmptyTreeHash);
+        using PersistenceManager pm = BuildManager(tier, block0);
+
+        StateId prev = block0;
+        for (ulong b = 1; b <= 4; b++) prev = AddInMemoryBase(tier, prev, b);
+        // SnapshotCount == MaxInMemoryBaseSnapshotCount → conversion still gated off.
+        (_, _, PersistenceManager.ConversionCandidate? atThreshold) = pm.DetermineSnapshotAction(prev);
+        Assert.That(atThreshold, Is.Null, "conversion must not start at or below MaxInMemoryBaseSnapshotCount");
+
+        prev = AddInMemoryBase(tier, prev, 5); // one over the threshold
+        (_, _, PersistenceManager.ConversionCandidate? overThreshold) = pm.DetermineSnapshotAction(prev);
+        Assert.That(overThreshold, Is.Not.Null, "conversion must start once past MaxInMemoryBaseSnapshotCount");
+    }
+
+    [Test]
+    public void LongFinalityMaxReorgDepth_TriggersForcePersistBackstop()
+    {
+        // Backstop = max(LongFinalityMaxReorgDepth, MinReorgDepth + CompactSize) = max(100, 24) = 100, so
+        // LongFinalityMaxReorgDepth is the deciding threshold. depth comes from the DetermineSnapshotAction
+        // argument, so one reachable in-memory base is enough for the forced walk to find a chunk.
+        FlatDbConfig config = new()
+        {
+            CompactSize = 16,
+            MinReorgDepth = 8,
+            MaxInMemoryBaseSnapshotCount = 100000, // high → Phase-2 conversion never fires
+            LongFinalityMaxReorgDepth = 100,
+            EnableLongFinality = true
+        };
+        SettableFinalizedProvider finalized = new(); // genesis → Phase-1 finalized trigger never fires
+        using FlatTestContainer tier = new(config: config, finalizedStateProvider: finalized);
+        StateId block0 = new(0, Keccak.EmptyTreeHash);
+        AddInMemoryBase(tier, block0, 1);
+        using PersistenceManager pm = BuildManager(tier, block0);
+
+        (_, Snapshot? atBackstop, _) = pm.DetermineSnapshotAction(new StateId(100, Keccak.Compute("h100")));
+        atBackstop?.Dispose();
+        Assert.That(atBackstop, Is.Null, "depth at LongFinalityMaxReorgDepth must not force-persist yet");
+
+        (_, Snapshot? pastBackstop, _) = pm.DetermineSnapshotAction(new StateId(101, Keccak.Compute("h101")));
+        Assert.That(pastBackstop, Is.Not.Null, "depth beyond LongFinalityMaxReorgDepth must force-persist");
+        Assert.That(pastBackstop!.From, Is.EqualTo(block0));
+        pastBackstop.Dispose();
+    }
+
+    [Test]
+    public void FinalizedBoundary_PersistsWithinLongFinalityRange()
+    {
+        // A finalized compaction boundary well inside the long-finality window (depth << backstop) must
+        // still drive finalized persistence from the persisted base rather than waiting for the backstop.
+        FlatDbConfig config = new()
+        {
+            CompactSize = 4,
+            // Not a subject here: a non-zero floor would hold the fold until the head is that far above
+            // the boundary, which is exercised in PersistenceManagerTests instead.
+            MinReorgDepth = 0,
+            MaxInMemoryBaseSnapshotCount = 100000,
+            LongFinalityMaxReorgDepth = 90000,
+            EnableLongFinality = true
+        };
+        SettableFinalizedProvider finalized = new() { FinalizedBlockNumber = 4 };
+        using FlatTestContainer tier = new(config: config, finalizedStateProvider: finalized);
+        StateId block0 = new(0, Keccak.EmptyTreeHash);
+
+        StateId prev = block0;
+        StateId at4 = default;
+        for (ulong b = 1; b <= 4; b++)
+        {
+            prev = AddInMemoryBase(tier, prev, b);
+            if (b == 4) at4 = prev;
+        }
+
+        finalized.SetRoot(4, new Hash256(at4.StateRoot.Bytes));
+        using PersistenceManager pm = BuildManager(tier, block0);
+
+        // Depth 4 is far inside LongFinalityMaxReorgDepth (90000); the finalized boundary at block 4 still
+        // triggers Phase-1 persistence starting from the persisted base.
+        (_, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(prev);
+        Assert.That(toPersist, Is.Not.Null, "finalized boundary within the long-finality window must still persist");
+        Assert.That(toPersist!.From, Is.EqualTo(block0));
+        toPersist.Dispose();
+
+        StateId orphan = new(4, Keccak.Compute("finalized-fork"));
+        using Snapshot fork = tier.ResourcePool.CreateSnapshot(block0, orphan, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        fork.Content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject;
+        tier.ConvertToPersistedBase(fork).Dispose();
+        tier.Repository.SetLastCommittedStateId(prev);
+        tier.Repository.RemoveFinalizedPersistedForks(block0);
+        Assert.That(tier.Repository.HasBasePersistedSnapshot(orphan), Is.False,
+            "the repository must use the same finalized boundary as the manager");
+    }
+
+    [Test]
+    public void Configuration_DefaultValues()
+    {
+        FlatDbConfig config = new();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(config.EnableLongFinality, Is.True);
+            Assert.That(config.MaxReorgDepth, Is.EqualTo(256));
+            Assert.That(config.LongFinalityMaxReorgDepth, Is.EqualTo(90000));
+            Assert.That(config.ArenaFileSizeBytes, Is.EqualTo(1L * 1024 * 1024 * 1024));
+        }
+    }
+
+    [Test]
+    public void DisabledLongFinality_WiresInertPersistedTier()
+    {
+        FlatDbConfig config = new() { EnableLongFinality = false };
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new FlatWorldStateModule(config))
+            .AddSingleton<IFlatDbConfig>(config)
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .Build();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<ISnapshotCatalog>(), Is.SameAs(NullSnapshotCatalog.Instance));
+            Assert.That(container.Resolve<IPersistedSnapshotLoader>(), Is.SameAs(NullPersistedSnapshotLoader.Instance));
+            Assert.That(container.Resolve<IPersistedSnapshotCompactor>(), Is.SameAs(NullPersistedSnapshotCompactor.Instance));
+        }
+
+        // The Null loader/catalog keep the tier inert: loading is a no-op and nothing is ever recorded.
+        container.Resolve<IPersistedSnapshotLoader>().Load();
+        Assert.That(container.Resolve<ISnapshotCatalog>().Load(), Is.Empty);
+    }
+}

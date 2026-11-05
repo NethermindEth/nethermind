@@ -3,17 +3,35 @@
   "Init": {
     "ChainSpecPath": "chainspec/xdc.json",
     "BaseDbPath": "nethermind_db/xdc",
-    "LogFileName": "xdc.log"
+    "LogFileName": "xdc.log",
+    "StateDbKeyScheme": "Hash"
+  },
+  "Network": {
+    "FilterDiscoveryNodesByRecentIp": false,
+    "EnableEnrDiscovery": false,
+    "DisableDiscV4DnsFeeder": true
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V4"
+  },
+  "Pruning": {
+    "PruningBoundary": 4096
+  },
+  "FlatDb": {
+    "Enabled": false
+  },
+  "Blocks": {
+    "TargetBlockGasLimit": 420000000,
+    "MinGasPrice": 0
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
   "Sync": {
     "FastSync": true,
-    "NeedToWaitForHeader": true,
-    "PivotNumber": 80370001,
-    "PivotHash": "0x5a701a8ba642a9b53475bb19cb9a313829f7afb4287caa76bebaea02f0219f89",
-    "PivotTotalDifficulty": 7423991485,
+    "PivotNumber": 108680000,
+    "PivotHash": "0xc4894be6b2f758b0c0a7c160dfeef4d15e16b1ca31912d60110dff075f54a488",
+    "PivotTotalDifficulty": "7452301484",
     "VerifyTrieOnStateSyncFinished": true,
     "AncientBodiesBarrier": 80368000,
     "AncientReceiptsBarrier": 80368000

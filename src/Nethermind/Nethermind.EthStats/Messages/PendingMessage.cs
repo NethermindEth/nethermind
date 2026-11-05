@@ -7,14 +7,9 @@ using Nethermind.EthStats.Messages.Models;
 
 namespace Nethermind.EthStats.Messages
 {
-    public class PendingMessage : IMessage
+    public class PendingMessage(PendingStats stats) : IMessage
     {
         public string? Id { get; set; }
-        public PendingStats Stats { get; }
-
-        public PendingMessage(PendingStats stats)
-        {
-            Stats = stats;
-        }
+        public PendingStats Stats { get; } = stats;
     }
 }

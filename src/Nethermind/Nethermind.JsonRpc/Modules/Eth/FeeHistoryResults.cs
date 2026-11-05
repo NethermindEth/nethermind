@@ -9,7 +9,7 @@ using Nethermind.Core.Collections;
 namespace Nethermind.JsonRpc.Modules.Eth;
 
 public class FeeHistoryResults(
-    long oldestBlock,
+    ulong oldestBlock,
     ArrayPoolList<UInt256> baseFeePerGas,
     ArrayPoolList<double> gasUsedRatio,
     ArrayPoolList<UInt256> baseFeePerBlobGas,
@@ -27,7 +27,7 @@ public class FeeHistoryResults(
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ArrayPoolList<double> BlobGasUsedRatio { get; } = blobGasUsedRatio;
 
-    public long OldestBlock { get; } = oldestBlock;
+    public ulong OldestBlock { get; } = oldestBlock;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ArrayPoolList<ArrayPoolList<UInt256>>? Reward { get; } = reward;

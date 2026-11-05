@@ -9,12 +9,14 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
 
 public class LongConverter : JsonConverter<long>
 {
+    private readonly bool _strictQuantity;
+    public LongConverter() { }
+    public LongConverter(bool strictQuantity) => _strictQuantity = strictQuantity;
     public static long FromString(string s)
     {
         if (s is null)
@@ -22,22 +24,11 @@ public class LongConverter : JsonConverter<long>
             throw new JsonException("null cannot be assigned to long");
         }
 
-        if (s == Bytes.ZeroHexValue)
+        if (s.StartsWith("0x", StringComparison.Ordinal))
         {
-            return 0L;
-        }
-
-        if (s.StartsWith("0x0"))
-        {
-            return long.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
-        }
-
-        if (s.StartsWith("0x"))
-        {
-            Span<char> withZero = new(new char[s.Length - 1]);
-            withZero[0] = '0';
-            s.AsSpan(2).CopyTo(withZero[1..]);
-            return long.Parse(withZero, NumberStyles.AllowHexSpecifier);
+            ReadOnlySpan<char> digits = s.AsSpan(2);
+            // The runtime parser skips trailing NULs but needs a digit, so a bare "0x" reads as zero.
+            return digits.TrimEnd('\0').IsEmpty ? 0L : long.Parse(digits, NumberStyles.AllowHexSpecifier);
         }
 
         return long.Parse(s, NumberStyles.Integer);
@@ -51,18 +42,20 @@ public class LongConverter : JsonConverter<long>
 
     public static long FromString(ReadOnlySpan<byte> s) => NumericConverterHelper.Parse<long>(s);
 
-    internal static long ReadCore(ref Utf8JsonReader reader)
+    internal static long ReadCore(ref Utf8JsonReader reader, bool strictQuantity = false)
     {
         if (reader.TokenType == JsonTokenType.Number)
         {
+            if (strictQuantity) ThrowJsonException();
             return reader.GetInt64();
         }
 
         if (reader.TokenType == JsonTokenType.String)
         {
-            return !reader.HasValueSequence
-                ? NumericConverterHelper.Parse<long>(reader.ValueSpan)
-                : NumericConverterHelper.Parse<long>(reader.ValueSequence.ToArray());
+            ReadOnlySpan<byte> span = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+            if (strictQuantity)
+                QuantityValidator.AssertNoLeadingZero(span);
+            return FromString(span);
         }
 
         ThrowJsonException();
@@ -75,17 +68,11 @@ public class LongConverter : JsonConverter<long>
     public override long Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
-        JsonSerializerOptions options)
-    {
-        return ReadCore(ref reader);
-    }
+        JsonSerializerOptions options) => ReadCore(ref reader, _strictQuantity);
 
     [SkipLocalsInit]
     public override void Write(
         Utf8JsonWriter writer,
         long value,
-        JsonSerializerOptions options)
-    {
-        NumericConverterHelper.Write(writer, value);
-    }
+        JsonSerializerOptions options) => NumericConverterHelper.Write(writer, value);
 }

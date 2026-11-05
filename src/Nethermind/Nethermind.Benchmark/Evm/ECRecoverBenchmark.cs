@@ -14,15 +14,9 @@ namespace Nethermind.Benchmarks.Evm
         }
 
         [Benchmark]
-        public bool Improved()
-        {
-            throw new NotImplementedException();
-        }
+        public bool Improved() => throw new NotImplementedException();
 
         [Benchmark]
-        public bool Current()
-        {
-            throw new NotImplementedException();
-        }
+        public bool Current() => throw new NotImplementedException();
     }
 }

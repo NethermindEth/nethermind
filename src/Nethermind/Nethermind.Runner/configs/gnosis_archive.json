@@ -4,8 +4,7 @@
     "ChainSpecPath": "chainspec/gnosis.json",
     "GenesisHash": "0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756",
     "BaseDbPath": "nethermind_db/gnosis_archive",
-    "LogFileName": "gnosis_archive.log",
-    "MemoryHint": 1024000000
+    "LogFileName": "gnosis_archive.log"
   },
   "JsonRpc": {
     "Enabled": true,
@@ -26,13 +25,18 @@
   "Metrics": {
     "NodeName": "Gnosis Archive"
   },
-  "Bloom": {
-    "IndexLevelBucketSizes": [ 16, 16, 16 ]
-  },
   "Pruning": {
     "Mode": "None"
   },
   "Merge": {
     "FinalTotalDifficulty": "8626000110427538733349499292577475819600160930"
+  },
+  "Db": {
+    "SkipCheckingSstFileSizesOnDbOpen": true
+  },
+  "FlatDb": {
+    "Enabled": true,
+    "HistoryEnabled": true,
+    "PersistenceWriteBufferFloor": 67108864
   }
 }

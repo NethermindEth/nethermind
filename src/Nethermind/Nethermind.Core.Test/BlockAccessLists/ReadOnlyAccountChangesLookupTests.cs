@@ -1,0 +1,259 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
+using NUnit.Framework;
+
+namespace Nethermind.Core.Test.BlockAccessLists;
+
+/// <summary>
+/// Pins the per-index lookup semantics on <see cref="ReadOnlyAccountChanges"/>:
+/// <see cref="ReadOnlyAccountChanges.GetBalance"/> / <c>GetNonce</c> / <c>GetCode</c> /
+/// <c>GetCodeHash</c> and the <c>TryGetLast*ChangeBefore</c> family return the last in-block
+/// change strictly before the queried index, or <c>null</c> if none. The <c>null</c> is what
+/// triggers <see cref="Nethermind.State.BlockAccessListBasedWorldState"/>'s fallthrough to its
+/// parent-state reader.
+/// </summary>
+[TestFixture]
+public class ReadOnlyAccountChangesLookupTests
+{
+    [Test]
+    public void GetBalance_returns_null_when_no_changes_present()
+    {
+        ReadOnlyAccountChanges ac = Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ac.GetBalance(0), Is.Null);
+            Assert.That(ac.GetBalance(uint.MaxValue), Is.Null);
+        }
+    }
+
+    [Test]
+    public void GetBalance_returns_null_when_only_change_is_at_or_after_index()
+    {
+        ReadOnlyAccountChanges ac = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(2, 200))
+            .TestObject;
+
+        // The filter is strictly-before: a change at 2 is excluded by GetBalance(2),
+        // and GetBalance(0) sees nothing at all.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ac.GetBalance(0), Is.Null);
+            Assert.That(ac.GetBalance(2), Is.Null);
+        }
+    }
+
+    [Test]
+    public void GetBalance_returns_latest_change_strictly_before_index()
+    {
+        ReadOnlyAccountChanges ac = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(0, 100), new BalanceChange(2, 300))
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ac.GetBalance(1), Is.EqualTo((UInt256)100), "last change strictly before 1 is at index 0");
+            Assert.That(ac.GetBalance(2), Is.EqualTo((UInt256)100), "strictly-before excludes the change at 2 itself");
+            Assert.That(ac.GetBalance(3), Is.EqualTo((UInt256)300), "last change strictly before 3 is at index 2");
+            Assert.That(ac.GetBalance(uint.MaxValue), Is.EqualTo((UInt256)300));
+        }
+    }
+
+    [Test]
+    public void GetNonce_follows_strictly_before_filter()
+    {
+        ReadOnlyAccountChanges ac = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithNonceChanges(new NonceChange(0, 5), new NonceChange(2, 7))
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ac.GetNonce(0), Is.Null);
+            Assert.That(ac.GetNonce(1), Is.EqualTo((UInt256)5));
+            Assert.That(ac.GetNonce(2), Is.EqualTo((UInt256)5));
+            Assert.That(ac.GetNonce(3), Is.EqualTo((UInt256)7));
+        }
+    }
+
+    [Test]
+    public void GetCode_and_GetCodeHash_return_null_when_no_prior_code_change()
+    {
+        // Null signals "no in-block change" so callers fall through to the parent-state reader.
+        ReadOnlyAccountChanges ac = Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ac.GetCode(0), Is.Null);
+            // Regression for GetCodeHash(uint)'s ternary: without an explicit (ValueHash256?)
+            // on the null branch, C# routes via Hash256?->ValueHash256's user-defined implicit
+            // operator and the false branch lifts to HasValue=true.
+            Assert.That(ac.GetCodeHash(0).HasValue, Is.False);
+        }
+    }
+
+    [Test]
+    public void GetCode_returns_latest_change_strictly_before_index()
+    {
+        byte[] codeAt0 = [0x60, 0x00];
+        byte[] codeAt2 = [0x60, 0x01];
+        ReadOnlyAccountChanges ac = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithCodeChanges(new CodeChange(0, codeAt0), new CodeChange(2, codeAt2))
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ac.GetCode(0), Is.Null);
+            Assert.That(ac.GetCode(1), Is.EqualTo(codeAt0));
+            Assert.That(ac.GetCode(2), Is.EqualTo(codeAt0));
+            Assert.That(ac.GetCode(3), Is.EqualTo(codeAt2));
+            Assert.That(ac.GetCodeHash(3), Is.EqualTo(ValueKeccak.Compute(codeAt2)));
+        }
+    }
+
+    [Test]
+    public void TryGetLastBalanceChangeBefore_reports_presence_and_value_together()
+    {
+        ReadOnlyAccountChanges ac = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(1, 99))
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ac.TryGetLastBalanceChangeBefore(0, out _), Is.False, "no change strictly before 0");
+            Assert.That(ac.TryGetLastBalanceChangeBefore(1, out BalanceChange atOne), Is.False);
+            Assert.That(atOne, Is.EqualTo(default(BalanceChange)));
+            Assert.That(ac.TryGetLastBalanceChangeBefore(2, out BalanceChange atTwo), Is.True);
+            Assert.That(atTwo.Index, Is.EqualTo(1u));
+            Assert.That(atTwo.Value, Is.EqualTo((UInt256)99));
+        }
+    }
+
+    [Test]
+    public void Last_change_via_indexer_is_the_highest_indexed_change()
+    {
+        // ApplyBal reads [^1] to apply the final state for the account, so [^1] must
+        // return the highest-index in-block change.
+        ReadOnlyAccountChanges ac = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(0, 100), new BalanceChange(2, 300))
+            .TestObject;
+
+        BalanceChange last = ac.BalanceChanges[^1];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(last.Index, Is.EqualTo(2u));
+            Assert.That(last.Value, Is.EqualTo((UInt256)300));
+        }
+    }
+
+    /// <summary>A declared slot resolves correctly through both lookup strategies.</summary>
+    /// <remarks>Any storage change (or more than four declared reads) makes the account map its declared
+    /// slots; four or fewer reads with no changes are scanned. The cases pin both strategies and the
+    /// 4/5 threshold between them; the changed slot exists only in the mapped arm, since a change forces
+    /// the map by construction.</remarks>
+    [Test]
+    public void TryGetDeclaredSlotChanges_separates_changed_read_and_undeclared(
+        [Values(0, 4, 5, 64)] int readCount,
+        [Values(true, false)] bool withChange)
+    {
+        UInt256[] reads = BuildReads(readCount);
+        ReadOnlyAccountChanges ac = BuildDeclared(reads, withChange);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ac.TryGetDeclaredSlotChanges((UInt256)1000, out ReadOnlySlotChanges? changed), Is.EqualTo(withChange));
+            Assert.That(changed, withChange ? Is.Not.Null : Is.Null,
+                withChange ? "a written slot carries its changes" : "an undeclared slot resolves to nothing");
+
+            if (readCount > 0)
+            {
+                Assert.That(ac.TryGetDeclaredSlotChanges(reads[^1], out ReadOnlySlotChanges? read), Is.True);
+                Assert.That(read, Is.Null, "a slot declared only as a read carries no changes");
+            }
+
+            Assert.That(ac.TryGetDeclaredSlotChanges((UInt256)9999, out ReadOnlySlotChanges? absent), Is.False);
+            Assert.That(absent, Is.Null);
+        }
+    }
+
+    /// <summary>A null change array reads as "no change", as it did before the fast path.</summary>
+    /// <remarks>Unreachable through the decoder, which always materialises an array, but the span
+    /// conversion the fast path replaced turned a null array into an empty span - so narrowing that to a
+    /// throw would break an out-of-tree producer with no in-tree test noticing.</remarks>
+    [Test]
+    public void Null_change_arrays_read_as_no_change()
+    {
+        ReadOnlyAccountChanges ac = new(TestItem.AddressA, [], [], null!, null!, null!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ac.GetBalance(1), Is.Null);
+            Assert.That(ac.GetNonce(1), Is.Null);
+            Assert.That(ac.GetCode(1), Is.Null);
+            Assert.That(ac.GetCodeHash(1), Is.Null);
+        }
+    }
+
+    private static UInt256[] BuildReads(int count)
+    {
+        UInt256[] reads = new UInt256[count];
+        for (int i = 0; i < count; i++)
+        {
+            reads[i] = (UInt256)(i + 1);
+        }
+
+        return reads;
+    }
+
+    private static ReadOnlyAccountChanges BuildDeclared(UInt256[] reads, bool withChange)
+    {
+        AccountChangesBuilder builder = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithStorageReads(reads);
+        if (withChange) builder = builder.WithStorageChanges((UInt256)1000, new StorageChange(0, 42));
+        return builder.TestObject;
+    }
+
+    /// <summary>Equality still compares the declared storage, now that reads and changes share a map.</summary>
+    /// <remarks>Both read counts take the mapped lookup, since <c>Make</c> always declares a change — which
+    /// is the only strategy <see cref="ReadOnlyAccountChanges.Equals"/> can reach anyway (a change is the
+    /// precondition for the storage comparison). The counts differ only so the <c>fewerReads</c> case sees
+    /// a 1-vs-2 and a 1-vs-64 read-array mismatch.</remarks>
+    [Test]
+    public void Equals_distinguishes_accounts_by_their_storage([Values(2, 64)] int readCount)
+    {
+        UInt256[] reads = BuildReads(readCount);
+
+        static ReadOnlyAccountChanges Make(UInt256[] reads, UInt256 changedSlot, byte value) =>
+            Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageReads(reads)
+                .WithStorageChanges(changedSlot, new StorageChange(0, value))
+                .TestObject;
+
+        ReadOnlyAccountChanges subject = Make(reads, 1000, 42);
+        ReadOnlyAccountChanges identical = Make(reads, 1000, 42);
+        ReadOnlyAccountChanges otherValue = Make(reads, 1000, 43);
+        ReadOnlyAccountChanges otherSlot = Make(reads, 1001, 42);
+        ReadOnlyAccountChanges fewerReads = Make(reads[..1], 1000, 42);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(subject, Is.EqualTo(identical));
+            Assert.That(subject, Is.Not.EqualTo(otherValue), "differing value");
+            Assert.That(subject, Is.Not.EqualTo(otherSlot), "differing slot");
+            Assert.That(subject, Is.Not.EqualTo(fewerReads), "differing reads");
+        }
+    }
+}

@@ -4,19 +4,19 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Int256;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -27,6 +27,45 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public class EthRpcSimulateTestsBase
 {
+    public static readonly Address GasProbeContractAddress = new("0xc200000000000000000000000000000000000000");
+
+    public const string GasProbeBytecode = "0x5a60005260206000f3";
+
+    public static SimulatePayload<TransactionForRpc> CreateGasProbePayload(ulong? requestGas = null)
+    {
+        LegacyTransactionForRpc call = new()
+        {
+            From = TestItem.AddressA,
+            To = GasProbeContractAddress,
+            GasPrice = 0
+        };
+        if (requestGas is not null)
+        {
+            call.Gas = requestGas.Value;
+        }
+
+        return new SimulatePayload<TransactionForRpc>
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { GasProbeContractAddress, new AccountOverride { Code = Bytes.FromHexString(GasProbeBytecode) } }
+                    },
+                    Calls = [call]
+                }
+            ]
+        };
+    }
+
+    public static IEnumerable<TestCaseData> GasCapSimulateCases()
+    {
+        yield return new TestCaseData(50_000UL, 100_000UL, true).SetName("capped");
+        yield return new TestCaseData(0UL, (ulong?)null, false).SetName("uncapped_zero_cap");
+    }
+
     public static Task<TestRpcBlockchain> CreateChain(IReleaseSpec? releaseSpec = null)
     {
         TestRpcBlockchain testMevRpcBlockchain = new();
@@ -36,50 +75,11 @@ public class EthRpcSimulateTestsBase
         return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
     }
 
-    private static string GetECRecoverContractJsonAbi(string name = "recover")
-    {
-        return $@"
-[
-  {{
-    ""payable"": false,
- 	""inputs"": [
-		{{
-			""internalType"": ""bytes32"",
-			""name"": ""hash"",
-			""type"": ""bytes32""
-		}},
-		{{
-			""internalType"": ""uint8"",
-			""name"": ""v"",
-			""type"": ""uint8""
+    private static readonly AbiSignature<(byte[], byte, byte[], byte[])> RecoverSignature =
+        new AbiSignature("recover").With(AbiType.BytesM(32), AbiType.UInt8, AbiType.BytesM(32), AbiType.BytesM(32));
+    private static readonly AbiSignature<Address> RecoverReturns = new AbiSignature().With(AbiType.Address);
 
-        }},
-		{{
-			""internalType"": ""bytes32"",
-			""name"": ""r"",
-			""type"": ""bytes32""
-		}},
-		{{
-			""internalType"": ""bytes32"",
-			""name"": ""s"",
-			""type"": ""bytes32""
-		}}
-	],
-	""name"": ""{name}"",
-	""outputs"": [
-		{{
-			""internalType"": ""address"",
-			""name"": """",
-			""type"": ""address""
-		}}
-	],
-	""stateMutability"": ""pure"",
-	""type"": ""function""
-  }}
-]";
-    }
-
-    public static byte[] GetTxData(TestRpcBlockchain chain, PrivateKey account, string name = "recover")
+    public static byte[] GetTxData(TestRpcBlockchain chain, PrivateKey account)
     {
         // Step 1: Hash the message
         ValueHash256 messageHash = ValueKeccak.Compute("Hello, world!");
@@ -87,7 +87,7 @@ public class EthRpcSimulateTestsBase
         Signature signature = chain.EthereumEcdsa.Sign(account, in messageHash);
 
         //Check real address
-        return GenerateTransactionDataForECRecover(new Hash256(messageHash), signature, name);
+        return GenerateTransactionDataForECRecover(new Hash256(messageHash), signature);
     }
 
     public static async Task<Address> DeployECRecoverContract(TestRpcBlockchain chain, PrivateKey privateKey, string contractBytecode)
@@ -95,8 +95,8 @@ public class EthRpcSimulateTestsBase
         byte[] bytecode = Bytes.FromHexString(contractBytecode);
         Transaction tx = new()
         {
-            Value = UInt256.Zero,
-            Nonce = 0,
+            Value = 0UL,
+            Nonce = 0UL,
             Data = bytecode,
             GasLimit = 3_000_000,
             SenderAddress = privateKey.Address,
@@ -109,14 +109,17 @@ public class EthRpcSimulateTestsBase
             chain.NonceManager,
             chain.EthereumEcdsa);
 
-        (Hash256 hash, AcceptTxResult? code) = await txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
-        code?.Should().Be(AcceptTxResult.Accepted);
+        (Hash256? hash, AcceptTxResult? code) = await txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
+        Assert.That(code, Is.EqualTo(AcceptTxResult.Accepted));
+        Hash256 acceptedHash = hash ?? throw new AssertionException("Accepted transaction has no hash.");
 
         Transaction[] txs = chain.TxPool.GetPendingTransactions();
-        HashSet<Hash256> expectedHashes = txs.Select((tx) => tx.Hash!).ToHashSet();
+        HashSet<Hash256> expectedHashes = txs
+            .Select(static pendingTx => pendingTx.Hash ?? throw new AssertionException("Pending transaction has no hash."))
+            .ToHashSet();
 
-        var blockProducer = chain.BlockProducer;
-        var blockTree = chain.BlockTree;
+        IBlockProducer blockProducer = chain.BlockProducer;
+        IBlockTree blockTree = chain.BlockTree;
 
         Block? block;
         int iteration = 0;
@@ -126,55 +129,50 @@ public class EthRpcSimulateTestsBase
 
             if (block is not null)
             {
-                HashSet<Hash256> blockTxs = block.Transactions.Select((tx) => tx.Hash!).ToHashSet();
+                HashSet<Hash256> blockTxs = block.Transactions
+                    .Select(static blockTx => blockTx.Hash ?? throw new AssertionException("Block transaction has no hash."))
+                    .ToHashSet();
                 if (expectedHashes.All((tx) => blockTxs.Contains(tx)) && expectedHashes.Count == blockTxs.Count) break;
             }
 
             await Task.Yield();
-            if (iteration > 0)
-            {
-                await Task.Delay(100);
-            }
-            else if (iteration > 3)
+            // Bounded, so a block that never carries the transactions fails the test instead of hanging the run.
+            if (iteration > 100)
             {
                 Assert.Fail("Did not produce expected block");
             }
+            else if (iteration > 0)
+            {
+                await Task.Delay(100);
+            }
             iteration++;
         }
-        blockTree.SuggestBlock(block!).Should().Be(AddBlockResult.Added);
+        Assert.That(blockTree.SuggestBlock(block!), Is.EqualTo(AddBlockResult.Added));
 
         TxReceipt? createContractTxReceipt = null;
-        while (createContractTxReceipt is null)
+        for (int attempt = 0; createContractTxReceipt is null; attempt++)
         {
+            if (attempt > 100) Assert.Fail($"Contract transaction {tx.Hash!} got no receipt.");
             await Task.Delay(100);
-            createContractTxReceipt = chain.Bridge.GetReceipt(hash);
+            createContractTxReceipt = chain.Bridge.GetReceipt(acceptedHash);
         }
 
-        createContractTxReceipt.ContractAddress.Should().NotBeNull($"Contract transaction {tx.Hash!} was not deployed.");
+        Assert.That(createContractTxReceipt.ContractAddress, Is.Not.Null, $"Contract transaction {tx.Hash!} was not deployed.");
         return createContractTxReceipt.ContractAddress!;
     }
 
-    protected static byte[] GenerateTransactionDataForECRecover(Hash256 keccak, Signature signature, string name = "recover")
-    {
-        AbiDefinition call = new AbiDefinitionParser().Parse(GetECRecoverContractJsonAbi(name));
-        AbiEncodingInfo functionInfo = call.GetFunction(name).GetCallInfo();
-        return AbiEncoder.Instance.Encode(functionInfo.EncodingStyle, functionInfo.Signature, keccak, signature.V, signature.R.ToArray(), signature.S.ToArray());
-    }
+    protected static byte[] GenerateTransactionDataForECRecover(Hash256 keccak, Signature signature) =>
+        AbiCodec.Encode(RecoverSignature, (keccak.BytesToArray(), (byte)signature.V, signature.R.ToArray(), signature.S.ToArray()));
 
-    private static Address? ParseECRecoverAddress(byte[] data, string name = "recover")
-    {
-        AbiDefinition call = new AbiDefinitionParser().Parse(GetECRecoverContractJsonAbi(name));
-        AbiEncodingInfo functionInfo = call.GetFunction(name).GetReturnInfo();
-        return AbiEncoder.Instance.Decode(functionInfo.EncodingStyle, functionInfo.Signature, data).FirstOrDefault() as Address;
-    }
+    private static Address? ParseECRecoverAddress(byte[] data) => AbiCodec.Decode(RecoverReturns, data);
 
     public static Address? ECRecoverCall(TestRpcBlockchain testRpcBlockchain, Address senderAddress, byte[] bytes, Address? toAddress = null)
     {
         SystemTransaction transaction = new() { Data = bytes, To = toAddress, SenderAddress = senderAddress };
         transaction.Hash = transaction.CalculateHash();
-        TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
+        SignableTransactionForRpc transactionForRpc = (SignableTransactionForRpc)TransactionForRpc.FromTransaction(transaction);
         transactionForRpc.Gas = null;
-        ResultWrapper<string> mainChainResult = testRpcBlockchain.EthRpcModule.eth_call(transactionForRpc, BlockParameter.Pending);
-        return ParseECRecoverAddress(Bytes.FromHexString(mainChainResult.Data));
+        ResultWrapper<HexBytes> mainChainResult = testRpcBlockchain.EthRpcModule.eth_call(transactionForRpc, BlockParameter.Pending);
+        return ParseECRecoverAddress(mainChainResult.Data.Bytes.ToArray());
     }
 }

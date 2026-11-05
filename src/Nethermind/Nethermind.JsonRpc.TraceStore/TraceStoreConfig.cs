@@ -8,9 +8,10 @@ namespace Nethermind.JsonRpc.TraceStore;
 public class TraceStoreConfig : ITraceStoreConfig
 {
     public bool Enabled { get; set; }
-    public int BlocksToKeep { get; set; } = 10000;
+    public ulong BlocksToKeep { get; set; } = 10000;
     public ParityTraceTypes TraceTypes { get; set; } = ParityTraceTypes.Trace | ParityTraceTypes.Rewards;
     public bool VerifySerialized { get; set; } = false;
     public int MaxDepth { get; set; } = ParityLikeTraceSerializer.DefaultDepth;
+    public int OtsModuleConcurrentInstances { get; set; } = 2;
     public int DeserializationParallelization { get; set; } = 0;
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -9,29 +10,53 @@ namespace Nethermind.Evm;
 
 public static class BlobGasCalculator
 {
+    /// <summary>
+    /// Tries to compute the total blob fee: <c>blobCount × GAS_PER_BLOB × maxFeePerBlobGas</c>.
+    /// </summary>
+    /// <returns><see langword="false"/> if the multiplication overflows; otherwise <see langword="true"/>.</returns>
+    public static bool TryCalculateBlobMaxFee(int blobCount, UInt256 maxFeePerBlobGas, out UInt256 blobFee) =>
+        TryCalculateBlobMaxFee((ulong)blobCount, maxFeePerBlobGas, out blobFee);
+
+    public static bool TryCalculateBlobMaxFee(ulong blobCount, UInt256 maxFeePerBlobGas, out UInt256 blobFee) =>
+        !UInt256.MultiplyOverflow((UInt256)blobCount * (UInt256)Eip4844Constants.GasPerBlob, maxFeePerBlobGas, out blobFee);
+
+    public static bool TrySubtractBlobFee(IReleaseSpec spec, Transaction tx, ref UInt256 available)
+    {
+        if (!spec.IsEip4844Enabled || tx.BlobVersionedHashes?.Length is not > 0)
+            return true;
+
+        if (!TryCalculateBlobMaxFee((ulong)tx.BlobVersionedHashes.Length, tx.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobFee)
+            || blobFee > available)
+            return false;
+
+        available -= blobFee;
+        return true;
+    }
+
     public static ulong CalculateBlobGas(int blobCount) =>
-        (ulong)blobCount * Eip4844Constants.GasPerBlob;
+        CalculateBlobGas((ulong)blobCount);
+
+    public static ulong CalculateBlobGas(ulong blobCount) =>
+        blobCount * Eip4844Constants.GasPerBlob;
 
     public static ulong CalculateBlobGas(Transaction transaction) =>
         CalculateBlobGas(transaction.GetBlobCount());
 
     public static ulong CalculateBlobGas(Transaction[] transactions)
     {
-        int blobCount = 0;
+        ulong blobCount = 0UL;
         foreach (Transaction tx in transactions)
         {
-            if (tx.SupportsBlobs)
-            {
-                blobCount += tx.BlobVersionedHashes!.Length;
-            }
+            // EIP-8141: count from blob hashes, not the type-3-only SupportsBlobs, so blob-carrying frame txs also count.
+            blobCount += (ulong)tx.GetBlobCount();
         }
 
         return CalculateBlobGas(blobCount);
     }
 
-    public static bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction, UInt256 blobGasPriceUpdateFraction, out UInt256 blobBaseFee)
+    public static bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction, ulong blobGasPriceUpdateFraction, out UInt256 blobBaseFee)
     {
-        if (!TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, blobGasPriceUpdateFraction, out UInt256 feePerBlobGas))
+        if (!TryCalculateFeePerBlobGas(header, blobGasPriceUpdateFraction, out UInt256 feePerBlobGas))
         {
             blobBaseFee = UInt256.MaxValue;
             return false;
@@ -39,14 +64,40 @@ public static class BlobGasCalculator
         return !UInt256.MultiplyOverflow(CalculateBlobGas(transaction), feePerBlobGas, out blobBaseFee);
     }
 
-    public static bool TryCalculateFeePerBlobGas(BlockHeader header, UInt256 blobGasPriceUpdateFraction, out UInt256 feePerBlobGas)
+    public static bool TryCalculateFeePerBlobGas(BlockHeader header, ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas)
     {
         feePerBlobGas = UInt256.MaxValue;
         return header.ExcessBlobGas is not null
             && TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, blobGasPriceUpdateFraction, out feePerBlobGas);
     }
 
-    public static bool TryCalculateFeePerBlobGas(ulong excessBlobGas, UInt256 blobGasPriceUpdateFraction, out UInt256 feePerBlobGas)
+    private static FeePerBlobGasMemo? _lastFeePerBlobGas;
+
+    public static bool TryCalculateFeePerBlobGas(ulong excessBlobGas, ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas)
+    {
+        UInt256 minBlobGasPrice = Eip4844Constants.MinBlobGasPrice;
+        FeePerBlobGasMemo? last = Volatile.Read(ref _lastFeePerBlobGas);
+        if (last is not null && last.Matches(excessBlobGas, blobGasPriceUpdateFraction, in minBlobGasPrice))
+        {
+            feePerBlobGas = last.FeePerBlobGas;
+            return last.Success;
+        }
+
+        bool success = CalculateFeePerBlobGas(excessBlobGas, blobGasPriceUpdateFraction, in minBlobGasPrice, out feePerBlobGas);
+        Volatile.Write(ref _lastFeePerBlobGas, new FeePerBlobGasMemo(excessBlobGas, blobGasPriceUpdateFraction, minBlobGasPrice, feePerBlobGas, success));
+        return success;
+    }
+
+    private sealed class FeePerBlobGasMemo(ulong excessBlobGas, ulong updateFraction, UInt256 minBlobGasPrice, UInt256 feePerBlobGas, bool success)
+    {
+        public readonly UInt256 FeePerBlobGas = feePerBlobGas;
+        public readonly bool Success = success;
+
+        public bool Matches(ulong excess, ulong fraction, in UInt256 minPrice) =>
+            excess == excessBlobGas && fraction == updateFraction && minPrice == minBlobGasPrice;
+    }
+
+    private static bool CalculateFeePerBlobGas(ulong excessBlobGas, ulong blobGasPriceUpdateFraction, in UInt256 minBlobGasPrice, out UInt256 feePerBlobGas)
     {
         static bool FakeExponentialOverflow(UInt256 factor, UInt256 num, UInt256 denominator, out UInt256 feePerBlobGas)
         {
@@ -90,7 +141,8 @@ public static class BlobGasCalculator
             return false;
         }
 
-        return !FakeExponentialOverflow(Eip4844Constants.MinBlobGasPrice, excessBlobGas, blobGasPriceUpdateFraction, out feePerBlobGas);
+        UInt256 denominator = blobGasPriceUpdateFraction;
+        return !FakeExponentialOverflow(minBlobGasPrice, excessBlobGas, denominator, out feePerBlobGas);
     }
 
     public static ulong? CalculateExcessBlobGas(BlockHeader? parentBlockHeader, IReleaseSpec releaseSpec)

@@ -3,8 +3,6 @@
 
 using System;
 using System.IO.Abstractions;
-using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -14,7 +12,6 @@ using Nethermind.Logging;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Config;
-using Nethermind.Abi;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -28,45 +25,21 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Shutter;
 
-public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfig, ChainSpec chainSpec) : IConsensusWrapperPlugin
+public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfig, ChainSpec chainSpec) : INethermindPlugin
 {
     public string Name => "Shutter";
     public string Description => "Shutter plugin for AuRa post-merge chains";
     public string Author => "Nethermind";
     public bool Enabled => shutterConfig.Enabled && mergeConfig.Enabled && chainSpec.SealEngineType is SealEngineType.AuRa;
-    public int Priority => PluginPriorities.Shutter;
-
-    private ILogger _logger;
 
     public class ShutterLoadingException(string message, Exception? innerException = null) : Exception(message, innerException);
-
-    public Task Init(INethermindApi nethermindApi)
-    {
-        _logger = nethermindApi.LogManager.GetClassLogger<ShutterPlugin>();
-        if (_logger.IsInfo) _logger.Info($"Initializing Shutter plugin.");
-        return Task.CompletedTask;
-    }
-
-    public Task InitRpcModules()
-    {
-        if (_logger.IsInfo) _logger.Info("Initializing Shutter block improvement.");
-        return Task.CompletedTask;
-    }
-
-    public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin)
-    {
-        if (_logger.IsInfo) _logger.Info("Initializing Shutter block producer.");
-        return consensusPlugin.InitBlockProducer();
-    }
 
     public IModule? Module => new ShutterPluginModule();
 }
 
 public class ShutterPluginModule : Module
 {
-    protected override void Load(ContainerBuilder builder)
-    {
-        builder
+    protected override void Load(ContainerBuilder builder) => builder
             .AddStep(typeof(RunShutterP2P)) // Where it start the p2p
 
             .AddSingleton(CreateShutterApi)
@@ -74,7 +47,6 @@ public class ShutterPluginModule : Module
             .AddDecorator<IBlockProducerTxSourceFactory, ShutterAdditionalBlockProductionTxSource>()
             .AddSingleton<IBlockImprovementContextFactory, ShutterApi, IBlockProducer>((api, blockProducer) => api.GetBlockImprovementContextFactory(blockProducer))
             ;
-    }
 
     private ShutterApi CreateShutterApi(IComponentContext ctx)
     {
@@ -95,7 +67,6 @@ public class ShutterPluginModule : Module
         }
 
         return new ShutterApi(
-            ctx.Resolve<IAbiEncoder>(),
             ctx.Resolve<IBlockTree>(),
             ctx.Resolve<IEthereumEcdsa>(),
             ctx.Resolve<ILogFinder>(),
@@ -109,7 +80,7 @@ public class ShutterPluginModule : Module
             shutterConfig,
             validatorsInfo,
             TimeSpan.FromSeconds(blocksConfig!.SecondsPerSlot),
-            ctx.Resolve<IIPResolver>().ExternalIp
+            ctx.Resolve<IIPResolver>()
         );
     }
 }

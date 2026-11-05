@@ -3,18 +3,10 @@
 
 namespace Nethermind.Synchronization.Peers.AllocationStrategies
 {
-    public class SatelliteProtocolPeerAllocationStrategy<T> : FilterPeerAllocationStrategy where T : class
+    public class SatelliteProtocolPeerAllocationStrategy<T>(IPeerAllocationStrategy strategy, string protocol) : FilterPeerAllocationStrategy(strategy) where T : class
     {
-        private readonly string _protocol;
+        private readonly string _protocol = protocol;
 
-        public SatelliteProtocolPeerAllocationStrategy(IPeerAllocationStrategy strategy, string protocol) : base(strategy)
-        {
-            _protocol = protocol;
-        }
-
-        protected override bool Filter(PeerInfo peerInfo)
-        {
-            return peerInfo.SyncPeer.TryGetSatelliteProtocol<T>(_protocol, out _);
-        }
+        protected override bool Filter(PeerInfo peerInfo) => peerInfo.SyncPeer.TryGetSatelliteProtocol<T>(_protocol, out _);
     }
 }

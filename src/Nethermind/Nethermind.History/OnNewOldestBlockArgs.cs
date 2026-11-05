@@ -4,10 +4,9 @@
 using System;
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain;
+namespace Nethermind.History;
 
-public class OnNewOldestBlockArgs(BlockHeader oldest, bool isFinalUpdate = true) : EventArgs
+public class OnNewOldestBlockArgs(BlockHeader oldest) : EventArgs
 {
     public BlockHeader OldestBlockHeader = oldest;
-    public bool isFinalUpdate = isFinalUpdate;
 }

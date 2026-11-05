@@ -18,7 +18,7 @@ namespace Nethermind.TxPool.Comparison
 
         // To replace old transaction, new transaction needs to have fee higher by at least 10% (1/10) of current fee.
         // It is required to avoid acceptance and propagation of transaction with almost the same fee as replaced one.
-        private const int PartOfFeeRequiredToIncrease = 10;
+        private const ulong PartOfFeeRequiredToIncrease = 10;
 
         public int Compare(Transaction? newTx, Transaction? oldTx)
         {
@@ -27,11 +27,11 @@ namespace Nethermind.TxPool.Comparison
             if (newTx is null) return TxComparisonResult.TakeNew;
 
             // always allow replacement of zero fee txs (in legacy txs MaxFeePerGas equals GasPrice)
-            if (oldTx.MaxFeePerGas.IsZero) return TxComparisonResult.TakeNew;
+            if (oldTx.MaxFeePerGas == 0) return TxComparisonResult.TakeNew;
 
             if (!newTx.Supports1559 && !oldTx.Supports1559)
             {
-                oldTx.GasPrice.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpGasPrice);
+                UInt256 bumpGasPrice = oldTx.GasPrice / PartOfFeeRequiredToIncrease;
                 int gasPriceResult = (oldTx.GasPrice + bumpGasPrice).CompareTo(newTx.GasPrice);
                 // return TakeNew if fee bump is exactly by PartOfFeeRequiredToIncrease
                 // never return NotDecided - it's allowed or not
@@ -42,10 +42,11 @@ namespace Nethermind.TxPool.Comparison
 
             /* MaxFeePerGas for legacy will be GasPrice and MaxPriorityFeePerGas will be GasPrice too
             so we can compare legacy txs without any problems */
-            oldTx.MaxFeePerGas.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpMaxFeePerGas);
-            if (oldTx.MaxFeePerGas + bumpMaxFeePerGas > newTx.MaxFeePerGas) return TxComparisonResult.KeepOld;
+            (UInt256 oldFeeCap, UInt256 newFeeCap) = GetFeeCaps(newTx, oldTx);
+            UInt256 bumpMaxFeePerGas = oldFeeCap / PartOfFeeRequiredToIncrease;
+            if (oldFeeCap + bumpMaxFeePerGas > newFeeCap) return TxComparisonResult.KeepOld;
 
-            oldTx.MaxPriorityFeePerGas.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpMaxPriorityFeePerGas);
+            UInt256 bumpMaxPriorityFeePerGas = oldTx.MaxPriorityFeePerGas / PartOfFeeRequiredToIncrease;
             int result = (oldTx.MaxPriorityFeePerGas + bumpMaxPriorityFeePerGas).CompareTo(newTx.MaxPriorityFeePerGas);
             // return TakeNew if fee bump is exactly by PartOfFeeRequiredToIncrease
             // never return NotDecided - it's allowed or not
@@ -54,5 +55,10 @@ namespace Nethermind.TxPool.Comparison
                 : TxComparisonResult.KeepOld;
         }
 
+        /// <summary>The fee caps a replacement must bump: EIP-8141 <c>max_fee</c> when both are frame transactions, else <see cref="Transaction.MaxFeePerGas"/>.</summary>
+        internal static (UInt256 OldFeeCap, UInt256 NewFeeCap) GetFeeCaps(Transaction newTx, Transaction oldTx) =>
+            oldTx.SupportsFrames && newTx.SupportsFrames
+                ? (oldTx.MaxFee, newTx.MaxFee)
+                : (oldTx.MaxFeePerGas, newTx.MaxFeePerGas);
     }
 }

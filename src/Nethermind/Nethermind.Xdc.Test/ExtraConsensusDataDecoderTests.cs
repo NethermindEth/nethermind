@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
@@ -20,51 +18,44 @@ internal class ExtraConsensusDataDecoderTests
     public void Decode_XdcExtraDataRlp_IsEquivalentAfterReencoding(string extraDataRlp)
     {
         ExtraConsensusDataDecoder decoder = new();
-        Rlp.ValueDecoderContext context = new Rlp.ValueDecoderContext(Bytes.FromHexString(extraDataRlp));
-        ExtraFieldsV2 decodedExtraData = decoder.Decode(ref context);
+        RlpReader context = new(Bytes.FromHexString(extraDataRlp));
+        ExtraFieldsV2 decodedExtraData = decoder.DecodeGuardNotNull(ref context);
 
         Rlp encodedExtraData = decoder.Encode(decodedExtraData);
 
-        ExtraFieldsV2 unencoded = decoder.Decode((ReadOnlySpan<byte>)encodedExtraData.Bytes);
+        RlpReader encodedContext = new(encodedExtraData.Bytes);
+        ExtraFieldsV2 unencoded = decoder.DecodeGuardNotNull(ref encodedContext);
 
-        unencoded.Should().BeEquivalentTo(decodedExtraData);
+        Assert.That(unencoded, Is.EqualTo(decodedExtraData).UsingXdcComparer());
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Decode_XdcExtraDataRlp_IsEquivalentAfterReencoding(bool useRlpStream)
+    [Test]
+    public void EncodeToStream_RoundTrip_Matches_AllFields()
     {
-        ExtraFieldsV2 extraFields = new ExtraFieldsV2(1, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
+        ExtraFieldsV2 extraFields = new(1, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
         ExtraConsensusDataDecoder decoder = new();
-        var stream = new RlpStream(decoder.GetLength(extraFields));
-        decoder.Encode(stream, extraFields);
+        byte[] bytes = new byte[decoder.GetLength(extraFields, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
+        decoder.Encode(ref writer, extraFields);
 
-        ExtraFieldsV2 decodedExtraData;
-        if (useRlpStream)
-        {
-            Rlp.ValueDecoderContext context = new Rlp.ValueDecoderContext(stream.Data);
-            decodedExtraData = decoder.Decode(ref context);
-        }
-        else
-        {
-            Rlp.ValueDecoderContext context = new Rlp.ValueDecoderContext(stream.Data);
-            decodedExtraData = decoder.Decode(ref context);
-        }
+        RlpReader context = new(bytes);
+        ExtraFieldsV2 decodedExtraData = decoder.DecodeGuardNotNull(ref context);
 
-        decodedExtraData.Should().BeEquivalentTo(extraFields);
+        Assert.That(decodedExtraData, Is.EqualTo(extraFields).UsingXdcComparer());
     }
 
     [Test]
     public void Decode_QCIsNull_CanDecodeNormally()
     {
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(1, null!);
+        ExtraFieldsV2 extraFieldsV2 = new(1, null!);
         ExtraConsensusDataDecoder decoder = new();
 
         Rlp encodedExtraData = decoder.Encode(extraFieldsV2);
 
-        ExtraFieldsV2 unencoded = decoder.Decode((ReadOnlySpan<byte>)encodedExtraData.Bytes);
+        RlpReader context = new(encodedExtraData.Bytes);
+        ExtraFieldsV2 unencoded = decoder.DecodeGuardNotNull(ref context);
 
-        unencoded.Should().BeEquivalentTo(extraFieldsV2);
+        Assert.That(unencoded, Is.EqualTo(extraFieldsV2).UsingXdcComparer());
     }
 
 }

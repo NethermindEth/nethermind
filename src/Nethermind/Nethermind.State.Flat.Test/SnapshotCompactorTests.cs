@@ -5,10 +5,12 @@ using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -20,89 +22,106 @@ public class SnapshotCompactorTests
     private SnapshotCompactor _compactor = null!;
     private ResourcePool _resourcePool = null!;
     private FlatDbConfig _config = null!;
+    private FlatTestContainer _tier = null!;
     private SnapshotRepository _snapshotRepository;
+    private INodeRecordBuffer _buffer = null!;
 
     [SetUp]
     public void SetUp()
     {
         _config = new FlatDbConfig { CompactSize = 16 };
         _resourcePool = new ResourcePool(_config);
-        _snapshotRepository = new SnapshotRepository(LimboLogs.Instance);
-        _compactor = new SnapshotCompactor(_config, _resourcePool, _snapshotRepository, LimboLogs.Instance);
+        _tier = new FlatTestContainer();
+        _snapshotRepository = _tier.Repository;
+        _buffer = new ForwardingNodeRecordBuffer(FlatTestHelpers.NewTestBuffer());
+        _compactor = new SnapshotCompactor(_config, ScheduleHelper.CreateWithOffset(_config, 0), _resourcePool, _snapshotRepository, LimboLogs.Instance);
     }
 
-    private static StateId CreateStateId(long blockNumber, byte rootByte = 0)
+    [TearDown]
+    public void TearDown()
+    {
+        _tier.Dispose();
+        _buffer.Dispose();
+    }
+
+    private static StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
     {
         byte[] bytes = new byte[32];
         bytes[0] = rootByte;
         return new StateId(blockNumber, new ValueHash256(bytes));
     }
 
-    private void BuildSnapshotChain(long startBlock, long endBlock)
+    private void BuildSnapshotChain(ulong startBlock, ulong endBlock)
     {
-        for (long i = startBlock; i < endBlock; i++)
+        for (ulong i = startBlock; i < endBlock; i++)
         {
             StateId from = CreateStateId(i);
             StateId to = CreateStateId(i + 1);
             Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
-            bool added = _snapshotRepository.TryAddSnapshot(snapshot);
+            bool added = _snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
             Assert.That(added, Is.True, $"Failed to add snapshot {i}->{i + 1}");
             _snapshotRepository.AddStateId(to);
         }
     }
 
-    private static void AssertSlotValueEqual(SlotValue? expected, SlotValue? actual)
+    private static void AssertSlotValueEqual(UInt256? expected, UInt256? actual)
     {
         Assert.That(actual, Is.Not.Null);
-        Assert.That(actual!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(expected!.Value.AsReadOnlySpan.ToArray()));
+        Assert.That(actual!.Value.ToBigEndian(), Is.EqualTo(expected!.Value.ToBigEndian()));
     }
 
     private static void AssertAccountSame(Account expected, Account? actual)
     {
         Assert.That(actual, Is.Not.Null);
-        Assert.That(actual!.Nonce, Is.EqualTo(expected.Nonce));
-        Assert.That(actual!.Balance, Is.EqualTo(expected.Balance));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual!.Nonce, Is.EqualTo(expected.Nonce));
+            Assert.That(actual!.Balance, Is.EqualTo(expected.Balance));
+        }
     }
 
     [Test]
     public void CompactSnapshotBundle_SingleSnapshot_ReturnsCorrectStateIds()
     {
-        StateId from = new StateId(0, Keccak.Zero);
-        StateId to = new StateId(1, Keccak.Zero);
+        StateId from = new(0, Keccak.Zero);
+        StateId to = new(1, Keccak.Zero);
 
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-        Address address = new Address("0x1234567890123456789012345678901234567890");
+        Address address = new("0x1234567890123456789012345678901234567890");
         snapshot.Content.Accounts[address] = new Account(1, 100);
 
-        SnapshotPooledList snapshots = new SnapshotPooledList(1);
-        snapshots.Add(snapshot);
+        SnapshotPooledList snapshots = new(1)
+        {
+            snapshot
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
-        Assert.That(compacted.From.BlockNumber, Is.EqualTo(0));
-        Assert.That(compacted.To.BlockNumber, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.From.BlockNumber, Is.EqualTo(0));
+            Assert.That(compacted.To.BlockNumber, Is.EqualTo(1));
+        }
     }
 
     [Test]
     public void CompactSnapshotBundle_SingleSnapshot_PreservesAllDataTypes()
     {
-        StateId from = new StateId(0, Keccak.Zero);
-        StateId to = new StateId(1, Keccak.Zero);
+        StateId from = new(0, Keccak.Zero);
+        StateId to = new(1, TestItem.KeccakA);
 
-        using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-        Address address1 = new Address("0x1111111111111111111111111111111111111111");
-        Address address2 = new Address("0x2222222222222222222222222222222222222222");
-        UInt256 storageIndex1 = new UInt256(1);
-        UInt256 storageIndex2 = new UInt256(2);
-        TreePath statePath1 = TreePath.FromHexString("abcd");
-        TreePath statePath2 = TreePath.FromHexString("ef01");
-        TreePath storageNodePath1 = TreePath.FromHexString("1234");
-        TreePath storageNodePath2 = TreePath.FromHexString("5678");
-        Hash256 storageNodeHash1 = Keccak.Zero;
-        Hash256 storageNodeHash2 = Keccak.Zero;
-        SlotValue slotValue1 = new SlotValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
-        SlotValue slotValue2 = new SlotValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
+        using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        Address address1 = new("0x1111111111111111111111111111111111111111");
+        Address address2 = new("0x2222222222222222222222222222222222222222");
+        UInt256 storageIndex1 = new(1);
+        UInt256 storageIndex2 = new(2);
+        TreePath statePath1 = TreePath.FromHexString("a");
+        TreePath statePath2 = TreePath.FromHexString("e");
+        TreePath storageNodePath1 = TreePath.Empty;
+        TreePath storageNodePath2 = TreePath.Empty;
+        UInt256 slotValue1 = (UInt256)100;
+        UInt256 slotValue2 = (UInt256)200;
 
         // Add accounts
         snapshot.Content.Accounts[address1] = new Account(1, 100);
@@ -113,198 +132,389 @@ public class SnapshotCompactorTests
         snapshot.Content.Storages[(address2, storageIndex2)] = slotValue2;
 
         // Add state nodes
-        snapshot.Content.StateNodes[statePath1] = new TrieNode(NodeType.Leaf, storageNodeHash1);
-        snapshot.Content.StateNodes[statePath2] = new TrieNode(NodeType.Branch, storageNodeHash2);
+        snapshot.Content.SetStateNodeRlp(_buffer, statePath1, FlatTestHelpers.LeafRlpA);
+        snapshot.Content.SetStateNodeRlp(_buffer, statePath2, FlatTestHelpers.LeafRlpB);
 
         // Add storage nodes
         Hash256 address1Hash = address1.ToAccountPath.ToCommitment();
         Hash256 address2Hash = address2.ToAccountPath.ToCommitment();
-        snapshot.Content.StorageNodes[(address1Hash, storageNodePath1)] = new TrieNode(NodeType.Leaf, storageNodeHash1);
-        snapshot.Content.StorageNodes[(address2Hash, storageNodePath2)] = new TrieNode(NodeType.Branch, storageNodeHash2);
+        snapshot.Content.SetStorageNodeRlp(_buffer, address1Hash, storageNodePath1, FlatTestHelpers.LeafRlpA);
+        snapshot.Content.SetStorageNodeRlp(_buffer, address2Hash, storageNodePath2, FlatTestHelpers.LeafRlpB);
 
-        SnapshotPooledList snapshots = new SnapshotPooledList(1);
-        snapshots.Add(snapshot);
+        SnapshotPooledList snapshots = new(1)
+        {
+            snapshot
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
         // Verify all data types are preserved
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(compacted.AccountsCount, Is.EqualTo(2));
-        AssertAccountSame(new Account(1, 100), compacted.Content.Accounts[address1]);
-        AssertAccountSame(new Account(2, 200), compacted.Content.Accounts[address2]);
+#pragma warning restore NUnit2045
+        Assert.That(compacted.TryGetAccount(address1, out Account? account1), Is.True);
+        AssertAccountSame(new Account(1, 100), account1);
+        Assert.That(compacted.TryGetAccount(address2, out Account? account2), Is.True);
+        AssertAccountSame(new Account(2, 200), account2);
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(compacted.StoragesCount, Is.EqualTo(2));
-        AssertSlotValueEqual(slotValue1, compacted.Content.Storages[(address1, storageIndex1)]);
-        AssertSlotValueEqual(slotValue2, compacted.Content.Storages[(address2, storageIndex2)]);
+#pragma warning restore NUnit2045
+        Assert.That(compacted.TryGetStorage((address1, storageIndex1), out UInt256? storedSlot1), Is.True);
+        AssertSlotValueEqual(slotValue1, storedSlot1);
+        Assert.That(compacted.TryGetStorage((address2, storageIndex2), out UInt256? storedSlot2), Is.True);
+        AssertSlotValueEqual(slotValue2, storedSlot2);
 
-        Assert.That(compacted.StateNodesCount, Is.EqualTo(2));
-        Assert.That(compacted.Content.StateNodes[statePath1].Keccak, Is.EqualTo(storageNodeHash1));
-        Assert.That(compacted.Content.StateNodes[statePath2].Keccak, Is.EqualTo(storageNodeHash2));
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
+        Assert.That(compacted.StateNodes.Count(), Is.EqualTo(3));
+#pragma warning restore NUnit2045
+        Assert.That(compacted.TryGetStateNode(statePath1, out TrieNode? stateNode1), Is.True);
+        Assert.That(stateNode1!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
+        Assert.That(compacted.TryGetStateNode(statePath2, out TrieNode? stateNode2), Is.True);
+        Assert.That(stateNode2!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
 
-        Assert.That(compacted.StorageNodesCount, Is.EqualTo(2));
+        Assert.That(compacted.StorageNodes.Count(), Is.EqualTo(2));
+        Assert.That(compacted.TryGetStorageNode((address2Hash, storageNodePath2), out TrieNode? storageNode2), Is.True);
+        Assert.That(storageNode2!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
     }
 
     [Test]
     public void CompactSnapshotBundle_MultipleSnapshots_MergesAllDataTypes()
     {
-        Address address1 = new Address("0x1111111111111111111111111111111111111111");
-        Address address2 = new Address("0x2222222222222222222222222222222222222222");
-        UInt256 storageIndex1 = new UInt256(1);
-        UInt256 storageIndex2 = new UInt256(2);
-        TreePath statePath1 = TreePath.FromHexString("abcd");
-        TreePath statePath2 = TreePath.FromHexString("ef01");
-        TreePath storageNodePath1 = TreePath.FromHexString("1234");
-        TreePath storageNodePath2 = TreePath.FromHexString("5678");
-        SlotValue slotValue1 = new SlotValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
-        SlotValue slotValue2 = new SlotValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
+        Address address1 = new("0x1111111111111111111111111111111111111111");
+        Address address2 = new("0x2222222222222222222222222222222222222222");
+        UInt256 storageIndex1 = new(1);
+        UInt256 storageIndex2 = new(2);
+        TreePath statePath1 = TreePath.FromHexString("a");
+        TreePath statePath2 = TreePath.FromHexString("e");
+        TreePath storageNodePath1 = TreePath.Empty;
+        TreePath storageNodePath2 = TreePath.Empty;
+        UInt256 slotValue1 = (UInt256)100;
+        UInt256 slotValue2 = (UInt256)200;
 
         // First snapshot
-        StateId from0 = new StateId(0, Keccak.Zero);
-        StateId to0 = new StateId(1, Keccak.Zero);
-        using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        StateId from0 = new(0, Keccak.Zero);
+        StateId to0 = new(1, TestItem.KeccakA);
+        using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         snapshot0.Content.Accounts[address1] = new Account(1, 100);
         snapshot0.Content.Storages[(address1, storageIndex1)] = slotValue1;
-        snapshot0.Content.StateNodes[statePath1] = new TrieNode(NodeType.Leaf, Keccak.Zero);
+        snapshot0.Content.SetStateNodeRlp(_buffer, statePath1, FlatTestHelpers.LeafRlpA);
         Hash256 address1Hash = address1.ToAccountPath.ToCommitment();
-        snapshot0.Content.StorageNodes[(address1Hash, storageNodePath1)] = new TrieNode(NodeType.Leaf, Keccak.Zero);
+        snapshot0.Content.SetStorageNodeRlp(_buffer, address1Hash, storageNodePath1, FlatTestHelpers.LeafRlpA);
+        FlatTestHelpers.StartNewGeneration(_buffer);
 
         // Second snapshot with different items
-        StateId from1 = new StateId(1, Keccak.Zero);
-        StateId to1 = new StateId(2, Keccak.Zero);
-        using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        StateId from1 = new(1, TestItem.KeccakA);
+        StateId to1 = new(2, TestItem.KeccakB);
+        using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         snapshot1.Content.Accounts[address2] = new Account(2, 200);
         snapshot1.Content.Storages[(address2, storageIndex2)] = slotValue2;
-        snapshot1.Content.StateNodes[statePath2] = new TrieNode(NodeType.Branch, Keccak.Zero);
+        snapshot1.Content.SetStateNodeRlp(_buffer, statePath1, FlatTestHelpers.LeafRlpA);
+        snapshot1.Content.SetStateNodeRlp(_buffer, statePath2, FlatTestHelpers.LeafRlpB);
         Hash256 address2Hash = address2.ToAccountPath.ToCommitment();
-        snapshot1.Content.StorageNodes[(address2Hash, storageNodePath2)] = new TrieNode(NodeType.Branch, Keccak.Zero);
+        snapshot1.Content.SetStorageNodeRlp(_buffer, address2Hash, storageNodePath2, FlatTestHelpers.LeafRlpB);
 
-        SnapshotPooledList snapshots = new SnapshotPooledList(2);
-        snapshots.Add(snapshot0);
-        snapshots.Add(snapshot1);
+        SnapshotPooledList snapshots = new(2)
+        {
+            snapshot0,
+            snapshot1
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
-        // Verify all items from both snapshots are merged
-        Assert.That(compacted.AccountsCount, Is.EqualTo(2));
-        Assert.That(compacted.StoragesCount, Is.EqualTo(2));
-        Assert.That(compacted.StateNodesCount, Is.EqualTo(2));
-        Assert.That(compacted.StorageNodesCount, Is.EqualTo(2));
+        // Flat changes merge; trie nodes are reachable from the final roots.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.AccountsCount, Is.EqualTo(2));
+            Assert.That(compacted.StoragesCount, Is.EqualTo(2));
+            Assert.That(compacted.StateNodes.Count(), Is.EqualTo(3));
+            Assert.That(compacted.StorageNodes.Count(), Is.EqualTo(2));
+            Assert.That((snapshot1.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.GreaterThan((snapshot0.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
+            Assert.That((compacted.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.EqualTo((snapshot0.BufferPin.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
+        }
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
+        Assert.That(compacted.TryGetStateNode(statePath1, out TrieNode? stateNode1), Is.True);
+#pragma warning restore NUnit2045
+        Assert.That(stateNode1!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
     }
 
     [Test]
     public void CompactSnapshotBundle_MultipleSnapshots_LatestValueOverridesForAllDataTypes()
     {
-        Address address = new Address("0x1111111111111111111111111111111111111111");
-        UInt256 storageIndex = new UInt256(1);
-        TreePath statePath = TreePath.FromHexString("abcd");
-        TreePath storageNodePath = TreePath.FromHexString("1234");
-        SlotValue slotValue1 = new SlotValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
-        SlotValue slotValue2 = new SlotValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
+        Address address = new("0x1111111111111111111111111111111111111111");
+        UInt256 storageIndex = new(1);
+        TreePath statePath = TreePath.Empty;
+        TreePath storageNodePath = TreePath.Empty;
+        UInt256 slotValue1 = (UInt256)100;
+        UInt256 slotValue2 = (UInt256)200;
 
         // First snapshot with initial values
-        StateId from0 = new StateId(0, Keccak.Zero);
-        StateId to0 = new StateId(1, Keccak.Zero);
-        using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        StateId from0 = new(0, Keccak.Zero);
+        StateId to0 = new(1, TestItem.KeccakA);
+        using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         snapshot0.Content.Accounts[address] = new Account(1, 100);
         snapshot0.Content.Storages[(address, storageIndex)] = slotValue1;
-        snapshot0.Content.StateNodes[statePath] = new TrieNode(NodeType.Leaf, Keccak.Zero);
+        snapshot0.Content.SetStateNodeRlp(_buffer, statePath, FlatTestHelpers.LeafRlpA);
         Hash256 addressHash = address.ToAccountPath.ToCommitment();
-        snapshot0.Content.StorageNodes[(addressHash, storageNodePath)] = new TrieNode(NodeType.Leaf, Keccak.Zero);
+        snapshot0.Content.SetStorageNodeRlp(_buffer, addressHash, storageNodePath, FlatTestHelpers.LeafRlpA);
 
         // Second snapshot with updated values for same keys
-        StateId from1 = new StateId(1, Keccak.Zero);
-        StateId to1 = new StateId(2, Keccak.Zero);
-        using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        StateId from1 = new(1, TestItem.KeccakA);
+        StateId to1 = new(2, TestItem.KeccakB);
+        using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         snapshot1.Content.Accounts[address] = new Account(2, 200);
         snapshot1.Content.Storages[(address, storageIndex)] = slotValue2;
-        snapshot1.Content.StateNodes[statePath] = new TrieNode(NodeType.Branch, Keccak.Zero);
-        snapshot1.Content.StorageNodes[(addressHash, storageNodePath)] = new TrieNode(NodeType.Branch, Keccak.Zero);
+        snapshot1.Content.SetStateNodeRlp(_buffer, statePath, FlatTestHelpers.LeafRlpB);
+        snapshot1.Content.SetStorageNodeRlp(_buffer, addressHash, storageNodePath, FlatTestHelpers.LeafRlpB);
 
-        SnapshotPooledList snapshots = new SnapshotPooledList(2);
-        snapshots.Add(snapshot0);
-        snapshots.Add(snapshot1);
+        SnapshotPooledList snapshots = new(2)
+        {
+            snapshot0,
+            snapshot1
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
         // Verify latest values override earlier ones
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(compacted.AccountsCount, Is.EqualTo(1));
-        AssertAccountSame(new Account(2, 200), compacted.Content.Accounts[address]);
+#pragma warning restore NUnit2045
+        Assert.That(compacted.TryGetAccount(address, out Account? account), Is.True);
+        AssertAccountSame(new Account(2, 200), account);
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(compacted.StoragesCount, Is.EqualTo(1));
-        AssertSlotValueEqual(slotValue2, compacted.Content.Storages[(address, storageIndex)]);
+#pragma warning restore NUnit2045
+        Assert.That(compacted.TryGetStorage((address, storageIndex), out UInt256? storedSlot), Is.True);
+        AssertSlotValueEqual(slotValue2, storedSlot);
 
-        Assert.That(compacted.StateNodesCount, Is.EqualTo(1));
-        Assert.That(compacted.StorageNodesCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.StateNodes.Count(), Is.EqualTo(1));
+            Assert.That(compacted.TryGetStateNode(statePath, out TrieNode? stateNode), Is.True);
+            Assert.That(stateNode!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+            Assert.That(compacted.StorageNodes.Count(), Is.EqualTo(1));
+            Assert.That(compacted.TryGetStorageNode((addressHash, storageNodePath), out TrieNode? storageNode), Is.True);
+            Assert.That(storageNode!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+        }
     }
 
     [Test]
     public void CompactSnapshotBundle_SelfDestructedAddress_RemovesStorageAndNodes()
     {
-        Address address = new Address("0x1111111111111111111111111111111111111111");
-        UInt256 storageIndex = new UInt256(1);
+        Address address = new("0x1111111111111111111111111111111111111111");
+        UInt256 storageIndex = new(1);
         TreePath storagePath = TreePath.FromHexString("1234");
-        Hash256 storageHash = Keccak.Zero;
-        SlotValue slotValue = new SlotValue(new byte[32]);
+        UInt256 slotValue = default;
 
-        StateId from0 = new StateId(0, Keccak.Zero);
-        StateId to0 = new StateId(1, Keccak.Zero);
-        using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        StateId from0 = new(0, Keccak.Zero);
+        StateId to0 = new(1, Keccak.Zero);
+        using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         snapshot0.Content.Accounts[address] = new Account(1, 100);
         snapshot0.Content.Storages[(address, storageIndex)] = slotValue;
-        snapshot0.Content.StorageNodes[(address.ToAccountPath.ToCommitment(), storagePath)] = new TrieNode(NodeType.Leaf, storageHash);
+        snapshot0.Content.SetStorageNodeRlp(_buffer, address.ToAccountPath.ToCommitment(), storagePath, FlatTestHelpers.LeafRlpA);
 
-        StateId from1 = new StateId(1, Keccak.Zero);
-        StateId to1 = new StateId(2, Keccak.Zero);
+        StateId from1 = new(1, Keccak.Zero);
+        StateId to1 = new(2, Keccak.Zero);
         using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot1.Content.SelfDestructedStorageAddresses[address] = false;
 
-        SnapshotPooledList snapshots = new SnapshotPooledList(2);
-        snapshots.Add(snapshot0);
-        snapshots.Add(snapshot1);
+        SnapshotPooledList snapshots = new(2)
+        {
+            snapshot0,
+            snapshot1
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
         // Self-destructed address should be tracked, and its storage cleared
-        Assert.That(compacted.Content.SelfDestructedStorageAddresses.Count, Is.GreaterThan(0));
-        Assert.That(compacted.StoragesCount, Is.EqualTo(0));
-        Assert.That(compacted.StorageNodesCount, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.SelfDestructedStorageAddresses.Count(), Is.GreaterThan(0));
+            Assert.That(compacted.StoragesCount, Is.EqualTo(0));
+        }
+    }
+
+    [TestCase(false, TestName = "SelfDestructBoundary_KeepsWritesAtOrAfterTheClear")]
+    [TestCase(true, TestName = "SelfDestructBoundary_LaterClearRaisesTheBoundary")]
+    public void CompactSnapshotBundle_SelfDestructBoundary(bool selfDestructAgainInLastSnapshot)
+    {
+        Address a = new("0x1111111111111111111111111111111111111111");
+        Address b = new("0x2222222222222222222222222222222222222222");
+        Hash256 aHash = a.ToAccountPath.ToCommitment();
+        Hash256 bHash = b.ToAccountPath.ToCommitment();
+        TreePath pBefore = TreePath.FromHexString("1");
+        TreePath pSame = TreePath.FromHexString("2");
+        TreePath pAfter = TreePath.FromHexString("3");
+        TreePath pB = TreePath.Empty;
+        static UInt256 Slot(byte marker) => (UInt256)marker << 248;
+
+        // Block 0 -> 1: A gets a slot/node written before it is ever self-destructed; B is unrelated.
+        using Snapshot s0 = _resourcePool.CreateSnapshot(new(0, Keccak.Zero), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        s0.Content.Storages[(a, new UInt256(1))] = Slot(0xA0);
+        s0.Content.SetStorageNodeRlp(_buffer, aHash, pBefore, FlatTestHelpers.LeafRlpA);
+        s0.Content.Storages[(b, new UInt256(1))] = Slot(0xBB);
+        s0.Content.SetStorageNodeRlp(_buffer, bHash, pB, FlatTestHelpers.LeafRlpA);
+
+        // Block 1 -> 2: A is self-destructed and re-written in the same snapshot (add after clear survives).
+        using Snapshot s1 = _resourcePool.CreateSnapshot(new(1, Keccak.Zero), new(2, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        s1.Content.SelfDestructedStorageAddresses[a] = false;
+        s1.Content.Storages[(a, new UInt256(2))] = Slot(0xA2);
+        s1.Content.SetStorageNodeRlp(_buffer, aHash, pSame, FlatTestHelpers.LeafRlpA);
+
+        // Block 2 -> 3: A is written again, optionally self-destructed again (which raises the boundary).
+        using Snapshot s2 = _resourcePool.CreateSnapshot(new(2, Keccak.Zero), new(3, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        if (selfDestructAgainInLastSnapshot) s2.Content.SelfDestructedStorageAddresses[a] = false;
+        s2.Content.Storages[(a, new UInt256(3))] = Slot(0xA3);
+        if (!selfDestructAgainInLastSnapshot) s2.Content.SetStorageNodeRlp(_buffer, aHash, pSame, FlatTestHelpers.LeafRlpA);
+        s2.Content.SetStorageNodeRlp(_buffer, aHash, pAfter, FlatTestHelpers.LeafRlpA);
+
+        SnapshotPooledList snapshots = new(3) { s0, s1, s2 };
+        using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
+
+        // Written strictly before the first clear: always removed.
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
+        Assert.That(compacted.TryGetStorage((a, new UInt256(1)), out _), Is.False);
+#pragma warning restore NUnit2045
+        Assert.That(compacted.TryGetStorageNode((aHash, pBefore), out _), Is.False);
+
+        // Written after the last clear: always kept.
+        Assert.That(compacted.TryGetStorage((a, new UInt256(3)), out UInt256? slotAfter), Is.True);
+        AssertSlotValueEqual(Slot(0xA3), slotAfter);
+        Assert.That(compacted.TryGetStorageNode((aHash, pAfter), out _), Is.True);
+
+        // Written in the first-clear block: kept unless a later clear raises the boundary past it.
+        bool slotSameKept = !selfDestructAgainInLastSnapshot;
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
+        Assert.That(compacted.TryGetStorage((a, new UInt256(2)), out _), Is.EqualTo(slotSameKept));
+#pragma warning restore NUnit2045
+        Assert.That(compacted.TryGetStorageNode((aHash, pSame), out _), Is.EqualTo(slotSameKept));
+
+        // Unrelated address is never touched by another address's self-destruct.
+        Assert.That(compacted.TryGetStorage((b, new UInt256(1)), out UInt256? slotB), Is.True);
+        AssertSlotValueEqual(Slot(0xBB), slotB);
+        Assert.That(compacted.TryGetStorageNode((bHash, pB), out _), Is.True);
+    }
+
+    [Test]
+    public void CompactSnapshotBundle_SelectsEarliestFullBoundaryNotFirstGenerationMatch()
+    {
+        INodeRecordBufferPin earliest = _buffer.PinHead();
+        SnapshotContent finalContent = new();
+        finalContent.SetStateNodeRlp(_buffer, TreePath.FromHexString("1"), FlatTestHelpers.LeafRlpA);
+        using Snapshot first = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, TestItem.KeccakA), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        using Snapshot final = new(first.To, new(2, TestItem.KeccakB), finalContent, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv, earliest);
+        using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { first, final });
+        using Snapshot result = _compactor.CompactSnapshotBundle(new(1) { compacted });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((first.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.EqualTo((earliest.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
+            Assert.That(first.BufferPin!.WriteBoundary, Is.GreaterThan(earliest.WriteBoundary));
+            Assert.That(result.BufferPin!.WriteBoundary, Is.EqualTo(earliest.WriteBoundary));
+            Assert.That(result.StateNodes.Count(), Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void CompactSnapshotBundle_FinalRootOmitsDisconnectedEarlierStateNodes()
+    {
+        TreePath oldPath = TreePath.FromHexString("1");
+        TreePath finalPath = TreePath.FromHexString("2");
+        using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.Zero), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        older.Content.SetStateNodeRlp(_buffer, oldPath, FlatTestHelpers.LeafRlpA);
+        using Snapshot final = _resourcePool.CreateSnapshot(older.To, new(2, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        final.Content.SetStateNodeRlp(_buffer, finalPath, FlatTestHelpers.LeafRlpB);
+
+        using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { older, final });
+
+        Assert.That(compacted.TryGetStateNode(finalPath, out TrieNode? node), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.TryGetStateNode(oldPath, out _), Is.False);
+            Assert.That(node!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+            Assert.That(compacted.StateNodes.Select(node => node.Pointer), Is.EqualTo(final.StateNodes.Select(node => node.Pointer)));
+        }
+    }
+
+    [Test]
+    public void CompactSnapshotBundle_FinalEmptyStateDoesNotResurrectEarlierRoot()
+    {
+        using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        older.Content.SetStateNodeRlp(_buffer, TreePath.Empty, FlatTestHelpers.LeafRlpA);
+        using Snapshot final = _resourcePool.CreateSnapshot(older.To, new(2, Keccak.EmptyTreeHash), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+
+        using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { older, final });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.StateNodes, Is.Empty);
+            Assert.That(compacted.TryGetStateNode(TreePath.Empty, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void CompactSnapshotBundle_EmptyStorageMarkerSurvivesNestedCompaction([Values] bool recreate)
+    {
+        Hash256 addressHash = TestItem.AddressA.ToAccountPath.ToHash256();
+        using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.Zero), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        older.Content.SetStorageNodeRlp(_buffer, addressHash, TreePath.Empty, FlatTestHelpers.LeafRlpA);
+        using Snapshot cleared = _resourcePool.CreateSnapshot(older.To, new(2, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        cleared.Content.StorageRoots[addressHash] = 0;
+        using Snapshot compactedClear = _compactor.CompactSnapshotBundle(new(2) { older, cleared });
+        using Snapshot final = _resourcePool.CreateSnapshot(cleared.To, new(3, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        if (recreate) final.Content.SetStorageNodeRlp(_buffer, addressHash, TreePath.Empty, FlatTestHelpers.LeafRlpB);
+
+        using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { compactedClear, final });
+
+        Assert.That(compacted.TryGetStorageNode((addressHash, TreePath.Empty), out TrieNode? node), Is.EqualTo(recreate));
+        if (recreate) Assert.That(node!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+        else Assert.That(compacted.StorageNodes, Is.Empty);
     }
 
     [Test]
     public void CompactSnapshotBundle_NewAccountSelfDestruct_MarkedAsTrue()
     {
-        Address address = new Address("0x1111111111111111111111111111111111111111");
+        Address address = new("0x1111111111111111111111111111111111111111");
 
-        StateId from0 = new StateId(0, Keccak.Zero);
-        StateId to0 = new StateId(1, Keccak.Zero);
+        StateId from0 = new(0, Keccak.Zero);
+        StateId to0 = new(1, Keccak.Zero);
         using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
-        StateId from1 = new StateId(1, Keccak.Zero);
-        StateId to1 = new StateId(2, Keccak.Zero);
+        StateId from1 = new(1, Keccak.Zero);
+        StateId to1 = new(2, Keccak.Zero);
         using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot1.Content.SelfDestructedStorageAddresses[address] = true;
 
-        SnapshotPooledList snapshots = new SnapshotPooledList(2);
-        snapshots.Add(snapshot0);
-        snapshots.Add(snapshot1);
+        SnapshotPooledList snapshots = new(2)
+        {
+            snapshot0,
+            snapshot1
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
         // New account marked as self-destructed should be tracked
-        Assert.That(compacted.Content.SelfDestructedStorageAddresses.Count, Is.GreaterThan(0));
-        // Verify at least one entry has true value
-        Assert.That(compacted.Content.SelfDestructedStorageAddresses.Values.Any(v => v), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.SelfDestructedStorageAddresses.Count(), Is.GreaterThan(0));
+            // Verify at least one entry has true value
+            Assert.That(compacted.SelfDestructedStorageAddresses.Any(static kvp => kvp.Value), Is.True);
+        }
     }
 
     [Test]
     public void CompactSnapshotBundle_UsesCompactorUsageAtBoundary()
     {
-        StateId from = new StateId(0, Keccak.Zero);
-        StateId to = new StateId(16, Keccak.Zero);
+        StateId from = new(0, Keccak.Zero);
+        StateId to = new(16, Keccak.Zero);
 
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
-        SnapshotPooledList snapshots = new SnapshotPooledList(1);
-        snapshots.Add(snapshot);
+        SnapshotPooledList snapshots = new(1)
+        {
+            snapshot
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
@@ -314,13 +524,15 @@ public class SnapshotCompactorTests
     [Test]
     public void CompactSnapshotBundle_UsesMidCompactorUsageNonBoundary()
     {
-        StateId from = new StateId(0, Keccak.Zero);
-        StateId to = new StateId(8, Keccak.Zero);
+        StateId from = new(0, Keccak.Zero);
+        StateId to = new(8, Keccak.Zero);
 
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
-        SnapshotPooledList snapshots = new SnapshotPooledList(1);
-        snapshots.Add(snapshot);
+        SnapshotPooledList snapshots = new(1)
+        {
+            snapshot
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
@@ -328,27 +540,24 @@ public class SnapshotCompactorTests
     }
 
     [Test]
-    public void Debug_AssembleSnapshotsUntil_Works()
+    public void Debug_AssembleInMemorySnapshotsForCompaction_Works()
     {
         BuildSnapshotChain(0, 4);
 
         StateId target = CreateStateId(4);
-        SnapshotPooledList assembled = _snapshotRepository.AssembleSnapshotsUntil(target, 0, 10);
+        using SnapshotPooledList assembled = _snapshotRepository.AssembleInMemorySnapshotsForCompaction(target, 0, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(4));
-
-        foreach (Snapshot s in assembled) s.Dispose();
-        assembled.Dispose();
     }
 
     [Test]
     public void GetSnapshotsToCompact_CompactSizeDisabled_ReturnsEmpty()
     {
-        FlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 0 };
-        SnapshotCompactor compactor = new SnapshotCompactor(config, _resourcePool, _snapshotRepository, LimboLogs.Instance);
+        FlatDbConfig config = new() { CompactSize = 1 };
+        SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 0), _resourcePool, _snapshotRepository, LimboLogs.Instance);
 
-        StateId from = new StateId(0, Keccak.Zero);
-        StateId to = new StateId(16, Keccak.Zero);
+        StateId from = new(0, Keccak.Zero);
+        StateId to = new(16, Keccak.Zero);
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
         using SnapshotPooledList snapshots = compactor.GetSnapshotsToCompact(snapshot);
@@ -359,8 +568,8 @@ public class SnapshotCompactorTests
     [Test]
     public void GetSnapshotsToCompact_BlockZero_ReturnsEmpty()
     {
-        StateId from = new StateId(0, Keccak.Zero);
-        StateId to = new StateId(0, Keccak.Zero);
+        StateId from = new(0, Keccak.Zero);
+        StateId to = new(0, Keccak.Zero);
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
         using SnapshotPooledList snapshots = _compactor.GetSnapshotsToCompact(snapshot);
@@ -371,8 +580,8 @@ public class SnapshotCompactorTests
     [Test]
     public void GetSnapshotsToCompact_NotCompactionBlock_ReturnsEmpty()
     {
-        StateId from = new StateId(0, Keccak.Zero);
-        StateId to = new StateId(5, Keccak.Zero);
+        StateId from = new(0, Keccak.Zero);
+        StateId to = new(5, Keccak.Zero);
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
         using SnapshotPooledList snapshots = _compactor.GetSnapshotsToCompact(snapshot);
@@ -383,14 +592,12 @@ public class SnapshotCompactorTests
     [Test]
     public void GetSnapshotsToCompact_FullCompaction_ReturnsMultipleSnapshots()
     {
-        // Build chain of 15 snapshots (0->1, 1->2, ..., 14->15)
         BuildSnapshotChain(0, 15);
 
-        // Add the 16th snapshot (15->16) separately
         StateId targetFrom = CreateStateId(15);
         StateId targetTo = CreateStateId(16);
         Snapshot targetSnapshot = _resourcePool.CreateSnapshot(targetFrom, targetTo, ResourcePool.Usage.ReadOnlyProcessingEnv);
-        _snapshotRepository.TryAddSnapshot(targetSnapshot);
+        _snapshotRepository.TryAdd(targetSnapshot, SnapshotTier.InMemoryBase);
         _snapshotRepository.AddStateId(targetTo);
 
         using SnapshotPooledList snapshots = _compactor.GetSnapshotsToCompact(targetSnapshot);
@@ -401,12 +608,12 @@ public class SnapshotCompactorTests
     [TestCase(4, 4)]   // 4 & -4 = 4, compact size 4, blocks 0->4
     [TestCase(8, 8)]   // 8 & -8 = 8, compact size 8, blocks 0->8
     [TestCase(12, 4)]  // 12 & -12 = 4, compact size 4, blocks 8->12
-    public void GetSnapshotsToCompact_PowerOf2Compaction_ReturnsCorrectCount(long blockNumber, int expectedCount)
+    public void GetSnapshotsToCompact_PowerOf2Compaction_ReturnsCorrectCount(int blockNumber, int expectedCount)
     {
-        BuildSnapshotChain(0, blockNumber);
+        BuildSnapshotChain(0, (ulong)blockNumber);
 
-        StateId targetTo = CreateStateId(blockNumber);
-        _snapshotRepository.TryLeaseState(targetTo, out Snapshot? targetSnapshot);
+        StateId targetTo = CreateStateId((ulong)blockNumber);
+        _snapshotRepository.TryLeaseInMemoryState(targetTo, SnapshotTier.InMemoryBase, out Snapshot? targetSnapshot);
 
         using SnapshotPooledList snapshots = _compactor.GetSnapshotsToCompact(targetSnapshot!);
 
@@ -414,40 +621,13 @@ public class SnapshotCompactorTests
         targetSnapshot!.Dispose();
     }
 
-    [TestCase(2)]  // 2 & -2 = 2 < MinCompactSize(4)
-    [TestCase(6)]  // 6 & -6 = 2 < MinCompactSize(4)
-    [TestCase(10)] // 10 & -10 = 2 < MinCompactSize(4)
-    public void GetSnapshotsToCompact_BelowMinCompactSize_ReturnsEmpty(long blockNumber)
-    {
-        FlatDbConfig config = new FlatDbConfig { CompactSize = 16, MinCompactSize = 4 };
-        SnapshotRepository repo = new SnapshotRepository(LimboLogs.Instance);
-        SnapshotCompactor compactor = new SnapshotCompactor(config, _resourcePool, repo, LimboLogs.Instance);
-
-        for (long i = 0; i < blockNumber; i++)
-        {
-            StateId from = CreateStateId(i);
-            StateId to = CreateStateId(i + 1);
-            Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-            repo.TryAddSnapshot(snapshot);
-            repo.AddStateId(to);
-        }
-
-        StateId targetTo = CreateStateId(blockNumber);
-        repo.TryLeaseState(targetTo, out Snapshot? targetSnapshot);
-
-        using SnapshotPooledList snapshots = compactor.GetSnapshotsToCompact(targetSnapshot!);
-
-        Assert.That(snapshots.Count, Is.EqualTo(0));
-        targetSnapshot!.Dispose();
-    }
-
     [Test]
     public void GetSnapshotsToCompact_SingleSnapshot_ReturnsEmpty()
     {
-        StateId from = new StateId(0, Keccak.Zero);
-        StateId to = new StateId(16, Keccak.Zero);
+        StateId from = new(0, Keccak.Zero);
+        StateId to = new(16, Keccak.Zero);
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-        _snapshotRepository.TryAddSnapshot(snapshot);
+        _snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
         _snapshotRepository.AddStateId(to);
 
         using Snapshot targetSnapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
@@ -461,17 +641,17 @@ public class SnapshotCompactorTests
     public void GetSnapshotsToCompact_IncompleteChain_ReturnsEmpty()
     {
         // Missing 1
-        for (long i = 2; i < 16; i++)
+        for (ulong i = 2; i < 16; i++)
         {
-            StateId from = new StateId(i, Keccak.Zero);
-            StateId to = new StateId(i + 1, Keccak.Zero);
+            StateId from = new(i, Keccak.Zero);
+            StateId to = new(i + 1, Keccak.Zero);
             Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-            _snapshotRepository.TryAddSnapshot(snapshot);
+            _snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
             _snapshotRepository.AddStateId(to);
         }
 
-        StateId targetFrom = new StateId(15, Keccak.Zero);
-        StateId targetTo = new StateId(16, Keccak.Zero);
+        StateId targetFrom = new(15, Keccak.Zero);
+        StateId targetTo = new(16, Keccak.Zero);
         using Snapshot targetSnapshot = _resourcePool.CreateSnapshot(targetFrom, targetTo, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
         using SnapshotPooledList snapshots = _compactor.GetSnapshotsToCompact(targetSnapshot);
@@ -482,15 +662,13 @@ public class SnapshotCompactorTests
     [Test]
     public void DoCompactSnapshot_ValidChain_CreatesCompactedSnapshot()
     {
-        // Build chain of 15 snapshots (0->1, 1->2, ..., 14->15)
         BuildSnapshotChain(0, 15);
 
-        // Add the 16th snapshot (15->16) separately
         StateId targetFrom = CreateStateId(15);
         StateId targetTo = CreateStateId(16);
         Snapshot targetSnapshot = _resourcePool.CreateSnapshot(targetFrom, targetTo, ResourcePool.Usage.ReadOnlyProcessingEnv);
-        targetSnapshot.Content.Accounts[TestItem.AddressB] = new Account((UInt256)20, (UInt256)2000);
-        _snapshotRepository.TryAddSnapshot(targetSnapshot);
+        targetSnapshot.Content.Accounts[TestItem.AddressB] = new Account(20UL, (UInt256)2000);
+        _snapshotRepository.TryAdd(targetSnapshot, SnapshotTier.InMemoryBase);
         _snapshotRepository.AddStateId(targetTo);
 
         _compactor.DoCompactSnapshot(targetSnapshot.To);
@@ -501,36 +679,27 @@ public class SnapshotCompactorTests
     [Test]
     public void Constructor_NonPowerOf2CompactSize_Throws() =>
         Assert.Throws<ArgumentException>(() =>
-            new SnapshotCompactor(new FlatDbConfig { CompactSize = 10 }, _resourcePool, _snapshotRepository, LimboLogs.Instance));
+            new CompactionSchedule(new MemDb(), new FlatDbConfig { CompactSize = 10 }, LimboLogs.Instance));
 
     [Test]
-    public void Constructor_NonPowerOf2MinCompactSize_Throws() =>
-        Assert.Throws<ArgumentException>(() =>
-            new SnapshotCompactor(new FlatDbConfig { CompactSize = 16, MinCompactSize = 3 }, _resourcePool, _snapshotRepository, LimboLogs.Instance));
-
-    [Test]
-    public void Constructor_MinCompactSizeGreaterThanCompactSize_Throws() =>
-        Assert.Throws<ArgumentException>(() =>
-            new SnapshotCompactor(new FlatDbConfig { CompactSize = 8, MinCompactSize = 16 }, _resourcePool, _snapshotRepository, LimboLogs.Instance));
-
-    [Test]
-    public void GetSnapshotsToCompact_MinCompactSize2_AllowsSize2Compaction()
+    public void GetSnapshotsToCompact_Size2Compaction_AllowedByDefault()
     {
-        FlatDbConfig config = new FlatDbConfig { CompactSize = 16, MinCompactSize = 2 };
-        SnapshotRepository repo = new SnapshotRepository(LimboLogs.Instance);
-        SnapshotCompactor compactor = new SnapshotCompactor(config, _resourcePool, repo, LimboLogs.Instance);
+        FlatDbConfig config = new() { CompactSize = 16 };
+        using FlatTestContainer tier = new();
+        SnapshotRepository repo = tier.Repository;
+        SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 0), _resourcePool, repo, LimboLogs.Instance);
 
-        for (long i = 0; i < 2; i++)
+        for (ulong i = 0; i < 2; i++)
         {
             StateId from = CreateStateId(i);
             StateId to = CreateStateId(i + 1);
             Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-            repo.TryAddSnapshot(snapshot);
+            repo.TryAdd(snapshot, SnapshotTier.InMemoryBase);
             repo.AddStateId(to);
         }
 
         StateId target = CreateStateId(2);
-        repo.TryLeaseState(target, out Snapshot? targetSnapshot);
+        repo.TryLeaseInMemoryState(target, SnapshotTier.InMemoryBase, out Snapshot? targetSnapshot);
 
         using SnapshotPooledList snapshots = compactor.GetSnapshotsToCompact(targetSnapshot!);
 
@@ -538,17 +707,13 @@ public class SnapshotCompactorTests
         targetSnapshot!.Dispose();
     }
 
-    [TestCase(1)]
-    [TestCase(3)]
-    [TestCase(5)]
-    [TestCase(7)]
-    [TestCase(9)]
-    public void GetSnapshotsToCompact_OddBlock_ReturnsEmpty(long blockNumber)
+    [Test]
+    public void GetSnapshotsToCompact_OddBlock_ReturnsEmpty([Values(1, 3, 5, 7, 9)] int blockNumber)
     {
-        BuildSnapshotChain(0, blockNumber);
+        BuildSnapshotChain(0, (ulong)blockNumber);
 
-        StateId from = CreateStateId(blockNumber - 1);
-        StateId to = CreateStateId(blockNumber);
+        StateId from = CreateStateId((ulong)(blockNumber - 1));
+        StateId to = CreateStateId((ulong)blockNumber);
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
         using SnapshotPooledList snapshots = _compactor.GetSnapshotsToCompact(snapshot);
@@ -556,7 +721,7 @@ public class SnapshotCompactorTests
         Assert.That(snapshots.Count, Is.EqualTo(0));
     }
 
-    [TestCase(2, 2)]   // blockNumber & -blockNumber = 2
+    [TestCase(2, 2)]   // blockNumber & (~blockNumber + 1UL) = 2
     [TestCase(4, 4)]
     [TestCase(6, 2)]
     [TestCase(8, 8)]
@@ -564,9 +729,64 @@ public class SnapshotCompactorTests
     [TestCase(12, 4)]
     [TestCase(14, 2)]
     [TestCase(16, 16)]
-    public void GetSnapshotsToCompact_PowerOf2_CompactSizeMatchesBlockAlignment(long blockNumber, int expectedCompactSize)
+    public void GetSnapshotsToCompact_PowerOf2_CompactSizeMatchesBlockAlignment(int blockNumber, int expectedCompactSize)
     {
         int actualCompactSize = (int)Math.Min(blockNumber & -blockNumber, 16);
         Assert.That(actualCompactSize, Is.EqualTo(expectedCompactSize));
     }
+
+    [Test]
+    public void GetSnapshotsToCompact_WithOffset_FullCompactionShiftedFromBoundary()
+    {
+        // CompactSize=16, offset=3 -> full compaction triggers when (block+3) % 16 == 0,
+        // i.e. at blocks 13, 29, 45, ... Build a chain to block 29 (second full boundary).
+        FlatDbConfig config = new() { CompactSize = 16 };
+        using FlatTestContainer tier = new();
+        SnapshotRepository repo = tier.Repository;
+        SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 3), _resourcePool, repo, LimboLogs.Instance);
+
+        for (ulong i = 0; i < 29; i++)
+        {
+            StateId from = CreateStateId(i);
+            StateId to = CreateStateId(i + 1);
+            Snapshot s = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+            repo.TryAdd(s, SnapshotTier.InMemoryBase);
+            repo.AddStateId(to);
+        }
+
+        // Block 29: (29+3) & -(29+3) = 32 & -32 = 32, capped at CompactSize=16 -> full compaction
+        StateId target29 = CreateStateId(29);
+        repo.TryLeaseInMemoryState(target29, SnapshotTier.InMemoryBase, out Snapshot? targetSnapshot);
+        using SnapshotPooledList snapshots29 = compactor.GetSnapshotsToCompact(targetSnapshot!);
+        Assert.That(snapshots29.Count, Is.EqualTo(16), "Block 29 should trigger full compaction with offset=3");
+        targetSnapshot!.Dispose();
+
+        // Block 16: (16+3) & -(16+3) = 19 & -19 = 1 -> caller sees compactSize<=1, no compaction
+        StateId target16 = CreateStateId(16);
+        repo.TryLeaseInMemoryState(target16, SnapshotTier.InMemoryBase, out targetSnapshot);
+        using SnapshotPooledList snapshots16 = compactor.GetSnapshotsToCompact(targetSnapshot!);
+        Assert.That(snapshots16.Count, Is.EqualTo(0), "Block 16 should NOT trigger compaction with offset=3");
+        targetSnapshot!.Dispose();
+    }
+
+    [Test]
+    public void CompactSnapshotBundle_WithOffset_UsesCorrectUsageTier()
+    {
+        // CompactSize=16, offset=3. At block 13 the bit trick yields 16 -> Compact16 tier.
+        FlatDbConfig config = new() { CompactSize = 16 };
+        using FlatTestContainer tier = new();
+        SnapshotRepository repo = tier.Repository;
+        SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 3), _resourcePool, repo, LimboLogs.Instance);
+
+        StateId from = new(0, Keccak.Zero);
+        StateId to = new(13, Keccak.Zero);
+        using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+
+        SnapshotPooledList snapshots = new(1) { snapshot };
+
+        using Snapshot compacted = compactor.CompactSnapshotBundle(snapshots);
+
+        Assert.That(compacted.Usage, Is.EqualTo(ResourcePool.Usage.Compact16));
+    }
+
 }

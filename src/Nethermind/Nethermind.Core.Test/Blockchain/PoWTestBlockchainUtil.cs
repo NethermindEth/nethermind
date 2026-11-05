@@ -27,7 +27,7 @@ public class PoWTestBlockchainUtil(
     public async Task<AcceptTxResult[]> AddBlockDoNotWaitForHead(CancellationToken cancellationToken, params Transaction[] transactions)
     {
         await WaitAsync(_previousAddBlock, "Multiple block produced at once.").ConfigureAwait(false);
-        TaskCompletionSource tcs = new();
+        TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _previousAddBlock = tcs.Task;
 
         Task waitForNewBlock = WaitAsync(WaitForBlockProducerBlockProduced(cancellationToken), "timeout waiting for block producer");
@@ -51,13 +51,10 @@ public class PoWTestBlockchainUtil(
         await waitforHead;
     }
 
-    private Task WaitForBlockProducerBlockProduced(CancellationToken cancellationToken = default)
-    {
-        return Wait.ForEventCondition<BlockEventArgs>(cancellationToken,
+    private Task WaitForBlockProducerBlockProduced(CancellationToken cancellationToken = default) => Wait.ForEventCondition<BlockEventArgs>(cancellationToken,
             e => blockProducerRunner.BlockProduced += e,
             e => blockProducerRunner.BlockProduced -= e,
             b => true);
-    }
 
     private static async Task WaitAsync(Task task, string error)
     {

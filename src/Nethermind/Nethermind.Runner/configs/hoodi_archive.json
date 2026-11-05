@@ -32,5 +32,13 @@
   },
   "Merge": {
     "Enabled": true
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
+  },
+  "FlatDb": {
+    "Enabled": true,
+    "HistoryEnabled": true,
+    "PersistenceWriteBufferFloor": 67108864
   }
 }

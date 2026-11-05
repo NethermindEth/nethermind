@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
@@ -11,28 +12,31 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace Nethermind.Xdc.Test;
+namespace Nethermind.Xdc.Test.ModuleTests;
 
 public class TimeoutTests
 {
     [Test]
     public async Task TestCountdownTimeoutToSendTimeoutMessage()
     {
-        using var blockchain = await XdcTestBlockchain.Create();
-        var tcManager = blockchain.TimeoutCertificateManager;
-        var ctx = blockchain.XdcContext;
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create();
+        ITimeoutCertificateManager tcManager = blockchain.TimeoutCertificateManager;
+        IXdcConsensusContext ctx = blockchain.XdcContext;
         tcManager.OnCountdownTimer();
 
         Timeout expectedTimeoutMsg = XdcTestHelper.BuildSignedTimeout(blockchain.Signer.Key!, ctx.CurrentRound, 0);
 
-        Assert.That(ctx.TimeoutCounter, Is.EqualTo(1));
-        Assert.That(tcManager.GetTimeoutsCount(expectedTimeoutMsg), Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.TimeoutCounter, Is.EqualTo(1));
+            Assert.That(tcManager.GetTimeoutsCount(expectedTimeoutMsg), Is.EqualTo(1));
+        }
     }
 
     [Test]
     public async Task TestCountdownTimeoutNotToSendTimeoutMessageIfNotInMasternodeList()
     {
-        using var blockchain = await XdcTestBlockchain.Create();
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create();
         // Create TCManager with a signer not in the Masternode list
         blockchain.Signer.SetSigner(TestItem.PrivateKeyA);
 
@@ -45,16 +49,16 @@ public class TimeoutTests
     [Test]
     public async Task TestTimeoutMessageHandlerSuccessfullyGenerateTC()
     {
-        using var blockchain = await XdcTestBlockchain.Create();
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create();
 
-        var ctx = blockchain.XdcContext;
-        var head = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
-        var spec = blockchain.SpecProvider.GetXdcSpec(head, ctx.CurrentRound);
-        var epoch = blockchain.EpochSwitchManager.GetEpochSwitchInfo(head)!;
-        var signers = blockchain.TakeRandomMasterNodes(spec, epoch);
-        var round = ctx.CurrentRound;
+        IXdcConsensusContext ctx = blockchain.XdcContext;
+        XdcBlockHeader head = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, ctx.CurrentRound);
+        EpochSwitchInfo epoch = blockchain.EpochSwitchManager.GetEpochSwitchInfo(head)!;
+        PrivateKey[] signers = blockchain.TakeRandomMasterNodes(spec, epoch);
+        ulong round = ctx.CurrentRound;
         const ulong gap = 450;
-        var signatures = new List<Signature>();
+        List<Signature> signatures = [];
 
         // Send N-1 timeouts -> should NOT reach threshold
         for (int i = 0; i < signers.Length - 1; i++)
@@ -65,21 +69,30 @@ public class TimeoutTests
         }
 
         // Sanity check: round hasn’t advanced, HighestTC not set to this round yet
-        Assert.That(ctx.CurrentRound, Is.EqualTo(round));
-        Assert.That(ctx.HighestTC.Round, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.CurrentRound, Is.EqualTo(round));
+            Assert.That(ctx.HighestTC.Round, Is.EqualTo(0));
+        }
 
         // Send timeout message with wrong gap so it doesn't reach threshold yet
         await blockchain.TimeoutCertificateManager.HandleTimeoutVote(XdcTestHelper.BuildSignedTimeout(signers.Last(), round, 1350));
-        Assert.That(ctx.CurrentRound, Is.EqualTo(round));
-        Assert.That(ctx.HighestTC.Round, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.CurrentRound, Is.EqualTo(round));
+            Assert.That(ctx.HighestTC.Round, Is.EqualTo(0));
+        }
 
         // One more timeout (reaches threshold) -> HighestTC set, round increments
         Timeout lastTimeoutMsg = XdcTestHelper.BuildSignedTimeout(signers.Last(), round, gap);
         await blockchain.TimeoutCertificateManager.HandleTimeoutVote(lastTimeoutMsg);
         signatures.Add(lastTimeoutMsg.Signature!);
 
-        var expectedTC = new TimeoutCertificate(round, signatures.ToArray(), gap);
-        ctx.HighestTC.Should().BeEquivalentTo(expectedTC);
-        Assert.That(ctx.CurrentRound, Is.EqualTo(round + 1));
+        TimeoutCertificate expectedTC = new(round, signatures.ToArray(), gap);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.HighestTC, Is.EqualTo(expectedTC).UsingXdcComparer());
+            Assert.That(ctx.CurrentRound, Is.EqualTo(round + 1));
+        }
     }
 }

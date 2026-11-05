@@ -29,9 +29,9 @@ namespace Nethermind.Stats
         long CurrentPersistedNodeReputation { get; set; }
         long NewPersistedNodeReputation(DateTime nowUTC);
 
-        P2PNodeDetails P2PNodeDetails { get; }
-        SyncPeerNodeDetails EthNodeDetails { get; }
-        SyncPeerNodeDetails LesNodeDetails { get; }
+        P2PNodeDetails? P2PNodeDetails { get; }
+        SyncPeerNodeDetails? EthNodeDetails { get; }
+        SyncPeerNodeDetails? LesNodeDetails { get; }
         CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
 
         /// <summary>

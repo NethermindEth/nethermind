@@ -4,7 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using MathNet.Numerics.Random;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Synchronization.FastSync;
 using NUnit.Framework;
 
@@ -13,12 +13,12 @@ namespace Nethermind.Synchronization.Test.FastSync;
 [TestFixture]
 public class DetailedProgressSerializerTest
 {
-    private readonly DetailedProgress _data = new DetailedProgress(1, null);
+    private readonly DetailedProgress _data = new(1, null);
 
     [Test]
     public void SerializerMultiThreadFuzzTest()
     {
-        CancellationTokenSource cts = new CancellationTokenSource();
+        CancellationTokenSource cts = new();
         Task.Run(() => ChangeData(cts.Token));
 
         for (int i = 0; i < 1000000; i++)
@@ -31,8 +31,8 @@ public class DetailedProgressSerializerTest
 
     private void ChangeData(CancellationToken token)
     {
-        Random rand = new Random();
-        Random randBool = new Random();
+        Random rand = new();
+        Random randBool = new();
         while (!token.IsCancellationRequested)
         {
             Interlocked.Exchange(ref _data.ConsumedNodesCount, randBool.NextBoolean() ? rand.NextInt64() : 0);

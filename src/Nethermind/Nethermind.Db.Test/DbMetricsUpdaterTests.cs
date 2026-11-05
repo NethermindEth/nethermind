@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -8,7 +9,7 @@ using Nethermind.Db.Rocks.Statistics;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Logging;
-using RocksDbSharp;
+using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Test
 {
@@ -17,10 +18,7 @@ namespace Nethermind.Db.Test
     public class DbMetricsUpdaterTests
     {
         [TearDown]
-        public void TearDow()
-        {
-            Metrics.DbStats.Clear();
-        }
+        public void TearDow() => Metrics.DbStats.Clear();
 
 
         private static IEnumerable<TestCaseData> ProcessCompactionStatsTests
@@ -32,7 +30,7 @@ namespace Nethermind.Db.Test
                 InterfaceLogger logger = Substitute.For<InterfaceLogger>();
 
                 string testDump = File.ReadAllText("InputFiles/CompactionStatsExample_AllData.txt");
-                new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
+                new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, false, new(logger)).ProcessCompactionStats(testDump);
 
                 // Level    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
                 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -58,10 +56,7 @@ namespace Nethermind.Db.Test
         }
 
         [TestCaseSource(nameof(ProcessCompactionStatsTests))]
-        public void ProcessCompactionStats_DbCompactionStats_Correct(string metric, double expectedValue)
-        {
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, metric)], Is.EqualTo(expectedValue));
-        }
+        public void ProcessCompactionStats_DbCompactionStats_Correct(string metric, double expectedValue) => Assert.That(Metrics.DbCompactionStats[("TestDb", 0, metric)], Is.EqualTo(expectedValue));
 
         [Test]
         public void ProcessCompactionStats_DbStats_Correct()
@@ -71,7 +66,7 @@ namespace Nethermind.Db.Test
             InterfaceLogger logger = Substitute.For<InterfaceLogger>();
 
             string testDump = File.ReadAllText("InputFiles/CompactionStatsExample_AllData.txt");
-            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
+            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, false, new(logger)).ProcessCompactionStats(testDump);
 
             Assert.That(Metrics.DbStats.Count, Is.EqualTo(5));
         }
@@ -82,13 +77,22 @@ namespace Nethermind.Db.Test
             InterfaceLogger logger = Substitute.For<InterfaceLogger>();
 
             string testDump = File.ReadAllText(@"InputFiles/SampleStats.txt");
-            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessStatisticsString(testDump);
+            DbMetricsUpdater<DbOptions> updater = new("Test", null, null, null, null, false, new(logger));
+            updater.ProcessStatisticsString(testDump);
 
-            Assert.That(Metrics.DbStats[("TestDb", "rocksdb.prefetch.bytes")], Is.EqualTo(1));
-            Assert.That(Metrics.DbStats[("TestDb", "rocksdb.prefetch.bytes.useful")], Is.EqualTo(2));
-            Assert.That(Metrics.DbStats[("TestDb", "rocksdb.prefetch.hits")], Is.EqualTo(3));
-            Assert.That(Metrics.DbStats[("TestDb", "rocksdb.db.get.micros.count")], Is.EqualTo(4));
-            Assert.That(Metrics.DbStats[("TestDb", "rocksdb.db.get.micros.sum")], Is.EqualTo(5));
+            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            updater.ProcessStatisticsString(testDump);
+            long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Metrics.DbStats[("TestDb", "rocksdb.prefetch.bytes")], Is.EqualTo(1));
+                Assert.That(Metrics.DbStats[("TestDb", "rocksdb.prefetch.bytes.useful")], Is.EqualTo(2));
+                Assert.That(Metrics.DbStats[("TestDb", "rocksdb.prefetch.hits")], Is.EqualTo(3));
+                Assert.That(Metrics.DbStats[("TestDb", "rocksdb.db.get.micros.count")], Is.EqualTo(4));
+                Assert.That(Metrics.DbStats[("TestDb", "rocksdb.db.get.micros.sum")], Is.EqualTo(5));
+                Assert.That(allocatedBytes, Is.Zero);
+            }
         }
 
         [Test]
@@ -97,14 +101,17 @@ namespace Nethermind.Db.Test
             InterfaceLogger logger = Substitute.For<InterfaceLogger>();
 
             string testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_MissingLevels.txt");
-            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
+            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, false, new(logger)).ProcessCompactionStats(testDump);
 
             Assert.That(Metrics.DbStats.Count, Is.EqualTo(5));
-            Assert.That(Metrics.DbStats[("TestDb", "IntervalCompactionGBWrite")], Is.EqualTo(10));
-            Assert.That(Metrics.DbStats[("TestDb", "IntervalCompactionMBPerSecWrite")], Is.EqualTo(2));
-            Assert.That(Metrics.DbStats[("TestDb", "IntervalCompactionGBRead")], Is.EqualTo(123));
-            Assert.That(Metrics.DbStats[("TestDb", "IntervalCompactionMBPerSecRead")], Is.EqualTo(0));
-            Assert.That(Metrics.DbStats[("TestDb", "IntervalCompactionSeconds")], Is.EqualTo(111));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Metrics.DbStats[("TestDb", "IntervalCompactionGBWrite")], Is.EqualTo(10));
+                Assert.That(Metrics.DbStats[("TestDb", "IntervalCompactionMBPerSecWrite")], Is.EqualTo(2));
+                Assert.That(Metrics.DbStats[("TestDb", "IntervalCompactionGBRead")], Is.EqualTo(123));
+                Assert.That(Metrics.DbStats[("TestDb", "IntervalCompactionMBPerSecRead")], Is.EqualTo(0));
+                Assert.That(Metrics.DbStats[("TestDb", "IntervalCompactionSeconds")], Is.EqualTo(111));
+            }
         }
 
         [Test]
@@ -114,7 +121,7 @@ namespace Nethermind.Db.Test
             logger.IsWarn.Returns(true);
 
             string testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_MissingIntervalCompaction.txt");
-            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
+            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, false, new(logger)).ProcessCompactionStats(testDump);
 
             logger.Received().Warn(Arg.Is<string>(static s => s.StartsWith("Cannot find 'Interval compaction' stats for Test database")));
         }
@@ -126,7 +133,7 @@ namespace Nethermind.Db.Test
             logger.IsWarn.Returns(true);
 
             string testDump = string.Empty;
-            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
+            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, false, new(logger)).ProcessCompactionStats(testDump);
 
             Assert.That(Metrics.DbStats.Count, Is.EqualTo(0));
 
@@ -140,7 +147,7 @@ namespace Nethermind.Db.Test
             logger.IsWarn.Returns(true);
 
             string testDump = null;
-            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
+            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, false, new(logger)).ProcessCompactionStats(testDump);
 
             Assert.That(Metrics.DbStats.Count, Is.EqualTo(0));
 

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0-noble AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0-resolute AS build
 
 ARG BUILD_CONFIG=release
 ARG BUILD_TIMESTAMP
@@ -17,11 +17,11 @@ COPY ./nuget.config ./nuget.config
 COPY ./tools/Directory.Build.props ./tools/Directory.Build.props
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-  dotnet publish tools/SendBlobs/SendBlobs.csproj -c $BUILD_CONFIG -r $TARGETOS-$arch -o /out --sc true \
+  dotnet publish tools/SendBlobs/SendBlobs/SendBlobs.csproj -c $BUILD_CONFIG -r $TARGETOS-$arch -o /out --sc true \
   -p:DebugType=None \
   -p:DebugSymbols=false
 
-FROM mcr.microsoft.com/dotnet/runtime-deps:10.0-noble
+FROM mcr.microsoft.com/dotnet/runtime-deps:10.0-resolute
 
 WORKDIR /nethermind
 

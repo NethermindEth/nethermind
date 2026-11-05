@@ -22,14 +22,17 @@ namespace Nethermind.AuRa.Test
             BlockProcessorIntervalHint test)
         {
             ManualTimestamper manualTimestamper = new(DateTime.UtcNow);
-            AuRaStepCalculator stepCalculator = new(new Dictionary<long, long>() { { 0, test.StepDuration } }, manualTimestamper, LimboLogs.Instance);
+            AuRaStepCalculator stepCalculator = new(new Dictionary<ulong, long>() { { 0, test.StepDuration } }, manualTimestamper, LimboLogs.Instance);
             IValidatorStore validatorStore = Substitute.For<IValidatorStore>();
             validatorStore.GetValidators().Returns(new Address[test.ValidatorsCount]);
             IHealthHintService healthHintService = new AuraHealthHintService(stepCalculator, validatorStore);
             ulong? actualProcessing = healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
             ulong? actualProducing = healthHintService.MaxSecondsIntervalForProducingBlocksHint();
-            Assert.That(actualProcessing, Is.EqualTo(test.ExpectedProcessingHint));
-            Assert.That(actualProducing, Is.EqualTo(test.ExpectedProducingHint));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actualProcessing, Is.EqualTo(test.ExpectedProcessingHint));
+                Assert.That(actualProducing, Is.EqualTo(test.ExpectedProducingHint));
+            }
         }
 
         public class BlockProcessorIntervalHint

@@ -19,7 +19,7 @@ public interface IFlashbotsConfig : IConfig
     [ConfigItem(Description = "Whether to enable the pre-warmer.", DefaultValue = "true")]
     public bool EnablePreWarmer { get; set; }
 
-    [ConfigItem(Description = "Whether to enable validation.", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether to validate the submitted block against its execution (state root, receipts root, gas used, logs bloom). When disabled, a block whose header does not match the execution outcome is still reported as valid.", DefaultValue = "true")]
     public bool EnableValidation { get; set; }
 
     [ConfigItem(

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core.ServiceStopper;
+using Nethermind.Network.P2P;
 
 namespace Nethermind.Network
 {
@@ -14,5 +15,7 @@ namespace Nethermind.Network
         int MaxActivePeers { get; }
         int ActivePeersCount { get; }
         int ConnectedPeersCount { get; }
+
+        void OnP2PProtocolInitialized(ISession session);
     }
 }

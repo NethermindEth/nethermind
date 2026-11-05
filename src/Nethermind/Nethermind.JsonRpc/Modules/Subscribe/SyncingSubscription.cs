@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             IBlockTree? blockTree,
             IEthSyncingInfo ethSyncingInfo,
             ILogManager? logManager)
-            : base(jsonRpcDuplexClient)
+            : base(jsonRpcDuplexClient, MaxQueuedBlocks)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
@@ -36,45 +36,28 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewHeadBlocks");
         }
 
-        private class SubscriptionSyncingResult
+        private void OnConditionsChange(object? sender, BlockEventArgs e) => ScheduleAction(async () =>
         {
-            public long? StartingBlock { get; set; }
-            public long? CurrentBlock { get; set; }
-            public long? HighestBlock { get; set; }
-        }
+            SyncingResult syncingResult = _ethSyncingInfo.GetFullInfo();
+            bool isSyncing = syncingResult.IsSyncing;
 
-        private void OnConditionsChange(object? sender, BlockEventArgs e)
-        {
-            ScheduleAction(async () =>
+            if (isSyncing == _lastIsSyncing)
             {
-                SyncingResult syncingResult = _ethSyncingInfo.GetFullInfo();
-                bool isSyncing = syncingResult.IsSyncing;
+                if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} didn't changed syncing status: {_lastIsSyncing}");
+                return;
+            }
 
-                if (isSyncing == _lastIsSyncing)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} didn't changed syncing status: {_lastIsSyncing}");
-                    return;
-                }
+            if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} changed syncing status from {_lastIsSyncing} to {isSyncing}");
 
-                if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} changed syncing status from {_lastIsSyncing} to {isSyncing}");
+            _lastIsSyncing = isSyncing;
 
-                _lastIsSyncing = isSyncing;
+            using (JsonRpcResult result = CreateSubscriptionMessage(syncingResult))
+            {
+                await JsonRpcDuplexClient.SendJsonRpcResult(result);
+            }
 
-                using (JsonRpcResult result = !isSyncing
-                           ? CreateSubscriptionMessage(false)
-                           : CreateSubscriptionMessage(new SubscriptionSyncingResult()
-                           {
-                               StartingBlock = syncingResult.StartingBlock,
-                               CurrentBlock = syncingResult.CurrentBlock,
-                               HighestBlock = syncingResult.HighestBlock
-                           }))
-                {
-                    await JsonRpcDuplexClient.SendJsonRpcResult(result);
-                }
-
-                _logger.Trace($"Syncing subscription {Id} printed SyncingResult object.");
-            });
-        }
+            _logger.Trace($"Syncing subscription {Id} printed SyncingResult object.");
+        });
 
         public override string Type => SubscriptionType.EthSubscription.Syncing;
         public override void Dispose()

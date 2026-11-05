@@ -12,4 +12,24 @@ public static class RandomExtensions
     public static T NextFrom<T>(this Random random, IReadOnlyList<T> values) => values[random.Next(values.Count)];
 
     public static T NextFrom<T>(this ICryptoRandom random, IReadOnlyList<T> values) => values[random.NextInt(values.Count)];
+
+    /// <summary>Returns a non-negative random <see cref="ulong"/>, mirroring <see cref="Random.NextInt64()"/>.</summary>
+    public static ulong NextUInt64(this Random random) => (ulong)random.NextInt64();
+
+    /// <summary>Returns a random <see cref="ulong"/> in <c>[0, maxValue)</c>, mirroring <see cref="Random.NextInt64(long)"/>.</summary>
+    public static ulong NextUInt64(this Random random, ulong maxValue) => (ulong)random.NextInt64((long)maxValue);
+
+    /// <summary>Returns a random <see cref="ulong"/> in <c>[minValue, maxValue)</c>, mirroring <see cref="Random.NextInt64(long, long)"/>.</summary>
+    public static ulong NextUInt64(this Random random, ulong minValue, ulong maxValue) => (ulong)random.NextInt64((long)minValue, (long)maxValue);
+
+    /// <summary>Returns a new array of <paramref name="count"/> random bytes.</summary>
+    public static byte[] NextBytes(this Random random, int count)
+    {
+        byte[] buffer = new byte[count];
+        random.NextBytes(buffer);
+        return buffer;
+    }
+
+    /// <summary>Returns a random <see cref="bool"/>.</summary>
+    public static bool NextBoolean(this Random random) => random.Next(2) == 1;
 }

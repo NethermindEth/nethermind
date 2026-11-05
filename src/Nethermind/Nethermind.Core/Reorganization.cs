@@ -5,7 +5,6 @@ namespace Nethermind.Core
 {
     public static class Reorganization
     {
-        public static long MaxDepth = 64;
-        public const long PersistenceInterval = 8192;
+        public static ulong MaxDepth = 64;
     }
 }

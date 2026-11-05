@@ -7,7 +7,6 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Optimism.CL.Derivation;
@@ -29,6 +28,10 @@ public class SystemConfigDeriver(
     Address systemConfigProxy
 ) : ISystemConfigDeriver
 {
+    private static readonly AbiSignature<(ulong, ulong, Address)> BatcherData = new AbiSignature().With(AbiType.UInt64, AbiType.UInt64, AbiType.Address);
+    private static readonly AbiSignature<(ulong, ulong, byte[])> Bytes32Data = new AbiSignature().With(AbiType.UInt64, AbiType.UInt64, AbiType.BytesM(32));
+    private static readonly AbiSignature<(ulong, ulong, ulong)> UInt64Data = new AbiSignature().With(AbiType.UInt64, AbiType.UInt64, AbiType.UInt64);
+
     public SystemConfig SystemConfigFromL2BlockInfo(ReadOnlySpan<byte> data, ReadOnlySpan<byte> extraData, ulong gasLimit)
     {
         L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(data, extraData);
@@ -36,26 +39,26 @@ public class SystemConfigDeriver(
         scalar[0] = 1;
         BinaryPrimitives.WriteUInt32BigEndian(scalar.AsSpan(24), l1BlockInfo.BlobBaseFeeScalar);
         BinaryPrimitives.WriteUInt32BigEndian(scalar.AsSpan(28), l1BlockInfo.BaseFeeScalar);
+        (byte[] eip1559Params, ulong? minBaseFee) = EIP1559ParametersExtensions.SplitHeaderExtraData(extraData);
         return new SystemConfig()
         {
             BatcherAddress = l1BlockInfo.BatcherAddress,
             GasLimit = gasLimit,
             Scalar = scalar,
-            EIP1559Params = extraData.ToArray()[1..]
+            EIP1559Params = eip1559Params,
+            MinBaseFee = minBaseFee
         };
     }
 
     public SystemConfig UpdateSystemConfigFromL1BLockReceipts(SystemConfig systemConfig, ReceiptForRpc[] receipts)
     {
-        var config = systemConfig;
+        SystemConfig config = systemConfig;
 
         foreach (ReceiptForRpc receipt in receipts)
         {
-            if (receipt.Status != StatusCode.Success) continue;
-
-            foreach (var log in receipt.Logs ?? [])
+            foreach (LogEntryForRpc log in CommittedLogs.Of(receipt))
             {
-                if (log.Address == systemConfigProxy && log.Topics.Length > 0 && log.Topics[0] == SystemConfigUpdate.EventABIHash)
+                if (log.Address == systemConfigProxy && log.Topics is { Length: > 0 } topics && topics[0] == SystemConfigUpdate.EventABIHash)
                 {
                     config = UpdateSystemConfigFromLogEvent(config, log);
                 }
@@ -71,16 +74,14 @@ public class SystemConfigDeriver(
         if (log.Topics[0] != SystemConfigUpdate.EventABIHash) throw new ArgumentException($"Invalid {nameof(SystemConfig)} update event: {log.Topics[0]}, expected {SystemConfigUpdate.EventABIHash}");
         if (log.Topics[1] != SystemConfigUpdate.EventVersion0) throw new ArgumentException($"Unrecognized {nameof(SystemConfig)} update event version: {log.Topics[1]}");
 
-        var updateType = log.Topics[2];
+        Hash256 updateType = log.Topics[2];
 
         if (updateType == SystemConfigUpdate.Batcher)
         {
-            var signature = new AbiSignature(nameof(SystemConfigUpdate.Batcher), AbiType.UInt64, AbiType.UInt64, AbiType.Address);
-            object[] decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.None, signature, log.Data);
+            (ulong pointer, ulong length, Address address) = AbiCodec.Decode(BatcherData, log.Data);
 
-            if ((UInt64)decoded[0] != 32) throw new FormatException("Invalid pointer field");
-            if ((UInt64)decoded[1] != 32) throw new FormatException("Invalid length field");
-            var address = (Address)decoded[2];
+            if (pointer != 32) throw new FormatException("Invalid pointer field");
+            if (length != 32) throw new FormatException("Invalid length field");
 
             systemConfig = systemConfig with
             {
@@ -89,12 +90,10 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.FeeScalars)
         {
-            var signature = new AbiSignature(nameof(SystemConfigUpdate.FeeScalars), AbiType.UInt64, AbiType.UInt64, AbiType.Bytes32);
-            object[] decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.None, signature, log.Data);
+            (ulong pointer, ulong length, byte[] data) = AbiCodec.Decode(Bytes32Data, log.Data);
 
-            if ((UInt64)decoded[0] != 32) throw new FormatException("Invalid pointer field");
-            if ((UInt64)decoded[1] != 32) throw new FormatException("Invalid length field");
-            var data = (byte[])decoded[2];
+            if (pointer != 32) throw new FormatException("Invalid pointer field");
+            if (length != 32) throw new FormatException("Invalid length field");
             systemConfig = data[0] switch
             {
                 0 => systemConfig with { Scalar = data },
@@ -104,12 +103,10 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.GasLimit)
         {
-            var signature = new AbiSignature(nameof(SystemConfigUpdate.GasLimit), AbiType.UInt64, AbiType.UInt64, AbiType.UInt64);
-            object[] decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.None, signature, log.Data);
+            (ulong pointer, ulong length, ulong gasLimit) = AbiCodec.Decode(UInt64Data, log.Data);
 
-            if ((UInt64)decoded[0] != 32) throw new FormatException("Invalid pointer field");
-            if ((UInt64)decoded[1] != 32) throw new FormatException("Invalid length field");
-            var gasLimit = (UInt64)decoded[2];
+            if (pointer != 32) throw new FormatException("Invalid pointer field");
+            if (length != 32) throw new FormatException("Invalid length field");
 
             systemConfig = systemConfig with
             {
@@ -118,12 +115,10 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.EIP1559Params)
         {
-            var signature = new AbiSignature(nameof(SystemConfigUpdate.EIP1559Params), AbiType.UInt64, AbiType.UInt64, AbiType.Bytes32);
-            object[] decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.None, signature, log.Data);
+            (ulong pointer, ulong length, byte[] eip1559Params) = AbiCodec.Decode(Bytes32Data, log.Data);
 
-            if ((UInt64)decoded[0] != 32) throw new FormatException("Invalid pointer field");
-            if ((UInt64)decoded[1] != 32) throw new FormatException("Invalid length field");
-            var eip1559Params = (byte[])decoded[2];
+            if (pointer != 32) throw new FormatException("Invalid pointer field");
+            if (length != 32) throw new FormatException("Invalid length field");
 
             systemConfig = systemConfig with
             {

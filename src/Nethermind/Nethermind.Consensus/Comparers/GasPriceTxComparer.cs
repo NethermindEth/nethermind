@@ -10,16 +10,10 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.Comparers
 {
-    public class GasPriceTxComparer : IComparer<Transaction>
+    public class GasPriceTxComparer(IBlockFinder blockFinder, ISpecProvider specProvider) : IComparer<Transaction>
     {
-        private readonly IBlockFinder _blockFinder;
-        private readonly ISpecProvider _specProvider;
-
-        public GasPriceTxComparer(IBlockFinder blockFinder, ISpecProvider specProvider)
-        {
-            _blockFinder = blockFinder;
-            _specProvider = specProvider;
-        }
+        private readonly IBlockFinder _blockFinder = blockFinder;
+        private readonly ISpecProvider _specProvider = specProvider;
 
         public int Compare(Transaction? x, Transaction? y)
         {
@@ -37,7 +31,7 @@ namespace Nethermind.Consensus.Comparers
             // When we're adding Tx to TxPool, we don't know the base fee of the block in which transaction will be added.
             // We can get a base fee from the current head.
             Block block = _blockFinder.Head;
-            bool isEip1559Enabled = _specProvider.GetSpecFor1559(block?.Number ?? 0L).IsEip1559Enabled;
+            bool isEip1559Enabled = _specProvider.GetSpecFor1559(block?.Number ?? 0UL).IsEip1559Enabled;
 
             return GasPriceTxComparerHelper.Compare(x, y, (block?.Header.BaseFeePerGas).GetValueOrDefault(), isEip1559Enabled);
         }

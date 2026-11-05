@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Optimism.CL.P2P;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Optimism.CL;
 
@@ -42,9 +44,9 @@ public sealed class OptimismCL : IDisposable
         // Configs
         IOptimismConfig config,
         CLChainSpecEngineParameters engineParameters,
-        IPAddress externalIp,
-        ulong chainId,
-        ulong l2GenesisTimestamp,
+        IIPResolver ipResolver,
+        ISpecProvider specProvider,
+        ChainSpec chainSpec,
         ILogManager logManager
     )
     {
@@ -53,11 +55,16 @@ public sealed class OptimismCL : IDisposable
         ArgumentNullException.ThrowIfNull(engineParameters.UnsafeBlockSigner);
         ArgumentNullException.ThrowIfNull(engineParameters.Nodes);
         ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
-        ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
+        ulong l2BlockTime = engineParameters.L2BlockTime
+            ?? throw new ArgumentException("L2 block time is missing.", nameof(engineParameters));
+
+        ulong chainId = specProvider.ChainId;
+        ulong l2GenesisTimestamp = (chainSpec.Genesis
+            ?? throw new InvalidOperationException("Chain spec genesis is missing.")).Timestamp;
 
         _logger = logManager.GetClassLogger<OptimismCL>();
         _engineParameters = engineParameters;
-        _l2BlockTime = engineParameters.L2BlockTime.Value;
+        _l2BlockTime = l2BlockTime;
         _l2GenesisTimestamp = l2GenesisTimestamp;
         _timestamper = timestamper;
 
@@ -83,7 +90,7 @@ public sealed class OptimismCL : IDisposable
             config,
             engineParameters.UnsafeBlockSigner,
             timestamper,
-            externalIp,
+            ipResolver,
             logManager);
     }
 

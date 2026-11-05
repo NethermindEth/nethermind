@@ -8,6 +8,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Test.Data;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Json;
 using Nethermind.State.Proofs;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -84,6 +85,33 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             AccountProof proof = accountProofCollector.BuildResult();
 
             TestToJson(proof, "{\"accountProof\":[\"0xe215a08c9a7cdf08d4425c138ef5ba3d1f6c2ae18786fe88d9a56230a00b3e83367b25\",\"0xf8518080808080a017934c1c90ce30ca48f32b4f449dab308cfba803fd6d142cab01eb1fad1b70038080808080808080a02352504a0cd6095829b18bae394d0c882d84eead7be5b6ad0a87daaff9d2fb4a8080\",\"0xf869a020227dead52ea912e013e7641ccd6b3b174498e55066b0c174a09c8c3cc4bf5eb846f8448001a0b2375a34ff2c8037d9ff04ebc16367b51d156d9a905ca54cef50bfad1a4c0711a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470\"],\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"balance\":\"0x1\",\"codeHash\":\"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470\",\"nonce\":\"0x0\",\"storageHash\":\"0xb2375a34ff2c8037d9ff04ebc16367b51d156d9a905ca54cef50bfad1a4c0711\",\"storageProof\":[{\"key\":\"0xaaaaaaaaaaaaaaaaaaaaaa\",\"proof\":[\"0xf8918080a02474007b0486d5e951fe3fbcdae3e63cadf9c85cb8f178d3c7ca972e2d77705a808080808080a059c4fa21a1e4c40dc3c87e925befbb78a5b6f729865a12f6f0490d9801bcbf22a06b3576bbd6c91ca7128f69f728f3e30bf8980c6381430a5e80186d0dfec89d4e8080a098cfc3bf071c19a2e230165f4152bb98a5d1ab0fee47c952de65da85fcbdfdb2808080\",\"0xf85180a0aec9a5fc3ba2ebedf137fbcf6987b303c9d8718f75253e6e2444b81a4049e5b980808080808080808080a0397f22cb0ad24543caffaad031e3a0a538e5d8ac106d8f6858a703d442c0e4d380808080\",\"0xf84ca02046d62176084b9d1eace1c8bcc2353228d10569a500ccfd1bdbd8c093f4b4e9aaa9ab12000000000000000000000000000000000000000000000000000000000000000000000000000000\"],\"value\":\"0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000\"}]}");
+        }
+
+        [Test]
+        public void Storage_proof_value_trims_single_leading_zero_nibble()
+        {
+            byte[] key = Bytes.FromHexString("0x000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaa");
+            byte[] value = Bytes.FromHexString("0x041337600e1179b05750a3490bd546ca1a0c5123");
+
+            IDb memDb = new MemDb();
+            IScopedTrieStore scopedTrieStore = new RawScopedTrieStore(memDb);
+            StateTree tree = new(scopedTrieStore, LimboLogs.Instance);
+            StorageTree storageTree = new(new RawScopedTrieStore(memDb, TestItem.AddressA.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            storageTree.Set(Keccak.Compute(key).Bytes, Rlp.Encode(value));
+            storageTree.Commit();
+
+            Account account = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
+            tree.Set(TestItem.AddressA, account);
+            tree.Commit();
+
+            AccountProofCollector accountProofCollector = new(TestItem.AddressA, new byte[][] { key });
+            tree.Accept(accountProofCollector, tree.RootHash);
+            AccountProof proof = accountProofCollector.BuildResult();
+
+            string serialized = new EthereumJsonSerializer().Serialize(proof);
+
+            Assert.That(serialized, Does.Contain("\"value\":\"0x41337600e1179b05750a3490bd546ca1a0c5123\""));
+            Assert.That(serialized, Does.Not.Contain("\"value\":\"0x041337600e1179b05750a3490bd546ca1a0c5123\""));
         }
     }
 }

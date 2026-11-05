@@ -2,28 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Caching;
 
-public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition = null, IEqualityComparer<TKey>? comparer = null) : ClockCacheBase<TKey>(maxCapacity)
+public sealed partial class ClockCache<TKey, TValue> : ClockCacheBase<TKey>
     where TKey : struct, IEquatable<TKey>
 {
-#if ZK_EVM
-    private readonly int? _lockPartition = lockPartition;
-    private readonly Dictionary<TKey, LruCacheItem> _cacheMap = new(maxCapacity, comparer ?? throw new ArgumentNullException(nameof(comparer)));
-    private readonly MockLock _lock = new();
-#else
-    private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new(lockPartition ?? Collections.CollectionExtensions.LockPartitions, maxCapacity, GenericEqualityComparer.GetOptimized(comparer));
-    private readonly McsLock _lock = new();
-#endif
-
     public TValue Get(TKey key)
     {
         if (MaxCapacity == 0) return default!;
@@ -76,7 +65,9 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
 
     private bool SetSlow(TKey key, TValue val)
     {
-        using var lockRelease = _lock.Acquire();
+#pragma warning disable IDE0008 // Type depends on the build variant
+        using var lockRelease = _lock.EnterScope();
+#pragma warning restore IDE0008
 
         // Recheck under lock
         if (_cacheMap.TryGetValue(key, out LruCacheItem ov))
@@ -135,10 +126,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
         return position;
 
         [DoesNotReturn]
-        void ThrowInvalidOperationException()
-        {
-            throw new InvalidOperationException($"{nameof(ClockCache<,>)} removing item {KeyToOffset[position]} at position {position} that doesn't exist");
-        }
+        void ThrowInvalidOperationException() => throw new InvalidOperationException($"{nameof(ClockCache<,>)} removing item {KeyToOffset[position]} at position {position} that doesn't exist");
     }
 
     public bool Delete(TKey key) => Delete(key, out _);
@@ -151,9 +139,11 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
             return false;
         }
 
-        using var lockRelease = _lock.Acquire();
+#pragma warning disable IDE0008 // Type depends on the build variant
+        using var lockRelease = _lock.EnterScope();
+#pragma warning restore IDE0008
 
-        if (_cacheMap.Remove(key, out LruCacheItem ov))
+        if (_cacheMap.TryRemove(key, out LruCacheItem ov))
         {
             _count--;
             KeyToOffset[ov.Offset] = default;
@@ -171,7 +161,9 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
     {
         if (MaxCapacity == 0) return;
 
-        using var lockRelease = _lock.Acquire();
+#pragma warning disable IDE0008 // Type depends on the build variant
+        using var lockRelease = _lock.EnterScope();
+#pragma warning restore IDE0008
 
         base.Clear();
         _cacheMap.NoResizeClear();

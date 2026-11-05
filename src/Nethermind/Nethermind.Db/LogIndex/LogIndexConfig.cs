@@ -13,15 +13,15 @@ public class LogIndexConfig : ILogIndexConfig
     public bool Reset { get; set; } = false;
 
     // set from PruningConfig via decorator
-    public int? MaxReorgDepth { get; set; }
+    public ulong? MaxReorgDepth { get; set; }
 
     public int MaxBatchSize { get; set; } = 256;
     public int MaxAggregationQueueSize { get; set; } = 16;
     public int MaxSavingQueueSize { get; set; } = 16;
 
-    public int MaxReceiptsParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
-    public int MaxAggregationParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
-    public int MaxCompressionParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
+    public int MaxReceiptsParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 4, 1);
+    public int MaxAggregationParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 4, 1);
+    public int MaxCompressionParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 4, 1);
 
     public int CompressionDistance { get; set; } = 128;
     public int CompactionDistance { get; set; } = 262_144;
@@ -29,5 +29,4 @@ public class LogIndexConfig : ILogIndexConfig
     public string? CompressionAlgorithm { get; set; } = LogIndexStorage.CompressionAlgorithm.Best.Key;
 
     public bool DetailedLogs { get; set; } = false;
-    public bool VerifyRpcResponse { get; set; } = false;
 }

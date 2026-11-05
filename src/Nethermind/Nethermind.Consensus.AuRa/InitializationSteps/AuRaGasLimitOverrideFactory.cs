@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Abi;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 
@@ -18,23 +19,21 @@ public class AuRaGasLimitOverrideFactory(
     ILogManager logManager,
     IAuraConfig auraConfig,
     IBlocksConfig blocksConfig,
-    IAbiEncoder abiEncoder,
     IReadOnlyTxProcessingEnvFactory envFactory,
     AuRaContractGasLimitOverride.Cache gasLimitOverrideCache)
 {
     public AuRaContractGasLimitOverride? GetGasLimitCalculator()
     {
-        var blockGasLimitContractTransitions = parameters.BlockGasLimitContractTransitions;
+        IDictionary<ulong, Address> blockGasLimitContractTransitions = parameters.BlockGasLimitContractTransitions;
 
         if (blockGasLimitContractTransitions?.Any() == true)
         {
             AuRaContractGasLimitOverride gasLimitCalculator = new(
                 blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
-                        new BlockGasLimitContract(
-                            abiEncoder,
-                            blockGasLimitContractTransition.Value,
-                            blockGasLimitContractTransition.Key,
-                            envFactory.Create()))
+                    new BlockGasLimitContract(
+                        blockGasLimitContractTransition.Value,
+                        blockGasLimitContractTransition.Key,
+                        envFactory.Create()))
                     .ToArray<IBlockGasLimitContract>(),
                 gasLimitOverrideCache,
                 auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,

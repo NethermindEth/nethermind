@@ -5,10 +5,10 @@ using System;
 using System.Linq;
 using System.Runtime.InteropServices;
 using ConcurrentCollections;
-using MathNet.Numerics.Random;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db.LogIndex;
 using NSubstitute;
 using NUnit.Framework;
@@ -43,12 +43,6 @@ public class MergeOperatorTests
         "1, 2",
         new[] { "3, 4", "Reorg:3", "Reorg:4", "5, 6" },
         "1, 2, 5, 6"
-    )]
-    [TestCase(
-        "1, 2",
-        new[] { "3, 4", "Reorg:4", "Reorg:3", "5, 6" },
-        "1, 2, 5, 6",
-        Ignore = "Subsequent reverse reorgs are not supported."
     )]
     [TestCase(
         "1, 2",
@@ -198,12 +192,12 @@ public class MergeOperatorTests
 
     private static void CreateEnumerator(byte[]? existingValue, byte[][] operands, out RocksDbMergeEnumerator enumerator)
     {
-        var operandsPtrs = new IntPtr[operands.Length];
-        var operandsLengths = operands.Select(x => (long)x.Length).ToArray();
+        nint[] operandsPtrs = new IntPtr[operands.Length];
+        long[] operandsLengths = operands.Select(x => (long)x.Length).ToArray();
 
         for (int i = 0; i < operands.Length; i++)
         {
-            var handle = GCHandle.Alloc(operands[i], GCHandleType.Pinned);
+            GCHandle handle = GCHandle.Alloc(operands[i], GCHandleType.Pinned);
             Handles.Add(handle);
 
             operandsPtrs[i] = handle.AddrOfPinnedObject();
@@ -232,13 +226,13 @@ public class MergeOperatorTests
     {
         bytes = default;
 
-        var parts = input.Split(":");
+        string[] parts = input.Split(":");
         if (parts.Length != 2) return false;
 
         if (!Enum.TryParse(parts[0], out LogIndexStorage.MergeOp op)) return false;
         if (!int.TryParse(parts[1], out int blockNum)) return false;
 
-        var buffer = new byte[LogIndexStorage.MergeOps.Size];
+        byte[] buffer = new byte[LogIndexStorage.MergeOps.Size];
         bytes = LogIndexStorage.MergeOps.Create(op, blockNum, buffer);
         return true;
     }

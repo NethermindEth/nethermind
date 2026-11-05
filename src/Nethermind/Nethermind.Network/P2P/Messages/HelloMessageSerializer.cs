@@ -3,47 +3,48 @@
 
 using System;
 using System.Text;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Messages
 {
-    public class HelloMessageSerializer : IZeroMessageSerializer<HelloMessage>
+    public class HelloMessageSerializer : IMessageSerializer<HelloMessage>
     {
         private static readonly RlpLimit ClientIdRlpLimit = RlpLimit.For<HelloMessage>(1_024, nameof(HelloMessage.ClientId));
 
-        public void Serialize(IByteBuffer byteBuffer, HelloMessage msg)
+        public int GetLength(HelloMessage msg) => Rlp.LengthOfSequence(GetLengths(msg).ContentLength);
+
+        public int Serialize(Span<byte> destination, HelloMessage msg)
         {
-            (int totalLength, int innerLength) = GetLength(msg);
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength), force: true);
-            NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(totalLength);
-            stream.Encode(msg.P2PVersion);
-            stream.Encode(msg.ClientId);
-            stream.StartSequence(innerLength);
-            foreach (Capability? capability in msg.Capabilities)
+            (int totalLength, int innerLength) = GetLengths(msg);
+            RlpWriter writer = new(destination);
+            writer.StartSequence(totalLength);
+            writer.Encode(msg.P2PVersion);
+            writer.Encode(msg.ClientId);
+            writer.StartSequence(innerLength);
+            foreach (Capability? capability in msg.Capabilities.AsSpan())
             {
                 string protocolCode = capability.ProtocolCode.ToLowerInvariant();
                 int capabilityLength = Rlp.LengthOf(protocolCode);
                 capabilityLength += Rlp.LengthOf(capability.Version);
-                stream.StartSequence(capabilityLength);
-                stream.Encode(protocolCode);
-                stream.Encode(capability.Version);
+                writer.StartSequence(capabilityLength);
+                writer.Encode(protocolCode);
+                writer.Encode(capability.Version);
             }
 
-            stream.Encode(msg.ListenPort);
-            stream.Encode(msg.NodeId.Bytes);
+            writer.Encode(msg.ListenPort);
+            writer.Encode(msg.NodeId.Bytes);
+            return writer.Position;
         }
 
-        private static (int, int) GetLength(HelloMessage msg)
+        private static (int ContentLength, int CapabilitiesLength) GetLengths(HelloMessage msg)
         {
             int contentLength = 0;
             contentLength += Rlp.LengthOf(msg.P2PVersion);
             contentLength += Rlp.LengthOf(msg.ClientId);
             int innerContentLength = 0;
-            foreach (Capability? capability in msg.Capabilities)
+            foreach (Capability? capability in msg.Capabilities.AsSpan())
             {
                 int capabilityLength = Rlp.LengthOf(capability.ProtocolCode.ToLowerInvariant());
                 capabilityLength += Rlp.LengthOf(capability.Version);
@@ -55,30 +56,32 @@ namespace Nethermind.Network.P2P.Messages
             return (contentLength, innerContentLength);
         }
 
-        public HelloMessage Deserialize(IByteBuffer msgBytes) =>
-            msgBytes.DeserializeRlp(Deserialize);
-
-        private static HelloMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        public HelloMessage Deserialize(ReadOnlySpan<byte> msgBytes)
         {
+            RlpReader ctx = new(msgBytes);
             ctx.ReadSequenceLength();
 
             HelloMessage helloMessage = new();
             helloMessage.P2PVersion = ctx.DecodeByte();
             helloMessage.ClientId = ctx.DecodeString(ClientIdRlpLimit);
 
-            helloMessage.Capabilities = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) =>
+            helloMessage.Capabilities = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) =>
             {
-                c.ReadSequenceLength();
-                ReadOnlySpan<byte> protocolSpan = c.DecodeByteArraySpan();
+                int length = c.ReadSequenceLength();
+                int checkPosition = c.Position + length;
+
+                ReadOnlySpan<byte> protocolSpan = c.DecodeByteArraySpan(RlpLimit.L8);
                 if (!Contract.P2P.ProtocolParser.TryGetProtocolCode(protocolSpan, out string? protocolCode))
                 {
                     protocolCode = Encoding.UTF8.GetString(protocolSpan);
                 }
                 int version = c.DecodeByte();
+
+                c.Check(checkPosition);
                 return new Capability(protocolCode, version);
             }, limit: RlpLimit.L64);
 
-            helloMessage.ListenPort = ctx.DecodeInt();
+            helloMessage.ListenPort = ctx.DecodePositiveInt();
 
             ReadOnlySpan<byte> publicKeyBytes = ctx.DecodeByteArraySpan(RlpLimit.L64);
             if (publicKeyBytes.Length != PublicKey.LengthInBytes &&

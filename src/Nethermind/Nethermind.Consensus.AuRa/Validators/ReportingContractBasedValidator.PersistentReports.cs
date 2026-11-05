@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -31,18 +31,18 @@ namespace Nethermind.Consensus.AuRa.Validators
         private const int ReportsSkipBlocks = 1;
 
         private readonly LinkedList<PersistentReport> _persistentReports;
-        private long _sentReportsInBlock = 0;
+        private ulong _sentReportsInBlock = 0;
 
         public bool SupportsBlobs => false;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
-            foreach (var transaction in _contractValidator.GetTransactions(parent, gasLimit, payloadAttributes, filterSource))
+            foreach (Transaction transaction in _contractValidator.GetTransactions(parent, targetBlock, gasLimit, payloadAttributes, filterSource))
             {
                 yield return transaction;
             }
 
-            long currentBlockNumber = parent.Number + 1;
+            ulong currentBlockNumber = parent.Number + 1;
 
             if (_contractValidator.ForSealing && IsPosdao(currentBlockNumber))
             {
@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        private IEnumerable<Transaction> GetPersistentReportsTransactions(long currentBlockNumber)
+        private IEnumerable<Transaction> GetPersistentReportsTransactions(ulong currentBlockNumber)
         {
             foreach (PersistentReport persistentReport in _persistentReports)
             {
@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private void ResendPersistedReports(BlockHeader blockHeader)
         {
-            var blockNumber = blockHeader.Number;
+            ulong blockNumber = blockHeader.Number;
             if (!IsPosdao(blockNumber))
             {
                 if (_logger.IsTrace) _logger.Trace("Skipping resending of queued malicious behavior reports.");
@@ -82,13 +82,13 @@ namespace Nethermind.Consensus.AuRa.Validators
                 if (blockNumber > _sentReportsInBlock + ReportsSkipBlocks)
                 {
                     _sentReportsInBlock = blockNumber;
-                    foreach (var persistentReport in _persistentReports)
+                    foreach (PersistentReport persistentReport in _persistentReports)
                     {
                         try
                         {
                             SendTransaction(ReportType.Malicious, _posdaoTxSender, CreateReportMaliciousTransactionCore(persistentReport));
                         }
-                        catch (AbiException e)
+                        catch (ContractException e)
                         {
                             if (_logger.IsWarn) _logger.Warn($"Cannot report validator {persistentReport.MaliciousValidator} for misbehavior on block {persistentReport.BlockNumber}: {e.Message}.");
                         }
@@ -99,11 +99,11 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private void FilterReports(BlockHeader parent)
         {
-            var node = _persistentReports.First;
+            LinkedListNode<PersistentReport> node = _persistentReports.First;
             while (node is not null)
             {
-                var next = node.Next;
-                var persistentReport = node.Value;
+                LinkedListNode<PersistentReport> next = node.Next;
+                PersistentReport persistentReport = node.Value;
 
                 if (_logger.IsTrace) _logger.Trace($"Checking if report of malicious validator {persistentReport.MaliciousValidator} at block {persistentReport.BlockNumber} should be removed from cache.");
 
@@ -115,7 +115,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                         if (_logger.IsTrace) _logger.Trace($"Successfully removed report of malicious validator {persistentReport.MaliciousValidator} at block {persistentReport.BlockNumber} from report cache.");
                     }
                 }
-                catch (AbiException e)
+                catch (ContractException e)
                 {
                     if (_logger.IsError) _logger.Error($"Failed to query report status, dropping pending report of malicious validator {persistentReport.MaliciousValidator} at block {persistentReport.BlockNumber}. {new StackTrace()}", e);
                     _persistentReports.Remove(node);
@@ -127,7 +127,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private void TruncateReports()
         {
-            var toRemove = _persistentReports.Count - MaxQueuedReports;
+            int toRemove = _persistentReports.Count - MaxQueuedReports;
             if (toRemove > 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Removing {toRemove} reports from report cache, even though it has not been finalized.");
@@ -140,18 +140,11 @@ namespace Nethermind.Consensus.AuRa.Validators
         }
         public override string ToString() => $"{nameof(ReportingContractBasedValidator)} [ {_contractValidator} ]";
 
-        internal class PersistentReport : IEquatable<PersistentReport>
+        internal class PersistentReport(Address maliciousValidator, in UInt256 blockNumber, byte[] proof) : IEquatable<PersistentReport>
         {
-            public Address MaliciousValidator { get; }
-            public UInt256 BlockNumber { get; }
-            public byte[] Proof { get; }
-
-            public PersistentReport(Address maliciousValidator, in UInt256 blockNumber, byte[] proof)
-            {
-                MaliciousValidator = maliciousValidator;
-                BlockNumber = blockNumber;
-                Proof = proof;
-            }
+            public Address MaliciousValidator { get; } = maliciousValidator;
+            public UInt256 BlockNumber { get; } = blockNumber;
+            public byte[] Proof { get; } = proof;
 
             public bool Equals(PersistentReport other)
             {

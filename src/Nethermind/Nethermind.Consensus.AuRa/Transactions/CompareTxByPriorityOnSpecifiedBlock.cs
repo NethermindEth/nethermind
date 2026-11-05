@@ -7,16 +7,11 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class CompareTxByPriorityOnSpecifiedBlock : CompareTxByPriorityBase
+    public class CompareTxByPriorityOnSpecifiedBlock(
+        IContractDataStore<Address> sendersWhitelist,
+        IDictionaryContractDataStore<TxPriorityContract.Destination> priorities,
+        BlockHeader blockHeader) : CompareTxByPriorityBase(sendersWhitelist, priorities)
     {
-        public CompareTxByPriorityOnSpecifiedBlock(
-            IContractDataStore<Address> sendersWhitelist,
-            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities,
-            BlockHeader blockHeader) : base(sendersWhitelist, priorities)
-        {
-            BlockHeader = blockHeader;
-        }
-
-        protected override BlockHeader BlockHeader { get; }
+        protected override BlockHeader BlockHeader { get; } = blockHeader;
     }
 }

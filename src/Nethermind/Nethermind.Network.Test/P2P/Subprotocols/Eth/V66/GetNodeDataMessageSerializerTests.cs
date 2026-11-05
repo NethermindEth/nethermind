@@ -17,13 +17,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         {
             Hash256[] keys = { new("0x00000000000000000000000000000000000000000000000000000000deadc0de"), new("0x00000000000000000000000000000000000000000000000000000000feedbeef") };
 
-            using var ethMessage = new Network.P2P.Subprotocols.Eth.V63.Messages.GetNodeDataMessage(keys.ToPooledList());
+            using Network.P2P.Subprotocols.Eth.V63.Messages.GetNodeDataMessage ethMessage = new(keys.ToPooledList());
 
             GetNodeDataMessage message = new(1111, ethMessage);
 
             GetNodeDataMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, message, "f847820457f842a000000000000000000000000000000000000000000000000000000000deadc0dea000000000000000000000000000000000000000000000000000000000feedbeef");
+            SerializerTester.Test(serializer, message, "f847820457f842a000000000000000000000000000000000000000000000000000000000deadc0dea000000000000000000000000000000000000000000000000000000000feedbeef");
         }
     }
 }

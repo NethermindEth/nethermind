@@ -14,12 +14,29 @@ namespace Nethermind.TxPool.Filters
         : IIncomingTxFilter
     {
         private readonly ILogger _logger = logManager.GetClassLogger<GasLimitTxFilter>();
-        private readonly long _configuredGasLimit = txPoolConfig.GasLimit ?? long.MaxValue;
+        private readonly ulong _configuredGasLimit = txPoolConfig.GasLimit ?? ulong.MaxValue;
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            long gasLimit = Math.Min(chainHeadInfoProvider.BlockGasLimit ?? long.MaxValue, _configuredGasLimit);
-            if (tx.GasLimit > gasLimit)
+            ulong gasLimit = Math.Min(chainHeadInfoProvider.BlockGasLimit ?? ulong.MaxValue, _configuredGasLimit);
+
+            bool exceedsLimit;
+            ulong rejectedBudget;
+            if (tx.SupportsFrames)
+            {
+                // The spec pinned for the submission, not the head's: a head that moves mid-pipeline would
+                // otherwise price this transaction under rules no other filter, nor AddCore, judged it by.
+                bool calculated = FrameTxValidation.TryCalculateBlockGasReservations(tx, state.HeadSpec, out ulong executionReservation, out ulong stateReservation);
+                rejectedBudget = calculated ? Math.Max(executionReservation, stateReservation) : ulong.MaxValue;
+                exceedsLimit = !calculated || executionReservation > gasLimit || stateReservation > gasLimit;
+            }
+            else
+            {
+                rejectedBudget = tx.GasLimit;
+                exceedsLimit = rejectedBudget > gasLimit;
+            }
+
+            if (exceedsLimit)
             {
                 Metrics.PendingTransactionsGasLimitTooHigh++;
 
@@ -31,7 +48,7 @@ namespace Nethermind.TxPool.Filters
                 bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
                 return isNotLocal ?
                     AcceptTxResult.GasLimitExceeded :
-                    AcceptTxResult.GasLimitExceeded.WithMessage($"Gas limit: {gasLimit}, gas limit of rejected tx: {tx.GasLimit}");
+                    AcceptTxResult.GasLimitExceeded.WithMessage($"Gas limit: {gasLimit}, gas limit of rejected tx: {rejectedBudget}");
             }
 
             return AcceptTxResult.Accepted;

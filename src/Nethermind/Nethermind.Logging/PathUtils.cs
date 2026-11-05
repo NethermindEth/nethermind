@@ -11,19 +11,19 @@ public static class PathUtils
 {
     static PathUtils()
     {
-        string processName = Path.GetFileNameWithoutExtension(Environment.ProcessPath);
+        string? processName = Path.GetFileNameWithoutExtension(Environment.ProcessPath);
 
-        ExecutingDirectory = processName.Equals("dotnet", StringComparison.OrdinalIgnoreCase)
-            || processName.Equals("ReSharperTestRunner", StringComparison.OrdinalIgnoreCase)
+        ExecutingDirectory = (processName is not null && (processName.Equals("dotnet", StringComparison.OrdinalIgnoreCase)
+            || processName.Equals("ReSharperTestRunner", StringComparison.OrdinalIgnoreCase)))
             // A workaround for tests in JetBrains Rider ignoring MTP:
             // https://youtrack.jetbrains.com/projects/RIDER/issues/RIDER-131530
             ? AppContext.BaseDirectory
-            : Path.GetDirectoryName(Environment.ProcessPath);
+            : Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
     }
 
     public static string ExecutingDirectory { get; }
 
-    public static string GetApplicationResourcePath(this string resourcePath, string overridePrefixPath = null)
+    public static string GetApplicationResourcePath(this string resourcePath, string? overridePrefixPath = null)
     {
         if (string.IsNullOrWhiteSpace(resourcePath))
         {

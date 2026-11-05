@@ -19,6 +19,7 @@ public interface IOptimismSpecHelper
     bool IsHolocene(BlockHeader header);
     bool IsIsthmus(BlockHeader header);
     bool IsJovian(BlockHeader header);
+    bool IsKarst(BlockHeader header);
     Address? Create2DeployerAddress { get; }
     byte[]? Create2DeployerCode { get; }
 }

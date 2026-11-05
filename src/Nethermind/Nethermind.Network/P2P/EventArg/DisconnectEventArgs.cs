@@ -5,19 +5,12 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.EventArg
 {
-    public class DisconnectEventArgs : System.EventArgs
+    public class DisconnectEventArgs(DisconnectReason disconnectReason, DisconnectType disconnectType, string details) : System.EventArgs
     {
-        public DisconnectReason DisconnectReason { get; }
+        public DisconnectReason DisconnectReason { get; } = disconnectReason;
 
-        public DisconnectType DisconnectType { get; }
+        public DisconnectType DisconnectType { get; } = disconnectType;
 
-        public string Details { get; }
-
-        public DisconnectEventArgs(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
-        {
-            DisconnectReason = disconnectReason;
-            DisconnectType = disconnectType;
-            Details = details;
-        }
+        public string Details { get; } = details;
     }
 }

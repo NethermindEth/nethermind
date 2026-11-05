@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -41,10 +39,10 @@ namespace Nethermind.AuRa.Test.Contract
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
             _stateProvider = Substitute.For<IWorldState>();
             _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-            _readOnlyTxProcessorSource.Build(_block.Header).Returns(new ReadOnlyTxProcessingScope(
+            _readOnlyTxProcessorSource.TryBuild(_block.Header, out Arg.Any<IReadOnlyTxProcessingScope?>()).Returns(call => call.Succeed(1, new ReadOnlyTxProcessingScope(
                 _transactionProcessor,
                 new Reactive.AnonymousDisposable(() => { }),
-                _stateProvider));
+                _stateProvider)));
         }
 
         [Test]
@@ -53,12 +51,11 @@ namespace Nethermind.AuRa.Test.Contract
             Action action =
                 () => new ValidatorContract(
                     _transactionProcessor,
-                    AbiEncoder.Instance,
                     null,
                     _stateProvider,
                     _readOnlyTxProcessorSource,
                     new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
-            action.Should().Throw<ArgumentNullException>();
+            Assert.That(action, Throws.TypeOf<ArgumentNullException>());
         }
 
         [Test]
@@ -79,7 +76,6 @@ namespace Nethermind.AuRa.Test.Contract
 
             ValidatorContract contract = new(
                 _transactionProcessor,
-                AbiEncoder.Instance,
                 _contractAddress,
                 _stateProvider,
                 _readOnlyTxProcessorSource,
@@ -96,7 +92,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             try
             {
-                item.EqualToTransaction(expected);
+                Assert.That(item, Is.EqualTo(expected).UsingTransactionComparer());
                 return true;
             }
             catch

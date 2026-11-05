@@ -1,0 +1,124 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core;
+using Nethermind.Serialization.Rlp.TxDecoders;
+
+namespace Nethermind.Serialization.Rlp;
+
+/// <summary>Decodes the EIP-8141 signature tuple <c>[scheme, signer, msg, signature]</c>; an empty signer decodes to
+/// null. Encoding can replace the signature bytes of canonical-hash (empty msg) entries with their length, as
+/// <c>compute_sig_hash</c> needs.</summary>
+public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
+{
+    public static readonly TxFrameSignatureDecoder Instance = new();
+
+    private static readonly RlpLimit _msgRlpLimit = RlpLimit.For<TxFrameSignature>(32, nameof(TxFrameSignature.Msg));
+
+    // Only the limit varies, and it is read once per signature, so the names are built once here. MaxBlockGas
+    // cannot be captured with them: configuration sets it after type initialization may have run.
+    private static readonly RlpLimit _signatureRlpLimitShape = RlpLimit.For<TxFrameSignature>(0, nameof(TxFrameSignature.Signature));
+
+    // The spec bounds the signature bytes only through gas: they are charged as calldata, so no block can pay
+    // for a longer one than this.
+    private static RlpLimit SignatureRlpLimit => _signatureRlpLimitShape with
+    {
+        Limit = (int)Math.Min(RlpLimit.MaxBlockGas / GasCostOf.TxDataZero + 1, int.MaxValue)
+    };
+
+    protected override TxFrameSignature DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
+        int length = decoderContext.ReadSequenceLength();
+        int check = length + decoderContext.Position;
+
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
+        byte scheme = decoderContext.DecodeByte();
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
+        Address? signer = decoderContext.DecodeAddressOrNull();
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
+        ReadOnlyMemory<byte> msg = decoderContext.DecodeByteArrayMemory(_msgRlpLimit);
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
+        ReadOnlyMemory<byte> signature = decoderContext.DecodeByteArrayMemory(SignatureRlpLimit);
+
+        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
+        {
+            decoderContext.Check(check);
+        }
+
+        if (msg.Length != 0 && msg.Length != 32)
+        {
+            ThrowInvalidMsgLength();
+        }
+
+        return new TxFrameSignature(scheme, signer, msg, signature);
+    }
+
+    public override void Encode<TWriter>(ref TWriter writer, TxFrameSignature item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        Encode(ref writer, item, elideCanonicalSignatureBytes: false);
+
+    public void Encode<TWriter>(ref TWriter writer, TxFrameSignature item, bool elideCanonicalSignatureBytes)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        bool elide = elideCanonicalSignatureBytes && item.SignsCanonicalHash;
+        writer.StartSequence(GetContentLength(item, elide));
+        writer.Encode((ulong)item.Scheme);
+        writer.Encode(item.Signer);
+        writer.Encode(item.Msg);
+        if (elide)
+        {
+            writer.Encode((ulong)item.Signature.Length);
+        }
+        else
+        {
+            writer.Encode(item.Signature);
+        }
+    }
+
+    public void EncodeArray<TWriter>(ref TWriter writer, TxFrameSignature[]? items, bool elideCanonicalSignatureBytes)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        if (items is null)
+        {
+            writer.WriteByte(Rlp.EmptyListByte);
+            return;
+        }
+
+        writer.StartSequence(GetArrayContentLength(items, elideCanonicalSignatureBytes));
+        for (int i = 0; i < items.Length; i++)
+        {
+            Encode(ref writer, items[i], elideCanonicalSignatureBytes);
+        }
+    }
+
+    public override int GetLength(TxFrameSignature item, RlpBehaviors rlpBehaviors) =>
+        Rlp.LengthOfSequence(GetContentLength(item, elideCanonicalSignatureBytes: false));
+
+    public int GetArrayLength(TxFrameSignature[]? items, bool elideCanonicalSignatureBytes) =>
+        items is null ? 1 : Rlp.LengthOfSequence(GetArrayContentLength(items, elideCanonicalSignatureBytes));
+
+    private static int GetArrayContentLength(TxFrameSignature[] items, bool elideCanonicalSignatureBytes)
+    {
+        int length = 0;
+        for (int i = 0; i < items.Length; i++)
+        {
+            TxFrameSignature item = items[i];
+            bool elide = elideCanonicalSignatureBytes && item.SignsCanonicalHash;
+            length += Rlp.LengthOfSequence(GetContentLength(item, elide));
+        }
+
+        return length;
+    }
+
+    private static int GetContentLength(TxFrameSignature item, bool elideCanonicalSignatureBytes) =>
+        Rlp.LengthOf((ulong)item.Scheme)
+        + Rlp.LengthOf(item.Signer)
+        + Rlp.LengthOf(item.Msg)
+        + (elideCanonicalSignatureBytes ? Rlp.LengthOf((ulong)item.Signature.Length) : Rlp.LengthOf(item.Signature));
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidMsgLength() => throw new RlpException("frame signature msg must be empty or a 32-byte digest");
+}

@@ -7,16 +7,15 @@
     "PeerManagerEnabled": false,
     "ChainSpecPath": "chainspec/spaceneth.json",
     "BaseDbPath": "spaceneth_db",
-    "LogFileName": "spaceneth.log",
-    "DiagnosticMode": "None",
-    "MemoryHint": 128000000
+    "LogFileName": "spaceneth_persistent.log",
+    "DiagnosticMode": "None"
   },
   "Sync": {
     "NetworkingEnabled": false,
     "SynchronizationEnabled": false
   },
   "Network": {
-    "ActivePeersMaxCount": 4
+    "MaxActivePeers": 4
   },
   "JsonRpc": {
     "Enabled": true,

@@ -14,10 +14,7 @@ public class ReadOnlyTxProcessingScope(
     IWorldState worldState
 ) : IReadOnlyTxProcessingScope
 {
-    public void Dispose()
-    {
-        worldStateCloser.Dispose();
-    }
+    public void Dispose() => worldStateCloser.Dispose();
 
     public ITransactionProcessor TransactionProcessor => transactionProcessor;
     public IWorldState WorldState => worldState;

@@ -10,10 +10,7 @@ public sealed class ConsoleProgressReporter : IMetricsReporter
     private readonly SemaphoreSlim _semaphore;
     private int _messageCount = 1;
 
-    public ConsoleProgressReporter()
-    {
-        _semaphore = new SemaphoreSlim(1);
-    }
+    public ConsoleProgressReporter() => _semaphore = new SemaphoreSlim(1);
 
     public async Task Message(CancellationToken token = default)
     {
@@ -26,7 +23,7 @@ public sealed class ConsoleProgressReporter : IMetricsReporter
                 Console.Error.Write($"Progress: 1");
             }
 
-            var sb = new StringBuilder();
+            StringBuilder sb = new();
 
             sb.Append('\b', (_messageCount - 1).ToString().Length);
             sb.Append(_messageCount);

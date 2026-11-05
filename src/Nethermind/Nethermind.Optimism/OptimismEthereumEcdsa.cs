@@ -7,15 +7,11 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Optimism;
 
-public class OptimismEthereumEcdsa : Ecdsa, IEthereumEcdsa
+public class OptimismEthereumEcdsa(IEthereumEcdsa ethereumEcdsa) : Ecdsa, IEthereumEcdsa
 {
-    private readonly IEthereumEcdsa _ethereumEcdsa;
+    private readonly IEthereumEcdsa _ethereumEcdsa = ethereumEcdsa;
 
     public ulong ChainId => _ethereumEcdsa.ChainId;
 
-    public OptimismEthereumEcdsa(IEthereumEcdsa ethereumEcdsa)
-    {
-        _ethereumEcdsa = ethereumEcdsa;
-    }
     public Address? RecoverAddress(Signature signature, in ValueHash256 message) => _ethereumEcdsa.RecoverAddress(signature, in message);
 }

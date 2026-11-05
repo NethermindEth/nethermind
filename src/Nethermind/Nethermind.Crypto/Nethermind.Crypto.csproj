@@ -1,8 +1,9 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Nullable>annotations</Nullable>
+    <Nullable>enable</Nullable>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,6 +16,7 @@
     <PackageReference Include="Ckzg.Bindings" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" />
+    <PackageReference Include="Nethermind.Zkvm.Abstractions" Condition="$(EnableZkEvm) == 'true'" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
     <PackageReference Include="Nethermind.Crypto.Bls" />
   </ItemGroup>

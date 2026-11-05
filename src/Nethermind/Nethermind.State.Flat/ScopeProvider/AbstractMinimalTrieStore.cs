@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Threading;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -28,16 +27,6 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
     public virtual ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new UnsupportedOperationException("Get trie node resolver not supported");
 
     public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
-
-    public abstract class AbstractMinimalCommitter(ConcurrencyController quota) : ICommitter
-    {
-        public void Dispose() { }
-
-        public abstract TrieNode CommitNode(ref TreePath path, TrieNode node);
-
-        bool ICommitter.TryRequestConcurrentQuota() => quota.TryRequestConcurrencyQuota();
-        void ICommitter.ReturnConcurrencyQuota() => quota.ReturnConcurrencyQuota();
-    }
 
     public class UnsupportedOperationException(string message) : Exception(message);
 }

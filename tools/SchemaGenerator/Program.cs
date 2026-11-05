@@ -11,8 +11,8 @@ Type[] types = [
     ..Directory.GetFiles(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? ".", "Nethermind.*.dll").SelectMany(f => GetConfigTypes(Assembly.LoadFrom(f))),
     ];
 
-var assemblyName = new AssemblyName("Nethermind.Config");
-var assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(assemblyName, AssemblyBuilderAccess.Run);
+AssemblyName assemblyName = new("Nethermind.Config");
+AssemblyBuilder assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(assemblyName, AssemblyBuilderAccess.Run);
 ModuleBuilder moduleBuilder = assemblyBuilder.DefineDynamicModule("MainModule");
 
 TypeBuilder typeBuilder = moduleBuilder.DefineType("NethermindConfig", TypeAttributes.Public);
@@ -73,7 +73,5 @@ void CreateProperty(TypeBuilder typeBuilder, Type classType)
     propertyBuilder.SetSetMethod(setMethodBuilder);
 }
 
-IEnumerable<Type> GetConfigTypes(Assembly assembly)
-{
-    return assembly.GetTypes().Where(t => iConfigType.IsAssignableFrom(t) && t.IsClass && !t.IsAbstract);
-}
+IEnumerable<Type> GetConfigTypes(Assembly assembly) =>
+    assembly.GetTypes().Where(t => iConfigType.IsAssignableFrom(t) && t.IsClass && !t.IsAbstract);

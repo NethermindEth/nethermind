@@ -10,6 +10,7 @@ namespace Nethermind.Evm.Tracing
     public class CancellationBlockTracer(IBlockTracer innerTracer, CancellationToken token = default) : IBlockTracer
     {
         private bool _isTracingRewards;
+        private CancellationTxTracer? _txTracer;
 
         public bool IsTracingRewards
         {
@@ -35,7 +36,11 @@ namespace Nethermind.Evm.Tracing
         public ITxTracer StartNewTxTrace(Transaction? tx)
         {
             token.ThrowIfCancellationRequested();
-            return innerTracer.StartNewTxTrace(tx).WithCancellation(token);
+            ITxTracer txTracer = innerTracer.StartNewTxTrace(tx);
+            // Transactions are traced one at a time, so the previous transaction's wrapper is free to reuse.
+            if (_txTracer is null) _txTracer = txTracer.WithCancellation(token);
+            else _txTracer.Reset(txTracer);
+            return _txTracer;
         }
 
         public void EndTxTrace()
@@ -44,9 +49,6 @@ namespace Nethermind.Evm.Tracing
             innerTracer.EndTxTrace();
         }
 
-        public void EndBlockTrace()
-        {
-            innerTracer.EndBlockTrace();
-        }
+        public void EndBlockTrace() => innerTracer.EndBlockTrace();
     }
 }

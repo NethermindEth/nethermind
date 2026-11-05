@@ -5,10 +5,13 @@
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>enable</Nullable>
+    <StartupObject Condition="'$(EnableZkEvm)' != 'true'">Nethermind.Core.Test.Threading.ParallelUnbalancedWorkTests</StartupObject>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="FluentAssertions" />
     <PackageReference Include="NSubstitute" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.AuRa.Test" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />

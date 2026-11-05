@@ -7,7 +7,7 @@ namespace Nethermind.Tools.Kute.JsonRpcValidator.Eth;
 
 public sealed class NewPayloadJsonRpcValidator : IJsonRpcValidator
 {
-    private readonly Regex _pattern = new Regex("engine_newPayload", RegexOptions.Compiled);
+    private readonly Regex _pattern = new("engine_newPayload", RegexOptions.Compiled);
 
     public bool IsValid(JsonRpc.Request request, JsonRpc.Response response)
     {

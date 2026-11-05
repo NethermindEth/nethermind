@@ -2,17 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Extensions;
-
-using Word = Vector256<byte>;
 
 public static class UInt256Extensions
 {
@@ -22,48 +19,58 @@ public static class UInt256Extensions
     [SkipLocalsInit]
     public static ValueHash256 ToValueHash(this in UInt256 value)
     {
-        Unsafe.SkipInit(out Word result);
-        if (Avx2.IsSupported)
+        EvmWord leBytes = Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in value));
+        EvmWord beBytes = leBytes.ByteSwap();
+        return Unsafe.As<EvmWord, ValueHash256>(ref beBytes);
+    }
+
+    /// <summary>
+    /// Returns the value as 32 big-endian bytes in an <see cref="EvmWord"/> (Vector256&lt;byte&gt;).
+    /// Same shape as the BAL wire format and EVM stack word.
+    /// </summary>
+    public static EvmWord ToBigEndianWord(this in UInt256 value)
+        => Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in value)).ByteSwap();
+
+    /// <summary>Returns the shortest nonempty big-endian byte representation of the value.</summary>
+    [SkipLocalsInit]
+    public static byte[] ToMinimalBigEndian(this in UInt256 value)
+    {
+        Unsafe.SkipInit(out EvmWord word);
+        return value.ToMinimalBigEndian(ref word).ToArray();
+    }
+
+    /// <summary>Returns the shortest nonempty big-endian byte representation of the value, backed by <paramref name="buffer"/>.</summary>
+    /// <remarks>The returned span aliases <paramref name="buffer"/> and stays valid only as long as the buffer does.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ReadOnlySpan<byte> ToMinimalBigEndian(this scoped in UInt256 value, ref EvmWord buffer)
+    {
+        buffer = value.ToBigEndianWord();
+        ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref buffer, 1));
+        return Vector128.IsHardwareAccelerated ? bytes.WithoutLeadingZeros() : bytes[(32 - value.MinimalByteLength())..];
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static int MinimalByteLength(this in UInt256 value)
+    {
+        int length = 32;
+        ulong limb = value.u3;
+        if (limb >= 1UL << 56) return length;
+        if (limb == 0)
         {
-            Word shuffle = Vector256.Create(
-                0x18191a1b1c1d1e1ful,
-                0x1011121314151617ul,
-                0x08090a0b0c0d0e0ful,
-                0x0001020304050607ul).AsByte();
-            if (Avx512Vbmi.VL.IsSupported)
+            length = 24;
+            limb = value.u2;
+            if (limb == 0)
             {
-                Word data = Unsafe.As<UInt256, Word>(ref Unsafe.AsRef(in value));
-                result = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
-            }
-            else
-            {
-                Vector256<ulong> permute = Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(in value));
-                Vector256<ulong> convert = Avx2.Permute4x64(permute, 0b_01_00_11_10);
-                result = Avx2.Shuffle(Unsafe.As<Vector256<ulong>, Word>(ref convert), shuffle);
+                length = 16;
+                limb = value.u1;
+                if (limb == 0)
+                {
+                    length = 8;
+                    limb = value.u0;
+                }
             }
         }
-        else
-        {
-            ulong u3, u2, u1, u0;
-            if (BitConverter.IsLittleEndian)
-            {
-                u3 = BinaryPrimitives.ReverseEndianness(value.u3);
-                u2 = BinaryPrimitives.ReverseEndianness(value.u2);
-                u1 = BinaryPrimitives.ReverseEndianness(value.u1);
-                u0 = BinaryPrimitives.ReverseEndianness(value.u0);
-            }
-            else
-            {
-                u3 = value.u3;
-                u2 = value.u2;
-                u1 = value.u1;
-                u0 = value.u0;
-            }
-
-            result = Vector256.Create(u3, u2, u1, u0).AsByte();
-        }
-
-        return Unsafe.As<Word, ValueHash256>(ref result);
+        return Math.Max(1, length - Bytes.LeadingZeroBytes(limb));
     }
 
     public static int CountLeadingZeros(this in UInt256 uInt256)

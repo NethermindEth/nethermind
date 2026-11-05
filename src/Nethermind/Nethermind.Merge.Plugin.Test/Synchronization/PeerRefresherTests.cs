@@ -77,6 +77,34 @@ public class PeerRefresherTests
         _syncPeerPool.Received().ReportRefreshFailed(_syncPeer, Arg.Any<string>());
     }
 
+    [TestCase("headParentTwoHeaders", TestName = "Given_headParentResponseWithTwoHeadersAndWrongParent_thenShouldReportRefreshFailedAndNotUpdate")]
+    [TestCase("headParentSingleHeader", TestName = "Given_headParentResponseWithSingleWrongHeader_thenShouldReportRefreshFailedAndNotUpdate")]
+    [TestCase("finalized", TestName = "Given_finalizedHeaderHashMismatch_thenShouldReportRefreshFailedAndNotUpdate")]
+    public async Task Given_peerReturnsHeaderWithMismatchedHash_thenShouldReportRefreshFailedAndNotUpdate(string corruptedResponse)
+    {
+        BlockHeader wrongHeader = Build.A.BlockHeader.WithExtraData(new byte[] { 9 }).TestObject;
+        if (corruptedResponse == "finalized")
+        {
+            GivenAllHeaderAvailable();
+            _syncPeer.GetHeadBlockHeader(_finalizedBlockHeader.Hash!, Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<BlockHeader?>(wrongHeader));
+        }
+        else
+        {
+            ArrayPoolList<BlockHeader> response = corruptedResponse == "headParentTwoHeaders"
+                ? new ArrayPoolList<BlockHeader>(2) { wrongHeader, _headBlockHeader }
+                : new ArrayPoolList<BlockHeader>(1) { wrongHeader };
+            _syncPeer.GetBlockHeaders(_headParentBlockHeader.Hash!, 2, 0, Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(response));
+            GivenFinalizedHeaderAvailable();
+        }
+
+        await WhenCalledWithCorrectHash();
+
+        _syncPeerPool.Received().ReportRefreshFailed(_syncPeer, Arg.Any<string>());
+        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, wrongHeader);
+    }
+
     private Task WhenCalledWithCorrectHash()
     {
         CancellationTokenSource source = new(1000);

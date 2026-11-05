@@ -18,29 +18,14 @@ namespace Nethermind.JsonRpc.Modules.Net
             _netVersionString = _netBridge.NetworkId.ToString();
         }
 
-        public ResultWrapper<Address> net_localAddress()
-        {
-            return ResultWrapper<Address>.Success(_netBridge.LocalAddress);
-        }
+        public ResultWrapper<Address> net_localAddress() => ResultWrapper<Address>.Success(_netBridge.LocalAddress);
 
-        public ResultWrapper<string> net_localEnode()
-        {
-            return ResultWrapper<string>.Success(_netBridge.LocalEnode);
-        }
+        public ResultWrapper<string> net_localEnode() => ResultWrapper<string>.Success(_netBridge.LocalEnode);
 
-        public ResultWrapper<string> net_version()
-        {
-            return ResultWrapper<string>.Success(_netVersionString);
-        }
+        public ResultWrapper<string> net_version() => ResultWrapper<string>.Success(_netVersionString);
 
-        public ResultWrapper<bool> net_listening()
-        {
-            return ResultWrapper<bool>.Success(true);
-        }
+        public ResultWrapper<bool> net_listening() => ResultWrapper<bool>.Success(true);
 
-        public ResultWrapper<long> net_peerCount()
-        {
-            return ResultWrapper<long>.Success(_netBridge.PeerCount);
-        }
+        public ResultWrapper<long> net_peerCount() => ResultWrapper<long>.Success(_netBridge.PeerCount);
     }
 }

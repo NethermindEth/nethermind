@@ -20,8 +20,6 @@ namespace Nethermind.Network
     /// </summary>
     public sealed class Peer(Node node, INodeStats? stats = null) : IEquatable<Peer>
     {
-        public bool IsAwaitingConnection { get; set; }
-
         /// <summary>
         /// A physical network node with a network address combined with information about the client version
         /// and any extra attributes that we assign to a network node (static / trusted / bootnode).
@@ -30,15 +28,27 @@ namespace Nethermind.Network
 
         internal INodeStats? Stats { get; } = stats;
 
+        /// <remarks>
+        /// Guards <see cref="IsAwaitingConnection"/>, <see cref="InSession"/>, and <see cref="OutSession"/>
+        /// as a unit. Using a dedicated object avoids locking on a publicly visible instance.
+        /// </remarks>
+        internal readonly object SessionLock = new();
+
+        private volatile bool _isAwaitingConnection;
+        private volatile ISession? _inSession;
+        private volatile ISession? _outSession;
+
+        public bool IsAwaitingConnection { get => _isAwaitingConnection; set => _isAwaitingConnection = value; }
+
         /// <summary>
         /// An incoming session to the Node which can be in one of many states.
         /// </summary>
-        public ISession? InSession { get; set; }
+        public ISession? InSession { get => _inSession; set => _inSession = value; }
 
         /// <summary>
         /// An outgoing session to the Node which can be in one of many states.
         /// </summary>
-        public ISession? OutSession { get; set; }
+        public ISession? OutSession { get => _outSession; set => _outSession = value; }
 
         public override string ToString() => $"[Peer|{Node:s}|{InSession}|{OutSession}]";
 

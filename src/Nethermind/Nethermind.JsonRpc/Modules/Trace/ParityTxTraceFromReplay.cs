@@ -3,15 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
@@ -43,16 +41,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
         }
 
-        public byte[]? Output { get; set; }
+        public virtual byte[]? Output { get; set; }
 
-        public Hash256? TransactionHash { get; set; }
+        public virtual Hash256? TransactionHash { get; set; }
 
-        public ParityVmTrace? VmTrace { get; set; }
+        public virtual ParityVmTrace? VmTrace { get; set; }
 
         [JsonConverter(typeof(ParityTraceActionFromReplayJsonConverter))]
-        public ParityTraceAction? Action { get; set; }
+        public virtual ParityTraceAction? Action { get; set; }
 
-        public Dictionary<Address, ParityAccountStateChange>? StateChanges { get; set; }
+        [JsonPropertyName("stateDiff")]
+        public virtual Dictionary<Address, ParityAccountStateChange>? StateChanges { get; set; }
     }
 
     public class ParityTraceActionFromReplayJsonConverter : JsonConverter<ParityTraceAction>
@@ -77,28 +76,19 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WritePropertyName("action"u8);
             ParityTraceActionConverter.Instance.Write(writer, value, options);
 
-            if (value.Error is null)
-            {
-                writer.WritePropertyName("result"u8);
-                JsonSerializer.Serialize(writer, value.Result, options);
-            }
-            else
+            writer.WritePropertyName("result"u8);
+            TypeInfoJsonSerializer.Serialize(writer, value.Result, options);
+
+            if (value.Error is not null)
             {
                 writer.WritePropertyName("error"u8);
-                JsonSerializer.Serialize(writer, value.Error, options);
+                TypeInfoJsonSerializer.Serialize(writer, value.Error, options);
             }
 
-            writer.WriteNumber("subtraces"u8, value.Subtraces.Count(static s => s.IncludeInTrace));
+            writer.WriteNumber("subtraces"u8, value.Subtraces.Count);
 
             writer.WritePropertyName("traceAddress"u8);
-            if (value.TraceAddress is null)
-            {
-                writer.WriteNullValue();
-            }
-            else
-            {
-                JsonSerializer.Serialize(writer, value.TraceAddress, options);
-            }
+            ParityReplayEnvelopeWriter.WriteTraceAddress(writer, value.TraceAddress);
 
             writer.WriteString("type"u8, value.Type);
             writer.WriteEndObject();
@@ -118,7 +108,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Type typeToConvert,
             JsonSerializerOptions options) => throw new NotImplementedException();
 
-        [SkipLocalsInit]
         public override void Write(
             Utf8JsonWriter writer,
             ParityTxTraceFromReplay value,
@@ -127,30 +116,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WriteStartObject();
 
             writer.WritePropertyName("output"u8);
-            JsonSerializer.Serialize(writer, value.Output, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Output, options);
 
             writer.WritePropertyName("stateDiff"u8);
-            if (value.StateChanges is not null)
-            {
-                writer.WriteStartObject();
-                Span<byte> addressBytes = stackalloc byte[Address.Size * 2 + 2];
-                addressBytes[0] = (byte)'0';
-                addressBytes[1] = (byte)'x';
-                Span<byte> hex = addressBytes[2..];
-
-                foreach ((Address address, ParityAccountStateChange stateChange) in value.StateChanges.OrderBy(static sc => sc.Key, AddressComparer.Instance))
-                {
-                    address.Bytes.AsSpan().OutputBytesToByteHex(hex, false);
-                    writer.WritePropertyName(addressBytes);
-                    JsonSerializer.Serialize(writer, stateChange, options);
-                }
-
-                writer.WriteEndObject();
-            }
-            else
-            {
-                writer.WriteNullValue();
-            }
+            ParityReplayEnvelopeWriter.WriteStateDiff(writer, value.StateChanges, options);
 
             writer.WritePropertyName("trace"u8);
 
@@ -164,11 +133,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (value.TransactionHash is not null)
             {
                 writer.WritePropertyName("transactionHash"u8);
-                JsonSerializer.Serialize(writer, value.TransactionHash, options);
+                TypeInfoJsonSerializer.Serialize(writer, value.TransactionHash, options);
             }
 
             writer.WritePropertyName("vmTrace"u8);
-            JsonSerializer.Serialize(writer, value.VmTrace, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.VmTrace, options);
 
             writer.WriteEndObject();
         }

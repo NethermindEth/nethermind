@@ -16,7 +16,7 @@ internal sealed class SizeTxFilter(ITxPoolConfig txPoolConfig, ILogger logger) :
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        long maxSize = tx.SupportsBlobs ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
+        long maxSize = tx.CarriesBlobs ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
 
         if (tx.GetLength(shouldCountBlobs: false) > maxSize)
         {

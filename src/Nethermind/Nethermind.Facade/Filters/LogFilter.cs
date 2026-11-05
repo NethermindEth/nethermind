@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Filters
+namespace Nethermind.Facade.Filters
 {
     public class LogFilter(
         int id,
@@ -20,6 +20,9 @@ namespace Nethermind.Blockchain.Filters
         public BlockParameter FromBlock { get; } = fromBlock;
         public BlockParameter ToBlock { get; } = toBlock;
         public bool UseIndex { get; set; } = true;
+
+        /// <summary>Whether the filter selects the single block of a <c>blockHash</c>, rather than a range.</summary>
+        public bool IsBlockHashFilter => FromBlock.Type == BlockParameterType.BlockHash && FromBlock.Equals(ToBlock);
 
         public bool AcceptsAnyBlock =>
             AddressFilter.Addresses.Count == 0 &&

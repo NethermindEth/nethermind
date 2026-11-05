@@ -30,15 +30,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
         (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind);
     }
 
-    public sealed class RewardContract : CallableContract, IRewardContract
+    public sealed class RewardContract(ITransactionProcessor transactionProcessor, Address contractAddress, ulong transitionBlock) : CallableContract(transactionProcessor, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress))), IRewardContract
     {
-        public long Activation { get; }
+        internal static readonly ContractFunction<(Address[], ushort[]), (Address[], UInt256[])> RewardFunction =
+            new AbiSignature("reward").With(AbiType.Array(AbiType.Address), AbiType.Array(AbiType.UInt16)).Returns(AbiType.Array(AbiType.Address), AbiType.Array(AbiType.UInt256));
 
-        public RewardContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, long transitionBlock)
-            : base(transactionProcessor, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
-        {
-            Activation = transitionBlock;
-        }
+        public ulong Activation { get; } = transitionBlock;
 
         /// <summary>
         /// produce rewards for the given benefactors,
@@ -55,10 +52,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// 3 - External - Reward attributed by an external protocol (e.g. block reward contract)
         /// 101-106 - Uncle - Reward attributed to uncles, with distance 1 to 6 (Ethash engine)
         /// </param>
-        public (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind)
-        {
-            var result = Call(blockHeader, nameof(Reward), Address.SystemUser, UnlimitedGas, benefactors, kind);
-            return ((Address[])result[0], (UInt256[])result[1]);
-        }
+        public (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind) =>
+            Call(blockHeader, RewardFunction, Address.SystemUser, UnlimitedGas, (benefactors, kind));
     }
 }

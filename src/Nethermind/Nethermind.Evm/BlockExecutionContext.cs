@@ -33,6 +33,13 @@ public readonly struct BlockExecutionContext
         in ValueHash256 prevRandao)
         => new(blockHeader, spec, GetBlobBaseFee(blockHeader, spec), prevRandao);
 
+    public static BlockExecutionContext WithPrevRandaoAndBlobBaseFee(
+        BlockHeader blockHeader,
+        IReleaseSpec spec,
+        in ValueHash256 prevRandao,
+        in UInt256 blobBaseFee)
+        => new(blockHeader, spec, blobBaseFee, prevRandao);
+
     private BlockExecutionContext(
         BlockHeader blockHeader,
         IReleaseSpec spec,
@@ -41,8 +48,8 @@ public readonly struct BlockExecutionContext
     {
         Header = blockHeader;
         Coinbase = blockHeader.GasBeneficiary ?? Address.Zero;
-        Number = (ulong)blockHeader.Number;
-        GasLimit = (ulong)blockHeader.GasLimit;
+        Number = blockHeader.Number;
+        GasLimit = blockHeader.GasLimit;
         BlobBaseFee = blobBaseFee.ToValueHash();
         Spec = spec;
         PrevRandao = prevRandao;

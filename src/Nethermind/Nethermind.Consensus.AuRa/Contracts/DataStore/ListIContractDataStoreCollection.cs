@@ -10,12 +10,9 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
     {
         private List<T> _items;
 
-        private List<T> Items => _items ??= new List<T>();
+        private List<T> Items => _items ??= [];
 
-        public void Clear()
-        {
-            Items.Clear();
-        }
+        public void Clear() => Items.Clear();
 
         public IEnumerable<T> GetSnapshot() => Items.ToList();
 

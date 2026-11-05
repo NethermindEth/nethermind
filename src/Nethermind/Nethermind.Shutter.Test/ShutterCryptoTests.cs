@@ -4,10 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.Shutter.Test;
 
@@ -35,7 +37,7 @@ class ShutterCryptoTests
         ShutterCrypto.GTExp(ref p2, r);
         Span<byte> h2 = ShutterCrypto.Hash2(p2);
 
-        Assert.That(h1.ToArray(), Is.EqualTo(h2.ToArray()));
+        Assert.That(h1, Is.SequenceEqualTo(h2));
     }
 
     [Test]
@@ -55,16 +57,16 @@ class ShutterCryptoTests
         G1 key = identity.Dup().Mult(sk.ToLittleEndian());
 
         ShutterCrypto.RecoverSigma(out Span<byte> recoveredSigma, encryptedMessage, key.ToAffine());
-        Assert.That(recoveredSigma.ToArray(), Is.EqualTo(sigma.ToArray()));
+        Assert.That(recoveredSigma, Is.SequenceEqualTo(sigma));
 
         Span<byte> decryptedMessage = stackalloc byte[ShutterCrypto.GetDecryptedDataLength(encryptedMessage)];
         ShutterCrypto.Decrypt(ref decryptedMessage, encryptedMessage, key);
-        Assert.That(msg.SequenceEqual(decryptedMessage.ToArray()));
+        Assert.That(msg.SequenceEqual(decryptedMessage), Is.True);
 
         EncryptedMessage decoded = ShutterCrypto.DecodeEncryptedMessage(ShutterCrypto.EncodeEncryptedMessage(encryptedMessage));
         Assert.That(encryptedMessage.C1.IsEqual(decoded.C1));
-        Assert.That(encryptedMessage.C2.ToArray(), Is.EqualTo(decoded.C2.ToArray()));
-        Assert.That(encryptedMessage.C3.ToArray(), Is.EqualTo(decoded.C3.ToArray()));
+        Assert.That(encryptedMessage.C2, Is.SequenceEqualTo(decoded.C2));
+        Assert.That(encryptedMessage.C3, Is.SequenceEqualTo(decoded.C3));
     }
 
     [Test]
@@ -130,7 +132,7 @@ class ShutterCryptoTests
 
         Span<byte> encoded = ShutterCrypto.EncodeEncryptedMessage(c);
         TestContext.Out.WriteLine("encrypted msg: " + Convert.ToHexString(encoded));
-        Assert.That(encoded.ToArray(), Is.EqualTo(expected));
+        Assert.That(encoded, Is.SequenceEqualTo(expected));
     }
 
     [Test]
@@ -161,7 +163,7 @@ class ShutterCryptoTests
         ShutterCrypto.Decrypt(ref decryptedMessage, c, decryptionKey);
         TestContext.Out.WriteLine("decrypted msg: " + Convert.ToHexString(decryptedMessage));
 
-        Assert.That(decryptedMessage.SequenceEqual(Convert.FromHexString(expectedHex)));
+        Assert.That(decryptedMessage.SequenceEqual(Convert.FromHexString(expectedHex)), Is.True);
     }
 
     [Test]
@@ -206,5 +208,27 @@ class ShutterCryptoTests
     {
         IEnumerable<ReadOnlyMemory<byte>> identityPreimages = identityPreimagesHex.Select(Convert.FromHexString).Select(static b => (ReadOnlyMemory<byte>)b);
         Assert.That(ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(instanceId, eon, slot, txPointer, identityPreimages, Convert.FromHexString(sigHex), new(keyperAddress)));
+    }
+
+    [Test]
+    public void Identity_preimage_converter_merkleizes_empty_data_as_zero_root()
+    {
+        Span<UInt256> chunk = stackalloc UInt256[1];
+        Merkleizer merkleizer = new(chunk);
+        IdentityPreimageSszVectorTypeConverter.Feed(ref merkleizer, default);
+
+        Assert.That(chunk[0], Is.EqualTo(UInt256.Zero));
+    }
+
+    [Test]
+    // IndexOutOfRangeException escapes ShutterTxLoader's catch list — too-short input must surface as ShutterCryptoException.
+    public void DecodeEncryptedMessage_throws_ShutterCryptoException_on_too_short_input(
+        [Values(0, 1, 97, 128)] int length)
+    {
+        byte[] tooShort = new byte[length];
+        if (length > 0) tooShort[0] = 0x03;
+
+        Assert.That(() => ShutterCrypto.DecodeEncryptedMessage(tooShort),
+            Throws.TypeOf<ShutterCrypto.ShutterCryptoException>());
     }
 }

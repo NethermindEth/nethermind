@@ -5,37 +5,22 @@ using System;
 
 namespace Nethermind.Core
 {
-    public class FakeWriteBatch : IWriteBatch
+    public class FakeWriteBatch(IWriteOnlyKeyValueStore storePretendingToSupportBatches, Action? onDispose) : IWriteBatch
     {
-        private readonly IWriteOnlyKeyValueStore _storePretendingToSupportBatches;
+        private readonly IWriteOnlyKeyValueStore _storePretendingToSupportBatches = storePretendingToSupportBatches;
 
-        private readonly Action? _onDispose;
+        private readonly Action? _onDispose = onDispose;
 
         public FakeWriteBatch(IWriteOnlyKeyValueStore storePretendingToSupportBatches)
             : this(storePretendingToSupportBatches, null)
         {
         }
 
-        public FakeWriteBatch(IWriteOnlyKeyValueStore storePretendingToSupportBatches, Action? onDispose)
-        {
-            _storePretendingToSupportBatches = storePretendingToSupportBatches;
-            _onDispose = onDispose;
-        }
+        public void Dispose() => _onDispose?.Invoke();
 
-        public void Dispose()
-        {
-            _onDispose?.Invoke();
-        }
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => _storePretendingToSupportBatches.Set(key, value, flags);
 
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-        {
-            _storePretendingToSupportBatches.Set(key, value, flags);
-        }
-
-        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-        {
-            throw new NotSupportedException("Merging is not supported by this implementation.");
-        }
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => throw new NotSupportedException("Merging is not supported by this implementation.");
 
         public void Clear() { }
     }

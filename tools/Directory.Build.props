@@ -3,8 +3,10 @@
   <Import Project="../Directory.Build.props" />
 
   <PropertyGroup>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <NoWarn>$(NoWarn);EnableGenerateDocumentationFile</NoWarn>
   </PropertyGroup>
 
 </Project>

@@ -7,6 +7,8 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using System.Threading.Tasks;
 using Autofac;
@@ -22,6 +24,8 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
     private readonly List<Type> _pluginTypes = [];
     private readonly IFileSystem _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
     private readonly string _pluginsDirectory = pluginPath ?? throw new ArgumentNullException(nameof(pluginPath));
+    private (string Directory, int? AssemblyCount)? _pendingDiagnostics;
+    private readonly List<(string Plugin, Exception Error)> _loadErrors = [];
 
     public IEnumerable<Type> PluginTypes => _pluginTypes;
 
@@ -36,17 +40,14 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
         string baseDir = string.Empty.GetApplicationResourcePath();
         string pluginAssembliesDir = _pluginsDirectory.GetApplicationResourcePath();
+        _pendingDiagnostics = (pluginAssembliesDir, null);
         if (!_fileSystem.Directory.Exists(pluginAssembliesDir))
         {
-            if (logger.IsWarn) logger.Warn($"Plugin assemblies folder {pluginAssembliesDir} was not found. Skipping.");
             return;
         }
 
         string[] assemblies = _fileSystem.Directory.GetFiles(pluginAssembliesDir, "*.dll");
-        if (assemblies.Length > 0)
-        {
-            if (logger.IsInfo) logger.Info($"Loading {assemblies.Length} assemblies from {pluginAssembliesDir}");
-        }
+        _pendingDiagnostics = (pluginAssembliesDir, assemblies.Length);
 
         foreach (string assemblyName in assemblies)
         {
@@ -83,21 +84,55 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             }
             catch (Exception e)
             {
-                logger.Error($"Failed to load plugin {pluginAssembly}", e);
+                _loadErrors.Add((pluginAssembly, e));
             }
         }
     }
 
+    /// <summary>Logs pending discovery diagnostics using the current masking setting.</summary>
+    /// <remarks>Discovery precedes configuration. Flush after applying the configured masking policy, or with startup masking if configuration fails.</remarks>
+    public void LogDiagnostics()
+    {
+        if (_pendingDiagnostics is not { } diagnostics) return;
+        _pendingDiagnostics = null;
+
+        if (diagnostics.AssemblyCount is null)
+        {
+            if (logger.IsWarn) logger.Warn($"Plugin assemblies folder {diagnostics.Directory:hide} was not found. Skipping.");
+        }
+        else if (diagnostics.AssemblyCount > 0)
+        {
+            if (logger.IsInfo) logger.Info($"Loading {diagnostics.AssemblyCount} plugin assemblies from {diagnostics.Directory:hide}");
+        }
+
+        foreach ((string plugin, Exception error) in _loadErrors)
+        {
+            logger.Error($"Failed to load plugin {plugin}: {error.GetType().Name}", SensitiveLogMasking.Enabled ? null : error);
+        }
+        _loadErrors.Clear();
+    }
+
     public void OrderPlugins(IPluginConfig pluginConfig)
     {
-        var pluginPriorities = pluginConfig.PluginOrder
+        Dictionary<string, int> pluginPriorities = pluginConfig.PluginOrder
             .Select((name, index) => (name: name + "plugin", index))
             .ToDictionary(x => x.name, x => x.index, StringComparer.OrdinalIgnoreCase);
 
-        _pluginTypes.Sort((firstPlugin, secondPlugin) =>
+        CollectionsMarshal.AsSpan(_pluginTypes).Sort(new PluginPriorityComparer(pluginPriorities));
+    }
+
+    private readonly struct PluginPriorityComparer(Dictionary<string, int> priorities) : IComparer<Type>
+    {
+        private readonly Dictionary<string, int> _priorities = priorities;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int Compare(Type? firstPlugin, Type? secondPlugin)
         {
-            bool firstHasPriority = pluginPriorities.TryGetValue(firstPlugin.Name, out int firstPriorityIndex);
-            bool secondHasPriority = pluginPriorities.TryGetValue(secondPlugin.Name, out int secondPriorityIndex);
+            // The IComparer<Type> signature requires nullable parameters but the only caller
+            // is the sort over _pluginTypes, which is populated exclusively from non-null Type
+            // instances. The `!` dereference is safe at this call site.
+            bool firstHasPriority = _priorities.TryGetValue(firstPlugin!.Name, out int firstPriorityIndex);
+            bool secondHasPriority = _priorities.TryGetValue(secondPlugin!.Name, out int secondPriorityIndex);
 
             return (firstHasPriority, secondHasPriority) switch
             {
@@ -106,7 +141,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
                 (false, true) => 1,
                 (false, false) => string.Compare(firstPlugin.Name, secondPlugin.Name, StringComparison.OrdinalIgnoreCase)
             };
-        });
+        }
     }
 
     public async Task<IList<INethermindPlugin>> LoadPlugins(IConfigProvider configProvider, ChainSpec chainSpec)
@@ -116,7 +151,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             .AddSingleton(chainSpec)
             .AddSource(new ConfigRegistrationSource());
 
-        foreach (var pluginType in PluginTypes)
+        foreach (Type pluginType in PluginTypes)
         {
             builder
                 .RegisterType(pluginType)
@@ -127,7 +162,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
         await using IContainer container = builder.Build();
         IList<INethermindPlugin> allPlugins = container.Resolve<IList<INethermindPlugin>>();
-        IList<INethermindPlugin> plugins = new List<INethermindPlugin>();
+        IList<INethermindPlugin> plugins = [];
         if (logger.IsInfo) logger.Info($"Detected {PluginTypes.Count()} plugins");
         foreach (INethermindPlugin plugin in allPlugins)
         {
@@ -145,7 +180,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             }
             catch (Exception ex)
             {
-                if (logger.IsError) logger.Error($"Failed to load plugin {plugin.Name}", ex);
+                if (logger.IsError) logger.Error($"Failed to load plugin {plugin.Name}", SensitiveLogMasking.Enabled ? null : ex);
             }
         }
 

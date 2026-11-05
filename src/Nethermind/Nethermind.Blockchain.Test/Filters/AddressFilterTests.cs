@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
-using Nethermind.Blockchain.Filters;
+using System.Linq;
+using Nethermind.Facade.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
@@ -17,35 +17,35 @@ public class AddressFilterTests
     [Test]
     public void Accepts_a_specific_address()
     {
-        AddressFilter filter = new AddressFilter(TestItem.AddressA);
+        AddressFilter filter = new(TestItem.AddressA);
 
-        filter.Accepts(TestItem.AddressA).Should().BeTrue();
+        Assert.That(filter.Accepts(TestItem.AddressA), Is.True);
     }
 
     [Test]
     public void Accepts_a_specific_address_by_ref()
     {
-        AddressFilter filter = new AddressFilter(TestItem.AddressA);
+        AddressFilter filter = new(TestItem.AddressA);
 
         AddressStructRef @ref = TestItem.AddressA.ToStructRef();
-        filter.Accepts(ref @ref).Should().BeTrue();
+        Assert.That(filter.Accepts(ref @ref), Is.True);
     }
 
     [Test]
     public void Rejects_different_address()
     {
-        AddressFilter filter = new AddressFilter(TestItem.AddressA);
+        AddressFilter filter = new(TestItem.AddressA);
 
-        filter.Accepts(TestItem.AddressB).Should().BeFalse();
+        Assert.That(filter.Accepts(TestItem.AddressB), Is.False);
     }
 
     [Test]
     public void Rejects_different_address_by_ref()
     {
-        AddressFilter filter = new AddressFilter(TestItem.AddressA);
+        AddressFilter filter = new(TestItem.AddressA);
 
         AddressStructRef addressBRef = TestItem.AddressB.ToStructRef();
-        filter.Accepts(ref addressBRef).Should().BeFalse();
+        Assert.That(filter.Accepts(ref addressBRef), Is.False);
     }
 
     [Test]
@@ -53,9 +53,12 @@ public class AddressFilterTests
     {
         AddressFilter filter = AddressFilter.AnyAddress;
 
-        filter.Accepts(TestItem.AddressA).Should().BeTrue();
-        filter.Accepts(TestItem.AddressB).Should().BeTrue();
-        filter.Accepts(TestItem.AddressC).Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Accepts(TestItem.AddressA), Is.True);
+            Assert.That(filter.Accepts(TestItem.AddressB), Is.True);
+            Assert.That(filter.Accepts(TestItem.AddressC), Is.True);
+        }
     }
 
     [Test]
@@ -66,94 +69,167 @@ public class AddressFilterTests
         AddressStructRef addressARef = TestItem.AddressA.ToStructRef();
         AddressStructRef addressBRef = TestItem.AddressB.ToStructRef();
         AddressStructRef addressCRef = TestItem.AddressC.ToStructRef();
-        filter.Accepts(ref addressARef).Should().BeTrue();
-        filter.Accepts(ref addressBRef).Should().BeTrue();
-        filter.Accepts(ref addressCRef).Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Accepts(ref addressARef), Is.True);
+            Assert.That(filter.Accepts(ref addressBRef), Is.True);
+            Assert.That(filter.Accepts(ref addressCRef), Is.True);
+        }
     }
 
     [Test]
     public void Accepts_any_address_when_set_is_empty()
     {
-        HashSet<AddressAsKey> addresses = new();
-        AddressFilter filter = new AddressFilter(addresses);
+        HashSet<AddressAsKey> addresses = [];
+        AddressFilter filter = new(addresses);
 
-        filter.Accepts(TestItem.AddressA).Should().BeTrue();
-        filter.Accepts(TestItem.AddressB).Should().BeTrue();
-        filter.Accepts(TestItem.AddressC).Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Accepts(TestItem.AddressA), Is.True);
+            Assert.That(filter.Accepts(TestItem.AddressB), Is.True);
+            Assert.That(filter.Accepts(TestItem.AddressC), Is.True);
+        }
     }
 
     [Test]
     public void Accepts_any_address_when_set_is_empty_by_ref()
     {
-        HashSet<AddressAsKey> addresses = new();
-        AddressFilter filter = new AddressFilter(addresses);
+        HashSet<AddressAsKey> addresses = [];
+        AddressFilter filter = new(addresses);
 
         AddressStructRef addressARef = TestItem.AddressA.ToStructRef();
         AddressStructRef addressBRef = TestItem.AddressB.ToStructRef();
         AddressStructRef addressCRef = TestItem.AddressC.ToStructRef();
-        filter.Accepts(ref addressARef).Should().BeTrue();
-        filter.Accepts(ref addressBRef).Should().BeTrue();
-        filter.Accepts(ref addressCRef).Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Accepts(ref addressARef), Is.True);
+            Assert.That(filter.Accepts(ref addressBRef), Is.True);
+            Assert.That(filter.Accepts(ref addressCRef), Is.True);
+        }
+    }
+
+    [Test]
+    public void Accepts_only_addresses_in_a_set_by_ref_for_any_set_size([Values(1, 8, 9, 200)] int count)
+    {
+        HashSet<AddressAsKey> addresses = TestItem.Addresses.Take(count).Select(static a => new AddressAsKey(a)).ToHashSet();
+        AddressFilter filter = new(addresses);
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (count > 8)
+            {
+                Assert.That(filter.Addresses.Comparer, Is.SameAs(AddressAsKeyComparer.Instance));
+            }
+            else
+            {
+                Assert.That(filter.Addresses, Is.SameAs(addresses));
+            }
+
+            foreach (Address address in TestItem.Addresses)
+            {
+                AddressStructRef @ref = address.ToStructRef();
+                Assert.That(filter.Accepts(ref @ref), Is.EqualTo(addresses.Contains(address)), address.ToString());
+            }
+        }
+    }
+
+    [Test]
+    public void Uses_a_set_with_the_span_comparer_without_a_copy([Values(9, 200)] int count)
+    {
+        HashSet<AddressAsKey> addresses = new(TestItem.Addresses.Take(count).Select(static a => new AddressAsKey(a)), AddressAsKeyComparer.Instance);
+        AddressFilter filter = new(addresses);
+
+        AddressStructRef hit = TestItem.Addresses[count - 1].ToStructRef();
+        AddressStructRef miss = TestItem.Addresses[count].ToStructRef();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Addresses, Is.SameAs(addresses));
+            Assert.That(filter.Accepts(ref hit), Is.True);
+            Assert.That(filter.Accepts(ref miss), Is.False);
+        }
+    }
+
+    [Test]
+    public void Accepts_by_ref_with_a_copy_of_the_address_bytes()
+    {
+        HashSet<AddressAsKey> addresses = TestItem.Addresses.Take(50).Select(static a => new AddressAsKey(a)).ToHashSet();
+        AddressFilter filter = new(addresses);
+
+        byte[] hitBytes = TestItem.Addresses[10].Bytes.ToArray();
+        byte[] missBytes = TestItem.Addresses[60].Bytes.ToArray();
+        AddressStructRef hit = new(hitBytes);
+        AddressStructRef miss = new(missBytes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Accepts(ref hit), Is.True);
+            Assert.That(filter.Accepts(ref miss), Is.False);
+        }
     }
 
     [Test]
     public void Accepts_only_addresses_in_a_set()
     {
         HashSet<AddressAsKey> addresses = [TestItem.AddressA, TestItem.AddressC];
-        AddressFilter filter = new AddressFilter(addresses);
+        AddressFilter filter = new(addresses);
 
-        filter.Accepts(TestItem.AddressA).Should().BeTrue();
-        filter.Accepts(TestItem.AddressB).Should().BeFalse();
-        filter.Accepts(TestItem.AddressC).Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Accepts(TestItem.AddressA), Is.True);
+            Assert.That(filter.Accepts(TestItem.AddressB), Is.False);
+            Assert.That(filter.Accepts(TestItem.AddressC), Is.True);
+        }
     }
 
     [Test]
     public void Accepts_only_addresses_in_a_set_by_ref()
     {
         HashSet<AddressAsKey> addresses = [TestItem.AddressA, TestItem.AddressC];
-        AddressFilter filter = new AddressFilter(addresses);
+        AddressFilter filter = new(addresses);
 
         AddressStructRef addressARef = TestItem.AddressA.ToStructRef();
         AddressStructRef addressBRef = TestItem.AddressB.ToStructRef();
         AddressStructRef addressCRef = TestItem.AddressC.ToStructRef();
-        filter.Accepts(ref addressARef).Should().BeTrue();
-        filter.Accepts(ref addressBRef).Should().BeFalse();
-        filter.Accepts(ref addressCRef).Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Accepts(ref addressARef), Is.True);
+            Assert.That(filter.Accepts(ref addressBRef), Is.False);
+            Assert.That(filter.Accepts(ref addressCRef), Is.True);
+        }
     }
 
     [Test]
     public void Matches_bloom_using_specific_address()
     {
-        AddressFilter filter = new AddressFilter(TestItem.AddressA);
+        AddressFilter filter = new(TestItem.AddressA);
         Core.Bloom bloom = BloomFromAddress(TestItem.AddressA);
 
-        filter.Matches(bloom).Should().BeTrue();
+        Assert.That(filter.Matches(bloom), Is.True);
     }
 
     [Test]
     public void Matches_bloom_using_specific_address_by_ref()
     {
-        AddressFilter filter = new AddressFilter(TestItem.AddressA);
+        AddressFilter filter = new(TestItem.AddressA);
         BloomStructRef bloomRef = BloomFromAddress(TestItem.AddressA).ToStructRef();
 
-        filter.Matches(ref bloomRef).Should().BeTrue();
+        Assert.That(filter.Matches(ref bloomRef), Is.True);
     }
 
     [Test]
     public void Does_not_match_bloom_using_different_address()
     {
-        AddressFilter filter = new AddressFilter(TestItem.AddressA);
+        AddressFilter filter = new(TestItem.AddressA);
 
-        filter.Matches(BloomFromAddress(TestItem.AddressB)).Should().BeFalse();
+        Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressB)), Is.False);
     }
 
     [Test]
     public void Does_not_match_bloom_using_different_address_by_ref()
     {
-        AddressFilter filter = new AddressFilter(TestItem.AddressA);
+        AddressFilter filter = new(TestItem.AddressA);
         BloomStructRef bloomRef = BloomFromAddress(TestItem.AddressB).ToStructRef();
 
-        filter.Matches(ref bloomRef).Should().BeFalse();
+        Assert.That(filter.Matches(ref bloomRef), Is.False);
     }
 
     [Test]
@@ -161,9 +237,12 @@ public class AddressFilterTests
     {
         AddressFilter filter = AddressFilter.AnyAddress;
 
-        filter.Matches(BloomFromAddress(TestItem.AddressA)).Should().BeTrue();
-        filter.Matches(BloomFromAddress(TestItem.AddressB)).Should().BeTrue();
-        filter.Matches(BloomFromAddress(TestItem.AddressC)).Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressA)), Is.True);
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressB)), Is.True);
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressC)), Is.True);
+        }
     }
 
     [Test]
@@ -174,88 +253,109 @@ public class AddressFilterTests
         BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();
         BloomStructRef bloomBRef = BloomFromAddress(TestItem.AddressB).ToStructRef();
         BloomStructRef bloomCRef = BloomFromAddress(TestItem.AddressC).ToStructRef();
-        filter.Matches(ref bloomARef).Should().BeTrue();
-        filter.Matches(ref bloomBRef).Should().BeTrue();
-        filter.Matches(ref bloomCRef).Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Matches(ref bloomARef), Is.True);
+            Assert.That(filter.Matches(ref bloomBRef), Is.True);
+            Assert.That(filter.Matches(ref bloomCRef), Is.True);
+        }
     }
 
     [Test]
     public void Matches_any_bloom_when_set_is_empty()
     {
-        HashSet<AddressAsKey> addresses = new();
-        AddressFilter filter = new AddressFilter(addresses);
+        HashSet<AddressAsKey> addresses = [];
+        AddressFilter filter = new(addresses);
 
-        filter.Matches(BloomFromAddress(TestItem.AddressA)).Should().BeTrue();
-        filter.Matches(BloomFromAddress(TestItem.AddressB)).Should().BeTrue();
-        filter.Matches(BloomFromAddress(TestItem.AddressC)).Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressA)), Is.True);
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressB)), Is.True);
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressC)), Is.True);
+        }
     }
 
     [Test]
     public void Matches_any_bloom_when_set_is_empty_by_ref()
     {
-        HashSet<AddressAsKey> addresses = new();
-        AddressFilter filter = new AddressFilter(addresses);
+        HashSet<AddressAsKey> addresses = [];
+        AddressFilter filter = new(addresses);
 
         BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();
         BloomStructRef bloomBRef = BloomFromAddress(TestItem.AddressB).ToStructRef();
         BloomStructRef bloomCRef = BloomFromAddress(TestItem.AddressC).ToStructRef();
-        filter.Matches(ref bloomARef).Should().BeTrue();
-        filter.Matches(ref bloomBRef).Should().BeTrue();
-        filter.Matches(ref bloomCRef).Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Matches(ref bloomARef), Is.True);
+            Assert.That(filter.Matches(ref bloomBRef), Is.True);
+            Assert.That(filter.Matches(ref bloomCRef), Is.True);
+        }
     }
 
     [Test]
     public void Matches_any_bloom_when_set_is_forced_null()
     {
-        AddressFilter filter = new AddressFilter([]);
+        AddressFilter filter = new([]);
 
-        filter.Matches(BloomFromAddress(TestItem.AddressA)).Should().BeTrue();
-        filter.Matches(BloomFromAddress(TestItem.AddressB)).Should().BeTrue();
-        filter.Matches(BloomFromAddress(TestItem.AddressC)).Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressA)), Is.True);
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressB)), Is.True);
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressC)), Is.True);
+        }
     }
 
     [Test]
     public void Matches_any_bloom_when_set_is_forced_null_by_ref()
     {
-        AddressFilter filter = new AddressFilter([]);
+        AddressFilter filter = new([]);
 
         BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();
         BloomStructRef bloomBRef = BloomFromAddress(TestItem.AddressB).ToStructRef();
         BloomStructRef bloomCRef = BloomFromAddress(TestItem.AddressC).ToStructRef();
-        filter.Matches(ref bloomARef).Should().BeTrue();
-        filter.Matches(ref bloomBRef).Should().BeTrue();
-        filter.Matches(ref bloomCRef).Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Matches(ref bloomARef), Is.True);
+            Assert.That(filter.Matches(ref bloomBRef), Is.True);
+            Assert.That(filter.Matches(ref bloomCRef), Is.True);
+        }
     }
 
     [Test]
     public void Matches_any_bloom_using_addresses_set()
     {
         HashSet<AddressAsKey> addresses = [TestItem.AddressA, TestItem.AddressC];
-        AddressFilter filter = new AddressFilter(addresses);
+        AddressFilter filter = new(addresses);
 
-        filter.Matches(BloomFromAddress(TestItem.AddressA)).Should().BeTrue();
-        filter.Matches(BloomFromAddress(TestItem.AddressB)).Should().BeFalse();
-        filter.Matches(BloomFromAddress(TestItem.AddressC)).Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressA)), Is.True);
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressB)), Is.False);
+            Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressC)), Is.True);
+        }
     }
 
     [Test]
     public void Matches_any_bloom_using_addresses_set_by_ref()
     {
         HashSet<AddressAsKey> addresses = [TestItem.AddressA, TestItem.AddressC];
-        AddressFilter filter = new AddressFilter(addresses);
+        AddressFilter filter = new(addresses);
 
         BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();
         BloomStructRef bloomBRef = BloomFromAddress(TestItem.AddressB).ToStructRef();
         BloomStructRef bloomCRef = BloomFromAddress(TestItem.AddressC).ToStructRef();
-        filter.Matches(ref bloomARef).Should().BeTrue();
-        filter.Matches(ref bloomBRef).Should().BeFalse();
-        filter.Matches(ref bloomCRef).Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Matches(ref bloomARef), Is.True);
+            Assert.That(filter.Matches(ref bloomBRef), Is.False);
+            Assert.That(filter.Matches(ref bloomCRef), Is.True);
+        }
     }
 
     private static Core.Bloom BloomFromAddress(Address address)
     {
-        LogEntry entry = new LogEntry(address, [], []);
-        Core.Bloom bloom = new Core.Bloom([entry]);
+        LogEntry entry = new(address, [], []);
+        Core.Bloom bloom = new([entry]);
 
         return bloom;
     }

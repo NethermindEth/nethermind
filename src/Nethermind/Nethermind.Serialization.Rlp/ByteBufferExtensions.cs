@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
 using Nethermind.Core.Extensions;
 
@@ -46,7 +47,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static string ReadAllHex(this IByteBuffer buffer) => buffer.ReadAllBytesAsSpan().ToHexString();
 
-        public static void WriteBytes(this IByteBuffer buffer, ReadOnlySpan<byte> bytes)
+        public static void WriteBytes(this IByteBuffer buffer, scoped ReadOnlySpan<byte> bytes)
         {
             for (int i = 0; i < bytes.Length; i++)
             {
@@ -54,12 +55,10 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public static Rlp.ValueDecoderContext AsRlpContext(this IByteBuffer buffer) =>
-            new(buffer.AsSpan());
-
+        [return: MaybeNull]
         public static T DeserializeRlp<T>(this IByteBuffer buffer, DecodeRlpValue<T> deserialize)
         {
-            Rlp.ValueDecoderContext ctx = buffer.AsRlpContext();
+            RlpReader ctx = new(buffer.AsSpan());
             try
             {
                 return deserialize(ref ctx);
@@ -82,13 +81,6 @@ namespace Nethermind.Serialization.Rlp
             buffer.ResetWriterIndex();
         }
 
-        /// <summary>
-        /// Return readable space of this byte buffer as a span.
-        /// </summary>
-        /// <param name="buffer"></param>
-        /// <param name="startIndex">Optional start index of the underlying buffer.</param>
-        /// <returns></returns>
-        /// <exception cref="InvalidOperationException"></exception>
         public static Span<byte> AsSpan(this IByteBuffer buffer, int? startIndex = null)
         {
             if (!buffer.HasArray) throw new InvalidOperationException("Byte buffer does not have array backing");
@@ -97,13 +89,6 @@ namespace Nethermind.Serialization.Rlp
                 .Slice(buffer.ArrayOffset + startIdx, buffer.WriterIndex - startIdx);
         }
 
-        /// <summary>
-        /// Return readable space of this byte buffer as a memory.
-        /// </summary>
-        /// <param name="buffer"></param>
-        /// <param name="startIndex">Optional start index of the underlying buffer.</param>
-        /// <returns></returns>
-        /// <exception cref="InvalidOperationException"></exception>
         public static Memory<byte> AsMemory(this IByteBuffer buffer, int? startIndex = null)
         {
             if (!buffer.HasArray) throw new InvalidOperationException("Byte buffer does not have array backing");

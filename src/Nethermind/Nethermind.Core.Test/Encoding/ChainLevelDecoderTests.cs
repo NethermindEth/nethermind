@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -11,9 +13,8 @@ namespace Nethermind.Core.Test.Encoding;
 
 public class ChainLevelDecoderTests
 {
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Can_do_roundtrip(bool valueDecode)
+    [Test]
+    public void Can_do_roundtrip([Values] bool valueDecode)
     {
         BlockInfo blockInfo = new(TestItem.KeccakA, 1);
         blockInfo.WasProcessed = true;
@@ -26,20 +27,92 @@ public class ChainLevelDecoderTests
 
         Rlp rlp = Rlp.Encode(chainLevelInfo);
 
-        ChainLevelInfo decoded = valueDecode ? Rlp.Decode<ChainLevelInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<ChainLevelInfo>(rlp);
+        ChainLevelInfo decoded = (valueDecode ? Rlp.Decode<ChainLevelInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<ChainLevelInfo>(rlp))!;
 
-        Assert.That(decoded.HasBlockOnMainChain, Is.True, "has block on the main chain");
-        Assert.That(decoded.BlockInfos[0].WasProcessed, Is.True, "0 processed");
-        Assert.That(decoded.BlockInfos[1].WasProcessed, Is.False, "1 not processed");
-        Assert.That(decoded.BlockInfos[0].BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
-        Assert.That(decoded.BlockInfos[0].TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.HasBlockOnMainChain, Is.True, "has block on the main chain");
+            Assert.That(decoded.BlockInfos[0].WasProcessed, Is.True, "0 processed");
+            Assert.That(decoded.BlockInfos[1].WasProcessed, Is.False, "1 not processed");
+            Assert.That(decoded.BlockInfos[0].BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
+            Assert.That(decoded.BlockInfos[0].TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
+        }
+    }
+
+    [TestCaseSource(nameof(EncodeCases))]
+    public void Encode_matches_independently_built_rlp(BlockInfo[] blockInfos, bool hasBlockOnMainChain)
+    {
+        Rlp[] encodedInfos = new Rlp[blockInfos.Length];
+        for (int i = 0; i < blockInfos.Length; i++)
+        {
+            encodedInfos[i] = Rlp.Encode(blockInfos[i]);
+        }
+
+        ChainLevelInfo chainLevelInfo = new(hasBlockOnMainChain, blockInfos);
+        byte[] expected = Rlp.Encode(Rlp.Encode(hasBlockOnMainChain ? 1 : 0), Rlp.Encode(encodedInfos)).Bytes;
+        ChainLevelDecoder decoder = new();
+
+        using ArrayPoolSpan<byte> pooled = decoder.EncodeToArrayPoolSpan(chainLevelInfo);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoder.GetLength(chainLevelInfo, RlpBehaviors.None), Is.EqualTo(expected.Length));
+            Assert.That(Rlp.Encode(chainLevelInfo).Bytes, Is.EqualTo(expected));
+            Assert.That(((ReadOnlySpan<byte>)pooled).ToArray(), Is.EqualTo(expected));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> EncodeCases()
+    {
+        (string Name, BlockInfo[] BlockInfos)[] sets =
+        [
+            ("0 mixed entries", MixedBlockInfos(0)),
+            ("1 mixed entry", MixedBlockInfos(1)),
+            ("2 mixed entries", MixedBlockInfos(2)),
+            ("5 mixed entries", MixedBlockInfos(5)),
+            ("55 bytes of entries, short inner prefix in long outer prefix", BlockInfosWithTotalDifficultyBit(1, 151)),
+            ("56 bytes of entries, long inner prefix", BlockInfosWithTotalDifficultyBit(1, 159)),
+            ("255 bytes of entries, one-byte inner length in two-byte outer length", BlockInfosWithTotalDifficultyBit(5, 112))
+        ];
+
+        foreach ((string name, BlockInfo[] blockInfos) in sets)
+        {
+            yield return new TestCaseData(blockInfos, false).SetArgDisplayNames(name, "not on main chain");
+            yield return new TestCaseData(blockInfos, true).SetArgDisplayNames(name, "on main chain");
+        }
+    }
+
+    private static BlockInfo[] MixedBlockInfos(int blockCount)
+    {
+        BlockInfo[] blockInfos = new BlockInfo[blockCount];
+        for (int i = 0; i < blockCount; i++)
+        {
+            BlockMetadata metadata = i % 3 == 0 ? BlockMetadata.None : BlockMetadata.Finalized | BlockMetadata.BeaconMainChain;
+            blockInfos[i] = new BlockInfo(TestItem.Keccaks[i], new UInt256((ulong)i * 1_000_000_007UL), metadata)
+            {
+                WasProcessed = i % 2 == 0
+            };
+        }
+
+        return blockInfos;
+    }
+
+    private static BlockInfo[] BlockInfosWithTotalDifficultyBit(int blockCount, int totalDifficultyBit)
+    {
+        BlockInfo[] blockInfos = new BlockInfo[blockCount];
+        for (int i = 0; i < blockCount; i++)
+        {
+            blockInfos[i] = new BlockInfo(TestItem.Keccaks[i], UInt256.One << totalDifficultyBit);
+        }
+
+        return blockInfos;
     }
 
     [Test]
     public void Can_handle_nulls()
     {
         Rlp rlp = Rlp.Encode((ChainLevelInfo)null!);
-        ChainLevelInfo decoded = Rlp.Decode<ChainLevelInfo>(rlp);
+        ChainLevelInfo? decoded = Rlp.Decode<ChainLevelInfo>(rlp);
         Assert.That(decoded, Is.Null);
     }
 }

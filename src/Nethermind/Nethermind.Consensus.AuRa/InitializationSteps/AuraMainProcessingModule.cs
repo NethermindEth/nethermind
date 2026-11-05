@@ -3,8 +3,8 @@
 
 using System;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Api;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
@@ -19,29 +19,24 @@ using Nethermind.TxPool;
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
 public class AuraMainProcessingModule(
-    IAbiEncoder abiEncoder,
     IGasPriceOracle gasPriceOracle,
     IReadOnlyTxProcessingEnvFactory envFactory,
     AuRaChainSpecEngineParameters chainSpecAuRa
 ) : Module, IMainProcessingModule
 {
-    protected override void Load(ContainerBuilder builder)
-    {
-        builder.AddSingleton<IAuRaValidator, AuRaNethermindApi, IWorldState, ITransactionProcessor>(CreateAuRaValidator);
-    }
+    protected override void Load(ContainerBuilder builder) => builder.AddSingleton<IAuRaValidator, AuRaNethermindApi, IWorldState, ITransactionProcessor, IReceiptStorage, IAuRaBlockFinalizationManager>(CreateAuRaValidator);
 
-    private IAuRaValidator CreateAuRaValidator(AuRaNethermindApi api, IWorldState worldState, ITransactionProcessor transactionProcessor)
+    private IAuRaValidator CreateAuRaValidator(AuRaNethermindApi api, IWorldState worldState, ITransactionProcessor transactionProcessor, IReceiptStorage receiptStorage, IAuRaBlockFinalizationManager finalizationManager)
     {
 
         IAuRaValidator validator = new AuRaValidatorFactory(
-                abiEncoder,
                 worldState,
                 transactionProcessor,
                 api.BlockTree,
                 envFactory.Create(),
-                api.ReceiptStorage,
+                receiptStorage,
                 api.ValidatorStore,
-                api.FinalizationManager,
+                finalizationManager,
                 new TxPoolSender(api.TxPool, new TxSealer(api.EngineSigner, api.Timestamper), api.NonceManager, api.EthereumEcdsa),
                 api.TxPool,
                 api.Config<IBlocksConfig>(),
@@ -52,6 +47,8 @@ public class AuraMainProcessingModule(
                 api.ReportingContractValidatorCache,
                 chainSpecAuRa.PosdaoTransition)
             .CreateValidatorProcessor(chainSpecAuRa.Validators, api.BlockTree.Head?.Header);
+
+        api.AuraStatefulComponents.MainProcessingReportingValidator = validator.GetReportingValidator();
 
         if (validator is IDisposable disposableValidator)
         {

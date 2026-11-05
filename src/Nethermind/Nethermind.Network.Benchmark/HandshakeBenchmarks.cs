@@ -23,15 +23,15 @@ namespace Nethermind.Network.Benchmarks
 
             _messageSerializationService = new MessageSerializationService(
                 SerializerInfo.Create(new AuthMessageSerializer()),
-                SerializerInfo.Create(new AuthEip8MessageSerializer(new Eip8MessagePad(_testRandom))),
+                SerializerInfo.Create(new AuthEip8MessageSerializer()),
                 SerializerInfo.Create(new AckMessageSerializer()),
-                SerializerInfo.Create(new AckEip8MessageSerializer(new Eip8MessagePad(_testRandom)))
+                SerializerInfo.Create(new AckEip8MessageSerializer())
             );
 
             _eciesCipher = new EciesCipher(_trueCryptoRandom); // TODO: provide a separate test random with specific IV and ephemeral key for testing
 
-            _initiatorService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyA, LimboLogs.Instance);
-            _recipientService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyB, LimboLogs.Instance);
+            _initiatorService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyA, NullLogManager.Instance);
+            _recipientService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyB, NullLogManager.Instance);
         }
 
         private class BenchmarkTestRandom : ICryptoRandom
@@ -61,15 +61,14 @@ namespace Nethermind.Network.Benchmarks
                 return (byte[])responses[_i].Clone();
             }
 
-            public void GenerateRandomBytes(Span<byte> bytes)
-            {
-                GenerateRandomBytes(bytes.Length).CopyTo(bytes);
-            }
+            public void GenerateRandomBytes(Span<byte> bytes) => GenerateRandomBytes(bytes.Length).CopyTo(bytes);
 
-            public int NextInt(int max)
-            {
-                return max / 2;
-            }
+            public int NextInt(int max) => max / 2;
+
+            /// <summary>
+            /// Restarts the sequence, so that each handshake gets the responses in the order listed.
+            /// </summary>
+            public void Reset() => _i = -1;
 
             public void Dispose()
             {
@@ -81,7 +80,7 @@ namespace Nethermind.Network.Benchmarks
 
         private IMessageSerializationService _messageSerializationService;
 
-        private ICryptoRandom _testRandom;
+        private BenchmarkTestRandom _testRandom;
 
         private ICryptoRandom _trueCryptoRandom;
 
@@ -99,19 +98,14 @@ namespace Nethermind.Network.Benchmarks
 
         private void Auth()
         {
+            _testRandom.Reset();
             _initiatorHandshake = new EncryptionHandshake(); // 80B
             _auth = _initiatorService.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake); // 64B
         }
 
-        private void Ack()
-        {
-            _ack = _recipientService.Ack(new EncryptionHandshake(), _auth);
-        }
+        private void Ack() => _ack = _recipientService.Ack(new EncryptionHandshake(), _auth);
 
-        private void Agree()
-        {
-            _initiatorService.Agree(_initiatorHandshake, _ack);
-        }
+        private void Agree() => _initiatorService.Agree(_initiatorHandshake, _ack);
 
         [Benchmark(Baseline = true)]
         public void Current()
@@ -122,10 +116,7 @@ namespace Nethermind.Network.Benchmarks
         }
 
         [Benchmark]
-        public void CurrentAuth()
-        {
-            Auth();
-        }
+        public void CurrentAuth() => Auth();
 
         [Benchmark]
         public void CurrentAuthAck()

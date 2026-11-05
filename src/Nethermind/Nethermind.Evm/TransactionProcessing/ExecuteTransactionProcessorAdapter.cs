@@ -11,6 +11,7 @@ namespace Nethermind.Evm.TransactionProcessing
     {
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
             transactionProcessor.Execute(transaction, txTracer);
+
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
     }

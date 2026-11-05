@@ -1,10 +1,12 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
@@ -19,13 +21,16 @@ namespace Nethermind.Specs.ChainSpecStyle;
 /// Loader for Geth-style genesis.json files as defined in EIP-7949.
 /// Converts Geth-style genesis format to Nethermind's ChainSpec format.
 /// </summary>
-public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
+public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManager = null) : IChainSpecLoader
 {
+    private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<GethGenesisLoader>();
+
     public ChainSpec Load(Stream streamData)
     {
         try
         {
-            GethGenesisJson gethGenesis = serializer.Deserialize<GethGenesisJson>(streamData);
+            GethGenesisJson? gethGenesis = serializer.Deserialize<GethGenesisJson>(streamData);
+            ArgumentNullException.ThrowIfNull(gethGenesis);
             return ConvertToChainSpec(gethGenesis);
         }
         catch (Exception e)
@@ -37,53 +42,64 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
     private ChainSpec ConvertToChainSpec(GethGenesisJson gethGenesisJson)
     {
         ArgumentNullException.ThrowIfNull(gethGenesisJson);
-        ArgumentNullException.ThrowIfNull(gethGenesisJson.Config);
+        GethGenesisConfigJson config = gethGenesisJson.Config
+            ?? throw new ArgumentNullException(nameof(gethGenesisJson.Config));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(config.MinHistoryRetentionEpochs ?? 0, (ulong)uint.MaxValue, nameof(config.MinHistoryRetentionEpochs));
 
         ChainSpec chainSpec = new()
         {
-            ChainId = gethGenesisJson.Config.ChainId,
-            NetworkId = gethGenesisJson.Config.ChainId
+            Name = gethGenesisJson.Name,
+            Bootnodes = NetworkNode.ParseNodes(gethGenesisJson.Bootnodes, _logger),
+            ChainId = config.ChainId,
+            NetworkId = config.ChainId
         };
 
-        LoadGenesis(gethGenesisJson, chainSpec);
-        LoadEngine(gethGenesisJson, chainSpec);
+        LoadGenesis(gethGenesisJson, config, chainSpec);
+        LoadEngine(config, chainSpec);
         LoadAllocations(gethGenesisJson, chainSpec);
-        LoadParameters(gethGenesisJson, chainSpec);
+        LoadParameters(config, chainSpec);
         LoadTransitions(chainSpec);
 
         return chainSpec;
     }
 
-    private void LoadEngine(GethGenesisJson gethGenesis, ChainSpec chainSpec)
+    private void LoadEngine(GethGenesisConfigJson config, ChainSpec chainSpec)
     {
-        chainSpec.EngineChainSpecParametersProvider = new GethGenesisEngineParametersProvider(gethGenesis.Config);
+        chainSpec.EngineChainSpecParametersProvider = new GethGenesisEngineParametersProvider(config);
         chainSpec.SealEngineType = chainSpec.EngineChainSpecParametersProvider.SealEngineType;
     }
 
-    private void LoadParameters(GethGenesisJson gethGenesis, ChainSpec chainSpec)
+    private void LoadParameters(GethGenesisConfigJson config, ChainSpec chainSpec)
     {
-        GethGenesisConfigJson config = gethGenesis.Config;
-
-        SortedSet<BlobScheduleSettings> blobSchedule = [];
-        if (config.BlobSchedule is not null)
+        Dictionary<ulong, OrderedBlobScheduleSettings> blobSchedulesByTimestamp = [];
+        IReadOnlyDictionary<string, ulong>? timestamps = ((IHasNamedForks)config).NamedForkTimestamps;
+        if (config.BlobSchedule is not null && timestamps is not null)
         {
             foreach ((string forkName, GethBlobScheduleEntry blobSettings) in config.BlobSchedule)
             {
-                ulong? timestamp = GetHardforkTimestamp(config, forkName);
+                if (!_blobScheduleForks.TryGetValue(forkName, out BlobScheduleFork fork)) continue;
+                if (!timestamps.TryGetValue(forkName, out ulong timestamp)) continue;
 
-                if (timestamp is null)
+                BlobScheduleSettings settings = new()
                 {
-                    continue;
-                }
-
-                blobSchedule.Add(new BlobScheduleSettings
-                {
-                    Timestamp = timestamp.Value,
+                    Timestamp = timestamp,
                     Target = blobSettings.Target,
                     Max = blobSettings.Max,
                     BaseFeeUpdateFraction = blobSettings.BaseFeeUpdateFraction
-                });
+                };
+
+                if (!blobSchedulesByTimestamp.TryGetValue(timestamp, out OrderedBlobScheduleSettings existing)
+                    || fork.Order > existing.ForkOrder)
+                {
+                    blobSchedulesByTimestamp[timestamp] = new OrderedBlobScheduleSettings(fork.Order, settings);
+                }
             }
+        }
+
+        SortedSet<BlobScheduleSettings> blobSchedule = [];
+        foreach (KeyValuePair<ulong, OrderedBlobScheduleSettings> schedule in blobSchedulesByTimestamp)
+        {
+            blobSchedule.Add(schedule.Value.Settings);
         }
 
         chainSpec.Parameters = new ChainParameters
@@ -91,7 +107,8 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             GasLimitBoundDivisor = 0x400,
             MaximumExtraDataSize = 32,
             MinGasLimit = 5000,
-            MinHistoryRetentionEpochs = 82125,
+            MinHistoryRetentionEpochs = config.MinHistoryRetentionEpochs ?? HistoryRetentionConstants.MinEpochsForBlockRequests,
+            MinBalRetentionEpochs = HistoryRetentionConstants.HistoryPruneEpochs,
 
             Eip7Transition = config.HomesteadBlock ?? 0,
 
@@ -109,19 +126,17 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip140Transition = config.ByzantiumBlock,
             Eip211Transition = config.ByzantiumBlock,
 
-            ValidateChainIdTransition = config.Eip155Block ?? config.SpuriousDragonBlock,
-
             Eip214Transition = config.ByzantiumBlock,
             Eip658Transition = config.ByzantiumBlock,
 
             Eip145Transition = config.ConstantinopleBlock,
 
-            ValidateReceiptsTransition = config.ByzantiumBlock,
             Eip1014Transition = config.ConstantinopleBlock,
             Eip1052Transition = config.ConstantinopleBlock,
             Eip1283Transition = config.ConstantinopleBlock,
 
-            Eip1283DisableTransition = config.PetersburgBlock,
+            // geth treats Petersburg as active from Constantinople when petersburgBlock is absent (IsPetersburg in params/config.go).
+            Eip1283DisableTransition = config.PetersburgBlock ?? config.ConstantinopleBlock,
 
             Eip152Transition = config.IstanbulBlock,
             Eip1108Transition = config.IstanbulBlock,
@@ -138,88 +153,64 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip3198Transition = config.LondonBlock,
             Eip3529Transition = config.LondonBlock,
             Eip3541Transition = config.LondonBlock,
-            Eip3607Transition = config.LondonBlock,
+            // Geth applies EIP-3607 throughout chain history.
+            Eip3607Transition = 0,
 
             MergeForkIdTransition = config.MergeNetsplitBlock,
             TerminalTotalDifficulty = config.TerminalTotalDifficulty,
+            BeaconChainGenesisTimestamp = config.BeaconChainGenesisTimestamp,
 
-            Eip3651TransitionTimestamp = config.ShanghaiTime,
-            Eip3855TransitionTimestamp = config.ShanghaiTime,
-            Eip3860TransitionTimestamp = config.ShanghaiTime,
-            Eip4895TransitionTimestamp = config.ShanghaiTime,
-
-            Eip1153TransitionTimestamp = config.CancunTime,
-            Eip4844TransitionTimestamp = config.CancunTime,
-            Eip4788TransitionTimestamp = config.CancunTime,
+            // Post-merge per-EIP timestamp fan-out is driven off `HardforkLabels.All` below; only
+            // the side-effects that don't fit the bulk-label pattern stay here as conditional gates.
             Eip4788ContractAddress = config.CancunTime is null ? null : Eip4788Constants.BeaconRootsAddress,
-            Eip5656TransitionTimestamp = config.CancunTime,
-            Eip6780TransitionTimestamp = config.CancunTime,
-
-            Eip2537TransitionTimestamp = config.PragueTime,
-            Eip2935TransitionTimestamp = config.PragueTime,
             Eip2935ContractAddress = config.PragueTime is null ? null : Eip2935Constants.BlockHashHistoryAddress,
-
-            Eip6110TransitionTimestamp = config.PragueTime,
-            DepositContractAddress = config.PragueTime is null ? null : config.DepositContractAddress ?? Eip6110Constants.MainnetDepositContractAddress,
-
-            Eip7002TransitionTimestamp = config.PragueTime,
+            DepositContractAddress = config.PragueTime is null ? null : config.DepositContractAddress ?? Address.Zero,
             Eip7002ContractAddress = config.PragueTime is null ? null : Eip7002Constants.WithdrawalRequestPredeployAddress,
-
-            Eip7251TransitionTimestamp = config.PragueTime,
             Eip7251ContractAddress = config.PragueTime is null ? null : Eip7251Constants.ConsolidationRequestPredeployAddress,
-
-            Eip7623TransitionTimestamp = config.PragueTime,
-            Eip7702TransitionTimestamp = config.PragueTime,
-
-            Eip7594TransitionTimestamp = config.OsakaTime,
-            Eip7823TransitionTimestamp = config.OsakaTime,
-            Eip7825TransitionTimestamp = config.OsakaTime,
-            Eip7883TransitionTimestamp = config.OsakaTime,
-            Eip7918TransitionTimestamp = config.OsakaTime,
-            Eip7934TransitionTimestamp = config.OsakaTime,
             Eip7934MaxRlpBlockSize = Eip7934Constants.DefaultMaxRlpBlockSize,
-            Eip7939TransitionTimestamp = config.OsakaTime,
-            Eip7951TransitionTimestamp = config.OsakaTime,
-
-            Eip7708TransitionTimestamp = config.AmsterdamTime,
-            Eip7778TransitionTimestamp = config.AmsterdamTime,
-            Eip7843TransitionTimestamp = config.AmsterdamTime,
-            Eip7928TransitionTimestamp = config.AmsterdamTime,
-            Eip7954TransitionTimestamp = config.AmsterdamTime,
-            Eip8024TransitionTimestamp = config.AmsterdamTime,
-            Eip8037TransitionTimestamp = config.AmsterdamTime,
+            ZeroNonceStorageAccounts = config.ZeroNonceStorageAccounts,
 
             BlobSchedule = blobSchedule
         };
+
+        // Fan out Shanghai/Cancun/Prague/Osaka/Amsterdam timestamps via the shared HardforkLabels
+        // table — same source of truth as the Parity loader, driven by Forks/*.cs.
+        HardforkLabels.ExpandAll(chainSpec.Parameters, config);
     }
 
-    private readonly Dictionary<string, Func<GethGenesisConfigJson, ulong?>> _hardforkTimestampGetters =
+    /// <summary>Precedence of <paramref name="forkName"/>'s <c>blobSchedule</c> entry over others at the same timestamp; <c>null</c> when the key is ignored.</summary>
+    internal static int? BlobScheduleOrder(string forkName) =>
+        _blobScheduleForks.TryGetValue(forkName, out BlobScheduleFork fork) ? fork.Order : null;
+
+    private readonly record struct BlobScheduleFork(int Order);
+
+    private readonly record struct OrderedBlobScheduleSettings(int ForkOrder, BlobScheduleSettings Settings);
+
+    private static readonly Dictionary<string, BlobScheduleFork> _blobScheduleForks =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            [nameof(Amsterdam)] = static c => c.AmsterdamTime,
-            [nameof(Cancun)] = static c => c.CancunTime,
-            [nameof(Prague)] = static c => c.PragueTime,
-            [nameof(Osaka)] = static c => c.OsakaTime,
-            [nameof(BPO1)] = static c => c.Bpo1Time,
-            [nameof(BPO2)] = static c => c.Bpo2Time,
-            [nameof(BPO3)] = static c => c.Bpo3Time,
-            [nameof(BPO4)] = static c => c.Bpo4Time,
-            [nameof(BPO5)] = static c => c.Bpo5Time,
+            [nameof(Cancun)] = new(0),
+            [nameof(Prague)] = new(1),
+            [nameof(Osaka)] = new(2),
+            [nameof(BPO1)] = new(3),
+            [nameof(BPO2)] = new(4),
+            [nameof(Amsterdam)] = new(5),
+            [nameof(BPO3)] = new(6),
+            [nameof(BPO4)] = new(7),
+            [nameof(BPO5)] = new(8),
+            [nameof(Bogota)] = new(9),
         };
 
-    private ulong? GetHardforkTimestamp(GethGenesisConfigJson config, string hardforkName) =>
-        _hardforkTimestampGetters.TryGetValue(hardforkName, out Func<GethGenesisConfigJson, ulong?> getter) ? getter(config) : null;
-
-    private static void LoadGenesis(GethGenesisJson gethGenesisJson, ChainSpec chainSpec)
+    private static void LoadGenesis(GethGenesisJson gethGenesisJson, GethGenesisConfigJson config, ChainSpec chainSpec)
     {
-        UInt256 nonce = gethGenesisJson.Nonce;
+        ulong nonce = gethGenesisJson.Nonce;
         Hash256 mixHash = gethGenesisJson.MixHash ?? Keccak.Zero;
         ulong timestamp = gethGenesisJson.Timestamp ?? 0;
         UInt256 difficulty = gethGenesisJson.Difficulty;
         byte[] extraData = gethGenesisJson.ExtraData ?? [];
-        UInt256 gasLimit = gethGenesisJson.GasLimit ?? 0;
+        ulong gasLimit = gethGenesisJson.GasLimit ?? 0;
         Address beneficiary = gethGenesisJson.Coinbase ?? Address.Zero;
-        UInt256 baseFee = gethGenesisJson.Config.LondonBlock switch
+        UInt256 baseFee = config.LondonBlock switch
         {
             null => gethGenesisJson.BaseFeePerGas ?? UInt256.Zero,
             0 => gethGenesisJson.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee,
@@ -232,7 +223,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             beneficiary,
             difficulty,
             0,
-            (long)gasLimit,
+            gasLimit,
             timestamp,
             extraData)
         {
@@ -240,7 +231,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             Hash = Keccak.Zero, // need to run the block to know the actual hash
             Bloom = Bloom.Empty,
             MixHash = mixHash,
-            Nonce = (ulong)nonce,
+            Nonce = nonce,
             ReceiptsRoot = Keccak.EmptyTreeHash,
             StateRoot = Keccak.EmptyTreeHash,
             TxRoot = Keccak.EmptyTreeHash,
@@ -249,7 +240,6 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
 
         static bool IsForkActive(ulong? forkTime, ulong timestamp) => forkTime <= timestamp;
 
-        GethGenesisConfigJson config = gethGenesisJson.Config;
         bool isShanghaiActive = IsForkActive(config.ShanghaiTime, genesisHeader.Timestamp);
         bool isCancunActive = IsForkActive(config.CancunTime, genesisHeader.Timestamp);
         bool isPragueActive = IsForkActive(config.PragueTime, genesisHeader.Timestamp);
@@ -275,10 +265,9 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
         if (isAmsterdamActive)
         {
             genesisHeader.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
-            genesisHeader.SlotNumber = 0;
+            genesisHeader.SlotNumber = gethGenesisJson.SlotNumber ?? 0;
         }
 
-        chainSpec.Bootnodes = [];
         chainSpec.Genesis = isAmsterdamActive
             ? new Block(genesisHeader, [], [], [], new())
             : isShanghaiActive
@@ -307,7 +296,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
         chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;
         chainSpec.ConstantinopleBlockNumber = chainSpec.Parameters.Eip145Transition;
-        chainSpec.ConstantinopleFixBlockNumber = chainSpec.Parameters.Eip1283DisableTransition ?? chainSpec.Parameters.Eip145Transition;
+        chainSpec.ConstantinopleFixBlockNumber = chainSpec.Parameters.Eip1283DisableTransition;
         chainSpec.IstanbulBlockNumber = chainSpec.Parameters.Eip2200Transition;
         chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition;
         chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition;
@@ -383,29 +372,27 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
         private static readonly UInt256 FiveEth = new(5_000_000_000_000_000_000ul);
         private static readonly UInt256 ThreeEth = new(3_000_000_000_000_000_000ul);
         private static readonly UInt256 TwoEth = new(2_000_000_000_000_000_000ul);
-        private readonly long? _arrowGlacierTransition = config.ArrowGlacierBlock;
-        private readonly long? _grayGlacierTransition = config.GrayGlacierBlock;
-        private readonly long? _muirGlacierTransition = config.MuirGlacierBlock;
 
-        public string? EngineName => SealEngineType;
-        public string? SealEngineType => Core.SealEngineType.Ethash;
-        public long HomesteadTransition { get; } = config.HomesteadBlock ?? 0;
-        public long? DaoHardforkTransition { get; } = config.DaoForkSupport == false ? null : config.DaoForkBlock;
+        public string EngineName => Core.SealEngineType.Ethash;
+        public string SealEngineType => Core.SealEngineType.Ethash;
+
+        public ulong HomesteadTransition { get; } = config.HomesteadBlock ?? 0;
+        public ulong? DaoHardforkTransition { get; } = config.DaoForkBlock;
         public Address? DaoHardforkBeneficiary { get; }
         public Address[] DaoHardforkAccounts { get; } = [];
-        public long? Eip100bTransition { get; } = config.ByzantiumBlock;
-        public long? FixedDifficulty { get; }
-        public long DifficultyBoundDivisor => 0x0800;
+        public ulong? Eip100bTransition { get; } = config.ByzantiumBlock;
+        public ulong? FixedDifficulty { get; }
+        public ulong DifficultyBoundDivisor => 0x0800;
         public long DurationLimit => 13;
         public UInt256 MinimumDifficulty => UInt256.Zero;
-        public SortedDictionary<long, UInt256>? BlockReward { get; } = BuildBlockRewardSchedule(config);
-        public IDictionary<long, long>? DifficultyBombDelays { get; } = BuildDifficultyBombDelays(config);
+        public SortedDictionary<ulong, UInt256>? BlockReward { get; } = BuildBlockRewardSchedule(config);
+        public IDictionary<ulong, ulong>? DifficultyBombDelays { get; } = BuildDifficultyBombDelays(config);
 
-        public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
+        public void AddTransitions(SortedSet<ulong> blockNumbers, SortedSet<ulong> timestamps)
         {
             if (DifficultyBombDelays is not null)
             {
-                foreach ((long blockNumber, _) in DifficultyBombDelays)
+                foreach ((ulong blockNumber, _) in DifficultyBombDelays)
                 {
                     blockNumbers.Add(blockNumber);
                 }
@@ -413,7 +400,7 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
 
             if (BlockReward is not null)
             {
-                foreach ((long blockNumber, _) in BlockReward)
+                foreach ((ulong blockNumber, _) in BlockReward)
                 {
                     blockNumbers.Add(blockNumber);
                 }
@@ -431,11 +418,11 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
             }
         }
 
-        public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
+        public void ApplyToReleaseSpec(ReleaseSpec spec, ulong startBlock, ulong? startTimestamp)
         {
             if (BlockReward is not null)
             {
-                foreach ((long blockNumber, UInt256 blockReward) in BlockReward)
+                foreach ((ulong blockNumber, UInt256 blockReward) in BlockReward)
                 {
                     if (blockNumber <= startBlock)
                     {
@@ -446,7 +433,7 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
 
             if (DifficultyBombDelays is not null)
             {
-                foreach ((long blockNumber, long bombDelay) in DifficultyBombDelays)
+                foreach ((ulong blockNumber, ulong bombDelay) in DifficultyBombDelays)
                 {
                     if (blockNumber <= startBlock)
                     {
@@ -466,15 +453,15 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
         {
             chainSpec.HomesteadBlockNumber = HomesteadTransition;
             chainSpec.DaoForkBlockNumber = DaoHardforkTransition;
-            chainSpec.MuirGlacierNumber = _muirGlacierTransition;
-            chainSpec.ArrowGlacierBlockNumber = _arrowGlacierTransition;
-            chainSpec.GrayGlacierBlockNumber = _grayGlacierTransition;
+            chainSpec.MuirGlacierNumber = config.MuirGlacierBlock;
+            chainSpec.ArrowGlacierBlockNumber = config.ArrowGlacierBlock;
+            chainSpec.GrayGlacierBlockNumber = config.GrayGlacierBlock;
         }
 
-        private static SortedDictionary<long, UInt256> BuildBlockRewardSchedule(GethGenesisConfigJson config)
+        private static SortedDictionary<ulong, UInt256> BuildBlockRewardSchedule(GethGenesisConfigJson config)
         {
-            SortedDictionary<long, UInt256> blockReward = [];
-            long? constantinopleTransition = GetConstantinopleTransition(config);
+            SortedDictionary<ulong, UInt256> blockReward = [];
+            ulong? constantinopleTransition = GetConstantinopleTransition(config);
 
             blockReward[0] = constantinopleTransition == 0 ? TwoEth
                 : config.ByzantiumBlock == 0 ? ThreeEth
@@ -493,36 +480,42 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
             return blockReward;
         }
 
-        private static SortedDictionary<long, long>? BuildDifficultyBombDelays(GethGenesisConfigJson config)
+        private static SortedDictionary<ulong, ulong>? BuildDifficultyBombDelays(GethGenesisConfigJson config)
         {
             if (config.TerminalTotalDifficulty is not null && config.TerminalTotalDifficulty.Value == UInt256.Zero)
             {
                 return null;
             }
 
-            SortedDictionary<long, long> bombDelays = [];
-            AddBombDelay(bombDelays, config.ByzantiumBlock, 3_000_000);
-            AddBombDelay(bombDelays, GetConstantinopleTransition(config), 2_000_000);
-            AddBombDelay(bombDelays, config.MuirGlacierBlock, 4_000_000);
-            AddBombDelay(bombDelays, config.ArrowGlacierBlock, 700_000);
-            AddBombDelay(bombDelays, config.GrayGlacierBlock, 1_000_000);
+            SortedDictionary<ulong, ulong> bombDelays = [];
+            ulong previousDelay = 0;
+            AddBombDelay(bombDelays, config.ByzantiumBlock, 3_000_000, ref previousDelay);
+            AddBombDelay(bombDelays, GetConstantinopleTransition(config), 5_000_000, ref previousDelay);
+            AddBombDelay(bombDelays, config.MuirGlacierBlock, 9_000_000, ref previousDelay);
+            AddBombDelay(bombDelays, config.LondonBlock, 9_700_000, ref previousDelay);
+            AddBombDelay(bombDelays, config.ArrowGlacierBlock, 10_700_000, ref previousDelay);
+            AddBombDelay(bombDelays, config.GrayGlacierBlock, 11_400_000, ref previousDelay);
 
             return bombDelays.Count == 0 ? null : bombDelays;
         }
 
-        private static void AddBombDelay(SortedDictionary<long, long> bombDelays, long? transition, long delay)
+        private static void AddBombDelay(SortedDictionary<ulong, ulong> bombDelays, ulong? transition, ulong cumulativeDelay, ref ulong previousDelay)
         {
             if (transition is not null)
             {
-                bombDelays[transition.Value] = !bombDelays.TryGetValue(transition.Value, out long existingDelay)
+                ulong delay = cumulativeDelay - previousDelay;
+                bombDelays[transition.Value] = !bombDelays.TryGetValue(transition.Value, out ulong existingDelay)
                     ? delay
                     : existingDelay + delay;
+                previousDelay = cumulativeDelay;
             }
         }
 
-        private static long? GetConstantinopleTransition(GethGenesisConfigJson config) =>
-            config.ConstantinopleBlock is null ? config.PetersburgBlock
-            : config.PetersburgBlock is null ? config.ConstantinopleBlock
-            : Math.Min(config.ConstantinopleBlock.Value, config.PetersburgBlock.Value);
+        private static ulong? GetConstantinopleTransition(GethGenesisConfigJson config)
+        {
+            if (config.ConstantinopleBlock is null) return config.PetersburgBlock;
+            if (config.PetersburgBlock is null) return config.ConstantinopleBlock;
+            return Math.Min(config.ConstantinopleBlock.Value, config.PetersburgBlock.Value);
+        }
     }
 }

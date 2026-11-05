@@ -2,37 +2,26 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
-using RocksDbSharp;
+using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks;
 
-internal class RocksdbSortedView : ISortedView
+internal class RocksdbSortedView(Iterator iterator, ReadOptions readOptions) : ISeekableSortedView
 {
-    private readonly Iterator _iterator;
-    private readonly IntPtr _lowerBound;
-    private readonly IntPtr _upperBound;
+    private readonly Iterator _iterator = iterator;
+    private readonly ReadOptions _readOptions = readOptions;
     private bool _started = false;
 
-    public RocksdbSortedView(Iterator iterator, IntPtr lowerBound = default, IntPtr upperBound = default)
-    {
-        _iterator = iterator;
-        _lowerBound = lowerBound;
-        _upperBound = upperBound;
-    }
+    protected ReadOptions ReadOptions => _readOptions;
 
+    protected void Restart() => _started = false;
+
+    // The read options own the iterate-bound buffers, so the iterator must go first.
     public void Dispose()
     {
         _iterator.Dispose();
-        if (_lowerBound != IntPtr.Zero)
-        {
-            Marshal.FreeHGlobal(_lowerBound);
-        }
-        if (_upperBound != IntPtr.Zero)
-        {
-            Marshal.FreeHGlobal(_upperBound);
-        }
+        _readOptions.Dispose();
     }
 
     public bool StartBefore(ReadOnlySpan<byte> value)
@@ -55,6 +44,13 @@ internal class RocksdbSortedView : ISortedView
         {
             _iterator.Next();
         }
+        return _iterator.Valid();
+    }
+
+    public bool SeekTo(ReadOnlySpan<byte> key)
+    {
+        _iterator.Seek(key);
+        _started = true;
         return _iterator.Valid();
     }
 

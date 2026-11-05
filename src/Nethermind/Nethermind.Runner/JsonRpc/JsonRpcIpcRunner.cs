@@ -17,34 +17,25 @@ using Nethermind.Sockets;
 
 namespace Nethermind.Runner.JsonRpc
 {
-    public class JsonRpcIpcRunner : IDisposable
+    public class JsonRpcIpcRunner(
+        IJsonRpcProcessor jsonRpcProcessor,
+        IConfigProvider configurationProvider,
+        ILogManager logManager,
+        IJsonRpcLocalStats jsonRpcLocalStats,
+        IJsonSerializer jsonSerializer,
+        IFileSystem fileSystem) : IDisposable
     {
         private const int OperationCancelledError = 125;
-        private readonly ILogger _logger;
-        private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
-        private readonly IJsonSerializer _jsonSerializer;
-        private readonly IFileSystem _fileSystem;
-        private readonly IJsonRpcProcessor _jsonRpcProcessor;
-        private readonly IJsonRpcConfig _jsonRpcConfig;
+        private static readonly TimeSpan AcceptRetryDelay = TimeSpan.FromMilliseconds(100);
+        private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcIpcRunner>();
+        private readonly IJsonRpcLocalStats _jsonRpcLocalStats = jsonRpcLocalStats;
+        private readonly IJsonSerializer _jsonSerializer = jsonSerializer;
+        private readonly IFileSystem _fileSystem = fileSystem;
+        private readonly IJsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
+        private readonly IJsonRpcConfig _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
 
         private string _path;
         private Socket _server;
-
-        public JsonRpcIpcRunner(
-            IJsonRpcProcessor jsonRpcProcessor,
-            IConfigProvider configurationProvider,
-            ILogManager logManager,
-            IJsonRpcLocalStats jsonRpcLocalStats,
-            IJsonSerializer jsonSerializer,
-            IFileSystem fileSystem)
-        {
-            _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
-            _jsonRpcProcessor = jsonRpcProcessor;
-            _logger = logManager.GetClassLogger<JsonRpcIpcRunner>();
-            _jsonRpcLocalStats = jsonRpcLocalStats;
-            _jsonSerializer = jsonSerializer;
-            _fileSystem = fileSystem;
-        }
 
         public void Start(CancellationToken cancellationToken)
         {
@@ -52,7 +43,7 @@ namespace Nethermind.Runner.JsonRpc
 
             if (!string.IsNullOrEmpty(_path))
             {
-                if (_logger.IsInfo) _logger.Info($"Starting the JSON-RPC over an IPC service: {_path}");
+                if (_logger.IsInfo) _logger.Info($"Starting the JSON-RPC over an IPC service: {_path:hide}");
 
                 Task.Factory.StartNew(_ => StartServer(_path, cancellationToken), cancellationToken, TaskCreationOptions.LongRunning);
             }
@@ -66,20 +57,27 @@ namespace Nethermind.Runner.JsonRpc
 
                 _server = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
                 _server.Bind(new UnixDomainSocketEndPoint(path));
+                TryRestrictSocketPermissions(path);
                 _server.Listen(0);
             }
             catch (Exception ex)
             {
-                if (_logger.IsError) _logger.Error($"Failed to start IPC server at {path}.", ex);
+                if (_logger.IsError) _logger.Error($"Failed to start IPC server at {path:hide}.", SensitiveLogMasking.Enabled ? null : ex);
                 return;
             }
 
-            while (true)
+            try
             {
-                if (_logger.IsInfo) _logger.Info($"Waiting for an IPC connection...");
+                await AcceptConnectionsAsync(_server.AcceptAsync, OnAccepted, _logger, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // The task from Task.Factory.StartNew is discarded, so this is the only place the failure surfaces
+                if (_logger.IsError) _logger.Error("IPC server stopped accepting connections.", ex);
+            }
 
-                Socket socket = await _server.AcceptAsync(cancellationToken);
-
+            void OnAccepted(Socket socket)
+            {
                 socket.ReceiveTimeout = _jsonRpcConfig.Timeout;
                 socket.SendTimeout = _jsonRpcConfig.Timeout;
 
@@ -87,8 +85,95 @@ namespace Nethermind.Runner.JsonRpc
             }
         }
 
-        private async Task HandleIpcConnection(Socket socket, CancellationToken cancellationToken)
+        internal static async Task AcceptConnectionsAsync(
+            Func<CancellationToken, ValueTask<Socket>> accept,
+            Action<Socket> onAccepted,
+            ILogger logger,
+            CancellationToken cancellationToken)
         {
+            // Set while accept keeps failing, so a persistent error is logged once instead of on every retry
+            SocketError? acceptError = null;
+            while (true)
+            {
+                if (acceptError is null && logger.IsInfo) logger.Info($"Waiting for an IPC connection...");
+
+                Socket socket;
+                try
+                {
+                    socket = await accept(cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                // The listener was disposed on shutdown
+                catch (Exception ex) when (ex is ObjectDisposedException or SocketException { SocketErrorCode: SocketError.OperationAborted })
+                {
+                    return;
+                }
+                catch (SocketException ex)
+                {
+                    if (ex.SocketErrorCode != acceptError && logger.IsWarn) logger.Warn($"Failed to accept an IPC connection ({ex.SocketErrorCode}), retrying.");
+                    acceptError = ex.SocketErrorCode;
+
+                    // Avoids a busy loop while the error persists, e.g. when out of file descriptors
+                    try
+                    {
+                        await Task.Delay(AcceptRetryDelay, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+
+                    continue;
+                }
+
+                acceptError = null;
+                onAccepted(socket);
+            }
+        }
+
+        private void TryRestrictSocketPermissions(string path)
+        {
+            if (!_jsonRpcConfig.RestrictIpcSocketPermissions)
+            {
+                if (_logger.IsWarn) _logger.Warn("IPC socket permission restriction is disabled by configuration. Any local user can connect to the IPC socket.");
+                return;
+            }
+
+            try
+            {
+                if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+                {
+                    _fileSystem.File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite); // 600 (rw-------)
+
+                    if (_logger.IsTrace) _logger.Trace($"Restricted IPC socket permissions to 600 at {path:hide}.");
+                }
+                else if (OperatingSystem.IsWindows())
+                {
+                    if (_logger.IsTrace) _logger.Trace("IPC socket on Windows does not support Unix file permission bits; skipping permission restriction.");
+                }
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace("Unknown OS; skipping IPC socket permission restriction.");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to set restrictive permissions on IPC socket at {path:hide}: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.ToString())}");
+            }
+        }
+
+
+        internal async Task HandleIpcConnection(Socket socket, CancellationToken cancellationToken)
+        {
+            // The message stream does not own the socket, so the connection closes only here.
+            using Socket connection = socket;
+            JsonRpcUrl? url = _jsonRpcConfig.IpcEnabledModules is { Length: > 0 } enabledModules
+                ? new("ipc", _jsonRpcConfig.IpcUnixDomainSocketPath, 0, RpcEndpoint.IPC, isAuthenticated: true, enabledModules)
+                : null;
+
             using JsonRpcSocketsClient<IpcSocketMessageStream>? socketsClient = new(
                 string.Empty,
                 new IpcSocketMessageStream(socket),
@@ -96,8 +181,9 @@ namespace Nethermind.Runner.JsonRpc
                 _jsonRpcProcessor,
                 _jsonRpcLocalStats,
                 _jsonSerializer,
+                url,
                 maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize,
-                concurrency: _jsonRpcConfig.IpcProcessingConcurrency);
+                concurrency: JsonRpcProcessingConcurrency.ForModules(url is null ? _jsonRpcConfig.EnabledModules : url.EnabledModules, _jsonRpcConfig.IpcProcessingConcurrency));
 
             try
             {
@@ -107,11 +193,15 @@ namespace Nethermind.Runner.JsonRpc
             {
                 if (_logger.IsDebug) _logger.Debug("Connection was cancelled.");
             }
-            catch (IOException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset })
+            catch (IOException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset or SocketError.Shutdown or SocketError.ConnectionAborted })
             {
                 if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset || ex.ErrorCode == OperationCancelledError)
+            {
+                if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
+            }
+            catch (ObjectDisposedException ex) when (ex.ObjectName == typeof(IpcSocketMessageStream).FullName)
             {
                 if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
             }
@@ -136,7 +226,7 @@ namespace Nethermind.Runner.JsonRpc
             }
             catch (Exception ex)
             {
-                if (_logger.IsWarn) _logger.Warn($"Cannot delete Unix socket file at {path}. {ex.Message}");
+                if (_logger.IsWarn) _logger.Warn($"Cannot delete Unix socket file at {path:hide}. {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}");
             }
         }
 

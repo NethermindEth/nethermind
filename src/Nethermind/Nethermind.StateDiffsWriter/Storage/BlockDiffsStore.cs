@@ -1,0 +1,178 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Db;
+using Nethermind.Serialization.Rlp;
+using Nethermind.StateDiffsWriter.Data;
+
+namespace Nethermind.StateDiffsWriter.Storage;
+
+/// <summary>
+/// Thin wrapper over the two <see cref="BlockDiffsColumns"/> column families; cross-CF mutations go
+/// through <see cref="WriteBlockDiff"/> so each per-block persist lands as one atomic write batch.
+/// </summary>
+public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
+{
+    public const int BlockKeyLength = 8;
+    public const int AddressKeyLength = 32;
+    public const int SlotCountValueLength = 8;
+
+    private readonly IColumnsDb<BlockDiffsColumns> _db = db;
+    private readonly IDb _blockDiffs = db.GetColumnDb(BlockDiffsColumns.Default);
+    private readonly IDb _slotCounts = db.GetColumnDb(BlockDiffsColumns.SlotCounts);
+
+    /// <summary>Atomically persist the per-block record and the changed addresses' post-block slot counts.</summary>
+    /// <returns>Number of payload bytes written to the Default CF.</returns>
+    public int WriteBlockDiff(BlockDiffRecord record)
+    {
+        Span<byte> blockKey = stackalloc byte[BlockKeyLength];
+        BinaryPrimitives.WriteUInt64BigEndian(blockKey, (ulong)record.BlockNumber);
+
+        int length = BlockDiffRecordDecoder.Instance.GetLength(record);
+        byte[] payload = new byte[length];
+        RlpWriter writer = new(payload);
+        BlockDiffRecordDecoder.Instance.Encode(ref writer, record);
+
+        using IColumnsWriteBatch<BlockDiffsColumns> batch = _db.StartWriteBatch();
+        IWriteBatch defaultBatch = batch.GetColumnBatch(BlockDiffsColumns.Default);
+        defaultBatch.Set(blockKey, payload);
+
+        if (record.SlotCountChanges.Count > 0)
+        {
+            IWriteBatch slotBatch = batch.GetColumnBatch(BlockDiffsColumns.SlotCounts);
+            Span<byte> slotKey = stackalloc byte[AddressKeyLength];
+            Span<byte> slotValue = stackalloc byte[SlotCountValueLength];
+
+            foreach (SlotCountEntry entry in record.SlotCountChanges)
+            {
+                entry.AddressHash.Bytes.CopyTo(slotKey);
+                if (entry.NewCount == 0)
+                {
+                    // Zero count → drop the row; GetSlotCount reads a missing key as zero.
+                    slotBatch.Remove(slotKey);
+                }
+                else
+                {
+                    BinaryPrimitives.WriteUInt64BigEndian(slotValue, entry.NewCount);
+                    slotBatch.PutSpan(slotKey, slotValue);
+                }
+            }
+        }
+
+        return length;
+    }
+
+    /// <summary>
+    /// Flush the Default CF memtable so a secondary-mode reader sees the newest block. A full flush is
+    /// required (not <c>Flush(onlyWal: true)</c>): the secondary's iterator surfaces SSTs, not WAL/memtable rows.
+    /// </summary>
+    public void FlushDefault() => _blockDiffs.Flush();
+
+    public BlockDiffRecord? ReadBlockDiff(long blockNumber)
+    {
+        Span<byte> key = stackalloc byte[BlockKeyLength];
+        BinaryPrimitives.WriteUInt64BigEndian(key, (ulong)blockNumber);
+        byte[]? bytes = _blockDiffs.Get(key);
+        if (bytes is null || bytes.Length == 0) return null;
+        RlpReader ctx = new(bytes);
+        return BlockDiffRecordDecoder.Instance.Decode(ref ctx);
+    }
+
+    /// <summary>Running slot count for an address; 0 when never set or tombstoned.</summary>
+    public ulong GetSlotCount(in ValueHash256 addressHash)
+    {
+        Span<byte> key = stackalloc byte[AddressKeyLength];
+        addressHash.Bytes.CopyTo(key);
+        Span<byte> value = stackalloc byte[SlotCountValueLength];
+        int length = _slotCounts.Get(key, value);
+        if (length != SlotCountValueLength) return 0;
+        return BinaryPrimitives.ReadUInt64BigEndian(value);
+    }
+
+    /// <summary>Test-only direct slot-count override; production maintains the map via <see cref="WriteBlockDiff"/>.</summary>
+    internal void SetSlotCountForTesting(in ValueHash256 addressHash, ulong count)
+    {
+        Span<byte> key = stackalloc byte[AddressKeyLength];
+        addressHash.Bytes.CopyTo(key);
+        if (count == 0)
+        {
+            _slotCounts.Remove(key);
+            return;
+        }
+        Span<byte> value = stackalloc byte[SlotCountValueLength];
+        BinaryPrimitives.WriteUInt64BigEndian(value, count);
+        _slotCounts.PutSpan(key, value);
+    }
+
+    /// <summary>
+    /// Delete every <see cref="BlockDiffsColumns.Default"/> entry with key strictly less than
+    /// <paramref name="cutoffBlock"/>. Uses a sorted-view seek when available, else a full-scan fallback.
+    /// </summary>
+    public int PruneOlderThan(long cutoffBlock)
+    {
+        if (cutoffBlock <= 0) return 0;
+
+        Span<byte> cutoffKey = stackalloc byte[BlockKeyLength];
+        BinaryPrimitives.WriteUInt64BigEndian(cutoffKey, (ulong)cutoffBlock);
+
+        return _blockDiffs is ISortedKeyValueStore sortedStore
+            ? PruneOlderThanSeek(sortedStore, cutoffKey)
+            : PruneOlderThanFullScan(cutoffKey);
+    }
+
+    private int PruneOlderThanSeek(ISortedKeyValueStore sortedStore, ReadOnlySpan<byte> cutoffKey)
+    {
+        // GetViewBetween treats lastKey as exclusive, matching the "strictly less than cutoffBlock" contract.
+        using ISortedView view = sortedStore.GetViewBetween([], cutoffKey);
+
+        int removed = 0;
+        using IWriteBatch batch = _blockDiffs.StartWriteBatch();
+        while (view.MoveNext())
+        {
+            ReadOnlySpan<byte> key = view.CurrentKey;
+            if (key.Length != BlockKeyLength) continue;
+            batch.Remove(key);
+            removed++;
+        }
+        return removed;
+    }
+
+    private int PruneOlderThanFullScan(ReadOnlySpan<byte> cutoffKey)
+    {
+        byte[] cutoffArray = cutoffKey.ToArray();
+        int removed = 0;
+        List<byte[]> toDelete = [];
+        foreach (byte[] key in _blockDiffs.GetAllKeys(ordered: true))
+        {
+            if (key.Length != BlockKeyLength) continue;
+            if (CompareBigEndian(key, cutoffArray) >= 0) break;
+            toDelete.Add(key);
+        }
+
+        if (toDelete.Count == 0) return 0;
+
+        using IWriteBatch batch = _blockDiffs.StartWriteBatch();
+        foreach (byte[] key in toDelete)
+        {
+            batch.Remove(key);
+            removed++;
+        }
+        return removed;
+    }
+
+    private static int CompareBigEndian(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+    {
+        int len = Math.Min(a.Length, b.Length);
+        for (int i = 0; i < len; i++)
+        {
+            int diff = a[i] - b[i];
+            if (diff != 0) return diff;
+        }
+        return a.Length - b.Length;
+    }
+}
