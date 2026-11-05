@@ -1,6 +1,176 @@
 # ProfilingMcp
 
-An [MCP](https://modelcontextprotocol.io) server that lets an AI agent profile .NET processes. By default it uses EventPipe, the runtime's own diagnostics channel, for CPU samples, GC and exception events, and heap snapshots: it needs no profiler or ptrace, works inside containers, and can be repeated on a live process. JetBrains dotTrace (launching apps, exact call counts) and ClrMD dump analysis (field names) cover what EventPipe cannot. Tool results are plain-text tables an agent can read directly.
+An [MCP](https://modelcontextprotocol.io) server that lets an AI agent profile .NET processes, locally or in Docker containers. By default it uses EventPipe, the runtime's own diagnostics channel, for CPU samples, GC and exception events, and heap snapshots: it needs no profiler or ptrace, works inside containers, and can be repeated on a live process. JetBrains dotTrace (launching apps, exact call counts) and ClrMD dump analysis (field names) cover what EventPipe cannot. Tool results are plain-text tables an agent can read directly.
+
+New here? Start with [Getting started](#getting-started).
+
+## Getting started
+
+These steps take you from a fresh clone to an AI agent profiling a process. They take about five minutes, most of it the first build.
+
+### 1. Install the prerequisites
+
+| What | Why | Check |
+| --- | --- | --- |
+| [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) | Builds the server; its runtime runs it | `dotnet --version` prints `10.x` |
+| Git | Gets the source | `git --version` |
+| An MCP client: [Claude Code](https://docs.claude.com/en/docs/claude-code), Claude Desktop, VS Code, Cursor, or any client that starts stdio servers | Runs the agent that calls the tools | |
+| Docker (optional) | Profiling processes in containers | `docker version` shows a server |
+
+The machine running the agent needs no profiler. dotTrace's command-line tools download on first use (see [Requirements](#requirements)), and container profiling brings its own Linux tools in a sidecar image.
+
+### 2. Get the source
+
+```bash
+git clone https://github.com/NethermindEth/nethermind.git
+cd nethermind
+```
+
+The server needs only `tools/ProfilingMcp` and the repository's shared build files, so a shallow clone (`--depth 1`) is enough.
+
+### 3. Build and install the server
+
+Publish to a folder outside the repository. Choose a short path: the dotTrace tools fail on deeply nested Windows folders.
+
+```bash
+# Windows (PowerShell or Git Bash)
+dotnet publish tools/ProfilingMcp/Nethermind.Tools.ProfilingMcp -c Release -o "$LOCALAPPDATA/ProfilingMcp/server"
+
+# Linux and macOS
+dotnet publish tools/ProfilingMcp/Nethermind.Tools.ProfilingMcp -c Release -o ~/.local/share/ProfilingMcp/server
+```
+
+The install folder now holds:
+
+- `Nethermind.Tools.ProfilingMcp.exe` on Windows, or `Nethermind.Tools.ProfilingMcp` elsewhere: the server, which runs on the .NET 10 runtime installed with the SDK.
+- `linux-x64/`: a self-contained Linux build of the same server, which container profiling runs in a sidecar.
+- `sidecar.Dockerfile`: builds the sidecar image when no published one matches.
+
+Agents start the server from this folder and keep it running, so on Windows a running session locks its files. To update later, publish to a new folder or close every session first; see [Updating](#updating).
+
+### 4. Register the server with your agent
+
+The server speaks MCP over stdio: the client starts the executable and talks to it over standard input and output. It takes no arguments.
+
+**Claude Code** (the terminal, desktop app and IDE extensions share one configuration). Register it for your user, so every project and folder can use it:
+
+```bash
+# Windows
+claude mcp add -s user profiling -- "$LOCALAPPDATA/ProfilingMcp/server/Nethermind.Tools.ProfilingMcp.exe"
+
+# Linux and macOS
+claude mcp add -s user profiling -- ~/.local/share/ProfilingMcp/server/Nethermind.Tools.ProfilingMcp
+```
+
+Use `-s project` instead to share the registration through the repository's `.mcp.json`. To pass [settings](#settings), add `-e NAME=value` before `--`.
+
+**Claude Desktop.** Open Settings › Developer › Edit Config, which opens `claude_desktop_config.json` (in `%APPDATA%\Claude` on Windows, `~/Library/Application Support/Claude` on macOS), and add:
+
+```json
+{
+  "mcpServers": {
+    "profiling": {
+      "command": "C:\\Users\\<you>\\AppData\\Local\\ProfilingMcp\\server\\Nethermind.Tools.ProfilingMcp.exe"
+    }
+  }
+}
+```
+
+Restart Claude Desktop afterwards.
+
+**VS Code** (GitHub Copilot agent mode). Add the server to `.vscode/mcp.json` in a workspace, or run "MCP: Open User Configuration" to make it available in every workspace:
+
+```json
+{
+  "servers": {
+    "profiling": {
+      "type": "stdio",
+      "command": "/home/<you>/.local/share/ProfilingMcp/server/Nethermind.Tools.ProfilingMcp"
+    }
+  }
+}
+```
+
+**Cursor** and other clients that use the `mcpServers` format take the same entry as Claude Desktop; for Cursor it goes in `~/.cursor/mcp.json`. Settings go in an `env` object next to `command`.
+
+Always give the absolute path to the executable: clients do not expand `~` or environment variables in a JSON configuration.
+
+### 5. Check that it is connected
+
+Clients connect to MCP servers when a session starts, so start a new session after registering.
+
+- **Claude Code:** `claude mcp list` should show `profiling: <path> - ✔ Connected`. Inside a session, `/mcp` lists the server and its tools.
+- **Other clients:** the server should appear in the client's MCP or tools list, with tools such as `cpu_sample` and `heap_stats`.
+
+Then ask the agent something that needs a tool:
+
+> List the .NET processes running on this machine.
+
+The agent calls `list_dotnet_processes` and shows PIDs, names and working sets. If your client asks you to approve every tool call, see [Approving tool calls](#approving-tool-calls).
+
+### 6. Profile something
+
+Ask in plain words: the server's built-in instructions tell the agent which tools to use and in what order. For example:
+
+- *"My app with PID 1234 is slow. Find where it spends its CPU time while I run the load test."*
+- *"The memory of the `nethermind-hoodi` container keeps growing. Is it managed or native, and what is holding it?"*
+- *"Profile the node under `eth_getLogs` load for 60 s and give me a flame graph I can open."*
+- *"Compare CPU before and after my change."* The agent runs `trace_compare` on two traces.
+
+Results are text tables that the agent reads directly. To look yourself, ask for a report: `trace_report` (a CPU flame graph) and `native_memory` (a memory treemap) write self-contained HTML pages, and the agent gives you their paths. For a container the pages are inside the sidecar, so the agent also gives the `docker cp` command that copies them out.
+
+To profile a container, name it; nothing is set up per container. The first call for a container prepares a sidecar for it, which can take a minute or two when it has to build the sidecar image (see [Profiling containers](#profiling-containers)); later calls start in seconds.
+
+### Approving tool calls
+
+By default Claude Code asks before each tool call. The tools observe and change nothing in the target's code or settings, but some affect it:
+
+- heap reads pause it for one full GC;
+- `write_dump` pauses it while the dump is written;
+- `trace_start` launches a program.
+
+To allow all of the server's tools, add `mcp__profiling` to `permissions.allow` in `~/.claude/settings.json`. To allow single tools, add entries such as `mcp__profiling__cpu_sample` instead.
+
+### Settings
+
+Settings are environment variables in the server's environment. Pass them with `-e` to `claude mcp add`, or in the client's `env` object. Normal use needs none of them.
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `PROFILING_MCP_HOME` | `%LOCALAPPDATA%\ProfilingMcp` on Windows, `~/.local/share/ProfilingMcp` elsewhere | Where traces, reports, heap statistics, dumps and the downloaded dotTrace tools go. Keep it short on Windows |
+| `DOTTRACE_TOOLS_DIR` | Downloaded on first use | A folder with an existing `dottrace` or `dottrace.exe` to use instead |
+| `PROFILING_MCP_SIDECAR_IMAGE` | Built locally or pulled | `local` to always build the sidecar image from this install, or the name of an image to use instead |
+
+### Updating
+
+1. Pull the source and publish to a **new** folder, such as `server-2`: on Windows, running sessions keep the current folder locked. Alternatively, close every agent session and publish over the old folder.
+2. If the path changed, register the server again: run `claude mcp remove -s user profiling`, then repeat step 4.
+3. Start a new session. The first container call after an update prepares a sidecar image for the new version. Old sidecars keep running idle until you remove them with `docker rm -f profmcp-<container>-<image id>`.
+
+### Uninstalling
+
+```bash
+claude mcp remove -s user profiling
+```
+
+Then delete the install folder and the data folder (`PROFILING_MCP_HOME`). If you profiled containers, also remove:
+
+- the sidecars: list them with `docker ps -a --filter name=profmcp-`, then `docker rm -f` each;
+- their volumes, with `docker volume rm profmcp-home-<container>`;
+- their images, with `docker image rm profiling-mcp:<hash>`.
+
+### Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| The server shows as failed or not connected | Check that the registered path is absolute and ends in the executable. Run the executable by hand: it should log "Application started" and wait for input (Ctrl+C stops it). An error about a missing framework means the .NET 10 runtime is not installed |
+| New tools or fixes do not show up | Clients connect at session start, so start a new session after publishing. Check that the registration points to the folder you published to |
+| `dotnet publish` fails with "the file is locked by" | A running session uses that folder. Publish to a new folder, or close the sessions first |
+| `list_dotnet_processes` misses a process | The process runs as another user (run the agent as that user, or as root or administrator), was started with `DOTNET_EnableDiagnostics=0`, or runs in a container, in which case pass `container` instead |
+| A container call fails to start the sidecar | `docker version` must reach the engine from the agent's environment, and the engine must be `linux/amd64`. Building the sidecar image the first time needs network access |
+| `native_sample` fails in a container | The engine's kernel is older than 5.8, so the sidecar cannot get `PERFMON`. `cpu_sample` still works |
+| dotTrace exits with code -1 and no message | The install or data folder path is too long on Windows. Set a short `PROFILING_MCP_HOME` |
+| dotTrace snapshots cannot be analyzed on Linux or macOS | JetBrains ships `Reporter.exe` for Windows only. Copy the `*.dtp*` files to Windows, or use `cpu_sample`, whose traces are analyzed on any OS |
 
 ## Tools
 
@@ -24,7 +194,7 @@ An [MCP](https://modelcontextprotocol.io) server that lets an AI agent profile .
 | `alloc_sample` | Allocated bytes per type, allocating method and call stack over a window, from allocation tick events; `include` keeps the allocations with a matching frame |
 | `write_dump` | A full-heap dump for offline `heap_stats`/`heap_retention` |
 
-The server's instructions describe the intended workflows (CPU hotspots, leaks, GC pressure) to the agent.
+The server's instructions describe the intended workflows (CPU hotspots, leaks, GC pressure, native code and memory) to the agent.
 
 ## Requirements
 
@@ -37,22 +207,6 @@ The server's instructions describe the intended workflows (CPU hotspots, leaks, 
 - The memory tools work on Windows and Linux. Reading a process over EventPipe needs access to its diagnostics socket (the same user, or root), not ptrace.
 
 Snapshots, heap statistics and dumps go to `%LOCALAPPDATA%\ProfilingMcp` (`~/.local/share/ProfilingMcp` on Linux), or `PROFILING_MCP_HOME` if set. Keep this path short on Windows: the dotTrace console tools fail silently with exit code -1 when started from deeply nested folders.
-
-## Register with Claude Code
-
-Publish once to a folder outside the repository. The publish also puts a Linux build in its `linux-x64` folder, for containers.
-
-```bash
-dotnet publish tools/ProfilingMcp/Nethermind.Tools.ProfilingMcp -c Release -o <install folder>
-```
-
-Register the executable by its absolute path, for your user so that it works from any folder:
-
-```bash
-claude mcp add -s user profiling -- <install folder>/Nethermind.Tools.ProfilingMcp
-```
-
-Claude Code connects to MCP servers when a session starts, so start a new session afterwards. Any MCP client that launches a stdio server works the same way.
 
 ## Profiling containers
 
