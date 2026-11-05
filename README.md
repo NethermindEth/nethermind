@@ -139,7 +139,8 @@ dotnet test --solution EthereumTests.slnx -c release
 For more info, see [Building standalone binaries](https://docs.nethermind.io/developers/building-from-source#building-standalone-binaries).
 
 Pull-request opcode benchmark comparisons use the immutable merge revision, keeping
-the workflow's helper scripts and measured code on the same revision.
+the workflow's helper scripts and measured code on the same revision. The comparison
+job installs the latest serviced .NET 10 SDK for its file-based helper dependencies.
 
 ## Plugin development
 
