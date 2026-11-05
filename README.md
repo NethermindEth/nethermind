@@ -183,6 +183,9 @@ blocks or consensus execution. `PayFees` overrides receive `ExecutionOptions`;
 forward them to the base implementation and use `ShouldChargeTransactionFees`
 for monetary side effects without skipping unrelated execution semantics.
 
+Direct fee-payment tests use `ExecutionOptions.None` for ordinary transaction
+semantics; restoring-call cases must pass their actual execution options.
+
 ## Getting help
 
 Check out the [docs][docs] first. If the answer is not there, see:
