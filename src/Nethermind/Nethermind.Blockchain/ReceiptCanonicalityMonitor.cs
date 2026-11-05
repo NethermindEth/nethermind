@@ -39,12 +39,13 @@ namespace Nethermind.Blockchain
         {
             _eip8116 = new Eip8116Schedule(specProvider);
             _captureReceipts = receiptConfig is { StoreReceipts: false };
-            _maxQueuedReceiptBytes = (long)(receiptConfig?.MaxTransientReceiptStorageSize ?? 128) * 1024 * 1024;
+            _maxQueuedReceiptBytes = (long)(receiptConfig?.MaxTransientReceiptStorageSizeMb ?? 256) * 1024 * 1024;
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _blockTree = blockTree;
             _logger = logManager?.GetClassLogger<ReceiptCanonicalityMonitor>() ?? throw new ArgumentNullException(nameof(logManager));
             _receiptStorage.NewCanonicalReceipts += OnBlockAddedToMain;
-            _blockTree.BlockRemovedFromMain += OnBlockRemovedFromMain;
+            if (receiptConfig is not { StoreReceipts: false, MaxTransientReceiptStorageSizeMb: 0 })
+                _blockTree.BlockRemovedFromMain += OnBlockRemovedFromMain;
         }
 
         private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
@@ -99,6 +100,7 @@ namespace Nethermind.Blockchain
                 // turn a bounded transient store into an unbounded queue of receipts.
                 if (size > _maxQueuedReceiptBytes - _queuedReceiptBytes)
                 {
+                    Interlocked.Increment(ref Metrics.TransientReceiptNotificationsDropped);
                     if (!_warnedQueueCapacity && _logger.IsWarn)
                         _logger.Warn($"Transient receipt notification queue reached its {_maxQueuedReceiptBytes} byte budget. Notifications outside the delivery budget are skipped.");
                     _warnedQueueCapacity = true;

@@ -14,6 +14,18 @@ namespace Nethermind.Blockchain;
 public static class Metrics
 {
     [CounterMetric]
+    [Description("Receipt blocks evicted from transient storage because the memory budget was reached.")]
+    public static long TransientReceiptEvictions;
+
+    [CounterMetric]
+    [Description("Receipt blocks not retained because their estimated size exceeded the transient storage budget.")]
+    public static long TransientReceiptOversizedBlocks;
+
+    [CounterMetric]
+    [Description("Canonical receipt notifications skipped because the transient delivery budget was reached.")]
+    public static long TransientReceiptNotificationsDropped;
+
+    [CounterMetric]
     [Description("Total MGas processed")]
     public static double Mgas { get; set; }
 

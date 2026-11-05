@@ -13,14 +13,17 @@ namespace Nethermind.Blockchain.Receipts;
 
 /// <summary>Retain recent receipts without disk writes, until finalization or the memory budget is reached.</summary>
 /// <remarks>
-/// The budget accounts conservatively for receipt payloads, logs and indexes. Oldest entries are evicted first
-/// during prolonged non-finality; queries and reorg notifications outside the retained window may lack receipts.
+/// The budget accounts conservatively for receipt payloads, logs and indexes. Finalized entries are retained
+/// until their first canonical capture. Oldest entries are evicted when the budget is reached; queries and reorg
+/// notifications outside the retained window may lack receipts. One lock keeps entries, eviction order, byte
+/// accounting and canonical transaction indexes consistent with each other.
 /// </remarks>
 public sealed class TransientReceiptStorage : IReceiptMigrationStore, IDisposable
 {
     private sealed record Entry(ulong Number, TxReceipt[] Receipts, long Size, LinkedListNode<Hash256> Node)
     {
         public bool Canonical { get; set; }
+        public bool Captured { get; set; }
     }
 
     private readonly IBlockTree _blockTree;
@@ -35,14 +38,14 @@ public sealed class TransientReceiptStorage : IReceiptMigrationStore, IDisposabl
     private ulong _finalized;
     private bool _warnedCapacity;
 
-    /// <summary>Create an in-memory store bounded by <see cref="IReceiptConfig.MaxTransientReceiptStorageSize"/>.</summary>
+    /// <summary>Create an in-memory store bounded by <see cref="IReceiptConfig.MaxTransientReceiptStorageSizeMb"/>.</summary>
     public TransientReceiptStorage(IBlockTree blockTree, IReceiptsRecovery recovery, IReceiptConfig config, ILogManager logManager)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(config.MaxTransientReceiptStorageSize);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(config.MaxTransientReceiptStorageSizeMb);
         _blockTree = blockTree;
         _recovery = recovery;
         _logger = logManager.GetClassLogger<TransientReceiptStorage>();
-        _maxBytes = (long)config.MaxTransientReceiptStorageSize * 1024 * 1024;
+        _maxBytes = (long)config.MaxTransientReceiptStorageSizeMb * 1024 * 1024;
         _finalized = blockTree.LastFinalizedBlockLevel;
         blockTree.BlockAddedToMain += OnCanonical;
         blockTree.BlockRemovedFromMain += OnRemoved;
@@ -111,6 +114,7 @@ public sealed class TransientReceiptStorage : IReceiptMigrationStore, IDisposabl
             {
                 while (_bytes > _maxBytes - size)
                 {
+                    Interlocked.Increment(ref Metrics.TransientReceiptEvictions);
                     WarnCapacity();
                     Remove(_oldestFirst.First!.Value);
                 }
@@ -128,6 +132,7 @@ public sealed class TransientReceiptStorage : IReceiptMigrationStore, IDisposabl
             }
             else
             {
+                Interlocked.Increment(ref Metrics.TransientReceiptOversizedBlocks);
                 WarnCapacity();
             }
         }
@@ -150,7 +155,7 @@ public sealed class TransientReceiptStorage : IReceiptMigrationStore, IDisposabl
 
     private void Unindex(Hash256 hash)
     {
-        if (!_entries.TryGetValue(hash, out Entry? entry)) return;
+        if (!_entries.TryGetValue(hash, out Entry? entry) || !entry.Canonical) return;
         entry.Canonical = false;
         foreach (TxReceipt receipt in entry.Receipts)
             if (receipt.TxHash is { } txHash && _transactions.GetValueOrDefault(txHash) == hash)
@@ -165,6 +170,7 @@ public sealed class TransientReceiptStorage : IReceiptMigrationStore, IDisposabl
             Index(e.Block.Hash!);
             // The monitor captures this store's arrays synchronously, before finalization or eviction can remove them.
             NewCanonicalReceipts?.Invoke(this, e);
+            if (_entries.TryGetValue(e.Block.Hash!, out Entry? entry)) entry.Captured = true;
             if (e.Block.Number <= _finalized) Remove(e.Block.Hash!);
         }
     }
@@ -180,8 +186,9 @@ public sealed class TransientReceiptStorage : IReceiptMigrationStore, IDisposabl
         {
             _finalized = Math.Max(_finalized, e.FinalizedBlock.Number);
             List<Hash256> expired = [];
+            // AuRa can finalize a branch before it is moved onto the main chain.
             foreach ((Hash256 hash, Entry entry) in _entries)
-                if (entry.Number <= _finalized) expired.Add(hash);
+                if (entry.Captured && entry.Number <= _finalized) expired.Add(hash);
             foreach (Hash256 hash in expired) Remove(hash);
         }
     }

@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac;
 using System.Collections.Concurrent;
 using System.Threading;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Test.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -152,20 +154,17 @@ public class ReceiptCanonicalityMonitorTests
     [Test]
     public void Transient_notifications_survive_cleanup_while_delivery_is_queued([Values] bool evict, [Values] bool removal)
     {
-        IBlockTree tree = Substitute.For<IBlockTree>();
-        ReceiptConfig config = new() { StoreReceipts = false, MaxTransientReceiptStorageSize = 1 };
-        using TransientReceiptStorage storage = new(tree, Substitute.For<IReceiptsRecovery>(), config, LimboLogs.Instance);
-        using ReceiptCanonicalityMonitor monitor = new(storage, tree, LimboLogs.Instance, MainnetSpecProvider.Instance, config);
+        using TransientReceiptTestContext ctx = new();
+        IReceiptMonitor monitor = ctx.Container.Resolve<IReceiptMonitor>();
         using ManualResetEventSlim entered = new();
         using ManualResetEventSlim release = new();
         using ManualResetEventSlim delivered = new();
-        Block first = Build.A.Block.WithNumber(1).TestObject;
-        Block second = Build.A.Block.WithNumber(2).TestObject;
-        TxReceipt receipt = Build.A.Receipt.WithLogs(new LogEntry(TestItem.AddressA, new byte[100_000], [])).TestObject;
+        (Block first, TxReceipt firstReceipt) = TransientReceiptTestContext.Sample(1, 100_000);
+        (Block second, TxReceipt receipt) = TransientReceiptTestContext.Sample(2, 100_000, parent: first);
         TxReceipt[]? received = null;
         monitor.ReceiptsInserted += (_, e) =>
         {
-            if (e.BlockHeader.Hash == first.Hash)
+            if (e.BlockHeader.Hash == first.Hash && !e.WasRemoved)
             {
                 entered.Set();
                 release.Wait(Timeout);
@@ -176,22 +175,22 @@ public class ReceiptCanonicalityMonitorTests
                 delivered.Set();
             }
         };
-        storage.Insert(first, [Build.A.Receipt.WithLogs(new LogEntry(TestItem.AddressA, new byte[100_000], [])).TestObject]);
-        tree.BlockAddedToMain += Raise.EventWith(tree, new BlockReplacementEventArgs(first));
+        ctx.Storage.Insert(first, [firstReceipt], ensureCanonical: false);
+        ctx.Canonicalize(first);
         try
         {
             Assert.That(entered.Wait(Timeout), Is.True);
-            storage.Insert(second, [receipt]);
-            if (removal)
-                tree.BlockRemovedFromMain += Raise.EventWith(tree, new BlockHeaderEventArgs(second.Header));
-            else
-                tree.BlockAddedToMain += Raise.EventWith(tree, new BlockReplacementEventArgs(second));
+            ctx.Storage.Insert(second, [receipt], ensureCanonical: false);
+            ctx.Canonicalize(second);
+            if (removal) Assert.That(ctx.Tree.TryRewindHead(first.Hash!), Is.True);
             if (evict)
-                storage.Insert(Build.A.Block.WithNumber(3).TestObject,
-                    [Build.A.Receipt.WithLogs(new LogEntry(TestItem.AddressA, new byte[980_000], [])).TestObject]);
+            {
+                (Block large, TxReceipt largeReceipt) = TransientReceiptTestContext.Sample(3, 980_000);
+                ctx.Storage.Insert(large, [largeReceipt], ensureCanonical: false);
+            }
             else
-                tree.BlocksFinalized += Raise.EventWith(tree, new FinalizeEventArgs(second.Header));
-            Assert.That(storage.Get(second), Is.Empty);
+                ctx.Tree.ForkChoiceUpdated(second.Hash, second.Hash);
+            Assert.That(ctx.Storage.Get(second), Is.Empty);
         }
         finally
         {
@@ -204,18 +203,18 @@ public class ReceiptCanonicalityMonitorTests
     [Test]
     public void Transient_delivery_budget_bounds_a_slow_subscriber_and_recovers_after_drain()
     {
-        IBlockTree tree = Substitute.For<IBlockTree>();
-        ReceiptConfig config = new() { StoreReceipts = false, MaxTransientReceiptStorageSize = 1 };
-        using TransientReceiptStorage storage = new(tree, Substitute.For<IReceiptsRecovery>(), config, LimboLogs.Instance);
-        using ReceiptCanonicalityMonitor monitor = new(storage, tree, LimboLogs.Instance, MainnetSpecProvider.Instance, config);
+        using TransientReceiptTestContext ctx = new();
+        IReceiptMonitor monitor = ctx.Container.Resolve<IReceiptMonitor>();
         using ManualResetEventSlim entered = new();
         using ManualResetEventSlim release = new();
         using ManualResetEventSlim drained = new();
         using ManualResetEventSlim delivered = new();
-        Block first = Build.A.Block.WithNumber(1).TestObject;
-        Block second = Build.A.Block.WithNumber(2).TestObject;
-        Block sentinel = Build.A.Block.WithNumber(3).TestObject;
-        int count = 0;
+        (Block first, TxReceipt firstReceipt) = TransientReceiptTestContext.Sample(1, 900_000);
+        (Block second, TxReceipt secondReceipt) = TransientReceiptTestContext.Sample(2, 900_000, parent: first);
+        (Block third, TxReceipt thirdReceipt) = TransientReceiptTestContext.Sample(3, 900_000, parent: second);
+        Block sentinel = Build.A.Block.WithParent(third).WithNumber(4).TestObject;
+        (Block next, TxReceipt nextReceipt) = TransientReceiptTestContext.Sample(5, 900_000, parent: sentinel);
+        int skippedDelivered = 0;
         monitor.ReceiptsInserted += (_, e) =>
         {
             if (e.BlockHeader.Hash == first.Hash)
@@ -224,32 +223,36 @@ public class ReceiptCanonicalityMonitorTests
                 release.Wait(Timeout);
             }
             else if (e.BlockHeader.Hash == sentinel.Hash) drained.Set();
-            else if (e.BlockHeader.Hash == second.Hash)
-            {
-                Interlocked.Increment(ref count);
-                delivered.Set();
-            }
+            else if (e.BlockHeader.Hash == second.Hash || e.BlockHeader.Hash == third.Hash)
+                Interlocked.Increment(ref skippedDelivered);
+            else if (e.BlockHeader.Hash == next.Hash) delivered.Set();
         };
-        static TxReceipt[] LargeReceipts() => [Build.A.Receipt.WithLogs(new LogEntry(TestItem.AddressA, new byte[900_000], [])).TestObject];
-        storage.Insert(first, LargeReceipts());
-        tree.BlockAddedToMain += Raise.EventWith(tree, new BlockReplacementEventArgs(first));
+        long before = Interlocked.Read(ref Metrics.TransientReceiptNotificationsDropped);
+        ctx.Storage.Insert(first, [firstReceipt], ensureCanonical: false);
+        ctx.Canonicalize(first);
         try
         {
             Assert.That(entered.Wait(Timeout), Is.True);
-            storage.Insert(second, LargeReceipts());
-            tree.BlockAddedToMain += Raise.EventWith(tree, new BlockReplacementEventArgs(second));
-            storage.Insert(sentinel, []);
-            tree.BlockAddedToMain += Raise.EventWith(tree, new BlockReplacementEventArgs(sentinel));
+            ctx.Storage.Insert(second, [secondReceipt], ensureCanonical: false);
+            ctx.Canonicalize(second);
+            ctx.Storage.Insert(third, [thirdReceipt], ensureCanonical: false);
+            ctx.Canonicalize(third);
+            ctx.Storage.Insert(sentinel, [], ensureCanonical: false);
+            ctx.Canonicalize(sentinel);
         }
         finally
         {
             release.Set();
         }
         Assert.That(drained.Wait(Timeout), Is.True);
-        Assert.That(Volatile.Read(ref count), Is.Zero, "the second large event exceeded the pending delivery budget");
-        tree.BlockAddedToMain += Raise.EventWith(tree, new BlockReplacementEventArgs(second));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Volatile.Read(ref skippedDelivered), Is.Zero);
+            Assert.That(Interlocked.Read(ref Metrics.TransientReceiptNotificationsDropped), Is.GreaterThanOrEqualTo(before + 2));
+        }
+        ctx.Storage.Insert(next, [nextReceipt], ensureCanonical: false);
+        ctx.Canonicalize(next);
         Assert.That(delivered.Wait(Timeout), Is.True);
-        Assert.That(Volatile.Read(ref count), Is.EqualTo(1));
     }
 
     private static void RaiseNewCanonical(IReceiptStorage receiptStorage, Block block, Block? previous = null) =>
