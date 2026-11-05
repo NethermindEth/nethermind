@@ -109,12 +109,13 @@ namespace Nethermind.Db.Test.LogIndex
 
         private ILogIndexStorage CreateLogIndexStorage(
             int compactionDistance = 262_144, int compressionParallelism = 16, ulong maxReorgDepth = 64, IDbFactory? dbFactory = null,
-            string? compressionAlgo = null, int? failOnBlock = null, int? failOnCallN = null, bool failOnMerge = false
+            string? compressionAlgo = null, int? failOnBlock = null, int? failOnCallN = null, bool failOnMerge = false, bool reset = false
         )
         {
             LogIndexConfig config = new()
             {
                 Enabled = true,
+                Reset = reset,
                 CompactionDistance = compactionDistance,
                 MaxCompressionParallelism = compressionParallelism,
                 MaxReorgDepth = maxReorgDepth,
@@ -783,11 +784,41 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [Test]
-        public void Reset_fails_when_data_survives_clear([Values] LogIndexColumns column)
+        public async Task Reopen_resets_index_without_version_or_with_reset_config([Values] bool resetConfig)
         {
+            Hash256[] topics = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD];
+            IDbFactory dbFactory = CreateRecordingDbFactory();
+
+            await using (ILogIndexStorage storage = CreateLogIndexStorage(dbFactory: dbFactory))
+            {
+                await AddBlocksAsync(storage, TestItem.AddressA, topics, forward: 10, backward: 9);
+
+                // Without the reset config: index data left with an empty Meta, as after a reset whose delete failed
+                if (!resetConfig)
+                {
+                    IDb meta = _root.GetColumnDb(LogIndexColumns.Meta);
+                    foreach (byte[] key in meta.GetAllKeys().ToArray())
+                        meta.Remove(key);
+                }
+            }
+
+            await using (ILogIndexStorage storage = CreateLogIndexStorage(dbFactory: dbFactory, reset: resetConfig))
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((storage.MinBlockNumber, storage.MaxBlockNumber), Is.EqualTo(((int?)null, (int?)null)));
+                Assert.That(_root.GetColumnDb(LogIndexColumns.Meta).Get("ver"u8), Is.EqualTo(new byte[] { 2 }));
+                AssertBlocks(storage, TestItem.AddressA, topics, []);
+            }
+        }
+
+        [Test]
+        public void Reset_fails_when_data_survives_clear([Values] LogIndexColumns column, [Values] bool legacyVersion)
+        {
+            // The old root holds either a legacy version or data without any version
             ReleaseCountingDb legacyMeta = new();
-            legacyMeta.Set("ver"u8, [1]);
+            legacyMeta.Set(legacyVersion ? "ver"u8 : "leftover"u8, [1]);
             IColumnsDb<LogIndexColumns> legacy = Substitute.For<IColumnsDb<LogIndexColumns>>();
+            legacy.ColumnKeys.Returns(Enum.GetValues<LogIndexColumns>());
             legacy.GetColumnDb(Arg.Any<LogIndexColumns>()).Returns(legacyMeta);
 
             // A clear that returned without deleting anything: the reopened database still has a key

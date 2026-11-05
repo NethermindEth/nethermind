@@ -282,8 +282,15 @@ namespace Nethermind.Db.LogIndex
                 meta.DangerousReleaseMemory(storedVersion);
             }
 
-            if (versionBytes.Length == 0) // DB is empty
+            const string resetConsequences =
+                "Resetting the index; rebuilding may take substantial time and I/O, and eth_getLogs may be slower until it completes.";
+
+            // No version means an empty DB: anything else is leftover data, e.g. from a reset whose delete failed
+            if (versionBytes.Length == 0)
             {
+                if (FirstColumnWithData(root) is { } column)
+                    return ResetAndCreateNew(root, $"Log index has data in {column} but no version. {resetConsequences}");
+
                 meta.Set(SpecialKey.Version, VersionBytes);
                 return root;
             }
@@ -291,8 +298,7 @@ namespace Nethermind.Db.LogIndex
             return versionBytes.SequenceEqual(VersionBytes)
                 ? root
                 : ResetAndCreateNew(root,
-                    $"Log index version mismatch (stored {versionBytes[0]}, expected {VersionBytes[0]}). " +
-                    "Resetting the index; rebuilding may take substantial time and I/O, and eth_getLogs may be slower until it completes.");
+                    $"Log index version mismatch (stored {versionBytes[0]}, expected {VersionBytes[0]}). {resetConsequences}");
 
             IColumnsDb<LogIndexColumns> ResetAndCreateNew(IColumnsDb<LogIndexColumns> db, string message)
             {
@@ -308,15 +314,11 @@ namespace Nethermind.Db.LogIndex
                 try
                 {
                     // Deletion errors are only logged by the DB layer, so never mark leftover data as current
-                    foreach (LogIndexColumns column in db.ColumnKeys)
+                    if (FirstColumnWithData(db) is { } column)
                     {
-                        using IEnumerator<byte[]> keys = db.GetColumnDb(column).GetAllKeys().GetEnumerator();
-                        if (keys.MoveNext())
-                        {
-                            throw new LogIndexStateException(
-                                $"Log index reset failed: {column} still has data after the database was deleted. " +
-                                $"Delete {dbFactory.GetFullDbPath(RootSettings())} manually or set LogIndex.Enabled=false, then restart.");
-                        }
+                        throw new LogIndexStateException(
+                            $"Log index reset failed: {column} still has data after the database was deleted. " +
+                            $"Delete {dbFactory.GetFullDbPath(RootSettings())} manually or set LogIndex.Enabled=false, then restart.");
                     }
 
                     meta.Set(SpecialKey.Version, VersionBytes);
@@ -342,6 +344,18 @@ namespace Nethermind.Db.LogIndex
                     topicIndex => _mergeOperators[topicIndex + 1]
                 )
             };
+
+            static LogIndexColumns? FirstColumnWithData(IColumnsDb<LogIndexColumns> db)
+            {
+                foreach (LogIndexColumns column in db.ColumnKeys)
+                {
+                    using IEnumerator<byte[]> keys = db.GetColumnDb(column).GetAllKeys().GetEnumerator();
+                    if (keys.MoveNext())
+                        return column;
+                }
+
+                return null;
+            }
         }
 
         private CompressionAlgorithm SelectCompressionAlgorithm(string? configAlgoName)
