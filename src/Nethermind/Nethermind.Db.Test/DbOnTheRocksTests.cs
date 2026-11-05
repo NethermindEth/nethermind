@@ -52,8 +52,8 @@ namespace Nethermind.Db.Test
         public void GetMany_WithMissingEmptyAndDuplicateKeys_PreservesResultsAndDecoderState(
             [Values("memory", "default", "column")] string backend, [Values(0, 1, 2, 3, 257)] int count)
         {
-            using IDb owner = CreateBatchDatabase(backend);
-            IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : owner;
+            using IDisposable owner = CreateBatchDatabase(backend);
+            IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : (IDb)owner;
             Span<byte> key = stackalloc byte[sizeof(int)];
             for (int i = 0; i < 7; i++)
             {
@@ -102,8 +102,8 @@ namespace Nethermind.Db.Test
         public void GetMany_WhenDecoderThrows_PreservesPrefixAndClearsTail(
             [Values("memory", "default", "column")] string backend)
         {
-            using IDb owner = CreateBatchDatabase(backend);
-            IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : owner;
+            using IDisposable owner = CreateBatchDatabase(backend);
+            IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : (IDb)owner;
             store.PutSpan([1], [10]);
             store.PutSpan([2], [20]);
             store.PutSpan([3], [30]);
@@ -121,8 +121,8 @@ namespace Nethermind.Db.Test
         public void GetMany_ThroughBatchCapability_WithInvalidBuffers_PreservesOutput(
             [Values("default", "column")] string backend, [Values(1, 2, 3, 257)] int count)
         {
-            using IDb owner = CreateBatchDatabase(backend);
-            IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : owner;
+            using IDisposable owner = CreateBatchDatabase(backend);
+            IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : (IDb)owner;
             IBatchReadOnlyDb batch = (IBatchReadOnlyDb)store;
             long?[] output = Enumerable.Repeat<long?>(-1, count).ToArray();
 
@@ -158,7 +158,7 @@ namespace Nethermind.Db.Test
                 ReadAheadSize = readAhead
             };
             RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false);
-            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, dbName), config, factory, LimboLogs.Instance);
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, dbName), config, factory, LimboLogs.Instance);
 
             using (Assert.EnterMultipleScope())
             {
@@ -171,7 +171,7 @@ namespace Nethermind.Db.Test
         public void WriteOptions_is_correct()
         {
             IDbConfig config = new DbConfig();
-            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
             WriteOptions options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority)!;
             using (Assert.EnterMultipleScope())
@@ -279,6 +279,7 @@ namespace Nethermind.Db.Test
                 .AddSingleton<ISyncConfig>(syncConfig)
                 .AddSingleton<IPruningConfig>(new PruningConfig())
                 .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
+                .AddSingleton<IFileSystem>(new RealFileSystem())
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .Build();
 
@@ -315,7 +316,7 @@ namespace Nethermind.Db.Test
         public async Task Dispose_while_writing_does_not_cause_access_violation_exception()
         {
             IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new("testDispose1", GetRocksDbSettings("testDispose1", "TestDispose1"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+            DbOnTheRocks db = TestRocksDbFactory.OpenDb("testDispose1", GetRocksDbSettings("testDispose1", "TestDispose1"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
             CancellationTokenSource cancelSource = new();
             ManualResetEventSlim firstWriteWait = new();
@@ -360,7 +361,7 @@ namespace Nethermind.Db.Test
         public void Dispose_wont_cause_ObjectDisposedException_when_batch_is_still_open()
         {
             IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new("testDispose2", GetRocksDbSettings("testDispose2", "TestDispose2"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+            DbOnTheRocks db = TestRocksDbFactory.OpenDb("testDispose2", GetRocksDbSettings("testDispose2", "TestDispose2"), config, _rocksdbConfigFactory, LimboLogs.Instance);
             _ = db.StartWriteBatch();
             db.Dispose();
         }
@@ -371,7 +372,7 @@ namespace Nethermind.Db.Test
             IDbConfig config = new DbConfig();
             config.EnableFileWarmer = true;
             {
-                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+                using DbOnTheRocks db = TestRocksDbFactory.OpenDb("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, _rocksdbConfigFactory, LimboLogs.Instance);
                 IKeyValueStore asKv = db;
                 for (int i = 0; i < 1000; i++)
                 {
@@ -380,7 +381,7 @@ namespace Nethermind.Db.Test
             }
 
             {
-                using DbOnTheRocks _ = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+                using DbOnTheRocks _ = TestRocksDbFactory.OpenDb("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, _rocksdbConfigFactory, LimboLogs.Instance);
             }
         }
 
@@ -395,7 +396,7 @@ namespace Nethermind.Db.Test
             Action act = () =>
             {
                 RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
-                using DbOnTheRocks _ = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, configFactory, LimboLogs.Instance);
+                using DbOnTheRocks _ = TestRocksDbFactory.OpenDb("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, configFactory, LimboLogs.Instance);
             };
 
             if (success)
@@ -524,6 +525,7 @@ namespace Nethermind.Db.Test
                 .AddSingleton<IInitConfig>(initConfig)
                 .AddSingleton<IPruningConfig>(new PruningConfig())
                 .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
+                .AddSingleton<IFileSystem>(new RealFileSystem())
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .Add<IDisposableStack, AutofacDisposableStack>()
                 .Build();
@@ -532,7 +534,7 @@ namespace Nethermind.Db.Test
         private static long GetUniformBlockCount(IColumnsDb<FlatDbColumns> db)
         {
             ColumnDb account = (ColumnDb)db.GetColumnDb(FlatDbColumns.Account);
-            string? properties = account._mainDb._db.GetProperty("rocksdb.aggregated-table-properties", account._columnFamily);
+            string? properties = account.GatherProperty("rocksdb.aggregated-table-properties");
             Assert.That(properties, Is.Not.Null);
 
             const string propertyName = "# uniform blocks=";
@@ -581,8 +583,8 @@ namespace Nethermind.Db.Test
                 _dbConfig.BlocksDbRocksDbOptions += "block_based_table_factory.block_cache=1000000;";
             }
 
-            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, DbNames.Blocks), _dbConfig,
-                _rocksdbConfigFactory, LimboLogs.Instance, sharedCache: cache.Handle);
+            using DbOnTheRocks db = (DbOnTheRocks)new RocksDbFactory(_rocksdbConfigFactory, _dbConfig, cache, new RealFileSystem(), LimboLogs.Instance, DbPath)
+                .CreateDb(GetRocksDbSettings(DbPath, DbNames.Blocks));
 
             Random rng = new();
             byte[] buffer = new byte[1024];
@@ -629,7 +631,7 @@ namespace Nethermind.Db.Test
                     return baseConfig;
                 });
 
-            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, DbNames.Blocks), _dbConfig,
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, DbNames.Blocks), _dbConfig,
                 rocksDbConfigFactory, LimboLogs.Instance);
 
             Random rng = new();
@@ -666,11 +668,11 @@ namespace Nethermind.Db.Test
             bool didShutDown = false;
             try
             {
-                _ = new CorruptedDbOnTheRocks("test", GetRocksDbSettings("test", "test"), config,
-                    _rocksdbConfigFactory,
-                    LimboLogs.Instance,
-                    fileSystem: fileSystem,
-                    onFatalShutdown: () => didShutDown = true);
+                _ = new TestRocksDbFactory(_rocksdbConfigFactory, config, LimboLogs.Instance, "test", fileSystem)
+                {
+                    OpenExceptionMessage = "Corruption: test corruption",
+                    OnFatalShutdown = () => didShutDown = true
+                }.CreateDb(GetRocksDbSettings("test", "test"));
             }
             catch (RocksDbException)
             {
@@ -683,11 +685,26 @@ namespace Nethermind.Db.Test
             Assert.That(didShutDown, Is.True);
         }
 
-        public enum GetPath { ByteArray, CallerBuffer, NativeSlice }
+        public enum GetPath { ByteArray, CallerBuffer, NativeSlice, OwnedMemory }
+
+        [Test]
+        public void Scalar_reads_count_each_attempt_including_misses(
+            [Values(GetPath.CallerBuffer, GetPath.NativeSlice, GetPath.OwnedMemory)] GetPath path, [Values] bool found)
+        {
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
+            byte[] key = [1, 2, 3];
+            if (found) db.PutSpan(key, new byte[32768], WriteFlags.None);
+            long before = db.GatherMetric().TotalReads;
+
+            for (int i = 0; i < 32; i++) ReadBy(db, path, key, 32768);
+
+            Assert.That(db.GatherMetric().TotalReads - before, Is.EqualTo(32));
+        }
 
         [TestCase(GetPath.ByteArray, TestName = "Corrupted_exception_on_byte_array_get_writes_marker_and_shuts_down")]
         [TestCase(GetPath.CallerBuffer, TestName = "Corrupted_exception_on_caller_buffer_get_writes_marker_and_shuts_down")]
         [TestCase(GetPath.NativeSlice, TestName = "Corrupted_exception_on_native_slice_get_writes_marker_and_shuts_down")]
+        [TestCase(GetPath.OwnedMemory, TestName = "Corrupted_exception_on_owned_memory_get_writes_marker_and_shuts_down")]
         public void Corrupted_exception_on_get_writes_marker_and_shuts_down(GetPath path)
         {
             IDbConfig config = new DbConfig();
@@ -695,7 +712,7 @@ namespace Nethermind.Db.Test
             byte[] value = new byte[4096];
             value.AsSpan().Fill(0xA5);
 
-            using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance))
+            using (DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance))
             {
                 db.PutSpan(key, value, WriteFlags.None);
                 db.Flush();
@@ -710,14 +727,27 @@ namespace Nethermind.Db.Test
 
             bool didShutDown = false;
 
-            using FatalShutdownTrackingDbOnTheRocks corruptedDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
-                _rocksdbConfigFactory, LimboLogs.Instance, () => didShutDown = true);
-
-            Assert.That(() => ReadBy(corruptedDb, path, key, value.Length), Throws.InstanceOf<RocksDbException>());
-            using (Assert.EnterMultipleScope())
+            NativeCloseTrackingDbOnTheRocks corruptedDb;
+            IRocksDbConfig rocksDbConfig = _rocksdbConfigFactory.GetForDatabase("Blocks", null);
+            using (RocksDbInstance instance = new TestRocksDbFactory(_rocksdbConfigFactory, config, LimboLogs.Instance, DbPath, new RealFileSystem())
             {
-                Assert.That(Directory.GetFiles(DbPath, "corrupt.marker", SearchOption.AllDirectories), Has.Length.EqualTo(1));
-                Assert.That(didShutDown, Is.True);
+                OnFatalShutdown = () => didShutDown = true
+            }.Open(GetRocksDbSettings(DbPath, "Blocks"), rocksDbConfig, null))
+            {
+                corruptedDb = new(instance, rocksDbConfig, LimboLogs.Instance);
+            }
+
+            using (corruptedDb)
+            {
+                for (int i = 0; i < 8; i++)
+                    Assert.That(() => ReadBy(corruptedDb, path, key, value.Length), Throws.InstanceOf<RocksDbException>());
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(Directory.GetFiles(DbPath, "corrupt.marker", SearchOption.AllDirectories), Has.Length.EqualTo(1));
+                    Assert.That(didShutDown, Is.True);
+                }
+                corruptedDb.Dispose();
+                Assert.That(corruptedDb.NativeCloses, Is.EqualTo(1), "failed reads must not leave a lease deferring native close");
             }
         }
 
@@ -726,11 +756,24 @@ namespace Nethermind.Db.Test
         public void Get_after_dispose_begins_throws_instead_of_reading_the_closed_db([Values] GetPath path)
         {
             byte[] key = [1, 2, 3];
-            DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
+            DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
             db.PutSpan(key, new byte[64], WriteFlags.None);
             db.Dispose();
 
             Assert.That(() => ReadBy(db, path, key, 64), Throws.InstanceOf<ObjectDisposedException>());
+        }
+
+        [Test]
+        public void Native_slice_get_counts_one_read([Values] bool present)
+        {
+            byte[] key = [1, 2, 3];
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
+            if (present) db.PutSpan(key, new byte[64], WriteFlags.None);
+            long before = db.GatherMetric().TotalReads;
+
+            ReadBy(db, GetPath.NativeSlice, key, 64);
+
+            Assert.That(db.GatherMetric().TotalReads - before, Is.EqualTo(1));
         }
 
         // A background code read can still hold a pinned slice when shutdown disposes the database; the slice must be
@@ -739,7 +782,7 @@ namespace Nethermind.Db.Test
         public void Dispose_waits_for_a_pinned_slice_to_be_released_before_closing_the_db()
         {
             byte[] key = [1, 2, 3];
-            DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
+            DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
             db.PutSpan(key, new byte[64], WriteFlags.None);
             _ = db.GetNativeSlice(key, out nint handle, ReadFlags.HintCacheMiss);
 
@@ -760,10 +803,15 @@ namespace Nethermind.Db.Test
             NativeCloseTrackingDbOnTheRocks? db = null;
             // The timeout warning is logged just before dispose hands the close to the last release.
             WarnHookLogger logger = new(() => { if (releasedAsDisposeTimesOut) db!.DangerousReleaseHandle(handle); });
-            db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, new OneLoggerLogManager(new ILogger(logger)))
+            IRocksDbConfig config = _rocksdbConfigFactory.GetForDatabase("Blocks", null);
+            using (RocksDbInstance instance = new TestRocksDbFactory(_rocksdbConfigFactory, new DbConfig(), LimboLogs.Instance, DbPath, new RealFileSystem())
+                       .Open(GetRocksDbSettings(DbPath, "Blocks"), config, null))
             {
-                PinnedSliceDrainTimeout = TimeSpan.FromMilliseconds(50)
-            };
+                db = new(instance, config, new OneLoggerLogManager(new ILogger(logger)))
+                {
+                    PinnedSliceDrainTimeout = TimeSpan.FromMilliseconds(50)
+                };
+            }
             db.PutSpan(key, new byte[64], WriteFlags.None);
             _ = db.GetNativeSlice(key, out handle, ReadFlags.HintCacheMiss);
 
@@ -805,6 +853,9 @@ namespace Nethermind.Db.Test
                     _ = db.GetNativeSlice(key, out nint handle, ReadFlags.HintCacheMiss);
                     db.DangerousReleaseHandle(handle);
                     break;
+                case GetPath.OwnedMemory:
+                    using (IMemoryOwner<byte>? owner = keyValueStore.GetOwnedMemory(key)) { }
+                    break;
                 default:
                     keyValueStore.Get(key);
                     break;
@@ -829,12 +880,11 @@ namespace Nethermind.Db.Test
             bool didShutDown = false;
             try
             {
-                _ = new CorruptedDbOnTheRocks("test", GetRocksDbSettings("test", "test"), config,
-                    _rocksdbConfigFactory,
-                    LimboLogs.Instance,
-                    fileSystem: fileSystem,
-                    openExceptionMessage: exceptionMessage,
-                    onFatalShutdown: () => didShutDown = true);
+                _ = new TestRocksDbFactory(_rocksdbConfigFactory, config, LimboLogs.Instance, "test", fileSystem)
+                {
+                    OpenExceptionMessage = exceptionMessage,
+                    OnFatalShutdown = () => didShutDown = true
+                }.CreateDb(GetRocksDbSettings("test", "test"));
             }
             catch (RocksDbException)
             {
@@ -865,10 +915,10 @@ namespace Nethermind.Db.Test
             settings.PersistRepairMarkerUntilAcknowledged = persistUntilAcknowledged;
 
             bool didRepair = false;
-            using RepairTrackingDbOnTheRocks db = new(DbPath, settings, config, _rocksdbConfigFactory,
-                LimboLogs.Instance,
-                fileSystem: fileSystem,
-                onRepair: () => didRepair = true);
+            using IDb db = new TestRocksDbFactory(_rocksdbConfigFactory, config, LimboLogs.Instance, DbPath, fileSystem)
+            {
+                OnRepair = () => didRepair = true
+            }.CreateDb(settings);
 
             using (Assert.EnterMultipleScope())
             {
@@ -898,8 +948,10 @@ namespace Nethermind.Db.Test
             settings.PersistRepairMarkerUntilAcknowledged = true;
 
             bool didRepair = false;
-            using RepairTrackingDbOnTheRocks db = new(DbPath, settings, new DbConfig(), _rocksdbConfigFactory,
-                LimboLogs.Instance, fileSystem, () => didRepair = true);
+            using IDb db = new TestRocksDbFactory(_rocksdbConfigFactory, new DbConfig(), LimboLogs.Instance, DbPath, fileSystem)
+            {
+                OnRepair = () => didRepair = true
+            }.CreateDb(settings);
 
             using (Assert.EnterMultipleScope())
             {
@@ -925,8 +977,11 @@ namespace Nethermind.Db.Test
             IFileSystem fileSystem = new RealFileSystem();
 
             bool didRepair = false;
-            using (RepairTrackingDbOnTheRocks db = new(DbPath, settings, config, _rocksdbConfigFactory,
-                       LimboLogs.Instance, fileSystem, () => didRepair = true))
+            TestRocksDbFactory factory = new(_rocksdbConfigFactory, config, LimboLogs.Instance, DbPath, fileSystem)
+            {
+                OnRepair = () => didRepair = true
+            };
+            using (IDb db = factory.CreateDb(settings))
             {
                 using (Assert.EnterMultipleScope())
                 {
@@ -938,8 +993,7 @@ namespace Nethermind.Db.Test
             }
 
             didRepair = false;
-            using (RepairTrackingDbOnTheRocks reopened = new(DbPath, settings, config, _rocksdbConfigFactory,
-                       LimboLogs.Instance, fileSystem, () => didRepair = true))
+            using (IDb reopened = factory.CreateDb(settings))
             {
                 using (Assert.EnterMultipleScope())
                 {
@@ -951,7 +1005,7 @@ namespace Nethermind.Db.Test
                 if (!persistUntilAcknowledged)
                     return;
 
-                ((IDbMeta)reopened).AcknowledgeRepair();
+                reopened.AcknowledgeRepair();
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(reopened.WasRepairedOnOpen, Is.False);
@@ -959,8 +1013,7 @@ namespace Nethermind.Db.Test
                 }
             }
 
-            using RepairTrackingDbOnTheRocks afterAcknowledge = new(DbPath, settings, config, _rocksdbConfigFactory,
-                LimboLogs.Instance, fileSystem, static () => { });
+            using IDb afterAcknowledge = factory.CreateDb(settings);
             Assert.That(afterAcknowledge.WasRepairedOnOpen, Is.False);
         }
 
@@ -982,7 +1035,7 @@ namespace Nethermind.Db.Test
         public void TestNormalizeRocksDbOptions_RemovesDuplicateOptimizeFiltersForHits()
         {
             string options = "optimize_filters_for_hits=true;compression=kSnappyCompression;optimize_filters_for_hits=false;";
-            string normalized = DbOnTheRocks.NormalizeRocksDbOptions(options);
+            string normalized = RocksDbFactory.NormalizeRocksDbOptions(options);
 
             Assert.That(normalized, Is.EqualTo("compression=kSnappyCompression;optimize_filters_for_hits=false;"));
         }
@@ -992,8 +1045,8 @@ namespace Nethermind.Db.Test
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(DbOnTheRocks.NormalizeRocksDbOptions(""), Is.EqualTo(""));
-                Assert.That(DbOnTheRocks.NormalizeRocksDbOptions(null!), Is.EqualTo(""));
+                Assert.That(RocksDbFactory.NormalizeRocksDbOptions(""), Is.EqualTo(""));
+                Assert.That(RocksDbFactory.NormalizeRocksDbOptions(null!), Is.EqualTo(""));
             }
         }
 
@@ -1001,7 +1054,7 @@ namespace Nethermind.Db.Test
         public void TestNormalizeRocksDbOptions_PreservesStringWithoutDuplicates()
         {
             string options = "compression=kSnappyCompression;block_size=16000;optimize_filters_for_hits=true;";
-            string normalized = DbOnTheRocks.NormalizeRocksDbOptions(options);
+            string normalized = RocksDbFactory.NormalizeRocksDbOptions(options);
 
             Assert.That(normalized, Is.EqualTo(options));
         }
@@ -1010,7 +1063,7 @@ namespace Nethermind.Db.Test
         public void TestNormalizeRocksDbOptions_HandlesMultipleDuplicates()
         {
             string options = "optimize_filters_for_hits=true;foo=bar;optimize_filters_for_hits=false;baz=qux;optimize_filters_for_hits=true;";
-            string normalized = DbOnTheRocks.NormalizeRocksDbOptions(options);
+            string normalized = RocksDbFactory.NormalizeRocksDbOptions(options);
 
             Assert.That(normalized, Is.EqualTo("foo=bar;baz=qux;optimize_filters_for_hits=true;"));
         }
@@ -1019,7 +1072,7 @@ namespace Nethermind.Db.Test
         public void RemoveRange_RemovesTheRangeAndNothingTouchingIt()
         {
             IDbConfig config = new DbConfig();
-            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
             for (byte i = 0; i < 10; i++)
             {
@@ -1043,7 +1096,7 @@ namespace Nethermind.Db.Test
         public void RemoveRange_OnAnEmptyRange_RemovesNothing()
         {
             IDbConfig config = new DbConfig();
-            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
             db.PutSpan([5], [5], WriteFlags.None);
             db.RemoveRange([5], [5]);
@@ -1056,7 +1109,7 @@ namespace Nethermind.Db.Test
         public void RemoveRange_SurvivesReopen()
         {
             IDbConfig config = new DbConfig();
-            using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance))
+            using (DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance))
             {
                 for (byte i = 0; i < 6; i++)
                 {
@@ -1066,7 +1119,7 @@ namespace Nethermind.Db.Test
                 db.RemoveRange([1], [4]);
             }
 
-            using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+            using DbOnTheRocks reopened = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
             using (Assert.EnterMultipleScope())
             {
@@ -1081,7 +1134,7 @@ namespace Nethermind.Db.Test
         public void RemoveRange_OnBlockNumberPrefixedKeys_TakesEveryHashAtEveryHeightInRange()
         {
             IDbConfig config = new DbConfig();
-            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
             for (ulong number = 1; number <= 5; number++)
             {
@@ -1109,7 +1162,7 @@ namespace Nethermind.Db.Test
         {
             // Auto-compaction off so each flush stays its own file, as a real block-numbered bottom level is.
             IDbConfig config = new DbConfig { AdditionalRocksDbOptions = "disable_auto_compactions=true;" };
-            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
             byte[] value = new byte[4096];
             for (ulong number = 1; number <= 8; number++)
@@ -1151,7 +1204,7 @@ namespace Nethermind.Db.Test
             // rather than borrowing through them drops it below every key sharing the removed bytes. At a bound of
             // 512 that is all 256 heights below it - a pass that publishes a boundary and returns nothing.
             IDbConfig config = new DbConfig { AdditionalRocksDbOptions = "disable_auto_compactions=true;" };
-            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
             byte[] value = new byte[4096];
             for (ulong number = 256; number < 512; number++)
@@ -1180,7 +1233,7 @@ namespace Nethermind.Db.Test
             // both in the same SST, and a file straddling the bound is never entirely inside the range - the test
             // would then pass without exercising the bound at all.
             IDbConfig config = new DbConfig { AdditionalRocksDbOptions = "target_file_size_base=1024;" };
-            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
             byte[] value = new byte[4096];
             byte[] bound = [0x02];
@@ -1207,7 +1260,7 @@ namespace Nethermind.Db.Test
                 AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;blob_compression_type=kNoCompression;disable_auto_compactions=true;"
             };
             RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
-            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance);
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance);
 
             const int heights = 500;
             const int retained = 50; // the pinned bottom region; height 1 references the oldest blob file
@@ -1255,8 +1308,8 @@ namespace Nethermind.Db.Test
             {
                 AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;blob_compression_type=kNoCompression;disable_auto_compactions=true;"
             };
-            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
-            using OptionsCapturingDbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance);
+            using RocksDbInstance instance = OpenBlocksInstance(config, out IRocksDbConfig tableConfig);
+            using OptionsCapturingDbOnTheRocks db = new(instance, tableConfig, LimboLogs.Instance);
 
             const int heights = 100;
             byte[] value = new byte[4096];
@@ -1296,8 +1349,8 @@ namespace Nethermind.Db.Test
             // files back on. Auto-compaction is pinned off (not a blob option) so the before/after blob sizes are
             // the write's own, not a background compaction consolidating files between the measurements.
             DbConfig config = new() { AdditionalRocksDbOptions = "disable_auto_compactions=true;" };
-            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
-            using OptionsCapturingDbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance);
+            using RocksDbInstance instance = OpenBlocksInstance(config, out IRocksDbConfig tableConfig);
+            using OptionsCapturingDbOnTheRocks db = new(instance, tableConfig, LimboLogs.Instance);
 
             db.Tune(ITunableDb.TuneType.EnableBlobFiles);
 
@@ -1341,8 +1394,8 @@ namespace Nethermind.Db.Test
             {
                 AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;blob_compression_type=kNoCompression;disable_auto_compactions=true;"
             };
-            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
-            using OptionsCapturingDbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance);
+            using RocksDbInstance instance = OpenBlocksInstance(config, out IRocksDbConfig tableConfig);
+            using OptionsCapturingDbOnTheRocks db = new(instance, tableConfig, LimboLogs.Instance);
 
             const int heights = 100;
             byte[] value = new byte[4096];
@@ -1375,8 +1428,8 @@ namespace Nethermind.Db.Test
             // than blindly re-applying the pre-compaction snapshot that still had them on. Blob files start on via a
             // runtime tune, exactly as the tuner turns them on while bodies sync.
             DbConfig config = new() { AdditionalRocksDbOptions = "disable_auto_compactions=true;" };
-            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
-            using TuneDuringCompactionDbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance, ITunableDb.TuneType.Default);
+            using RocksDbInstance instance = OpenBlocksInstance(config, out IRocksDbConfig tableConfig);
+            using TuneDuringCompactionDbOnTheRocks db = new(instance, tableConfig, LimboLogs.Instance, ITunableDb.TuneType.Default);
 
             db.Tune(ITunableDb.TuneType.EnableBlobFiles);
 
@@ -1421,8 +1474,8 @@ namespace Nethermind.Db.Test
 
             string plainPath = Path.Combine(DbPath, "plain");
             string blobGcPath = Path.Combine(DbPath, "blobgc");
-            using DbOnTheRocks plain = new(plainPath, GetRocksDbSettings(plainPath, "Blocks"), config, factory, LimboLogs.Instance);
-            using DbOnTheRocks blobGc = new(blobGcPath, GetRocksDbSettings(blobGcPath, "Blocks"), config, factory, LimboLogs.Instance);
+            using DbOnTheRocks plain = TestRocksDbFactory.OpenDb(plainPath, GetRocksDbSettings(plainPath, "Blocks"), config, factory, LimboLogs.Instance);
+            using DbOnTheRocks blobGc = TestRocksDbFactory.OpenDb(blobGcPath, GetRocksDbSettings(blobGcPath, "Blocks"), config, factory, LimboLogs.Instance);
 
             const int heights = 500;
             const int retainEvery = 50; // 1-in-50 scattered survivors, so every ~64-height blob file keeps a live key
@@ -1477,6 +1530,17 @@ namespace Nethermind.Db.Test
             return SstBytes(dbPath) + BlobBytes(dbPath);
         }
 
+        // Opens a blocks-database RocksDB instance over the given test config, for the option-capturing subclasses
+        // below. The caller owns both the returned instance and the subclass it builds over it, and must dispose both;
+        // the subclass holds its own lease, so disposing it before the instance closes the native database.
+        private RocksDbInstance OpenBlocksInstance(DbConfig config, out IRocksDbConfig tableConfig)
+        {
+            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            tableConfig = factory.GetForDatabase("Blocks", null);
+            return new TestRocksDbFactory(factory, config, LimboLogs.Instance, DbPath, new RealFileSystem())
+                .Open(GetRocksDbSettings(DbPath, "Blocks"), tableConfig, null);
+        }
+
         private static int SstFileCount(string dbPath) => Directory
             .EnumerateFiles(dbPath, "*.sst", SearchOption.AllDirectories)
             .Count();
@@ -1502,9 +1566,8 @@ namespace Nethermind.Db.Test
         public void RemoveRange_OnAColumn_HoldsTheBoundsAndLeavesOtherColumnsAlone()
         {
             IDbConfig config = new DbConfig();
-            using ColumnsDb<ReceiptsColumns> columnsDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
-                _rocksdbConfigFactory, LimboLogs.Instance,
-                new List<ReceiptsColumns> { ReceiptsColumns.Blocks, ReceiptsColumns.Transactions });
+            using ColumnsDb<ReceiptsColumns> columnsDb = TestRocksDbFactory.OpenColumnsDb<ReceiptsColumns>(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
+                _rocksdbConfigFactory);
 
             IDb target = columnsDb.GetColumnDb(ReceiptsColumns.Blocks);
             IDb bystander = columnsDb.GetColumnDb(ReceiptsColumns.Transactions);
@@ -1535,9 +1598,8 @@ namespace Nethermind.Db.Test
         [Test]
         public void CompactReclaimingBlobFiles_OnAColumn_IsANoOp()
         {
-            IDbConfig config = new DbConfig();
-            using ColumnsDb<ReceiptsColumns> columnsDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
-                _rocksdbConfigFactory, LimboLogs.Instance, new List<ReceiptsColumns> { ReceiptsColumns.Blocks });
+            using ColumnsDb<ReceiptsColumns> columnsDb = TestRocksDbFactory.OpenColumnsDb<ReceiptsColumns>(
+                DbPath, GetRocksDbSettings(DbPath, "Blocks"), _dbConfig, _rocksdbConfigFactory);
 
             Assert.That(columnsDb.GetColumnDb(ReceiptsColumns.Blocks).CompactReclaimingBlobFiles(), Is.False);
         }
@@ -1551,6 +1613,7 @@ namespace Nethermind.Db.Test
                 .AddSingleton<IInitConfig>(initConfig)
                 .AddSingleton<IPruningConfig>(new PruningConfig())
                 .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
+                .AddSingleton<IFileSystem>(new RealFileSystem())
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .Build();
         }
@@ -1566,7 +1629,7 @@ namespace Nethermind.Db.Test
             string dbPath = Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
             if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
             Directory.CreateDirectory(dbPath);
-            return new DbOnTheRocks(dbPath, GetRocksDbSettings(dbPath, dbName), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
+            return TestRocksDbFactory.OpenDb(dbPath, GetRocksDbSettings(dbPath, dbName), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
         }
 
         private static string ReadOptionsFile(string dbPath)
@@ -1751,12 +1814,11 @@ namespace Nethermind.Db.Test
 
             return db.CrossesPrefixBucket(first, last);
         }
-        private IDb CreateBatchDatabase(string backend) => backend switch
+        private IDisposable CreateBatchDatabase(string backend) => backend switch
         {
             "memory" => new MemDb(),
             "default" => CreateFreshDb("Blocks"),
-            _ => new ColumnsDb<ReceiptsColumns>(DbPath, GetRocksDbSettings(DbPath, "Blocks"), _dbConfig,
-                _rocksdbConfigFactory, LimboLogs.Instance, [ReceiptsColumns.Blocks, ReceiptsColumns.Transactions])
+            _ => TestRocksDbFactory.OpenColumnsDb<ReceiptsColumns>(DbPath, GetRocksDbSettings(DbPath, "Blocks"), _dbConfig, _rocksdbConfigFactory)
         };
 
         private readonly struct ReplacementValueDecoder(byte[]?[] output, byte[] previous) : IValueDecoder<byte[]?>
@@ -1816,8 +1878,8 @@ namespace Nethermind.Db.Test
             if (_useColumnDb)
             {
                 IDbConfig config = new DbConfig();
-                ColumnsDb<ReceiptsColumns> columnsDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, rocksdbConfigFactory,
-                    LimboLogs.Instance, new List<ReceiptsColumns>() { ReceiptsColumns.Blocks });
+                ColumnsDb<ReceiptsColumns> columnsDb = TestRocksDbFactory.OpenColumnsDb<ReceiptsColumns>(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
+                    rocksdbConfigFactory);
                 _dbDisposable = columnsDb;
 
                 _db = (ColumnDb)columnsDb.GetColumnDb(ReceiptsColumns.Blocks);
@@ -1825,7 +1887,7 @@ namespace Nethermind.Db.Test
             else
             {
                 IDbConfig config = new DbConfig();
-                _db = new DbOnTheRocks(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, rocksdbConfigFactory, LimboLogs.Instance);
+                _db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, rocksdbConfigFactory, LimboLogs.Instance);
                 _dbDisposable = _db;
             }
         }
@@ -1834,12 +1896,7 @@ namespace Nethermind.Db.Test
         {
             get
             {
-                if (_db is ColumnDb columnDb)
-                {
-                    return columnDb._mainDb._allocatedSpan.Sum;
-                }
-
-                return (_db as DbOnTheRocks)._allocatedSpan.Sum;
+                return ((DbOnTheRocks)_db)._allocatedSpan.Sum;
             }
         }
 
@@ -2469,7 +2526,7 @@ namespace Nethermind.Db.Test
         public void DeadWeight_AgainstARealDatabase_TheAggregatedPropertiesParseAndTheOpenRangeCompactionDigestsTombstones()
         {
             RocksDbConfigFactory configFactory = new(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
-            using DbOnTheRocks db = new("testDeadWeight", GetRocksDbSettings("testDeadWeight", "DeadWeightTest"), new DbConfig(), configFactory, LimboLogs.Instance);
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb("testDeadWeight", GetRocksDbSettings("testDeadWeight", "DeadWeightTest"), new DbConfig(), configFactory, LimboLogs.Instance);
             IDb store = db;
             byte[] value = new byte[64];
             for (int i = 0; i < 2000; i++) store[Keccak.Compute(i.ToBigEndianByteArray()).BytesToArray()] = value;
@@ -2501,74 +2558,27 @@ namespace Nethermind.Db.Test
             Assert.That(DbOnTheRocks.ExceedsDeadWeight(aggregated, total, ratio), Is.EqualTo(expected));
     }
 
-    class CorruptedDbOnTheRocks(
-        string basePath,
-        DbSettings dbSettings,
-        IDbConfig dbConfig,
-        IRocksDbConfigFactory rocksDbConfigFactory,
-        ILogManager logManager,
-        IList<string>? columnFamilies = null,
-        IFileSystem? fileSystem = null,
-        string openExceptionMessage = "Corruption: test corruption",
-        Action? onFatalShutdown = null
-        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, columnFamilies, fileSystem)
-    {
-        protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db) => throw new RocksDbException(openExceptionMessage);
-
-        // The open path throws from the base constructor, so the caller never gets a reference to
-        // observe FatalShutdown on; report it through the injected callback instead of exiting.
-        protected override void FatalShutdown() => onFatalShutdown?.Invoke();
-    }
-
-    class RepairTrackingDbOnTheRocks(
-        string basePath,
-        DbSettings dbSettings,
-        IDbConfig dbConfig,
-        IRocksDbConfigFactory rocksDbConfigFactory,
-        ILogManager logManager,
-        IFileSystem fileSystem,
-        Action onRepair
-        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, fileSystem: fileSystem)
-    {
-        protected override void RepairDb(DbOptions dbOptions, string path) => onRepair();
-    }
-
-    class FatalShutdownTrackingDbOnTheRocks(
-        string basePath,
-        DbSettings dbSettings,
-        IDbConfig dbConfig,
-        IRocksDbConfigFactory rocksDbConfigFactory,
-        ILogManager logManager,
-        Action onFatalShutdown
-        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager)
-    {
-        protected override void FatalShutdown() => onFatalShutdown();
-    }
-
     class NativeCloseTrackingDbOnTheRocks(
-        string basePath,
-        DbSettings dbSettings,
-        IDbConfig dbConfig,
-        IRocksDbConfigFactory rocksDbConfigFactory,
+        RocksDbInstance instance,
+        IRocksDbConfig config,
         ILogManager logManager
-        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager)
+        ) : DbOnTheRocks(instance, null, "Blocks", config, logManager)
     {
-        public int NativeCloses { get; private set; }
+        private int _nativeCloses;
+        public int NativeCloses => Volatile.Read(ref _nativeCloses);
 
         protected override void ReleaseUnmanagedResources()
         {
-            NativeCloses++;
+            Interlocked.Increment(ref _nativeCloses);
             base.ReleaseUnmanagedResources();
         }
     }
 
     class OptionsCapturingDbOnTheRocks(
-        string basePath,
-        DbSettings dbSettings,
-        IDbConfig dbConfig,
-        IRocksDbConfigFactory rocksDbConfigFactory,
+        RocksDbInstance instance,
+        IRocksDbConfig config,
         ILogManager logManager
-        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager)
+        ) : DbOnTheRocks(instance, null, "Blocks", config, logManager)
     {
         public List<IDictionary<string, string>> AppliedOptions { get; } = [];
 
@@ -2576,13 +2586,13 @@ namespace Nethermind.Db.Test
         // compaction - distinct from AppliedOptions, which records every requested change including a withheld one.
         public List<IDictionary<string, string>> LiveAppliedOptions { get; } = [];
 
-        protected override void ApplyOptions(IDictionary<string, string> options)
+        protected override void ApplyOptions(IEnumerable<KeyValuePair<string, string>> options)
         {
             AppliedOptions.Add(new Dictionary<string, string>(options));
             base.ApplyOptions(options);
         }
 
-        protected override void SetLiveOptions(IDictionary<string, string> options)
+        protected override void SetLiveOptions(IEnumerable<KeyValuePair<string, string>> options)
         {
             LiveAppliedOptions.Add(new Dictionary<string, string>(options));
             base.SetLiveOptions(options);
@@ -2605,13 +2615,11 @@ namespace Nethermind.Db.Test
     // and its restore - to deterministically reproduce the sync tuner firing from a feed thread during the rewrite,
     // without a real thread race.
     class TuneDuringCompactionDbOnTheRocks(
-        string basePath,
-        DbSettings dbSettings,
-        IDbConfig dbConfig,
-        IRocksDbConfigFactory rocksDbConfigFactory,
+        RocksDbInstance instance,
+        IRocksDbConfig config,
         ILogManager logManager,
         ITunableDb.TuneType tuneToInject
-        ) : OptionsCapturingDbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager)
+        ) : OptionsCapturingDbOnTheRocks(instance, config, logManager)
     {
         public bool TuneInjected { get; private set; }
 

@@ -329,7 +329,8 @@ public sealed class FrameTxHeadFieldsTxValidator : ITxValidator
             return ValidationResult.Success;
         }
 
-        if (!FrameTxValidation.TryCalculateBlockGasReservations(transaction, releaseSpec, out ulong executionReservation, out _))
+        // Not saturated at 2^64 - 1, so the error reports the real intrinsic plus execution gas.
+        if (!FrameTxValidation.TryCalculateExecutionReservation(transaction, releaseSpec, out UInt128 executionReservation))
         {
             return FrameTxValidation.FrameGasOverflow;
         }

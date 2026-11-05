@@ -138,13 +138,13 @@ public class RlpByteArrayListTests
             Assert.Throws<RlpLimitException>(() =>
             {
                 RlpReader ctx = new(encoded);
-                using RlpByteArrayList _ = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), rlpLimit);
+                using RlpByteArrayList _ = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), encoded, rlpLimit);
             });
         }
         else
         {
             RlpReader ctx = new(encoded);
-            using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), rlpLimit);
+            using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), encoded, rlpLimit);
             Assert.That(list.Count, Is.EqualTo(itemCount));
         }
     }
@@ -156,7 +156,7 @@ public class RlpByteArrayListTests
         byte[] encoded = EncodeSingleByteItemList(count);
 
         RlpReader ctx = new(encoded);
-        using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded));
+        using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), encoded);
         Assert.That(list.Count, Is.EqualTo(count));
     }
 
@@ -170,7 +170,7 @@ public class RlpByteArrayListTests
         Assert.Throws<RlpLimitException>(() =>
         {
             RlpReader ctx = new(encoded);
-            using RlpByteArrayList _ = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded));
+            using RlpByteArrayList _ = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), encoded);
         });
     }
 
