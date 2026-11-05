@@ -27,15 +27,11 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 /// soft limit with a last-resort collection, and V8 calls the near-heap-limit callback on every last-resort
 /// collection, so a heap expansion multiplier would raise the hard limit each time a collection brings a script back
 /// under the soft limit, until it overflows and V8 aborts the process.
-/// Array buffer memory, such as the bytes of a <c>Uint8Array</c>, is allocated outside the V8 heap, so neither heap
-/// limit sees it. It has a separate budget for the buffers a runtime holds at once; an allocation over it fails with
-/// a <c>RangeError</c> the script can catch.
 /// A runtime serves the single thread that runs its trace and is not thread-safe.
 /// </remarks>
 internal sealed class TracerRuntime : IDisposable
 {
     private const int MaxOldSpaceMb = 4096;
-    private const ulong MaxArrayBufferBytes = 1024 * 1024 * 1024;
     private static readonly UIntPtr HeapSoftLimit = new(128 * 1024 * 1024);
 
     private const string TracersPath = "Data/JSTracers/";
@@ -53,8 +49,7 @@ internal sealed class TracerRuntime : IDisposable
     {
         _runtime = new V8Runtime(new V8RuntimeConstraints
         {
-            MaxOldSpaceSize = MaxOldSpaceMb,
-            MaxArrayBufferAllocation = MaxArrayBufferBytes
+            MaxOldSpaceSize = MaxOldSpaceMb
         });
 
         try

@@ -2090,35 +2090,6 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
     [Test]
     [NonParallelizable]
-    public void Array_buffer_allocation_over_the_cap_fails_the_trace_and_later_traces_recover([Values] bool capture)
-    {
-        using (GethLikeBlockJavaScriptTracer overCap = GetBufferAllocatingTracer(2L * 1024 * 1024 * 1024, capture))
-        {
-            if (capture)
-            {
-                ExecuteBlock(overCap, MStore());
-                using GethLikeTxTrace failed = overCap.BuildResult().First();
-                Assert.That(failed.TraceError, Does.Contain("Array buffer allocation failed"));
-            }
-            else
-            {
-                Assert.That(() => ExecuteBlock(overCap, MStore()),
-                    Throws.InstanceOf<ScriptEngineException>().With.Message.Contains("Array buffer allocation failed"));
-            }
-        }
-
-        using GethLikeBlockJavaScriptTracer underCap = ExecuteBlock(GetBufferAllocatingTracer(64 * 1024 * 1024, capture), MStore());
-        using GethLikeTxTrace trace = underCap.BuildResult().First();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(trace.TraceError, Is.Null);
-            Assert.That(ResultJson(trace), Is.EqualTo("67108864"));
-        }
-    }
-
-    [Test]
-    [NonParallelizable]
     public async Task Allocation_burst_between_heap_samples_ends_in_the_memory_limit_error()
     {
         // V8 ends the process if the burst reaches its hard heap limit, so the burst runs in a child process.
@@ -2199,18 +2170,6 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                     fault: function(log, db) { },
                     result: function(ctx, db) { return this.hoard.length; }
                 }";
-
-    private GethLikeBlockJavaScriptTracer GetBufferAllocatingTracer(long bytes, bool capture) =>
-        new(TestState, Shanghai.Instance, GethTraceOptions.Default with
-        {
-            Tracer = @"{
-                    buffer: null,
-                    step: function(log, db) { if (this.buffer === null) this.buffer = new Uint8Array(" + bytes + @"); },
-                    fault: function(log, db) { },
-                    result: function(ctx, db) { return this.buffer.length; }
-                }",
-            CaptureJavaScriptErrors = capture
-        });
 
     // Keeps 120 MB of arrays alive (about 116 MiB of heap after a collection) and leaves 16 MB of garbage per step,
     // so the heap is over the 128 MiB soft limit when the next step starts and back under it after the collection
