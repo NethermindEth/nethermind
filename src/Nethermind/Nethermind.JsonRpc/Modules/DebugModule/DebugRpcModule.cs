@@ -1226,6 +1226,19 @@ public class DebugRpcModule(
 
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
+        // Bundle overrides run the bundles as one cumulative simulation, which has no place for options applied
+        // afresh to every call, so reject the mix rather than silently drop the options.
+        if (options?.StateOverrides is { Count: > 0 })
+        {
+            foreach (TransactionBundle bundle in bundles)
+            {
+                if (StateOverrideValidation.GetStorageConflictError(bundle.StateOverrides) is { } storageError)
+                    return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(storageError, ErrorCodes.InvalidInput);
+            }
+
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail("options.stateOverrides cannot be combined with bundle blockOverride or stateOverrides", ErrorCodes.InvalidInput);
+        }
+
         SimulatePayload<TransactionForRpc> simulatePayload = new()
         {
             BlockStateCalls = bundles.Select(bundle => new BlockStateCall<TransactionForRpc>

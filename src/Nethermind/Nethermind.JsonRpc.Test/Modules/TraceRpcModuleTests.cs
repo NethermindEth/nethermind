@@ -3280,6 +3280,60 @@ public class TraceRpcModuleTests
         }
     }
 
+    [TestCase("latest", false)]
+    [TestCase("latest", true)]
+    [TestCase("0x1000", false)]
+    public async Task Trace_call_rejects_conflicting_storage_overrides_after_the_header_lookup(string block, bool tipAboveFeeCap)
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(Prague.Instance));
+        Dictionary<string, object> call = new() { ["from"] = TestItem.AddressA.ToString(), ["to"] = TestItem.AddressC.ToString(), ["gas"] = "0x5208" };
+        if (tipAboveFeeCap)
+        {
+            call["maxFeePerGas"] = "0x1";
+            call["maxPriorityFeePerGas"] = "0x2";
+        }
+
+        // The higher address goes first: the error names the lowest conflicting one.
+        Address lower = new("0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f");
+        object conflict = new { state = new { }, stateDiff = new { } };
+        Dictionary<string, object> stateOverride = new() { ["0xc200000000000000000000000000000000000000"] = conflict, [lower.ToString()] = conflict };
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call, new[] { "trace" }, block, stateOverride);
+
+        JToken? error = JToken.Parse(response)["error"];
+        if (block == "latest")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That(error?["message"]?.Value<string>(), Is.EqualTo($"account {lower.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'"), response);
+            }
+        }
+        else
+        {
+            JToken? headerError = JToken.Parse(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call, new[] { "trace" }, block))["error"];
+            Assert.That(headerError, Is.Not.Null);
+            Assert.That(error, Is.EqualTo(headerError).Using(JToken.EqualityComparer), response);
+        }
+    }
+
+    [Test]
+    public async Task Trace_call_applies_a_lone_storage_override([Values("state", "stateDiff")] string field)
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(Prague.Instance));
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressC.ToString(), gas = "0x186a0" };
+        string seven = $"0x{7:x64}";
+        // PUSH1 0 SLOAD PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN: returns slot 0.
+        Dictionary<string, object> account = new() { ["code"] = "0x60005460005260206000f3", [field] = new Dictionary<string, string> { [$"0x{0:x64}"] = seven } };
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call, new[] { "trace" }, "latest",
+            new Dictionary<string, object> { [TestItem.AddressC.ToString()] = account });
+
+        Assert.That(JToken.Parse(response)["result"]?["output"]?.Value<string>(), Is.EqualTo(seven), response);
+    }
+
     [Test]
     public async Task Trace_call_caps_gas_to_gas_cap()
     {
