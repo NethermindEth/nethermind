@@ -11,7 +11,7 @@ use sphincs::{SphincsPublicKey, SphincsSignature};
 use std::cell::Cell;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Barrier, Mutex, OnceLock};
+use std::sync::{Barrier, Mutex, OnceLock, RwLock};
 use std::thread::ThreadId;
 use tiny_keccak::{Hasher, Keccak};
 
@@ -33,6 +33,35 @@ fn begin_proof() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     lean_vm::init_prover();
     guard
+}
+
+/// Held exclusively by every arena phase and shared by every verification. A phase opening resets the slabs that hold live
+/// `ArenaVec`s, and an open phase routes any thread's `ArenaVec` into the arena, so verification runs only between phases,
+/// on system-allocated buffers, and waits at most for one phase rather than for the whole proof under PROVER.
+static ARENA_PHASE: RwLock<()> = RwLock::new(());
+
+fn in_arena_phase<T>(prove: impl FnOnce() -> T) -> T {
+    let _phase = ARENA_PHASE
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    prove()
+}
+
+fn verify_between_phases<T>(verify: impl FnOnce() -> T) -> T {
+    let _phase = ARENA_PHASE
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    verify()
+}
+
+fn aggregate_mixed(
+    children: &[MixedProof],
+    signatures: &[(SphincsPublicKey, [u8; 32], SphincsSignature)],
+    generic: &[GenericInput],
+    deps: &[Dep],
+) -> Result<MixedProof, ()> {
+    in_arena_phase(|| eip8288_mixed::aggregate_mixed(children, signatures, generic, deps, 1))
+        .map_err(|_| ())
 }
 
 // leanVM's carry-less-multiply field arithmetic is about 68x slower without these features. An
@@ -415,7 +444,7 @@ fn decode_stark(
 }
 
 fn verify_stark(hash: &[u8; 32], vk: &[u8; 32], witness: &[u8]) -> bool {
-    decode_stark(hash, vk, witness).is_ok()
+    verify_between_phases(|| decode_stark(hash, vk, witness).is_ok())
 }
 
 // EIP-8288 `stark_proof`: the guest proof alone, checked against `deps_hash` and the pinned key.
@@ -430,7 +459,7 @@ fn preflight_proof(proof: &[u8]) -> Result<(), ()> {
 
 fn verify_aggregate(hash: &[u8; 32], proof: &[u8]) -> Result<(), ()> {
     preflight_proof(proof)?;
-    eip8288_mixed::verify_mixed_deps(hash, proof).map_err(|_| ())
+    verify_between_phases(|| eip8288_mixed::verify_mixed_deps(hash, proof).map_err(|_| ()))
 }
 
 // A recursive child is proven against its declared dependencies, which the caller supplies;
@@ -491,8 +520,7 @@ fn aggregate_bounded(
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
-        nodes
-            .push(eip8288_mixed::aggregate_mixed(&[], &signatures, &[], &deps, 1).map_err(|_| ())?);
+        nodes.push(aggregate_mixed(&[], &signatures, &[], &deps)?);
     }
     for leaf in generic.chunks(RAW_GENERICS_PER_LEAF) {
         let inputs: Vec<_> = leaf
@@ -509,7 +537,7 @@ fn aggregate_bounded(
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
-        nodes.push(eip8288_mixed::aggregate_mixed(&[], &[], &inputs, &deps, 1).map_err(|_| ())?);
+        nodes.push(aggregate_mixed(&[], &[], &inputs, &deps)?);
     }
     while nodes.len() > 1 {
         let mut next = Vec::new();
@@ -527,9 +555,7 @@ fn aggregate_bounded(
             if batch.len() == 1 && batch[0].dependencies() == deps {
                 next.push(batch.pop().ok_or(())?);
             } else {
-                next.push(
-                    eip8288_mixed::aggregate_mixed(&batch, &[], &[], &deps, 1).map_err(|_| ())?,
-                );
+                next.push(aggregate_mixed(&batch, &[], &[], &deps)?);
             }
         }
         nodes = next;
@@ -538,7 +564,7 @@ fn aggregate_bounded(
     if node.dependencies() == desired {
         return Ok(node);
     }
-    eip8288_mixed::aggregate_mixed(&[node], &[], &[], desired, 1).map_err(|_| ())
+    aggregate_mixed(&[node], &[], &[], desired)
 }
 
 pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
@@ -817,7 +843,7 @@ pub fn prove_stark(source: &str, hash: &[u8; 32]) -> Result<(Vec<u8>, [u8; 32]),
     let program = lean_compiler::compile(&lean_compiler::parse(source).map_err(|_| ())?);
     let key = eip8288_mixed::generic_verification_key(&program).map_err(|_| ())?;
     let code = encode_program(&program);
-    let (proof, _) = cpu::prove(&program, pi(hash), 1).map_err(|_| ())?;
+    let (proof, _) = in_arena_phase(|| cpu::prove(&program, pi(hash), 1)).map_err(|_| ())?;
     if !eip8288_mixed::generic_recursion_supported(&program, &proof) {
         return Err(());
     }
@@ -1460,6 +1486,57 @@ mod tests {
             put_deps(&mut input, &[]);
             assert!(prove_aggregate(&commitment(&[dep]), &input).is_err());
         }
+    }
+
+    fn single_signature_input(seed: u8) -> ([u8; 32], Vec<u8>) {
+        let (sk, pk) = sphincs::key_gen_from_seed([seed; 32]);
+        let message = [seed; 32];
+        let signature = [
+            pk.flatten().as_slice(),
+            sphincs::sign(&sk, &message).to_bytes().as_slice(),
+        ]
+        .concat();
+        let dep = sphincs_dependency(&pk, &message);
+        let mut input = Vec::new();
+        put_number(&mut input, 1);
+        input.extend_from_slice(&dep);
+        put_blob(&mut input, &signature);
+        put_number(&mut input, 0);
+        put_deps(&mut input, &[]);
+        (commitment(&[dep]), input)
+    }
+
+    #[test]
+    fn verification_and_proving_do_not_share_arena_phases() {
+        let (hash, input) = single_signature_input(44);
+        let proof = prove_aggregate(&hash, &input).unwrap();
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let verified = std::sync::Arc::new(AtomicUsize::new(0));
+        let verifier = {
+            let (stop, verified, proof) = (stop.clone(), verified.clone(), proof.clone());
+            std::thread::spawn(move || {
+                let mut failures = 0;
+                while !stop.load(Ordering::Acquire) {
+                    failures += usize::from(verify_aggregate(&hash, &proof).is_err());
+                    verified.fetch_add(1, Ordering::Release);
+                }
+                failures
+            })
+        };
+        // Phase churn as a prover produces it, then a real proof whose arena buffers the verifier must not touch.
+        while verified.load(Ordering::Acquire) < 20 {
+            let _guard = begin_proof();
+            in_arena_phase(|| {
+                for _ in 0..1000 {
+                    drop(zk_alloc::enter_phase());
+                }
+            });
+        }
+        let (other_hash, other_input) = single_signature_input(45);
+        let other = prove_aggregate(&other_hash, &other_input);
+        stop.store(true, Ordering::Release);
+        assert_eq!(verifier.join().unwrap(), 0);
+        verify_aggregate(&other_hash, &other.unwrap()).unwrap();
     }
 
     #[test]

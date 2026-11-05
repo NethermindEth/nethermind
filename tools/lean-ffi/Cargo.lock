@@ -1381,6 +1381,7 @@ dependencies = [
  "rec_aggregation",
  "sphincs",
  "tiny-keccak",
+ "zk_alloc",
 ]
 
 [[package]]

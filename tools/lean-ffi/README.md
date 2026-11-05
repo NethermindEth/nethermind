@@ -27,6 +27,8 @@ with an illegal instruction (SIGILL) on an older CPU: build on the oldest CPU th
 set `RUSTFLAGS` to that CPU plus the carry-less multiply feature (for example
 `-C target-cpu=x86-64-v3 -C target-feature=+pclmulqdq`). Proving uses leanVM's arena allocator, which recycles the prover's transient buffers
 across proofs; it allows one proof per process at a time, which the backend's prover lock ensures.
+Verification never allocates from that arena: it waits for the proof node in flight, whose arena phase
+holds an exclusive lock (1–3 s per node measured on a 12-core arm64 host), not for the whole proof.
 
 `BuildLeanFfi=true` builds and copies the host native library into consumer build/publish
 outputs and rejects a different target RID. Build on each target platform; cross compilation
