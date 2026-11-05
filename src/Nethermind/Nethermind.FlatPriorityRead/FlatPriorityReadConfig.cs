@@ -6,7 +6,7 @@ namespace Nethermind.FlatPriorityRead;
 public class FlatPriorityReadConfig : IFlatPriorityReadConfig
 {
     public bool Enabled { get; set; }
-    public string? Addresses { get; set; }
+    public Dictionary<string, string>? Addresses { get; set; }
     public FlatPriorityReadBackend Backend { get; set; } = FlatPriorityReadBackend.Memory;
     public string DbPath { get; set; } = "/dev/shm/nethermind-flat-priority-read";
     public long LmdbMapSize { get; set; } = 34359738368;

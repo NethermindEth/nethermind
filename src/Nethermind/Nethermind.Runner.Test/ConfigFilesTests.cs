@@ -26,6 +26,7 @@ using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.EthStats;
 using Nethermind.Evm.State;
+using Nethermind.FlatPriorityRead;
 using Nethermind.JsonRpc;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
@@ -405,6 +406,12 @@ public class ConfigFilesTests : ConfigFileTestsBase
         static JsonObject ReadConfig(string file) =>
             JsonNode.Parse(ReadBuiltInConfig(file))!.AsObject();
     }
+
+    [TestCase("mainnet.json")]
+    [TestCase("mainnet_aztec.json")]
+    public void Mainnet_presets_the_flat_priority_read_contracts(string configFile) =>
+        Test<IFlatPriorityReadConfig, Dictionary<string, string>>(configFile, static c => c.Addresses, static (file, addresses) =>
+            Assert.That(addresses, Has.Count.EqualTo(20).And.ContainKey("0xdac17f958d2ee523a2206206994597c13d831ec7").WithValue("USDT"), file));
 
     [TestCase("^spaceneth", "nethermind_db")]
     [TestCase("spaceneth", "spaceneth_db")]

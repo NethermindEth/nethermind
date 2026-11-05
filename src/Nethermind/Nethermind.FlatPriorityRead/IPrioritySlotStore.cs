@@ -11,7 +11,7 @@ namespace Nethermind.FlatPriorityRead;
 /// Holds the slots of the priority contracts and answers point reads from a snapshot of a past commit.
 /// </summary>
 /// <remarks>
-/// A contract is the index of its address in <see cref="IFlatPriorityReadConfig.Addresses"/>; a slot key is the key
+/// A contract is the position of its address in <see cref="IFlatPriorityReadConfig.Addresses"/>; a slot key is the key
 /// the flat persistence stores the slot under. A zero value is a stored slot, distinct from an absent one.
 /// </remarks>
 public interface IPrioritySlotStore : IDisposable

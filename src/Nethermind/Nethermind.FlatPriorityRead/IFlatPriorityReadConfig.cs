@@ -11,8 +11,8 @@ public interface IFlatPriorityReadConfig : IConfig
     [ConfigItem(Description = "Enable the flat priority read layer. It only takes effect with flat state.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
-    [ConfigItem(Description = "Comma-separated contract addresses whose storage slots are loaded into memory at startup, at most 255. Startup blocks until they are loaded.", DefaultValue = "null")]
-    string? Addresses { get; set; }
+    [ConfigItem(Description = "The contracts whose storage slots are loaded into memory at startup, at most 255, as a JSON object of address to the name used in logs, e.g. {\"0xdAC17F958D2ee523a2206206994597C13D831ec7\": \"USDT\"}. Startup blocks until they are loaded.", DefaultValue = "null")]
+    Dictionary<string, string>? Addresses { get; set; }
 
     [ConfigItem(Description = "The store holding the slots: Memory (in-process tables), Lmdb or RocksDb (PlainTable over mmap). Lmdb and RocksDb are Linux only, as they rely on /dev/shm.", DefaultValue = "Memory")]
     FlatPriorityReadBackend Backend { get; set; }

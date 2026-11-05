@@ -52,24 +52,24 @@ public sealed class FlatPriorityReadPersistence : IPersistence
     {
         _inner = inner;
         _store = store;
-        Address[] addresses = ParseAddresses(config.Addresses);
+        (Address Address, string Name)[] contracts = ParseContracts(config.Addresses);
 
         using IPersistence.IPersistenceReader reader = inner.CreateReader();
         _isPreimageMode = reader.IsPreimageMode;
-        _addressKeys = new ValueHash256[addresses.Length];
+        _addressKeys = new ValueHash256[contracts.Length];
         Dictionary<Address, byte> contractByAddress = [];
         Dictionary<ValueHash256, byte> contractByAddressKey = [];
-        for (int contract = 0; contract < addresses.Length; contract++)
+        for (int contract = 0; contract < contracts.Length; contract++)
         {
-            _addressKeys[contract] = AddressKey(addresses[contract]);
-            contractByAddress[addresses[contract]] = (byte)contract;
+            _addressKeys[contract] = AddressKey(contracts[contract].Address);
+            contractByAddress[contracts[contract].Address] = (byte)contract;
             contractByAddressKey[_addressKeys[contract]] = (byte)contract;
         }
 
         _contractByAddress = contractByAddress.ToFrozenDictionary();
         _contractByAddressKey = contractByAddressKey.ToFrozenDictionary();
 
-        Load(reader, logManager.GetClassLogger<FlatPriorityReadPersistence>());
+        Load(contracts, reader, logManager.GetClassLogger<FlatPriorityReadPersistence>());
     }
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
@@ -118,25 +118,26 @@ public sealed class FlatPriorityReadPersistence : IPersistence
         CommitToStore(changes, cleared.CurrentState);
     }
 
-    private static Address[] ParseAddresses(string? addresses)
+    private static (Address Address, string Name)[] ParseContracts(Dictionary<string, string>? addresses)
     {
         const string setting = $"FlatPriorityRead.{nameof(IFlatPriorityReadConfig.Addresses)}";
-        string[] entries = (addresses ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        if (entries.Length is 0 or > PrioritySlotEncoding.MaxContracts)
+        if (addresses is not { Count: > 0 and <= PrioritySlotEncoding.MaxContracts })
         {
-            throw new InvalidConfigurationException($"{setting} must list 1 to {PrioritySlotEncoding.MaxContracts} addresses, not {entries.Length}.", ExitCodes.GeneralError);
+            throw new InvalidConfigurationException($"{setting} must list 1 to {PrioritySlotEncoding.MaxContracts} addresses, not {addresses?.Count ?? 0}.", ExitCodes.GeneralError);
         }
 
-        Address[] parsed = new Address[entries.Length];
+        (Address Address, string Name)[] parsed = new (Address, string)[addresses.Count];
         HashSet<Address> seen = [];
-        for (int i = 0; i < entries.Length; i++)
+        int contract = 0;
+        foreach ((string entry, string name) in addresses)
         {
-            if (!Address.TryParse(entries[i], out Address? address) || address is null || !seen.Add(address))
+            // Two spellings of one address are distinct keys of the map, so repeats are caught here.
+            if (!Address.TryParse(entry, out Address? address) || address is null || !seen.Add(address))
             {
-                throw new InvalidConfigurationException($"{setting} has an invalid or repeated address: {entries[i]}.", ExitCodes.GeneralError);
+                throw new InvalidConfigurationException($"{setting} has an invalid or repeated address: {entry}.", ExitCodes.GeneralError);
             }
 
-            parsed[i] = address;
+            parsed[contract++] = (address, name);
         }
 
         return parsed;
@@ -159,15 +160,17 @@ public sealed class FlatPriorityReadPersistence : IPersistence
         return key;
     }
 
-    private void Load(IPersistence.IPersistenceReader reader, ILogger logger)
+    private void Load((Address Address, string Name)[] contracts, IPersistence.IPersistenceReader reader, ILogger logger)
     {
         long started = Stopwatch.GetTimestamp();
         long loaded = 0;
         IPrioritySlotStore.IWriter writer = _store.BeginWrite();
         try
         {
-            for (int contract = 0; contract < _addressKeys.Length; contract++)
+            for (int contract = 0; contract < contracts.Length; contract++)
             {
+                (Address address, string name) = contracts[contract];
+                long contractStart = loaded;
                 using IPersistence.IFlatIterator slots = reader.CreateStorageIterator(_addressKeys[contract], ValueKeccak.Zero, ValueKeccak.MaxValue);
                 while (slots.MoveNext())
                 {
@@ -184,8 +187,11 @@ public sealed class FlatPriorityReadPersistence : IPersistence
                         writer.Commit(reader.CurrentState);
                         writer.Dispose();
                         writer = _store.BeginWrite();
+                        if (logger.IsInfo) logger.Info($"Loading priority slots: {loaded:N0} so far, {loaded - contractStart:N0} of {name} ({contract + 1}/{contracts.Length}), {Stopwatch.GetElapsedTime(started).TotalSeconds:N1}s");
                     }
                 }
+
+                if (logger.IsInfo) logger.Info($"Loaded {loaded - contractStart:N0} priority slots of {name} {address} ({contract + 1}/{contracts.Length}), {Stopwatch.GetElapsedTime(started).TotalSeconds:N1}s");
             }
 
             writer.Commit(reader.CurrentState);

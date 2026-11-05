@@ -162,7 +162,7 @@ public class FlatPriorityReadPersistenceTests
 
             Counting = new SlotReadCountingPersistence(Flat);
             _store = TestPrioritySlotStores.Create(backend, _directory.Path);
-            Priority = new FlatPriorityReadPersistence(Counting, _store, new FlatPriorityReadConfig { Addresses = $"{PriorityA},{PriorityB}" }, LimboLogs.Instance);
+            Priority = new FlatPriorityReadPersistence(Counting, _store, new FlatPriorityReadConfig { Addresses = new() { [PriorityA.ToString()] = "A", [PriorityB.ToString()] = "B" } }, LimboLogs.Instance);
         }
 
         /// <summary>The flat persistence on its own, which the decorator must agree with.</summary>
