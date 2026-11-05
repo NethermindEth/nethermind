@@ -355,6 +355,24 @@ public class GethGenesisLoaderTests
     }
 
     [Test]
+    public void Petersburg_defaults_to_constantinople_block([Values] bool explicitPetersburg)
+    {
+        string configExtra = "\"byzantiumBlock\": 0, \"constantinopleBlock\": 5";
+        if (explicitPetersburg) configExtra += ", \"petersburgBlock\": 5";
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec spec = provider.GetSpec(new ForkActivation(5));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip145Enabled, Is.True);
+            Assert.That(spec.IsEip1283Enabled, Is.False);
+            Assert.That(chainSpec.ConstantinopleFixBlockNumber, Is.EqualTo(5));
+            Assert.That(provider.TransitionActivations, Is.EqualTo(new[] { new ForkActivation(5) }));
+        }
+    }
+
+    [Test]
     public void Loads_bootnodes_with_enode_and_enr([Values] bool includeInvalid)
     {
         const string enode = "enode://2112dd3839dd752813d4df7f40936f06829fc54c0e051a93967c26e5f5d27d99d886b57b4ffcc3c475e930ec9e79c56ef1dbb7d86ca5ee83a9d2ccf36e5c240c@134.209.138.84:30303";

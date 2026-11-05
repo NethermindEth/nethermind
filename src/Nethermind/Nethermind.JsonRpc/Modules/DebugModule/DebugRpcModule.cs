@@ -531,6 +531,7 @@ public class DebugRpcModule(
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
         }
 
+        options = WithOpcodeStepLimit(options);
         if (options?.ParsedTimeout.Error is null && CanStreamBlockTrace(options))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
@@ -542,7 +543,8 @@ public class DebugRpcModule(
         CancellationToken cancellationToken = timeout.Token;
         try
         {
-            IReadOnlyCollection<GethLikeTxTrace> blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, WithBufferedLimit(options));
+            IReadOnlyCollection<GethLikeTxTrace> blockTrace = debugBridge.GetBlockTrace(block, cancellationToken,
+                WithBufferedLimit(options) with { EnforceExecutionDeadline = true });
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlock)} request {blockRlp.ToHexString()}, result: {blockTrace}");
 
@@ -556,6 +558,10 @@ public class DebugRpcModule(
         catch (TraceDurationFormatException)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("invalid argument 1", ErrorCodes.InvalidParams);
+        }
+        catch (GethTraceDeadlineException exception)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
         catch (RlpException)
         {

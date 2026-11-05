@@ -3,6 +3,7 @@
 
 using System.Buffers;
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -35,7 +36,7 @@ public class FlatStateReaderTests
     public void TearDown() => _buffer.Dispose();
 
     private FlatStateReader CreateReader(IFlatDbManager manager) =>
-        new(new MemDb(), manager, NullHistoricalTrieVisitor.Instance, LimboLogs.Instance);
+        new(new MemDb(), manager, NullHistoricalTrieVisitor.Instance);
 
     public static readonly TestCaseData[] UnavailableStateReads =
     [
@@ -73,7 +74,7 @@ public class FlatStateReaderTests
     [Test]
     public void RunTreeVisitor_LoadsTrieRootsFromBundle([Values] bool fullScan)
     {
-        CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
+        CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(out Hash256 stateRoot, TestItem.AddressA);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
         FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot: null, persisted: null));
 
@@ -90,11 +91,11 @@ public class FlatStateReaderTests
     [Test]
     public void RunTreeVisitor_ReadsSnapshotsBeforeBasePersistence([Values] bool fullScan, [Values] bool persistedSnapshot)
     {
-        CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
+        CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(out Hash256 stateRoot, TestItem.AddressA);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
         ResourcePool pool = new(new FlatDbConfig());
         using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
-        trieReader.AddRootsTo(snapshot, _buffer);
+        trieReader.AddNodesTo(snapshot, TestItem.AddressA, TreePath.Empty);
         using TempPath arenaPath = TempPath.GetTempDirectory();
         using TempPath blobsPath = TempPath.GetTempDirectory();
         using ArenaManager arena = TestFixtureHelpers.CreateArenaManager(arenaPath.Path);
@@ -112,6 +113,34 @@ public class FlatStateReaderTests
         {
             Assert.That(trieReader.StateRlpLoads, Is.Zero);
             Assert.That(trieReader.StorageRlpLoads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void RunTreeVisitor_FollowsBufferRecordsAndLoadsTheRestFromPersistence([Values(1, 4)] int parallelism)
+    {
+        CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(out Hash256 stateRoot, TestItem.AddressA, TestItem.AddressC);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
+        ResourcePool pool = new(new FlatDbConfig());
+        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
+        // The buffer holds the branch root, A's leaf below it and A's storage root; only persistence holds C's leaf and storage root.
+        trieReader.AddNodesTo(snapshot, TestItem.AddressA, TreePath.Empty, FlatTestHelpers.CanonicalPath(Keccak.Compute(TestItem.AddressA.Bytes), 1));
+        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot, persisted: null));
+        TrieStatsCollector collector = new(new MemDb(), LimboLogs.Instance);
+        VisitingStats diagnostics = new();
+
+        reader.RunTreeVisitor(collector, header, new VisitingOptions { MaxDegreeOfParallelism = parallelism }, diagnostics);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(collector.Stats.StateBranchCount, Is.EqualTo(1));
+            Assert.That(collector.Stats.AccountCount, Is.EqualTo(2));
+            Assert.That(collector.Stats.StorageLeafCount, Is.EqualTo(2));
+            Assert.That(collector.Stats.MissingNodes, Is.Zero);
+            Assert.That(trieReader.StateRlpLoads, Is.EqualTo(1));
+            Assert.That(trieReader.StorageRlpLoads, Is.EqualTo(1));
+            Assert.That(diagnostics.NodeLookups, Is.EqualTo(5));
+            Assert.That(diagnostics.CacheMisses, Is.EqualTo(2));
         }
     }
 
@@ -184,33 +213,43 @@ public class FlatStateReaderTests
         public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) { }
     }
 
-    private sealed class CountingTrieReader(Hash256 addressHash, StateTree stateTree, StorageTree storageTree) : IPersistence.IPersistenceReader
+    private sealed class CountingTrieReader(StateTree stateTree, Dictionary<Hash256, StorageTree> storageTrees) : IPersistence.IPersistenceReader
     {
         public int StateRlpLoads { get; private set; }
         public int StorageRlpLoads { get; private set; }
         public bool StateAvailable { get; set; } = true;
         public bool StorageAvailable { get; set; } = true;
 
-        public static CountingTrieReader WithSingleAccountAndSlot(Address address, UInt256 slot, out Hash256 stateRoot)
+        /// <summary>A reader over a state trie of <paramref name="addresses"/>, each with a balance of 1 and slot 1 set to 1.</summary>
+        public static CountingTrieReader WithAccountsAndSlot(out Hash256 stateRoot, params Address[] addresses)
         {
             MemDb trieDb = new();
-            Hash256 addressHash = Keccak.Compute(address.Bytes);
-            StorageTree storageTree = new(new RawScopedTrieStore(trieDb, addressHash), LimboLogs.Instance);
-            storageTree.Set(slot, [0x01]);
-            storageTree.Commit();
-
             StateTree stateTree = new(new RawScopedTrieStore(trieDb), LimboLogs.Instance);
-            stateTree.Set(address, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
+            Dictionary<Hash256, StorageTree> storageTrees = [];
+            foreach (Address address in addresses)
+            {
+                Hash256 addressHash = Keccak.Compute(address.Bytes);
+                StorageTree storageTree = new(new RawScopedTrieStore(trieDb, addressHash), LimboLogs.Instance);
+                storageTree.Set(1, [0x01]);
+                storageTree.Commit();
+                storageTrees[addressHash] = storageTree;
+                stateTree.Set(address, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
+            }
             stateTree.Commit();
 
             stateRoot = stateTree.RootHash;
-            return new CountingTrieReader(addressHash, stateTree, storageTree);
+            return new CountingTrieReader(stateTree, storageTrees);
         }
 
-        public void AddRootsTo(Snapshot snapshot, INodeRecordBuffer buffer)
+        /// <summary>Records the state nodes at <paramref name="statePaths"/> and the storage root of <paramref name="address"/> in <paramref name="snapshot"/>, indexing both roots as block processing publishes them.</summary>
+        public void AddNodesTo(Snapshot snapshot, Address address, params TreePath[] statePaths)
         {
-            snapshot.Content.SetStateNodeRlp(buffer, TreePath.Empty, stateTree.GetNodeByPath([])!);
-            snapshot.Content.SetStorageNodeRlp(buffer, addressHash, TreePath.Empty, storageTree.GetNodeByPath([])!);
+            INodeRecordBuffer buffer = snapshot.BufferPin!.Buffer;
+            foreach (TreePath path in statePaths) snapshot.Content.SetStateNodeRlp(buffer, path, stateTree.GetNodeByPath(path.ToNibble())!);
+            Hash256 addressHash = Keccak.Compute(address.Bytes);
+            snapshot.Content.SetStorageNodeRlp(buffer, addressHash, TreePath.Empty, storageTrees[addressHash].GetNodeByPath([])!);
+            buffer.SetRoot(null, stateTree.RootHash, snapshot.Content.StateRootPointer);
+            buffer.SetRoot(addressHash, storageTrees[addressHash].RootHash, snapshot.Content.StorageRoots[addressHash]);
         }
 
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)
@@ -222,7 +261,7 @@ public class FlatStateReaderTests
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags)
         {
             StorageRlpLoads++;
-            return StorageAvailable && address == addressHash ? storageTree.GetNodeByPath(path.ToNibble()) : null;
+            return StorageAvailable && storageTrees.TryGetValue(address, out StorageTree? storageTree) ? storageTree.GetNodeByPath(path.ToNibble()) : null;
         }
 
         public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
