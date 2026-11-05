@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.EthStats.Clients;
 using Nethermind.Logging;
 using NSubstitute;
@@ -28,6 +32,31 @@ namespace Nethermind.EthStats.Test
         {
             EthStatsClient ethClient = new(url, 5000, Substitute.For<IMessageSender>(), LimboLogs.Instance);
             Assert.Throws<ArgumentException>(() => ethClient.BuildUrl());
+        }
+
+        [Test]
+        [CancelAfter(30_000)]
+        public async Task Init_keeps_retrying_when_server_is_unavailable_at_startup(CancellationToken cancellationToken)
+        {
+            TcpListener listener = new(IPAddress.Loopback, 0);
+            listener.Start();
+            int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            listener.Stop();
+
+            using EthStatsClient ethClient = new($"ws://127.0.0.1:{port}/api", 100, Substitute.For<IMessageSender>(), LimboLogs.Instance);
+            await ethClient.InitAsync();
+
+            listener = new(IPAddress.Loopback, port);
+            listener.Start();
+            try
+            {
+                using TcpClient connection = await listener.AcceptTcpClientAsync(cancellationToken);
+                Assert.That(connection.Connected, Is.True);
+            }
+            finally
+            {
+                listener.Stop();
+            }
         }
 
         [TestCase("primus::ping::", TestName = "Ping_with_empty_timestamp_tail_fails_to_parse")]

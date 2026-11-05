@@ -30,7 +30,8 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         public long? FastSyncCatchUpHeightDelta { get; set; } = 8192;
-        bool ISyncConfig.FastBlocks { get; set; }
+        [Obsolete]
+        public bool FastBlocks { get; set; }
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
         public bool FastSync { get => _fastSync || SnapSync; set => _fastSync = value; }
         public bool DownloadHeadersInFastSync { get; set; } = true;
@@ -59,6 +60,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool StaticSnapPivot { get; set; } = false;
         public int SnapSyncAccountRangePartitionCount { get; set; } = 8;
         public bool BalHealing { get; set; } = true;
+        public bool SnapResume { get; set; } = true;
         public bool FixReceipts { get; set; } = false;
         public ulong? FixReceiptsStartingBlock { get; set; } = null;
         public ulong? FixReceiptsLastBlock { get; set; } = null;

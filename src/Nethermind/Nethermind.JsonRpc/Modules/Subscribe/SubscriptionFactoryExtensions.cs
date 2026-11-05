@@ -50,13 +50,14 @@ public static class SubscriptionFactoryExtensions
         this ISubscriptionFactory subscriptionFactory,
         IReceiptMonitor receiptMonitor,
         IBlockTree? blockTree,
+        ISpecProvider specProvider,
         ILogManager? logManager)
     {
         ReceiptsEventPayloadCache<HashSet<ValueHash256>> payloads = TransactionReceiptsSubscription.CreatePayloadCache();
         subscriptionFactory.RegisterSubscriptionType<TransactionHashesFilter?>(
             SubscriptionType.EthSubscription.TransactionReceipts,
             (jsonRpcDuplexClient, filter) =>
-            new TransactionReceiptsSubscription(jsonRpcDuplexClient, receiptMonitor, blockTree, logManager, payloads, filter)
+            new TransactionReceiptsSubscription(jsonRpcDuplexClient, receiptMonitor, blockTree, specProvider, logManager, payloads, filter)
             );
     }
 
@@ -120,7 +121,7 @@ public static class SubscriptionFactoryExtensions
     {
         subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider, blockForRpcFactory);
         subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
-        subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, logManager);
+        subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, specProvider, logManager);
         subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);
         subscriptionFactory.RegisterDroppedPendingTransactionsSubscription(txPool, logManager);
         subscriptionFactory.RegisterSyncingSubscription(blockTree, ethSyncingInfo, logManager);
@@ -141,7 +142,7 @@ public static class SubscriptionFactoryExtensions
     {
         subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider, blockForRpcFactory);
         subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
-        subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, logManager);
+        subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, specProvider, logManager);
         subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);
         subscriptionFactory.RegisterDroppedPendingTransactionsSubscription(txPool, logManager);
         subscriptionFactory.RegisterSyncingSubscription(blockTree, ethSyncingInfo, logManager);

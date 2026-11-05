@@ -78,7 +78,9 @@ public class BlockAccessListJournalTests
         for (int i = 0; i < reads.Count; i++)
         {
             StorageCell cell = reads[i];
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(plan.TryGetOrdinal(new StorageCell(new Address(cell.Address.Bytes), cell.Index), out int ordinal), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(ordinal, Is.EqualTo(i));
             Assert.That(coverage.TryMark(cell), Is.True);
         }
@@ -122,7 +124,9 @@ public class BlockAccessListJournalTests
                 Assert.That(worker.TryMark(miss), Is.False);
                 Assert.That(worker.TryMark(miss), Is.False);
             }
+#pragma warning disable NUnit2045 // TryMark changes the set used by the following TryMark assertion.
             Assert.That(worker.ChargeableReadCount, Is.Zero);
+#pragma warning restore NUnit2045
             Assert.That(worker.TryMark(first), Is.True);
             Assert.That(worker.TryMark(new StorageCell(new Address(first.Address.Bytes), first.Index)), Is.True);
             Assert.That(worker.ChargeableReadCount, Is.EqualTo(1));
@@ -176,11 +180,17 @@ public class BlockAccessListJournalTests
         BalReadCoverage reused = new(plan, pool);
         try
         {
-            Assert.That(reused.FirstUncovered(), Is.Zero);
-            Assert.That(reused.ChargeableReadCount, Is.Zero);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reused.FirstUncovered(), Is.Zero);
+                Assert.That(reused.ChargeableReadCount, Is.Zero);
+            }
             reused.TryMark(new StorageCell(TestItem.AddressA, slots[^1]));
-            Assert.That(reused.ChargeableReadCount, Is.EqualTo(1));
-            Assert.That(reused.FirstUncovered(), Is.Zero);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reused.ChargeableReadCount, Is.EqualTo(1));
+                Assert.That(reused.FirstUncovered(), Is.Zero);
+            }
         }
         finally
         {

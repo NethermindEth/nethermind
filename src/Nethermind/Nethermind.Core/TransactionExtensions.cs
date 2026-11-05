@@ -62,9 +62,11 @@ namespace Nethermind.Core
             /// </summary>
             /// <remarks>
             /// Calls skip transaction validation, and the processor then checks only the fee cap against the base fee.
+            /// An EIP-8141 frame transaction has no per-gas fee cap: its <c>max_fee</c> caps the tip.
             /// </remarks>
             public string? GetTipAboveFeeCapError(IReleaseSpec spec) =>
                 spec.IsEip1559Enabled
+                && tx.Type != TxType.FrameTx
                 && !(tx.MaxFeePerGas.IsZero && tx.MaxPriorityFeePerGas.IsZero)
                 && tx.MaxFeePerGas < tx.MaxPriorityFeePerGas
                     ? $"{TxErrorMessages.TipAboveFeeCap}: address {tx.SenderAddress!.ToString(withEip55Checksum: true)}, maxPriorityFeePerGas: {tx.MaxPriorityFeePerGas}, maxFeePerGas: {tx.MaxFeePerGas}"

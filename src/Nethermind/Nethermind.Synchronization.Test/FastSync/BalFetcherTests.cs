@@ -80,9 +80,12 @@ public class BalFetcherTests
 
         bool result = await _fetcher.EnsureRange(from, to, default);
 
-        Assert.That(result, Is.True);
-        Assert.That(_balStore.Exists(11, b11.Hash!), Is.True);
-        Assert.That(_balStore.Exists(12, to.Hash!), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(_balStore.Exists(11, b11.Hash!), Is.True);
+            Assert.That(_balStore.Exists(12, to.Hash!), Is.True);
+        }
     }
 
     [Test]
@@ -94,8 +97,11 @@ public class BalFetcherTests
 
         bool result = await _fetcher.EnsureRange(from, b11, default);
 
-        Assert.That(result, Is.True);
-        Assert.That(_balStore.Exists(11, b11.Hash!), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(_balStore.Exists(11, b11.Hash!), Is.True);
+        }
     }
 
     [Test]
@@ -108,8 +114,11 @@ public class BalFetcherTests
 
         bool result = await _fetcher.EnsureRange(from, b11, default);
 
-        Assert.That(result, Is.False);
-        Assert.That(_balStore.Exists(11, b11.Hash!), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(_balStore.Exists(11, b11.Hash!), Is.False);
+        }
 
         await _pool.Received().Allocate(Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.State, AllocateTimeoutMs, Arg.Any<CancellationToken>());
     }

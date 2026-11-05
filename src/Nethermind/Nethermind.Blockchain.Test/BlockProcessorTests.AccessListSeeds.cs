@@ -227,7 +227,7 @@ public partial class BlockProcessorTests
     [Test]
     public async Task AccessListSeed_ParallelBlockTrace_TracesTheRewardsOnTheStateAfterTheLastTransaction([Values] bool stream)
     {
-        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder.AddSingleton<IRewardCalculatorSource>(new ZeroRewardToTheBeneficiary()));
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder.AddSingleton<IRewardCalculator>(new ZeroRewardToTheBeneficiary()));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = Historical(await AddSharedStateBlock(chain));
         IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
@@ -262,7 +262,7 @@ public partial class BlockProcessorTests
     [Test]
     public async Task AccessListSeed_ParallelBlockTrace_WhenTheBlockIsNeverRewarded_SkipsTheRewardPass([Values] bool stream)
     {
-        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder.AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance));
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder.AddSingleton<IRewardCalculator>(NoBlockRewards.Instance));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = Historical(await AddSharedStateBlock(chain));
         IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
@@ -507,8 +507,8 @@ public partial class BlockProcessorTests
     [Test]
     public async Task AccessListSeed_OnTheEip8253ForkBlock_TracesStartFromTheBumpedNonce()
     {
-        Address target = Eip8253Constants.MainnetAccounts[0];
-        IReleaseSpec eip8253 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true };
+        Address target = Eip8253TestData.MainnetAccounts[0];
+        IReleaseSpec eip8253 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true, Eip8253Accounts = [target] };
         TestSpecProvider specProvider = new(Bogota.Instance) { NextForkSpec = eip8253, ForkOnBlockNumber = 2, AllowTestChainOverride = false };
         using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder
             .AddSingleton<ISpecProvider>(specProvider)
@@ -599,8 +599,11 @@ public partial class BlockProcessorTests
         ];
 
         Block block = await chain.AddBlock(transactions);
-        Assert.That(block.Transactions.Length, Is.EqualTo(transactions.Length), "precondition: the block must hold every transaction of the scenario");
-        Assert.That(block.Header.BlockAccessListHash, Is.Not.Null, "precondition: an Amsterdam block commits to its access list");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions.Length, Is.EqualTo(transactions.Length), "precondition: the block must hold every transaction of the scenario");
+            Assert.That(block.Header.BlockAccessListHash, Is.Not.Null, "precondition: an Amsterdam block commits to its access list");
+        }
         return block;
 
         static Transaction Call(PrivateKey sender, ulong nonce, Address to, int value) =>

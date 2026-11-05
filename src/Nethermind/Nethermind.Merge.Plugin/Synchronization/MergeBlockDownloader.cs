@@ -55,6 +55,19 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBlockTree _blockTree = blockTree;
         private readonly ILogger _logger = logManager.GetClassLogger<MergeBlockDownloader>();
 
+        /// <inheritdoc/>
+        /// <remarks>
+        /// <c>engine_newPayload</c> stores the bodies of beacon blocks at or above the beacon pivot, while beacon headers sync
+        /// fills the levels below it with headers only, so the block store is read only for levels marked as having a beacon body.
+        /// </remarks>
+        protected override Block? FindLocalBlock(BlockHeader header) =>
+            beaconPivot.BeaconPivotExists()
+            && header.Number >= beaconPivot.PivotNumber
+            && header.Hash is { } hash
+            && _blockTree.GetInfo(header.Number, hash).Info is { IsBeaconBody: true }
+                ? _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number)
+                : null;
+
         protected override bool ShouldDownloadAccessList(BlockHeader header, bool shouldProcess) =>
             base.ShouldDownloadAccessList(header, shouldProcess) || finalizedBalPolicy?.CanReconstruct(header) == true;
 

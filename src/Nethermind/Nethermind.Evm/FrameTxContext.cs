@@ -27,10 +27,8 @@ namespace Nethermind.Evm;
 /// <param name="signatures">The envelope's signature entries, already validated when execution begins.</param>
 /// <param name="transaction">The envelope <see cref="SigHash"/> is computed from on first read.</param>
 /// <param name="sigHash">The canonical signature hash when validation already computed it.</param>
-/// <param name="maxCost">The gas and blob-gas cost the payer's approval reserves up front.</param>
+/// <param name="maxCost">The <c>max_cost</c> the payer's approval collects up front.</param>
 /// <param name="maxPriorityFeePerGas">EIP-1559 <c>max_priority_fee_per_gas</c> of the envelope.</param>
-/// <param name="maxFeePerGas">EIP-1559 <c>max_fee_per_gas</c> of the envelope.</param>
-/// <param name="maxFeePerBlobGas">EIP-4844 <c>max_fee_per_blob_gas</c> of the envelope, zero when it carries no blobs.</param>
 /// <param name="legacyNonce">The sender's account nonce before any frame executed.</param>
 /// <param name="nonceKeys">EIP-8250 nonce keys, or <see langword="null"/> for a plain account nonce.</param>
 public sealed class FrameTxContext(
@@ -42,8 +40,6 @@ public sealed class FrameTxContext(
     ValueHash256? sigHash,
     in UInt256 maxCost,
     in UInt256 maxPriorityFeePerGas,
-    in UInt256 maxFeePerGas,
-    in UInt256 maxFeePerBlobGas,
     in UInt256 legacyNonce,
     UInt256[]? nonceKeys = null)
 {
@@ -83,8 +79,8 @@ public sealed class FrameTxContext(
 
     private ValueHash256? _sigHash = sigHash;
 
-    /// <summary>The cost an approving payer reserves up front: the whole gas budget plus blob gas at the
-    /// envelope's maximum prices.</summary>
+    /// <summary>The <c>max_cost</c> an approving payer is charged up front: <c>required_max_fee</c> at the block's
+    /// base fees plus the largest tip the <c>max_fee</c> budget allows.</summary>
     public UInt256 MaxCost { get; } = maxCost;
 
     /// <summary>Whether a restored gas-search probe defers escrow without changing fee introspection.</summary>
@@ -93,11 +89,8 @@ public sealed class FrameTxContext(
     /// <summary>EIP-1559 <c>max_priority_fee_per_gas</c> of the envelope.</summary>
     public UInt256 MaxPriorityFeePerGas { get; } = maxPriorityFeePerGas;
 
-    /// <summary>EIP-1559 <c>max_fee_per_gas</c> of the envelope.</summary>
-    public UInt256 MaxFeePerGas { get; } = maxFeePerGas;
-
-    /// <summary>EIP-4844 <c>max_fee_per_blob_gas</c> of the envelope; zero when it carries no blobs.</summary>
-    public UInt256 MaxFeePerBlobGas { get; } = maxFeePerBlobGas;
+    /// <summary>EIP-8141 <c>max_fee</c> of the envelope.</summary>
+    public UInt256 MaxFee => transaction.MaxFee;
 
     /// <summary>Index of the frame currently executing; set by the outer loop before each frame.</summary>
     public int CurrentFrameIndex { get; set; }

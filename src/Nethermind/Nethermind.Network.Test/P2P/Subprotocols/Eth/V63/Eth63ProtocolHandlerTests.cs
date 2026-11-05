@@ -191,10 +191,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             }
 
             TxReceipt[] receipts = [Build.A.Receipt.WithLogs(logs).TestObject];
-            Assert.That(MessageSizeEstimator.EstimateSize(receipts),
-                Is.GreaterThan(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(MessageSizeEstimator.EstimateSize(receipts),
+                    Is.GreaterThan(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
 
-            Assert.That(ServeReceipts(receipts).TxReceipts, Is.Empty);
+                Assert.That(ServeReceipts(receipts).TxReceipts, Is.Empty);
+            }
         }
 
         [Test]

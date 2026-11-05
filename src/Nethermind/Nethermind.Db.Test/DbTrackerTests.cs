@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Api.Monitoring;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
@@ -17,8 +18,6 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
-using Nethermind.Monitoring.Config;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -156,7 +155,9 @@ public class DbTrackerTests
 
         updateAction!();
 
+#pragma warning disable NUnit2045 // The key must exist before indexing the result.
         Assert.That(Metrics.DbReads.ContainsKey("GoodDb"), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(Metrics.DbReads["GoodDb"], Is.EqualTo(42));
     }
 
@@ -185,7 +186,9 @@ public class DbTrackerTests
         tracker.AddDb("PrunedState", pruningDb);
 
         updateAction!();
+#pragma warning disable NUnit2045 // The size precondition is checked before starting a pruning cycle.
         Assert.That(Metrics.DbSize["PrunedState"], Is.EqualTo(100));
+#pragma warning restore NUnit2045
 
         // Trigger and commit a full pruning cycle; pruningDb._currentDb now points to the second inner DB.
         Assert.That(pruningDb.TryStartPruning(out IPruningContext context), Is.True);
@@ -233,9 +236,12 @@ public class DbTrackerTests
 
         Action invoke = () => updateAction!();
         Assert.That(invoke, Throws.Nothing);
-        Assert.That(invoke, Throws.Nothing);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(invoke, Throws.Nothing);
 
-        Assert.That(testLogger.LogList, Is.Empty);
+            Assert.That(testLogger.LogList, Is.Empty);
+        }
     }
 
     /// <summary>

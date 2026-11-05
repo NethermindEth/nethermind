@@ -31,9 +31,9 @@ OPT_FLAGS += \
 	--codegenopt JitEnableHeadTailMerge=0
 
 # Execution harness. SP1 publishes no image that executes an arbitrary ELF, so
-# this is our own: NethermindEth/bflat-sp1 wraps sp1-sdk v6.6.0 to print the
+# this is our own: NethermindEth/bflat-sp1 wraps sp1-sdk v6.9.0 to print the
 # cycle count and public values. SP1_RUNNER overrides it with a host binary.
-SP1_IMAGE ?= nethermindeth/sp1-runner:v6.6.0@sha256:7bce9353f8071e5c6dfe6fe9fd67a119c1f561a5d60fc21e5e1a07b7c5c69c45
+SP1_IMAGE ?= nethermindeth/sp1-runner:v6.9.0@sha256:9f3a66911e441c3e988eeebb448f833c2d15fde3792ed963275ee6a5629dddb2
 # The native executor maps guest memory through /dev/shm. Docker's 64 MB default
 # fails and so does 1g; 4g is the smallest tested value that carries a mainnet
 # block (~2.7 GB actual). A ceiling, not a reservation, so headroom is free.

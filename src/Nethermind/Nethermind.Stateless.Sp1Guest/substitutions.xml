@@ -20,8 +20,7 @@
   </assembly>
   <assembly fullname="Nethermind.Core">
     <!-- The shared build leaves the flag off and this guest turns it on, switching on what only SP1 offers:
-         MULMOD on the 256-bit modular multiplication precompile, and BLS12-381 points in the zkcrypto layout
-         SP1's libzkevm takes rather than EIP-2537's. -->
+         MULMOD on the 256-bit modular multiplication precompile. -->
     <type fullname="Nethermind.Core.Sp1Flag">
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
     </type>

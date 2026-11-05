@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -43,16 +44,38 @@ public sealed partial class JumpDestinationAnalyzer
     /// <remarks>Scanning that far costs about as much as the look-backs it saves.</remarks>
     private const int MaxMarkedDistance = 64;
 
-    /// <summary>The look-back's comparands: the high bit of each byte, then each window word's lane offsets plus one.</summary>
-    /// <remarks>An array for the same reason as <see cref="_byteScanThresholds"/>: materialising each 64-bit constant takes several instructions.</remarks>
+    /// <summary>The look-back's comparands, one row of <see cref="ReachRowLength"/> per offset of the window's end in its aligned word.</summary>
+    /// <remarks>
+    /// The look-back reads the five aligned words that hold the 32-byte window, as strict alignment expands an unaligned
+    /// load into byte loads. Lane <c>L</c> of those 40 bytes is window byte <c>L - skew</c>, <c>skew</c> being the end's
+    /// offset in its word; row <c>skew</c> holds each word's lane biases - the window byte's offset plus one, 0 outside the
+    /// window - then the last word's high-bit mask, which keeps only the lanes before the window's end, then the high bit
+    /// of each byte. An array for the same reason as <see cref="_byteScanThresholds"/>: materialising each 64-bit constant
+    /// takes several instructions.
+    /// </remarks>
     private static readonly ulong[] _reachBiases =
     [
-        0x8080_8080_8080_8080UL,
-        0x0807_0605_0403_0201UL,
-        0x100f_0e0d_0c0b_0a09UL,
-        0x1817_1615_1413_1211UL,
-        0x201f_1e1d_1c1b_1a19UL,
+        0x0807_0605_0403_0201UL, 0x100f_0e0d_0c0b_0a09UL, 0x1817_1615_1413_1211UL, 0x201f_1e1d_1c1b_1a19UL,
+        0x0000_0000_0000_0000UL, 0x0000_0000_0000_0000UL, 0x8080_8080_8080_8080UL, 0,
+        0x0706_0504_0302_0100UL, 0x0f0e_0d0c_0b0a_0908UL, 0x1716_1514_1312_1110UL, 0x1f1e_1d1c_1b1a_1918UL,
+        0x0000_0000_0000_0020UL, 0x0000_0000_0000_0080UL, 0x8080_8080_8080_8080UL, 0,
+        0x0605_0403_0201_0000UL, 0x0e0d_0c0b_0a09_0807UL, 0x1615_1413_1211_100fUL, 0x1e1d_1c1b_1a19_1817UL,
+        0x0000_0000_0000_201fUL, 0x0000_0000_0000_8080UL, 0x8080_8080_8080_8080UL, 0,
+        0x0504_0302_0100_0000UL, 0x0d0c_0b0a_0908_0706UL, 0x1514_1312_1110_0f0eUL, 0x1d1c_1b1a_1918_1716UL,
+        0x0000_0000_0020_1f1eUL, 0x0000_0000_0080_8080UL, 0x8080_8080_8080_8080UL, 0,
+        0x0403_0201_0000_0000UL, 0x0c0b_0a09_0807_0605UL, 0x1413_1211_100f_0e0dUL, 0x1c1b_1a19_1817_1615UL,
+        0x0000_0000_201f_1e1dUL, 0x0000_0000_8080_8080UL, 0x8080_8080_8080_8080UL, 0,
+        0x0302_0100_0000_0000UL, 0x0b0a_0908_0706_0504UL, 0x1312_1110_0f0e_0d0cUL, 0x1b1a_1918_1716_1514UL,
+        0x0000_0020_1f1e_1d1cUL, 0x0000_0080_8080_8080UL, 0x8080_8080_8080_8080UL, 0,
+        0x0201_0000_0000_0000UL, 0x0a09_0807_0605_0403UL, 0x1211_100f_0e0d_0c0bUL, 0x1a19_1817_1615_1413UL,
+        0x0000_201f_1e1d_1c1bUL, 0x0000_8080_8080_8080UL, 0x8080_8080_8080_8080UL, 0,
+        0x0100_0000_0000_0000UL, 0x0908_0706_0504_0302UL, 0x1110_0f0e_0d0c_0b0aUL, 0x1918_1716_1514_1312UL,
+        0x0020_1f1e_1d1c_1b1aUL, 0x0080_8080_8080_8080UL, 0x8080_8080_8080_8080UL, 0,
     ];
+
+    private const int ReachRowLength = 8;
+    private const int ReachTailMask = 5;
+    private const int ReachHighBits = 6;
 
     /// <remarks>
     /// Zisk reaches every byte in four instructions, so the word scanner the std build keeps cannot
@@ -161,10 +184,9 @@ public sealed partial class JumpDestinationAnalyzer
             nint lookBacks = MaxLookBacks;
             // Read once here: inside the search, ILC rematerialises the array's address on every look-back.
             ref ulong biases = ref MemoryMarshal.GetArrayDataReference(_reachBiases);
-            ulong highBits = biases;
             while (position > floor)
             {
-                if (!TryFindReachingPush(ref Unsafe.Add(ref codeStart, position - MaxImmediateLength), ref biases, highBits, out nint offset))
+                if (!TryFindReachingPush(ref Unsafe.Add(ref codeStart, position), ref biases, out nint offset))
                 {
                     start = position;
                     break;
@@ -185,7 +207,7 @@ public sealed partial class JumpDestinationAnalyzer
     }
 
     /// <summary>Reports whether the 32 bytes before <paramref name="destination"/> prove that it starts an instruction.</summary>
-    /// <param name="destination">A position in the code.</param>
+    /// <param name="destination">The position of a JUMPDEST byte in the code.</param>
     /// <param name="code">The first byte of the code.</param>
     /// <param name="analyzedUntil">Where the contiguous scan from the start of the code stopped.</param>
     /// <remarks>
@@ -195,27 +217,47 @@ public sealed partial class JumpDestinationAnalyzer
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool IsProvenByLookBack(nint destination, ref byte code, nint analyzedUntil) =>
-        destination > analyzedUntil + MaxImmediateLength && !MayHoldReachingPush(ref Unsafe.Add(ref code, destination - MaxImmediateLength));
+        destination > analyzedUntil + MaxImmediateLength && !MayHoldReachingPush(ref Unsafe.Add(ref code, destination));
 
-    /// <summary>Reports whether a byte of the 32-byte <paramref name="window"/> may be a PUSH long enough to reach the position just past it.</summary>
+    /// <summary>Reports whether a byte of the 32 bytes before <paramref name="end"/> may be a PUSH long enough to reach it.</summary>
     /// <remarks>
     /// The test of <see cref="TryFindReachingPush"/> without the offset, folded a word at a time, so that a handler taking
-    /// it keeps two words live rather than eight and needs no callee-saved register.
+    /// it keeps two words live rather than eight and needs no callee-saved register. It reads up to 7 bytes before the
+    /// window and up to 7 past <paramref name="end"/>, whose lanes the row zeroes. <paramref name="end"/> must be a
+    /// JUMPDEST byte: 0x5b plus its bias 0 and a carry neither sets bit 7 nor carries on, so no lane at or past it can
+    /// fire and the last word needs no tail mask.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool MayHoldReachingPush(ref byte window)
+    private static bool MayHoldReachingPush(ref byte end)
     {
-        ref ulong biases = ref MemoryMarshal.GetArrayDataReference(_reachBiases);
-        ulong word = Unsafe.ReadUnaligned<ulong>(ref window);
-        ulong reach = (word + Unsafe.Add(ref biases, 1)) & ~word;
-        word = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref window, sizeof(ulong)));
-        reach |= (word + Unsafe.Add(ref biases, 2)) & ~word;
-        word = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref window, 2 * sizeof(ulong)));
-        reach |= (word + Unsafe.Add(ref biases, 3)) & ~word;
-        word = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref window, 3 * sizeof(ulong)));
-        reach |= (word + Unsafe.Add(ref biases, 4)) & ~word;
-        return (reach & biases) != 0;
+        nint skew = Skew(ref end);
+        ref ulong row = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_reachBiases), skew * ReachRowLength);
+        ref ulong word = ref FirstWindowWord(ref end, skew);
+        ulong reach = ReachingBytes(ref word, ref row, 0) | ReachingBytes(ref word, ref row, 1) |
+            ReachingBytes(ref word, ref row, 2) | ReachingBytes(ref word, ref row, 3);
+        return ((reach | ReachingBytes(ref word, ref row, 4)) & Aligned(ref Unsafe.Add(ref row, ReachHighBits))) != 0;
     }
+
+    /// <summary>The offset of <paramref name="end"/> in its aligned word, which picks the look-back's row of biases.</summary>
+    /// <remarks>
+    /// A relocating GC moves objects by whole words, so the offset survives it, and the words are reached through
+    /// managed references: the host's CoreCLR tests run this code as the guest does.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe nint Skew(ref byte end) => (nint)((nuint)Unsafe.AsPointer(ref end) & (sizeof(ulong) - 1));
+
+    /// <summary>The first of the five aligned words holding the 32 bytes before <paramref name="end"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ref ulong FirstWindowWord(ref byte end, nint skew) =>
+        ref Unsafe.Add(ref Unsafe.As<byte, ulong>(ref Unsafe.Subtract(ref end, skew)), -(MaxImmediateLength / sizeof(ulong)));
+
+    /// <summary><paramref name="word"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
+    /// <remarks>One <c>andi</c> lets the JIT prove the load aligned and drop its alignment test.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong Aligned(ref ulong word) => StrictAlignmentFlag.IsActive
+        ? Unsafe.As<byte, ulong>(ref Unsafe.AddByteOffset(ref Unsafe.NullRef<byte>(),
+            Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref Unsafe.As<ulong, byte>(ref word)) & ~(nint)(sizeof(ulong) - 1)))
+        : word;
 
     /// <summary>Returns the last position below <paramref name="destination"/> and at or above <paramref name="limit"/> that <paramref name="bitmap"/> marks, or -1.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -296,35 +338,42 @@ public sealed partial class JumpDestinationAnalyzer
     }
 
     /// <summary>
-    /// Reports whether a byte of the 32-byte <paramref name="window"/> may be a PUSH long enough to reach the
-    /// position just past the window, returning in <paramref name="offset"/> one no later than the first that is.
+    /// Reports whether a byte of the 32 bytes before <paramref name="end"/> may be a PUSH long enough to reach it,
+    /// returning in <paramref name="offset"/>, counted from 32 bytes before <paramref name="end"/>, one no later than
+    /// the first that is.
     /// </summary>
     /// <remarks>
     /// The byte at offset <c>o</c> reaches that position when it lies in <c>[0x7f - o, 0x7f]</c>, that is when
     /// adding <c>o + 1</c> to it sets bit 7 while its own bit 7 is clear. Only a byte with bit 7 set can carry
     /// into the next one, and a carry can only set that byte's bit 7, never clear it: the result may name a byte
-    /// that does not reach, which costs a scan, but never misses one that does.
+    /// that does not reach, which costs a scan, but never misses one that does. A lane outside the window has
+    /// bias 0, so it is never named unless a carry reaches it; the last word's mask drops those past the end.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryFindReachingPush(ref byte window, ref ulong biases, ulong highBits, out nint offset)
+    private static bool TryFindReachingPush(ref byte end, ref ulong biases, out nint offset)
     {
+        nint skew = Skew(ref end);
+        ref ulong row = ref Unsafe.Add(ref biases, skew * ReachRowLength);
+        ref ulong word = ref FirstWindowWord(ref end, skew);
+        ulong highBits = Aligned(ref Unsafe.Add(ref row, ReachHighBits));
         // A word at a time, stopping at the first that reaches, so the search holds one word rather than eight.
-        offset = 0;
-        ulong reaching = ReachingBytes(ref window, ref biases, 0) & highBits;
-        if (reaching == 0) { offset = sizeof(ulong); reaching = ReachingBytes(ref window, ref biases, 1) & highBits; }
-        if (reaching == 0) { offset = 2 * sizeof(ulong); reaching = ReachingBytes(ref window, ref biases, 2) & highBits; }
-        if (reaching == 0) { offset = 3 * sizeof(ulong); reaching = ReachingBytes(ref window, ref biases, 3) & highBits; }
+        offset = -skew;
+        ulong reaching = ReachingBytes(ref word, ref row, 0) & highBits;
+        if (reaching == 0) { offset += sizeof(ulong); reaching = ReachingBytes(ref word, ref row, 1) & highBits; }
+        if (reaching == 0) { offset += sizeof(ulong); reaching = ReachingBytes(ref word, ref row, 2) & highBits; }
+        if (reaching == 0) { offset += sizeof(ulong); reaching = ReachingBytes(ref word, ref row, 3) & highBits; }
+        if (reaching == 0) { offset += sizeof(ulong); reaching = ReachingBytes(ref word, ref row, 4) & Aligned(ref Unsafe.Add(ref row, ReachTailMask)); }
         if (reaching == 0) return false;
 
         offset += BitOperations.TrailingZeroCount(reaching) >> 3;
         return true;
     }
 
-    /// <summary>The bytes of the <paramref name="word"/>th word of the look-back window whose high bit adding their offset plus one sets.</summary>
+    /// <summary>The bytes of aligned window word <paramref name="index"/> whose high bit adding their bias in <paramref name="row"/> sets.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ReachingBytes(ref byte window, ref ulong biases, int word)
+    private static ulong ReachingBytes(ref ulong word, ref ulong row, int index)
     {
-        ulong bytes = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref window, word * sizeof(ulong)));
-        return (bytes + Unsafe.Add(ref biases, word + 1)) & ~bytes;
+        ulong bytes = Aligned(ref Unsafe.Add(ref word, index));
+        return (bytes + Aligned(ref Unsafe.Add(ref row, index))) & ~bytes;
     }
 }

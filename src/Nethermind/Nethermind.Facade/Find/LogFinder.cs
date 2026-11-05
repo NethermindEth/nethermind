@@ -108,7 +108,13 @@ namespace Nethermind.Facade.Find
                     throw new BlockNotProcessedException(toBlock.Number);
                 }
 
-                if ((fromMissing || toMissing) && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
+                // Sliced retention guarantees matching logs on the canonical chain by height, not receipts
+                // for a particular non-canonical block hash. A processed orphan with missing receipts must
+                // fail closed even when the same address is retained at this height.
+                if ((fromMissing || toMissing)
+                    && ((fromMissing && !_blockFinder.IsMainChain(fromBlock))
+                        || (toMissing && !_blockFinder.IsMainChain(toBlock))
+                        || !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number)))
                 {
                     throw new ResourceNotFoundException(fromMissing
                         ? $"Receipt not available for From block {fromBlock.Number}."
@@ -136,11 +142,12 @@ namespace Nethermind.Facade.Find
             header.Number != 0 && header.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(header.Number, header.Hash!);
 
         /// <remarks>
-        /// A block ahead of the processed head or off the main chain may not be processed yet, so its receipts can
-        /// still appear.
+        /// Missing receipts on an already processed non-canonical block are unavailable history, not proof that
+        /// the block still awaits execution. Reorgs change canonical membership without clearing WasProcessed.
         /// </remarks>
         private bool WasPruned(BlockHeader header) =>
-            _blockFinder.Head?.Number >= header.Number && _blockFinder.IsMainChain(header);
+            (_blockFinder.Head?.Number >= header.Number && _blockFinder.IsMainChain(header))
+            || _blockFinder.GetInfo(header.Number, header.Hash!).Info?.WasProcessed == true;
 
         protected bool RetainsLogsForFilter(LogFilter filter, ulong fromBlock, ulong toBlock) =>
             prunedLogsRetention is not null

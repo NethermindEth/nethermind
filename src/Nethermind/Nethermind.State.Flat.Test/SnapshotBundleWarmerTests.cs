@@ -2,22 +2,26 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Test;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Trie;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -29,165 +33,185 @@ public class SnapshotBundleWarmerTests
     private static readonly TimeSpan BailOutTimeout = TimeSpan.FromSeconds(30);
 
     private ResourcePool _pool = null!;
+    private INodeRecordBuffer _buffer = null!;
 
     [SetUp]
-    public void SetUp() => _pool = new ResourcePool(new FlatDbConfig());
-
-    private sealed class NullTrieNodeCache : ITrieNodeCache
+    public void SetUp()
     {
-        public int TryGetCount;
-
-        public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
-        {
-            TryGetCount++;
-            node = null;
-            return false;
-        }
-
-        public void Add(TransientResource transientResource) { }
-        public void Clear() { }
+        _pool = new ResourcePool(new FlatDbConfig());
+        _buffer = new ForwardingNodeRecordBuffer(FlatTestHelpers.NewTestBuffer());
     }
 
-    private sealed class BlockingTrieNodeCache(ManualResetEventSlim entered, ManualResetEventSlim release) : ITrieNodeCache
-    {
-        public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
-        {
-            entered.Set();
-            if (!release.Wait(BailOutTimeout)) throw new TimeoutException("warmer read was not released");
-            node = null;
-            return false;
-        }
+    [TearDown]
+    public void TearDown() => _buffer.Dispose();
 
-        public void Add(TransientResource transientResource) { }
-        public void Clear() { }
-    }
-
-    private SnapshotBundle NewBundle(Action<SnapshotContent>? persisted = null) =>
-        new(FlatTestHelpers.MakeBundle(_pool, persisted), new NullTrieNodeCache(), _pool, ResourcePool.Usage.MainBlockProcessing);
-
-    private static TrieNode Leaf(byte value) => new(NodeType.Leaf, new byte[] { 0xC1, value });
-
-    // The trie warmer never reads the recyclable _snapshots; it reads persistence plus the _transientResource
-    // node cache (which it also warms), pinned by a per-read lease. A node that lives only in the bundle's own
-    // committed snapshot list is visible to a normal read but Unknown to the warmer; a node in persistence is
-    // returned by both.
     [Test]
-    public void Trie_warmer_reads_persistence_only_and_ignores_recyclable_snapshots()
+    public void Buffer_contract_preserves_batch_offsets_hashes_and_root_lookup([Values] bool storage)
     {
-        Hash256 storageAddress = TestItem.KeccakC;
-        TreePath persistedPath = TreePath.FromHexString("ab");
-        TreePath persistedStoragePath = TreePath.FromHexString("cd");
-        TrieNode persistedNode = Leaf(0x80);
-        TrieNode persistedStorageNode = Leaf(0x81);
-
-        using SnapshotBundle bundle = NewBundle(content =>
+        Hash256? address = storage ? TestItem.KeccakC : null;
+        using ForwardingNodeRecordBuffer buffer = new(FlatTestHelpers.NewTestBuffer());
+        using INodeRecordBufferPin retain = buffer.PinHead();
+        byte[] prefix = FlatTestHelpers.LeafRlp(0x80);
+        buffer.AppendRecordFromRlp(address, TreePath.Empty, ValueKeccak.Compute(prefix), prefix, []);
+        int completedBefore = buffer.CompletedRecords;
+        int batchesBefore = buffer.CompletedWrites;
+        ValueHash256[] keys = new ValueHash256[64];
+        byte[] value = new byte[40];
+        value.AsSpan().Fill(0x42);
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length);
+        for (int i = 0; i < keys.Length; i++)
         {
-            content.StateNodes[persistedPath] = persistedNode;
-            content.StorageNodes[(storageAddress, persistedStoragePath)] = persistedStorageNode;
-        });
+            keys[i] = ValueKeccak.Compute([(byte)i]);
+            entries.Add(new PatriciaTree.BulkSetEntry(keys[i], value));
+        }
 
-        TreePath committedPath = TreePath.FromHexString("12");
-        TreePath committedStoragePath = TreePath.FromHexString("34");
-        TrieNode committedNode = Leaf(0x82);
-        TrieNode committedStorageNode = Leaf(0x83);
-        bundle.SetStateNode(committedPath, committedNode);
-        bundle.SetStorageNode(storageAddress, committedStoragePath, committedStorageNode);
-
-        // Commit folds the written nodes into the bundle's recyclable _snapshots and swaps the transient away
-        // from them, so afterwards they are reachable only through the path the warmer must not take.
-        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
-
-        TrieNode warmedCommittedState = bundle.FindStateNodeOrUnknownForTrieWarmer(committedPath, TestItem.KeccakA);
-        TrieNode warmedCommittedStorage = bundle.FindStorageNodeOrUnknownTrieWarmer(storageAddress, committedStoragePath, TestItem.KeccakA);
-        TrieNode warmedPersistedState = bundle.FindStateNodeOrUnknownForTrieWarmer(persistedPath, TestItem.KeccakB);
-        TrieNode warmedPersistedStorage = bundle.FindStorageNodeOrUnknownTrieWarmer(storageAddress, persistedStoragePath, TestItem.KeccakB);
-
-        TrieNode normalStateRead = bundle.FindStateNodeOrUnknown(committedPath, TestItem.KeccakA);
-        TrieNode normalStorageRead = bundle.FindStorageNodeOrUnknown(storageAddress, committedStoragePath, TestItem.KeccakA);
+        (ValueHash256 Hash, ulong Pointer) root = FlatTestHelpers.BulkSet(_pool, buffer, address, (ValueKeccak.EmptyTreeHash, 0), entries, canParallelize: false);
+        (TreePath Path, ulong Pointer, NodeRecord Record)[] nodes = buffer.EnumerateNodes(root.Pointer, 0).ToArray();
+        PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        foreach (ValueHash256 key in keys) expected.Set(key.Bytes, value);
+        buffer.SetRoot(address, root.Hash, root.Pointer);
+        expected.UpdateRootHash();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(warmedCommittedState.NodeType, Is.EqualTo(NodeType.Unknown));
-            Assert.That(warmedCommittedStorage.NodeType, Is.EqualTo(NodeType.Unknown));
-
-            Assert.That(warmedPersistedState, Is.SameAs(persistedNode));
-            Assert.That(warmedPersistedStorage, Is.SameAs(persistedStorageNode));
-
-            Assert.That(normalStateRead, Is.SameAs(committedNode));
-            Assert.That(normalStorageRead, Is.SameAs(committedStorageNode));
+            Assert.That(buffer.FindRoot(address, root.Hash, ulong.MaxValue), Is.EqualTo(root.Pointer));
+            Assert.That(buffer.CompletedRecords - completedBefore, Is.EqualTo(nodes.Length));
+            Assert.That(buffer.CompletedWrites - batchesBefore, Is.LessThan(nodes.Length), "a batch contains multiple relative record offsets");
+            Assert.That(nodes.All(node => node.Record.Hash == ValueKeccak.Compute(node.Record.Rlp)), Is.True);
+            Assert.That(root.Hash, Is.EqualTo(expected.RootHash.ValueHash256));
+            Assert.That(retain.Buffer, Is.SameAs(buffer));
         }
     }
 
     [Test]
-    public void Unresolved_warmer_miss_does_not_reach_trie_node_cache([Values] bool storage)
+    public void Publishing_a_root_the_buffer_does_not_hold_copies_its_record_in()
     {
-        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
-        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
+        byte[] rlp = FlatTestHelpers.LeafRlp(new byte[40]);
+        ((ValueHash256 Hash, ulong Pointer) root, Dictionary<TreePath, byte[]> nodes) = LeafTrie(rlp);
+        using SnapshotBundle bundle = NewBundle(new NodeReader(nodes));
+        using INodeRecordBufferPin retain = _buffer.PinHead();
+        new NodeRecordTrie(bundle, null, root).Publish();
 
-        TreePath path = TreePath.FromHexString("12");
-        Hash256 hash = TestItem.KeccakC;
-        Hash256 address = TestItem.AddressA.ToAccountPath.ToCommitment();
-        Hash256? cacheAddress = storage ? address : null;
-
-        TrieNode warmed = storage
-            ? bundle.FindStorageNodeOrUnknownTrieWarmer(address, path, hash)
-            : bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
-        TrieNode live = storage
-            ? bundle.FindStorageNodeOrUnknown(address, path, hash)
-            : bundle.FindStateNodeOrUnknown(path, hash);
-
-        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
-        cache.Add(retired!);
-        retired!.ReleaseLease();
-
-        using (Assert.EnterMultipleScope())
+        (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, root.Hash), retain.Copy());
+        try
         {
-            Assert.That(live, Is.Not.SameAs(warmed));
-            Assert.That(live.NodeType, Is.EqualTo(NodeType.Unknown));
-            Assert.That(cache.TryGet(cacheAddress, in path, hash, out _), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(snapshot!.StateRootPointer, Is.Not.Zero);
+                Assert.That(snapshot.TryGetStateNode(TreePath.Empty, out TrieNode? node), Is.True);
+                Assert.That(node!.FullRlp.ToArray(), Is.EqualTo(rlp));
+                Assert.That(_buffer.FindRoot(null, root.Hash, ulong.MaxValue), Is.EqualTo(snapshot.StateRootPointer), "the copy is indexed");
+            }
+        }
+        finally
+        {
+            snapshot?.Dispose();
+            retired?.ReleaseLease();
         }
     }
 
-    // A repeated warmer miss is served by the owned placeholder, not by another persistence lookup.
-    [Test]
-    public void Repeated_warmer_miss_is_served_from_the_negative_cache([Values] bool storage)
-    {
-        NullTrieNodeCache cache = new();
-        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
+    private SnapshotBundle NewBundle(NodeReader reader) =>
+        new(FlatTestHelpers.MakeBundle(_pool, reader), _buffer, _pool, ResourcePool.Usage.MainBlockProcessing);
 
-        TreePath path = TreePath.FromHexString("12");
-        Hash256 hash = TestItem.KeccakA;
+    /// <summary>A trie whose root is the leaf <paramref name="rootRlp"/>, as its root and the persisted nodes serving it.</summary>
+    private static ((ValueHash256 Hash, ulong Pointer) Root, Dictionary<TreePath, byte[]> Nodes) LeafTrie(byte[] rootRlp) =>
+        ((ValueKeccak.Compute(rootRlp), 0), new Dictionary<TreePath, byte[]> { [TreePath.Empty] = rootRlp });
+
+    // Committed snapshot nodes stay in the retained buffer; only persisted nodes enter the warmed source.
+    [Test]
+    public void Warm_up_reads_persistence_only_and_ignores_the_bundle_snapshots([Values] bool storage)
+    {
+        Hash256? address = storage ? TestItem.KeccakC : null;
+        byte[] committedRlp = FlatTestHelpers.LeafRlp(0x82);
+        ((ValueHash256 Hash, ulong Pointer) persistedRoot, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
+        (ValueHash256 Hash, ulong Pointer) committedRoot = (ValueKeccak.Compute(committedRlp), 0);
+        using SnapshotBundle bundle = NewBundle(new NodeReader(persisted));
+
+        INodeRecordBufferPin retain = _buffer.PinHead();
+        committedRoot = (committedRoot.Hash, PublishNode(bundle, address, TreePath.Empty, committedRlp));
+        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), retain, returnSnapshot: false);
+
+        bundle.WarmUp(address, committedRoot, ValueKeccak.Zero, forDelete: false);
+        bundle.WarmUp(address, persistedRoot, ValueKeccak.Zero, forDelete: false);
+
+        (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(new StateId(1, TestItem.KeccakA), new StateId(2, TestItem.KeccakA), null);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(retired!.WarmedNodeBuffer.TryGet(address, TreePath.Empty, out NodeRecord warmedRoot, out _), Is.True);
+                Assert.That(warmedRoot.Hash, Is.EqualTo(persistedRoot.Hash), "the persisted node is warmed, the committed one is not");
+                Assert.That(_buffer.TryLocate(committedRoot.Pointer, out NodeRecord committedRecord) && committedRecord.Rlp.SequenceEqual(committedRlp), Is.True, "committed node remains in the retained buffer");
+            }
+        }
+        finally
+        {
+            snapshot?.Dispose();
+            retired?.ReleaseLease();
+        }
+    }
+
+    [Test]
+    public void Warmed_nodes_are_read_from_persistence_once([Values] bool storage, [Values] bool warmUp,
+        [Values(ResourcePool.Usage.MainBlockProcessing, ResourcePool.Usage.ReadOnlyProcessingEnv)] ResourcePool.Usage usage)
+    {
+        Hash256? address = storage ? TestItem.KeccakC : null;
+        ((ValueHash256 Hash, ulong Pointer) root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
+        NodeReader reader = new(persisted);
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool, reader), _buffer, _pool, usage);
+
+        bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
+        if (warmUp) bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
+        else Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, action, nodes)), Is.EqualTo(persisted[TreePath.Empty]));
+
+        Assert.That(reader.Reads, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Idle_worker_loads_a_node_from_persistence()
+    {
         Hash256 address = TestItem.KeccakC;
+        byte[] rlp = FlatTestHelpers.LeafRlp(0x80);
+        ((ValueHash256 Hash, ulong Pointer) root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(rlp);
+        NodeReader reader = new(persisted);
+        using ReadOnlySnapshotBundle readOnly = FlatTestHelpers.MakeBundle(_pool, reader);
+        using SnapshotPooledList snapshots = new(1);
+        using SnapshotBundle.BackgroundTrieSource source = new(readOnly, _buffer, snapshots, address);
 
-        _ = storage
-            ? bundle.FindStorageNodeOrUnknownTrieWarmer(address, path, hash)
-            : bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
-        _ = storage
-            ? bundle.FindStorageNodeOrUnknownTrieWarmer(address, path, hash)
-            : bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
-
-        Assert.That(cache.TryGetCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => source.TryLoad(TreePath.Empty, root.Hash, action, nodes)), Is.EqualTo(rlp));
+            Assert.That(reader.Reads, Is.EqualTo(1));
+        }
     }
 
     [Test]
-    public void Returned_transient_resource_clears_warmer_nodes([Values] bool storage)
+    public void Warm_up_reads_a_node_the_buffer_or_the_warmed_nodes_hold_in_place([Values] bool inBuffer)
+    {
+        byte[] rlp = FlatTestHelpers.LeafRlp(0x80);
+        ValueHash256 hash = ValueKeccak.Compute(rlp);
+        using WarmedNodeBuffer warmed = new(1);
+        ulong pointer;
+        if (inBuffer) pointer = _buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, []);
+        else pointer = FlatTestHelpers.Warm(warmed, null, TreePath.Empty, rlp);
+
+        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, null);
+        source.WarmUp(_buffer, (hash, pointer), ValueKeccak.Zero, forDelete: false);
+
+        Assert.That(source.FetchCount, Is.Zero, "the node is read from the buffer or the warmed nodes");
+    }
+
+    [Test]
+    public void Returned_transient_resource_clears_warmed_nodes([Values] bool storage)
     {
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
-        TreePath path = TreePath.FromHexString("12");
-        Hash256 hash = TestItem.KeccakC;
-        Hash256 address = TestItem.AddressA.ToAccountPath.ToCommitment();
+        Hash256? address = storage ? TestItem.KeccakC : null;
+        byte[] rlp = FlatTestHelpers.LeafRlp(0x80);
 
         TransientResource rented = _pool.GetCachedResource(usage);
         try
         {
-            if (storage)
-            {
-                rented.GetOrAddStorageNode((Hash256AsKey)address, in path, new TrieNode(NodeType.Unknown, hash));
-            }
-            else
-            {
-                rented.GetOrAddStateNode(in path, new TrieNode(NodeType.Unknown, hash));
-            }
+            FlatTestHelpers.Warm(rented.WarmedNodeBuffer, address, TreePath.Empty, rlp);
         }
         finally
         {
@@ -197,14 +221,10 @@ public class SnapshotBundleWarmerTests
         TransientResource recycled = _pool.GetCachedResource(usage);
         try
         {
-            bool found = storage
-                ? recycled.TryGetStorageNode((Hash256AsKey)address, in path, hash, out _)
-                : recycled.TryGetStateNode(in path, hash, out _);
-
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(recycled, Is.SameAs(rented));
-                Assert.That(found, Is.False);
+                Assert.That(recycled.WarmedNodeBuffer.TryGet(address, TreePath.Empty, out _, out _), Is.False);
             }
         }
         finally
@@ -213,336 +233,123 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    // Live reads see the warmer's instance only once resolved; retirement promotes a detached copy of it.
     [Test]
-    public void Resolved_warmer_node_is_reused_by_live_reads_and_promoted_detached([Values] bool storage)
+    public void Warmed_only_nodes_are_read_again_after_retirement([Values] bool storage)
     {
-        Hash256 address = TestItem.KeccakC;
-        TreePath path = TreePath.FromHexString("12");
-        (byte[] rlp, Hash256 hash) = EncodedLeaf();
-        Hash256? cacheAddress = storage ? address : null;
+        Hash256? address = storage ? TestItem.KeccakC : null;
+        ((ValueHash256 Hash, ulong Pointer) root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
+        NodeReader reader = new(persisted);
+        using SnapshotBundle bundle = NewBundle(reader);
+        bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
+        Assert.That(reader.Reads, Is.EqualTo(1));
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(rlp);
-        reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(rlp);
-
-        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
-        using SnapshotBundle bundle = new(
-            FlatTestHelpers.MakeBundle(_pool, reader), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
-
-        TrieNode warmed = storage
-            ? bundle.FindStorageNodeOrUnknownTrieWarmer(address, path, hash)
-            : bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
-
-        // Resolving through the warmer adapter is what issues the persistence read.
-        TreePath resolvePath = path;
-        Assert.That(warmed.TryResolveNode(WarmerResolver(bundle, storage ? address : null), ref resolvePath), Is.True);
-
-        TrieNode live = storage
-            ? bundle.FindStorageNodeOrUnknown(address, path, hash)
-            : bundle.FindStateNodeOrUnknown(path, hash);
-
-        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
-        cache.Add(retired!);
+        (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
+        snapshot?.Dispose();
         retired!.ReleaseLease();
-
-        bool found = cache.TryGet(cacheAddress, in path, hash, out TrieNode? cached);
+        bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(live.NodeType, Is.EqualTo(NodeType.Leaf));
-            Assert.That(live, Is.SameAs(warmed));
-            Assert.That(live.FullRlp.UnderlyingArray, Is.SameAs(warmed.FullRlp.UnderlyingArray));
-            Assert.That(found, Is.True);
-            Assert.That(cached, Is.Not.SameAs(live));
-            Assert.That(cached!.FullRlp.UnderlyingArray, Is.SameAs(live.FullRlp.UnderlyingArray));
+            Assert.That(reader.Reads, Is.EqualTo(2), "retirement no longer promotes warmed nodes into a shared cache");
+            Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, action, nodes)), Is.Not.Null);
+            Assert.That(reader.Reads, Is.EqualTo(2), "the replacement transient still reuses its own warmed records");
         }
     }
 
     [Test]
-    public void Hash_only_unknown_node_is_not_promoted()
+    public void Retirement_releases_the_owner_but_recycling_waits_for_an_in_flight_warm_up()
     {
-        TreePath path = TreePath.FromHexString("12");
-        Hash256 hash = TestItem.KeccakC;
-        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
-
-        TransientResource rented = _pool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        rented.UpdateStateNode(in path, new TrieNode(NodeType.Unknown, hash));
-        cache.Add(rented);
-        rented.ReleaseLease();
-
-        Assert.That(cache.TryGet(null, in path, hash, out _), Is.False);
-    }
-
-    // Retirement must not scan the transient while a warmer read that passed the lease check is still writing to it.
-    [Test]
-    public void Retirement_waits_for_an_in_flight_warmer_read()
-    {
-        TreePath path = TreePath.FromHexString("12");
+        ((ValueHash256 Hash, ulong Pointer) root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
         using ManualResetEventSlim readEntered = new(false);
         using ManualResetEventSlim releaseRead = new(false);
-        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool),
-            new BlockingTrieNodeCache(readEntered, releaseRead), _pool, ResourcePool.Usage.MainBlockProcessing);
+        using SnapshotBundle bundle = NewBundle(new NodeReader(persisted, readEntered, releaseRead));
 
-        Task<TrieNode> warmerRead = Task.Run(() => bundle.FindStateNodeOrUnknownForTrieWarmer(path, TestItem.KeccakA));
-        Assert.That(readEntered.Wait(BailOutTimeout), Is.True, "the warmer read did not reach the cache");
+        Task warmUp = Task.Run(() => bundle.WarmUp(null, root, ValueKeccak.Zero, forDelete: false));
+        Assert.That(readEntered.Wait(BailOutTimeout), Is.True, "the warm-up did not reach persistence");
 
-        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
-        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
-        Task add = Task.Run(() => cache.Add(retired!));
-        bool addCompletedWhileRead = add.Wait(TimeSpan.FromMilliseconds(200));
-        releaseRead.Set();
-
-        using (Assert.EnterMultipleScope())
+        (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
+        TransientResource? probe = null;
+        TransientResource? recycled = null;
+        bool ownerReleased = false;
+        try
         {
-            Assert.That(addCompletedWhileRead, Is.False, "retirement scanned the transient under an in-flight warmer read");
-            Assert.That(add.Wait(BailOutTimeout), Is.True, "retirement did not resume after the warmer read released its lease");
-            Assert.That(warmerRead.Wait(BailOutTimeout), Is.True);
-            Assert.That(warmerRead.Result.NodeType, Is.EqualTo(NodeType.Unknown));
-        }
-
-        retired!.ReleaseLease();
-    }
-
-    [Test]
-    public void Retirement_promotes_a_detached_owned_node_without_pruning_its_source()
-    {
-        TrieNode child = TrieNodeFactory.CreateLeaf([0x3, 0x4], new byte[32]);
-        TreePath rootPath = TreePath.Empty;
-        child.ResolveKey(NullTrieNodeResolver.Instance, ref rootPath);
-
-        TrieNode branch = new(NodeType.Branch);
-        branch.SetChild(0, child);
-        branch.ResolveKey(NullTrieNodeResolver.Instance, ref rootPath);
-
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(branch.FullRlp.ToArray());
-
-        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
-        using SnapshotBundle bundle = new(
-            FlatTestHelpers.MakeBundle(_pool, reader), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
-        TreePath path = TreePath.FromHexString("1234");
-        TrieNode source = bundle.FindStateNodeOrUnknownForTrieWarmer(path, branch.Keccak!);
-        TreePath resolvePath = path;
-        Assert.That(source.TryResolveNode(WarmerResolver(bundle, null), ref resolvePath), Is.True);
-
-        TreePath childPath = path;
-        source.AppendChildPath(ref childPath, 0);
-        TrieNode sourceChild = source.GetChildWithChildPath(NullTrieNodeResolver.Instance, ref childPath, 0, keepChildRef: true)!;
-
-        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
-        cache.Add(retired!);
-        retired!.ReleaseLease();
-
-        childPath = path;
-        source.AppendChildPath(ref childPath, 0);
-        TrieNode childAfterPromotion = source.GetChildWithChildPath(NullTrieNodeResolver.Instance, ref childPath, 0, keepChildRef: true)!;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(cache.TryGet(null, in path, branch.Keccak!, out TrieNode? cached), Is.True);
-            Assert.That(cached, Is.Not.SameAs(source));
-            Assert.That(cached!.FullRlp.UnderlyingArray, Is.SameAs(source.FullRlp.UnderlyingArray));
-            Assert.That(childAfterPromotion, Is.SameAs(sourceChild));
-        }
-    }
-
-    // The warmer's persistence read is path-keyed, so it can return another node; the warmer adapter must reject
-    // those bytes before the node stores them under the requested hash.
-    [Test]
-    public void Warmer_hash_mismatch_does_not_become_resolved_or_poison_live_reads([Values] bool storage)
-    {
-        Hash256 address = TestItem.KeccakC;
-        TreePath path = TreePath.FromHexString("12");
-        (byte[] otherRlp, Hash256 otherHash) = EncodedLeaf();
-        Hash256 requestedHash = TestItem.KeccakB;
-        Hash256? cacheAddress = storage ? address : null;
-        Assert.That(requestedHash, Is.Not.EqualTo(otherHash));
-
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(otherRlp);
-        reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(otherRlp);
-
-        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
-        using SnapshotBundle bundle = new(
-            FlatTestHelpers.MakeBundle(_pool, reader), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
-
-        TrieNode warmed = storage
-            ? bundle.FindStorageNodeOrUnknownTrieWarmer(address, path, requestedHash)
-            : bundle.FindStateNodeOrUnknownForTrieWarmer(path, requestedHash);
-
-        TreePath resolvePath = path;
-        Assert.That(warmed.TryResolveNode(WarmerResolver(bundle, storage ? address : null), ref resolvePath), Is.False);
-
-        if (storage) reader.Received(1).TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
-        else reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
-
-        TrieNode live = storage
-            ? bundle.FindStorageNodeOrUnknown(address, path, requestedHash)
-            : bundle.FindStateNodeOrUnknown(path, requestedHash);
-
-        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
-        cache.Add(retired!);
-        retired!.ReleaseLease();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(live, Is.Not.SameAs(warmed));
-            Assert.That(live.NodeType, Is.EqualTo(NodeType.Unknown));
-            Assert.That(warmed.FullRlp.IsNull, Is.True);
-            Assert.That(cache.TryGet(cacheAddress, in path, requestedHash, out _), Is.False,
-                "the mismatched persistence node was promoted under the requested hash");
-        }
-    }
-
-    [TestCase(false, new byte[] { 0xc2, 0x80, 0x01 })]
-    [TestCase(true, new byte[] { 0xc2, 0x80, 0x01 })]
-    [TestCase(false, new byte[] { 0xf8 })]
-    [TestCase(true, new byte[] { 0xf8 })]
-    public void Invalid_warmer_rlp_is_not_resolved_or_promoted(bool storage, byte[] invalidRlp)
-    {
-        Hash256 address = TestItem.KeccakC;
-        TreePath path = TreePath.FromHexString("12");
-        Hash256 hash = new(ValueKeccak.Compute(invalidRlp));
-        Hash256? cacheAddress = storage ? address : null;
-
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(invalidRlp);
-        reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(invalidRlp);
-
-        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
-        using SnapshotBundle bundle = new(
-            FlatTestHelpers.MakeBundle(_pool, reader), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
-
-        TrieNode warmed = storage
-            ? bundle.FindStorageNodeOrUnknownTrieWarmer(address, path, hash)
-            : bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
-
-        TreePath resolvePath = path;
-        Assert.That(warmed.TryResolveNode(WarmerResolver(bundle, storage ? address : null), ref resolvePath), Is.False);
-        Assert.That(warmed.TryResolveNode(WarmerResolver(bundle, storage ? address : null), ref resolvePath), Is.False);
-
-        TrieNode live = storage
-            ? bundle.FindStorageNodeOrUnknown(address, path, hash)
-            : bundle.FindStateNodeOrUnknown(path, hash);
-
-        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
-        Assert.DoesNotThrow(() => cache.Add(retired!));
-        retired!.ReleaseLease();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(live, Is.Not.SameAs(warmed));
-            Assert.That(live.NodeType, Is.EqualTo(NodeType.Unknown));
-            Assert.That(warmed.FullRlp, Is.SequenceEqualTo(invalidRlp));
-            Assert.That(cache.TryGet(cacheAddress, in path, hash, out _), Is.False);
-        }
-
-        if (storage) reader.Received(1).TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
-        else reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
-    }
-
-    [Test]
-    public void Live_read_of_shared_parent_uses_snapshot_child_after_warmer_miss(
-        [Values] bool storage, [Values] bool iterator, [Values] bool staleSnapshot)
-    {
-        Hash256 address = TestItem.KeccakC;
-        TreePath rootPath = TreePath.Empty;
-        TreePath childPath = TreePath.FromHexString("0");
-        TrieNode child = TrieNodeFactory.CreateLeaf([0x3, 0x4], new byte[33]);
-        child.ResolveKey(NullTrieNodeResolver.Instance, ref childPath);
-        child.Seal();
-        TrieNode branch = new(NodeType.Branch);
-        branch.SetChild(0, child);
-        branch.ResolveKey(NullTrieNodeResolver.Instance, ref rootPath);
-        TrieNode sharedParent = new(NodeType.Unknown, branch.Keccak!, branch.FullRlp);
-        sharedParent.ResolveNode(NullTrieNodeResolver.Instance, rootPath);
-
-        (byte[] oldRlp, Hash256 oldHash) = EncodedLeaf();
-        Assert.That(oldHash, Is.Not.EqualTo(child.Keccak));
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(oldRlp);
-        reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(oldRlp);
-        using SnapshotBundle bundle = new(
-            FlatTestHelpers.MakeBundle(_pool, reader, content =>
+            retired!.ReleaseLease();
+            ownerReleased = true;
+            probe = _pool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+            Assert.That(probe, Is.Not.SameAs(retired), "the active warmer still owns the retired resource");
+            releaseRead.Set();
+            Assert.That(warmUp.Wait(BailOutTimeout), Is.True);
+            recycled = _pool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+            using (Assert.EnterMultipleScope())
             {
-                if (storage) content.StorageNodes[(address, rootPath)] = sharedParent;
-                else content.StateNodes[rootPath] = sharedParent;
-                if (staleSnapshot)
-                {
-                    TrieNode staleChild = new(NodeType.Unknown, oldHash, oldRlp);
-                    if (storage) content.StorageNodes[(address, childPath)] = staleChild;
-                    else content.StateNodes[childPath] = staleChild;
-                }
-            }), new NullTrieNodeCache(), _pool, ResourcePool.Usage.MainBlockProcessing);
-        if (storage) bundle.SetStorageNode(address, childPath, child);
-        else bundle.SetStateNode(childPath, child);
-        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
-
-        ITrieNodeResolver warmer = WarmerResolver(bundle, storage ? address : null);
-        TrieNode warmedParent = warmer.FindCachedOrUnknown(rootPath, branch.Keccak!);
-        TrieNode ReadWarmedChild() => (iterator
-            ? warmedParent.CreateChildIterator().GetChildWithChildPath(warmer, ref childPath, 0)
-            : warmedParent.GetChildWithChildPath(warmer, ref childPath, 0))!;
-        if (staleSnapshot)
-        {
-            Assert.Throws<NodeHashMismatchException>(() => ReadWarmedChild());
+                Assert.That(recycled, Is.SameAs(retired), "the final warmer release returns the resource exactly once");
+                Assert.That(recycled.WarmedNodeBuffer.Count, Is.Zero, "reset happens after the warmer finishes writing");
+            }
         }
-        else
+        finally
         {
-            Assert.That(ReadWarmedChild().TryResolveNode(warmer, ref childPath), Is.False);
+            releaseRead.Set();
+            snapshot?.Dispose();
+            if (!ownerReleased) retired?.ReleaseLease();
+            probe?.ReleaseLease();
+            recycled?.ReleaseLease();
         }
-
-        StateTrieStoreAdapter state = new(bundle);
-        ITrieNodeResolver live = storage ? state.GetStorageTrieNodeResolver(address) : state;
-        Assert.That(live.FindCachedOrUnknown(childPath, child.Keccak!), Is.SameAs(child));
-        TrieNode liveParent = live.FindCachedOrUnknown(rootPath, branch.Keccak!);
-        TrieNode liveChild = liveParent.GetChildWithChildPath(live, ref childPath, 0)!;
-        Assert.That(() => liveChild.ResolveNode(live, childPath), Throws.Nothing);
-        Assert.That(liveChild.FullRlp, Is.SequenceEqualTo(child.FullRlp));
     }
 
-    private static ITrieNodeResolver WarmerResolver(SnapshotBundle bundle, Hash256? address)
-    {
-        StateTrieStoreWarmerAdapter state = new(bundle);
-        return address is null ? state : state.GetStorageTrieNodeResolver(address);
-    }
-
-    /// <summary>Builds a leaf whose RLP is long enough to be hash-referenced rather than inlined.</summary>
-    private static (byte[] Rlp, Hash256 Hash) EncodedLeaf()
-    {
-        TrieNode leaf = TrieNodeFactory.CreateLeaf([0x3, 0x4], new byte[32]);
-        TreePath empty = TreePath.Empty;
-        leaf.ResolveKey(NullTrieNodeResolver.Instance, ref empty);
-        return (leaf.FullRlp.ToArray()!, leaf.Keccak!);
-    }
-
-    // Dispose releases the transient back to the pool while warmer jobs may still be in flight. A read that
-    // arrives after that must fall back to the leased persistence reader rather than touch the recycled
-    // resource - and must not spin waiting for a transient that will never be replaced, which is what the
-    // bounded wait here asserts.
+    // Persisted RLP is trusted to be the requested node, but bytes that are not a trie node are never warmed.
     [Test]
-    public void Trie_warmer_read_on_disposed_bundle_falls_back_to_persistence()
+    public void Warm_up_does_not_warm_an_invalid_node([Values] bool storage, [Values("c28001", "f8")] string persistedRlpHex)
     {
-        TreePath persistedPath = TreePath.FromHexString("ab");
-        TrieNode persistedNode = Leaf(0x80);
+        Hash256? address = storage ? TestItem.KeccakC : null;
+        byte[] persistedRlp = Bytes.FromHexString(persistedRlpHex);
+        (ValueHash256 Hash, ulong Pointer) root = (ValueKeccak.Compute(persistedRlp), 0);
+        NodeReader reader = new(new Dictionary<TreePath, byte[]> { [TreePath.Empty] = persistedRlp });
+        using SnapshotBundle bundle = NewBundle(reader);
 
-        SnapshotBundle bundle = NewBundle(content => content.StateNodes[persistedPath] = persistedNode);
+        bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
+
+        (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.Reads, Is.EqualTo(1));
+                Assert.That(retired!.WarmedNodeBuffer.Count, Is.Zero);
+            }
+        }
+        finally
+        {
+            snapshot?.Dispose();
+            retired?.ReleaseLease();
+        }
+    }
+
+    // Dispose releases the transient back to the pool while warm-ups may still be queued. One that arrives after that must
+    // return without reading anything rather than touch the recycled resource, or spin waiting for a transient that will never
+    // be replaced, which is what the bounded wait here asserts.
+    [Test]
+    public void Warm_up_on_a_disposed_bundle_is_a_no_op()
+    {
+        ((ValueHash256 Hash, ulong Pointer) root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
+        NodeReader reader = new(persisted);
+        SnapshotBundle bundle = NewBundle(reader);
 
         Assert.That(bundle.TryLeaseReadOnlyBundle(), Is.True);
         try
         {
             bundle.Dispose();
 
-            Task<(TrieNode Node, bool ShouldPrewarm)> read = Task.Run(() =>
-                (bundle.FindStateNodeOrUnknownForTrieWarmer(persistedPath, TestItem.KeccakA),
-                    bundle.ShouldQueuePrewarm(TestItem.AddressA)));
+            Task<bool> warmUp = Task.Run(() =>
+            {
+                bundle.WarmUp(null, root, ValueKeccak.Zero, forDelete: false);
+                return bundle.ShouldQueuePrewarm(TestItem.AddressA);
+            });
 
-            Assert.That(read.Wait(BailOutTimeout), Is.True, "the warmer read did not return on a disposed bundle");
+            Assert.That(warmUp.Wait(BailOutTimeout), Is.True, "the warm-up did not return on a disposed bundle");
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(read.Result.Node, Is.SameAs(persistedNode));
-                Assert.That(read.Result.ShouldPrewarm, Is.False);
+                Assert.That(reader.Reads, Is.Zero);
+                Assert.That(warmUp.Result, Is.False);
             }
         }
         finally
@@ -551,29 +358,26 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    private sealed record ChurnEpoch(SnapshotBundle Bundle, TrieNode Node);
+    private sealed record ChurnEpoch(SnapshotBundle Bundle, (ValueHash256 Hash, ulong Pointer) Root);
 
-    // Regression for the warmer recycle-under-reader race. Warmer-shaped readers hold only a
-    // ReadOnlySnapshotBundle lease (as the real warmer job does) while the owner drives both recycle paths:
-    // CollectAndApplySnapshot, which swaps the transient in place and retires the old one to the pool while
-    // the bundle stays published, and Dispose, which releases the transient outright. Each epoch owns a
-    // distinct persisted node instance, so a read served from another epoch's recycled transient is caught by
-    // identity rather than by value. The prewarm dedupe bloom lives on the same resource, so it is exercised
-    // here too: unpinned, its BloomFilter can be freed by a pool overflow mid-read.
+    // Regression for the warmer recycle-under-reader race. Warm-ups hold only a ReadOnlySnapshotBundle lease (as the real
+    // warmer job does) while the owner drives both recycle paths: CollectAndApplySnapshot, which swaps the transient in place
+    // and retires the old one while the bundle stays published, and Dispose, which releases the transient outright. Each epoch
+    // persists a distinct root, so a warm-up writing into another epoch's recycled transient shows up as a foreign record when
+    // the owner retires its transient. The prewarm dedupe bloom lives on the same resource, so it is exercised here too:
+    // unpinned, its BloomFilter can be freed by a pool overflow mid-read.
     [Test]
-    public void Trie_warmer_reads_survive_owner_churn_without_foreign_values()
+    public void Warm_ups_survive_owner_churn_without_foreign_records()
     {
-        TreePath persistedPath = TreePath.FromHexString("ab");
-
+        int epochs = 0;
         ChurnEpoch NewEpoch()
         {
-            TrieNode node = Leaf(0x80);
-            return new ChurnEpoch(NewBundle(content => content.StateNodes[persistedPath] = node), node);
+            ((ValueHash256 Hash, ulong Pointer) root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(BitConverter.GetBytes(++epochs)));
+            return new ChurnEpoch(NewBundle(new NodeReader(persisted)), root);
         }
 
-        long leasedReads = 0;
+        long warmUps = 0;
         long queuedPrewarms = 0;
-        long foreignReads = 0;
         long slotCounter = 0;
         Exception? readerException = null;
         bool stop = false;
@@ -592,9 +396,8 @@ public class SnapshotBundleWarmerTests
                         if (!epoch.Bundle.TryLeaseReadOnlyBundle()) continue;
                         try
                         {
-                            TrieNode node = epoch.Bundle.FindStateNodeOrUnknownForTrieWarmer(persistedPath, TestItem.KeccakA);
-                            if (!ReferenceEquals(node, epoch.Node)) Interlocked.Increment(ref foreignReads);
-                            Interlocked.Increment(ref leasedReads);
+                            epoch.Bundle.WarmUp(null, epoch.Root, ValueKeccak.Zero, forDelete: false);
+                            Interlocked.Increment(ref warmUps);
 
                             UInt256 slot = (UInt256)Interlocked.Increment(ref slotCounter);
                             if (epoch.Bundle.ShouldQueuePrewarm(TestItem.AddressA, slot)) Interlocked.Increment(ref queuedPrewarms);
@@ -614,16 +417,24 @@ public class SnapshotBundleWarmerTests
         }
 
         Stopwatch sw = Stopwatch.StartNew();
-        int commits = 0;
+        int retirements = 0;
         int disposals = 0;
+        int retiredRecords = 0;
+        int foreignRecords = 0;
         ulong blockNumber = 0;
         ChurnEpoch current = published;
         while (sw.ElapsedMilliseconds < ChurnMilliseconds && !Volatile.Read(ref stop))
         {
             StateId from = new(blockNumber, TestItem.KeccakA);
             StateId to = new(++blockNumber, TestItem.KeccakA);
-            current.Bundle.CollectAndApplySnapshot(from, to, returnSnapshot: false);
-            commits++;
+            (Snapshot? snapshot, TransientResource? retired) = current.Bundle.CollectAndApplySnapshot(from, to, null);
+            int recordCount = retired!.WarmedNodeBuffer.Count;
+            retiredRecords += recordCount;
+            foreignRecords += Math.Max(0, recordCount - 1);
+            if (recordCount != 0 && !(retired.WarmedNodeBuffer.TryGet(null, TreePath.Empty, out NodeRecord warmedRoot, out _) && warmedRoot.Hash == current.Root.Hash)) foreignRecords++;
+            snapshot!.Dispose();
+            retired.ReleaseLease();
+            retirements++;
 
             ChurnEpoch next = NewEpoch();
             Volatile.Write(ref published, next);
@@ -638,19 +449,172 @@ public class SnapshotBundleWarmerTests
         if (readersFinished) current.Bundle.Dispose();
 
         TestContext.Out.WriteLine(
-            $"commits={commits} disposals={disposals} leasedReads={Volatile.Read(ref leasedReads)} " +
-            $"queuedPrewarms={Volatile.Read(ref queuedPrewarms)} foreignReads={Volatile.Read(ref foreignReads)}");
+            $"retirements={retirements} disposals={disposals} warmUps={Volatile.Read(ref warmUps)} " +
+            $"queuedPrewarms={Volatile.Read(ref queuedPrewarms)} retiredRecords={retiredRecords} foreignRecords={foreignRecords}");
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(readersFinished, Is.True, "reader tasks did not finish");
             Assert.That(readerException, Is.Null);
-            Assert.That(Volatile.Read(ref foreignReads), Is.Zero);
-            // Prove both churn paths and the leased reads actually ran, so the assertions above are not vacuous.
-            Assert.That(commits, Is.GreaterThan(0));
+            Assert.That(foreignRecords, Is.Zero);
+            // Prove both churn paths and the leased warm-ups actually ran, so the assertions above are not vacuous.
+            Assert.That(retirements, Is.GreaterThan(0));
             Assert.That(disposals, Is.GreaterThan(0));
-            Assert.That(Volatile.Read(ref leasedReads), Is.GreaterThan(0));
+            Assert.That(Volatile.Read(ref warmUps), Is.GreaterThan(0));
+            Assert.That(retiredRecords, Is.GreaterThan(0));
             Assert.That(Volatile.Read(ref queuedPrewarms), Is.GreaterThan(0));
+        }
+    }
+
+    [Test]
+    public void Warm_ups_publish_verified_records_and_bulk_sets_reuse_them([Values] bool concurrent, [Values] bool storage)
+    {
+        Hash256? address = storage ? TestItem.KeccakC : null;
+        ValueHash256[] keys = new ValueHash256[64];
+        for (int i = 0; i < keys.Length; i++) keys[i] = ValueKeccak.Compute([(byte)i]);
+        byte[] newValue = Bytes.FromHexString("0xff");
+
+        using INodeRecordBuffer persistedBuffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBufferPin persistedRetain = persistedBuffer.PinHead();
+        (ValueHash256 Hash, ulong Pointer) root;
+        using (ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length))
+        {
+            for (int i = 0; i < keys.Length; i++) entries.Add(new PatriciaTree.BulkSetEntry(keys[i], [(byte)(i + 1)]));
+            root = FlatTestHelpers.BulkSet(_pool, persistedBuffer, address, (ValueKeccak.EmptyTreeHash, 0), entries, canParallelize: false);
+        }
+
+        Dictionary<TreePath, byte[]> persisted = persistedBuffer.EnumerateNodes(root.Pointer, 0)
+            .ToDictionary(node => node.Path, node => node.Record.Rlp.ToArray());
+        NodeReader reader = new(persisted);
+        using SnapshotBundle bundle = NewBundle(reader);
+        using INodeRecordBufferPin retain = _buffer.PinHead();
+        (ValueHash256 Hash, ulong Pointer) preBlockRoot = (root.Hash, _buffer.FindRoot(address, root.Hash, ulong.MaxValue));
+
+        int firstWarmUp = WarmUpAll();
+        int secondWarmUp = WarmUpAll();
+        int readsBeforeBulkSet = reader.Reads;
+        NodeRecordTrie trie = new(bundle, address, preBlockRoot);
+        using (ArrayPoolListRef<PatriciaTree.BulkSetEntry> change = new(1))
+        {
+            change.Add(new PatriciaTree.BulkSetEntry(keys[0], newValue));
+            trie.BulkSet(change, canParallelize: false);
+        }
+
+        PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        for (int i = 0; i < keys.Length; i++) expected.Set(keys[i].Bytes, [(byte)(i + 1)]);
+        expected.Set(keys[0].Bytes, newValue);
+        expected.UpdateRootHash();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preBlockRoot.Pointer, Is.Zero, "root held by the buffer");
+            Assert.That(firstWarmUp, concurrent ? Is.GreaterThanOrEqualTo(persisted.Count) : Is.EqualTo(persisted.Count));
+            Assert.That(secondWarmUp, Is.Zero, "the position index reuses every warmed record");
+            Assert.That(reader.Reads, Is.EqualTo(readsBeforeBulkSet));
+            Assert.That(reader.OwnedReads, Is.Zero, "warming and demand loading must use the borrowed-span API");
+            Assert.That(trie.RootHash, Is.EqualTo(expected.RootHash));
+        }
+
+        trie.Publish();
+        (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), retain.Copy());
+        try
+        {
+            ulong[] published = storage ? snapshot!.StorageNodes.Select(node => node.Pointer).ToArray() : snapshot!.StateNodes.Select(node => node.Pointer).ToArray();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(published, Does.Contain(trie.Root.Pointer), "the root is published into the snapshot");
+                Assert.That(published.All(pointer => _buffer.TryLocate(pointer, out _)), Is.True, "snapshot pointers are real-buffer records");
+            }
+            // A published record linking a warmed child would end the walk through the real buffer early.
+            WarmedNodeRecordBuffer warmedView = new(_buffer, retired!.WarmedNodeBuffer);
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
+            Assert.That(_buffer.EnumerateNodes(trie.Root.Pointer, 0).Count(), Is.EqualTo(warmedView.EnumerateNodes(trie.Root.Pointer, 0).Count()), "published records cannot retain temporary children");
+#pragma warning restore NUnit2045
+
+            Assert.That(retired.WarmedNodeBuffer.TryGet(address, TreePath.Empty, out _, out ulong warmedRoot), Is.True);
+            (TreePath Path, ulong Pointer, NodeRecord Record)[] warmedNodes = warmedView.EnumerateNodes(warmedRoot, 0).ToArray();
+            Assert.That(warmedNodes, Has.Length.GreaterThan(1), "warm-up must populate child pointers, not just path entries");
+            foreach ((TreePath path, _, NodeRecord record) in warmedNodes)
+                Assert.That(record.Rlp.ToArray(), Is.EqualTo(persisted[path]), "published bytes remain complete under overlapping warm-ups");
+        }
+        finally
+        {
+            snapshot?.Dispose();
+            retired?.ReleaseLease();
+        }
+
+        int WarmUpAll()
+        {
+            int before = reader.Reads;
+            if (concurrent) Parallel.ForEach(keys, key => bundle.WarmUp(address, preBlockRoot, key, forDelete: false));
+            else foreach (ValueHash256 key in keys) bundle.WarmUp(address, preBlockRoot, key, forDelete: false);
+            return reader.Reads - before;
+        }
+    }
+
+    /// <summary>Publishes the node <paramref name="rlp"/> into <paramref name="bundle"/> as a bulk set writing it would.</summary>
+    private ulong PublishNode(SnapshotBundle bundle, Hash256? address, in TreePath path, byte[] rlp)
+    {
+        ValueHash256 hash = ValueKeccak.Compute(rlp);
+        ulong pointer = _buffer.AppendRecordFromRlp(address, path, hash, rlp, []);
+        (ValueHash256 Hash, ulong Pointer) root = (hash, pointer);
+        if (address is null) bundle.PublishBufferedStateRoot(root);
+        else bundle.PublishBufferedStorageRoot(address, root);
+        return pointer;
+    }
+
+    /// <summary>
+    /// Serves state and storage trie node RLP by path, counting reads; with
+    /// <paramref name="release"/> each read signals <paramref name="entered"/> and waits for it.
+    /// </summary>
+    private sealed class NodeReader(
+        IReadOnlyDictionary<TreePath, byte[]> nodes,
+        ManualResetEventSlim? entered = null,
+        ManualResetEventSlim? release = null) : NoopPersistenceReader, IPersistence.IPersistenceReader
+    {
+        private int _reads;
+        private int _ownedReads;
+
+        public int Reads => Volatile.Read(ref _reads);
+        public int OwnedReads => Volatile.Read(ref _ownedReads);
+
+        byte[]? IPersistence.IPersistenceReader.TryLoadStateRlp(in TreePath path, ReadFlags flags) => LoadOwned(path);
+
+        byte[]? IPersistence.IPersistenceReader.TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => LoadOwned(path);
+
+        private byte[]? LoadOwned(in TreePath path)
+        {
+            Interlocked.Increment(ref _ownedReads);
+            return Load(path);
+        }
+
+        bool IPersistence.IPersistenceReader.TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
+            Load(path, action, arg);
+
+        bool IPersistence.IPersistenceReader.TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
+            Load(path, action, arg);
+
+        private bool Load<TArg>(in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            byte[]? rlp = Load(path);
+            if (rlp is null) return false;
+            Span<byte> buffer = stackalloc byte[rlp.Length];
+            rlp.CopyTo(buffer);
+            action(buffer, arg);
+            buffer.Fill(0xFF);
+            return true;
+        }
+
+        private byte[]? Load(in TreePath path)
+        {
+            Interlocked.Increment(ref _reads);
+            if (release is not null)
+            {
+                entered!.Set();
+                if (!release.Wait(BailOutTimeout)) throw new TimeoutException("persistence read was not released");
+            }
+
+            return nodes.GetValueOrDefault(path);
         }
     }
 }

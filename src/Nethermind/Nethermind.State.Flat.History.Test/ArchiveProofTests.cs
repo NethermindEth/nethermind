@@ -19,6 +19,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.History.Walk;
+using Nethermind.State.Flat.NodeBuffer;
+using Nethermind.State.Flat.Test;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
@@ -2223,7 +2225,9 @@ public class ArchiveProofTests
     public void Physical_floors_read_back_what_this_instance_raised_and_what_another_persisted()
     {
         using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(metadata.DroppedThroughEpoch, Is.Zero);
+#pragma warning restore NUnit2045
         Assert.That(metadata.TryRaiseDroppedThroughEpoch(3), Is.True);
         using (Assert.EnterMultipleScope())
         {
@@ -2489,10 +2493,11 @@ public class ArchiveProofTests
         _container = builder.Build();
         IResourcePool pool = _container.Resolve<IResourcePool>();
         ForwardCommitmentCapture capture = _container.Resolve<ForwardCommitmentCapture>();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         for (ulong block = 0; block <= _chain.Head; block++)
         {
-            using Snapshot snapshot = pool.CreateSnapshot(block == 0 ? StateId.PreGenesis : _chain.StateIdAt(block - 1), _chain.StateIdAt(block), ResourcePool.Usage.ReadOnlyProcessingEnv);
-            foreach ((TreePath path, byte[] rlp) in _chain.CommittedStateNodes(block)) snapshot.Content.StateNodes[path] = new TrieNode(NodeType.Unknown, rlp);
+            using Snapshot snapshot = pool.CreateSnapshot(block == 0 ? StateId.PreGenesis : _chain.StateIdAt(block - 1), _chain.StateIdAt(block), ResourcePool.Usage.ReadOnlyProcessingEnv, buffer);
+            foreach ((TreePath path, byte[] rlp) in _chain.CommittedStateNodes(block)) snapshot.Content.SetStateNodeRlp(buffer, path, rlp);
             capture.Capture(block, snapshot);
         }
 

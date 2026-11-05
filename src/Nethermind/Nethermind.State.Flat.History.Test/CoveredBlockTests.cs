@@ -190,7 +190,9 @@ public class CoveredBlockTests
         Assert.That(_index.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);
         using ICoveredBlock block = eight!;
         StateReadOverlaySlot slot = new();
+#pragma warning disable NUnit2045 // Successful seeding is a prerequisite for inspecting the seeded slot.
         Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 1, slot), Is.True);
+#pragma warning restore NUnit2045
 
         Assert.That(slot.ParentState, Is.Null, "an uncle or a real reward could have reached anyone, so nothing of that block is chained");
     }
@@ -198,7 +200,9 @@ public class CoveredBlockTests
     [Test]
     public void ABlockReadBackFromTheStore_StillChains()
     {
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(_seven.Header.IsPostMerge, Is.False, "precondition: the flag a decoded header does not carry");
+#pragma warning restore NUnit2045
 
         Assert.That(_index.TryOpenBlock(_seven, out ICoveredBlock? covered), Is.True);
         covered!.Complete();
@@ -207,7 +211,9 @@ public class CoveredBlockTests
         Assert.That(_index.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);
         using ICoveredBlock block = eight!;
         StateReadOverlaySlot slot = new();
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 1, slot), Is.True);
+#pragma warning restore NUnit2045
 
         Assert.That(slot.ParentState!.TryGetStorage(TestItem.AddressB, 1, out UInt256 b), Is.True, "zero difficulty is what says proof of stake for a block read back from the store");
         Assert.That(b, Is.EqualTo((UInt256)6));
@@ -229,7 +235,9 @@ public class CoveredBlockTests
         Assert.That(aura.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);
         using ICoveredBlock block = eight!;
         StateReadOverlaySlot slot = new();
+#pragma warning disable NUnit2045 // Successful seeding is a prerequisite for inspecting the seeded slot.
         Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 0, slot), Is.True);
+#pragma warning restore NUnit2045
 
         Assert.That(slot.ParentState, Is.Null, "the withdrawals of such a chain are a contract call whose writes no spec property names, so nothing of its blocks is chained");
     }
@@ -259,7 +267,9 @@ public class CoveredBlockTests
         Assert.That(_index.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);
         using ICoveredBlock block = eight!;
         StateReadOverlaySlot slot = new();
+#pragma warning disable NUnit2045 // Successful seeding is a prerequisite for inspecting the seeded slot.
         Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 1, slot), Is.True);
+#pragma warning restore NUnit2045
 
         Assert.That(slot.ParentState, Is.Null, "nothing earlier was published, so the read goes to the parent state");
     }

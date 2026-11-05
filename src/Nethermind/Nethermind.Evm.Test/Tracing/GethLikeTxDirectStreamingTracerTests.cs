@@ -69,6 +69,18 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
 
     private static long? RefundAt(IEnumerable<StructLog> logs, string opcode) => logs.Single(l => l.Op == opcode).Refund;
 
+    [TestCaseSource(typeof(GethLikeTxMemoryTracerTests), nameof(GethLikeTxMemoryTracerTests.OutOfGasOperations))]
+    public void Streams_full_cost_of_out_of_gas_operation(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
+    {
+        List<StructLog> logs = StreamLogs(code, GethTraceOptions.Default, GasCostOf.Transaction + gasAfterIntrinsic);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs[^1].Error, Is.EqualTo("out of gas"));
+            Assert.That(logs[^1].GasCost, Is.EqualTo(expectedGasCost));
+        }
+    }
+
     [Test]
     public void Streams_parent_refund_survives_child_revert()
     {
@@ -224,9 +236,12 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
             writer.WriteEndArray();
         }
 
-        Assert.That(pipe.TotalBytes, Is.GreaterThan(8 * threshold), "precondition: the trace must span many flush windows");
-        Assert.That(pipe.MaxUnflushedBytes, Is.LessThanOrEqualTo(threshold + MaxEntryOvershootBytes),
-            "unflushed output must stay near the flush threshold however large each entry is, so a slow reader applies backpressure");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pipe.TotalBytes, Is.GreaterThan(8 * threshold), "precondition: the trace must span many flush windows");
+            Assert.That(pipe.MaxUnflushedBytes, Is.LessThanOrEqualTo(threshold + MaxEntryOvershootBytes),
+                "unflushed output must stay near the flush threshold however large each entry is, so a slow reader applies backpressure");
+        }
     }
 
     [Test]
@@ -250,9 +265,12 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
         FlushRecordingPipeWriter pipe = new(keepOutput: false);
         StreamTrace(code, GethTraceOptions.Default with { EnableMemory = true }, pipe, threshold);
 
-        Assert.That(pipe.TotalBytes, Is.GreaterThan(4 * 64 * 1024), "precondition: several entries each carry the 64 KB memory");
-        Assert.That(pipe.MaxUnflushedBytes, Is.LessThanOrEqualTo(threshold + 1024),
-            "a single entry larger than the threshold must not be held whole before the flush");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pipe.TotalBytes, Is.GreaterThan(4 * 64 * 1024), "precondition: several entries each carry the 64 KB memory");
+            Assert.That(pipe.MaxUnflushedBytes, Is.LessThanOrEqualTo(threshold + 1024),
+                "a single entry larger than the threshold must not be held whole before the flush");
+        }
     }
 
     [TestCase(1, TestName = "StreamedTrace_FlushedAtEveryCheck_IsByteIdenticalToUnflushedTrace")]
@@ -264,8 +282,11 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
 
         (ArrayBufferWriter<byte> unflushed, FlushRecordingPipeWriter flushed) = TraceUnflushedAndFlushed(StorageMemoryAndReturnDataCode(word), options, threshold);
 
-        Assert.That(flushed.FlushCount, Is.GreaterThan(10), "precondition: the trace must be flushed many times, including within entries");
-        Assert.That(flushed.WrittenSpan.SequenceEqual(unflushed.WrittenSpan), Is.True, "flushing must not change a single byte of the output");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flushed.FlushCount, Is.GreaterThan(10), "precondition: the trace must be flushed many times, including within entries");
+            Assert.That(flushed.WrittenSpan.SequenceEqual(unflushed.WrittenSpan), Is.True, "flushing must not change a single byte of the output");
+        }
     }
 
     [Test]
@@ -365,9 +386,9 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
     private List<StructLog> ExecuteAndStream(bool clearingFrameReverts) =>
         StreamLogs(clearingFrameReverts ? ChildClearThenRevertCode() : ClearSstoreCode(), GethTraceOptions.Default);
 
-    private List<StructLog> StreamLogs(byte[] code, GethTraceOptions options)
+    private List<StructLog> StreamLogs(byte[] code, GethTraceOptions options, ulong gasLimit = 100000)
     {
-        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
 
         return StreamLogs(options,
             tracer => _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer),
@@ -395,6 +416,8 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
         return [.. document.RootElement.EnumerateArray().Select(static e => new StructLog(
             e.GetProperty("op").GetString()!,
             e.GetProperty("depth").GetInt32(),
+            e.GetProperty("gasCost").GetUInt64(),
+            e.TryGetProperty("error", out JsonElement error) ? error.GetString() : null,
             e.TryGetProperty("refund", out JsonElement refund) ? refund.GetInt64() : null,
             e.TryGetProperty("returnData", out JsonElement returnData) ? returnData.GetString() : null))];
     }
@@ -416,5 +439,5 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
             .Done;
     }
 
-    private readonly record struct StructLog(string Op, int Depth, long? Refund, string? ReturnData);
+    private readonly record struct StructLog(string Op, int Depth, ulong GasCost, string? Error, long? Refund, string? ReturnData);
 }

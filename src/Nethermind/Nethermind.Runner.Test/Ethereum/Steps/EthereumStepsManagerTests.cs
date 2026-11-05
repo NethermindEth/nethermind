@@ -303,9 +303,12 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
             Task initTask = stepsManager.InitializeAll(cancellationToken);
             await Task.Delay(100, cancellationToken);
-            Assert.That(initTask.IsCompleted, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(initTask.IsCompleted, Is.False);
 
-            Assert.That(container.Resolve<StepB>().WasExecuted, Is.False);
+                Assert.That(container.Resolve<StepB>().WasExecuted, Is.False);
+            }
             container.Resolve<StepE>().Waiter.SetResult();
             await initTask;
 
@@ -370,6 +373,17 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken),
                 Throws.TypeOf<StepDependencyException>());
+        }
+
+        [Test]
+        [CancelAfter(5000)]
+        public async Task Failing_optional_step_fails_the_run_only_when_selected([Values] bool selected, CancellationToken cancellationToken)
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                selected ? typeof(FailingOptionalStep) : null, command: null, [typeof(FailingOptionalStep)]);
+
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken),
+                selected ? Throws.TypeOf<TestException>() : Throws.Nothing);
         }
 
         [Test]
@@ -467,8 +481,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 alreadyInitialized ? [typeof(StepE)] : []);
             if (!alreadyInitialized)
             {
-                Assert.That(initialization.IsCompleted, Is.False);
-                Assert.That(container.Resolve<StepB>().WasExecuted, Is.False);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(initialization.IsCompleted, Is.False);
+                    Assert.That(container.Resolve<StepB>().WasExecuted, Is.False);
+                }
                 container.Resolve<StepE>().Waiter.SetResult();
             }
             await initialization.WaitAsync(cancellationToken);

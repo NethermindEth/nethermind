@@ -56,8 +56,11 @@ public class RecoverSignaturesTest
 
         sut.RecoverData(block);
 
-        Assert.That(tx.SenderAddress, Is.EqualTo(signer.Address));
-        Assert.That(tx.AuthorizationList.First().Authority, Is.EqualTo(authority.Address));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.SenderAddress, Is.EqualTo(signer.Address));
+            Assert.That(tx.AuthorizationList.First().Authority, Is.EqualTo(authority.Address));
+        }
     }
 
     [Test]
@@ -88,8 +91,11 @@ public class RecoverSignaturesTest
 
         sut.RecoverData(block);
 
-        Assert.That(tx.FrameSignatures[0].Recovered?.Signer, Is.EqualTo(signer.Address));
-        Assert.That(tx.FrameSignatures[0].Recovered?.Message, Is.EqualTo(sigHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.FrameSignatures[0].Recovered?.Signer, Is.EqualTo(signer.Address));
+            Assert.That(tx.FrameSignatures[0].Recovered?.Message, Is.EqualTo(sigHash));
+        }
     }
 
     [Test]
@@ -252,7 +258,9 @@ public class RecoverSignaturesTest
         Task step = Task.Run(() => sut.RecoverDataForQueuedProcessing(block));
         try
         {
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
             Assert.That(sut.IsRecoveryInFlight(block.Transactions), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(step.Wait(DrainTimeoutMs), Is.True, "the pipeline step must not wait for the running recovery");
             Assert.That(txs[0].SenderAddress, Is.Null, "the pipeline step must not recover behind the running recovery");
         }
@@ -325,8 +333,11 @@ public class RecoverSignaturesTest
             sut.StartRecovery(TestItem.KeccakA, first, ReleaseSpecSubstitute.Create());
             sut.StartRecovery(TestItem.KeccakA, resent, ReleaseSpecSubstitute.Create());
 
-            Assert.That(sut.IsRecoveryInFlight(first), Is.True);
-            Assert.That(sut.IsRecoveryInFlight(resent), Is.False, "the resent payload's own transactions stay with the pipeline");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sut.IsRecoveryInFlight(first), Is.True);
+                Assert.That(sut.IsRecoveryInFlight(resent), Is.False, "the resent payload's own transactions stay with the pipeline");
+            }
         }
         finally
         {

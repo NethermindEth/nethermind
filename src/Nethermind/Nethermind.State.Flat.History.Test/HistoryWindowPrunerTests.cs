@@ -90,8 +90,11 @@ public class HistoryWindowPrunerTests
         HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
         pruner.RunOnePass(CancellationToken.None);
 
-        Assert.That(_reader.IsPrunedBelowFloor(11), Is.True, "the published floor (12) must reject block 11");
-        Assert.That(_reader.IsPrunedBelowFloor(12), Is.False, "the published floor (12) must admit block 12 itself");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_reader.IsPrunedBelowFloor(11), Is.True, "the published floor (12) must reject block 11");
+            Assert.That(_reader.IsPrunedBelowFloor(12), Is.False, "the published floor (12) must admit block 12 itself");
+        }
 
         pruner.Dispose();
     }
@@ -126,9 +129,12 @@ public class HistoryWindowPrunerTests
         Span<byte> buffer = stackalloc byte[256];
         ReadOnlySpan<byte> flatKey = AccountKey();
 
-        Assert.That(accountHistoryV3.TryGetValueBeforeNextChange(4, flatKey, buffer, out ulong foundAt), Is.GreaterThan(0));
-        Assert.That(foundAt, Is.EqualTo(5UL),
-            "precondition: the pass yielded before reaching block 5, which must still be present and answer this query");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountHistoryV3.TryGetValueBeforeNextChange(4, flatKey, buffer, out ulong foundAt), Is.GreaterThan(0));
+            Assert.That(foundAt, Is.EqualTo(5UL),
+                "precondition: the pass yielded before reaching block 5, which must still be present and answer this query");
+        }
 
         HistoryWindowPruner ample = CreatePruner(retentionBlocks: 8);
         ample.RunOnePass(CancellationToken.None);
@@ -331,9 +337,12 @@ public class HistoryWindowPrunerTests
         pruner.PassCompleted += firstPass.Set;
         pruner.Start();
 
-        Assert.That(firstPass.Wait(TimeSpan.FromSeconds(10)), Is.True,
-            "a restarted node must not wait for the first persistence flush before pruning");
-        Assert.That(_reader.IsPrunedBelowFloor(11), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstPass.Wait(TimeSpan.FromSeconds(10)), Is.True,
+                "a restarted node must not wait for the first persistence flush before pruning");
+            Assert.That(_reader.IsPrunedBelowFloor(11), Is.True);
+        }
 
         pruner.Dispose();
     }
@@ -629,10 +638,13 @@ public class HistoryWindowPrunerTests
         for (ulong block = LongTailGeneralFloor + 1; block <= LongTailWatermark; block++) expectedPlain.Add(block);
         List<ulong> expectedSliced = [.. SlicedRowsBelowGeneralFloor, .. expectedPlain];
 
-        Assert.That(SurvivingAccountBlocks(Address), Is.EqualTo(expectedPlain),
-            "the plain address keeps exactly its rows above the general floor");
-        Assert.That(SurvivingAccountBlocks(SlicedAddress), Is.EqualTo(expectedSliced),
-            "the sliced address keeps its rows above its own deeper floor, including those below the general floor");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SurvivingAccountBlocks(Address), Is.EqualTo(expectedPlain),
+                "the plain address keeps exactly its rows above the general floor");
+            Assert.That(SurvivingAccountBlocks(SlicedAddress), Is.EqualTo(expectedSliced),
+                "the sliced address keeps its rows above its own deeper floor, including those below the general floor");
+        }
     }
 
     private List<ulong> SurvivingAccountBlocks(Address address)

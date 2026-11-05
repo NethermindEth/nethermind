@@ -103,16 +103,24 @@ public sealed partial class CodeInfo
         Unsafe.Add(ref code, destination) == (byte)Instruction.JUMPDEST &&
         JumpDestinationAnalyzer.AnalyzeJump(destination, bitmap, ref code, ref _analyzedUntil);
 
-    /// <summary>Reports whether a single look-back proves <paramref name="destination"/> the destination of the jump running.</summary>
+    /// <summary>
+    /// Reports whether <paramref name="bitmap"/> is this code's <see cref="IncrementalJumpBitmap"/> and a single look-back
+    /// proves <paramref name="destination"/> the destination of the jump running.
+    /// </summary>
     /// <param name="destination">A destination inside the code.</param>
+    /// <param name="bitmap">The bitmap the jump is checked against.</param>
     /// <param name="code">The first byte of this code.</param>
     /// <remarks>
     /// The part of <see cref="AnalyzeJump"/> that needs no call and no bounds check, so a frameless handler can take
     /// it; the caller marks a proven destination. A false answer leaves the destination to <see cref="AnalyzeJump"/>.
     /// Code that starts with STOP halts before any jump, so unlike <see cref="AnalyzeJump"/> this does not test for it.
+    /// The bitmap is compared with the field rather than <see cref="IncrementalJumpBitmap"/>, whose lazy creation is a
+    /// call that would give the handler a frame; a bitmap not created yet compares unequal and so is left to
+    /// <see cref="AnalyzeJump"/> too.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal bool IsJumpProvenByLookBack(nint destination, ref byte code) =>
+    internal bool IsJumpProvenByLookBack(nint destination, long[]? bitmap, ref byte code) =>
+        ReferenceEquals(bitmap, _incrementalJumpBitmap) &&
         Unsafe.Add(ref code, destination) == (byte)Instruction.JUMPDEST &&
         JumpDestinationAnalyzer.IsProvenByLookBack(destination, ref code, _analyzedUntil);
 }

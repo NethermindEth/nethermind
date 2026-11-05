@@ -40,7 +40,8 @@ namespace Nethermind.Evm.Test;
 
 /// <summary>
 /// EIP-8151: ecRecover returns the recovered address only when its raw code is empty or an EIP-7702 delegation
-/// designator, and charges the EIP-2929 access cost for that address.
+/// designator, and otherwise returns empty output as for a failed recovery. A recovered address is charged an account
+/// access plus a warm code read, whatever its code.
 /// </summary>
 /// <remarks>
 /// Runs through a <see cref="PrecompileCachedCodeInfoRepository"/>, as block processing does. Each measurement stores
@@ -55,6 +56,9 @@ public class Eip8151Tests : VirtualMachineTestsBase
     private const int SlotsPerMeasurement = 5;
     private const ulong EcRecoverBaseCost = 3000;
     private const ulong ColdAccountAccess = Eip8038Constants.ColdAccountAccess;
+    /// <remarks>EIP-8151 charges a <c>WARM_ACCESS</c> for reading the recovered account's code.</remarks>
+    private const ulong CodeRead = GasCostOf.WarmStateRead;
+    private const ulong ColdRecoveryCost = EcRecoverBaseCost + ColdAccountAccess + CodeRead;
 
     private static readonly PrivateKey SignerKey = TestItem.PrivateKeyC;
     private static readonly Address Signer = SignerKey.Address;
@@ -62,7 +66,12 @@ public class Eip8151Tests : VirtualMachineTestsBase
     private static readonly Address MovedPrecompileTarget = TestItem.AddressF;
     private static readonly byte[] ValidInput = CreateInput(SignerKey);
     private static readonly byte[] UnrecoverableInput = CreateUnrecoverableInput();
+    /// <remarks>The signer's own signature with <c>v = 29</c>, which fails before any key is recovered.</remarks>
+    private static readonly byte[] InvalidVInput = CreateInputWithV(SignerKey, 29);
+    private static readonly PrivateKey PermittedSignerKey = TestItem.PrivateKeys[9];
     private static readonly byte[] Sentinel = Bytes.FromHexString("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+    /// <remarks>Left in the output word by empty output.</remarks>
+    private static readonly UInt256 SentinelWord = new(Sentinel, isBigEndian: true);
     private static readonly byte[] ContractCode = Prepare.EvmCode.PushData(0).Op(Instruction.STOP).Done;
 
     private OverridableReleaseSpec _spec = null!;
@@ -138,28 +147,33 @@ public class Eip8151Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(call.Result, Is.EqualTo(UInt256.One), "success");
-            Assert.That(call.Output, Is.EqualTo(returnsAddress ? AsWord(Signer) : UInt256.Zero), "output");
-            Assert.That(call.ReturnDataSize, Is.EqualTo((UInt256)32), "return data size");
-            Assert.That(PrecompileCost(call, callOpcode), Is.EqualTo(eip8151Enabled ? EcRecoverBaseCost + ColdAccountAccess : EcRecoverBaseCost), "gas");
+            Assert.That(call.Output, Is.EqualTo(returnsAddress ? AsWord(Signer) : SentinelWord), "output");
+            Assert.That(call.ReturnDataSize, Is.EqualTo(returnsAddress ? (UInt256)32 : UInt256.Zero), "return data size");
+            // A withheld address pays the same as a returned one, code read included.
+            Assert.That(PrecompileCost(call, callOpcode), Is.EqualTo(eip8151Enabled ? ColdRecoveryCost : EcRecoverBaseCost), "gas");
         }
     }
 
     [Test]
-    public void Failed_recovery_charges_the_base_cost_only(
+    public void Failed_recovery_reads_no_account_and_charges_the_base_cost_only(
         [Values] bool eip8151Enabled,
-        [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode)
+        [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode,
+        [Values] bool malformedV,
+        [Values] bool enoughGas)
     {
         _spec.IsEip8151Enabled = eip8151Enabled;
+        long gasLimit = (long)EcRecoverBaseCost - (enoughGas ? 0 : 1);
 
-        Run(MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, PrecompileGasLimit, UnrecoverableInput).Done);
+        Run(MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, gasLimit, malformedV ? InvalidVInput : UnrecoverableInput).Done);
 
         Measurement call = Read(0);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(call.Result, Is.EqualTo(UInt256.One), "success");
-            Assert.That(call.ReturnDataSize, Is.EqualTo(eip8151Enabled ? (UInt256)32 : UInt256.Zero), "return data size");
-            Assert.That(call.Output, Is.EqualTo(eip8151Enabled ? UInt256.Zero : new UInt256(Sentinel, isBigEndian: true)), "output");
-            Assert.That(PrecompileCost(call, callOpcode), Is.EqualTo(EcRecoverBaseCost), "gas");
+            Assert.That(call.Result, Is.EqualTo(enoughGas ? UInt256.One : UInt256.Zero), "success");
+            Assert.That(call.ReturnDataSize, Is.EqualTo(UInt256.Zero), "return data size");
+            Assert.That(call.Output, Is.EqualTo(SentinelWord), "output");
+            Assert.That(PrecompileCost(call, callOpcode), Is.EqualTo((ulong)gasLimit), "gas");
+            Assert.That(_tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Signer), Is.Null, "EIP-7928 entry");
         }
     }
 
@@ -181,9 +195,28 @@ public class Eip8151Tests : VirtualMachineTestsBase
         {
             Assert.That(Read(0).Output, Is.EqualTo(AsWord(Signer)), "first output");
             Assert.That(Read(1).Output, Is.EqualTo(AsWord(Signer)), "second output");
-            Assert.That(PrecompileCost(Read(0), callOpcode), Is.EqualTo(eip8151Enabled ? EcRecoverBaseCost + coldAccountAccess : EcRecoverBaseCost), "first recovery gas");
-            Assert.That(PrecompileCost(Read(1), callOpcode), Is.EqualTo(eip8151Enabled ? EcRecoverBaseCost + GasCostOf.WarmStateRead : EcRecoverBaseCost), "second recovery gas");
+            Assert.That(PrecompileCost(Read(0), callOpcode), Is.EqualTo(eip8151Enabled ? EcRecoverBaseCost + coldAccountAccess + CodeRead : EcRecoverBaseCost), "first recovery gas");
+            Assert.That(PrecompileCost(Read(1), callOpcode), Is.EqualTo(eip8151Enabled ? EcRecoverBaseCost + GasCostOf.WarmStateRead + CodeRead : EcRecoverBaseCost), "second recovery gas");
             Assert.That(BalanceCost(Read(2)), Is.EqualTo(eip8151Enabled ? GasCostOf.WarmStateRead : coldAccountAccess), "later BALANCE gas");
+        }
+    }
+
+    [Test]
+    public void Recovery_of_a_warm_address_needs_a_warm_access_and_a_code_read(
+        [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode,
+        [Values] bool enoughGas)
+    {
+        Prepare code = MeasureBalance(Prepare.EvmCode, 0, Signer);
+        code = MeasureEcRecover(code, 1, callOpcode, (long)(EcRecoverBaseCost + GasCostOf.WarmStateRead + CodeRead) - (enoughGas ? 0 : 1), ValidInput);
+
+        Run(MeasureBalance(code, 2, Signer).Done);
+
+        Measurement call = Read(1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.Result, Is.EqualTo(enoughGas ? UInt256.One : UInt256.Zero), "success");
+            Assert.That(call.Output, Is.EqualTo(enoughGas ? AsWord(Signer) : SentinelWord), "output");
+            Assert.That(BalanceCost(Read(2)), Is.EqualTo(GasCostOf.WarmStateRead), "a recovery out of gas leaves an already warm address warm");
         }
     }
 
@@ -211,17 +244,19 @@ public class Eip8151Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Access_cost_is_charged_before_the_recovered_account_is_read(
+    public void Access_and_code_read_are_charged_before_the_recovered_account_is_read(
         [Values] bool eip8151Enabled,
         [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode,
-        [Values] bool enoughGas)
+        // Exact, short of the code read, short of the account access.
+        [Values(0, 1, (int)CodeRead + 1)] int shortfall)
     {
         _spec.IsEip8151Enabled = eip8151Enabled;
-        long gasLimit = (long)(EcRecoverBaseCost + ColdAccountAccess) - (enoughGas ? 0 : 1);
+        long gasLimit = (long)ColdRecoveryCost - shortfall;
 
         Run(MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, gasLimit, ValidInput).Done);
 
         Measurement call = Read(0);
+        bool enoughGas = shortfall == 0;
         bool charged = eip8151Enabled && enoughGas;
         using (Assert.EnterMultipleScope())
         {
@@ -233,9 +268,11 @@ public class Eip8151Tests : VirtualMachineTestsBase
 
     [Test]
     public void Running_out_of_gas_for_the_access_cost_leaves_the_address_cold(
-        [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode)
+        [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode,
+        // Short of the code read, after the access warmed the address, or short of the access itself.
+        [Values(1, (int)CodeRead + 1)] int shortfall)
     {
-        Prepare code = MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, (long)(EcRecoverBaseCost + ColdAccountAccess) - 1, ValidInput);
+        Prepare code = MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, (long)ColdRecoveryCost - shortfall, ValidInput);
 
         Run(MeasureBalance(code, 1, Signer).Done);
 
@@ -272,7 +309,45 @@ public class Eip8151Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(EcRecoverRuns(), Is.EqualTo(recoveriesBefore), "second recovery is served from the precompile result cache");
-            Assert.That(Read(0).Output, Is.EqualTo(eip8151Enabled ? UInt256.Zero : AsWord(Signer)), "output after the account gains code");
+            Assert.That(Read(0).Output, Is.EqualTo(eip8151Enabled ? SentinelWord : AsWord(Signer)), "output after the account gains code");
+        }
+    }
+
+    [Test]
+    public void Withheld_address_clears_the_return_data_of_an_earlier_recovery([Values] bool eip8151Enabled)
+    {
+        _spec.IsEip8151Enabled = eip8151Enabled;
+        DeploySigner(ContractCode);
+        Prepare code = MeasureEcRecover(Prepare.EvmCode, 0, Instruction.STATICCALL, PrecompileGasLimit, CreateInput(PermittedSignerKey));
+
+        Run(MeasureEcRecover(code, 1, Instruction.STATICCALL, PrecompileGasLimit, ValidInput).Done);
+
+        Measurement permitted = Read(0);
+        Measurement withheld = Read(1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(permitted.Output, Is.EqualTo(AsWord(PermittedSignerKey.Address)), "permitted output");
+            Assert.That(permitted.ReturnDataSize, Is.EqualTo((UInt256)32), "permitted return data size");
+            Assert.That(withheld.Result, Is.EqualTo(UInt256.One), "withheld success");
+            Assert.That(withheld.ReturnDataSize, Is.EqualTo(eip8151Enabled ? UInt256.Zero : (UInt256)32), "withheld return data size");
+        }
+    }
+
+    [Test]
+    public void Delegated_signer_leaves_the_delegation_target_cold()
+    {
+        TestState.CreateAccount(Helper, UInt256.Zero);
+        TestState.InsertCode(Helper, ContractCode, _spec);
+        DeploySigner([.. Eip7702Constants.DelegationHeader, .. Helper.Bytes]);
+        Prepare code = MeasureEcRecover(Prepare.EvmCode, 0, Instruction.STATICCALL, PrecompileGasLimit, ValidInput);
+
+        Run(MeasureBalance(code, 1, Helper).Done);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Read(0).Output, Is.EqualTo(AsWord(Signer)), "output");
+            Assert.That(PrecompileCost(Read(0), Instruction.STATICCALL), Is.EqualTo(ColdRecoveryCost), "gas");
+            Assert.That(BalanceCost(Read(1)), Is.EqualTo(ColdAccountAccess), "delegation target BALANCE gas");
         }
     }
 
@@ -294,7 +369,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), "status");
-            Assert.That(tracer.ReturnValue, Is.EqualTo(eip8151Enabled ? new byte[32] : AsWord(Signer).ToBigEndian()), "output");
+            Assert.That(tracer.ReturnValue, Is.EqualTo(eip8151Enabled ? Array.Empty<byte>() : AsWord(Signer).ToBigEndian()), "output");
         }
     }
 
@@ -314,8 +389,8 @@ public class Eip8151Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(call.Result, Is.EqualTo(UInt256.One), "success");
-            Assert.That(call.Output, Is.EqualTo(eip8151Enabled ? UInt256.Zero : AsWord(Signer)), "output");
-            Assert.That(PrecompileCost(call, callOpcode), Is.EqualTo(coldTargetAccess + EcRecoverBaseCost + (eip8151Enabled ? ColdAccountAccess : 0)), "gas");
+            Assert.That(call.Output, Is.EqualTo(eip8151Enabled ? SentinelWord : AsWord(Signer)), "output");
+            Assert.That(PrecompileCost(call, callOpcode), Is.EqualTo(coldTargetAccess + EcRecoverBaseCost + (eip8151Enabled ? ColdAccountAccess + CodeRead : 0)), "gas");
         }
     }
 
@@ -417,8 +492,8 @@ public class Eip8151Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(call.To, Is.EqualTo(PrecompiledAddresses.ECRecover), "to");
-            Assert.That(call.Output.ToArray(), Is.EqualTo(eip8151Enabled ? new byte[32] : AsWord(Signer).ToBigEndian()), "output");
-            Assert.That(call.GasUsed, Is.EqualTo(eip8151Enabled ? EcRecoverBaseCost + ColdAccountAccess : EcRecoverBaseCost), "gas used");
+            Assert.That(call.Output.ToArray(), Is.EqualTo(eip8151Enabled ? Array.Empty<byte>() : AsWord(Signer).ToBigEndian()), "output");
+            Assert.That(call.GasUsed, Is.EqualTo(eip8151Enabled ? ColdRecoveryCost : EcRecoverBaseCost), "gas used");
         }
     }
 
@@ -549,6 +624,13 @@ public class Eip8151Tests : VirtualMachineTestsBase
         message.Bytes.CopyTo(input);
         input[63] = (byte)signature.V;
         signature.Bytes.CopyTo(input.AsSpan(64));
+        return input;
+    }
+
+    private static byte[] CreateInputWithV(PrivateKey key, byte v)
+    {
+        byte[] input = CreateInput(key);
+        input[63] = v;
         return input;
     }
 

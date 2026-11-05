@@ -276,6 +276,9 @@ namespace Nethermind.TxPool
             {
                 foreach (Transaction restored in _blobTransactions.GetSnapshot())
                 {
+                    // Admission marks a pooled hash as known; a recreated record skipped admission, so peers'
+                    // announcements of it would be fetched again and a resubmission rejected as a replacement.
+                    _hashCache.SetLongTerm(restored.Hash!);
                     if (HasExpiryDeadline(restored)) _expiringFrameTxCount++;
                     // EIP-8141: the bound is summed over the pending set, so a record that survived the restart
                     // has to keep counting against its payer. Restored, not re-gated: the reservation was
@@ -2236,7 +2239,7 @@ namespace Nethermind.TxPool
                     }
 
                     // it is not affecting non-blob txs - for them MaxFeePerBlobGas is null, so check is skipped
-                    if (tx.MaxFeePerBlobGas < _headInfo.CurrentFeePerBlobGas)
+                    if (tx.IsBelowBlobBaseFee(_headInfo.CurrentFeePerBlobGas))
                     {
                         gasBottleneck = UInt256.Zero;
                     }

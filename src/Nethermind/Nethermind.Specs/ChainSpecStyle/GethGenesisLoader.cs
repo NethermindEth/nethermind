@@ -167,6 +167,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             Eip7002ContractAddress = config.PragueTime is null ? null : Eip7002Constants.WithdrawalRequestPredeployAddress,
             Eip7251ContractAddress = config.PragueTime is null ? null : Eip7251Constants.ConsolidationRequestPredeployAddress,
             Eip7934MaxRlpBlockSize = Eip7934Constants.DefaultMaxRlpBlockSize,
+            ZeroNonceStorageAccounts = config.ZeroNonceStorageAccounts,
 
             BlobSchedule = blobSchedule
         };

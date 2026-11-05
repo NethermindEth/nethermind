@@ -236,7 +236,7 @@ public class BlockTransactionsViewTests
 
         Transaction signedFrame = FrameTx(SelfVerify(PrefixFrameGas));
         signedFrame.FrameSignatures = [new TxFrameSignature(1, TestItem.AddressC, new byte[] { 1 }, new byte[] { 2, 3 })];
-        signedFrame.MaxFeePerBlobGas = 3;
+        signedFrame.MaxFee = 3;
         signedFrame.BlobVersionedHashes = [TestItem.KeccakE.BytesToArray()];
 
         return

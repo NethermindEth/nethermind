@@ -68,14 +68,17 @@ public ref partial struct EvmStack
     /// the destination is proven, so a frameless handler does not hold it through the look-back.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal readonly bool TryMarkJumpDestination(nint destination, ref byte code)
+    internal readonly unsafe bool TryMarkJumpDestination(nint destination, ref byte code)
     {
         CodeInfo? codeInfo = _codeInfo;
-        if (codeInfo is null || !ReferenceEquals(_jumpDestinations, codeInfo.IncrementalJumpBitmap) ||
-            !codeInfo.IsJumpProvenByLookBack(destination, ref code)) return false;
+        if (codeInfo is null || !codeInfo.IsJumpProvenByLookBack(destination, _jumpDestinations, ref code)) return false;
 
         ref long segment = ref Unsafe.Add(ref _jumpDestinationBits, destination >> 6);
-        segment |= 1L << (int)destination;
+        // As in IsAnalyzedJumpDestination: rounding the segment's address lets the JIT drop its alignment tests.
+        if (StrictAlignmentFlag.IsActive)
+            *(long*)((nuint)Unsafe.AsPointer(ref segment) & ~(nuint)(sizeof(long) - 1)) |= 1L << (int)destination;
+        else
+            segment |= 1L << (int)destination;
         return true;
     }
 

@@ -278,8 +278,11 @@ public class ZeroNettyP2PHandlerTests
                 handler.ChannelRead(context, input);
 
             handler.HandlerRemoved(context);
-            Assert.That(input.ReferenceCount, Is.Zero);
-            Assert.That(received, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(input.ReferenceCount, Is.Zero);
+                Assert.That(received, Is.Not.Null);
+            }
             Assert.That(received.ReferenceCount, Is.EqualTo(retain ? 1 : 0));
             if (retain) AssertPacket(received, payload, 7);
         }
@@ -501,9 +504,12 @@ public class ZeroNettyP2PHandlerTests
             else
             {
                 AssertPacket(packet, [9, 8, 7], 8);
-                Assert.That(packet.Protocol, Is.Null, "protocol resolution from the previous message must not survive reuse");
-                Assert.That(ReferenceEquals(firstPacket, packet), Is.EqualTo(length == 65536));
-                Assert.That(ReferenceEquals(first, packet.Content), Is.EqualTo(length == 65536));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(packet.Protocol, Is.Null, "protocol resolution from the previous message must not survive reuse");
+                    Assert.That(ReferenceEquals(firstPacket, packet), Is.EqualTo(length == 65536));
+                    Assert.That(ReferenceEquals(first, packet.Content), Is.EqualTo(length == 65536));
+                }
                 packet.Content.SkipBytes(1).ResetReaderIndex();
                 AssertPacket(packet, [9, 8, 7], 8);
                 packet.Content.ResetWriterIndex();
@@ -740,8 +746,11 @@ public class ZeroNettyP2PHandlerTests
     {
         byte[] actual = new byte[packet.Content.ReadableBytes];
         packet.Content.GetBytes(packet.Content.ReaderIndex, actual);
-        Assert.That(actual, Is.EqualTo(payload));
-        Assert.That(packet.PacketType, Is.EqualTo(packetType));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(payload));
+            Assert.That(packet.PacketType, Is.EqualTo(packetType));
+        }
     }
 
     private static ISession CreatePrivilegedSession(bool isStatic)

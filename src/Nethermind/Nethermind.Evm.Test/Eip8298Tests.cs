@@ -213,6 +213,37 @@ public class Eip8298Tests : VirtualMachineTestsBase
         }
     }
 
+    private static IEnumerable<TestCaseData> SystemContractCases()
+    {
+        yield return new TestCaseData(Eip4788Constants.BeaconRootsAddress, true).SetName("BeaconRoots_Halts");
+        yield return new TestCaseData(Eip2935Constants.BlockHashHistoryAddress, true).SetName("BlockHashHistory_Halts");
+        yield return new TestCaseData(Eip7002Constants.WithdrawalRequestPredeployAddress, true).SetName("WithdrawalRequests_Halts");
+        yield return new TestCaseData(Eip7251Constants.ConsolidationRequestPredeployAddress, true).SetName("ConsolidationRequests_Halts");
+        yield return new TestCaseData(Eip8282Constants.BuilderDepositRequestPredeployAddress, true).SetName("BuilderDeposits_Halts");
+        yield return new TestCaseData(Eip8282Constants.BuilderExitRequestPredeployAddress, true).SetName("BuilderExits_Halts");
+        yield return new TestCaseData(Eip6110Constants.MainnetDepositContractAddress, false).SetName("DepositContract_Adopts");
+        yield return new TestCaseData(Eip8272Constants.RecentRootAddress, false).SetName("RecentRoot_Adopts");
+    }
+
+    /// <summary>EIP-8298: "If the current account is a system contract, SETCODEFROM causes an exceptional halt."</summary>
+    [TestCaseSource(nameof(SystemContractCases))]
+    public void SystemContractCurrentAccount_ExceptionalHalt(Address account, bool halts)
+    {
+        DeploySource();
+        byte[] accountCode = Prepare.EvmCode.SETCODEFROM(Source).STOP().Done;
+        TestState.CreateAccount(account, 0);
+        TestState.InsertCode(account, accountCode, Spec);
+
+        TestAllTracerWithOutput result = Execute(Prepare.EvmCode.Call(account, 100_000).MSTORE(0).Return(32, 0).Done);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo(halts ? UInt256.Zero : UInt256.One), "call success");
+            AssertCodeHash(account, halts ? Keccak.Compute(accountCode) : SourceCodeHash);
+        }
+    }
+
     public enum CreationKind { Transaction, Create, Create2 }
 
     public enum ReturnKind { ValidCode, EfPrefixed, Empty }

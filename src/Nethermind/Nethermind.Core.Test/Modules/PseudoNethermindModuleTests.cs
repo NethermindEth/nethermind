@@ -174,10 +174,13 @@ public class PseudoNethermindModuleTests
         if (registerOwnFlatDbConfig) builder.AddSingleton<IFlatDbConfig>(new FlatDbConfig { Enabled = true });
         using IContainer container = builder.Build();
 
-        Assert.That(container.Resolve<ISnapshotCatalog>(), Is.SameAs(NullSnapshotCatalog.Instance));
-        Assert.That(container.Resolve<IPersistedSnapshotLoader>(), Is.SameAs(NullPersistedSnapshotLoader.Instance));
-        Assert.That(container.Resolve<IPersistedSnapshotCompactor>(), Is.SameAs(NullPersistedSnapshotCompactor.Instance));
-        Assert.That(container.Resolve<IFlatDbConfig>().EnableLongFinality, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<ISnapshotCatalog>(), Is.SameAs(NullSnapshotCatalog.Instance));
+            Assert.That(container.Resolve<IPersistedSnapshotLoader>(), Is.SameAs(NullPersistedSnapshotLoader.Instance));
+            Assert.That(container.Resolve<IPersistedSnapshotCompactor>(), Is.SameAs(NullPersistedSnapshotCompactor.Instance));
+            Assert.That(container.Resolve<IFlatDbConfig>().EnableLongFinality, Is.False);
+        }
     }
 
     [Test]

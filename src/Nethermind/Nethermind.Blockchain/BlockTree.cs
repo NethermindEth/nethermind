@@ -591,6 +591,7 @@ namespace Nethermind.Blockchain
         /// <remarks>A level outside the cached window is read without caching it, as long scans read many.</remarks>
         public BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
         {
+            long deletions = Volatile.Read(ref _deletions);
             bool shouldCache = ShouldCache(blockNumber);
             ChainLevelInfo? level = shouldCache ? LoadLevel(blockNumber) : _chainLevelInfoRepository.LoadLevelWithoutCaching(blockNumber);
             if (level?.MainChainBlock is not { } blockInfo || blockInfo.BlockHash == Keccak.Zero)
@@ -604,7 +605,11 @@ namespace Nethermind.Blockchain
             {
                 header.Hash ??= blockInfo.BlockHash;
                 SetTotalDifficultyFromBlockInfo(header, blockInfo);
-                if (shouldCache) _headerStore.Cache(header);
+                if (shouldCache)
+                {
+                    _headerStore.Cache(header);
+                    if (OverlappedDeletion(deletions)) (_headerStore as IClearableCache)?.ClearCache();
+                }
             }
 
             return header;
@@ -2098,12 +2103,17 @@ namespace Nethermind.Blockchain
         /// persisting and publishing <see cref="FinalizedHash"/>/<see cref="SafeHash"/> happen under one lock, so calls
         /// take effect in the order they acquire it and the published pair is never ahead of disk. Events are raised
         /// outside the lock with this call's own hashes.
+        /// A <see cref="Keccak.Zero"/> hash means the caller does not know that block, so the previously known
+        /// <see cref="FinalizedHash"/>/<see cref="SafeHash"/> is kept rather than cleared, matching other execution clients.
         /// </remarks>
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
             BlockHeader? finalizedHeader;
             using (_forkChoiceLock.EnterScope())
             {
+                if (finalizedBlockHash == Keccak.Zero) finalizedBlockHash = FinalizedHash ?? finalizedBlockHash;
+                if (safeBlockHash == Keccak.Zero) safeBlockHash = SafeHash ?? safeBlockHash;
+
                 bool finalizedAdvanced = finalizedBlockHash is not null
                     && finalizedBlockHash != Keccak.Zero
                     && finalizedBlockHash != FinalizedHash;

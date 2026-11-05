@@ -120,8 +120,11 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             ulong storedPivotBlockNumber = ctx.DecodeULong();
             Hash256 storedFinalizedHash = ctx.DecodeKeccak()!;
 
-            Assert.That(storedFinalizedHash, Is.EqualTo(expectedFinalizedHash));
-            Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storedFinalizedHash, Is.EqualTo(expectedFinalizedHash));
+                Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
+            }
         }
 
         [Test]
@@ -136,8 +139,11 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             byte[]? storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData);
             Assert.That(storedData, Is.Not.Null, "pivot should be updated from the persisted finalized hash without any FCU");
             RlpReader ctx = new(storedData!);
-            Assert.That(ctx.DecodeULong(), Is.EqualTo(expectedPivotBlockNumber));
-            Assert.That(ctx.DecodeKeccak(), Is.EqualTo(persistedFinalizedHash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.DecodeULong(), Is.EqualTo(expectedPivotBlockNumber));
+                Assert.That(ctx.DecodeKeccak(), Is.EqualTo(persistedFinalizedHash));
+            }
         }
 
         [Test]
@@ -152,10 +158,13 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             cts.Cancel();
             try { await task; } catch (OperationCanceledException) { }
 
-            Assert.That(_metadataDb!.Get(MetadataDbKeys.UpdatedPivotData), Is.Null,
-                "a zero finalized hash means no data, so no pivot should be set");
-            Assert.That(_syncConfig!.MaxAttemptsToUpdatePivot, Is.EqualTo(ISyncConfig.InfiniteAttempts),
-                "attempts remain, so the updater must keep waiting instead of falling back to the static pivot");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_metadataDb!.Get(MetadataDbKeys.UpdatedPivotData), Is.Null,
+                    "a zero finalized hash means no data, so no pivot should be set");
+                Assert.That(_syncConfig!.MaxAttemptsToUpdatePivot, Is.EqualTo(ISyncConfig.InfiniteAttempts),
+                    "attempts remain, so the updater must keep waiting instead of falling back to the static pivot");
+            }
         }
 
         [Test]
@@ -171,8 +180,11 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             byte[]? storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData);
             Assert.That(storedData, Is.Not.Null, "a zero cached finalized hash must not shadow the persisted one");
             RlpReader ctx = new(storedData!);
-            Assert.That(ctx.DecodeULong(), Is.EqualTo(expectedPivotBlockNumber));
-            Assert.That(ctx.DecodeKeccak(), Is.EqualTo(persistedFinalizedHash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.DecodeULong(), Is.EqualTo(expectedPivotBlockNumber));
+                Assert.That(ctx.DecodeKeccak(), Is.EqualTo(persistedFinalizedHash));
+            }
         }
 
         [Test]
@@ -220,8 +232,11 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             ulong storedPivotBlockNumber = ctx.DecodeULong();
             Hash256 storedPivotBlockHash = ctx.DecodeKeccak()!;
 
-            Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
-            Assert.That(storedPivotBlockHash, Is.EqualTo(expectedPivotBlockHash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
+                Assert.That(storedPivotBlockHash, Is.EqualTo(expectedPivotBlockHash));
+            }
         }
 
         [Test]

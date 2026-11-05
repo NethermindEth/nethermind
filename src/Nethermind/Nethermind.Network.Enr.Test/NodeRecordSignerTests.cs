@@ -146,8 +146,11 @@ public class NodeRecordSignerTests
         string hex = nodeRecord.GetHex();
         Console.WriteLine(testCase);
         Console.WriteLine(hex);
-        Assert.That(signer.Verify(nodeRecord), Is.True);
-        Assert.That(nodeRecord.ToRlpBytes(), Is.EqualTo(Bytes.FromHexString(testCase)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(signer.Verify(nodeRecord), Is.True);
+            Assert.That(nodeRecord.ToRlpBytes(), Is.EqualTo(Bytes.FromHexString(testCase)));
+        }
     }
 
     [Test]
@@ -172,8 +175,11 @@ public class NodeRecordSignerTests
         ForkId? forkId = decoded.GetValue<ForkId>(EnrContentKey.Eth);
 
         Assert.That(forkId, Is.Not.Null);
-        Assert.That(forkId.Value.ForkHash, Is.EqualTo(forkHash));
-        Assert.That(forkId.Value.Next, Is.EqualTo(next));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkId.Value.ForkHash, Is.EqualTo(forkHash));
+            Assert.That(forkId.Value.Next, Is.EqualTo(next));
+        }
     }
 
     [Test]

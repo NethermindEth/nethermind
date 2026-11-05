@@ -44,8 +44,11 @@ public class Eth72MessageSerializerTests
             0b1000_0000,
         ];
 
-        Assert.That(mask.ToBytes(), Is.EqualTo(expected));
-        Assert.That(BlobCellMask.FromBytes(expected), Is.EqualTo(mask));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mask.ToBytes(), Is.EqualTo(expected));
+            Assert.That(BlobCellMask.FromBytes(expected), Is.EqualTo(mask));
+        }
     }
 
     [Test]
@@ -59,9 +62,12 @@ public class Eth72MessageSerializerTests
         serializer.Serialize(buffer, message);
         using GetCellsMessage72 actual = serializer.Deserialize(buffer);
 
-        Assert.That(actual.RequestId, Is.EqualTo(message.RequestId));
-        Assert.That(actual.Hashes, Is.EqualTo(message.Hashes));
-        Assert.That(actual.CellMask, Is.EqualTo(cellMask));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.RequestId, Is.EqualTo(message.RequestId));
+            Assert.That(actual.Hashes, Is.EqualTo(message.Hashes));
+            Assert.That(actual.CellMask, Is.EqualTo(cellMask));
+        }
     }
 
     [Test]
@@ -104,10 +110,13 @@ public class Eth72MessageSerializerTests
         serializer.Serialize(buffer, message);
         using CellsMessage72 actual = serializer.Deserialize(buffer);
 
-        Assert.That(actual.RequestId, Is.EqualTo(message.RequestId));
-        Assert.That(actual.Hashes, Is.EqualTo(message.Hashes));
-        Assert.That(actual.CellMask, Is.EqualTo(cellMask));
-        Assert.That(actual.Cells[0][0], Is.EqualTo(cells[0][0]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.RequestId, Is.EqualTo(message.RequestId));
+            Assert.That(actual.Hashes, Is.EqualTo(message.Hashes));
+            Assert.That(actual.CellMask, Is.EqualTo(cellMask));
+            Assert.That(actual.Cells[0][0], Is.EqualTo(cells[0][0]));
+        }
     }
 
     [Test]
