@@ -147,10 +147,11 @@ public class MergeHeaderValidatorTests
         }
     }
 
-    [TestCase(0UL, null, false, TestName = "{m}(zero TTD)")]
-    [TestCase(10UL, 10UL, false, TestName = "{m}(parent TD on the header)")]
-    [TestCase(10UL, null, true, TestName = "{m}(parent TD not on the header)")]
-    public void Pos_child_reads_the_parent_total_difficulty_from_the_block_tree_only_when_needed(ulong ttd, ulong? parentTotalDifficulty, bool expectLookup)
+    [TestCase(0UL, null, false, 0UL, TestName = "{m}(zero TTD)")]
+    [TestCase(10UL, 10UL, false, 0UL, TestName = "{m}(parent TD on the header)")]
+    [TestCase(10UL, null, true, 0UL, TestName = "{m}(parent TD not on the header)")]
+    [TestCase(10UL, null, false, 1UL, TestName = "{m}(PoW header)")]
+    public void Pos_child_reads_the_parent_total_difficulty_from_the_block_tree_only_when_needed(ulong ttd, ulong? parentTotalDifficulty, bool expectLookup, ulong headerDifficulty)
     {
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.TerminalTotalDifficulty.Returns((UInt256?)new UInt256(ttd));
@@ -159,7 +160,7 @@ public class MergeHeaderValidatorTests
         MergeHeaderValidator validator = new(poSSwitcher, Substitute.For<IHeaderValidator>(), blockTree, MainnetSpecProvider.Instance, Always.Valid, LimboLogs.Instance);
         BlockHeader parent = Build.A.BlockHeader.WithDifficulty(0).TestObject;
         parent.TotalDifficulty = parentTotalDifficulty;
-        BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithDifficulty(0).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithDifficulty(headerDifficulty).TestObject;
 
         validator.Validate(header, parent);
 
