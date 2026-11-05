@@ -97,6 +97,207 @@ public class ForwardedNonceTrackerTests
         }
     }
 
+    // A send from sender: it takes the account's lock, fills the next nonce and, when accepted, records it.
+    private static async Task<ulong> Send(ForwardedNonceTracker tracker, Address sender, bool accepted = true)
+    {
+        using IDisposable senderLock = await tracker.LockSenderAsync(sender);
+        ulong nonce = tracker.GetNextNonce(sender);
+        if (accepted)
+            tracker.OnForwarded(sender, nonce);
+
+        return nonce;
+    }
+
+    [Test]
+    public async Task Pending_nonce_is_one_the_account_had_while_a_forward_comes_and_goes_across_a_reorg([Values] bool dropped)
+    {
+        ReorgingHead head = new();
+        ForwardedNonceTracker tracker = head.Tracker;
+        Address sender = TestItem.AddressA;
+        // Pending is 1 when the read looks at the entry, 2 once the forward of nonce 1 is recorded, and 2 from then on:
+        // first from the entry, then, after a reorg to nonce 0 and back to 2, from the head.
+        head.HoldNextHeadLookup();
+        Task<ulong> read = Task.Run(() => tracker.GetPendingNonce(sender));
+        ulong pending;
+        try
+        {
+            await head.HeadLookupHeld.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            Assert.That(await Send(tracker, sender), Is.EqualTo(1UL));
+            head.MoveTo(0);
+            head.HoldNextStateRead();
+            head.ReleaseHeadLookup.SetResult();
+            await head.StateReadHeld.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            if (dropped)
+            {
+                head.MoveTo(2);
+                Assert.That((await Send(tracker, sender, accepted: false), tracker.Count), Is.EqualTo((2UL, 0)),
+                    "the send fills the head nonce and drops the entry the head reached");
+            }
+
+            head.ReleaseStateRead.SetResult();
+            pending = await read.WaitAsync(TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            head.ReleaseAll();
+        }
+
+        Assert.That(pending, Is.AnyOf(1UL, 2UL), "the pending nonce was 1 or 2 for the whole read, never 0");
+    }
+
+    [Test]
+    public async Task Pending_nonce_is_one_the_account_had_while_a_send_drops_the_entry_and_the_head_goes_back()
+    {
+        ReorgingHead head = new();
+        ForwardedNonceTracker tracker = head.Tracker;
+        Address sender = TestItem.AddressA;
+        await Send(tracker, sender);
+        head.MoveTo(3);
+        // Pending is 3 (the head past the entry 2), until a reorg to nonce 0 after a send dropped the entry makes it 0.
+        head.HoldNextHeadLookup();
+        Task<ulong> read = Task.Run(() => tracker.GetPendingNonce(sender));
+        ulong pending;
+        try
+        {
+            await head.HeadLookupHeld.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            Assert.That((await Send(tracker, sender, accepted: false), tracker.Count), Is.EqualTo((3UL, 0)),
+                "the send fills the head nonce and drops the entry the head reached");
+            head.MoveTo(0);
+            head.ReleaseHeadLookup.SetResult();
+            pending = await read.WaitAsync(TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            head.ReleaseAll();
+        }
+
+        Assert.That(pending, Is.AnyOf(3UL, 0UL), "the dropped entry 2 is below the head it was dropped at, so it was never pending");
+    }
+
+    [Test]
+    public async Task Pending_nonce_stays_one_the_account_had_when_the_head_goes_back_after_a_drop([Values] bool readded)
+    {
+        ReorgingHead head = new();
+        head.MoveTo(3);
+        ForwardedNonceTracker tracker = head.Tracker;
+        Address sender = TestItem.AddressA;
+        await Send(tracker, sender);
+        head.HoldNextStateRead();
+        Task<ulong> read = Task.Run(() => tracker.GetPendingNonce(sender));
+        ulong pending;
+        try
+        {
+            await head.StateReadHeld.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            // Pending is 4; a send at head 4 drops the entry and is not accepted; a reorg makes it 1, and a new send 2.
+            head.MoveTo(4);
+            Assert.That(await Send(tracker, sender, accepted: false), Is.EqualTo(4UL));
+            head.MoveTo(1);
+            if (readded)
+                Assert.That(await Send(tracker, sender), Is.EqualTo(1UL));
+
+            head.ReleaseStateRead.SetResult();
+            pending = await read.WaitAsync(TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            head.ReleaseAll();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pending, readded ? Is.AnyOf(4UL, 1UL, 2UL) : Is.AnyOf(4UL, 1UL));
+            Assert.That(tracker.Count, Is.EqualTo(readded ? 1 : 0), "a read neither drops nor restores an entry");
+            Assert.That(tracker.GetPendingNonce(sender), Is.EqualTo(readded ? 2UL : 1UL), "the dropped entry does not come back");
+        }
+    }
+
+    [Test]
+    public async Task Pending_nonce_is_one_the_account_had_while_a_send_drops_and_records_its_entry()
+    {
+        ReorgingHead head = new();
+        ForwardedNonceTracker tracker = head.Tracker;
+        Address sender = TestItem.AddressA;
+        await Send(tracker, sender);
+        head.HoldNextStateRead();
+        Task<ulong> read = Task.Run(() => tracker.GetPendingNonce(sender));
+        ulong pending;
+        try
+        {
+            await head.StateReadHeld.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            // Pending is 2; the head reaches 2 and a send drops the entry and records nonce 2: pending 3.
+            head.MoveTo(2);
+            Assert.That(await Send(tracker, sender), Is.EqualTo(2UL));
+            head.ReleaseStateRead.SetResult();
+            pending = await read.WaitAsync(TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            head.ReleaseAll();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pending, Is.AnyOf(2UL, 3UL));
+            Assert.That(tracker.Count, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Pending_nonce_reports_a_state_failure_although_an_entry_is_kept()
+    {
+        ReorgingHead head = new();
+        ForwardedNonceTracker tracker = head.Tracker;
+        await Send(tracker, TestItem.AddressA);
+        head.Failure = new InvalidOperationException("The head state cannot be read");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<InvalidOperationException>(() => tracker.GetPendingNonce(TestItem.AddressA));
+            Assert.That(tracker.Count, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Pending_nonce_read_holds_the_gate_across_the_state_read_once_entries_keep_changing()
+    {
+        ReorgingHead head = new();
+        ForwardedNonceTracker tracker = head.Tracker;
+        Address sender = TestItem.AddressA;
+        Task? sendDuringTheLastRead = null;
+        bool sendWaitedForTheLastRead = false;
+        // Every optimistic read sees a send record a forward while it reads the head state, so each must retry.
+        head.AfterStateRead = reads =>
+        {
+            if (reads <= ForwardedNonceTracker.OptimisticPendingReads)
+            {
+                using (tracker.LockSenderAsync(sender).GetAwaiter().GetResult())
+                    tracker.OnForwarded(sender, (ulong)reads);
+            }
+            else
+            {
+                // A send during the last read must wait for it: no entry changes while that read reads the head state. A
+                // correct read keeps it waiting for good, so the bound only limits how long the test waits to see that.
+                sendDuringTheLastRead = Task.Run(async () =>
+                {
+                    using (await tracker.LockSenderAsync(sender))
+                        tracker.OnForwarded(sender, (ulong)reads);
+                });
+                sendWaitedForTheLastRead = !sendDuringTheLastRead.Wait(TimeSpan.FromMilliseconds(500));
+            }
+        };
+
+        ulong pending = tracker.GetPendingNonce(sender);
+        sendDuringTheLastRead?.Wait(TimeSpan.FromSeconds(30));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(head.StateReads, Is.EqualTo(ForwardedNonceTracker.OptimisticPendingReads + 1));
+            Assert.That(sendWaitedForTheLastRead, Is.True, "the last read must hold the gate across its state read");
+            Assert.That(pending, Is.EqualTo(ForwardedNonceTracker.OptimisticPendingReads + 1UL),
+                "the entry the last send before that read recorded, above the head nonce 1");
+        }
+    }
+
     [Test]
     public async Task Sender_lock_holds_only_its_account_and_goes_once_unused()
     {

@@ -24,11 +24,19 @@ namespace Nethermind.Optimism.Rpc;
 /// </remarks>
 public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader stateReader)
 {
-    // Guards both dictionaries; held only briefly, never across an await or a state read.
+    // Guards both dictionaries and _entriesVersion; held only briefly and never across an await. Only the fallback of
+    // GetPendingNonce holds it across a state read.
     private readonly Lock _gate = new();
 
     // The nonce after the last accepted forward of each account.
     private readonly Dictionary<AddressAsKey, ulong> _nextNonces = [];
+
+    // Changes with every record or drop in _nextNonces, so that a pending read can tell whether an entry changed while it read
+    // the head state. One version serves all accounts: on a busy node a read can retry because another account sent.
+    private long _entriesVersion;
+
+    // Pending reads that read the head state without _gate before one holds _gate across that read.
+    internal const int OptimisticPendingReads = 3;
 
     // One lock per account with a send running or waiting; removed when the last of them is done.
     private readonly Dictionary<AddressAsKey, SenderLock> _senderLocks = [];
@@ -111,34 +119,50 @@ public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader
 
             // The head includes every transaction forwarded so far.
             _nextNonces.Remove(sender);
+            _entriesVersion++;
             return headNonce;
         }
     }
 
     /// <summary>
     /// The pending nonce of <paramref name="sender"/>, for a caller that does not hold the lock of <paramref name="sender"/>:
-    /// the head nonce raised past the forwards the head does not include yet. It reserves nothing, so a send can still take
-    /// it, and it leaves the entry in place for the send that may hold the lock.
+    /// max(head nonce, entry) at one instant during the call, whatever sends and head changes run meanwhile. It reserves
+    /// nothing, so a send can still take it, and it never drops an entry.
     /// Throws when the head state cannot be read, as <see cref="GetNextNonce"/> does.
     /// </summary>
     /// <remarks>
-    /// A send that reads a newer head can drop the entry while this call reads an older one. The entry seen before the
-    /// state read still counts, so unless the head goes back the answer lies between the pending nonces at the start and
-    /// at the end of the call.
+    /// The entry is read under <c>_gate</c> and the head state without it. When no entry changed while the head state was
+    /// read, both held at the instant the head was looked up. Otherwise the read is retried, and after
+    /// <see cref="OptimisticPendingReads"/> tries it holds <c>_gate</c> across the head state read, which no entry change
+    /// can interleave.
     /// </remarks>
     public ulong GetPendingNonce(Address sender)
     {
-        ulong forwardedBefore = GetForwardedNonce(sender);
-        ulong headNonce = GetHeadNonce(sender);
-        return Math.Max(Math.Max(forwardedBefore, GetForwardedNonce(sender)), headNonce);
+        for (int attempt = 0; attempt < OptimisticPendingReads; attempt++)
+        {
+            long version;
+            ulong forwardedNonce;
+            lock (_gate)
+            {
+                version = _entriesVersion;
+                forwardedNonce = GetForwardedNonce(sender);
+            }
+
+            ulong headNonce = GetHeadNonce(sender);
+            lock (_gate)
+            {
+                if (_entriesVersion == version)
+                    return Math.Max(forwardedNonce, headNonce);
+            }
+        }
+
+        lock (_gate)
+            return Math.Max(GetForwardedNonce(sender), GetHeadNonce(sender));
     }
 
-    // The nonce after the last accepted forward of the account, or 0 without one.
-    private ulong GetForwardedNonce(Address sender)
-    {
-        lock (_gate)
-            return _nextNonces.TryGetValue(sender, out ulong forwardedNonce) ? forwardedNonce : 0;
-    }
+    // The nonce after the last accepted forward of the account, or 0 without one. The caller holds _gate.
+    private ulong GetForwardedNonce(Address sender) =>
+        _nextNonces.TryGetValue(sender, out ulong forwardedNonce) ? forwardedNonce : 0;
 
     /// <summary>
     /// Records that the sequencer accepted a transaction of <paramref name="sender"/> with <paramref name="nonce"/>, the
@@ -147,7 +171,10 @@ public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader
     public void OnForwarded(Address sender, ulong nonce)
     {
         lock (_gate)
+        {
             _nextNonces[sender] = nonce + 1;
+            _entriesVersion++;
+        }
     }
 
     private ulong GetHeadNonce(Address account) =>
