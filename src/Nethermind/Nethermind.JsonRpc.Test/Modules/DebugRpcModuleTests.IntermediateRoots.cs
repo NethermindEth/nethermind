@@ -59,16 +59,17 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_intermediateRoots_stops_at_rejected_transaction_of_bad_block()
+    public async Task Debug_intermediateRoots_stops_at_rejected_transaction_of_bad_block([Values] bool wrongNonce)
     {
         using Context context = await Context.Create();
         Block valid = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
-        Transaction unaffordable = Build.A.Transaction
-            .WithNonce(valid.Transactions[1].Nonce)
-            .WithValue(UInt256.MaxValue / 2)
+        ulong nonce = valid.Transactions[1].Nonce;
+        Transaction rejected = Build.A.Transaction
+            .WithNonce(wrongNonce ? nonce + 1 : nonce)
+            .WithValue(wrongNonce ? UInt256.Zero : UInt256.MaxValue / 2)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
-        Hash256 badHash = InsertBadBlock(context, valid, [valid.Transactions[0], unaffordable, valid.Transactions[1]]);
+        Hash256 badHash = InsertBadBlock(context, valid, [valid.Transactions[0], rejected, valid.Transactions[1]]);
 
         IReadOnlyCollection<Hash256> validRoots = context.DebugRpcModule.debug_intermediateRoots(valid.Hash!).Data;
         ResultWrapper<IReadOnlyCollection<Hash256>> result = context.DebugRpcModule.debug_intermediateRoots(badHash);
