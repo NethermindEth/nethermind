@@ -327,7 +327,8 @@ proving cost equal to folding 16 fresh signatures: already proven aggregates mer
 carry many more dependencies. Mode-0 witnesses fold directly into the aggregate, and a set a held
 proof already proves is not proven again; for partial coverage held proofs are merged and only
 missing dependencies added, discarding those outside the retained transactions. A dependency without a
-held direct witness takes the held recursive proof keeping the largest share of its dependencies. A set an announced
+held direct witness takes the held recursive proof covering the most still-needed dependencies, as each
+recursive input costs about one recursive verification whatever its size. A set an announced
 mode-1 wrapper claims (by its `deps-hash`) is left for up to two intervals while that wrapper is
 fetched, then proven locally. Completed selections are checked against current pool membership
 before publication. `eth_getProofWrapper` returns a copy without invoking the prover.

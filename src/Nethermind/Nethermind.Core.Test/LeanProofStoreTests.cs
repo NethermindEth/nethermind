@@ -112,22 +112,26 @@ public class LeanProofStoreTests
         Assert.That(input.Witnesses[0].Span.ToArray(), Is.EqualTo(expectedWitness));
     }
 
-    // EIP-8288: a builder picks recursive inputs by retained coverage, as merge cost scales with an input's dependency list.
-    [Test]
-    public void Recursive_input_is_the_held_proof_retaining_the_most_of_its_dependencies()
+    // EIP-8288: recursive inputs are picked by greedy set cover, as each costs about one recursive verification whatever its size.
+    [TestCaseSource(nameof(SetCoverCases))]
+    public void Recursive_input_is_the_held_proof_covering_the_most_requested_dependencies(int[][] held, int[] requested, int expected)
     {
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
-        FrameDependency[] wide = [.. Enumerable.Range(1, 8).Select(Dependency)];
-        FrameDependency[] narrow = [Dependency(1), Dependency(100)];
-        store.AddVerified(wide, null, [1]);
-        store.AddVerified(narrow, null, [2]);
+        FrameDependency[][] proofs = [.. held.Select(static ids => ids.Select(Dependency).ToArray())];
+        for (int i = 0; i < proofs.Length; i++) store.AddVerified(proofs[i], null, [(byte)(i + 1)]);
 
-        Assert.That(store.TryGetInput(narrow, out AggregationInput input), Is.True);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(input.RecursiveProofs.Select(static proof => proof.InnerDeps), Is.EqualTo(new[] { narrow }));
-            Assert.That(input.Discards, Is.Empty);
-        }
+        Assert.That(store.TryGetInput([.. requested.Select(Dependency)], out AggregationInput input), Is.True);
+        Assert.That(input.RecursiveProofs.Select(static proof => proof.InnerDeps), Is.EqualTo(new[] { proofs[expected] }));
+    }
+
+    private static IEnumerable<TestCaseData> SetCoverCases()
+    {
+        yield return new TestCaseData(new[] { Enumerable.Range(1, 8).ToArray(), new[] { 1, 100 } }, new[] { 1, 100 }, 1)
+            .SetName("More requested dependencies win over a held covering proof");
+        yield return new TestCaseData(Enumerable.Range(1, 8).Select(static id => new[] { id }).Append(Enumerable.Range(1, 10).ToArray()).ToArray(),
+            Enumerable.Range(1, 8).ToArray(), 8).SetName("One wide proof wins over a proof per dependency");
+        yield return new TestCaseData(new[] { new[] { 1, 2, 3 }, new[] { 1, 4 } }, new[] { 1 }, 1)
+            .SetName("The shorter dependency list wins a tie");
     }
 
     [Test]

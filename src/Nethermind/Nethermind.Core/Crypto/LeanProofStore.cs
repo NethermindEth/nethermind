@@ -624,28 +624,30 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         }
     }
 
-    /// <summary>The stored recursive proof of <paramref name="dependency"/> keeping the largest share of its dependencies within
-    /// <paramref name="required"/>, or <paramref name="covering"/> when none keeps more.</summary>
-    /// <remarks>EIP-8288: merging a recursive input costs in proportion to its dependency list, not to what the statement keeps.</remarks>
-    private ProofRecord MostRetaining(in FrameDependency dependency, ProofRecord covering, HashSet<FrameDependency> required)
+    /// <summary>The stored recursive proof of <paramref name="dependency"/> proving the most of <paramref name="required"/> not yet
+    /// <paramref name="covered"/>, the one with the shorter dependency list on a tie, else <paramref name="covering"/>.</summary>
+    /// <remarks>Greedy set cover: each recursive input costs about one in-circuit recursive verification whatever its size, while
+    /// discarding the dependencies it carries beyond the statement costs little.</remarks>
+    private ProofRecord MostCovering(in FrameDependency dependency, ProofRecord covering, HashSet<FrameDependency> required,
+        HashSet<FrameDependency> covered)
     {
         if (!_holders.TryGetValue(dependency, out List<ProofRecord>? holders)) return covering;
         ProofRecord best = covering;
-        long bestRetained = Retained(covering);
+        int bestNeeded = Needed(covering);
         foreach (ProofRecord candidate in holders)
         {
             if (candidate.RecursiveProof is null || ReferenceEquals(candidate, covering)) continue;
-            long retained = Retained(candidate);
-            if (retained * best.Dependencies.Length <= bestRetained * candidate.Dependencies.Length) continue;
-            (best, bestRetained) = (candidate, retained);
+            int needed = Needed(candidate);
+            if (needed < bestNeeded || needed == bestNeeded && candidate.Dependencies.Length >= best.Dependencies.Length) continue;
+            (best, bestNeeded) = (candidate, needed);
         }
         return best;
 
-        int Retained(ProofRecord record)
+        int Needed(ProofRecord record)
         {
             int count = 0;
             foreach (FrameDependency inner in record.Dependencies)
-                if (required.Contains(inner)) count++;
+                if (required.Contains(inner) && !covered.Contains(inner)) count++;
             return count;
         }
     }
@@ -695,7 +697,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
                     witnesses.Add(record.Witnesses[index]);
                     covered.Add(dep);
                 }
-                else if (!covered.Contains(dep) && selected.Add(record = MostRetaining(dep, record, required)))
+                else if (!covered.Contains(dep) && selected.Add(record = MostCovering(dep, record, required, covered)))
                 {
                     recursive.Add(record.RecursiveInput);
                     covered.UnionWith(record.Dependencies);
