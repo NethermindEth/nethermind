@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -82,6 +83,10 @@ public partial class FrameTxFloodMeasurement
 
     /// <summary>Window of the throw-away first flood of a cell, which pays the generator's cold start.</summary>
     private static readonly TimeSpan ColdStartWindow = TimeSpan.FromSeconds(3);
+
+    private static readonly TimeSpan JitQuiescenceWindow = TimeSpan.FromSeconds(1);
+
+    private static readonly TimeSpan JitQuiescenceLimit = TimeSpan.FromSeconds(30);
 
     /// <summary>A victim sample this many times the idle median counts as an outlier: the stalls the tail metrics
     /// must be read against.</summary>
@@ -352,6 +357,7 @@ public partial class FrameTxFloodMeasurement
 
         // The first flood pays the generator's cold start; it is not a level.
         (coldStart ?? measureAtRate)(RateFor(levelsMillions[0], declaredGasPerTx));
+        WaitForJitQuiescence();
 
         (List<double> baseline, GcDelta baselineGc) = Baseline();
         double w0 = Percentile(baseline, 0.50);
@@ -645,23 +651,50 @@ public partial class FrameTxFloodMeasurement
         }
     }
 
-    /// <summary>Garbage collection during one measured window, so a victim stall can be told apart from the flood.</summary>
-    /// <remarks>Counts are <see cref="GC.CollectionCount"/> deltas: a gen2 collection also counts in gen0 and gen1.</remarks>
-    private readonly record struct GcDelta(double PauseMs, int Gen0, int Gen1, int Gen2)
+    /// <summary>Garbage collection and JIT compilation during one measured window, so a victim stall can be told
+    /// apart from the flood.</summary>
+    /// <remarks>Counts are <see cref="GC.CollectionCount"/> deltas: a gen2 collection also counts in gen0 and gen1. JIT
+    /// figures cover every thread, so they include background tier-up work sharing the pinned core.</remarks>
+    private readonly record struct GcDelta(double PauseMs, int Gen0, int Gen1, int Gen2, double JitMs, long JitMethods)
     {
-        public readonly record struct Snapshot(TimeSpan Pause, int Gen0, int Gen1, int Gen2);
+        public readonly record struct Snapshot(TimeSpan Pause, int Gen0, int Gen1, int Gen2, TimeSpan Jit, long JitMethods);
 
         public static Snapshot Take() =>
-            new(GC.GetTotalPauseDuration(), GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2));
+            new(GC.GetTotalPauseDuration(), GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2),
+                JitInfo.GetCompilationTime(currentThread: false), JitInfo.GetCompiledMethodCount(currentThread: false));
 
         public static GcDelta Since(Snapshot start)
         {
             Snapshot now = Take();
-            return new((now.Pause - start.Pause).TotalMilliseconds, now.Gen0 - start.Gen0, now.Gen1 - start.Gen1, now.Gen2 - start.Gen2);
+            return new((now.Pause - start.Pause).TotalMilliseconds, now.Gen0 - start.Gen0, now.Gen1 - start.Gen1, now.Gen2 - start.Gen2,
+                (now.Jit - start.Jit).TotalMilliseconds, now.JitMethods - start.JitMethods);
         }
 
         public string Fields(string prefix) =>
-            $"{prefix}gc_pause_ms={PauseMs:F1} {prefix}gc0={Gen0} {prefix}gc1={Gen1} {prefix}gc2={Gen2}";
+            $"{prefix}gc_pause_ms={PauseMs:F1} {prefix}gc0={Gen0} {prefix}gc1={Gen1} {prefix}gc2={Gen2} "
+            + $"{prefix}jit_ms={JitMs:F1} {prefix}jit_methods={JitMethods}";
+    }
+
+    /// <summary>Waits, up to <see cref="JitQuiescenceLimit"/>, until no method has been compiled for
+    /// <see cref="JitQuiescenceWindow"/>.</summary>
+    /// <remarks>A cell's warm-up and cold-start flood queue tier-up recompilation that the runtime's background worker
+    /// would otherwise run on the pinned core during the idle baseline, removing passes from the count that f divides
+    /// by. Idle waiting lets that queue drain; it adds no calls, so it queues no new tier-up.</remarks>
+    private static void WaitForJitQuiescence()
+    {
+        long deadline = Stopwatch.GetTimestamp() + (long)(JitQuiescenceLimit.TotalSeconds * Stopwatch.Frequency);
+        long compiled = JitInfo.GetCompiledMethodCount(currentThread: false);
+        long quietSince = Stopwatch.GetTimestamp();
+        while (Stopwatch.GetElapsedTime(quietSince) < JitQuiescenceWindow && Stopwatch.GetTimestamp() < deadline)
+        {
+            Thread.Sleep(50);
+            long now = JitInfo.GetCompiledMethodCount(currentThread: false);
+            if (now != compiled)
+            {
+                compiled = now;
+                quietSince = Stopwatch.GetTimestamp();
+            }
+        }
     }
 
     /// <summary>A VERIFY frame that approves execution and payment at once: the cheapest valid opaque prefix, so

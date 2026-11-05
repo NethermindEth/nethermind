@@ -49,7 +49,7 @@ inputs:
   runner_version:
     description: Pinned actions/runner version.
     required: false
-    default: 2.336.0
+    default: 2.338.2
   runner_group_id:
     description: Runner group id to register into.
     required: false
