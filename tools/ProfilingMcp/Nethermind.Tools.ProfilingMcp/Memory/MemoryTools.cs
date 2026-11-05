@@ -124,10 +124,15 @@ public sealed class MemoryTools(WorkspacePaths paths)
         }
 
         if (report.Paths.Count == 0)
-            sb.Append("  None reached; the instances are unreachable and will be freed by the next full GC.\n");
+            sb.Append(NoPathsNote(report.SearchComplete, maxVisited));
 
         return sb.Append($"\nTook: {report.Timings}\n").ToString();
     }
+
+    /// <summary>What finding no path from a GC root means: unreachable only when the search saw every reachable object.</summary>
+    internal static string NoPathsNote(bool searchComplete, long maxVisited) => searchComplete
+        ? "  None reached; the instances are unreachable and will be freed by the next full GC.\n"
+        : $"  None found within the {Count(maxVisited)} objects visited; the instances may still be reachable. Raise maxVisited to search further.\n";
 
     [McpServerTool(Name = "alloc_sample", Title = "Sample allocations by type and code", ReadOnly = true, OpenWorld = false)]
     [Description("Samples what a running process allocates over a time window, using the runtime's allocation tick events (about one per 100 KB) with their call stacks: " +

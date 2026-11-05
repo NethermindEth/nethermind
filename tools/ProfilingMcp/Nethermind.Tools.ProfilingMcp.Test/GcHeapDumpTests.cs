@@ -50,6 +50,34 @@ public class GcHeapDumpTests
         }
     }
 
+    [TestCase(2, false, "may still be reachable")]
+    [TestCase(long.MaxValue, true, null)]
+    public void Claims_unreachable_only_after_a_complete_search(long maxVisited, bool expectPath, string? expectedNote)
+    {
+        // root -> Holder -> Middle -> Retained
+        HeapGraph graph = new(
+            typeNames: ["Holder", "Middle", nameof(Retained)],
+            nodeTypes: [0, 1, 2],
+            addresses: [0x100, 0x200, 0x300],
+            sizes: [24, 24, 24],
+            edgeStarts: [0, 1, 2, 2],
+            edgeTargets: [0x200, 0x300],
+            roots: [(0x100UL, "static")],
+            dependentHandles: []);
+
+        RetentionReport report = RetentionAnalyzer.Analyze(graph, new Regex($"^{nameof(Retained)}$"), maxPaths: 5, maxVisited);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(report.Paths, expectPath ? Has.Count.EqualTo(1) : Is.Empty);
+            if (expectedNote is not null)
+            {
+                Assert.That(report.SearchComplete, Is.False);
+                Assert.That(MemoryTools.NoPathsNote(report.SearchComplete, maxVisited), Does.Contain(expectedNote).And.Not.Contain("unreachable"));
+            }
+        }
+    }
+
     [TestCase("System.Collections.Generic.Dictionary`2[System.String,System.Int32]", ExpectedResult = "System.Collections.Generic.Dictionary<System.String, System.Int32>")]
     [TestCase("Entry[System.String,System.Collections.Generic.List`1[System.Int32[]]][]", ExpectedResult = "Entry<System.String, System.Collections.Generic.List<System.Int32[]>>[]")]
     [TestCase("System.Byte[,]", ExpectedResult = "System.Byte[,]")]
