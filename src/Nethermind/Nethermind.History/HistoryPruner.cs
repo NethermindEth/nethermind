@@ -760,13 +760,20 @@ public class HistoryPruner : IHistoryPruner
     }
 
     /// <summary>Whether the one-shot blob-file compaction still owes a run: the feature is armed (enabled and under
-    /// fixed barriers), a reclaim has removed history from the blocks database behind the published boundary, and the
-    /// completion marker is unset.</summary>
+    /// fixed barriers), a reclaim has removed history from the blocks database and reached the configured ancient
+    /// barrier, and the completion marker is unset.</summary>
     /// <remarks>The reclaim signal is the persisted reclaim cursor having advanced past the first deletable block, not
     /// an in-memory flag, so a run a process exit aborted mid-way is still owed after a restart - the marker stays
-    /// unset and the cursor is reloaded from disk - even on a quiescent, fully-reclaimed node.</remarks>
+    /// unset and the cursor is reloaded from disk - even on a quiescent, fully-reclaimed node. It is deferred until the
+    /// cursor reaches the barrier because the marker is permanent: under fast sync the live pivot clamps
+    /// <see cref="AncientBodiesBarrier"/> and the reclaim, so a rewrite fired on a partial reclaim would leave the
+    /// later reclaim re-pinning blob files with no second rewrite possible. The target is therefore the configured
+    /// barrier, not the pivot-clamped one.</remarks>
     private bool IsBlobCompactionOwed() =>
-        _compactBlocksOnPrune && !_blobCompactionDone && _blocksReclaimCursor > _minDeletableBlockNumber;
+        _compactBlocksOnPrune
+        && !_blobCompactionDone
+        && _blocksReclaimCursor > _minDeletableBlockNumber
+        && _blocksReclaimCursor >= (_fastSync ? _syncConfig.AncientBodiesBarrier : _syncConfig.AncientBodiesBarrierCalc);
 
     private void TryCompactBlocksReclaimingBlobFiles()
     {
