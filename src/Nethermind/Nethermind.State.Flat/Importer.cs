@@ -119,6 +119,19 @@ public class Importer(
 
     private void IngestNode(in StateId from, ConcurrentBag<IngestBatch> ingestBatches, Hash256? address, in TreePath path, TrieNode node)
     {
+        if (node.IsLeaf)
+        {
+            Ingest(from, ingestBatches, address, path, node.FullRlp.AsSpan(), path.Append(node.Key).Path, node.Value.AsSpan());
+        }
+        else
+        {
+            Ingest(from, ingestBatches, address, path, node.FullRlp.AsSpan(), leafPath: null, leafValue: default);
+        }
+    }
+
+    private void Ingest(in StateId from, ConcurrentBag<IngestBatch> ingestBatches, Hash256? address, in TreePath path,
+        ReadOnlySpan<byte> rlp, ValueHash256? leafPath, ReadOnlySpan<byte> leafValue)
+    {
         if (!ingestBatches.TryTake(out IngestBatch? ingestBatch))
         {
             ingestBatch = new IngestBatch(persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL)); // It writes from initial state to initial state.
@@ -128,7 +141,7 @@ public class Importer(
 
         // Write it
         Metrics.ImporterEntriesCount++;
-        WriteNode(writeBatch, address, path, node);
+        WriteNode(writeBatch, address, path, rlp, leafPath, leafValue);
 
         long theTotalNode = Interlocked.Increment(ref _totalNodes);
         if (theTotalNode % FlushInterval == 0)
@@ -150,24 +163,26 @@ public class Importer(
     /// <param name="writeBatch">The batch to write to.</param>
     /// <param name="address">The account path of the storage trie, or <c>null</c> for the state trie.</param>
     /// <param name="path">The path of the node.</param>
-    /// <param name="node">The resolved node.</param>
-    internal static void WriteNode(IPersistence.IWriteBatch writeBatch, Hash256? address, in TreePath path, TrieNode node)
+    /// <param name="rlp">The RLP of the node.</param>
+    /// <param name="leafPath">The full path of a leaf's key; <c>null</c> for a branch or an extension.</param>
+    /// <param name="leafValue">The value of a leaf.</param>
+    internal static void WriteNode(IPersistence.IWriteBatch writeBatch, Hash256? address, in TreePath path,
+        ReadOnlySpan<byte> rlp, ValueHash256? leafPath, ReadOnlySpan<byte> leafValue)
     {
         if (address is null)
         {
-            writeBatch.SetStateTrieNode(path, node.FullRlp.AsSpan());
+            writeBatch.SetStateTrieNode(path, rlp);
         }
         else
         {
-            writeBatch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
+            writeBatch.SetStorageTrieNode(address, path, rlp);
         }
 
-        if (node.IsLeaf)
+        if (leafPath is { } fullPath)
         {
-            ValueHash256 fullPath = path.Append(node.Key).Path;
             if (address is null)
             {
-                RlpReader accountReader = new(node.Value.AsSpan());
+                RlpReader accountReader = new(leafValue);
                 Account acc = AccountDecoder.Instance.Decode(ref accountReader)!;
                 writeBatch.SetAccountRaw(fullPath, acc);
             }
@@ -175,10 +190,9 @@ public class Importer(
             {
                 // A storage leaf value is RLP(stripped) and never empty (zero slots are absent), so it is
                 // stored verbatim when wrapping, skipping a decode + re-encode round-trip.
-                ReadOnlySpan<byte> value = node.Value.AsSpan();
-                if (!value.IsEmpty)
+                if (!leafValue.IsEmpty)
                 {
-                    writeBatch.SetStorageRawEncoded(address, fullPath, value);
+                    writeBatch.SetStorageRawEncoded(address, fullPath, leafValue);
                 }
             }
         }

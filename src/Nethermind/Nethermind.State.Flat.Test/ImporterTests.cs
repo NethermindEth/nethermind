@@ -218,7 +218,10 @@ public class ImporterTests
         {
             foreach ((Hash256? address, TreePath path, TrieNode node) in CollectNodes(halfPath, root))
             {
-                if (cursor.IsCopied(address, path)) Importer.WriteNode(batch, address, path, node);
+                if (cursor.IsCopied(address, path))
+                {
+                    Importer.WriteNode(batch, address, path, node.FullRlp.AsSpan(), node.IsLeaf ? path.Append(node.Key).Path : default(ValueHash256?), node.Value.AsSpan());
+                }
             }
         }
 
@@ -295,7 +298,8 @@ public class ImporterTests
     public async Task Migration_copies_the_trie_as_the_importer_does([Values(1, 7, 1_000)] int chunkNodes, [Values] bool firstWriteRejected)
     {
         NodeStorage halfPath = new(_trieDb);
-        (Hash256 root, _) = BuildState(halfPath);
+        (Hash256 builtRoot, _) = BuildState(halfPath);
+        Hash256 root = AddEmbeddedNodesAccount(halfPath, builtRoot);
         StateId state = new(1, root);
         MigrationRun migration = new(halfPath, _persistence, _columnsDb, state, chunkNodes, rejectedWrites: firstWriteRejected ? 1 : 0);
         long migratedBefore = Metrics.HalfPathMigratedNodes;
@@ -420,6 +424,24 @@ public class ImporterTests
         stateTree.Commit();
 
         return (stateTree.RootHash, accounts.OrderBy(static account => account.Path).ToArray());
+    }
+
+    /// <summary>Adds to the state at <paramref name="root"/> an account whose storage trie embeds a branch and its leaves in their parents.</summary>
+    /// <returns>The new state root.</returns>
+    private static Hash256 AddEmbeddedNodesAccount(INodeStorage nodeStorage, Hash256 root)
+    {
+        Address address = TestItem.GetRandomAddress();
+        StorageTree storageTree = new(new RawScopedTrieStore(nodeStorage, address.ToAccountPath.ToCommitment()), LimboLogs.Instance);
+        // Keys that differ only in the last nibble leave leaves and a branch too short to be referenced by hash.
+        storageTree.Set(new ValueHash256(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000000a0")), [1]);
+        storageTree.Set(new ValueHash256(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000000a1")), [2]);
+        storageTree.Commit();
+
+        StateTree stateTree = new(new RawScopedTrieStore(nodeStorage), LimboLogs.Instance) { RootHash = root };
+        stateTree.Set(address, TestItem.GenerateIndexedAccount(0).WithChangedStorageRoot(storageTree.RootHash));
+        stateTree.Commit();
+        Assert.That(CollectNodes(nodeStorage, stateTree.RootHash).Count(static entry => entry.Node.Keccak is null), Is.EqualTo(3), "embedded nodes");
+        return stateTree.RootHash;
     }
 
     /// <summary>Every node of the trie at <paramref name="root"/>, storage tries included, in path order.</summary>

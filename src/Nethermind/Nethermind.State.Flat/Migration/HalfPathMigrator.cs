@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -9,8 +11,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.Migration;
 
@@ -40,10 +44,10 @@ public sealed class HalfPathMigrator(
     private static readonly TimeSpan ChunkTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(60);
-    private static readonly VisitingOptions InOrder = new() { MaxDegreeOfParallelism = 1 };
 
     private readonly ILogger _logger = logManager.GetClassLogger<HalfPathMigrator>();
     private readonly Core.Timers.ITimer _retryTimer = timerFactory.CreateTimer(RetryDelay);
+    private readonly Chunk _chunk = new();
     private long _nextProgressLog;
 
     private readonly record struct ChunkRequest : IBackgroundTaskRequest<ChunkRequest>;
@@ -91,12 +95,11 @@ public sealed class HalfPathMigrator(
     /// <returns>Whether more is left to copy.</returns>
     private bool CopyChunk(in MigrationCursor from, CancellationToken token)
     {
-        ChunkVisitor visitor = new(from, flatDbConfig.MigrationChunkNodes, token);
         StateId state;
         using (IPersistence.IPersistenceReader reader = persistenceManager.LeaseReader(ReaderFlags.FullScan))
         {
             state = reader.CurrentState;
-            new PatriciaTree(new ReaderTrieStore(reader, null), logManager).Accept(visitor, state.StateRoot.ToCommitment(), InOrder);
+            _chunk.Walk(reader, state.StateRoot, from, flatDbConfig.MigrationChunkNodes, token);
         }
 
         MigrationCursor walkedFrom = from;
@@ -105,7 +108,7 @@ public sealed class HalfPathMigrator(
             {
                 // A wipe meanwhile abandons the migration.
                 if (cursor.Current != walkedFrom) return;
-                foreach ((Hash256? address, TreePath path, TrieNode node) in visitor.Nodes) Importer.WriteNode(batch, address, path, node);
+                _chunk.Write(batch);
                 written = true;
             }))
         {
@@ -114,17 +117,17 @@ public sealed class HalfPathMigrator(
         }
 
         if (!written) return false;
-        Metrics.HalfPathMigratedNodes += visitor.Nodes.Count;
+        Metrics.HalfPathMigratedNodes += _chunk.Count;
 
-        if (visitor.IsComplete)
+        if (_chunk.IsComplete)
         {
             cursor.Complete();
             if (_logger.IsInfo) _logger.Info("The HalfPath to flat migration is complete.");
             return false;
         }
 
-        cursor.Advance(visitor.Next);
-        LogProgress(visitor.Next);
+        cursor.Advance(_chunk.Next);
+        LogProgress(_chunk.Next);
         return true;
     }
 
@@ -137,64 +140,165 @@ public sealed class HalfPathMigrator(
         _logger.Info($"HalfPath to flat migration {progress:P2} copied, at account {account}.");
     }
 
-    /// <summary>Collects, in path order, the nodes after <paramref name="from"/> until <paramref name="limit"/> is reached at a leaf.</summary>
-    private sealed class ChunkVisitor(MigrationCursor from, int limit, CancellationToken token) : ITreeVisitor<TreePathContextWithStorage>
+    /// <summary>Collects, in path order, the nodes after a cursor until a node limit is reached at a leaf, and writes them.</summary>
+    /// <remarks>
+    /// The walk decodes each node straight from its RLP, which it copies from the reader into a buffer that every chunk reuses, as it does
+    /// the entry list, so a chunk allocates nothing once both have grown to a chunk's size. Chunks run one at a time.
+    /// </remarks>
+    private sealed class Chunk
     {
-        private readonly MigrationCursor _from = from;
+        private const int KeyNibbles = 64;
+        private static readonly ReadOnlySpanAction<byte, List<byte>> Append = static (rlp, buffer) => buffer.AddRange(rlp);
+
+        private readonly List<byte> _rlp = [];
+        private readonly List<Entry> _entries = [];
+        private IPersistence.IPersistenceReader? _reader;
+        private MigrationCursor _from;
+        private int _limit;
+        private CancellationToken _token;
         private bool _full;
 
-        public List<(Hash256? Address, TreePath Path, TrieNode Node)> Nodes { get; } = [];
+        /// <summary>The number of nodes collected.</summary>
+        public int Count => _entries.Count;
 
-        /// <summary>The cursor once <see cref="Nodes"/> are written.</summary>
-        public MigrationCursor Next { get; private set; } = from;
+        /// <summary>The cursor once the collected nodes are written.</summary>
+        public MigrationCursor Next { get; private set; }
 
-        /// <summary>Whether the walk reached the end of the trie, so nothing is left once <see cref="Nodes"/> are written.</summary>
-        public bool IsComplete => !_full && !token.IsCancellationRequested;
+        /// <summary>Whether the walk reached the end of the trie, so nothing is left once the collected nodes are written.</summary>
+        public bool IsComplete => !_full && !_token.IsCancellationRequested;
 
-        public bool IsFullDbScan => false;
+        private Span<byte> Rlp => CollectionsMarshal.AsSpan(_rlp);
 
-        // The walk follows key order, which the HalfPath and flat keys both mostly keep.
-        public ReadFlags ExtraReadFlag => ReadFlags.HintReadAhead;
-
-        public bool ShouldVisit(in TreePathContextWithStorage nodeContext, in ValueHash256 nextNode)
+        /// <summary>Collects the nodes of the trie at <paramref name="root"/> after <paramref name="from"/> until <paramref name="limit"/> is reached at a leaf.</summary>
+        /// <exception cref="TrieException">A node on the way is in neither flat nor the HalfPath DB.</exception>
+        public void Walk(IPersistence.IPersistenceReader reader, in ValueHash256 root, in MigrationCursor from, int limit, CancellationToken token)
         {
-            if (_full || token.IsCancellationRequested) return false;
+            _rlp.Clear();
+            _entries.Clear();
+            (_reader, _from, _limit, _token, _full, Next) = (reader, from, limit, token, false, from);
+            try
+            {
+                if (root != ValueKeccak.EmptyTreeHash) Load(null, TreePath.Empty, root);
+            }
+            finally
+            {
+                _reader = null;
+            }
+        }
+
+        /// <summary>Writes the collected nodes and, for a leaf, the account or slot it holds.</summary>
+        public void Write(IPersistence.IWriteBatch batch)
+        {
+            ReadOnlySpan<byte> rlp = Rlp;
+            Hash256? storageAddress = null;
+            foreach (Entry entry in _entries)
+            {
+                // A storage trie's nodes are consecutive, so its address is built once.
+                if (entry.Address is { } address && (storageAddress is null || storageAddress.ValueHash256 != address)) storageAddress = new Hash256(address);
+                Importer.WriteNode(batch, entry.Address is null ? null : storageAddress, entry.Path, rlp[entry.Rlp], entry.LeafPath, rlp[entry.LeafValue]);
+            }
+        }
+
+        /// <summary>Copies the node <paramref name="hash"/> names at <paramref name="path"/> into the buffer and walks it.</summary>
+        /// <param name="address">The account path of the storage trie, or <c>null</c> for the state trie.</param>
+        private void Load(in ValueHash256? address, in TreePath path, in ValueHash256 hash)
+        {
+            int start = _rlp.Count;
+            // The walk follows key order, which the HalfPath and flat keys both mostly keep.
+            bool loaded = address is { } storage
+                ? _reader!.TryLoadStorageRlp(storage, path, hash, ReadFlags.HintReadAhead, Append, _rlp)
+                : _reader!.TryLoadStateRlp(path, hash, ReadFlags.HintReadAhead, Append, _rlp);
+            if (!loaded) throw new TrieException($"Missing trie node {hash} at {path} of {address?.ToString() ?? "the state trie"}.");
+            Visit(address, path, start.._rlp.Count);
+        }
+
+        /// <summary>Collects the node whose RLP is at <paramref name="node"/> in the buffer, then walks what is below it in path order.</summary>
+        private void Visit(in ValueHash256? address, in TreePath path, Range node)
+        {
+            int start = node.Start.Value;
+            RlpReader reader = new(Rlp[node]);
+            reader.ReadSequenceLength();
+            if (reader.PeekNumberOfItemsRemaining(maxSearch: 3) > 2)
+            {
+                Collect(address, path, node, null, default);
+
+                // Located before any is walked, as walking a child can move the buffer.
+                Span<Range> children = stackalloc Range[TrieNode.BranchesCount];
+                foreach (ref Range child in children)
+                {
+                    int childStart = start + reader.Position;
+                    reader.SkipItem();
+                    child = childStart..(start + reader.Position);
+                }
+
+                for (int i = 0; i < children.Length; i++) VisitChild(address, path.Append(i), children[i]);
+                return;
+            }
+
+            ReadOnlySpan<byte> hexPrefix = reader.DecodeByteArraySpan();
+            Span<byte> nibbles = stackalloc byte[KeyNibbles];
+            NodeRlp.ReadHexPrefix(hexPrefix, 0, nibbles);
+            TreePath childPath = path.Append(nibbles[..NodeRlp.HexPrefixNibbleCount(hexPrefix)]);
+            if (!NodeRlp.IsLeafHexPrefix(hexPrefix))
+            {
+                Collect(address, path, node, null, default);
+                int childStart = start + reader.Position;
+                reader.SkipItem();
+                VisitChild(address, childPath, childStart..(start + reader.Position));
+                return;
+            }
+
+            ReadOnlySpan<byte> value = reader.DecodeByteArraySpan();
+            int valueEnd = start + reader.Position;
+            if (Collect(address, path, node, childPath.Path, (valueEnd - value.Length)..valueEnd))
+            {
+                Next = address is { } storage ? new MigrationCursor(storage, childPath.Path) : new MigrationCursor(childPath.Path, null);
+                _full = _entries.Count >= _limit;
+            }
+
+            if (address is not null) return;
+            if (!AccountDecoder.Instance.TryDecodeStruct(value, out AccountStruct account)) throw new InvalidDataException($"The state leaf at {childPath} is not an account.");
+            if (account.HasStorage && ShouldVisit(null, childPath)) Load(childPath.Path, TreePath.Empty, account.StorageRoot);
+        }
+
+        /// <summary>Walks the child whose reference is at <paramref name="child"/> in the buffer: a hash, an embedded node or nothing.</summary>
+        private void VisitChild(in ValueHash256? address, in TreePath path, Range child)
+        {
+            RlpReader reader = new(Rlp[child]);
+            if (reader.IsSequenceNext())
+            {
+                if (ShouldVisit(address, path)) Visit(address, path, child);
+                return;
+            }
+
+            ReadOnlySpan<byte> hash = reader.DecodeByteArraySpan();
+            if (!hash.IsEmpty && ShouldVisit(address, path)) Load(address, path, new ValueHash256(hash));
+        }
+
+        /// <summary>Whether the walk goes on into the subtree at <paramref name="path"/>, which it does, until the chunk is full, once the subtree holds a key at or past the cursor.</summary>
+        /// <remarks>A storage trie is asked for with its account leaf's state path, which then decides, so the storage of the cursor's account is entered.</remarks>
+        private bool ShouldVisit(in ValueHash256? address, in TreePath path)
+        {
+            if (_full || _token.IsCancellationRequested) return false;
             if (_from.Account is not { } account) return true;
 
-            // A subtree goes on once it holds a key at or past the cursor. A storage trie is asked for with its account
-            // leaf's state context, whose full path then decides, so the storage of the cursor's account is entered.
-            ValueHash256 upperBound = nodeContext.Path.ToUpperBoundPath();
-            if (nodeContext.Storage is null) return upperBound.CompareTo(account) >= 0;
+            ValueHash256 upperBound = path.ToUpperBoundPath();
+            if (address is not { } storage) return upperBound.CompareTo(account) >= 0;
 
-            int order = nodeContext.Storage.ValueHash256.CompareTo(account);
+            int order = storage.CompareTo(account);
             return order > 0 || (order == 0 && (_from.Slot is not { } slot || upperBound.CompareTo(slot) > 0));
         }
 
-        public void VisitTree(in TreePathContextWithStorage nodeContext, in ValueHash256 rootHash) { }
-
-        public void VisitMissingNode(in TreePathContextWithStorage nodeContext, in ValueHash256 nodeHash) =>
-            throw new TrieException($"Missing trie node {nodeHash} at {nodeContext.Path} of {nodeContext.Storage?.ToString() ?? "the state trie"}.");
-
-        public void VisitBranch(in TreePathContextWithStorage nodeContext, TrieNode node) => Collect(nodeContext, node);
-
-        public void VisitExtension(in TreePathContextWithStorage nodeContext, TrieNode node) => Collect(nodeContext, node);
-
-        public void VisitLeaf(in TreePathContextWithStorage nodeContext, TrieNode node)
+        private bool Collect(in ValueHash256? address, in TreePath path, Range rlp, in ValueHash256? leafPath, Range leafValue)
         {
-            if (!Collect(nodeContext, node)) return;
-
-            ValueHash256 key = nodeContext.Path.Append(node.Key).Path;
-            Next = nodeContext.Storage is null ? new MigrationCursor(key, null) : new MigrationCursor(nodeContext.Storage.ValueHash256, key);
-            _full = Nodes.Count >= limit;
-        }
-
-        public void VisitAccount(in TreePathContextWithStorage nodeContext, TrieNode node, in AccountStruct account) { }
-
-        private bool Collect(in TreePathContextWithStorage nodeContext, TrieNode node)
-        {
-            if (_from.IsCopied(nodeContext.Storage, nodeContext.Path)) return false;
-            Nodes.Add((nodeContext.Storage, nodeContext.Path, node));
+            if (_from.IsCopied(address, path)) return false;
+            _entries.Add(new Entry(address, path, rlp, leafPath, leafValue));
             return true;
         }
+
+        /// <summary>A collected node, with its RLP and, for a leaf, its value located in the buffer.</summary>
+        /// <param name="Address">The account path of the storage trie, or <c>null</c> for the state trie.</param>
+        /// <param name="LeafPath">The full path of a leaf's key; <c>null</c> for a branch or an extension.</param>
+        private readonly record struct Entry(ValueHash256? Address, TreePath Path, Range Rlp, ValueHash256? LeafPath, Range LeafValue);
     }
 }
