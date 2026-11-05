@@ -421,7 +421,7 @@ public class ColumnsDbTests
     }
 
     [Test]
-    public void Snapshot_Get_WithHintReadAhead_ReadsFromSnapshot([Values(3, 8, 28)] int shortKeyLength, [Values] bool inPlace)
+    public void Snapshot_Get_WithHintReadAhead_ReadsFromSnapshot([Values(3, 8, 28)] int shortKeyLength, [Values] bool spanAction)
     {
         IDb colA = _db.GetColumnDb(ReceiptsColumns.Blocks);
 
@@ -454,33 +454,18 @@ public class ColumnsDbTests
             // values must still come from the snapshot, not the mutated head state.
             for (int i = 0; i < keys.Length; i++)
             {
-                Assert.That(Read(keys[i]), Is.EqualTo(new byte[] { (byte)i, 1 }), $"key {i}");
+                Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[i], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { (byte)i, 1 }), $"key {i}");
             }
 
             // Probes past the last key (exhausts the iterator) and misses.
             byte[] missingKey = new byte[34];
             missingKey[0] = 0x23;
-            Assert.That(Read(missingKey), Is.Null);
+            Assert.That(KeyValueStoreReads.Read(snapshotColumn, missingKey, ReadFlags.HintReadAhead, spanAction), Is.Null);
             for (int i = keys.Length - 1; i >= 0; i--)
             {
-                Assert.That(Read(keys[i]), Is.EqualTo(new byte[] { (byte)i, 1 }), $"reverse key {i}");
+                Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[i], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { (byte)i, 1 }), $"reverse key {i}");
             }
-            Assert.That(Read(keys[0]), Is.EqualTo(new byte[] { 0, 1 }));
-
-            byte[]? Read(byte[] key)
-            {
-                if (!inPlace) return snapshotColumn.Get(key, ReadFlags.HintReadAhead);
-
-                byte[]? value = null;
-                bool found = snapshotColumn.TryGet(key, ReadFlags.HintReadAhead, (span, db) =>
-                {
-                    // A point read would hold a native span until the action returns.
-                    Assert.That(db._allocatedSpan.Sum, Is.Zero, "the value must come from the readahead iterator");
-                    value = span.ToArray();
-                }, (DbOnTheRocks)colA);
-                Assert.That(found, Is.EqualTo(value is not null));
-                return value;
-            }
+            Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[0], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { 0, 1 }));
         }
 
         // Disposing the snapshot tears down its iterators; the head db must stay fully usable.
@@ -510,7 +495,7 @@ public class ColumnsDbTests
     }
 
     [Test]
-    public void Snapshot_ReadAhead_DoesNotFillBlockCache([Values] bool sequentialReadAhead)
+    public void Snapshot_ReadAhead_DoesNotFillBlockCache([Values] bool sequentialReadAhead, [Values] bool spanAction)
     {
         const int keyCount = 4096;
         const int valueSize = 256;
@@ -532,7 +517,7 @@ public class ColumnsDbTests
             IReadOnlyKeyValueStore snapshotColumn = snapshot.GetColumn(ReceiptsColumns.Blocks);
             for (int i = 0; i < keyCount; i++)
             {
-                Assert.That(snapshotColumn.Get(Key(i), ReadFlags.HintReadAhead), Is.EqualTo(values[i]));
+                Assert.That(KeyValueStoreReads.Read(snapshotColumn, Key(i), ReadFlags.HintReadAhead, spanAction), Is.EqualTo(values[i]));
             }
         }
 

@@ -95,19 +95,25 @@ namespace Nethermind.Db
             [return: NotNullIfNotNull(nameof(bytes))]
             private static byte[]? Decompress(byte[]? bytes)
             {
-                if (bytes is null || bytes.Length == 0 || (bytes[PreambleIndex] != PreambleValue))
+                if (bytes is null || !IsCompressed(bytes))
                 {
                     return bytes;
                 }
 
-                // decompress, removing preamble and adding the empty at the end
-                byte[] decompressed = new byte[bytes.Length - PreambleLength + EmptyCodeHashStorageRoot.Length];
-                Span<byte> span = decompressed.AsSpan();
-
-                bytes.AsSpan(PreambleLength).CopyTo(span);
-                EmptyCodeHashStorageRoot.CopyTo(span[^EmptyCodeHashStorageRoot.Length..]);
-
+                byte[] decompressed = new byte[DecompressedLength(bytes)];
+                Decompress(bytes, decompressed);
                 return decompressed;
+            }
+
+            private static bool IsCompressed(ReadOnlySpan<byte> bytes) => bytes.Length != 0 && bytes[PreambleIndex] == PreambleValue;
+
+            private static int DecompressedLength(ReadOnlySpan<byte> compressed) => compressed.Length - PreambleLength + EmptyCodeHashStorageRoot.Length;
+
+            // decompress, removing preamble and adding the empty at the end
+            private static void Decompress(ReadOnlySpan<byte> compressed, Span<byte> decompressed)
+            {
+                compressed[PreambleLength..].CopyTo(decompressed);
+                EmptyCodeHashStorageRoot.CopyTo(decompressed[^EmptyCodeHashStorageRoot.Length..]);
             }
 
             public void Dispose() => wrapped.Dispose();
@@ -153,6 +159,30 @@ namespace Nethermind.Db
             {
                 byte[]? data = Decompress(Get(key, flags));
                 return data is null or { Length: 0 } ? null : ArrayMemoryManager.From(data);
+            }
+
+            public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+                wrapped.TryGet(key, flags, static (value, read) =>
+                {
+                    if (!IsCompressed(value))
+                    {
+                        read.Action(value, read.Arg);
+                        return;
+                    }
+
+                    // Only EOA accounts are compressed, so the decompressed value fits the stack.
+                    int length = DecompressedLength(value);
+                    Span<byte> decompressed = length <= MaxStackDecompressedLength ? stackalloc byte[length] : new byte[length];
+                    Decompress(value, decompressed);
+                    read.Action(decompressed, read.Arg);
+                }, new SpanActionRead<TArg>(action, arg));
+
+            private const int MaxStackDecompressedLength = 256;
+
+            private readonly ref struct SpanActionRead<TArg>(ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+            {
+                public readonly ReadOnlySpanAction<byte, TArg> Action = action;
+                public readonly TArg Arg = arg;
             }
 
             public bool PreferWriteByArray => wrapped.PreferWriteByArray;

@@ -76,7 +76,8 @@ public class FlatStateReaderTests
     {
         CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(out Hash256 stateRoot, TestItem.AddressA);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
-        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot: null, persisted: null));
+        CurrentBundleFlatDbManager flatDbManager = new(trieReader, snapshot: null, persisted: null);
+        FlatStateReader reader = CreateReader(flatDbManager);
 
         if (fullScan) reader.RunTreeVisitor(new TreeDumper(), header);
         else reader.RunTreeVisitor(new AccountProofCollector(TestItem.AddressA, [(UInt256)1]), header);
@@ -85,6 +86,7 @@ public class FlatStateReaderTests
         {
             Assert.That(trieReader.StateRlpLoads, Is.EqualTo(1));
             Assert.That(trieReader.StorageRlpLoads, Is.EqualTo(1));
+            Assert.That(flatDbManager.GatheredReaderFlags, Is.EqualTo(fullScan ? ReaderFlags.FullScan : ReaderFlags.None));
         }
     }
 
@@ -228,8 +230,13 @@ public class FlatStateReaderTests
 
     private class CurrentBundleFlatDbManager(IPersistence.IPersistenceReader persistenceReader, Snapshot? snapshot, PersistedSnapshot? persisted) : IFlatDbManager
     {
-        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
+        public ReaderFlags GatheredReaderFlags { get; private set; }
+
+        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) => GatherReadOnlySnapshotBundle(baseBlock, ReaderFlags.None);
+
+        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock, ReaderFlags readerFlags)
         {
+            GatheredReaderFlags = readerFlags;
             snapshot?.AcquireLease();
             SnapshotPooledList snapshots = snapshot is null ? new SnapshotPooledList(0) : FlatTestHelpers.SnapshotList(snapshot);
             PersistedSnapshotStack persistedSnapshots = PersistedSnapshotStack.Empty(false);

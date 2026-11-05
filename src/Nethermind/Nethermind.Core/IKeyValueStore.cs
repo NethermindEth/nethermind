@@ -32,31 +32,30 @@ namespace Nethermind.Core
         /// <returns>Can return null or empty Span on a missing key</returns>
         Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
 
-        /// <summary>Passes the value of <paramref name="key"/> to <paramref name="action"/> without copying it out of the store.</summary>
+        /// <summary>
+        /// Passes the value of <paramref name="key"/> to <paramref name="action"/>, borrowed for the duration of the call.
+        /// </summary>
+        /// <remarks>
+        /// Unlike <see cref="GetSpan"/>, implementations honor <see cref="ReadFlags.HintReadAhead"/> as <see cref="Get(ReadOnlySpan{byte}, ReadFlags)"/> does.
+        /// </remarks>
         /// <param name="key">Key whose associated value should be read.</param>
         /// <param name="flags">Read behavior flags that control how the value is retrieved.</param>
-        /// <param name="action">Receives the value, which is valid only during the call.</param>
+        /// <param name="action">Receives the value; it must not keep the span past the call.</param>
         /// <param name="arg">Passed to <paramref name="action"/>.</param>
-        /// <returns>Whether a non-empty value was found and passed to <paramref name="action"/>.</returns>
-        /// <remarks>
-        /// Unlike <see cref="GetSpan"/>, the value does not have to outlive the call, so a store can serve a
-        /// <see cref="ReadFlags.HintReadAhead"/> read from a pooled iterator.
-        /// </remarks>
-        bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
-            where TArg : allows ref struct
+        /// <returns>Whether the key holds a non-empty value, which was passed to <paramref name="action"/>.</returns>
+        bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             Span<byte> value = GetSpan(key, flags);
-            if (value.IsEmpty) return false;
             try
             {
+                if (value.IsEmpty) return false;
                 action(value, arg);
+                return true;
             }
             finally
             {
                 DangerousReleaseMemory(value);
             }
-
-            return true;
         }
 
         /// <summary>

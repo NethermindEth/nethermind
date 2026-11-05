@@ -88,9 +88,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, readOptions);
     }
 
-    /// <inheritdoc/>
-    public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
-        where TArg : allows ref struct
+    public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         if ((flags & ReadFlags.HintReadAhead) != 0 && _iteratorManager is not null
             && _mainDb.TryGetWithIterator(key, _iteratorManager.Value, flags, action, arg, out bool found))
@@ -99,17 +97,16 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         }
 
         Span<byte> value = GetSpan(key, flags);
-        if (value.IsEmpty) return false;
         try
         {
+            if (value.IsEmpty) return false;
             action(value, arg);
+            return true;
         }
         finally
         {
             DangerousReleaseMemory(value);
         }
-
-        return true;
     }
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);

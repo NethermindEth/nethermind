@@ -318,8 +318,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags) => _reader.GetSpan(key, flags);
 
-    bool IReadOnlyKeyValueStore.TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
-        _reader.TryGet(key, flags, action, arg);
+    bool IReadOnlyKeyValueStore.TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) => _reader.TryGet(key, flags, action, arg);
 
     MemoryManager<byte>? IReadOnlyKeyValueStore.GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags)
     {
@@ -338,33 +337,35 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         ThrowIfDisposing();
 
         using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
-        Iterator iterator = wrapper.Iterator;
-
-        success = TrySeekWithIterator(iterator, key, iteratorManager.SequentialKeys, out bool found);
-        return found ? iterator.Value() : null;
+        success = TrySeekWithIterator(wrapper.Iterator, key, iteratorManager.SequentialKeys, out bool found);
+        return found ? wrapper.Iterator.Value() : null;
     }
 
-    /// <summary>Like <see cref="GetWithIterator"/>, but passes the value to <paramref name="action"/> straight from the iterator.</summary>
-    /// <returns>Whether the iterator settled the read, <paramref name="found"/> then telling whether the value was passed; otherwise the caller falls back to a point read.</returns>
-    internal bool TryGetWithIterator<TArg>(scoped ReadOnlySpan<byte> key, IteratorManager iteratorManager, ReadFlags flags,
-        ReadOnlySpanAction<byte, TArg> action, TArg arg, out bool found)
+    /// <summary>Span variant of <see cref="GetWithIterator"/>, passing the value to <paramref name="action"/> without copying it.</summary>
+    /// <param name="found">Whether a non-empty value was passed to <paramref name="action"/>.</param>
+    /// <returns>False when the iterator could not settle the read and the caller must fall back to a point read.</returns>
+    internal bool TryGetWithIterator<TArg>(ReadOnlySpan<byte> key, IteratorManager iteratorManager, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg, out bool found)
         where TArg : allows ref struct
     {
         ThrowIfDisposing();
 
         using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
-        Iterator iterator = wrapper.Iterator;
+        if (!TrySeekWithIterator(wrapper.Iterator, key, iteratorManager.SequentialKeys, out found)) return false;
 
-        if (!TrySeekWithIterator(iterator, key, iteratorManager.SequentialKeys, out found)) return false;
-        if (found) action(iterator.GetValueSpan(), arg);
+        ReadOnlySpan<byte> value = found ? wrapper.Iterator.GetValueSpan() : default;
+        found = !value.IsEmpty;
+        if (found) action(value, arg);
         return true;
     }
 
-    /// <summary>Moves <paramref name="iterator"/> onto <paramref name="key"/>.</summary>
-    /// <returns>Whether the iterator settled the read: it is then on the key if <paramref name="found"/>, and the key is missing otherwise.</returns>
-    private static bool TrySeekWithIterator(Iterator iterator, scoped ReadOnlySpan<byte> key, bool sequentialKeys, out bool found)
+    /// <summary>Positions <paramref name="iterator"/> on <paramref name="key"/> when it is stored.</summary>
+    /// <returns>False when the iterator could not settle the read and the caller must fall back to a point read.</returns>
+    private static bool TrySeekWithIterator(Iterator iterator, ReadOnlySpan<byte> key, bool sequentialKeys, out bool found)
     {
-        if (iterator.Valid() && TryCloseReadAhead(iterator, key, sequentialKeys, out found)) return true;
+        if (iterator.Valid() && TryCloseReadAhead(iterator, key, sequentialKeys, out found))
+        {
+            return true;
+        }
 
         iterator.Seek(key);
         found = iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key);
@@ -429,7 +430,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// </summary>
     /// <param name="iterator"></param>
     /// <param name="key"></param>
-    /// <param name="found"></param>
+    /// <param name="found">Whether the iterator was left on <paramref name="key"/>.</param>
     /// <returns></returns>
     private static bool TryCloseReadAhead(Iterator iterator, ReadOnlySpan<byte> key, bool sequentialKeys, out bool found)
     {
@@ -497,7 +498,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (compareResult > 0)
         {
             // We've skipped it somehow
-            found = false;
             return true;
         }
 
